@@ -304,6 +304,12 @@ class MenuSystem {
   _clickSandboxLoad() {
     if (this._hit(20, 20, 90, 32)) { this._setState('sandboxSetup'); return; }
 
+    // Import button (top right)
+    if (this._hit(CANVAS_W - 140, 20, 120, 32)) {
+      this._importWorldFromMenu();
+      return;
+    }
+
     // Delete confirmation popup
     if (this._deleteConfirmKey !== null) {
       // Confirm delete
@@ -328,7 +334,13 @@ class MenuSystem {
       const cw = CANVAS_W - 80;
       const cx = 40;
 
-      // Play button (right side)
+      // Export button
+      const expX = cx + cw - 220;
+      if (this._hit(expX, cy + 12, 64, 36)) {
+        this._exportWorldFromMenu(worlds[i].key);
+        return;
+      }
+      // Play button
       const playX = cx + cw - 148;
       if (this._hit(playX, cy + 12, 64, 36)) {
         this._launchSandboxLoad(worlds[i]);
@@ -341,6 +353,67 @@ class MenuSystem {
         return;
       }
     }
+  }
+
+  _exportWorldFromMenu(key) {
+    const data = SandboxSaves.load(key);
+    if (!data) { alert('Could not load world data.'); return; }
+    const name = data.worldName || data.name || 'level';
+    try {
+      const json     = JSON.stringify(data, null, 2);
+      const blob     = new Blob([json], { type: 'application/json' });
+      const url      = URL.createObjectURL(blob);
+      const a        = document.createElement('a');
+      const date     = new Date().toISOString().slice(0, 10);
+      const safeName = name.replace(/[^a-zA-Z0-9_\-]/g, '_');
+      a.href         = url;
+      a.download     = `${safeName}-${date}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert(`Export failed: ${e.message}`);
+    }
+  }
+
+  _importWorldFromMenu() {
+    const input  = document.createElement('input');
+    input.type   = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (file.size > 5 * 1024 * 1024) { alert('File too large (max 5 MB)'); return; }
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const data = JSON.parse(ev.target.result);
+          if (!data || !Array.isArray(data.grid) || data.grid.length === 0) {
+            alert('Invalid level file — missing world grid.');
+            return;
+          }
+          const worldName  = data.worldName  || data.name || file.name.replace(/\.json$/i, '');
+          const playerName = data.playerName || 'Imported';
+          if (!window.confirm(`Import "${worldName}" by ${playerName}?\n\nIt will be added to your saved worlds.`)) return;
+
+          data.playerName = playerName;
+          data.worldName  = worldName;
+          if (!data.savedAt) data.savedAt = new Date().toISOString();
+
+          const k = SandboxSaves.key(playerName, worldName);
+          localStorage.setItem(k, JSON.stringify(data));
+          this._loadWorlds = SandboxSaves.list();
+        } catch (err) {
+          alert(`Import failed: ${err.message}`);
+        }
+      };
+      reader.onerror = () => alert('Could not read file.');
+      reader.readAsText(file);
+    };
+    document.body.appendChild(input);
+    input.click();
+    document.body.removeChild(input);
   }
 
   // Platformer select
@@ -880,6 +953,19 @@ class MenuSystem {
     const ctx    = this.ctx;
     const worlds = this._loadWorlds;
 
+    // Import button (top right, alongside back button)
+    const impX = CANVAS_W - 140, impY = 20, impW = 120, impH = 32;
+    const impHov = this._hit(impX, impY, impW, impH);
+    ctx.fillStyle   = impHov ? 'rgba(255,170,50,0.9)' : 'rgba(255,152,0,0.22)';
+    _roundRect(ctx, impX, impY, impW, impH, 5); ctx.fill();
+    ctx.strokeStyle = impHov ? '#FFCC44' : '#886622'; ctx.lineWidth = 1;
+    _roundRect(ctx, impX, impY, impW, impH, 5); ctx.stroke();
+    ctx.fillStyle    = impHov ? '#fff' : '#FFAA44';
+    ctx.font         = 'bold 10px Courier New';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⬆ Import Level', impX + impW / 2, impY + impH / 2);
+
     if (worlds.length === 0) {
       ctx.fillStyle    = 'rgba(100,110,130,0.7)';
       ctx.font         = '13px Courier New';
@@ -918,6 +1004,20 @@ class MenuSystem {
         ctx.font      = '9px Courier New';
         ctx.fillText('Saved: ' + SandboxSaves.formatDate(w.savedAt), cx + 16, cy + cardH/2 + 10);
 
+        ctx.font = 'bold 11px Courier New';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        // Export button
+        const expX = cx + cw - 220;
+        const expHov = this._hit(expX, cy + 14, 64, 36);
+        ctx.fillStyle   = expHov ? 'rgba(33,150,243,0.9)' : 'rgba(33,150,243,0.18)';
+        _roundRect(ctx, expX, cy + 14, 64, 36, 5); ctx.fill();
+        ctx.strokeStyle = expHov ? '#64B5F6' : '#1565C0'; ctx.lineWidth = 1;
+        _roundRect(ctx, expX, cy + 14, 64, 36, 5); ctx.stroke();
+        ctx.fillStyle = expHov ? '#fff' : '#90CAF9';
+        ctx.fillText('⬇ Save', expX + 32, cy + 32);
+
         // Play button
         const playX = cx + cw - 148;
         const playHov = this._hit(playX, cy + 14, 64, 36);
@@ -925,9 +1025,7 @@ class MenuSystem {
         _roundRect(ctx, playX, cy + 14, 64, 36, 5); ctx.fill();
         ctx.strokeStyle = playHov ? '#8BC34A' : '#4CAF50'; ctx.lineWidth = 1;
         _roundRect(ctx, playX, cy + 14, 64, 36, 5); ctx.stroke();
-        ctx.fillStyle    = '#fff';
-        ctx.font         = 'bold 11px Courier New';
-        ctx.textAlign    = 'center';
+        ctx.fillStyle = '#fff';
         ctx.fillText('▶ Play', playX + 32, cy + 32);
 
         // Delete button

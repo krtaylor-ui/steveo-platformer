@@ -5496,150 +5496,6 @@ class Game {
     ];
   }
 
-  // ── Phase 11J: Level Export / Import ─────────────────────────
-
-  _validateImportData(data) {
-    if (!data || typeof data !== 'object') return 'Invalid file — expected JSON object';
-    if (!Array.isArray(data.grid))         return 'Missing world grid — not a level file';
-    if (data.grid.length === 0)            return 'World grid is empty';
-    // Warn on version mismatch but still allow load
-    return null; // valid
-  }
-
-  _exportLevel() {
-    const defaultName = this._sbWorldName || 'My Level';
-    const levelName = (window.prompt('Level name for export:', defaultName) ?? '').trim() || defaultName;
-
-    // Build export payload — same structure as SandboxSaves.save(), plus export metadata
-    const payload = {
-      version:     '1.0',
-      name:        levelName,
-      playerName:  this._sbPlayerName,
-      worldName:   levelName,
-      savedAt:     new Date().toISOString(),
-      grid:        this.level.grid.map(row => Array.from(row)),
-      spawnEggs:   this.sandbox
-        ? this.sandbox.placedEggs.map(e => ({ col: e.col, row: e.row, mobType: e.mobType }))
-        : [],
-      placedItems: this.sandbox
-        ? this.sandbox.placedItems.map(it => ({
-            col: it.col, row: it.row,
-            toolKey:   it.toolKey   ?? null,
-            blockType: it.blockType ?? null,
-            count:     it.count     ?? null,
-          }))
-        : [],
-      portalLinks: this.sandbox
-        ? this.sandbox.sandboxPortals.map(p => {
-            const dest = p.destId !== null ? this.sandbox.findPortalById(p.destId) : null;
-            return { label: p.label, biome: p.biome, anchorRow: p.anchorRow, anchorCol: p.anchorCol,
-                     destLabel: dest?.label ?? null, ruined: p.ruined ?? false };
-          })
-        : [],
-      sandboxLevers: this.redstone.components
-        .filter(c => c.type === 'lever' && c.sandboxPlaced)
-        .map(c => ({ col: c.col, row: c.row, on: !!c.on })),
-      sandboxTrapdoors: this.redstone.components
-        .filter(c => c.type === 'trapdoor' && c.sandboxPlaced)
-        .map(c => ({ col: c.col, row: c.row, open: !!c.open })),
-      sandboxPistons: this.redstone.components
-        .filter(c => c.type === 'piston' && c.sandboxPlaced)
-        .map(c => ({ col: c.col, row: c.row, dir: c.dir || 'right',
-                     inverted: !!c.inverted, extended: !!c.extended })),
-      dustBlocks: [...this._dustBlocks.values()].map(d => ({
-        col: d.col, row: d.row, on: !!d.on,
-        everTriggered: !!d.everTriggered, setting: d.setting || 'always_show',
-      })),
-      gateBlocks: [...this._gateBlocks.values()].map(g => ({
-        col: g.col, row: g.row, type: g.type,
-        inputSide: g.inputSide, inputSide2: g.inputSide2, outputSide: g.outputSide,
-        outputPowered: !!g.outputPowered, everTriggered: !!g.everTriggered,
-        setting: g.setting || 'always_show',
-      })),
-      transmitters: [...this._transmitters.values()].map(t => ({ col: t.col, row: t.row, number: t.number })),
-      receivers:    [...this._receivers.values()].map(r => ({ col: r.col, row: r.row, listenTo: [...r.listenTo] })),
-      chests: [...this._chests.values()].map(ch => ({
-        col: ch.col, row: ch.row,
-        items: ch.items.map(it => it ? { ...it } : null),
-      })),
-      playerPx:    Math.floor(this.player.x),
-      playerPy:    Math.floor(this.player.y),
-      sbHotbar:    this.sandbox
-        ? this.sandbox.sbHotbar.map(entry => entry ? { ...entry } : null)
-        : Array(8).fill(null),
-      sbHotbarSel: this.sandbox ? (this.sandbox.sbHotbarSel ?? 0) : 0,
-      ruinedPortals: [...this._ruinedPortals.values()].map(rp => ({
-        anchorRow: rp.anchorRow, anchorCol: rp.anchorCol, activated: !!rp.activated,
-      })),
-      endPortalAnchors: [...this._endPortalAnchors.values()].map(a => ({
-        col: a.col, row: a.row, eyeCount: a.eyeCount, active: !!a.active,
-      })),
-      dragonState:     null,
-      crystalStates:   null,
-      dragonDefeated:  !!this._dragonDefeated,
-      mobDropSettings:  JSON.parse(JSON.stringify(this._mobDropSettings)),
-      worldAdvSettings: JSON.parse(JSON.stringify(this._worldAdvSettings)),
-    };
-
-    try {
-      const json = JSON.stringify(payload, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      const date = new Date().toISOString().slice(0, 10);
-      const safeName = levelName.replace(/[^a-zA-Z0-9_\-]/g, '_');
-      a.href     = url;
-      a.download = `${safeName}-${date}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      this._notify(`Exported: ${a.download}`, '#44FFAA', 300);
-    } catch (err) {
-      this._notify(`Export failed: ${err.message}`, '#FF4444', 240);
-    }
-  }
-
-  _importLevel() {
-    const input = document.createElement('input');
-    input.type   = 'file';
-    input.accept = '.json,application/json';
-    input.onchange = (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      if (file.size > 5 * 1024 * 1024) {
-        this._notify('File too large (max 5 MB)', '#FF4444', 240);
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        try {
-          const data = JSON.parse(ev.target.result);
-          const err  = this._validateImportData(data);
-          if (err) { this._notify(err, '#FF4444', 300); return; }
-
-          const displayName = data.name || data.worldName || file.name.replace(/\.json$/i, '');
-          if (!window.confirm(`Import "${displayName}"?\nThis will replace the current world.`)) return;
-
-          // Write validated data to a temp localStorage key, then use existing loader
-          const tempKey = `sbworld|Import|${Date.now()}`;
-          localStorage.setItem(tempKey, JSON.stringify(data));
-          this._loadSandboxWorld(tempKey);
-          // Update world name so saves use the imported name
-          this._sbWorldName = displayName;
-          this._notify(`Imported: ${displayName}`, '#44FF88', 300);
-        } catch (err) {
-          this._notify(`Import failed: ${err.message}`, '#FF4444', 240);
-        }
-      };
-      reader.onerror = () => this._notify('Could not read file', '#FF4444', 240);
-      reader.readAsText(file);
-    };
-    document.body.appendChild(input);
-    input.click();
-    document.body.removeChild(input);
-  }
-
   _updateWorldSettings() {
     const L    = this._wsLayout();
     const mx   = this.input.mouse.x, my = this.input.mouse.y;
@@ -5672,7 +5528,7 @@ class Game {
     }
 
     // Tab bar clicks
-    const TABS = [{ id: 'drops', label: 'Mob Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'share', label: 'Share' }];
+    const TABS = [{ id: 'drops', label: 'Mob Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }];
     for (let t = 0; t < TABS.length; t++) {
       const tx = L.px + 10 + t * 110;
       if (mx >= tx && mx <= tx + 100 && my >= L.TAB_Y && my <= L.TAB_Y + L.TAB_H) {
@@ -5715,23 +5571,6 @@ class Game {
       const r2Y = L.FIRST_ROW + 48;
       if (mx >= tgX && mx <= tgX + tgW && my >= r2Y && my <= r2Y + tgH)
         this._worldAdvSettings.unlimitedArrows = !this._worldAdvSettings.unlimitedArrows;
-      return;
-    }
-
-    if (this._wsTab === 'share') {
-      const btnW = L.pw - 40, btnH = 34, btnX = L.px + 20;
-      const exportY = L.FIRST_ROW;
-      const importY = L.FIRST_ROW + 90;
-      if (mx >= btnX && mx <= btnX + btnW && my >= exportY && my <= exportY + btnH) {
-        this._worldSettingsOpen = false;
-        this._exportLevel();
-        return;
-      }
-      if (mx >= btnX && mx <= btnX + btnW && my >= importY && my <= importY + btnH) {
-        this._worldSettingsOpen = false;
-        this._importLevel();
-        return;
-      }
       return;
     }
 
@@ -5805,7 +5644,7 @@ class Game {
     ctx.fillText('×', xbx + 10, xby + 11);
 
     // Tab bar
-    const TABS = [{ id: 'drops', label: 'Mob Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'share', label: 'Share' }];
+    const TABS = [{ id: 'drops', label: 'Mob Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }];
     for (let t = 0; t < TABS.length; t++) {
       const tx = L.px + 10 + t * 110;
       const active = this._wsTab === TABS[t].id;
@@ -5902,65 +5741,6 @@ class Game {
 
       drawAdvRow(L.FIRST_ROW,      'Disable Dragon Healing',  '(crystals stop healing the dragon)',    aws.disableDragonHealing);
       drawAdvRow(L.FIRST_ROW + 48, 'Unlimited Arrows',        '(bow fires without consuming arrows)',  aws.unlimitedArrows);
-    } else if (this._wsTab === 'share') {
-      // ── Share tab ─────────────────────────────────────────────
-      const mx2 = this.input.mouse.x, my2 = this.input.mouse.y;
-      const btnW = L.pw - 40, btnH = 34, btnX = L.px + 20;
-
-      // ── Export section ────────────────────────────────────────
-      ctx.fillStyle = '#88AAFF'; ctx.font = 'bold 10px Courier New';
-      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-      ctx.fillText('EXPORT LEVEL', L.px + 20, L.FIRST_ROW - 10);
-      ctx.strokeStyle = '#88AAFF33'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(L.px + 20, L.FIRST_ROW - 7); ctx.lineTo(L.px + L.pw - 20, L.FIRST_ROW - 7); ctx.stroke();
-
-      const exportY = L.FIRST_ROW;
-      const eHov = mx2 >= btnX && mx2 <= btnX + btnW && my2 >= exportY && my2 <= exportY + btnH;
-      ctx.fillStyle = eHov ? '#1A3A2A' : '#162A20';
-      _roundRect(ctx, btnX, exportY, btnW, btnH, 6); ctx.fill();
-      ctx.strokeStyle = eHov ? '#44FF88' : '#228844'; ctx.lineWidth = 1.5;
-      _roundRect(ctx, btnX, exportY, btnW, btnH, 6); ctx.stroke();
-      ctx.fillStyle = eHov ? '#88FFAA' : '#44CC77';
-      ctx.font = 'bold 12px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('⬇  Export Level  (.json)', L.px + L.pw / 2, exportY + btnH / 2);
-
-      ctx.fillStyle = '#556677'; ctx.font = '9px Courier New';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-      ctx.fillText('Saves the current world as a shareable .json file', L.px + L.pw / 2, exportY + btnH + 14);
-
-      // ── Import section ────────────────────────────────────────
-      const importY = L.FIRST_ROW + 90;
-      ctx.fillStyle = '#FFAA44'; ctx.font = 'bold 10px Courier New';
-      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-      ctx.fillText('IMPORT LEVEL', L.px + 20, importY - 10);
-      ctx.strokeStyle = '#FFAA4433'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(L.px + 20, importY - 7); ctx.lineTo(L.px + L.pw - 20, importY - 7); ctx.stroke();
-
-      const iHov = mx2 >= btnX && mx2 <= btnX + btnW && my2 >= importY && my2 <= importY + btnH;
-      ctx.fillStyle = iHov ? '#2A2A14' : '#1E1A10';
-      _roundRect(ctx, btnX, importY, btnW, btnH, 6); ctx.fill();
-      ctx.strokeStyle = iHov ? '#FFCC44' : '#886622'; ctx.lineWidth = 1.5;
-      _roundRect(ctx, btnX, importY, btnW, btnH, 6); ctx.stroke();
-      ctx.fillStyle = iHov ? '#FFEE88' : '#CCAA44';
-      ctx.font = 'bold 12px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('⬆  Import Level  (.json)', L.px + L.pw / 2, importY + btnH / 2);
-
-      ctx.fillStyle = '#556677'; ctx.font = '9px Courier New';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-      ctx.fillText('Loads a .json level file — replaces current world', L.px + L.pw / 2, importY + btnH + 14);
-
-      // ── Sharing tip ───────────────────────────────────────────
-      const tipY = importY + btnH + 40;
-      ctx.fillStyle = '#3A3A4A';
-      ctx.fillRect(L.px + 20, tipY, L.pw - 40, 50);
-      ctx.strokeStyle = '#445566'; ctx.lineWidth = 1;
-      ctx.strokeRect(L.px + 20, tipY, L.pw - 40, 50);
-      ctx.fillStyle = '#667788'; ctx.font = '9px Courier New';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('💡  Build in Sandbox → Export → Share the .json with friends', L.px + L.pw / 2, tipY + 14);
-      ctx.fillText('Friends open Sandbox → World Settings → Share → Import', L.px + L.pw / 2, tipY + 28);
-      ctx.fillText('Imported levels playable in Normal, Platformer, or Sandbox mode', L.px + L.pw / 2, tipY + 42);
-
     } else {
       // ── Mob Drops tab ─────────────────────────────────────────
       ctx.font = '9px Courier New';
