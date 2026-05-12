@@ -216,9 +216,10 @@ const PROGRESS_PREFIX = 'nwprogress|';
 const NormalProgress = {
   key(sandboxKey) { return PROGRESS_PREFIX + sandboxKey; },
 
-  save(sandboxKey, player, bedPos = null, levelGrid = null, collectedItemKeys = null, chestsMap = null, dayNight = null) {
+  save(sandboxKey, player, bedPos = null, levelGrid = null, collectedItemKeys = null, chestsMap = null, dayNight = null, twoPlayerMode = false) {
     const payload = {
       savedAt:     new Date().toISOString(),
+      twoPlayerMode: !!twoPlayerMode,
       hp:          player.hp,
       xp:          player.xp,
       level:       player.level,

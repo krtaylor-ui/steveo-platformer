@@ -172,11 +172,11 @@ class MenuSystem {
     );
   }
 
-  _launchSandboxLoad(worldEntry) {
+  _launchSandboxLoad(worldEntry, twoPlayerMode = false) {
     this._stop();
     window.game = new Game('sandbox',
       { playerName: worldEntry.playerName, worldName: worldEntry.worldName,
-        loadKey: worldEntry.key },
+        loadKey: worldEntry.key, twoPlayerMode },
       () => this._returnFromGame()
     );
   }
@@ -224,11 +224,18 @@ class MenuSystem {
   _clickNormalSelect() {
     if (this._hit(20, 20, 90, 32)) { this._setState('main'); return; }
 
-    // Adventure World card
+    // Adventure World card — 1P and 2P buttons
     const ac = this._adventureCard();
-    if (this._hit(ac.x, ac.y, ac.w, ac.h)) {
+    const btnW = 68, btnH = 40, btnY = ac.y + 14;
+    const advBtn1pX = ac.x + ac.w - 156, advBtn2pX = ac.x + ac.w - 80;
+    if (this._hit(advBtn1pX, btnY, btnW, btnH)) {
       this._stop();
-      window.game = new Game('normal', { world: 'adventure' }, (s) => this._returnFromGame(s));
+      window.game = new Game('normal', { world: 'adventure', twoPlayerMode: false }, (s) => this._returnFromGame(s));
+      return;
+    }
+    if (this._hit(advBtn2pX, btnY, btnW, btnH)) {
+      this._stop();
+      window.game = new Game('normal', { world: 'adventure', twoPlayerMode: true }, (s) => this._returnFromGame(s));
       return;
     }
 
@@ -240,31 +247,35 @@ class MenuSystem {
       const cy = listY + i * (cardH + gap);
       const w  = worlds[i];
       const hasProgress = NormalProgress.exists(w.key);
-      // "New Game" button
-      const newGameX = cx + cw - 100;
-      if (this._hit(newGameX, cy + 14, 88, 36)) {
-        this._launchNormalSandboxNew(w);
+      // "1P New" button
+      if (this._hit(cx + cw - 100, cy + 14, 40, 36)) {
+        this._launchNormalSandboxNew(w, false);
         return;
       }
-      // "Continue Game" button (only clickable if progress exists)
-      const continueX = cx + cw - 212;
-      if (hasProgress && this._hit(continueX, cy + 14, 104, 36)) {
+      // "2P New" button
+      if (this._hit(cx + cw - 56, cy + 14, 40, 36)) {
+        this._launchNormalSandboxNew(w, true);
+        return;
+      }
+      // "Continue" button (only clickable if progress exists)
+      if (hasProgress && this._hit(cx + cw - 212, cy + 14, 104, 36)) {
         this._launchNormalSandboxContinue(w);
         return;
       }
     }
   }
 
-  _launchNormalSandboxNew(worldEntry) {
+  _launchNormalSandboxNew(worldEntry, twoPlayerMode = false) {
     this._stop();
     window.game = new Game(
       'normal',
-      { sandboxLoadKey: worldEntry.key, newGame: true },
+      { sandboxLoadKey: worldEntry.key, newGame: true, twoPlayerMode },
       (s) => this._returnFromGame(s || 'normalSelect')
     );
   }
 
   _launchNormalSandboxContinue(worldEntry) {
+    // Continue always uses whatever twoPlayerMode was saved in progress
     this._stop();
     window.game = new Game(
       'normal',
@@ -340,10 +351,14 @@ class MenuSystem {
         this._exportWorldFromMenu(worlds[i].key);
         return;
       }
-      // Play button
-      const playX = cx + cw - 148;
-      if (this._hit(playX, cy + 12, 64, 36)) {
-        this._launchSandboxLoad(worlds[i]);
+      // 1P button
+      if (this._hit(cx + cw - 148, cy + 12, 28, 36)) {
+        this._launchSandboxLoad(worlds[i], false);
+        return;
+      }
+      // 2P button
+      if (this._hit(cx + cw - 116, cy + 12, 28, 36)) {
+        this._launchSandboxLoad(worlds[i], true);
         return;
       }
       // Delete button
@@ -420,11 +435,18 @@ class MenuSystem {
   _clickPlatformerSelect() {
     if (this._hit(20, 20, 90, 32)) { this._setState('main'); return; }
 
-    // Adventure World card (compact)
+    // Adventure World card — 1P and 2P buttons
     const ac = this._adventureCard();
-    if (this._hit(ac.x, ac.y, ac.w, ac.h)) {
+    const btnW = 68, btnH = 40, btnY = ac.y + 14;
+    const advBtn1pX = ac.x + ac.w - 156, advBtn2pX = ac.x + ac.w - 80;
+    if (this._hit(advBtn1pX, btnY, btnW, btnH)) {
       this._stop();
-      window.game = new Game('platformer', { world: 'adventure' }, (s) => this._returnFromGame(s || 'platformerSelect'));
+      window.game = new Game('platformer', { world: 'adventure', twoPlayerMode: false }, (s) => this._returnFromGame(s || 'platformerSelect'));
+      return;
+    }
+    if (this._hit(advBtn2pX, btnY, btnW, btnH)) {
+      this._stop();
+      window.game = new Game('platformer', { world: 'adventure', twoPlayerMode: true }, (s) => this._returnFromGame(s || 'platformerSelect'));
       return;
     }
 
@@ -434,19 +456,24 @@ class MenuSystem {
     const cw = CANVAS_W - 80, cx2 = 40;
     for (let i = 0; i < Math.min(worlds.length, 4); i++) {
       const cy = listY + i * (cardH + gap);
-      const playX = cx2 + cw - 80;
-      if (this._hit(playX, cy + 14, 68, 36)) {
-        this._launchPlatformerSandbox(worlds[i]);
+      // 1P button
+      if (this._hit(cx2 + cw - 80, cy + 14, 30, 36)) {
+        this._launchPlatformerSandbox(worlds[i], false);
+        return;
+      }
+      // 2P button
+      if (this._hit(cx2 + cw - 46, cy + 14, 30, 36)) {
+        this._launchPlatformerSandbox(worlds[i], true);
         return;
       }
     }
   }
 
-  _launchPlatformerSandbox(worldEntry) {
+  _launchPlatformerSandbox(worldEntry, twoPlayerMode = false) {
     this._stop();
     window.game = new Game(
       'platformer',
-      { platformerLoadKey: worldEntry.key },
+      { platformerLoadKey: worldEntry.key, twoPlayerMode },
       (s) => this._returnFromGame(s || 'platformerSelect')
     );
   }
@@ -609,25 +636,35 @@ class MenuSystem {
     this._drawScreenTitle('SELECT WORLD');
     this._drawBackBtn();
 
-    // Adventure World card (compact)
+    // Adventure World card (compact) — 1P and 2P buttons on right
     const ctx = this.ctx;
     const ac  = this._adventureCard();
-    const hov = this._hit(ac.x, ac.y, ac.w, ac.h);
-    ctx.fillStyle   = hov ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.65)';
+    ctx.fillStyle   = 'rgba(0,0,0,0.65)';
     _roundRect(ctx, ac.x, ac.y, ac.w, ac.h, 8); ctx.fill();
-    ctx.strokeStyle = hov ? '#FFD700' : '#4CAF50'; ctx.lineWidth = hov ? 2 : 1.5;
+    ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 1.5;
     _roundRect(ctx, ac.x, ac.y, ac.w, ac.h, 8); ctx.stroke();
     ctx.fillStyle = '#4CAF50';
     _roundRect(ctx, ac.x, ac.y, 5, ac.h, 4); ctx.fill();
     ctx.font = '22px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('🌲', ac.x + 28, ac.y + ac.h / 2);
-    ctx.fillStyle = hov ? '#fff' : '#ddd'; ctx.font = 'bold 13px Courier New';
+    ctx.fillStyle = '#ddd'; ctx.font = 'bold 13px Courier New';
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.fillText('Default Adventure World', ac.x + 50, ac.y + ac.h / 2 - 10);
     ctx.fillStyle = 'rgba(150,150,150,0.65)'; ctx.font = '9px Courier New';
     ctx.fillText('Plains  →  Cave  →  Nether  |  handcrafted', ac.x + 50, ac.y + ac.h / 2 + 8);
-    ctx.fillStyle = '#4CAF50'; ctx.font = '9px Courier New';
-    ctx.fillText('► Play Adventure', ac.x + 50, ac.y + ac.h / 2 + 24);
+    // 1P / 2P launch buttons
+    const btnW = 68, btnH = 40, btnY = ac.y + 14;
+    const adv1pX = ac.x + ac.w - 156, adv2pX = ac.x + ac.w - 80;
+    const adv1pHov = this._hit(adv1pX, btnY, btnW, btnH);
+    const adv2pHov = this._hit(adv2pX, btnY, btnW, btnH);
+    ctx.font = 'bold 10px Courier New'; ctx.textAlign = 'center';
+    for (const [bx, hov2, label] of [[adv1pX, adv1pHov, '1 Player'], [adv2pX, adv2pHov, '2 Players']]) {
+      ctx.fillStyle   = hov2 ? 'rgba(76,175,80,0.9)' : 'rgba(76,175,80,0.3)';
+      _roundRect(ctx, bx, btnY, btnW, btnH, 5); ctx.fill();
+      ctx.strokeStyle = hov2 ? '#8BC34A' : '#4CAF50'; ctx.lineWidth = 1;
+      _roundRect(ctx, bx, btnY, btnW, btnH, 5); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.fillText(label, bx + btnW / 2, btnY + btnH / 2);
+    }
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
 
     // Divider
@@ -701,20 +738,18 @@ class MenuSystem {
       ctx.fillStyle = '#555'; ctx.font = '8px Courier New';
       ctx.fillText(SandboxSaves.formatDate(w.savedAt), cx2 + 12, cy + cardH / 2 + 20);
 
-      // "New Game" button (always active)
-      const newGameX = cx2 + cw - 100;
-      const newGameHov = this._hit(newGameX, cy + 14, 88, 36);
-      ctx.fillStyle   = newGameHov ? 'rgba(76,175,80,0.9)' : 'rgba(76,175,80,0.3)';
-      _roundRect(ctx, newGameX, cy + 14, 88, 36, 5); ctx.fill();
-      ctx.strokeStyle = newGameHov ? '#8BC34A' : '#4CAF50'; ctx.lineWidth = 1;
-      _roundRect(ctx, newGameX, cy + 14, 88, 36, 5); ctx.stroke();
-      ctx.fillStyle    = '#fff';
-      ctx.font         = 'bold 10px Courier New';
-      ctx.textAlign    = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('New Game', newGameX + 44, cy + 32);
+      // "1P New" and "2P New" buttons (always active)
+      ctx.font = 'bold 10px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (const [bx, label] of [[cx2 + cw - 100, '1P New'], [cx2 + cw - 56, '2P New']]) {
+        const hov3 = this._hit(bx, cy + 14, 40, 36);
+        ctx.fillStyle   = hov3 ? 'rgba(76,175,80,0.9)' : 'rgba(76,175,80,0.3)';
+        _roundRect(ctx, bx, cy + 14, 40, 36, 5); ctx.fill();
+        ctx.strokeStyle = hov3 ? '#8BC34A' : '#4CAF50'; ctx.lineWidth = 1;
+        _roundRect(ctx, bx, cy + 14, 40, 36, 5); ctx.stroke();
+        ctx.fillStyle = '#fff'; ctx.fillText(label, bx + 20, cy + 32);
+      }
 
-      // "Continue Game" button (greyed out if no save exists)
+      // "Continue" button (greyed out if no save exists)
       const continueX = cx2 + cw - 212;
       const continueHov = hasProgress && this._hit(continueX, cy + 14, 104, 36);
       ctx.fillStyle   = continueHov ? 'rgba(33,150,243,0.9)' : hasProgress ? 'rgba(33,150,243,0.3)' : 'rgba(40,40,50,0.4)';
@@ -723,15 +758,15 @@ class MenuSystem {
       _roundRect(ctx, continueX, cy + 14, 104, 36, 5); ctx.stroke();
       ctx.fillStyle    = hasProgress ? '#fff' : '#444466';
       ctx.font         = 'bold 10px Courier New';
-      ctx.textAlign    = 'center';
-      ctx.textBaseline = 'middle';
+      ctx.textAlign    = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText('Continue', continueX + 52, cy + 26);
       if (hasProgress) {
         const prog = NormalProgress.load(w.key);
         const lvl  = prog?.level ?? 1;
+        const is2p = prog?.twoPlayerMode ?? false;
         ctx.fillStyle = 'rgba(100,200,255,0.8)';
         ctx.font      = '8px Courier New';
-        ctx.fillText(`Lv ${lvl} saved`, continueX + 52, cy + 38);
+        ctx.fillText(`Lv ${lvl}  ${is2p ? '2P' : '1P'}`, continueX + 52, cy + 38);
       } else {
         ctx.fillStyle = '#333355';
         ctx.font      = '8px Courier New';
@@ -1018,15 +1053,15 @@ class MenuSystem {
         ctx.fillStyle = expHov ? '#fff' : '#90CAF9';
         ctx.fillText('⬇ Save', expX + 32, cy + 32);
 
-        // Play button
-        const playX = cx + cw - 148;
-        const playHov = this._hit(playX, cy + 14, 64, 36);
-        ctx.fillStyle   = playHov ? 'rgba(76,175,80,0.9)' : 'rgba(76,175,80,0.22)';
-        _roundRect(ctx, playX, cy + 14, 64, 36, 5); ctx.fill();
-        ctx.strokeStyle = playHov ? '#8BC34A' : '#4CAF50'; ctx.lineWidth = 1;
-        _roundRect(ctx, playX, cy + 14, 64, 36, 5); ctx.stroke();
-        ctx.fillStyle = '#fff';
-        ctx.fillText('▶ Play', playX + 32, cy + 32);
+        // 1P and 2P buttons (replace single Play button)
+        for (const [bx, label] of [[cx + cw - 148, '1P'], [cx + cw - 116, '2P']]) {
+          const ph2 = this._hit(bx, cy + 12, 28, 36);
+          ctx.fillStyle   = ph2 ? 'rgba(76,175,80,0.9)' : 'rgba(76,175,80,0.22)';
+          _roundRect(ctx, bx, cy + 12, 28, 36, 5); ctx.fill();
+          ctx.strokeStyle = ph2 ? '#8BC34A' : '#4CAF50'; ctx.lineWidth = 1;
+          _roundRect(ctx, bx, cy + 12, 28, 36, 5); ctx.stroke();
+          ctx.fillStyle = '#fff'; ctx.fillText(label, bx + 14, cy + 30);
+        }
 
         // Delete button
         const delX = cx + cw - 76;
@@ -1104,25 +1139,34 @@ class MenuSystem {
     this._drawScreenTitle('SELECT LEVEL');
     this._drawBackBtn();
 
-    // Adventure World card (compact, blue accent)
+    // Adventure World card (compact, blue accent) — 1P and 2P buttons on right
     const ctx = this.ctx;
     const ac  = this._adventureCard();
-    const hov = this._hit(ac.x, ac.y, ac.w, ac.h);
-    ctx.fillStyle   = hov ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.65)';
+    ctx.fillStyle   = 'rgba(0,0,0,0.65)';
     _roundRect(ctx, ac.x, ac.y, ac.w, ac.h, 8); ctx.fill();
-    ctx.strokeStyle = hov ? '#FFD700' : '#2196F3'; ctx.lineWidth = hov ? 2 : 1.5;
+    ctx.strokeStyle = '#2196F3'; ctx.lineWidth = 1.5;
     _roundRect(ctx, ac.x, ac.y, ac.w, ac.h, 8); ctx.stroke();
     ctx.fillStyle = '#2196F3';
     _roundRect(ctx, ac.x, ac.y, 5, ac.h, 4); ctx.fill();
     ctx.font = '22px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('🌲', ac.x + 28, ac.y + ac.h / 2);
-    ctx.fillStyle = hov ? '#fff' : '#ddd'; ctx.font = 'bold 13px Courier New';
+    ctx.fillStyle = '#ddd'; ctx.font = 'bold 13px Courier New';
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.fillText('Default Adventure World', ac.x + 50, ac.y + ac.h / 2 - 10);
     ctx.fillStyle = 'rgba(150,150,150,0.65)'; ctx.font = '9px Courier New';
     ctx.fillText('Plains  →  Cave  →  Nether  |  handcrafted', ac.x + 50, ac.y + ac.h / 2 + 8);
-    ctx.fillStyle = '#2196F3'; ctx.font = '9px Courier New';
-    ctx.fillText('► Play Level', ac.x + 50, ac.y + ac.h / 2 + 24);
+    // 1P / 2P launch buttons
+    const pfBtnW = 68, pfBtnH = 40, pfBtnY = ac.y + 14;
+    const pfAdv1pX = ac.x + ac.w - 156, pfAdv2pX = ac.x + ac.w - 80;
+    ctx.font = 'bold 10px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const [bx, hov2, label] of [[pfAdv1pX, this._hit(pfAdv1pX, pfBtnY, pfBtnW, pfBtnH), '1 Player'],
+                                      [pfAdv2pX, this._hit(pfAdv2pX, pfBtnY, pfBtnW, pfBtnH), '2 Players']]) {
+      ctx.fillStyle   = hov2 ? 'rgba(33,150,243,0.9)' : 'rgba(33,150,243,0.3)';
+      _roundRect(ctx, bx, pfBtnY, pfBtnW, pfBtnH, 5); ctx.fill();
+      ctx.strokeStyle = hov2 ? '#64B5F6' : '#2196F3'; ctx.lineWidth = 1;
+      _roundRect(ctx, bx, pfBtnY, pfBtnW, pfBtnH, 5); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.fillText(label, bx + pfBtnW / 2, pfBtnY + pfBtnH / 2);
+    }
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
 
     // Divider
@@ -1205,18 +1249,16 @@ class MenuSystem {
         ctx.fillText(`${eggs} mob spawn${eggs !== 1 ? 's' : ''}`, cx2 + cw - 162 + 37, cy + 17);
       }
 
-      // Play button
-      const playX   = cx2 + cw - 80;
-      const playHov = this._hit(playX, cy + 14, 68, 36);
-      ctx.fillStyle   = playHov ? 'rgba(33,150,243,0.9)' : 'rgba(33,150,243,0.3)';
-      _roundRect(ctx, playX, cy + 14, 68, 36, 5); ctx.fill();
-      ctx.strokeStyle = playHov ? '#64B5F6' : '#2196F3'; ctx.lineWidth = 1;
-      _roundRect(ctx, playX, cy + 14, 68, 36, 5); ctx.stroke();
-      ctx.fillStyle    = '#fff';
-      ctx.font         = 'bold 11px Courier New';
-      ctx.textAlign    = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('▶ Play', playX + 34, cy + 32);
+      // 1P and 2P buttons (replace single Play button)
+      ctx.font = 'bold 10px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (const [bx, label] of [[cx2 + cw - 80, '1P'], [cx2 + cw - 46, '2P']]) {
+        const ph2 = this._hit(bx, cy + 14, 30, 36);
+        ctx.fillStyle   = ph2 ? 'rgba(33,150,243,0.9)' : 'rgba(33,150,243,0.3)';
+        _roundRect(ctx, bx, cy + 14, 30, 36, 5); ctx.fill();
+        ctx.strokeStyle = ph2 ? '#64B5F6' : '#2196F3'; ctx.lineWidth = 1;
+        _roundRect(ctx, bx, cy + 14, 30, 36, 5); ctx.stroke();
+        ctx.fillStyle = '#fff'; ctx.fillText(label, bx + 15, cy + 32);
+      }
     }
 
     if (worlds.length > 4) {

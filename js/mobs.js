@@ -78,6 +78,7 @@ class Mob {
     this.knockbackTimer = 0;   // frames where AI is suppressed
     this.walkTimer = 0;
     this.alive = true;
+    this.meleeDamage = 2;     // default contact damage — overridden by subclasses (Phase 12)
 
     // Wander / chase state
     this.state             = 'wander';
@@ -201,7 +202,8 @@ class Mob {
 class Zombie extends Mob {
   constructor(x, y) {
     super(x, y, 22, 48, 10);
-    this.attackTimer = 0;
+    this.attackTimer  = 0;
+    this.meleeDamage  = 1;
   }
 
   update(player, level) {
@@ -445,6 +447,7 @@ class Creeper extends Mob {
     this.fusing    = false;
     this.fuseTimer = 0;
     this.explosionPending = null; // set by _explode, consumed by MobManager
+    this.meleeDamage = 6;
   }
 
   takeDamage(amount, knockDir = 0) {
@@ -806,7 +809,8 @@ class ExplosionEffect {
 class CaveSpider extends Mob {
   constructor(x, y) {
     super(x, y, 16, 16, 6);
-    this.speed = 3.6;
+    this.speed       = 3.6;
+    this.meleeDamage = 2;
   }
 
   update(player, level) {
@@ -868,8 +872,9 @@ class CaveSpider extends Mob {
 class Piglin extends Mob {
   constructor(x, y) {
     super(x, y, 20, 44, 14);
-    this.speed     = 2.7;
+    this.speed       = 2.7;
     this.attackTimer = 0;
+    this.meleeDamage = 3;
   }
 
   update(player, level) {
@@ -1092,6 +1097,7 @@ class WitherSkeleton extends Mob {
     super(x, y, 22, 50, 20);
     this.speed       = 3.0;
     this.attackTimer = 0;
+    this.meleeDamage = 4;
   }
 
   update(player, level) {
@@ -1162,6 +1168,7 @@ class Enderman extends Mob {
     this.attackTimer      = 0;
     this.teleportCooldown = 0;   // frames until next teleport allowed
     this.aggroRange       = 10 * BLOCK_SIZE;
+    this.meleeDamage      = 5;
   }
 
   update(player, level) {

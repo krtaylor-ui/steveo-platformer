@@ -87,6 +87,17 @@ const DRAGON_SPAWN_ROW  = 48;      // initial spawn row
 const DRAGON_HEAD_ROT   = 0.349;   // 20° in radians — fixed downward gaze angle
 const DIVE_GROUND_Y     = (END_FLOOR_ROW - 2) * BLOCK_SIZE - DRAGON_BODY_H; // dragon ground-skim y
 
+// Gamepad input (Phase 11K-1)
+const GP_DEADZONE_STICK   = 0.20;   // left/right stick dead zone (ignore drift below this)
+const GP_DEADZONE_TRIGGER = 0.10;   // analog trigger dead zone
+
+// Player 2 keyboard fallback (Phase 12 — IJKL for debug/testing without a second controller)
+const P2_KEY_JUMP   = 'KeyI';
+const P2_KEY_LEFT   = 'KeyJ';
+const P2_KEY_CROUCH = 'KeyK';
+const P2_KEY_RIGHT  = 'KeyL';
+const P2_KEY_ATTACK = 'KeyU';
+
 // Day/night cycle (Phase 11F)
 const DAY_CYCLE_DEFAULT_MINUTES = 10;         // full cycle (day + night), configurable
 const DAWN_DUSK_MS              = 30 * 1000;  // 30 s transition

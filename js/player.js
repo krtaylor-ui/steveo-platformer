@@ -203,12 +203,14 @@ class Player {
     const speed  = (this.crouching ? this.crouchSpeed : this.moveSpeed) * hsMult;
     this.running = !this.crouching;
 
-    // Horizontal movement (same whether flying or not)
-    if (input.isLeft()) {
-      this.vx    = -speed;
+    // Horizontal movement — analog-aware (uses left stick magnitude when available)
+    const mx = typeof input.moveX === 'function' ? input.moveX()
+             : (input.isLeft() ? -1 : input.isRight() ? 1 : 0);
+    if (mx < 0) {
+      this.vx    = speed * mx;   // mx is negative → vx moves left
       this.facing = -1;
-    } else if (input.isRight()) {
-      this.vx    = speed;
+    } else if (mx > 0) {
+      this.vx    = speed * mx;
       this.facing = 1;
     } else {
       this.vx *= 0.72;

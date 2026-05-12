@@ -16,6 +16,24 @@ class Game {
     this._onReturnToMenu = onReturnToMenu;
     this._running        = true;
 
+    // Must be initialized before _buildLevel() which reads twoPlayerMode (Phase 12)
+    this._worldAdvSettings = {
+      disableDragonHealing:     false,
+      dayCycleMinutes:          DAY_CYCLE_DEFAULT_MINUTES,
+      nightSpawnBoost:          true,
+      fullMoonHpBoost:          true,
+      unlimitedArrows:          false,
+      controllerSensitivity:    1.0,
+      controllerAimSensitivity: 1.0,
+      twoPlayerMode:            options.twoPlayerMode ?? false,
+    };
+    // Track the user's explicit pre-launch 2P choice so it can survive world-load overwrite
+    this._launchTwoPlayerMode = options.twoPlayerMode;
+    this.player2         = null;
+    this._p2SpawnX       = 0;
+    this._p2SpawnY       = 0;
+    this._p2RespawnTimer = 0;
+
     this._buildLevel();
 
     this.state         = 'playing'; // 'playing' | 'won' | 'dead' | 'paused' | 'confirmExit'
@@ -30,6 +48,13 @@ class Game {
     this._fWas         = false;
     this._escWas       = false;
     this._godWas       = false;
+
+    // Pause menu tab system (Phase 11K-2)
+    this._pauseTab        = 'pause';  // 'pause' | 'settings' | 'help'
+    this._pauseSelIdx     = 0;        // D-Pad cursor in PAUSE tab
+    this._pauseHelpScroll = 0;        // scroll offset in HELP tab
+    this._ltWasDown       = false;    // sandbox LT trigger edge (undo)
+    this._rtWasDown       = false;    // sandbox RT trigger edge (redo)
 
     // Inventory UI
     this.inventoryOpen = false;
@@ -70,14 +95,12 @@ class Game {
 
     // Phase 11D: End entry tracking + advanced world settings
     this._endEntryCell    = null;  // { col, row } set when player enters End Portal
-    this._worldAdvSettings = {
-      disableDragonHealing: false,
-      dayCycleMinutes:      DAY_CYCLE_DEFAULT_MINUTES,
-      nightSpawnBoost:      true,
-      fullMoonHpBoost:      true,
-      unlimitedArrows:      false,
-    };
-    this._wsTab            = 'drops'; // 'drops' | 'advanced'
+    // _worldAdvSettings and player2 state initialized before _buildLevel() above
+    this._wsTab            = 'drops'; // 'drops' | 'time' | 'advanced' | 'input'
+
+    // Context action for gamepad RB (computed every frame)
+    this._contextAction = null;   // 'chest' | 'lever' | 'bed' | 'portal' | null
+    this._contextPrompt = null;   // display string e.g. '[RB] Open Chest'
 
     // Phase 11F: Day/night cycle
     this._dayNight = {
@@ -194,7 +217,10 @@ class Game {
         }
       }
       // Load saved world if a key was provided
-      if (options.loadKey) this._loadSandboxWorld(options.loadKey);
+      if (options.loadKey) {
+        this._loadSandboxWorld(options.loadKey);
+        this._syncTwoPlayerAfterLoad();
+      }
       // Auto-register the two built-in world portals so they appear with labels
       // and clicking them opens the link popup instead of deleting them.
       // Skip if already restored from a saved portalLinks array.
@@ -209,11 +235,13 @@ class Game {
     // Normal mode: load sandbox world if key provided
     if (this.gameMode === 'normal' && this._sandboxLoadKey) {
       this._loadNormalWorld(this._sandboxLoadKey);
+      this._syncTwoPlayerAfterLoad();
     }
 
     // Platformer mode: load sandbox world if key provided
     if (this.gameMode === 'platformer' && this._platformerLoadKey) {
       this._loadPlatformerWorld(this._platformerLoadKey);
+      this._syncTwoPlayerAfterLoad();
       this.player.selectedSlot = 1; // start with sword selected
       this._platformerStartMs  = Date.now();
       // Reserve hotbar slots 5 and 6 (index 4/5) for portal-repair items in Platformer only
@@ -234,6 +262,16 @@ class Game {
     const data           = buildWorld();
     this.level           = new Level(data);
     this.player          = new Player(data.spawnX, data.spawnY);
+    this._p2SpawnX = data.spawnX + BLOCK_SIZE * 2;
+    this._p2SpawnY = data.spawnY;
+    if (this._worldAdvSettings.twoPlayerMode) {
+      this.player2 = new Player(this._p2SpawnX, this._p2SpawnY);
+      this.player2.godMode = (this.gameMode === 'sandbox');
+      this.player2.selectedSlot = 1;
+    } else {
+      this.player2 = null;
+    }
+    this._p2RespawnTimer = 0;
     this.mobManager            = new MobManager();
     this.mobManager.dropConfig = this._mobDropSettings;
     this.mobManager.setupSpawnPoints(data.spawnPoints);
@@ -331,6 +369,12 @@ class Game {
   }
 
   _update(deltaMs = 16.67) {
+    // ── Poll gamepad state first (Phase 11K-1) ──────────────
+    this.input.updateGamepad();
+    // Reset context action each frame (recomputed later if gameplay is active)
+    this._contextAction = null;
+    this._contextPrompt = null;
+
     // ── Tutorial overlay — H key or ? (Shift+/) toggles; checked before other input ──
     const _shiftHelp = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight');
     if (this.input.isJustDown('Slash') && _shiftHelp) {
@@ -368,8 +412,9 @@ class Game {
     }
 
     // ── ESC: pause / unpause (not on win screen) ───────────────
-    const escNow = this.input.isDown('Escape');
-    if (escNow && !this._escWas) {
+    const escNow  = this.input.isDown('Escape');
+    const escEdge = (escNow && !this._escWas) || this.input.gpJustDown(0, 'menu');
+    if (escEdge) {
       if (this._teleportMenu) {
         this._teleportMenu = false;
       } else if (this._chestOpen) {
@@ -452,7 +497,8 @@ class Game {
         this._portalTransition = null;
         this.portalCooldown    = 120;
       }
-      this.camera.follow(this.player);
+      if (this.player2) this.camera.followMidpoint(this.player, this.player2);
+      else              this.camera.follow(this.player);
       return;
     }
 
@@ -465,7 +511,8 @@ class Game {
     // ── World Settings panel (sandbox): block gameplay while open ──
     if (this._worldSettingsOpen) {
       this._updateWorldSettings();
-      this.camera.follow(this.player);
+      if (this.player2) this.camera.followMidpoint(this.player, this.player2);
+      else              this.camera.follow(this.player);
       return;
     }
 
@@ -481,7 +528,8 @@ class Game {
           this._dragonVictoryScreen = false;
         }
       }
-      this.camera.follow(this.player);
+      if (this.player2) this.camera.followMidpoint(this.player, this.player2);
+      else              this.camera.follow(this.player);
       return;
     }
 
@@ -670,10 +718,68 @@ class Game {
         this.player.selectedSlot =
           (this.player.selectedSlot + this.input.scrollDelta + 9) % 9;
       }
+      // D-Pad: quick-select hotbar slots 0–3
+      if (this.input.gpJustDown(0, 'dpad0')) this.player.selectedSlot = 0;
+      if (this.input.gpJustDown(0, 'dpad1')) this.player.selectedSlot = 1;
+      if (this.input.gpJustDown(0, 'dpad2')) this.player.selectedSlot = 2;
+      if (this.input.gpJustDown(0, 'dpad3')) this.player.selectedSlot = 3;
+      // LB: previous hotbar slot
+      if (this.input.gpJustDown(0, 'prevSlot')) {
+        this.player.selectedSlot = (this.player.selectedSlot - 1 + 9) % 9;
+      }
+    }
+
+    // Sandbox-only controller mappings (Phase 11K-2)
+    if (this.gameMode === 'sandbox' && this.sandbox) {
+      const gp0   = this.input.gamepads[0];
+      const ltNow = gp0.triggerL > 0.5;
+      const rtNow = gp0.triggerR > 0.5;
+      if (ltNow && !this._ltWasDown) this._historyUndo();
+      if (rtNow && !this._rtWasDown) this._historyRedo();
+      this._ltWasDown = ltNow;
+      this._rtWasDown = rtNow;
+      // Y button → toggle sandbox palette
+      if (this.input.gpJustDown(0, 'place')) this.sandbox.togglePalette();
+    }
+
+    // ── Player 2 gamepad hotbar (Phase 12) ────────────────
+    if (this.player2 && this._p2RespawnTimer === 0) {
+      if (this.input.gpJustDown(1, 'dpad0')) this.player2.selectedSlot = 0;
+      if (this.input.gpJustDown(1, 'dpad1')) this.player2.selectedSlot = 1;
+      if (this.input.gpJustDown(1, 'dpad2')) this.player2.selectedSlot = 2;
+      if (this.input.gpJustDown(1, 'dpad3')) this.player2.selectedSlot = 3;
+      if (this.input.gpJustDown(1, 'prevSlot')) this.player2.selectedSlot = (this.player2.selectedSlot - 1 + 9) % 9;
+      if (this.input.gpJustDown(1, 'context'))  this.player2.selectedSlot = (this.player2.selectedSlot + 1) % 9;
     }
 
     // ── Player movement / weapon toggle ────────────────────
+    // Apply controller sensitivity so moveX() scales analog stick correctly
+    this.input.controllerSensitivity    = this._worldAdvSettings.controllerSensitivity    ?? 1.0;
+    this.input.controllerAimSensitivity = this._worldAdvSettings.controllerAimSensitivity ?? 1.0;
     this.player.update(this.input, this.level);
+
+    // ── Player 2 update (Phase 12) ─────────────────────────
+    if (this.player2) {
+      if (this._p2RespawnTimer > 0) {
+        this._p2RespawnTimer--;
+        if (this._p2RespawnTimer === 0) {
+          this.player2.respawnAt(this._p2SpawnX, this._p2SpawnY);
+          this._notify('Player 2 rejoins!', '#88AAFF', 120);
+        }
+      } else {
+        const p2input = {
+          isLeft:   () => this.input.isP2Left(),
+          isRight:  () => this.input.isP2Right(),
+          isJump:   () => this.input.isP2Jump(),
+          isCrouch: () => this.input.isP2Crouch(),
+          isRun:    () => false,
+          isAttack: () => this.input.isP2Attack(),
+          moveX:    () => this.input.moveX2(),
+        };
+        this.player2.update(p2input, this.level);
+        this._resolvePlayerCollision(this.player, this.player2);
+      }
+    }
 
     // ── Soul sand slowing ──────────────────────────────────
     const pFeetRow = Math.floor((this.player.y + this.player.height) / BLOCK_SIZE);
@@ -706,6 +812,34 @@ class Game {
       }
     }
 
+    // ── Player 2 physics hazards (Phase 12) ───────────────
+    if (this.player2 && this._p2RespawnTimer === 0) {
+      const p2FeetRow = Math.floor((this.player2.y + this.player2.height) / BLOCK_SIZE);
+      const p2FeetCol = Math.floor(this.player2.cx / BLOCK_SIZE);
+      const p2MidRow  = Math.floor(this.player2.cy / BLOCK_SIZE);
+      const p2MidCol  = Math.floor(this.player2.cx / BLOCK_SIZE);
+      // Soul sand
+      if (this.level.get(p2FeetRow, p2FeetCol) === BLOCK.SOUL_SAND ||
+          this.level.get(p2FeetRow - 1, p2FeetCol) === BLOCK.SOUL_SAND) {
+        this.player2.vx *= 0.6;
+      }
+      // Lava
+      if (this.level.get(p2MidRow, p2MidCol) === BLOCK.LAVA && !this.player2.godMode && this.player2.hp > 0) {
+        this.player2.hp = 0;
+        this._triggerP2Death('Burned by lava');
+      }
+      // Void
+      if (!this.player2.godMode && this.player2.hp > 0) {
+        if (p2MidCol >= BIOME_END_START && p2FeetRow > END_FLOOR_ROW + 1) {
+          this.player2.hp = 0;
+          this._triggerP2Death('Fell into the void');
+        } else if (p2MidCol >= 480 && p2MidCol <= 499 && p2FeetRow > 35) {
+          this.player2.hp = 0;
+          this._triggerP2Death('Fell into the void');
+        }
+      }
+    }
+
     // ── Cursor world position ──────────────────────────────
     const world    = this.camera.toWorld(this.input.mouse.x, this.input.mouse.y);
     const hoverCol = Math.floor(world.x / BLOCK_SIZE);
@@ -732,7 +866,12 @@ class Game {
       } else if (this.player.bowDrawing) {
         const charge = this.player.drawProgress;
         const speed  = BOW_MIN_SPEED + (BOW_MAX_SPEED - BOW_MIN_SPEED) * charge;
-        const angle  = Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
+        // Right stick overrides mouse aim when it has significant input
+        const gp0 = this.input.gamepads[0];
+        const gpAimMag = Math.hypot(gp0.aimX, gp0.aimY);
+        const angle = (gp0.connected && gpAimMag > 0.15)
+          ? Math.atan2(gp0.aimY, gp0.aimX)
+          : Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
         this.mobManager.addPlayerArrow(
           this.player.cx, this.player.cy,
           Math.cos(angle) * speed,
@@ -761,6 +900,15 @@ class Game {
       }
     }
 
+    // ── Player 2 melee attack (Phase 12) ──────────────────
+    if (this.player2 && this._p2RespawnTimer === 0) {
+      if (this.input.isP2Attack() && this.player2.attackCooldown === 0) {
+        this.mobManager.playerAttack(this.player2);
+        this.player2.attackCooldown = ATTACK_COOLDOWN;
+        this.player2.swingTimer     = 15;
+      }
+    }
+
     // ── L key: toggle nearest lever ────────────────────────
     const lDown = this.input.isDown('KeyL');
     if (lDown && !this._lKeyWas) {
@@ -768,6 +916,12 @@ class Game {
       if (toggled) this._rsStartFromSource(toggled.col, toggled.row, toggled.on);
     }
     this._lKeyWas = lDown;
+
+    // ── Gamepad RB: context-sensitive action ─────────────────
+    this._computeContextAction();
+    if (this.input.gpJustDown(0, 'context')) {
+      this._executeContextAction();
+    }
 
     // ── Redstone update (pressure plates, TNT countdown) ───
     this.redstone.update(this.level, this.player, this.input);
@@ -1144,6 +1298,47 @@ class Game {
         this._checkDeath();
       }
 
+      // ── Player 2 mob damage pass (Phase 12) ───────────────
+      if (this.player2 && this._p2RespawnTimer === 0) {
+        const p2HpBefore = this.player2.hp;
+        for (const mob of this.mobManager.mobs) {
+          if (!mob.alive || mob.iFrames > 0) continue;
+          // Contact damage
+          if (mob.attackTimer !== undefined) {
+            if (mob.attackTimer === 0 && mob._touchesPlayer(this.player2)) {
+              this.player2.takeDamage(mob.meleeDamage, Math.sign(this.player2.cx - mob.cx));
+              mob.attackTimer = MOB_ATTACK_RATE;
+            }
+          } else {
+            // Mobs without attackTimer (CaveSpider) — use iFrames gate only
+            if (this.player2.iFrames === 0 && mob._touchesPlayer(this.player2)) {
+              this.player2.takeDamage(mob.meleeDamage, Math.sign(this.player2.cx - mob.cx));
+            }
+          }
+        }
+        // Arrow damage to P2
+        for (const arr of this.mobManager.arrows) {
+          if (!arr.active) continue;
+          const ax = arr.x, ay = arr.y;
+          if (ax >= this.player2.x && ax <= this.player2.x + this.player2.width &&
+              ay >= this.player2.y && ay <= this.player2.y + this.player2.height) {
+            this.player2.takeDamage(2, Math.sign(arr.vx));
+            arr.active = false;
+          }
+        }
+        const p2DmgTaken = p2HpBefore - this.player2.hp;
+        if (p2DmgTaken > 0) {
+          if (this.player2.hp <= 0) this._triggerP2Death('Defeated by a mob');
+        }
+        // P2 item collection
+        const p2Collected = this.mobManager.collectDropsNear(this.player2);
+        for (const { itemKey, amount } of p2Collected) {
+          if (typeof itemKey !== 'string') {
+            for (let i = 0; i < amount; i++) this.player2.addBlock(itemKey);
+          }
+        }
+      }
+
       // ── Collect dropped items ──────────────────────────────
       const collected = this.state !== 'dead'
         ? this.mobManager.collectDropsNear(this.player)
@@ -1299,7 +1494,8 @@ class Game {
     this._updateDragon();
 
     // ── Camera ─────────────────────────────────────────────
-    this.camera.follow(this.player);
+    if (this.player2) this.camera.followMidpoint(this.player, this.player2);
+    else              this.camera.follow(this.player);
 
     // ── Clouds (only animate in plains) ───────────────────
     const playerBiome = this._playerBiome();
@@ -2096,6 +2292,86 @@ class Game {
     this.state = 'dead';
   }
 
+  // ── Phase 12: 2-Player Co-op helpers ──────────────────────
+
+  _syncTwoPlayerAfterLoad() {
+    // If user chose 2P explicitly at launch, override what the save had
+    if (this._launchTwoPlayerMode !== undefined) {
+      this._worldAdvSettings.twoPlayerMode = this._launchTwoPlayerMode;
+    }
+    // Sync player2 to current setting (silent — no notification at startup)
+    this._applyTwoPlayerMode(this._worldAdvSettings.twoPlayerMode, true);
+  }
+
+  _triggerP2Death(cause = 'Player 2 died') {
+    if (this._p2RespawnTimer > 0) return;
+    this._notify(`P2: ${cause}`, '#FF8888', 150);
+    this._p2RespawnTimer = 180; // 3 s at 60 fps
+  }
+
+  _resolvePlayerCollision(p1, p2) {
+    const overlapX = (p1.x + p1.width)  - p2.x;
+    const overlapX2= (p2.x + p2.width)  - p1.x;
+    if (overlapX <= 0 || overlapX2 <= 0) return;
+    const topA = p1.y, botA = p1.y + p1.height;
+    const topB = p2.y, botB = p2.y + p2.height;
+    if (botA <= topB || botB <= topA) return;
+    // Horizontal push: push each away by half overlap
+    const push = Math.min(overlapX, overlapX2) / 2;
+    const dir  = p1.cx < p2.cx ? 1 : -1;
+    p1.x -= dir * push;
+    p2.x += dir * push;
+  }
+
+  _applyTwoPlayerMode(enabled, silent = false) {
+    this._worldAdvSettings.twoPlayerMode = enabled;
+    if (enabled && !this.player2) {
+      // Mid-game join: spawn next to P1's current position; at spawn point if P1 not yet placed
+      const spawnX = this.player ? this.player.x + BLOCK_SIZE * 2 : this._p2SpawnX;
+      const spawnY = this.player ? this.player.y                   : this._p2SpawnY;
+      this.player2 = new Player(spawnX, spawnY);
+      this.player2.godMode = (this.gameMode === 'sandbox');
+      this.player2.selectedSlot = 1;
+      this._p2RespawnTimer = 0;
+      if (!silent) this._notify('2-Player Co-op ON  (IJKL / 2nd controller)', '#88AAFF', 180);
+    } else if (!enabled && this.player2) {
+      this.player2 = null;
+      if (!silent) this._notify('2-Player Co-op OFF', '#888899', 120);
+    }
+  }
+
+  _drawP2HUD(ctx) {
+    const p2 = this.player2;
+    if (!p2) return;
+    const HX = CANVAS_W - 180, HY = 8;
+    const HW = 168, HH = 36;
+    ctx.save();
+    ctx.fillStyle = 'rgba(20,10,10,0.65)';
+    _roundRect(ctx, HX, HY, HW, HH, 5); ctx.fill();
+    ctx.strokeStyle = '#FF8888'; ctx.lineWidth = 1;
+    _roundRect(ctx, HX, HY, HW, HH, 5); ctx.stroke();
+    ctx.font = 'bold 9px Courier New'; ctx.fillStyle = '#FF8888';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText('P2', HX + 6, HY + 13);
+    // HP hearts
+    const maxH = PLAYER_MAX_HP, curH = Math.max(0, p2.hp);
+    const heartW = 8, gap = 2, startX = HX + 24;
+    for (let i = 0; i < maxH; i++) {
+      const hx = startX + i * (heartW + gap);
+      ctx.fillStyle = i < curH ? '#FF4444' : '#442222';
+      ctx.fillRect(hx, HY + 4, heartW, 8);
+    }
+    // Respawn overlay
+    if (this._p2RespawnTimer > 0) {
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      _roundRect(ctx, HX, HY, HW, HH, 5); ctx.fill();
+      ctx.font = 'bold 10px Courier New'; ctx.fillStyle = '#FF8888';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(`Respawn ${Math.ceil(this._p2RespawnTimer / 60)}s`, HX + HW / 2, HY + HH / 2);
+    }
+    ctx.restore();
+  }
+
   _doRespawn() {
     const bed = this._activeBedSpawn();
     if (bed) {
@@ -2559,6 +2835,28 @@ class Game {
     this._renderExitPortal(ctx);
     this._drawCheckpoints(ctx);
     this.player.draw(ctx, this.camera);
+    // Draw P2 + player labels when 2-player mode active (Phase 12)
+    if (this.player2) {
+      if (this._p2RespawnTimer === 0) {
+        this.player2.draw(ctx, this.camera);
+      }
+      // P1 label
+      const p1s = this.camera.toScreen(this.player.x + this.player.width / 2, this.player.y - 6);
+      ctx.save();
+      ctx.font = 'bold 9px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = '#88AAFF'; ctx.fillText('P1', p1s.x, p1s.y);
+      // P2 label
+      if (this._p2RespawnTimer === 0) {
+        const p2s = this.camera.toScreen(this.player2.x + this.player2.width / 2, this.player2.y - 6);
+        ctx.fillStyle = '#FF8888'; ctx.fillText('P2', p2s.x, p2s.y);
+      } else {
+        // Respawn countdown
+        const sec = Math.ceil(this._p2RespawnTimer / 60);
+        ctx.font = 'bold 11px Courier New'; ctx.fillStyle = '#FF8888'; ctx.textAlign = 'center';
+        ctx.fillText(`P2 respawn: ${sec}s`, CANVAS_W / 2, CANVAS_H / 2 + 40);
+      }
+      ctx.restore();
+    }
     this._drawEndPortalForeground(ctx);
     this._drawHUD(ctx, hoverRow, hoverCol);
 
@@ -5528,13 +5826,31 @@ class Game {
     }
 
     // Tab bar clicks
-    const TABS = [{ id: 'drops', label: 'Mob Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }];
+    const TABS = [{ id: 'drops', label: 'Mob Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }];
     for (let t = 0; t < TABS.length; t++) {
       const tx = L.px + 10 + t * 110;
       if (mx >= tx && mx <= tx + 100 && my >= L.TAB_Y && my <= L.TAB_Y + L.TAB_H) {
         this._wsTab = TABS[t].id;
         return;
       }
+    }
+
+    if (this._wsTab === 'input') {
+      const SENS_VALS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+      const tgX = L.px + L.pw - 82, tgW = 64, tgH = 24;
+      // Row 1: controller sensitivity
+      const r1Y = L.FIRST_ROW;
+      if (mx >= tgX && mx <= tgX + tgW && my >= r1Y && my <= r1Y + tgH) {
+        const cur  = SENS_VALS.findIndex(v => Math.abs(v - (this._worldAdvSettings.controllerSensitivity ?? 1.0)) < 0.01);
+        this._worldAdvSettings.controllerSensitivity = SENS_VALS[(cur < 0 ? 2 : cur + 1) % SENS_VALS.length];
+      }
+      // Row 2: aim sensitivity
+      const r2Y = L.FIRST_ROW + 48;
+      if (mx >= tgX && mx <= tgX + tgW && my >= r2Y && my <= r2Y + tgH) {
+        const cur  = SENS_VALS.findIndex(v => Math.abs(v - (this._worldAdvSettings.controllerAimSensitivity ?? 1.0)) < 0.01);
+        this._worldAdvSettings.controllerAimSensitivity = SENS_VALS[(cur < 0 ? 2 : cur + 1) % SENS_VALS.length];
+      }
+      return;
     }
 
     if (this._wsTab === 'time') {
@@ -5571,6 +5887,10 @@ class Game {
       const r2Y = L.FIRST_ROW + 48;
       if (mx >= tgX && mx <= tgX + tgW && my >= r2Y && my <= r2Y + tgH)
         this._worldAdvSettings.unlimitedArrows = !this._worldAdvSettings.unlimitedArrows;
+      // Row 3: 2-Player Co-op
+      const r3Y = L.FIRST_ROW + 96;
+      if (mx >= tgX && mx <= tgX + tgW && my >= r3Y && my <= r3Y + tgH)
+        this._applyTwoPlayerMode(!this._worldAdvSettings.twoPlayerMode);
       return;
     }
 
@@ -5644,7 +5964,7 @@ class Game {
     ctx.fillText('×', xbx + 10, xby + 11);
 
     // Tab bar
-    const TABS = [{ id: 'drops', label: 'Mob Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }];
+    const TABS = [{ id: 'drops', label: 'Mob Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }];
     for (let t = 0; t < TABS.length; t++) {
       const tx = L.px + 10 + t * 110;
       const active = this._wsTab === TABS[t].id;
@@ -5741,6 +6061,69 @@ class Game {
 
       drawAdvRow(L.FIRST_ROW,      'Disable Dragon Healing',  '(crystals stop healing the dragon)',    aws.disableDragonHealing);
       drawAdvRow(L.FIRST_ROW + 48, 'Unlimited Arrows',        '(bow fires without consuming arrows)',  aws.unlimitedArrows);
+      drawAdvRow(L.FIRST_ROW + 96, '2-Player Co-op',          '(IJKL keys or 2nd gamepad for P2)',     aws.twoPlayerMode);
+    } else if (this._wsTab === 'input') {
+      // ── Input Settings tab ────────────────────────────────────
+      const mx2 = this.input.mouse.x, my2 = this.input.mouse.y;
+      const aws2 = this._worldAdvSettings;
+      const SENS_VALS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+      const tgW = 64, tgH = 24, tgX = L.px + L.pw - 82;
+
+      ctx.font = '9px Courier New'; ctx.fillStyle = '#888899';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText('Click value to cycle · P or Esc to close', L.px + L.pw / 2, L.CONTENT_Y + 8);
+
+      const drawSensRow = (rY, label, sub, val) => {
+        ctx.font = '11px Courier New'; ctx.fillStyle = '#AAAACC';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(label, L.MOB_COL, rY + 11);
+        ctx.font = '9px Courier New'; ctx.fillStyle = '#666677';
+        ctx.fillText(sub, L.MOB_COL, rY + 26);
+        const hov = mx2 >= tgX && mx2 <= tgX + tgW && my2 >= rY && my2 <= rY + tgH;
+        ctx.fillStyle = hov ? '#1A2A3A' : '#232333';
+        ctx.strokeStyle = hov ? '#44AAFF' : '#555577'; ctx.lineWidth = 1;
+        ctx.fillRect(tgX, rY, tgW, tgH); ctx.strokeRect(tgX, rY, tgW, tgH);
+        ctx.font = 'bold 11px Courier New'; ctx.fillStyle = '#88CCFF';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(val.toFixed(2) + 'x', tgX + tgW / 2, rY + 13);
+      };
+
+      drawSensRow(L.FIRST_ROW,      'Move Sensitivity',
+        '(left stick — click to adjust)',
+        aws2.controllerSensitivity ?? 1.0);
+      drawSensRow(L.FIRST_ROW + 48, 'Aim Sensitivity',
+        '(right stick — click to adjust)',
+        aws2.controllerAimSensitivity ?? 1.0);
+
+      // ── Connected controllers ──────────────────────────────
+      const gpListY = L.FIRST_ROW + 110;
+      ctx.font = 'bold 9px Courier New'; ctx.fillStyle = '#888899';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText('CONNECTED CONTROLLERS', L.MOB_COL, gpListY);
+      ctx.strokeStyle = '#33334488'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(L.MOB_COL, gpListY + 3); ctx.lineTo(L.px + L.pw - 20, gpListY + 3); ctx.stroke();
+
+      const rawGps = navigator.getGamepads ? navigator.getGamepads() : [];
+      for (let gi = 0; gi < 4; gi++) {
+        const gp  = rawGps[gi];
+        const gy  = gpListY + 14 + gi * 26;
+        const on  = gp && gp.connected;
+        ctx.fillStyle = on ? 'rgba(50,180,80,0.15)' : 'rgba(40,40,60,0.4)';
+        ctx.fillRect(L.MOB_COL, gy, L.pw - L.MOB_COL + L.px - 20, 22);
+        // Dot
+        ctx.fillStyle = on ? '#33DD55' : '#334455';
+        ctx.beginPath(); ctx.arc(L.MOB_COL + 8, gy + 11, 5, 0, Math.PI * 2); ctx.fill();
+        if (on) { ctx.strokeStyle = '#66FF88'; ctx.lineWidth = 1; ctx.stroke(); }
+        // Label
+        ctx.font = on ? '10px Courier New' : '9px Courier New';
+        ctx.fillStyle = on ? '#AADDAA' : '#445566';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        const gpLabel = on
+          ? `P${gi + 1}: ${gp.id.length > 36 ? gp.id.slice(0, 36) + '…' : gp.id}`
+          : `P${gi + 1}: — not connected —`;
+        ctx.fillText(gpLabel, L.MOB_COL + 18, gy + 11);
+      }
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     } else {
       // ── Mob Drops tab ─────────────────────────────────────────
       ctx.font = '9px Courier New';
@@ -5969,6 +6352,9 @@ class Game {
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     }
     this._drawHelpButton(ctx);
+    this._drawControllerStatus(ctx);
+    this._drawContextPrompt(ctx);
+    if (this.player2) this._drawP2HUD(ctx);
     ctx.restore();
   }
 
@@ -6413,6 +6799,185 @@ class Game {
       this._dustBlocks.delete(`${this._dustPopup.col},${this._dustPopup.row}`);
       this._dustPopup = null; return;
     }
+  }
+
+  // ── Gamepad context action helpers (Phase 11K-1) ────────────
+
+  _nearBed() {
+    const pCol = Math.floor(this.player.cx / BLOCK_SIZE);
+    const pRow = Math.floor(this.player.cy / BLOCK_SIZE);
+    for (let dc = -3; dc <= 3; dc++) {
+      for (let dr = -1; dr <= 3; dr++) {
+        if (this.level.get(pRow + dr, pCol + dc) === BLOCK.BED) return true;
+      }
+    }
+    return false;
+  }
+
+  _nearPortal() {
+    if (this.portalCooldown > 0) return false;
+    const pCol = Math.floor(this.player.cx / BLOCK_SIZE);
+    const pRow = Math.floor(this.player.cy / BLOCK_SIZE);
+    for (let dc = -4; dc <= 4; dc++) {
+      for (let dr = -4; dr <= 4; dr++) {
+        const c = pCol + dc, r = pRow + dr;
+        const b = this.level.get(r, c);
+        if (b === BLOCK.NETHER_PORTAL || this._portalObsidianCells.has(`${c},${r}`)) return true;
+      }
+    }
+    return false;
+  }
+
+  _computeContextAction() {
+    // Clear
+    this._contextAction = null;
+    this._contextPrompt = null;
+    // Priority: bed > chest > portal > lever
+    if (this._nearBed()) {
+      this._contextAction = 'bed';
+      this._contextPrompt = this.gameMode === 'sandbox' ? '[RB] Save World' : '[RB] Set Spawn';
+    } else if (this._nearestChest()) {
+      this._contextAction = 'chest';
+      this._contextPrompt = this._chestOpen ? '[RB] Close Chest' : '[RB] Open Chest';
+    } else if (this._nearPortal()) {
+      this._contextAction = 'portal';
+      this._contextPrompt = '[RB] Use Portal';
+    } else {
+      // Check for lever in range
+      if (this.redstone) {
+        const pCx = this.player.cx, pCy = this.player.cy;
+        const lev = this.redstone.components.find(c =>
+          c.type === 'lever' &&
+          Math.hypot((c.col + 0.5) * BLOCK_SIZE - pCx,
+                     (c.row + 0.5) * BLOCK_SIZE - pCy) <= 2.5 * BLOCK_SIZE);
+        if (lev) {
+          this._contextAction = 'lever';
+          this._contextPrompt = '[RB] Toggle Lever';
+        }
+      }
+    }
+  }
+
+  _executeContextAction() {
+    if (this._contextAction === 'chest') {
+      if (this._chestOpen) {
+        this._closeChest();
+      } else {
+        const ch = this._nearestChest();
+        if (ch) {
+          this._chestOpen    = ch;
+          this.inventoryOpen = true;
+          this.craftingMenu._eWasDown = true;
+        }
+      }
+    } else if (this._contextAction === 'lever') {
+      const toggled = this.redstone.tryToggleLeverNear(this.level, this.player);
+      if (toggled) this._rsStartFromSource(toggled.col, toggled.row, toggled.on);
+    } else if (this._contextAction === 'bed') {
+      if (this.gameMode === 'sandbox') {
+        this._openSaveDialog();
+      } else {
+        const pCol = Math.floor(this.player.cx / BLOCK_SIZE);
+        const pRow = Math.floor(this.player.cy / BLOCK_SIZE);
+        let found = false;
+        outer: for (let dc = -3; dc <= 3 && !found; dc++) {
+          for (let dr = -1; dr <= 3 && !found; dr++) {
+            if (this.level.get(pRow + dr, pCol + dc) === BLOCK.BED) {
+              const r = pRow + dr, c = pCol + dc;
+              let lc = c;
+              while (lc > 0 && this.level.get(r, lc - 1) === BLOCK.BED) lc--;
+              const bedAnchor = { col: lc, row: r };
+              let idx = this.bedSpawns.findIndex(b => b.col === bedAnchor.col && b.row === bedAnchor.row);
+              if (idx < 0) idx = this.bedSpawns.push(bedAnchor) - 1;
+              this._activeSpawnBed = idx;
+              if (this._sandboxLoadKey) this._saveNormalProgress();
+              this._notify('Respawn point set!', '#FFDD44', 220);
+              found = true;
+            }
+          }
+        }
+      }
+    } else if (this._contextAction === 'portal') {
+      if (this.gameMode !== 'sandbox') this._tryRepairPortalFromHotbar();
+      this._tryActivateRuinedPortal();
+      if (this.gameMode !== 'sandbox') this._tryPlaceEyeFromHotbar();
+      this._checkPortal();
+      this._checkExitPortal();
+    } else {
+      // No context: next hotbar slot (non-sandbox)
+      if (this.gameMode !== 'sandbox') {
+        this.player.selectedSlot = (this.player.selectedSlot + 1) % 9;
+      }
+    }
+  }
+
+  // ── Controller status HUD (Phase 11K-1) ──────────────────
+
+  _drawControllerStatus(ctx) {
+    // Only render if at least one controller is connected
+    const raw = navigator.getGamepads ? navigator.getGamepads() : [];
+    let anyConnected = false;
+    for (let i = 0; i < 4; i++) {
+      if (raw[i] && raw[i].connected) { anyConnected = true; break; }
+    }
+    if (!anyConnected) return;
+
+    ctx.save();
+    const dotR = 5, gap = 14, startX = 10, startY = CANVAS_H - 18;
+
+    // Background pill
+    const pillW = 4 * gap + 4, pillH = 14;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    _roundRect(ctx, startX - 3, startY - pillH / 2 - 1, pillW, pillH + 2, 4);
+    ctx.fill();
+
+    for (let i = 0; i < 4; i++) {
+      const gp  = raw[i];
+      const cx2 = startX + i * gap + dotR;
+      const cy2 = startY;
+      const on  = gp && gp.connected;
+
+      ctx.fillStyle = on ? '#33DD55' : '#334455';
+      ctx.beginPath();
+      ctx.arc(cx2, cy2, dotR, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (on) {
+        ctx.strokeStyle = '#88FFAA';
+        ctx.lineWidth   = 1;
+        ctx.stroke();
+        // Controller index
+        ctx.fillStyle    = '#001100';
+        ctx.font         = 'bold 6px Courier New';
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(i + 1, cx2, cy2);
+      }
+    }
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+  }
+
+  // Show context prompt label above the player when RB action is available
+  _drawContextPrompt(ctx) {
+    if (!this._contextPrompt || !this.input.gamepads[0].connected) return;
+    if (this.inventoryOpen || this.craftingMenu?.open) return;
+    const sc = this.camera.toScreen(this.player.cx, this.player.y);
+    ctx.save();
+    ctx.font = '9px Courier New';
+    const tw = ctx.measureText(this._contextPrompt).width;
+    const px = Math.max(4, Math.min(CANVAS_W - tw - 12, sc.x - tw / 2 - 4));
+    const py = Math.max(4, sc.y - 28);
+    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+    _roundRect(ctx, px, py, tw + 8, 15, 3); ctx.fill();
+    ctx.fillStyle    = '#FFD700';
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(this._contextPrompt, px + 4, py + 7.5);
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
   }
 
   _drawBiomeLabel(ctx, biome) {
@@ -7218,16 +7783,17 @@ class Game {
     const hasLvlSel  = (this.gameMode === 'normal'      && !!this._sandboxLoadKey) ||
                        (this.gameMode === 'platformer'  && !!this._platformerLoadKey);
     const threeBtn   = isSb || hasLvlSel;
-    const pw = 310, ph = threeBtn ? 268 : 210;
+    const tabH = 36;  // height of the tab bar at top of panel
+    const pw = 360, ph = (threeBtn ? 268 : 210) + tabH;
     const px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
-    const bw = 250, bx = (CANVAS_W - bw) / 2;
+    const bw = 300, bx = (CANVAS_W - bw) / 2;
     const layout = {
-      px, py, pw, ph,
-      resumeBtn: { x: bx, y: py + 88,              w: bw, h: 44, label: '▶  Resume'      },
-      menuBtn:   { x: bx, y: py + (threeBtn ? 204 : 146), w: bw, h: 44, label: '⟵  Main Menu' },
+      px, py, pw, ph, tabH,
+      resumeBtn: { x: bx, y: py + tabH + 88,                    w: bw, h: 44, label: '▶  Resume'      },
+      menuBtn:   { x: bx, y: py + tabH + (threeBtn ? 204 : 146), w: bw, h: 44, label: '⟵  Main Menu' },
     };
-    if (isSb)      layout.saveBtn     = { x: bx, y: py + 146, w: bw, h: 44, label: '💾  Save World'   };
-    if (hasLvlSel) layout.levelSelBtn = { x: bx, y: py + 146, w: bw, h: 44, label: '🗺  Level Select'  };
+    if (isSb)      layout.saveBtn     = { x: bx, y: py + tabH + 146, w: bw, h: 44, label: '💾  Save World'   };
+    if (hasLvlSel) layout.levelSelBtn = { x: bx, y: py + tabH + 146, w: bw, h: 44, label: '🗺  Level Select'  };
     return layout;
   }
 
@@ -7241,35 +7807,127 @@ class Game {
   }
 
   _updatePause() {
-    if (!this.input.mouse.clicked) return;
     const mx  = this.input.mouse.x, my = this.input.mouse.y;
     const hit = (b) => mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h;
+    const clicked = this.input.mouse.clicked;
 
     if (this.state === 'paused') {
-      const { px, py, pw, resumeBtn, menuBtn, saveBtn, levelSelBtn } = this._pauseLayout();
-      // X button → resume
-      if (mx >= px + pw - 28 && mx <= px + pw - 8 && my >= py + 8 && my <= py + 28) {
-        this.state = 'playing'; return;
+      const { px, py, pw, ph, tabH, resumeBtn, menuBtn, saveBtn, levelSelBtn } = this._pauseLayout();
+      const TABS = ['pause', 'settings', 'help'];
+      const tabW = Math.floor(pw / 3);
+
+      // Keyboard shortcuts while paused → switch tab
+      if (this.input.isJustDown('KeyH')) { this._pauseTab = 'help';     return; }
+      if (this.input.isJustDown('KeyI')) { this._pauseTab = 'settings'; return; }
+
+      // Gamepad: B button → resume
+      if (this.input.gpJustDown(0, 'crouch')) {
+        this.state = 'playing'; this._pauseTab = 'pause'; return;
       }
-      if (hit(resumeBtn)) this.state = 'playing';
-      if (saveBtn    && hit(saveBtn))    { this.state = 'playing'; this._openSaveDialog(); }
-      if (levelSelBtn && hit(levelSelBtn)) {
-        if (this.gameMode === 'normal') this._saveNormalProgress();
-        this.destroy();
-        const returnState = this.gameMode === 'platformer' ? 'platformerSelect' : 'normalSelect';
-        if (this._onReturnToMenu) this._onReturnToMenu(returnState);
-        else location.reload();
+
+      // Gamepad: D-Pad left/right → switch tab
+      const gpTabL = this.input.gpJustDown(0, 'dpad3');
+      const gpTabR = this.input.gpJustDown(0, 'dpad1');
+      if (gpTabL || gpTabR) {
+        const idx  = TABS.indexOf(this._pauseTab);
+        this._pauseTab = TABS[((idx + (gpTabR ? 1 : -1)) + TABS.length) % TABS.length];
+        this._pauseSelIdx = 0;
         return;
       }
-      if (hit(menuBtn)) this.state = 'confirmExit';
+
+      // X close button (top-right corner, checked before tabs to avoid overlap)
+      if (clicked && mx >= px + pw - 28 && mx <= px + pw - 8 && my >= py + 8 && my <= py + 28) {
+        this.state = 'playing'; this._pauseTab = 'pause'; return;
+      }
+
+      // Tab header mouse clicks
+      if (clicked) {
+        for (let t = 0; t < TABS.length; t++) {
+          const tx = px + t * tabW;
+          if (mx >= tx && mx <= tx + tabW && my >= py && my <= py + tabH) {
+            this._pauseTab = TABS[t]; this._pauseSelIdx = 0; return;
+          }
+        }
+      }
+
+      // ── PAUSE tab ──────────────────────────────────────────
+      if (this._pauseTab === 'pause') {
+        const allBtns = saveBtn     ? [resumeBtn, saveBtn,     menuBtn]
+                      : levelSelBtn ? [resumeBtn, levelSelBtn, menuBtn]
+                      :               [resumeBtn, menuBtn];
+        const N = allBtns.length;
+
+        // Gamepad cursor
+        if (this.input.gpJustDown(0, 'dpad0')) this._pauseSelIdx = (this._pauseSelIdx - 1 + N) % N;
+        if (this.input.gpJustDown(0, 'dpad2')) this._pauseSelIdx = (this._pauseSelIdx + 1) % N;
+        if (this._pauseSelIdx >= N) this._pauseSelIdx = N - 1;
+
+        const activateBtn = (btn) => {
+          if (btn === resumeBtn)               { this.state = 'playing'; this._pauseTab = 'pause'; return; }
+          if (saveBtn     && btn === saveBtn)  { this.state = 'playing'; this._openSaveDialog(); return; }
+          if (levelSelBtn && btn === levelSelBtn) {
+            if (this.gameMode === 'normal') this._saveNormalProgress();
+            this.destroy();
+            const rs = this.gameMode === 'platformer' ? 'platformerSelect' : 'normalSelect';
+            if (this._onReturnToMenu) this._onReturnToMenu(rs); else location.reload();
+            return;
+          }
+          this.state = 'confirmExit';
+        };
+
+        // Gamepad A → activate selected
+        if (this.input.gpJustDown(0, 'jump')) { activateBtn(allBtns[this._pauseSelIdx]); return; }
+
+        // Mouse clicks on buttons
+        if (clicked) {
+          for (const btn of allBtns) { if (hit(btn)) { activateBtn(btn); return; } }
+        }
+      }
+
+      // ── SETTINGS tab ───────────────────────────────────────
+      if (this._pauseTab === 'settings') {
+        if (this.gameMode === 'sandbox') {
+          // Sandbox: click/A → open full World Settings panel
+          const inPanel = mx >= px && mx <= px + pw && my >= py + tabH && my <= py + ph;
+          if ((clicked && inPanel) || this.input.gpJustDown(0, 'jump')) {
+            this.state = 'playing'; this._worldSettingsOpen = true; this._pauseTab = 'pause';
+          }
+        } else {
+          // Normal/Platformer: 2-player toggle
+          const tgX = px + (pw - 64) / 2, tgY = py + tabH + 90, tgW = 64, tgH = 28;
+          if ((clicked && mx >= tgX && mx <= tgX + tgW && my >= tgY && my <= tgY + tgH)
+              || this.input.gpJustDown(0, 'jump')) {
+            this.state = 'playing';
+            this._applyTwoPlayerMode(!this._worldAdvSettings.twoPlayerMode);
+            this._pauseTab = 'pause';
+          }
+        }
+      }
+
+      // ── HELP tab ───────────────────────────────────────────
+      if (this._pauseTab === 'help') {
+        const maxScroll = 8;  // 15 rows - 7 visible
+        if (this.input.gpJustDown(0, 'dpad0')) this._pauseHelpScroll = Math.max(0, this._pauseHelpScroll - 1);
+        if (this.input.gpJustDown(0, 'dpad2')) this._pauseHelpScroll = Math.min(maxScroll, this._pauseHelpScroll + 1);
+        if (this.input.scrollDelta !== 0)
+          this._pauseHelpScroll = Math.max(0, Math.min(maxScroll, this._pauseHelpScroll + this.input.scrollDelta));
+        const inPanel = mx >= px && mx <= px + pw && my >= py + tabH && my <= py + ph;
+        if ((clicked && inPanel) || this.input.gpJustDown(0, 'jump')) {
+          this.state = 'playing'; this._tutorialOpen = true; this._tutorialScrollY = 0; this._pauseTab = 'pause';
+        }
+      }
+
     } else if (this.state === 'confirmExit') {
       const { px, py, pw, confirmBtn, cancelBtn } = this._confirmLayout();
+      // Gamepad: B button → cancel
+      if (this.input.gpJustDown(0, 'crouch')) { this.state = 'paused'; return; }
+      if (!clicked) return;
       // X button → back to pause
       if (mx >= px + pw - 28 && mx <= px + pw - 8 && my >= py + 8 && my <= py + 28) {
         this.state = 'paused'; return;
       }
       if (hit(confirmBtn)) {
-        this._saveNormalProgress(); // save progress before leaving (no-op if not a sandbox world)
+        this._saveNormalProgress();
         this.destroy();
         if (this._onReturnToMenu) this._onReturnToMenu();
         else location.reload();
@@ -7287,17 +7945,42 @@ class Game {
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
     if (this.state === 'paused') {
-      const { px, py, pw, ph, resumeBtn, menuBtn, saveBtn, levelSelBtn } = this._pauseLayout();
+      const { px, py, pw, ph, tabH, resumeBtn, menuBtn, saveBtn, levelSelBtn } = this._pauseLayout();
+      const TABS       = ['pause', 'settings', 'help'];
+      const TAB_LABELS = ['⏸ PAUSE', '⚙ SETTINGS', '? HELP'];
+      const tabW       = Math.floor(pw / 3);
+      const gpConn     = this.input.gamepads[0].connected;
 
+      // Panel background
       ctx.fillStyle = '#13131f';
       _roundRect(ctx, px, py, pw, ph, 10); ctx.fill();
       ctx.strokeStyle = '#444466'; ctx.lineWidth = 2;
       _roundRect(ctx, px, py, pw, ph, 10); ctx.stroke();
 
-      // X close button (resumes game)
+      // ── Tab bar ──────────────────────────────────────────────
+      for (let t = 0; t < 3; t++) {
+        const tx    = px + t * tabW;
+        const isAct = TABS[t] === this._pauseTab;
+        const tHov  = mx >= tx && mx <= tx + tabW && my >= py && my <= py + tabH;
+        ctx.fillStyle   = isAct ? '#1e1e40' : (tHov ? '#191932' : '#111120');
+        ctx.fillRect(tx, py, tabW, tabH);
+        ctx.strokeStyle = isAct ? '#6666cc' : '#333355';
+        ctx.lineWidth   = 1;
+        ctx.strokeRect(tx, py, tabW, tabH);
+        ctx.fillStyle    = isAct ? '#aabbff' : (tHov ? '#8899cc' : '#556688');
+        ctx.font         = 'bold 10px Courier New';
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(TAB_LABELS[t], tx + tabW / 2, py + tabH / 2);
+      }
+      // Separator line below tabs
+      ctx.strokeStyle = '#444466'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(px, py + tabH); ctx.lineTo(px + pw, py + tabH); ctx.stroke();
+
+      // X close button (top-right, above tab bar) — resumes game
       { const xbx = px + pw - 28, xby = py + 8;
         const xHov = mx >= xbx && mx <= xbx + 20 && my >= xby && my <= xby + 20;
-        ctx.fillStyle = xHov ? 'rgba(255,80,80,0.3)' : 'rgba(0,0,0,0.4)';
+        ctx.fillStyle   = xHov ? 'rgba(255,80,80,0.3)' : 'rgba(0,0,0,0.4)';
         _roundRect(ctx, xbx, xby, 20, 20, 4); ctx.fill();
         ctx.strokeStyle = xHov ? '#FF5555' : '#554444'; ctx.lineWidth = 1;
         _roundRect(ctx, xbx, xby, 20, 20, 4); ctx.stroke();
@@ -7305,48 +7988,173 @@ class Game {
         ctx.font = 'bold 12px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText('✕', xbx + 10, xby + 10); }
 
-      ctx.textAlign    = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#7ec8e3';
-      ctx.font      = 'bold 20px Courier New';
-      ctx.fillText('⏸  PAUSED', CANVAS_W / 2, py + 34);
+      // ── PAUSE tab content ────────────────────────────────────
+      if (this._pauseTab === 'pause') {
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle    = '#7ec8e3';
+        ctx.font         = 'bold 18px Courier New';
+        ctx.fillText('⏸  PAUSED', CANVAS_W / 2, py + tabH + 30);
 
-      // Mode badge
-      const modeColors = { normal: '#4CAF50', sandbox: '#FF9800', platformer: '#2196F3' };
-      const modeNames  = { normal: 'Normal Mode', sandbox: 'Sandbox Mode', platformer: 'Platformer Mode' };
-      const mCol       = modeColors[this.gameMode] ?? '#888';
-      ctx.fillStyle = `${mCol}33`;
-      _roundRect(ctx, px + 60, py + 52, pw - 120, 20, 4); ctx.fill();
-      ctx.strokeStyle = mCol; ctx.lineWidth = 1;
-      _roundRect(ctx, px + 60, py + 52, pw - 120, 20, 4); ctx.stroke();
-      ctx.fillStyle = mCol;
-      ctx.font      = '10px Courier New';
-      ctx.fillText(modeNames[this.gameMode] ?? this.gameMode, CANVAS_W / 2, py + 62);
+        const modeColors = { normal: '#4CAF50', sandbox: '#FF9800', platformer: '#2196F3' };
+        const modeNames  = { normal: 'Normal Mode', sandbox: 'Sandbox Mode', platformer: 'Platformer Mode' };
+        const mCol       = modeColors[this.gameMode] ?? '#888';
+        ctx.fillStyle    = `${mCol}33`;
+        _roundRect(ctx, px + 50, py + tabH + 46, pw - 100, 20, 4); ctx.fill();
+        ctx.strokeStyle  = mCol; ctx.lineWidth = 1;
+        _roundRect(ctx, px + 50, py + tabH + 46, pw - 100, 20, 4); ctx.stroke();
+        ctx.fillStyle    = mCol;
+        ctx.font         = '10px Courier New';
+        ctx.fillText(modeNames[this.gameMode] ?? this.gameMode, CANVAS_W / 2, py + tabH + 56);
 
-      const allBtns = saveBtn     ? [resumeBtn, saveBtn,     menuBtn]
-                    : levelSelBtn ? [resumeBtn, levelSelBtn, menuBtn]
-                    :               [resumeBtn, menuBtn];
-      for (const btn of allBtns) {
-        const hov    = hit(btn);
-        const isSave = btn === saveBtn;
-        const isLvl  = btn === levelSelBtn;
-        const accent = isSave ? '#4CAF50' : isLvl ? '#2196F3' : null;
-        ctx.fillStyle   = hov ? (accent ? `${accent}33` : 'rgba(255,255,255,0.12)') : 'rgba(0,0,0,0.55)';
-        _roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 6); ctx.fill();
-        ctx.strokeStyle = hov ? (accent ?? '#fff') : (accent ? `${accent}66` : '#555');
-        ctx.lineWidth   = 1.5;
-        _roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 6); ctx.stroke();
-        ctx.fillStyle = hov ? '#fff' : (accent ? `${accent}CC` : '#ccc');
-        ctx.font      = 'bold 13px Courier New';
-        ctx.fillText(btn.label, CANVAS_W / 2, btn.y + btn.h / 2);
+        const allBtns = saveBtn     ? [resumeBtn, saveBtn,     menuBtn]
+                      : levelSelBtn ? [resumeBtn, levelSelBtn, menuBtn]
+                      :               [resumeBtn, menuBtn];
+        for (let i = 0; i < allBtns.length; i++) {
+          const btn    = allBtns[i];
+          const hov    = hit(btn);
+          const isSel  = gpConn && this._pauseSelIdx === i;
+          const isSave = btn === saveBtn;
+          const isLvl  = btn === levelSelBtn;
+          const accent = isSave ? '#4CAF50' : isLvl ? '#2196F3' : null;
+          ctx.fillStyle   = (hov || isSel) ? (accent ? `${accent}33` : 'rgba(255,255,255,0.12)') : 'rgba(0,0,0,0.55)';
+          _roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 6); ctx.fill();
+          ctx.strokeStyle = (hov || isSel) ? (accent ?? '#fff') : (accent ? `${accent}66` : '#555');
+          ctx.lineWidth   = isSel ? 2 : 1.5;
+          _roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 6); ctx.stroke();
+          ctx.fillStyle    = (hov || isSel) ? '#fff' : (accent ? `${accent}CC` : '#ccc');
+          ctx.font         = 'bold 13px Courier New';
+          ctx.textAlign    = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(btn.label, CANVAS_W / 2, btn.y + btn.h / 2);
+        }
+
+        ctx.fillStyle = 'rgba(110,110,130,0.55)';
+        ctx.font      = '9px Courier New';
+        ctx.textAlign = 'center';
+        let hint = saveBtn     ? '[Esc] resume  •  [F] quick save'
+                 : levelSelBtn ? '[Esc] resume  •  [F] save at bed'
+                 :               '[Esc] to resume';
+        if (gpConn) hint += '  •  [←→] tabs  [↑↓] select  [A] confirm';
+        ctx.fillText(hint, CANVAS_W / 2, py + ph - 10);
       }
 
-      ctx.fillStyle = 'rgba(110,110,130,0.55)';
-      ctx.font      = '9px Courier New';
-      const hint = saveBtn     ? '[Esc] to resume  •  [F] quick save'
-                 : levelSelBtn ? '[Esc] to resume  •  [F] save at bed'
-                 :               '[Esc] to resume';
-      ctx.fillText(hint, CANVAS_W / 2, py + ph - 12);
+      // ── SETTINGS tab content ─────────────────────────────────
+      if (this._pauseTab === 'settings') {
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        if (this.gameMode === 'sandbox') {
+          // Sandbox: full World Settings button
+          ctx.fillStyle = '#FFCC66'; ctx.font = 'bold 15px Courier New';
+          ctx.fillText('⚙  World Settings', CANVAS_W / 2, py + tabH + 38);
+          ctx.fillStyle = '#888899'; ctx.font = '11px Courier New';
+          ctx.fillText('Mob drops  •  Day/Night  •  Advanced', CANVAS_W / 2, py + tabH + 62);
+          ctx.fillText('Controller sensitivity  •  Input options', CANVAS_W / 2, py + tabH + 80);
+          const obx = (CANVAS_W - 260) / 2, oby = py + tabH + 100, obw = 260, obh = 44;
+          const obHov = mx >= obx && mx <= obx + obw && my >= oby && my <= oby + obh;
+          ctx.fillStyle   = (obHov || gpConn) ? 'rgba(255,200,80,0.15)' : 'rgba(0,0,0,0.55)';
+          _roundRect(ctx, obx, oby, obw, obh, 6); ctx.fill();
+          ctx.strokeStyle = (obHov || gpConn) ? '#FFCC66' : '#665533'; ctx.lineWidth = gpConn ? 2 : 1.5;
+          _roundRect(ctx, obx, oby, obw, obh, 6); ctx.stroke();
+          ctx.fillStyle = (obHov || gpConn) ? '#fff' : '#FFCC66'; ctx.font = 'bold 13px Courier New';
+          ctx.fillText('Open World Settings', CANVAS_W / 2, oby + obh / 2);
+          ctx.fillStyle = 'rgba(110,110,130,0.55)'; ctx.font = '9px Courier New';
+          ctx.fillText(gpConn ? '[A] Open  [B] Back  [←→] Switch Tab  •  [P] shortcut'
+                              : 'Click to open  •  [P] key shortcut from game',
+            CANVAS_W / 2, py + ph - 10);
+        } else {
+          // Normal / Platformer: 2-Player Co-op toggle
+          const is2p = this._worldAdvSettings.twoPlayerMode;
+          ctx.fillStyle = '#88AAFF'; ctx.font = 'bold 13px Courier New';
+          ctx.fillText('2-Player Co-op', CANVAS_W / 2, py + tabH + 36);
+          ctx.fillStyle = '#888899'; ctx.font = '10px Courier New';
+          ctx.fillText('IJKL keys or 2nd gamepad for Player 2', CANVAS_W / 2, py + tabH + 58);
+          ctx.fillText('If P2 joins mid-game, they spawn next to P1', CANVAS_W / 2, py + tabH + 74);
+          const tgX = px + (pw - 64) / 2, tgY = py + tabH + 90, tgW = 64, tgH = 28;
+          const tgHov = mx >= tgX && mx <= tgX + tgW && my >= tgY && my <= tgY + tgH;
+          ctx.fillStyle   = is2p ? '#3A5A2A' : '#2A2A3A';
+          _roundRect(ctx, tgX, tgY, tgW, tgH, 5); ctx.fill();
+          ctx.strokeStyle = is2p ? '#66CC44' : '#555577'; ctx.lineWidth = tgHov || gpConn ? 2 : 1;
+          _roundRect(ctx, tgX, tgY, tgW, tgH, 5); ctx.stroke();
+          ctx.fillStyle = is2p ? '#88FF66' : '#888899'; ctx.font = 'bold 12px Courier New';
+          ctx.fillText(is2p ? 'ON' : 'OFF', tgX + tgW / 2, tgY + tgH / 2);
+          ctx.fillStyle = 'rgba(110,110,130,0.55)'; ctx.font = '9px Courier New';
+          ctx.fillText(gpConn ? '[A] Toggle  [B] Back  [←→] Switch Tab'
+                              : 'Click to toggle  •  Esc to resume',
+            CANVAS_W / 2, py + ph - 10);
+        }
+      }
+
+      // ── HELP tab content ──────────────────────────────────────
+      if (this._pauseTab === 'help') {
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle    = '#88ddaa';
+        ctx.font         = 'bold 13px Courier New';
+        ctx.fillText('Controls Quick Reference', CANVAS_W / 2, py + tabH + 18);
+
+        const rows = [
+          ['Movement',    'WASD/Arrows / L-Stick'],
+          ['Jump',        'W/Up / [A button]'],
+          ['Sprint',      'Shift (full stick auto)'],
+          ['Crouch',      'S/Down / [B button]'],
+          ['Attack/Mine', 'Space / L-Click / [X]'],
+          ['Bow',         'Hold Space → aim → release'],
+          ['Use/Place',   'Right-click'],
+          ['Hotbar',      '1-9 / Scroll / D-Pad'],
+          ['Inventory',   'I (Normal mode)'],
+          ['Palette',     'I / [Y] (Sandbox)'],
+          ['Undo/Redo',   'Ctrl+Z/Y / LT/RT (Sandbox)'],
+          ['Crafting',    'C key'],
+          ['Checkpoint',  'F key (at bed)'],
+          ['Settings',    'P key / [←→] SETTINGS tab'],
+          ['Pause',       'Esc / Start button'],
+        ];
+        const visible  = 7;
+        const rowH     = 20;
+        const listTop  = py + tabH + 34;
+        const maxScroll = Math.max(0, rows.length - visible);
+        if (this._pauseHelpScroll > maxScroll) this._pauseHelpScroll = maxScroll;
+        const scroll = this._pauseHelpScroll;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(px + 8, listTop, pw - 16, visible * rowH + 2);
+        ctx.clip();
+
+        for (let i = 0; i < rows.length; i++) {
+          const vy = listTop + (i - scroll) * rowH + rowH / 2;
+          if (vy < listTop - 1 || vy > listTop + visible * rowH + 1) continue;
+          ctx.fillStyle    = '#667788';
+          ctx.font         = 'bold 10px Courier New';
+          ctx.textAlign    = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(rows[i][0], px + 14, vy);
+          ctx.fillStyle = '#aabbcc';
+          ctx.font      = '10px Courier New';
+          ctx.textAlign = 'right';
+          ctx.fillText(rows[i][1], px + pw - 14, vy);
+        }
+        ctx.restore();
+
+        if (rows.length > visible) {
+          const barH  = visible * rowH - 4;
+          const barX  = px + pw - 6;
+          const barY  = listTop + 2;
+          const thumbH = Math.max(16, barH * visible / rows.length);
+          const thumbY = barY + (barH - thumbH) * (scroll / maxScroll);
+          ctx.fillStyle = '#222233'; ctx.fillRect(barX, barY, 3, barH);
+          ctx.fillStyle = '#557799'; ctx.fillRect(barX, thumbY, 3, thumbH);
+        }
+
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle    = 'rgba(110,110,130,0.55)';
+        ctx.font         = '9px Courier New';
+        ctx.fillText(
+          gpConn ? '[↑↓] Scroll  [A] Full Tutorial  [B] Back  [←→] Switch Tab'
+                 : 'Scroll  •  Click for Full Tutorial',
+          CANVAS_W / 2, py + ph - 10
+        );
+      }
 
     } else if (this.state === 'confirmExit') {
       const { px, py, pw, ph, confirmBtn, cancelBtn } = this._confirmLayout();
@@ -8127,7 +8935,8 @@ class Game {
       .map(it => `${Math.floor(it.wx / BLOCK_SIZE)},${Math.floor(it.wy / BLOCK_SIZE)}`);
     const result = NormalProgress.save(
       this._sandboxLoadKey, this.player, bed || null,
-      this.level.grid, collectedKeys, this._chests, this._dayNight
+      this.level.grid, collectedKeys, this._chests, this._dayNight,
+      this._worldAdvSettings.twoPlayerMode
     );
     if (!result.ok) this._notify('Save failed: ' + result.error, '#FF4444', 200);
   }
