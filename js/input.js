@@ -27,9 +27,13 @@ class InputManager {
     });
 
     this._canvas.addEventListener('mousemove', e => {
-      const rect = this._canvas.getBoundingClientRect();
-      this.mouse.x = e.clientX - rect.left;
-      this.mouse.y = e.clientY - rect.top;
+      const rect   = this._canvas.getBoundingClientRect();
+      // rect.width/height reflect the CSS display size (after responsive scaling).
+      // Divide by the scale factor to convert screen pixels → canvas logical pixels.
+      const scaleX = this._canvas.width  / rect.width;
+      const scaleY = this._canvas.height / rect.height;
+      this.mouse.x = (e.clientX - rect.left) * scaleX;
+      this.mouse.y = (e.clientY - rect.top)  * scaleY;
     });
     this._canvas.addEventListener('mousedown', e => {
       if (e.button === 0) {

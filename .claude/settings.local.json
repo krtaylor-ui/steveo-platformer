@@ -27,7 +27,9 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/index.html)",
       "Bash(curl -s http://localhost:3000)",
       "Bash(curl -s http://localhost:8000)",
-      "Bash(curl -s http://localhost:8000/js/game.js)"
+      "Bash(curl -s http://localhost:8000/js/game.js)",
+      "Bash(curl -s http://localhost:8000/js/input.js)",
+      "Bash(curl -s http://localhost:8000/)"
     ]
   }
 }

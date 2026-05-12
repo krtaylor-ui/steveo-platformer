@@ -36,8 +36,11 @@ class MenuSystem {
 
     canvas.addEventListener('mousemove', e => {
       const r  = canvas.getBoundingClientRect();
-      this._mx = e.clientX - r.left;
-      this._my = e.clientY - r.top;
+      // Correct for CSS responsive scaling: convert screen px → canvas logical px.
+      const sx = canvas.width  / r.width;
+      const sy = canvas.height / r.height;
+      this._mx = (e.clientX - r.left) * sx;
+      this._my = (e.clientY - r.top)  * sy;
     });
     // Suppress right-click context menu on canvas
     canvas.addEventListener('contextmenu', e => e.preventDefault());
