@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(node --check /home/krtaylor/steveo_platformer/js/game.js)",
+      "Bash(node --check /home/krtaylor/steveo_platformer/js/blocks.js)",
+      "Bash(node --check /home/krtaylor/steveo_platformer/js/mobs.js)",
+      "Bash(node --check /home/krtaylor/steveo_platformer/js/player.js)",
+      "Bash(node --check /home/krtaylor/steveo_platformer/js/redstone.js)",
+      "Bash(node --check /home/krtaylor/steveo_platformer/js/world.js)",
+      "Bash(python3:*)",
+      "Bash(node --check /home/krtaylor/steveo_platformer/js/crafting.js)",
+      "Bash(node --check /home/krtaylor/steveo_platformer/js/constants.js)",
+      "WebFetch(domain:127.0.0.1)",
+      "Bash(curl -s http://127.0.0.1:8888/)",
+      "Bash(node --check js/blocks.js)",
+      "Bash(node --check js/redstone.js)",
+      "Bash(node --check js/sandbox.js)",
+      "Bash(node --check js/saves.js)",
+      "Bash(node *)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(echo \"sandbox exit $?\")",
+      "Bash(unset ANTHROPIC_API_KEY)",
+      "Bash(claude logout *)",
+      "Bash(python3 -m http.server 8080)",
+      "Bash(echo \"PID: $!\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/index.html)"
+    ]
+  }
+}
