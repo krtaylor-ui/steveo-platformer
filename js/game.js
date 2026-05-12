@@ -134,7 +134,8 @@ class Game {
     this._saveDialog     = null;   // null | { fields:[playerName,worldName], active:0 }
     this._saveKbListener = null;
 
-    this._showHelp = false; // toggled by ? (Shift+/)
+    this._tutorialOpen    = false;  // H or ? toggles tutorial overlay
+    this._tutorialScrollY = 0;      // scroll offset within tutorial content
 
     // Undo / redo history (sandbox mode only)
     this._historyStack  = [];   // array of {gridDeltas, overlayBefore, overlayAfter}
@@ -330,10 +331,41 @@ class Game {
   }
 
   _update(deltaMs = 16.67) {
-    // ── ? (Shift+/) toggles help screen — checked before any other input ──
+    // ── Tutorial overlay — H key or ? (Shift+/) toggles; checked before other input ──
     const _shiftHelp = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight');
-    if (this.input.isJustDown('Slash') && _shiftHelp) this._showHelp = !this._showHelp;
-    if (this._showHelp) { if (this.input.mouse.clicked) this._showHelp = false; return; }
+    if (this.input.isJustDown('Slash') && _shiftHelp) {
+      this._tutorialOpen = !this._tutorialOpen;
+      if (this._tutorialOpen) this._tutorialScrollY = 0;
+    }
+    if (this._tutorialOpen) {
+      // Scroll content
+      if (this.input.scrollDelta) this._tutorialScrollY = Math.max(0, this._tutorialScrollY + this.input.scrollDelta * 30);
+      if (this.input.isJustDown('ArrowDown')) this._tutorialScrollY += 30;
+      if (this.input.isJustDown('ArrowUp'))   this._tutorialScrollY = Math.max(0, this._tutorialScrollY - 30);
+      // Close via ESC or H
+      if (this.input.isJustDown('Escape') || this.input.isJustDown('KeyH')) this._tutorialOpen = false;
+      // Close via X button or ? button click
+      if (this.input.mouse.clicked) {
+        const PW = 540, PH = 450;
+        const PX = (CANVAS_W - PW) / 2, PY = (CANVAS_H - PH) / 2;
+        const XBX = PX + PW - 28, XBY = PY + 8;
+        const BTN_X = CANVAS_W - 32, BTN_Y = 8;
+        const mx = this.input.mouse.x, my = this.input.mouse.y;
+        if ((mx >= XBX && mx <= XBX + 20 && my >= XBY && my <= XBY + 20) ||
+            (mx >= BTN_X && mx <= BTN_X + 24 && my >= BTN_Y && my <= BTN_Y + 24)) {
+          this._tutorialOpen = false;
+        }
+      }
+      return; // block game input while tutorial is open
+    }
+    // Help button (?) click — open tutorial
+    if (this.input.mouse.clicked) {
+      const BTN_X = CANVAS_W - 32, BTN_Y = 8;
+      if (this.input.mouse.x >= BTN_X && this.input.mouse.x <= BTN_X + 24 &&
+          this.input.mouse.y >= BTN_Y && this.input.mouse.y <= BTN_Y + 24) {
+        this._tutorialOpen = true; this._tutorialScrollY = 0;
+      }
+    }
 
     // ── ESC: pause / unpause (not on win screen) ───────────────
     const escNow = this.input.isDown('Escape');
@@ -399,7 +431,7 @@ class Game {
       this._notify(`${names[this.gameMode] ?? this.gameMode} mode active`, '#FFD700', 300);
     }
     if (this.frameCount === 1) {
-      this._notify('Press ? for controls', '#667788', 240);
+      this._notify('Press H or ? for help', '#667788', 240);
     }
 
     // ── Day/night timer (always advances, all modes) ───────────
@@ -564,13 +596,19 @@ class Game {
       this._worldSettingsOpen = !this._worldSettingsOpen;
     }
 
-    // ── Hyper speed toggle (sandbox always; Normal/Platformer requires god mode) ──
+    // ── H key: toggle tutorial; Ctrl+H: hyper speed toggle ──────
     if (this.input.isJustDown('KeyH')) {
-      if (this.gameMode === 'sandbox' || this.player.godMode) {
-        this.player.hyperSpeed = !this.player.hyperSpeed;
-        this._notify(this.player.hyperSpeed ? 'Hyper Speed ON ⚡' : 'Hyper Speed OFF', this.player.hyperSpeed ? '#FFDD44' : '#888888', 150);
+      const _ctrlH = this.input.isDown('ControlLeft') || this.input.isDown('ControlRight');
+      if (_ctrlH) {
+        if (this.gameMode === 'sandbox' || this.player.godMode) {
+          this.player.hyperSpeed = !this.player.hyperSpeed;
+          this._notify(this.player.hyperSpeed ? 'Hyper Speed ON ⚡' : 'Hyper Speed OFF', this.player.hyperSpeed ? '#FFDD44' : '#888888', 150);
+        } else {
+          this._notify('Hyper Speed requires God Mode', '#888888', 120);
+        }
       } else {
-        this._notify('Hyper Speed requires God Mode', '#888888', 120);
+        this._tutorialOpen = !this._tutorialOpen;
+        if (this._tutorialOpen) this._tutorialScrollY = 0;
       }
     }
 
@@ -2570,7 +2608,7 @@ class Game {
     if (this.state === 'won') this._drawWin(ctx);
     if (this.state === 'paused' || this.state === 'confirmExit') this._drawPauseOverlay(ctx);
     if (this._saveDialog) this._drawSaveDialog(ctx);
-    if (this._showHelp) this._drawHelpScreen(ctx);
+    if (this._tutorialOpen) this._drawTutorial(ctx);
   }
 
   // ── Inventory panel ──────────────────────────────────────
@@ -5930,6 +5968,26 @@ class Game {
       ctx.fillText(label, CANVAS_W / 2, by + 9);
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     }
+    this._drawHelpButton(ctx);
+    ctx.restore();
+  }
+
+  _drawHelpButton(ctx) {
+    const SZ = 24, BX = CANVAS_W - SZ - 8, BY = 8;
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const hov = mx >= BX && mx <= BX + SZ && my >= BY && my <= BY + SZ;
+    const active = this._tutorialOpen;
+    ctx.save();
+    ctx.fillStyle = active ? 'rgba(68,170,255,0.35)' : (hov ? 'rgba(68,170,255,0.2)' : 'rgba(0,0,0,0.55)');
+    _roundRect(ctx, BX, BY, SZ, SZ, 12); ctx.fill();
+    ctx.strokeStyle = active ? '#44AAFF' : (hov ? '#44AAFF99' : '#445566');
+    ctx.lineWidth = active ? 2 : 1;
+    _roundRect(ctx, BX, BY, SZ, SZ, 12); ctx.stroke();
+    ctx.fillStyle = active ? '#88CCFF' : (hov ? '#88CCFF' : '#5577AA');
+    ctx.font = 'bold 15px Courier New';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('?', BX + SZ / 2, BY + SZ / 2);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.restore();
   }
 
@@ -6363,12 +6421,12 @@ class Game {
     const text   = labels[biome] || biome;
     ctx.save();
     ctx.fillStyle    = 'rgba(0,0,0,0.4)';
-    ctx.fillRect(CANVAS_W - 128, 10, 118, 20);
+    ctx.fillRect(CANVAS_W - 152, 10, 118, 20);
     ctx.fillStyle    = colors[biome] || '#fff';
     ctx.font         = 'bold 10px Courier New';
     ctx.textAlign    = 'right';
     ctx.textBaseline = 'middle';
-    ctx.fillText(text, CANVAS_W - 10, 20);
+    ctx.fillText(text, CANVAS_W - 34, 20);
     ctx.textAlign    = 'left';
     ctx.textBaseline = 'alphabetic';
     ctx.restore();
@@ -6663,140 +6721,377 @@ class Game {
 
   // ── Overlays ─────────────────────────────────────────────
 
-  _drawHelpScreen(ctx) {
-    const isSB = this.gameMode === 'sandbox';
-    const isNM = this.gameMode === 'normal';
-    const px = 15, py = 12, pw = 770, ph = 476;
-    const cx = px + pw / 2;
+  // ── Tutorial overlay (Phase 11H) ─────────────────────────────
 
+  _getTutorialContent() {
+    const R = (key, desc) => ({ type: 'row',    key,  desc });
+    const B = (text)      => ({ type: 'bullet', text });
+    const G = ()          => ({ type: 'gap' });
+    const S = (title, items) => ({ title, items });
+
+    if (this.gameMode === 'normal') return [
+      S('CONTROLS', [
+        R('[WASD / Arrows]',  'Move left / right; W or Space = jump'),
+        R('[C]',              'Crouch / use shield'),
+        R('[LMB]',            'Attack or mine block'),
+        R('[RMB]',            'Place block / use item'),
+        R('[U]',              'Interact (portals, obsidian, eyes)'),
+        R('[I]',              'Open inventory & crafting'),
+        R('[E]',              'Open nearby chest'),
+        R('[B]',              'Toggle bed (set respawn point)'),
+        R('[F] near bed',     'Save game & set respawn'),
+        R('[H] or [?]',       'Toggle this help screen'),
+        R('[Esc]',            'Pause game'),
+      ]),
+      S('HOTBAR', [
+        R('[0–4] or Scroll',  'Select hotbar slot'),
+        R('Slot 0',           'Pickaxe — mine blocks'),
+        R('Slot 1',           'Sword — melee combat'),
+        R('Slot 2',           'Bow — ranged attacks'),
+        R('Slot 3',           'Apple — eat to heal (4 HP each)'),
+        R('Slot 4+',          'Tools, blocks, misc items'),
+      ]),
+      S('BASIC GAMEPLAY', [
+        B('Mine blocks with Pickaxe [LMB] to collect resources'),
+        B('Fight mobs with Sword [LMB] or Bow; charge bow to increase range'),
+        B('Eat apples [RMB with apple held] to restore 4 HP each'),
+        B('Crouch [C] to shield — blocks incoming arrow damage'),
+        B('Craft tools and armor in the Inventory [I]'),
+        B('Collect armor pieces from drops to reduce damage taken'),
+      ]),
+      S('PROGRESSION', [
+        R('Overworld',        'Mine wood, stone, ore; craft tools'),
+        R('Cave',             'Deeper resources; tougher mobs'),
+        R('Nether',           'Portal at col 285; high-tier loot'),
+        R('The End',          'Portal in Nether; defeat Ender Dragon to win'),
+      ]),
+      S('CRAFTING BASICS', [
+        B('Wood → Planks → Sticks → Wooden Tools'),
+        B('Stone + Sticks → Stone Tools (stronger)'),
+        B('Iron Ore + Fuel → Iron Ingots → Iron Tools & Armor'),
+        B('Open Inventory [I] and drag materials to craft slots'),
+        B('Higher-tier tools mine faster and deal more damage'),
+      ]),
+      S('COMBAT TIPS', [
+        B('Use sword for close range; switch to bow for flying/distant mobs'),
+        B('Crouch [C] while mobs shoot to block arrow damage with shield'),
+        B('Eat apples between fights — keep health above half'),
+        B('Full Moon nights: mobs have +50% health, be extra careful'),
+        B('Mobs drop items on defeat — collect for crafting materials'),
+        B('Lava damages instantly; find water sources to stay safe nearby'),
+      ]),
+      S('PORTAL GUIDE', [
+        R('Nether Portal',    'Find at col 285; press [U] to enter'),
+        R('Repair Portal',    'Hold Flint & Steel then press [U] to ignite'),
+        R('End Portal',       'Located in the Nether; requires Eyes of Ender'),
+        R('Eye Placement',    'Hold Eye of Ender; press [U] near empty frame slot'),
+        R('5 Eyes needed',    'Fill all 5 frame slots to activate End Portal'),
+      ]),
+      S('GENERAL INFO', [
+        R('Day / Night',      '5 min each; more mobs spawn at night'),
+        R('Health',           '20 HP max; damage from mobs, lava, falls'),
+        R('Death',            'Respawn at last bed or spawn point'),
+        R('Save',             'Press [F] near a bed to save progress'),
+        R('Full Moon',        'Every 8 nights — mobs get +50% health boost'),
+      ]),
+    ];
+
+    if (this.gameMode === 'platformer') return [
+      S('CONTROLS', [
+        R('[WASD / Arrows]',  'Move; W or Space = jump (double-jump available)'),
+        R('[C]',              'Crouch / use shield'),
+        R('[LMB]',            'Attack (no mining in platformer mode)'),
+        R('[RMB]',            'Use item'),
+        R('[U]',              'Place block in portal frame / enter portal'),
+        R('[I]',              'Open inventory'),
+        R('[E]',              'Open nearby chest'),
+        R('[B]',              'Toggle bed (set respawn point)'),
+        R('[H] or [?]',       'Toggle this help screen'),
+        R('[Esc]',            'Pause game'),
+      ]),
+      S('KEY DIFFERENCES FROM NORMAL', [
+        B('NO MINING — all blocks are solid and cannot be broken'),
+        B('NO CRAFTING — items found in chests or dropped by mobs'),
+        B('COMBAT FOCUSED — fight mobs to progress through levels'),
+        B('PORTAL PUZZLES — repair portals to unlock the next area'),
+        B('Double-jump available: press Jump again while airborne'),
+      ]),
+      S('HOTBAR', [
+        R('Slot 0',           'Sword — melee combat'),
+        R('Slot 1',           'Bow — ranged attacks'),
+        R('Slot 2',           'Shield / item'),
+        R('Slot 3',           'Apple / healing food'),
+        R('Slot 4+',          'Keys, tools, portal materials'),
+      ]),
+      S('PORTAL MECHANICS', [
+        R('Ruined Nether Portal', 'Needs 4 Obsidian blocks to repair'),
+        R('Step 1',           'Pick up Obsidian from chests or mob drops'),
+        R('Step 2',           'Hold Obsidian and stand near the portal'),
+        R('Step 3',           'Press [U] to place one block in next empty slot'),
+        R('Step 4',           'Repeat 4 times to complete the frame'),
+        R('Step 5',           'Hold Flint & Steel, press [U] to ignite portal'),
+        G(),
+        R('End Portal',       'Needs 5 Eyes of Ender to activate'),
+        R('Step 1',           'Collect Eyes of Ender (from Endermen or chests)'),
+        R('Step 2',           'Hold Eye of Ender and stand near End Portal'),
+        R('Step 3',           'Press [U] to place Eye in next empty frame slot'),
+        R('Step 4',           'Repeat 5 times — portal activates automatically'),
+      ]),
+      S('PROGRESSION', [
+        R('Overworld',        'Defeat mobs; loot chests for items'),
+        R('Nether Portal',    'Repair with 4 Obsidian; ignite with Flint & Steel'),
+        R('Nether',           'Collect Eyes of Ender and Nether materials'),
+        R('End Portal',       'Place 5 Eyes to activate; enter portal'),
+        R('The End',          'Defeat Ender Dragon to complete the game'),
+      ]),
+      S('COMBAT & TIPS', [
+        B('Explore thoroughly — all items needed to complete each area are available'),
+        B('Chests contain essential materials; open every chest you find'),
+        B('Crouch [C] to block arrows with shield during tough fights'),
+        B('Stock up on arrows and food before fighting ranged mobs'),
+        B('Full Moon nights: mobs have +50% health — be extra cautious'),
+        B('Mobs drop useful items when defeated — farm if you need more'),
+      ]),
+      S('GENERAL INFO', [
+        R('Day / Night',      '5 min each; more mobs at night'),
+        R('Health',           '20 HP max; eat food to heal'),
+        R('Death',            'Respawn at last bed or spawn point'),
+        R('Full Moon',        'Every 8 nights — +50% mob health'),
+      ]),
+    ];
+
+    // Sandbox
+    return [
+      S('CONTROLS', [
+        R('[WASD / Arrows]',  'Move; W = jump / fly up'),
+        R('[Shift]',          'Fly down (when flying)'),
+        R('[W×2]',            'Double-tap W to start flying'),
+        R('[LMB]',            'Place selected block'),
+        R('[RMB]',            'Remove block'),
+        R('[I]',              'Open block palette'),
+        R('[E]',              'Open / close nearby chest'),
+        R('[L]',              'Toggle nearest lever'),
+        R('[H] or [?]',       'Toggle this help screen'),
+        R('[Ctrl+H]',         'Hyper Speed 3× toggle'),
+        R('[P]',              'World Settings'),
+        R('[F]',              'Save world'),
+        R('[Esc]',            'Pause game'),
+      ]),
+      S('EDITING TOOLS', [
+        R('[LMB] on air',     'Place selected block'),
+        R('[LMB] on block',   'Remove block'),
+        R('[Alt+Click]',      'Eyedropper — pick block type'),
+        R('[Shift+Drag]',     'Auto-paint (place or erase continuously)'),
+        R('[Shift+1/2/3]',    'Set brush size: 1×1 / 2×2 / 4×4'),
+        R('[Ctrl+Drag]',      'Select a region'),
+        R('[Ctrl+C]',         'Copy selected region'),
+        R('[Ctrl+V]',         'Paste — click to place'),
+        R('[Ctrl+Z]',         'Undo last action'),
+        R('[Ctrl+Y]',         'Redo'),
+      ]),
+      S('HOTBAR & INVENTORY', [
+        R('[1–8] or Scroll',  'Select hotbar slot'),
+        R('[I]',              'Open palette — all blocks & items'),
+        R('[Palette tabs]',   'Overworld / Nether / Gear / Other'),
+        R('Right-click slot', 'Clear hotbar slot'),
+        B('Drag items from palette to hotbar for quick access'),
+        B('Unlimited supply of every block and item — no crafting needed'),
+      ]),
+      S('MOB SPAWNING', [
+        R('Spawn Eggs',       'Found in Palette → Other tab'),
+        R('[RMB] with egg',   'Place mob at cursor position'),
+        R('World Settings',   'Configure mob drop rates [P]'),
+        B('Spawned mobs behave normally: combat, drops, and AI'),
+        B('Right-click placed mob egg in World Settings to edit drops'),
+      ]),
+      S('REDSTONE SYSTEM', [
+        R('Levers',           'Toggle on/off; powers connected dust'),
+        R('Pressure Plates',  'Triggered by player or mob stepping on'),
+        R('Redstone Dust',    'Connects devices; carries power signal'),
+        R('Pistons',          'Push blocks when powered; configure direction'),
+        R('NOT Gate',         'Inverts signal (on→off, off→on)'),
+        R('AND Gate',         'Output on only when both inputs on'),
+        R('Transmitter/Rx',   'Wireless signal over any distance'),
+        B('Right-click placed gate or TX/RX to configure connections'),
+      ]),
+      S('PORTALS & STRUCTURES', [
+        R('Nether Portal',    'Place from Other palette; lights automatically'),
+        R('Ruined Portal',    'Damaged portal structure for adventure builds'),
+        R('End Portal',       'Multi-block structure; place Eyes to activate'),
+        B('Multi-block structures (portals) placed as single footprint'),
+        B('Enter portals with [U] to travel between biomes'),
+      ]),
+      S('WORLD SETTINGS [P]', [
+        R('Mob Drops',        'Customize what each mob type drops'),
+        R('Day/Night Speed',  'Set cycle length (1–20 min per half)'),
+        R('Mob Spawning',     'Enable or disable mob spawning'),
+        R('Full Moon Boost',  'Toggle +50% HP on full moon nights'),
+        R('Unlimited Arrows', 'Toggle infinite arrow supply'),
+        B('Open with [P] key; click outside or press Esc to close'),
+      ]),
+      S('BIOME GUIDE', [
+        R('Overworld',        'Plains / Cave — col 0 to 299'),
+        R('Nether',           'Col 300+ — magma, lava, Blazes'),
+        R('The End',          'Col 450+ — Endermen, Ender Dragon'),
+        B('Teleport menu [T] (with God Mode active) to jump between biomes'),
+        B('Build custom levels in any biome; all blocks work everywhere'),
+      ]),
+      S('CREATIVE TIPS', [
+        B('Use brush tools + auto-paint [Shift+Drag] for fast terrain shaping'),
+        B('Undo [Ctrl+Z] if you make a mistake — up to 200 steps stored'),
+        B('Design platformer levels in sandbox; export for friends to play'),
+        B('Spawn eggs + World Settings lets you create custom mob arenas'),
+        B('Redstone puzzles: link levers → dust → pistons for moving platforms'),
+      ]),
+    ];
+  }
+
+  _wrapText(ctx, text, maxWidth) {
+    const words = text.split(' ');
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+      const test = line ? line + ' ' + word : word;
+      if (ctx.measureText(test).width <= maxWidth) { line = test; }
+      else { if (line) lines.push(line); line = word; }
+    }
+    if (line) lines.push(line);
+    return lines.length ? lines : [''];
+  }
+
+  _drawTutorial(ctx) {
+    const PW = 540, PH = 450;
+    const PX = (CANVAS_W - PW) / 2, PY = (CANVAS_H - PH) / 2;
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+
+    // Dark overlay
     ctx.save();
-    ctx.fillStyle = 'rgba(0,0,0,0.90)';
+    ctx.fillStyle = 'rgba(0,0,0,0.88)';
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-    ctx.fillStyle = '#0d0d1a';
-    _roundRect(ctx, px, py, pw, ph, 10); ctx.fill();
-    ctx.strokeStyle = '#FF9800'; ctx.lineWidth = 2;
-    _roundRect(ctx, px, py, pw, ph, 10); ctx.stroke();
 
-    const modeLabel = isSB ? 'SANDBOX' : isNM ? 'NORMAL' : 'PLATFORMER';
-    ctx.fillStyle = '#FF9800'; ctx.font = 'bold 13px Courier New';
+    // Panel
+    ctx.fillStyle = '#080D1C';
+    _roundRect(ctx, PX, PY, PW, PH, 10); ctx.fill();
+
+    const modeAccent = { normal: '#44AAFF', platformer: '#44EE88', sandbox: '#FFAA44' };
+    const accent = modeAccent[this.gameMode] || '#88AAFF';
+    ctx.strokeStyle = accent + 'AA'; ctx.lineWidth = 2;
+    _roundRect(ctx, PX, PY, PW, PH, 10); ctx.stroke();
+
+    // Title
+    const modeNames = { normal: 'Normal Mode — Survival Adventure', platformer: 'Platformer Mode — Guided Adventure', sandbox: 'Sandbox Mode — Creative Freedom' };
+    ctx.fillStyle = accent;
+    ctx.font = 'bold 13px Courier New';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(`${modeLabel} MODE — KEYBOARD & MOUSE CONTROLS`, cx, py + 18);
-    ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(px + 12, py + 30); ctx.lineTo(px + pw - 12, py + 30); ctx.stroke();
+    ctx.fillText(modeNames[this.gameMode] || 'How to Play', CANVAS_W / 2, PY + 20);
 
-    ctx.fillStyle = '#445'; ctx.font = '9px Courier New';
-    ctx.fillText('Press ? or click anywhere to close', cx, py + ph - 10);
+    // Title divider
+    ctx.strokeStyle = accent + '44'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PX + 16, PY + 34); ctx.lineTo(PX + PW - 16, PY + 34); ctx.stroke();
 
-    // ── Section renderer ─────────────────────────────────────
-    const KCOLOR = '#CCDDFF', DCOLOR = '#8899BB', HCOLOR = '#FF9800';
-    const KW = 155, ROW = 13, HEAD = 17;
-    const section = (title, rows, x, y) => {
+    // X close button
+    const XBX = PX + PW - 28, XBY = PY + 7, XBS = 20;
+    const xHov = mx >= XBX && mx <= XBX + XBS && my >= XBY && my <= XBY + XBS;
+    ctx.fillStyle = xHov ? 'rgba(255,60,60,0.35)' : 'rgba(60,10,10,0.5)';
+    _roundRect(ctx, XBX, XBY, XBS, XBS, 4); ctx.fill();
+    ctx.strokeStyle = xHov ? '#FF5555' : '#553333'; ctx.lineWidth = 1;
+    _roundRect(ctx, XBX, XBY, XBS, XBS, 4); ctx.stroke();
+    ctx.fillStyle = xHov ? '#fff' : '#AA6666'; ctx.font = 'bold 12px Courier New';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('✕', XBX + XBS / 2, XBY + XBS / 2);
+
+    // Content area geometry
+    const CA_X = PX + 16;
+    const CA_Y = PY + 40;
+    const CA_W = PW - 32;
+    const CA_H = PH - 56;
+    const KW   = 148;
+    const LROW = 14;
+    const BROW = 12;
+    const HGAP = 20;
+    const SGAP = 10;
+
+    const sections = this._getTutorialContent();
+
+    // Compute total content height for scroll clamping
+    let totalH = 0;
+    for (const sec of sections) {
+      totalH += HGAP;
+      for (const item of sec.items) {
+        if (item.type === 'row')    totalH += LROW;
+        else if (item.type === 'gap') totalH += 6;
+        else if (item.type === 'bullet') {
+          ctx.font = '9px Courier New';
+          const wrapped = this._wrapText(ctx, item.text, CA_W - 14);
+          totalH += wrapped.length * BROW + 2;
+        }
+      }
+      totalH += SGAP;
+    }
+    const maxScroll = Math.max(0, totalH - CA_H);
+    this._tutorialScrollY = Math.min(this._tutorialScrollY, maxScroll);
+
+    // Clip to content area
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(CA_X - 2, CA_Y, CA_W + 4, CA_H);
+    ctx.clip();
+    ctx.translate(0, CA_Y - this._tutorialScrollY);
+
+    let y = 0;
+    const HCOLOR = accent, KCOLOR = '#BBCCEE', DCOLOR = '#7788AA', BCOLOR = '#99AABB';
+
+    for (const sec of sections) {
+      // Section header
       ctx.fillStyle = HCOLOR; ctx.font = 'bold 10px Courier New';
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-      ctx.fillText(title, x, y);
-      ctx.strokeStyle = '#FF980044'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(x, y + 3); ctx.lineTo(x + 340, y + 3); ctx.stroke();
-      y += HEAD;
-      for (const [k, d] of rows) {
-        ctx.fillStyle = KCOLOR; ctx.font = '9px Courier New';
-        ctx.fillText(k, x, y);
-        ctx.fillStyle = DCOLOR;
-        ctx.fillText(d, x + KW, y);
-        y += ROW;
+      ctx.fillText(sec.title, CA_X, y + 12);
+      ctx.strokeStyle = HCOLOR + '33'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(CA_X, y + 15); ctx.lineTo(CA_X + CA_W, y + 15); ctx.stroke();
+      y += HGAP;
+
+      for (const item of sec.items) {
+        if (item.type === 'row') {
+          ctx.fillStyle = KCOLOR; ctx.font = 'bold 9px Courier New';
+          ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+          ctx.fillText(item.key, CA_X, y + 10);
+          ctx.fillStyle = DCOLOR; ctx.font = '9px Courier New';
+          ctx.fillText(item.desc, CA_X + KW, y + 10);
+          y += LROW;
+        } else if (item.type === 'gap') {
+          y += 6;
+        } else if (item.type === 'bullet') {
+          ctx.fillStyle = BCOLOR; ctx.font = '9px Courier New';
+          ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+          const lines = this._wrapText(ctx, item.text, CA_W - 14);
+          for (let li = 0; li < lines.length; li++) {
+            ctx.fillText((li === 0 ? '• ' : '  ') + lines[li], CA_X + 4, y + 10);
+            y += BROW;
+          }
+          y += 2;
+        }
       }
-      return y + 6;
-    };
-
-    const colA = px + 14, colB = px + 14 + 388;
-    let yA = py + 40, yB = py + 40;
-
-    if (isSB) {
-      yA = section('MOVEMENT', [
-        ['W / ↑',        'Move up / Fly up'],
-        ['A / ←',        'Move left'],
-        ['S / ↓',        'Move down / Fly down'],
-        ['D / →',        'Move right'],
-        ['W×2',          'Start flying (double-tap)'],
-        ['S×2',          'Land (double-tap while flying)'],
-        ['H',            'Hyper Speed 3× toggle'],
-      ], colA, yA);
-      yA = section('HOTBAR & WORLD', [
-        ['1 – 8',        'Select hotbar slot'],
-        ['Scroll',       'Cycle hotbar slot'],
-        ['Right-click slot', 'Clear hotbar slot'],
-        ['I',            'Open block palette'],
-        ['F',            'Save world'],
-        ['E',            'Open / close nearby chest'],
-        ['L',            'Toggle nearest lever'],
-        ['Esc',          'Pause'],
-        ['?',            'Toggle this help screen'],
-      ], colA, yA);
-
-      yB = section('EDITING', [
-        ['Left Click (air)',    'Place selected block'],
-        ['Left Click (block)',  'Remove block'],
-        ['Alt+Click',          'Eyedropper — pick block type'],
-        ['Shift+Click+Drag',   'Auto-paint (place or erase)'],
-        ['Shift+1 / 2 / 3',   'Brush size: 1×1 / 2×2 / 4×4'],
-        ['Shift+Scroll',       'Cycle brush size'],
-        ['Ctrl+Drag',          'Select region'],
-        ['Ctrl+C',             'Copy selected region'],
-        ['Ctrl+V',             'Paste preview — click to place'],
-        ['Ctrl+Z',             'Undo'],
-        ['Ctrl+Y / Ctrl+⇧+Z', 'Redo'],
-      ], colB, yB);
-
-    } else if (isNM) {
-      yA = section('MOVEMENT', [
-        ['W / ↑',   'Jump'],
-        ['A / ←',   'Move left'],
-        ['S / ↓',   'Crouch'],
-        ['D / →',   'Move right'],
-      ], colA, yA);
-      yA = section('COMBAT', [
-        ['Space / Left Click',        'Attack (sword) or mine (pickaxe)'],
-        ['Hold Space / Left Click',   'Charge bow — release to fire'],
-        ['Click self (apple held)',   'Eat apple to restore HP'],
-      ], colA, yA);
-
-      yB = section('WORLD', [
-        ['1 – 9',        'Select hotbar slot'],
-        ['Scroll',       'Cycle hotbar slot'],
-        ['I',            'Inventory / crafting'],
-        ['E',            'Open / close nearby chest'],
-        ['F near bed',   'Save game & set respawn point'],
-        ['Hold Click',   'Mine block (pickaxe equipped)'],
-        ['Click (air)',  'Place held block'],
-        ['L',            'Toggle nearest lever'],
-        ['U (portal)',   'Enter portal'],
-        ['U (F&S held)', 'Activate ruined portal'],
-        ['Esc',          'Pause'],
-        ['?',            'Toggle this help screen'],
-      ], colB, yB);
-
-    } else {
-      // Platformer
-      yA = section('MOVEMENT', [
-        ['W / ↑',   'Jump'],
-        ['A / ←',   'Move left'],
-        ['S / ↓',   'Crouch'],
-        ['D / →',   'Move right'],
-      ], colA, yA);
-      yA = section('COMBAT', [
-        ['Space / Left Click',       'Attack (sword) or mine (pickaxe)'],
-        ['Hold Space / Left Click',  'Charge bow — release to fire'],
-      ], colA, yA);
-
-      yB = section('OTHER', [
-        ['1 – 9',       'Select weapon slot'],
-        ['Scroll',      'Cycle weapon slot'],
-        ['F near bed',  'Set respawn point'],
-        ['E',           'Open / close nearby chest'],
-        ['U (portal)',  'Enter portal'],
-        ['Esc',         'Pause'],
-        ['?',           'Toggle this help screen'],
-      ], colB, yB);
+      y += SGAP;
     }
+
+    ctx.restore(); // end clip+translate
+
+    // Scrollbar
+    if (maxScroll > 0) {
+      const SBX = PX + PW - 7;
+      const sbH = Math.max(24, (CA_H / (totalH)) * CA_H);
+      const sbY = CA_Y + (this._tutorialScrollY / maxScroll) * (CA_H - sbH);
+      ctx.fillStyle = 'rgba(60,80,120,0.3)';
+      ctx.fillRect(SBX, CA_Y, 4, CA_H);
+      ctx.fillStyle = accent + '88';
+      ctx.fillRect(SBX, sbY, 4, sbH);
+    }
+
+    // Bottom hint
+    ctx.fillStyle = '#334455';
+    ctx.font = '8px Courier New';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText('ESC · H · ✕ to close   •   Scroll or ↑↓ to read', CANVAS_W / 2, PY + PH - 5);
 
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.restore();
