@@ -1,0 +1,12 @@
+{
+  "name": "steveo-platformer",
+  "version": "1.0.0",
+  "description": "Minecraft-inspired platformer game",
+  "main": "index.html",
+  "scripts": {
+    "start": "python3 -m http.server 8000"
+  },
+  "keywords": ["game", "platformer"],
+  "author": "Your Name",
+  "license": "MIT"
+}
