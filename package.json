@@ -3,11 +3,8 @@
   "version": "1.0.0",
   "description": "Minecraft-inspired platformer game",
   "main": "index.html",
-  "dependencies": {
-    "http-server": "^14.1.1"
-  },
   "scripts": {
-    "start": "http-server -p $PORT -c-1"
+    "start": "node server.js"
   },
   "keywords": ["game", "platformer"],
   "author": "Your Name",
