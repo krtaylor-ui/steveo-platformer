@@ -56,9 +56,10 @@ class Player {
     this.platformerSlots = null;
 
     // Sandbox / special modes
-    this.godMode    = false;  // no damage when true (sandbox mode)
-    this.flying     = false;  // flight mode toggled by double-jump
-    this.hyperSpeed = false;  // 3× movement speed when toggled (H key)
+    this.godMode         = false;  // no damage when true (sandbox mode)
+    this.flying          = false;  // flight mode toggled by double-jump
+    this.hyperSpeed      = false;  // 3× movement speed when toggled (H key)
+    this.xpSpeedDisabled = false;  // set by game.js from worldAdvSettings.disableXpSpeedBoost
 
     // Jump buffer / coyote time
     this._jumpBuffer  = 0;
@@ -104,8 +105,8 @@ class Player {
 
   get xpLevel()      { return Math.floor(this.xp); }
 
-  // Speed scales linearly: ×1.0 at XP 0, ×2.0 at XP max (level 5)
-  get _xpMult()       { return 1 + this.xp / this.maxXp; }
+  // Speed scales linearly: ×1.0 at XP 0, ×2.0 at XP max (level 5); disabled by world setting
+  get _xpMult()       { return this.xpSpeedDisabled ? 1 : 1 + this.xp / this.maxXp; }
   get moveSpeed()     { return MOVE_SPEED   * this._xpMult; }
   get crouchSpeed()   { return CROUCH_SPEED * this._xpMult; }
 

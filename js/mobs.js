@@ -1351,8 +1351,9 @@ class MobManager {
     this.arrows       = [];
     this.damageNums   = [];
     this.xpOrbs       = [];
-    this.explosions   = [];
-    this.spawnPoints  = [];
+    this.explosions      = [];
+    this.explosionEvents = []; // consumed by game.js for particles/shake
+    this.spawnPoints     = [];
     this.playerArrows = [];
     this.blazeShots   = [];
     this.droppedItems = [];
@@ -1665,6 +1666,8 @@ class MobManager {
 
     // Visual effect
     this.explosions.push(new ExplosionEffect(centerX, centerY, (radius + 0.5) * BLOCK_SIZE));
+    // Signal game.js to spawn particles + screen shake
+    this.explosionEvents.push({ col, row, radius });
   }
 
   draw(ctx, camera) {

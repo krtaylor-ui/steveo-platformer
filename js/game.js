@@ -2,6 +2,32 @@
 // game.js — Main game loop, rendering orchestration, HUD
 // ============================================================
 
+// ── Phase 13: Particle system ────────────────────────────────
+class Particle {
+  constructor(x, y, vx, vy, color, life, size) {
+    this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+    this.color = color; this.life = life; this.maxLife = life;
+    this.size = size || 4;
+  }
+  update() {
+    this.x += this.vx; this.y += this.vy;
+    this.vy += 0.15; this.vx *= 0.96;
+    this.life--;
+    return this.life > 0;
+  }
+  draw(ctx, camera) {
+    const sx = Math.floor(this.x - camera.x);
+    const sy = Math.floor(this.y - camera.y);
+    if (sx < -20 || sx > CANVAS_W + 20 || sy < -20 || sy > CANVAS_H + 20) return;
+    ctx.save();
+    ctx.globalAlpha = this.life / this.maxLife;
+    ctx.fillStyle = this.color;
+    const sz = Math.max(1, this.size * (this.life / this.maxLife));
+    ctx.fillRect(sx - sz / 2, sy - sz / 2, sz, sz);
+    ctx.restore();
+  }
+}
+
 const SLOT_SIZE = 46;
 const SLOT_GAP  = 3;
 const HOTBAR_Y  = CANVAS_H - SLOT_SIZE - 10;
@@ -26,6 +52,7 @@ class Game {
       controllerSensitivity:    1.0,
       controllerAimSensitivity: 1.0,
       twoPlayerMode:            options.twoPlayerMode ?? false,
+      disableXpSpeedBoost:      false,
     };
     // Track the user's explicit pre-launch 2P choice so it can survive world-load overwrite
     this._launchTwoPlayerMode = options.twoPlayerMode;
@@ -33,6 +60,13 @@ class Game {
     this._p2SpawnX       = 0;
     this._p2SpawnY       = 0;
     this._p2RespawnTimer = 0;
+
+    // Phase 13: Particles + screen shake + Nether bed + Respawn Anchor
+    this._particles           = [];
+    this._screenShake         = { intensity: 0, frames: 0, maxFrames: 0 };
+    this._netherBedFuse       = 0;    // countdown (frames) before Nether bed explosion
+    this._netherBedPos        = null; // { col, row } of bed about to explode
+    this._activeRespawnAnchor = null; // { col, row } of set respawn anchor
 
     this._buildLevel();
 
@@ -157,7 +191,7 @@ class Game {
     this._saveDialog     = null;   // null | { fields:[playerName,worldName], active:0 }
     this._saveKbListener = null;
 
-    this._tutorialOpen    = false;  // H or ? toggles tutorial overlay
+    this._tutorialOpen    = false;  // ? (Shift+/) toggles tutorial overlay
     this._tutorialScrollY = 0;      // scroll offset within tutorial content
 
     // Undo / redo history (sandbox mode only)
@@ -375,7 +409,7 @@ class Game {
     this._contextAction = null;
     this._contextPrompt = null;
 
-    // ── Tutorial overlay — H key or ? (Shift+/) toggles; checked before other input ──
+    // ── Tutorial overlay — ? (Shift+/) toggles; checked before other input ──
     const _shiftHelp = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight');
     if (this.input.isJustDown('Slash') && _shiftHelp) {
       this._tutorialOpen = !this._tutorialOpen;
@@ -386,8 +420,8 @@ class Game {
       if (this.input.scrollDelta) this._tutorialScrollY = Math.max(0, this._tutorialScrollY + this.input.scrollDelta * 30);
       if (this.input.isJustDown('ArrowDown')) this._tutorialScrollY += 30;
       if (this.input.isJustDown('ArrowUp'))   this._tutorialScrollY = Math.max(0, this._tutorialScrollY - 30);
-      // Close via ESC or H
-      if (this.input.isJustDown('Escape') || this.input.isJustDown('KeyH')) this._tutorialOpen = false;
+      // Close via ESC
+      if (this.input.isJustDown('Escape')) this._tutorialOpen = false;
       // Close via X button or ? button click
       if (this.input.mouse.clicked) {
         const PW = 540, PH = 450;
@@ -644,19 +678,13 @@ class Game {
       this._worldSettingsOpen = !this._worldSettingsOpen;
     }
 
-    // ── H key: toggle tutorial; Ctrl+H: hyper speed toggle ──────
+    // ── H key: hyper speed toggle (sandbox / god mode only) ──────
     if (this.input.isJustDown('KeyH')) {
-      const _ctrlH = this.input.isDown('ControlLeft') || this.input.isDown('ControlRight');
-      if (_ctrlH) {
-        if (this.gameMode === 'sandbox' || this.player.godMode) {
-          this.player.hyperSpeed = !this.player.hyperSpeed;
-          this._notify(this.player.hyperSpeed ? 'Hyper Speed ON ⚡' : 'Hyper Speed OFF', this.player.hyperSpeed ? '#FFDD44' : '#888888', 150);
-        } else {
-          this._notify('Hyper Speed requires God Mode', '#888888', 120);
-        }
+      if (this.gameMode === 'sandbox' || this.player.godMode) {
+        this.player.hyperSpeed = !this.player.hyperSpeed;
+        this._notify(this.player.hyperSpeed ? 'Hyper Speed ON ⚡' : 'Hyper Speed OFF', this.player.hyperSpeed ? '#FFDD44' : '#888888', 150);
       } else {
-        this._tutorialOpen = !this._tutorialOpen;
-        if (this._tutorialOpen) this._tutorialScrollY = 0;
+        this._notify('Hyper Speed requires God Mode', '#888888', 120);
       }
     }
 
@@ -756,6 +784,9 @@ class Game {
     // Apply controller sensitivity so moveX() scales analog stick correctly
     this.input.controllerSensitivity    = this._worldAdvSettings.controllerSensitivity    ?? 1.0;
     this.input.controllerAimSensitivity = this._worldAdvSettings.controllerAimSensitivity ?? 1.0;
+    // Sync XP speed boost flag to player (and P2 if active)
+    this.player.xpSpeedDisabled = !!this._worldAdvSettings.disableXpSpeedBoost;
+    if (this.player2) this.player2.xpSpeedDisabled = !!this._worldAdvSettings.disableXpSpeedBoost;
     this.player.update(this.input, this.level);
 
     // ── Player 2 update (Phase 12) ─────────────────────────
@@ -5891,6 +5922,10 @@ class Game {
       const r3Y = L.FIRST_ROW + 96;
       if (mx >= tgX && mx <= tgX + tgW && my >= r3Y && my <= r3Y + tgH)
         this._applyTwoPlayerMode(!this._worldAdvSettings.twoPlayerMode);
+      // Row 4: Disable XP Speed Boost
+      const r4Y = L.FIRST_ROW + 144;
+      if (mx >= tgX && mx <= tgX + tgW && my >= r4Y && my <= r4Y + tgH)
+        this._worldAdvSettings.disableXpSpeedBoost = !this._worldAdvSettings.disableXpSpeedBoost;
       return;
     }
 
@@ -6059,9 +6094,10 @@ class Game {
         ctx.fillText(active ? 'ON' : 'OFF', tgX + tgW / 2, rY + 13);
       };
 
-      drawAdvRow(L.FIRST_ROW,      'Disable Dragon Healing',  '(crystals stop healing the dragon)',    aws.disableDragonHealing);
-      drawAdvRow(L.FIRST_ROW + 48, 'Unlimited Arrows',        '(bow fires without consuming arrows)',  aws.unlimitedArrows);
-      drawAdvRow(L.FIRST_ROW + 96, '2-Player Co-op',          '(IJKL keys or 2nd gamepad for P2)',     aws.twoPlayerMode);
+      drawAdvRow(L.FIRST_ROW,       'Disable Dragon Healing',  '(crystals stop healing the dragon)',    aws.disableDragonHealing);
+      drawAdvRow(L.FIRST_ROW + 48,  'Unlimited Arrows',        '(bow fires without consuming arrows)',  aws.unlimitedArrows);
+      drawAdvRow(L.FIRST_ROW + 96,  '2-Player Co-op',          '(IJKL keys or 2nd gamepad for P2)',     aws.twoPlayerMode);
+      drawAdvRow(L.FIRST_ROW + 144, 'Disable XP Speed Boost',  '(XP no longer increases move speed)',   aws.disableXpSpeedBoost);
     } else if (this._wsTab === 'input') {
       // ── Input Settings tab ────────────────────────────────────
       const mx2 = this.input.mouse.x, my2 = this.input.mouse.y;
@@ -7817,7 +7853,6 @@ class Game {
       const tabW = Math.floor(pw / 3);
 
       // Keyboard shortcuts while paused → switch tab
-      if (this.input.isJustDown('KeyH')) { this._pauseTab = 'help';     return; }
       if (this.input.isJustDown('KeyI')) { this._pauseTab = 'settings'; return; }
 
       // Gamepad: B button → resume

@@ -175,6 +175,15 @@ const RECIPES = [
       { block: BLOCK.ENDER_PEARL,  count: 1, label: 'Ender Pearl'  },
     ],
   },
+  {
+    id: 'respawn_anchor', result: 'RESPAWN_ANCHOR', isBlockItem: true, resultBlock: BLOCK.RESPAWN_ANCHOR,
+    displayName: 'Respawn Anchor', displayColor: '#8833CC', displayIcon: '⚓',
+    unlockOre: BLOCK.GLOWSTONE,
+    materials: [
+      { block: BLOCK.OBSIDIAN,  count: 4, label: 'Obsidian'  },
+      { block: BLOCK.GLOWSTONE, count: 4, label: 'Glowstone' },
+    ],
+  },
 ];
 
 // ── Crafting Menu ────────────────────────────────────────────

@@ -37,7 +37,7 @@ const XP_PER_ORB            = 0.5;  // each orb adds 0.5 levels
 const MOB_ATTACK_RATE       = 60;   // frames between melee hits
 const SKELETON_SHOOT_RATE   = 180;  // frames between arrows (3 s)
 const ARROW_SPEED           = 7.2;  // px per frame
-const CREEPER_FUSE_FRAMES   = 600;  // 10 seconds
+const CREEPER_FUSE_FRAMES   = 300;  // 5 seconds
 const CREEPER_EXPLODE_RADIUS= 2;    // blocks
 
 // World / biome

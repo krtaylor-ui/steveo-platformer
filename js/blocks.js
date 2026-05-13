@@ -50,6 +50,9 @@ const BLOCK = Object.freeze({
   DRAGON_EGG:             46,   // Dropped by Ender Dragon on defeat
   // Phase 11G
   ARROW:                  47,   // Craftable consumable; required to fire bow
+  // Phase 13
+  GLOWSTONE:              48,   // Nether block; crafting ingredient for Respawn Anchor
+  RESPAWN_ANCHOR:         49,   // Crafted from Obsidian + Glowstone; sets Nether respawn
 });
 
 // Per-block properties
@@ -106,6 +109,8 @@ const BLOCK_DATA = {
   [BLOCK.ENDER_PEARL]:            { name: 'Ender Pearl',             hardness: 0,        mineable: false, solid: false, mineTier: 0, isItem: true },
   [BLOCK.DRAGON_EGG]:             { name: 'Dragon Egg',              hardness: 0,        mineable: false, solid: false, mineTier: 0, isItem: true },
   [BLOCK.ARROW]:                  { name: 'Arrow',                   hardness: 0,        mineable: false, solid: false, mineTier: 0, isItem: true },
+  [BLOCK.GLOWSTONE]:              { name: 'Glowstone',               hardness: 60,       mineable: true,  solid: true,  mineTier: 0, emitsLight: true },
+  [BLOCK.RESPAWN_ANCHOR]:         { name: 'Respawn Anchor',          hardness: 120,      mineable: true,  solid: true,  mineTier: 2 },
 };
 
 // ── Pixel-art block renderers ────────────────────────────────
@@ -164,6 +169,8 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.ENDER_PEARL:            _drawEnderPearlItem(ctx, px, py, s);           break;
     case BLOCK.DRAGON_EGG:             _drawDragonEggItem(ctx, px, py, s);            break;
     case BLOCK.ARROW:                  _drawArrowItem(ctx, px, py, s);                break;
+    case BLOCK.GLOWSTONE:              _drawGlowstone(ctx, px, py, s);               break;
+    case BLOCK.RESPAWN_ANCHOR:         _drawRespawnAnchor(ctx, px, py, s, state.active); break;
   }
 
   // Mining crack overlay
@@ -196,7 +203,8 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
   // Edge shadow — skip for partial-fill blocks and TX/RX (draw their own border)
   if (type !== BLOCK.LEVER && type !== BLOCK.TRAPDOOR &&
       type !== BLOCK.PRESSURE_PLATE && type !== 33 /* REDSTONE_DUST */ &&
-      type !== BLOCK.TRANSMITTER && type !== BLOCK.RECEIVER) {
+      type !== BLOCK.TRANSMITTER && type !== BLOCK.RECEIVER &&
+      type !== BLOCK.RESPAWN_ANCHOR) {
     ctx.strokeStyle = 'rgba(0,0,0,0.28)';
     ctx.lineWidth = 0.5;
     ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
@@ -1128,6 +1136,56 @@ function _drawArrowItem(ctx, px, py, s) {
   ctx.beginPath(); ctx.moveTo(cx - 7, cy + 7); ctx.lineTo(cx - 10, cy + 5); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(cx - 7, cy + 7); ctx.lineTo(cx - 5, cy + 10); ctx.stroke();
   ctx.restore();
+}
+
+function _drawGlowstone(ctx, px, py, s) {
+  // Golden-yellow glowing block
+  ctx.fillStyle = '#D4A017';
+  ctx.fillRect(px, py, s, s);
+  // Brighter center patches
+  ctx.fillStyle = '#FFD84A';
+  ctx.fillRect(px + 4,  py + 4,  10, 10);
+  ctx.fillRect(px + 18, py + 16, 10, 10);
+  ctx.fillRect(px + 6,  py + 18, 8,  8);
+  // Highlight spots
+  ctx.fillStyle = '#FFEE88';
+  ctx.fillRect(px + 6,  py + 6,  5, 5);
+  ctx.fillRect(px + 20, py + 18, 5, 5);
+  ctx.fillRect(px + 8,  py + 20, 4, 4);
+  // Outer glow tinge
+  ctx.fillStyle = 'rgba(255,220,80,0.22)';
+  ctx.fillRect(px, py, s, 3);
+  ctx.fillRect(px, py + s - 3, s, 3);
+  ctx.fillRect(px, py, 3, s);
+  ctx.fillRect(px + s - 3, py, 3, s);
+}
+
+function _drawRespawnAnchor(ctx, px, py, s, active) {
+  // Dark obsidian base
+  ctx.fillStyle = '#1A0A2A';
+  ctx.fillRect(px, py, s, s);
+  // Purple-tinted face panels
+  ctx.fillStyle = '#2D1845';
+  ctx.fillRect(px + 2, py + 2, 13, 13);
+  ctx.fillRect(px + 17, py + 17, 13, 13);
+  ctx.fillStyle = '#3A2255';
+  ctx.fillRect(px + 17, py + 2, 13, 13);
+  ctx.fillRect(px + 2, py + 17, 13, 13);
+  // Anchor symbol (cross shape in center)
+  const cx = px + s / 2, cy = py + s / 2;
+  const col = active ? '#AA44FF' : '#664488';
+  ctx.fillStyle = col;
+  ctx.fillRect(cx - 2, cy - 9, 4, 18); // vertical bar
+  ctx.fillRect(cx - 7, cy - 2, 14, 4); // horizontal bar
+  ctx.fillRect(cx - 5, cy + 5, 10, 3); // anchor bottom spread
+  // Glow when active
+  if (active) {
+    ctx.fillStyle = 'rgba(180,80,255,0.35)';
+    ctx.fillRect(px, py, s, s);
+    ctx.fillStyle = '#CC88FF';
+    ctx.fillRect(cx - 1, cy - 8, 2, 16);
+    ctx.fillRect(cx - 6, cy - 1, 12, 2);
+  }
 }
 
 function _drawDragonEggItem(ctx, px, py, s) {

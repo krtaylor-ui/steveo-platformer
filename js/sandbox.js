@@ -12,7 +12,7 @@ const SANDBOX_PALETTE_BLOCKS = {
   ],
   nether: [
     BLOCK.NETHERRACK, BLOCK.SOUL_SAND, BLOCK.CRIMSON_LOG,
-    BLOCK.WARPED_LOG, BLOCK.OBSIDIAN, BLOCK.LAVA,
+    BLOCK.WARPED_LOG, BLOCK.OBSIDIAN, BLOCK.LAVA, BLOCK.GLOWSTONE,
   ],
 };
 
@@ -65,6 +65,7 @@ const OTHER_PALETTE_ITEMS = [
   { kind: 'block', blockType: BLOCK.CHEST },
   // ── Structural / Special ─────────────────────────────────────
   { kind: 'block', blockType: BLOCK.BED },
+  { kind: 'block', blockType: BLOCK.RESPAWN_ANCHOR },
   { kind: 'block', blockType: BLOCK.NETHER_PORTAL_FRAME },
   { kind: 'block', blockType: SB_RUINED_PORTAL },
   { kind: 'block', blockType: SB_END_PORTAL },

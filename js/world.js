@@ -373,6 +373,9 @@ function _buildNether(grid, set, get, W, H) {
     .forEach(([r,c]) => set(r, c, BLOCK.GOLD_ORE));
   [ [26,325],[26,360],[26,410],[26,440] ]
     .forEach(([r,c]) => set(r, c, BLOCK.NETHERITE_ORE));
+  // Glowstone clusters on ceiling (mineable; needed for Respawn Anchor crafting)
+  [ [26,318],[26,350],[26,385],[26,420],[26,445] ]
+    .forEach(([r,c]) => set(r, c, BLOCK.GLOWSTONE));
 
   // Goal pedestal (already set in buildWorld after this)
   // Raised platform
