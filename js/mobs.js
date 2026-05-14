@@ -80,6 +80,9 @@ class Mob {
     this.alive = true;
     this.meleeDamage = 2;     // default contact damage — overridden by subclasses (Phase 12)
 
+    // Ambient sound: play once when mob first enters camera view, reset when it leaves
+    this.soundPlayed = false;
+
     // Wander / chase state
     this.state             = 'wander';
     this.wanderDir         = Math.random() < 0.5 ? -1 : 1;
@@ -358,6 +361,7 @@ class Skeleton extends Mob {
     const dy  = player.cy - this.cy;
     const len = Math.hypot(dx, dy) || 1;
     arrows.push(new Arrow(this.cx, this.cy, (dx/len)*ARROW_SPEED, (dy/len)*ARROW_SPEED, 2));
+    if (this._mobManager?.soundCallback) this._mobManager.soundCallback('sounds/bow-fire.mp3', 0.5);
   }
 
   draw(ctx, camera) {
@@ -1360,6 +1364,8 @@ class MobManager {
     this.dropConfig   = null;  // set by game.js to _mobDropSettings
     this.nightSpawnMultiplier = 1.0;   // set by game.js; 0.5 at night with boost on
     this.fullMoonActive       = false; // set by game.js; true on full moon with boost on
+    this.soundCallback        = null;  // set by game.js: fn(file, volMult?)
+    this._camera              = null;  // set by game.js after Camera is created
   }
 
   // Set up spawn points from world data
@@ -1418,9 +1424,12 @@ class MobManager {
       case 'Enderman':       mob = new Enderman(mx - 16, my - 96);       break;
       default: return null;
     }
-    if (mob && this.fullMoonActive) {
-      mob.hp    = Math.ceil(mob.hp    * 1.5);
-      mob.maxHp = Math.ceil(mob.maxHp * 1.5);
+    if (mob) {
+      mob._mobManager = this;  // back-ref so mobs can trigger sounds
+      if (this.fullMoonActive) {
+        mob.hp    = Math.ceil(mob.hp    * 1.5);
+        mob.maxHp = Math.ceil(mob.maxHp * 1.5);
+      }
     }
     return mob;
   }
@@ -1507,6 +1516,9 @@ class MobManager {
       if (!m.alive) { this._onMobDeath(m); return false; }
       return true;
     });
+
+    // Ambient sounds (screen-visibility based)
+    if (this._camera) this.updateAmbientSounds(this._camera);
 
     // Blaze shots
     this.blazeShots = this.blazeShots.filter(bs => { bs.update(player, level); return bs.alive; });
@@ -1599,7 +1611,51 @@ class MobManager {
     );
   }
 
+  updateAmbientSounds(camera) {
+    if (!this.soundCallback) return;
+    const AMBIENT_SOUNDS = {
+      Zombie:         'sounds/mob-zombie.mp3',
+      WitherSkeleton: 'sounds/mob-skeleton.mp3',
+      Skeleton:       'sounds/mob-skeleton.mp3',
+      Creeper:        'sounds/mob-creeper.mp3',
+      Blaze:          'sounds/mob-blaze.mp3',
+      Enderman:       'sounds/mob-enderman.mp3',
+      Piglin:         'sounds/mob-piglin.mp3',
+      CaveSpider:     'sounds/mob-spider.mp3',
+    };
+    // Play ambient sound once when a mob first enters the camera view; reset when it leaves
+    for (const mob of this.mobs) {
+      if (!mob.alive) continue;
+      const sx = mob.x - camera.x;
+      const sy = mob.y - camera.y;
+      const onScreen = sx > -48 && sx < CANVAS_W + 48 && sy > -48 && sy < CANVAS_H + 48;
+      if (onScreen && !mob.soundPlayed) {
+        const snd = AMBIENT_SOUNDS[mob.constructor.name];
+        if (snd) this.soundCallback(snd, 0.6);
+        mob.soundPlayed = true;
+      } else if (!onScreen) {
+        mob.soundPlayed = false;
+      }
+    }
+  }
+
   _onMobDeath(mob) {
+    // Death sound
+    if (this.soundCallback) {
+      const DEATH_SOUNDS = {
+        Zombie:         'sounds/zombie-defeated.mp3',
+        WitherSkeleton: 'sounds/skeleton-defeated.mp3',
+        Skeleton:       'sounds/skeleton-defeated.mp3',
+        Blaze:          'sounds/blaze-defeated.mp3',
+        Piglin:         'sounds/piglin-defeated.mp3',
+        Creeper:        'sounds/creeper-defeated.mp3',
+        Enderman:       'sounds/enderman-defeated.mp3',
+        CaveSpider:     'sounds/spider-defeated.mp3',
+      };
+      const snd = DEATH_SOUNDS[mob.constructor.name];
+      if (snd) this.soundCallback(snd, 1.0);
+    }
+
     // XP orbs
     for (let i = 0; i < 2; i++) {
       const ox = mob.cx + (Math.random() - 0.5) * 22;

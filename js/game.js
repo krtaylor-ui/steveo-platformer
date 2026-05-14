@@ -53,6 +53,8 @@ class Game {
       controllerAimSensitivity: 1.0,
       twoPlayerMode:            options.twoPlayerMode ?? false,
       disableXpSpeedBoost:      false,
+      musicVolume:              DEFAULT_MUSIC_VOLUME,
+      sfxVolume:                DEFAULT_SFX_VOLUME,
     };
     // Track the user's explicit pre-launch 2P choice so it can survive world-load overwrite
     this._launchTwoPlayerMode = options.twoPlayerMode;
@@ -67,6 +69,24 @@ class Game {
     this._netherBedFuse       = 0;    // countdown (frames) before Nether bed explosion
     this._netherBedPos        = null; // { col, row } of bed about to explode
     this._activeRespawnAnchor = null; // { col, row } of set respawn anchor
+
+    // Phase 13.5-4: Audio cache (pre-loaded for zero-latency playback)
+    this._audioCache = {};
+
+    // Phase 13.5: Sound & Music System
+    this._musicSystem = {
+      bgAudio:           null,    // HTMLAudioElement for background music
+      fadeInterval:      null,    // setInterval handle for fade effects
+      currentTrack:      null,    // disc key or file path of current BG track
+      lastNormalTrack:   null,    // BG track to resume after boss music ends
+      bossMusicActive:   false,   // true while Ender Dragon battle music is playing
+      netherMusicActive: false,   // true while Nether boss music is playing
+      victoryMusicActive: false,  // true while victory fanfare is playing (suppresses endBoss)
+    };
+    this._collectedDiscs   = new Set();     // Set of disc keys the player has found
+    this._musicPlayerBlocks = new Map();    // "col,row" → {col,row,isConfigured,configuredSongs[]}
+    this._musicPlayerUI    = null;          // null | {block, mode:'config'|'playback', tempSongs:Set}
+    this._mobSoundTimer    = 0;            // counts up; mob sound fires every 300 frames
 
     this._buildLevel();
 
@@ -130,7 +150,9 @@ class Game {
     // Phase 11D: End entry tracking + advanced world settings
     this._endEntryCell    = null;  // { col, row } set when player enters End Portal
     // _worldAdvSettings and player2 state initialized before _buildLevel() above
-    this._wsTab            = 'drops'; // 'drops' | 'time' | 'advanced' | 'input'
+    this._wsTab            = 'drops'; // 'drops' | 'time' | 'advanced' | 'input' | 'audio'
+    this._wsAudioDragTarget = null;   // 'music' | 'sfx' | null — tracks slider drag in Audio tab
+    this._pauseVolDrag      = null;   // 'music' | 'sfx' | null — tracks slider drag in pause SETTINGS tab
 
     // Context action for gamepad RB (computed every frame)
     this._contextAction = null;   // 'chest' | 'lever' | 'bed' | 'portal' | null
@@ -288,6 +310,9 @@ class Game {
     // Portal fade transition
     this._portalTransition = null; // { phase:'out'|'in', timer, destX, destY }
 
+    // Initialize audio (Phase 13.5) — must run after all state is set
+    this._initAudio();
+
     this._loop = this._loop.bind(this);
     requestAnimationFrame(this._loop);
   }
@@ -306,10 +331,13 @@ class Game {
       this.player2 = null;
     }
     this._p2RespawnTimer = 0;
-    this.mobManager            = new MobManager();
-    this.mobManager.dropConfig = this._mobDropSettings;
+    this.mobManager                = new MobManager();
+    this.mobManager.dropConfig     = this._mobDropSettings;
+    this.mobManager.soundCallback  = (file, vol) => this._playSound(file, vol);
     this.mobManager.setupSpawnPoints(data.spawnPoints);
+    // _camera is set after Camera construction below
     this.camera          = new Camera(this.level.pixelWidth, this.level.pixelHeight);
+    this.mobManager._camera = this.camera;
     this.bedSpawns       = data.bedPositions;
     this._activeSpawnBed = -1;
     this.portalData      = data.portalData;
@@ -317,6 +345,7 @@ class Game {
 
     // Redstone
     this.redstone = new RedstoneSystem(data.redstoneComponents);
+    this.redstone.soundCallback = (file, vol) => this._playSound(file, vol);
 
     // Monkey-patch Level.isSolid for trapdoors + portal frame passthrough
     const _origIsSolid = this.level.isSolid.bind(this.level);
@@ -396,6 +425,18 @@ class Game {
   destroy() {
     this._running = false;
     this._closeSaveDialog();
+    // Fade out game audio so it doesn't bleed into the menu
+    const bg = this._musicSystem?.bgAudio;
+    if (bg && !bg.paused) {
+      const startVol = bg.volume;
+      const steps = 40;
+      let count = 0;
+      const iv = setInterval(() => {
+        count++;
+        bg.volume = Math.max(0, startVol - count * (startVol / steps));
+        if (count >= steps) { clearInterval(iv); bg.pause(); }
+      }, 50);
+    }
   }
 
   _notify(text, color = '#fff', life = 180) {
@@ -536,6 +577,14 @@ class Game {
       return;
     }
 
+    // ── Music Player UI: update when open (all modes) ─────────────────────────
+    if (this._musicPlayerUI) {
+      this._updateMusicPlayerUI();
+      if (this.player2) this.camera.followMidpoint(this.player, this.player2);
+      else              this.camera.follow(this.player);
+      return;
+    }
+
     // ── Save dialog (sandbox): block all gameplay while open ──
     if (this._saveDialog) {
       this._updateSaveDialog();
@@ -578,6 +627,7 @@ class Game {
           this._chestOpen    = ch;
           this.inventoryOpen = true;
           this.craftingMenu._eWasDown = true;  // consume E so crafting menu ignores it
+          this._playSound('sounds/chest-open.mp3');
           // Show open-lid state
           this.level.set(ch.row, ch.col, BLOCK.CHEST);  // triggers redraw with state.open=true
         }
@@ -667,6 +717,7 @@ class Game {
     if (crafted) {
       const data = ARMOR_DATA[crafted] || TOOL_DATA[crafted];
       if (data) this._notify(`Crafted: ${data.name}!`, data.color, 240);
+      this._playSound('sounds/crafting-item.mp3');
     }
     if (this.craftingMenu.open) return;
 
@@ -909,6 +960,7 @@ class Game {
           Math.sin(angle) * speed,
           PLAYER_ARROW_DAMAGE
         );
+        this._playSound('sounds/bow-fire.mp3');
         if (!this._worldAdvSettings.unlimitedArrows) this._consumeArrow();
         this.player.bowDrawing   = false;
         this.player.drawProgress = 0;
@@ -920,6 +972,7 @@ class Game {
         this._playerAttackDragon();
         this.player.attackCooldown = ATTACK_COOLDOWN;
         this.player.swingTimer     = 15;
+        this._playSound('sounds/attack-sword.mp3');
       }
     } else if (this.player.weaponMode === 'pickaxe') {
       // ── Pickaxe: Space/click also attacks mobs; mouse-hold mines (below) ──
@@ -944,7 +997,10 @@ class Game {
     const lDown = this.input.isDown('KeyL');
     if (lDown && !this._lKeyWas) {
       const toggled = this.redstone.tryToggleLeverNear(this.level, this.player);
-      if (toggled) this._rsStartFromSource(toggled.col, toggled.row, toggled.on);
+      if (toggled) {
+        this._rsStartFromSource(toggled.col, toggled.row, toggled.on);
+        this._playSound('sounds/lever.mp3', 0.7);
+      }
     }
     this._lKeyWas = lDown;
 
@@ -958,16 +1014,33 @@ class Game {
     this.redstone.update(this.level, this.player, this.input);
     this.redstone.updatePistonAnimations();
     this._applyPistonKnockback();
-    // Before TNT explodes, drop items from any chests in blast radius
+    // Before TNT explodes, drop items from any chests in blast radius + play sound + visual
     for (const comp of this.redstone.components) {
       if (comp.type === 'tnt' && comp.fuse === 1) {
+        this._playSound('sounds/explosion-tnt.mp3');
         const R = 3;
+        const cx = (comp.col + 0.5) * BLOCK_SIZE;
+        const cy = (comp.row + 0.5) * BLOCK_SIZE;
+        // Larger explosion visual than creeper (3.5 vs 2.5 block radius)
+        this.mobManager.explosions.push(new ExplosionEffect(cx, cy, 3.5 * BLOCK_SIZE));
+        // Camera shake
+        this._screenShake.intensity = 8;
+        this._screenShake.frames    = 18;
+        this._screenShake.maxFrames = 18;
         for (const ch of this._chests.values()) {
           if (Math.abs(ch.col - comp.col) <= R && Math.abs(ch.row - comp.row) <= R)
             this._dropChestItems(ch.col, ch.row);
         }
       }
     }
+    // Consume mob explosion events (creeper/etc) — play sound + shake + clear
+    for (const ev of this.mobManager.explosionEvents) {
+      this._playSound('sounds/explosion-creeper.mp3');
+      this._screenShake.intensity = 5;
+      this._screenShake.frames    = 12;
+      this._screenShake.maxFrames = 12;
+    }
+    this.mobManager.explosionEvents = [];
     this.redstone.tickTnt(this.level, this.mobManager);
     // Remove dust/gate overlays whose block was destroyed (e.g. by TNT).
     // Rate-limited: only scan every 30 frames — TNT has a 120-frame fuse so this is plenty.
@@ -1017,6 +1090,7 @@ class Game {
         if (this.player.hp < this.player.maxHp) {
           const healed = this.player.heal(BLOCK_DATA[BLOCK.APPLE].healAmount);
           this.player.takeFromSlot(this.player.selectedSlot);
+          this._playSound('sounds/eat-apple.mp3', 0.8);
           this._notify(`Ate an apple! +${healed} HP`, '#44FF44', 120);
         } else {
           this._notify('Already at full health!', '#AAFFAA', 80);
@@ -1085,6 +1159,7 @@ class Game {
               this.level.set(this.level.goalRow, this.level.goalCol, BLOCK.AIR);
             }
             this.level.set(hoverRow, hoverCol, sb);
+            this._playSound('sounds/placing-block.mp3', 0.6);
             if (sb === BLOCK.GOAL) {
               this.level.goalCol = hoverCol;
               this.level.goalRow = hoverRow;
@@ -1126,6 +1201,15 @@ class Game {
                   dir: 'right', inverted: false, extended: false, sandboxPlaced: true,
                 });
                 this._pistonConfigPopup = { col: hoverCol, row: hoverRow };
+              }
+            } else if (sb === BLOCK.MUSIC_PLAYER) {
+              const mpk = `${hoverCol},${hoverRow}`;
+              if (!this._musicPlayerBlocks.has(mpk)) {
+                this._musicPlayerBlocks.set(mpk, {
+                  col: hoverCol, row: hoverRow,
+                  isConfigured: false, configuredSongs: [],
+                });
+                this._notify('Music Player placed — right-click to configure', '#CC88FF', 140);
               }
             }
             } // end single-block placement (else branch of brushSize > 1)
@@ -1190,6 +1274,7 @@ class Game {
             comp.on = !comp.on;
             this._notify(`Lever: ${comp.on ? 'ON' : 'OFF'}`, '#FFD700', 80);
             this._rsStartFromSource(hoverCol, hoverRow, comp.on);
+            this._playSound('sounds/lever.mp3', 0.7);
           }
         } else if (target === BLOCK.TRAPDOOR &&
                    !this.sandbox.isEggSelected && !this.sandbox.isToolSelected &&
@@ -1199,6 +1284,7 @@ class Game {
           if (comp && comp.type === 'trapdoor') {
             comp.open = !comp.open;
             this._notify(`Trap Door: ${comp.open ? 'OPEN' : 'CLOSED'}`, '#C8A558', 80);
+            this._playSound('sounds/trapdoor.mp3', 0.65);
           }
         } else if (target === BLOCK.PISTON_BODY) {
           // Click placed piston body → open direction config again
@@ -1235,6 +1321,12 @@ class Game {
           this._worldSettingsOpen = true;
         }
       }
+    }
+
+    // ── Music Player: right-click to open UI (all modes) ──────────────────────
+    if (this.input.mouse.rightClicked && !this._musicPlayerUI) {
+      const mp = this._nearMusicPlayer();
+      if (mp) this._openMusicPlayerUI(mp);
     }
 
     // ── Sandbox: Shift+hold continuous paint / Ctrl+hold selection drag ──────
@@ -1297,6 +1389,7 @@ class Game {
         this.player.pickaxeTier, this.player.pickaxeSpeed
       );
       if (mineResult?.broken) {
+        this._playSound('sounds/mining.mp3');
         if (mineResult.blockType === BLOCK.GOAL) {
           this.level.goalCol = -1;
           this.level.goalRow = -1;
@@ -1326,6 +1419,7 @@ class Game {
       const dmgTaken = hpBefore - this.player.hp;
       if (dmgTaken > 0) {
         this.mobManager.addPlayerDamageNum(this.player, dmgTaken);
+        this._playSound('sounds/player-damaged.mp3');
         this._checkDeath();
       }
 
@@ -1374,10 +1468,13 @@ class Game {
       const collected = this.state !== 'dead'
         ? this.mobManager.collectDropsNear(this.player)
         : [];
+      if (collected.length > 0) this._playSound('sounds/item-collected.mp3', 0.7);
       for (const { itemKey, amount } of collected) {
         if (typeof itemKey === 'string') {
-          // Tool or armor dropped on death — re-equip
-          if (ARMOR_DATA[itemKey]) {
+          if (itemKey.startsWith('disc:')) {
+            // Music disc — unlock song in playlist
+            this._collectMusicDisc(itemKey.slice(5));
+          } else if (ARMOR_DATA[itemKey]) {
             this.player.addArmorItem(itemKey);
           } else if (TOOL_DATA[itemKey]) {
             const td = TOOL_DATA[itemKey];
@@ -1388,6 +1485,37 @@ class Game {
         } else {
           for (let i = 0; i < amount; i++) this.player.addBlock(itemKey);
           if (itemKey === BLOCK.BLAZE_ROD) this.player.discoveredOres.add(BLOCK.BLAZE_ROD);
+        }
+      }
+      // ── Periodic mob sounds ────────────────────────────────
+      this._mobSoundTimer++;
+      if (this._mobSoundTimer >= 300) {
+        this._mobSoundTimer = 0;
+        this._playNearbyMobSound();
+      }
+      // ── Boss/Nether/Victory music state machine ───────────────
+      const playerCol   = Math.floor(this.player.x / BLOCK_SIZE);
+      const playerInEnd = playerCol >= BIOME_END_START;
+      const inNether    = playerCol >= BIOME_CAVE_END && playerCol < BIOME_END_START;
+      // dragonAlive: true only when player is in End AND dragon is alive (not yet in defeat animation)
+      // Omitting state !== 'defeated' check keeps it true during the 4-s defeat animation so
+      // _endBossMusic() never fires early — _playVictoryMusic() handles the transition.
+      const dragonAlive = playerInEnd && this._dragon && this._dragon.isAlive;
+      const ms          = this._musicSystem;
+
+      // Don't re-trigger music transitions while the player is on the death screen
+      if (this.state !== 'dead') {
+        if (dragonAlive && !ms.bossMusicActive && !ms.victoryMusicActive) {
+          // Dragon fight takes priority — stop Nether music if it's running
+          if (ms.netherMusicActive) { ms.netherMusicActive = false; ms.lastNormalTrack = null; }
+          this._startBossMusic();
+        } else if (playerInEnd && this._dragon && !dragonAlive && ms.bossMusicActive && !ms.victoryMusicActive) {
+          // Only end boss music once the dragon object exists but is no longer alive (post-victory edge case)
+          this._endBossMusic();
+        } else if (inNether && !ms.netherMusicActive && !ms.bossMusicActive && !ms.victoryMusicActive) {
+          this._startNetherMusic();
+        } else if (!inNether && ms.netherMusicActive && !ms.bossMusicActive) {
+          this._stopNetherMusic();
         }
       }
     }
@@ -1421,58 +1549,93 @@ class Game {
       }
     }
 
-    // ── F key: Sandbox save  /  Normal & Platformer bed respawn ────
+    // ── F key: Sandbox save  /  Normal & Platformer bed/anchor respawn ────
     const fNow = this.input.isDown('KeyF');
     if (fNow && !this._fWas) {
       if (this.gameMode === 'sandbox') {
         this._openSaveDialog();
-      } else if (this._sandboxLoadKey || this._platformerLoadKey) {
-        // Normal/Platformer mode playing a sandbox world — set respawn at any nearby bed
+      } else {
         const pCol = Math.floor(this.player.cx / BLOCK_SIZE);
         const pRow = Math.floor(this.player.cy / BLOCK_SIZE);
-        let bedAnchor = null; // { col, row } of the left-most BED cell
-        outer:
-        for (let dc = -3; dc <= 3; dc++) {
-          for (let dr = 0; dr <= 2; dr++) {
-            const r = pRow + dr, c = pCol + dc;
-            if (this.level.get(r, c) === BLOCK.BED) {
-              // Walk left to the anchor cell of this 2-wide bed
-              let lc = c;
-              while (lc > 0 && this.level.get(r, lc - 1) === BLOCK.BED) lc--;
-              bedAnchor = { col: lc, row: r };
-              break outer;
+        const inNether = pCol >= BIOME_CAVE_END && pCol < BIOME_END_START;
+
+        // Check nearby Respawn Anchor first (works in Nether)
+        let anchorFound = null;
+        outer_fa: for (let dc = -2; dc <= 2; dc++) {
+          for (let dr = -2; dr <= 2; dr++) {
+            if (this.level.get(pRow + dr, pCol + dc) === BLOCK.RESPAWN_ANCHOR) {
+              anchorFound = { col: pCol + dc, row: pRow + dr };
+              break outer_fa;
             }
           }
         }
-        if (bedAnchor) {
-          // Register in bedSpawns so the death system and glow both work
-          let idx = this.bedSpawns.findIndex(b => b.col === bedAnchor.col && b.row === bedAnchor.row);
-          if (idx < 0) idx = this.bedSpawns.push(bedAnchor) - 1;
-          this._activeSpawnBed = idx;
-          if (this._sandboxLoadKey) this._saveNormalProgress(); // save only for normal mode
-          this._notify('Respawn point set!', '#FFDD44', 220);
+        if (anchorFound) {
+          this._activeRespawnAnchor = anchorFound;
+          this._activeSpawnBed = -1;
+          this._playSound('sounds/use-bed.mp3', 0.8);
+          this._notify('Nether respawn point set!', '#AA88FF', 220);
+          if (this._sandboxLoadKey) this._saveNormalProgress();
+        } else if (inNether) {
+          // Bed in Nether — arm explosion fuse
+          let bedPos = null;
+          outer_nb: for (let dc = -3; dc <= 3; dc++) {
+            for (let dr = -1; dr <= 3; dr++) {
+              if (this.level.get(pRow + dr, pCol + dc) === BLOCK.BED) {
+                bedPos = { col: pCol + dc, row: pRow + dr };
+                break outer_nb;
+              }
+            }
+          }
+          if (bedPos && this._netherBedFuse <= 0) {
+            this._netherBedFuse = 180;
+            this._netherBedPos  = bedPos;
+            this._notify('Beds explode in the Nether!', '#FF4444', 200);
+          }
+        } else if (this._sandboxLoadKey || this._platformerLoadKey) {
+          // Normal/Platformer mode playing a sandbox world — set respawn at any nearby bed
+          let bedAnchor = null;
+          outer:
+          for (let dc = -3; dc <= 3; dc++) {
+            for (let dr = 0; dr <= 2; dr++) {
+              const r = pRow + dr, c = pCol + dc;
+              if (this.level.get(r, c) === BLOCK.BED) {
+                let lc = c;
+                while (lc > 0 && this.level.get(r, lc - 1) === BLOCK.BED) lc--;
+                bedAnchor = { col: lc, row: r };
+                break outer;
+              }
+            }
+          }
+          if (bedAnchor) {
+            let idx = this.bedSpawns.findIndex(b => b.col === bedAnchor.col && b.row === bedAnchor.row);
+            if (idx < 0) idx = this.bedSpawns.push(bedAnchor) - 1;
+            this._activeSpawnBed = idx;
+            if (this._sandboxLoadKey) this._saveNormalProgress();
+            this._notify('Respawn point set!', '#FFDD44', 220);
+            this._playSound('sounds/use-bed.mp3');
+          } else {
+            this._notify('No bed nearby — walk to a bed and press F', '#FF9944', 180);
+          }
         } else {
-          this._notify('No bed nearby — walk to a bed and press F', '#FF9944', 180);
-        }
-      } else {
-        // Default normal mode: set spawn at pre-defined checkpoint beds
-        const playerCol = Math.floor(this.player.cx / BLOCK_SIZE);
-        let usedBed = false;
-        for (let idx = 0; idx < this.bedSpawns.length; idx++) {
-          const bed  = this.bedSpawns[idx];
-          if (Math.abs(playerCol - bed.col) <= 3) {
-            if (idx !== this._activeSpawnBed) {
-              this._activeSpawnBed = idx;
-              this._notify('Spawn point set! You will respawn here.', '#FFDD44', 220);
-            } else {
-              this._notify('Spawn point already set here.', '#FFDD44', 120);
+          // Default normal mode: set spawn at pre-defined checkpoint beds
+          let usedBed = false;
+          for (let idx = 0; idx < this.bedSpawns.length; idx++) {
+            const bed  = this.bedSpawns[idx];
+            if (Math.abs(pCol - bed.col) <= 3) {
+              if (idx !== this._activeSpawnBed) {
+                this._activeSpawnBed = idx;
+                this._notify('Spawn point set! You will respawn here.', '#FFDD44', 220);
+              } else {
+                this._notify('Spawn point already set here.', '#FFDD44', 120);
+              }
+              this._playSound('sounds/use-bed.mp3', 0.8);
+              usedBed = true;
+              break;
             }
-            usedBed = true;
-            break;
           }
-        }
-        if (!usedBed) {
-          this._notify('No bed nearby — walk up to a bed and press F', '#FF9944', 180);
+          if (!usedBed) {
+            this._notify('No bed nearby — walk up to a bed and press F', '#FF9944', 180);
+          }
         }
       }
     }
@@ -1520,8 +1683,41 @@ class Game {
     // ── Portal cooldown tick ───────────────────────────────
     if (this.portalCooldown > 0) this.portalCooldown--;
 
+    // ── Nether bed fuse countdown ──────────────────────────
+    if (this._netherBedFuse > 0) {
+      this._netherBedFuse--;
+      if (this._netherBedFuse === 0 && this._netherBedPos) {
+        // Trigger explosion at bed location
+        this._playSound('sounds/explosion-bed.mp3');
+        const { col, row } = this._netherBedPos;
+        const R = 2;
+        const bx = (col + 0.5) * BLOCK_SIZE, by = (row + 0.5) * BLOCK_SIZE;
+        // Visual + shake (same sprite as TNT, same size)
+        this.mobManager.explosions.push(new ExplosionEffect(bx, by, 3 * BLOCK_SIZE));
+        this._screenShake.intensity = 7;
+        this._screenShake.frames    = 15;
+        this._screenShake.maxFrames = 15;
+        for (let dr = -R; dr <= R; dr++) {
+          for (let dc = -R; dc <= R; dc++) {
+            if (dr * dr + dc * dc <= R * R) {
+              const b = this.level.get(row + dr, col + dc);
+              if (b !== BLOCK.BEDROCK && b !== BLOCK.AIR)
+                this.level.set(row + dr, col + dc, BLOCK.AIR);
+            }
+          }
+        }
+        // Damage player if in blast radius
+        if (Math.hypot(this.player.cx - bx, this.player.cy - by) <= (R + 1) * BLOCK_SIZE) {
+          this.player.takeDamage(8);
+        }
+        this._netherBedPos = null;
+      }
+    }
+
     // ── Ender Dragon ───────────────────────────────────────
-    if (!this._dragon && !this._dragonDefeated && this._dragonSpritesLoaded) this._spawnDragon();
+    // Gate spawn on player being in the End so boss music doesn't start prematurely
+    if (Math.floor(this.player.x / BLOCK_SIZE) >= BIOME_END_START &&
+        !this._dragon && !this._dragonDefeated && this._dragonSpritesLoaded) this._spawnDragon();
     this._updateDragon();
 
     // ── Camera ─────────────────────────────────────────────
@@ -2269,6 +2465,7 @@ class Game {
 
   _triggerDeath(cause = 'You died') {
     if (this.state === 'dead') return; // already dead
+    this._playSound('sounds/player-death.mp3');
     this._deathCause     = cause;
     this._deathTimestamp = Date.now();
 
@@ -2321,6 +2518,10 @@ class Game {
     this._deathHadDrops = drops.length > 0;
     if (drops.length > 0) this.mobManager.dropItems(drops);
     this.state = 'dead';
+    // Fade music on death; clear boss/nether state so it doesn't persist post-respawn
+    this._musicSystem.bossMusicActive   = false;
+    this._musicSystem.netherMusicActive = false;
+    this._fadeOutMusic(600, null);
   }
 
   // ── Phase 12: 2-Player Co-op helpers ──────────────────────
@@ -2404,6 +2605,22 @@ class Game {
   }
 
   _doRespawn() {
+    // Respawn Anchor takes priority over bed if set
+    if (this._activeRespawnAnchor) {
+      const anc = this._activeRespawnAnchor;
+      // Only use anchor if it still exists in the world
+      if (this.level.get(anc.row, anc.col) === BLOCK.RESPAWN_ANCHOR) {
+        this.player.respawnAt(
+          (anc.col + 0.5) * BLOCK_SIZE - this.player.width / 2,
+          anc.row * BLOCK_SIZE - this.player.height
+        );
+        if (this._deathHadDrops) this._notify('Items dropped nearby.', '#FF4444', 300);
+        this.state = 'playing';
+        this._advancePlaylist();
+        return;
+      }
+      this._activeRespawnAnchor = null;  // anchor was destroyed
+    }
     const bed = this._activeBedSpawn();
     if (bed) {
       this.player.respawnAt(
@@ -2415,6 +2632,8 @@ class Game {
     }
     if (this._deathHadDrops) this._notify('Items dropped nearby.', '#FF4444', 300);
     this.state = 'playing';
+    // Resume background music after respawn
+    this._advancePlaylist();
   }
 
   _nearestMobName() {
@@ -2460,7 +2679,16 @@ class Game {
       const destX = END_PORTAL_ARRIVAL_COL * BLOCK_SIZE - this.player.width / 2;
       const destY = END_PORTAL_ARRIVAL_ROW * BLOCK_SIZE - this.player.height;
       this._portalTransition = { phase: 'out', timer: 0, destX, destY };
+      this._playSound('sounds/end-portal.mp3');
       this._notify('Entering The End...', '#AA44FF', 200);
+      // Start End battle music immediately (dragon spawns on next frame)
+      if (!this._musicSystem.bossMusicActive && !this._dragonDefeated) {
+        if (this._musicSystem.netherMusicActive) {
+          this._musicSystem.netherMusicActive = false;
+          this._musicSystem.lastNormalTrack = null;
+        }
+        this._startBossMusic();
+      }
       return;
     }
 
@@ -2478,6 +2706,7 @@ class Game {
             const destY = (dest.anchorRow + 3)   * BLOCK_SIZE - this.player.height;
             this._portalTransition = { phase: 'out', timer: 0, destX, destY };
             const label = dest.biome === 'nether' ? `Nether portal ${dest.label}` : `Portal ${dest.label}`;
+            this._playSound('sounds/nether-portal.mp3');
             this._notify(`\u27a1 Entering ${label}...`, '#AA00FF', 200);
             // Auto-complete ruined portal at destination if not yet activated
             const rpKey = `${dest.anchorRow},${dest.anchorCol}`;
@@ -2507,6 +2736,7 @@ class Game {
           const destX = (dest.anchorCol + 1.5) * BLOCK_SIZE - this.player.width / 2;
           const destY = (dest.anchorRow + 3)   * BLOCK_SIZE - this.player.height;
           this._portalTransition = { phase: 'out', timer: 0, destX, destY };
+          this._playSound('sounds/nether-portal.mp3');
           this._notify(`Portal ${portal.label} → ${dest.label}`, '#AA00FF', 200);
           // Auto-complete ruined portal at destination if not yet activated
           const rpKey = `${dest.anchorRow},${dest.anchorCol}`;
@@ -2526,9 +2756,11 @@ class Game {
     const inNether = pCol >= 329 && pCol <= 330 && pRow >= 11 && pRow <= 13;
     if (inCave) {
       this._portalTransition = { phase: 'out', timer: 0, destX: pd.caveExit.x, destY: pd.caveExit.y };
+      this._playSound('sounds/nether-portal.mp3');
       this._notify('Entering the Nether...', '#AA00FF', 200);
     } else if (inNether) {
       this._portalTransition = { phase: 'out', timer: 0, destX: pd.netherExit.x, destY: pd.netherExit.y };
+      this._playSound('sounds/nether-portal.mp3');
       this._notify('Returning from the Nether...', '#44DDFF', 200);
     }
   }
@@ -2817,6 +3049,17 @@ class Game {
 
     ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
 
+    // Apply screen shake (always save/restore so the restore is unconditional)
+    ctx.save();
+    const shake = this._screenShake;
+    if (shake.frames > 0) {
+      const decay = shake.frames / shake.maxFrames;
+      const ox    = (Math.random() * 2 - 1) * shake.intensity * decay;
+      const oy    = (Math.random() * 2 - 1) * shake.intensity * decay;
+      ctx.translate(ox, oy);
+      shake.frames--;
+    }
+
     const biome = this._playerBiome();
     this._drawSky(ctx, biome);
     if (biome === 'plains') {
@@ -2933,11 +3176,14 @@ class Game {
 
     if (this._dragonVictoryScreen) this._drawDragonVictoryScreen(ctx);
     if (this._worldSettingsOpen)   this._drawWorldSettings(ctx);
+    if (this._musicPlayerUI)       this._drawMusicPlayerUI(ctx);
     if (this.state === 'dead') this._drawDead(ctx);
     if (this.state === 'won') this._drawWin(ctx);
     if (this.state === 'paused' || this.state === 'confirmExit') this._drawPauseOverlay(ctx);
     if (this._saveDialog) this._drawSaveDialog(ctx);
     if (this._tutorialOpen) this._drawTutorial(ctx);
+
+    ctx.restore(); // matches screen-shake save at top of _render
   }
 
   // ── Inventory panel ──────────────────────────────────────
@@ -5055,6 +5301,13 @@ class Game {
       if (blockType === BLOCK.RECEIVER) {
         this._receivers.delete(`${col},${row}`);
       }
+      if (blockType === BLOCK.MUSIC_PLAYER) {
+        const mpk = `${col},${row}`;
+        if (this._musicPlayerUI?.block?.col === col && this._musicPlayerUI?.block?.row === row) {
+          this._musicPlayerUI = null;
+        }
+        this._musicPlayerBlocks.delete(mpk);
+      }
       // Remove any dust/gate overlay on this cell
       const _hadDustOrGate = this._dustBlocks.has(`${col},${row}`) || this._gateBlocks.has(`${col},${row}`);
       this._dustBlocks.delete(`${col},${row}`);
@@ -5192,8 +5445,10 @@ class Game {
           }
         }
         anchor.active = true;
+        this._playSound('sounds/enable-end-portal.mp3');
         this._notify('The End Portal activates! Press U inside to enter The End.', '#AA44FF', 360);
       } else {
+        this._playSound('sounds/placing-eye-of-ender.mp3');
         this._notify(`Eye of Ender placed! (${anchor.eyeCount}/5)`, '#AA44FF', 140);
       }
       return;
@@ -5239,6 +5494,7 @@ class Game {
     if (crystal.destroyed) return;
     crystal.destroyed = true;
     this.level.set(crystal.row, crystal.col, BLOCK.AIR);
+    this._playSound('sounds/end-crystal-explosion.mp3');
     this._notify('End Crystal destroyed!', '#FFAA00', 200);
   }
 
@@ -5345,6 +5601,9 @@ class Game {
       diveStartY:             0,
       diveGroundDist:         0,
       defeatTimer:            0,
+      roarTimer:              0,
+      nextRoarTime:           Math.random() * 4000 + 3000,  // 3-7 s in ms
+      wingFlapPlayed:         false,
     };
     // Restore saved state from load (if any)
     if (this._savedDragonState) {
@@ -5370,8 +5629,11 @@ class Game {
         this._dragonDefeated      = true;
         this._dragonExitPortal    = true;
         this._dragonVictoryScreen = true;
-        // Drop Dragon Egg at defeat location
-        this.mobManager.dropItems([{ x: d.x + DRAGON_BODY_W / 2, y: d.y, itemKey: BLOCK.DRAGON_EGG, amount: 1 }]);
+        // Drop Dragon Egg + Dragon's Lament music disc at defeat location
+        this.mobManager.dropItems([
+          { x: d.x + DRAGON_BODY_W / 2, y: d.y, itemKey: BLOCK.DRAGON_EGG, amount: 1 },
+          { x: d.x + DRAGON_BODY_W / 2 + BLOCK_SIZE, y: d.y, itemKey: 'disc:DRAGONS_LAMENT', amount: 1 },
+        ]);
       }
       return;
     }
@@ -5384,6 +5646,8 @@ class Game {
       d.state = 'defeated';
       d.defeatTimer = 0;
       d.fireProjectiles = [];
+      this._playSound('sounds/ender-dragon-defeated.mp3');
+      this._playVictoryMusic();
       return;
     }
 
@@ -5423,6 +5687,7 @@ class Game {
       if (horizDist <= 10 * BLOCK_SIZE) {
         d.state = 'diving';
         d.diveDistance = 0;
+        this._playSound('sounds/ender-dragon-dive.mp3');
       }
     } else if (d.state === 'diving') {
       const diveSpeed = 3 * DRAGON_SPEED;
@@ -5478,6 +5743,26 @@ class Game {
         d.y += BOB_OFFSETS[d.animationFrame] * BLOCK_SIZE;
       }
     }
+    // ── Dragon sounds: only play when player is in End dimension ─
+    const playerInEnd = this.player.x >= BIOME_END_START * BLOCK_SIZE;
+    if (playerInEnd) {
+      // Periodic roar (every 3-7 seconds while alive)
+      if (d.isAlive && d.state !== 'defeated') {
+        d.roarTimer += 1000 / 60;
+        if (d.roarTimer >= d.nextRoarTime) {
+          d.roarTimer = 0;
+          d.nextRoarTime = Math.random() * 4000 + 3000;
+          this._playSound('sounds/ender-dragon.mp3');
+        }
+      }
+      // Wing flap (synced with animationFrame peak)
+      if (d.animationFrame === 4 && !d.wingFlapPlayed) {
+        this._playSound('sounds/ender-dragon-wing-flap.mp3', 0.7);
+        d.wingFlapPlayed = true;
+      }
+    }
+    if (d.animationFrame === 0) d.wingFlapPlayed = false;
+
     // Crystal healing: once per frame, only when player is in End and healing enabled
     if (this.player.x >= BIOME_END_START * BLOCK_SIZE && !this._worldAdvSettings.disableDragonHealing) {
       for (const crystal of this._endCrystals) {
@@ -5527,6 +5812,7 @@ class Game {
         d.headOpen      = true;
         d.headOpenTimer = 60;
         d.fireAttackCooldown = 180;
+        this._playSound('sounds/ender-dragon-fireball.mp3');
       }
     }
 
@@ -5774,8 +6060,11 @@ class Game {
       destX = 325 * BLOCK_SIZE - this.player.width / 2;
       destY = 11 * BLOCK_SIZE - this.player.height;
     }
+    this._playSound('sounds/end-portal.mp3');
     this._portalTransition = { phase: 'out', timer: 0, destX, destY };
     this._notify('Leaving the End...', '#AA44FF', 120);
+    // Fade boss music when leaving End (dragon defeated at this point)
+    if (this._musicSystem.bossMusicActive) this._endBossMusic();
   }
 
   // ── World Settings helpers ──────────────────────────────────
@@ -5839,6 +6128,25 @@ class Game {
       return;
     }
 
+    // Audio slider drag: must run every frame (needs mouse.down, not just click)
+    if (this._wsTab === 'audio') {
+      const slX = L.px + 200, slW = L.pw - 220;
+      if (this.input.mouse.down) {
+        if (mx >= slX && mx <= slX + slW && my >= L.FIRST_ROW + 4 && my <= L.FIRST_ROW + 28) {
+          const v = Math.max(0, Math.min(1, (mx - slX) / slW));
+          this._worldAdvSettings.musicVolume = Math.round(v * 20) / 20; // snap to 5% increments
+          if (this._musicSystem.bgAudio) this._musicSystem.bgAudio.volume = this._worldAdvSettings.musicVolume * MAX_AUDIO_VOLUME;
+          this._wsAudioDragTarget = 'music';
+        } else if (mx >= slX && mx <= slX + slW && my >= L.FIRST_ROW + 56 && my <= L.FIRST_ROW + 80) {
+          const v = Math.max(0, Math.min(1, (mx - slX) / slW));
+          this._worldAdvSettings.sfxVolume = Math.round(v * 20) / 20;
+          this._wsAudioDragTarget = 'sfx';
+        }
+      } else {
+        this._wsAudioDragTarget = null;
+      }
+    }
+
     if (!this.input.mouse.clicked) return;
 
     // Close button (X)
@@ -5857,7 +6165,7 @@ class Game {
     }
 
     // Tab bar clicks
-    const TABS = [{ id: 'drops', label: 'Mob Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }];
+    const TABS = [{ id: 'drops', label: 'Mob Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }];
     for (let t = 0; t < TABS.length; t++) {
       const tx = L.px + 10 + t * 110;
       if (mx >= tx && mx <= tx + 100 && my >= L.TAB_Y && my <= L.TAB_Y + L.TAB_H) {
@@ -5865,6 +6173,8 @@ class Game {
         return;
       }
     }
+
+    if (this._wsTab === 'audio') return; // sliders handled above; no click-based actions
 
     if (this._wsTab === 'input') {
       const SENS_VALS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
@@ -5999,7 +6309,7 @@ class Game {
     ctx.fillText('×', xbx + 10, xby + 11);
 
     // Tab bar
-    const TABS = [{ id: 'drops', label: 'Mob Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }];
+    const TABS = [{ id: 'drops', label: 'Mob Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }];
     for (let t = 0; t < TABS.length; t++) {
       const tx = L.px + 10 + t * 110;
       const active = this._wsTab === TABS[t].id;
@@ -6160,6 +6470,54 @@ class Game {
         ctx.fillText(gpLabel, L.MOB_COL + 18, gy + 11);
       }
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    } else if (this._wsTab === 'audio') {
+      // ── Audio Settings tab ────────────────────────────────────
+      const aws3 = this._worldAdvSettings;
+      const sliderX = L.px + 200, sliderW = L.pw - 220;
+      ctx.font = '9px Courier New'; ctx.fillStyle = '#888899';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText('Drag slider to adjust · P or Esc to close', L.px + L.pw / 2, L.CONTENT_Y + 8);
+
+      const drawVolRow = (rY, label, sub, vol) => {
+        ctx.font = '11px Courier New'; ctx.fillStyle = '#AAAACC';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(label, L.MOB_COL, rY + 11);
+        ctx.font = '9px Courier New'; ctx.fillStyle = '#666677';
+        ctx.fillText(sub, L.MOB_COL, rY + 26);
+        // Slider track
+        ctx.fillStyle = '#1A1A2A'; ctx.strokeStyle = '#444466'; ctx.lineWidth = 1;
+        ctx.fillRect(sliderX, rY + 8, sliderW, 10);
+        ctx.strokeRect(sliderX, rY + 8, sliderW, 10);
+        // Filled portion
+        const fillW = Math.round(vol * sliderW);
+        ctx.fillStyle = '#6644AA';
+        ctx.fillRect(sliderX + 1, rY + 9, Math.max(0, fillW - 2), 8);
+        // Handle
+        ctx.fillStyle = '#AA88FF';
+        ctx.fillRect(sliderX + fillW - 4, rY + 6, 8, 14);
+        // Percentage label
+        ctx.font = 'bold 11px Courier New'; ctx.fillStyle = '#CCAAFF';
+        ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+        ctx.fillText(Math.round(vol * 100) + '%', L.px + L.pw - 14, rY + 13);
+        ctx.textAlign = 'left';
+      };
+
+      drawVolRow(L.FIRST_ROW,      'Music Volume',      '(background music)', aws3.musicVolume ?? DEFAULT_MUSIC_VOLUME);
+      drawVolRow(L.FIRST_ROW + 52, 'Sound Effects',     '(mining, combat, explosions)', aws3.sfxVolume ?? DEFAULT_SFX_VOLUME);
+
+      // Currently playing
+      const curTrack = this._musicSystem.currentTrack
+        ? (MUSIC_DISCS[this._musicSystem.currentTrack]?.discName ?? this._musicSystem.currentTrack)
+        : '(none)';
+      ctx.font = '9px Courier New'; ctx.fillStyle = '#888899';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText('Now Playing: ' + curTrack, L.MOB_COL, L.FIRST_ROW + 120);
+
+      // Credit line
+      ctx.font = '9px Courier New'; ctx.fillStyle = '#554466';
+      ctx.textAlign = 'center';
+      ctx.fillText('Music by @LaudividniMusic and @T_en_M', L.px + L.pw / 2, L.py + L.ph - 12);
+      ctx.textAlign = 'left';
     } else {
       // ── Mob Drops tab ─────────────────────────────────────────
       ctx.font = '9px Courier New';
@@ -6864,12 +7222,26 @@ class Game {
     return false;
   }
 
+  _nearRespawnAnchor() {
+    const pCol = Math.floor(this.player.cx / BLOCK_SIZE);
+    const pRow = Math.floor(this.player.cy / BLOCK_SIZE);
+    for (let dc = -2; dc <= 2; dc++) {
+      for (let dr = -2; dr <= 2; dr++) {
+        if (this.level.get(pRow + dr, pCol + dc) === BLOCK.RESPAWN_ANCHOR) return true;
+      }
+    }
+    return false;
+  }
+
   _computeContextAction() {
     // Clear
     this._contextAction = null;
     this._contextPrompt = null;
-    // Priority: bed > chest > portal > lever
-    if (this._nearBed()) {
+    // Priority: respawn_anchor > bed > chest > portal > music_player > lever
+    if (this._nearRespawnAnchor()) {
+      this._contextAction = 'respawn_anchor';
+      this._contextPrompt = '[RB] Set Nether Spawn';
+    } else if (this._nearBed()) {
       this._contextAction = 'bed';
       this._contextPrompt = this.gameMode === 'sandbox' ? '[RB] Save World' : '[RB] Set Spawn';
     } else if (this._nearestChest()) {
@@ -6878,6 +7250,9 @@ class Game {
     } else if (this._nearPortal()) {
       this._contextAction = 'portal';
       this._contextPrompt = '[RB] Use Portal';
+    } else if (this._nearMusicPlayer()) {
+      this._contextAction = 'music_player';
+      this._contextPrompt = '[RB] Music Player';
     } else {
       // Check for lever in range
       if (this.redstone) {
@@ -6895,7 +7270,28 @@ class Game {
   }
 
   _executeContextAction() {
-    if (this._contextAction === 'chest') {
+    if (this._contextAction === 'respawn_anchor') {
+      if (this.gameMode !== 'sandbox') {
+        const pCol = Math.floor(this.player.cx / BLOCK_SIZE);
+        const pRow = Math.floor(this.player.cy / BLOCK_SIZE);
+        let anchor = null;
+        outer_ra: for (let dc = -2; dc <= 2; dc++) {
+          for (let dr = -2; dr <= 2; dr++) {
+            if (this.level.get(pRow + dr, pCol + dc) === BLOCK.RESPAWN_ANCHOR) {
+              anchor = { col: pCol + dc, row: pRow + dr };
+              break outer_ra;
+            }
+          }
+        }
+        if (anchor) {
+          this._activeRespawnAnchor = anchor;
+          this._activeSpawnBed = -1;  // anchor overrides bed
+          this._playSound('sounds/use-bed.mp3', 0.8);
+          this._notify('Nether respawn point set!', '#AA88FF', 220);
+          if (this._sandboxLoadKey) this._saveNormalProgress();
+        }
+      }
+    } else if (this._contextAction === 'chest') {
       if (this._chestOpen) {
         this._closeChest();
       } else {
@@ -6908,27 +7304,53 @@ class Game {
       }
     } else if (this._contextAction === 'lever') {
       const toggled = this.redstone.tryToggleLeverNear(this.level, this.player);
-      if (toggled) this._rsStartFromSource(toggled.col, toggled.row, toggled.on);
+      if (toggled) {
+        this._rsStartFromSource(toggled.col, toggled.row, toggled.on);
+        this._playSound('sounds/lever.mp3', 0.7);
+      }
     } else if (this._contextAction === 'bed') {
       if (this.gameMode === 'sandbox') {
         this._openSaveDialog();
       } else {
         const pCol = Math.floor(this.player.cx / BLOCK_SIZE);
         const pRow = Math.floor(this.player.cy / BLOCK_SIZE);
-        let found = false;
-        outer: for (let dc = -3; dc <= 3 && !found; dc++) {
-          for (let dr = -1; dr <= 3 && !found; dr++) {
-            if (this.level.get(pRow + dr, pCol + dc) === BLOCK.BED) {
-              const r = pRow + dr, c = pCol + dc;
-              let lc = c;
-              while (lc > 0 && this.level.get(r, lc - 1) === BLOCK.BED) lc--;
-              const bedAnchor = { col: lc, row: r };
-              let idx = this.bedSpawns.findIndex(b => b.col === bedAnchor.col && b.row === bedAnchor.row);
-              if (idx < 0) idx = this.bedSpawns.push(bedAnchor) - 1;
-              this._activeSpawnBed = idx;
-              if (this._sandboxLoadKey) this._saveNormalProgress();
-              this._notify('Respawn point set!', '#FFDD44', 220);
-              found = true;
+        const inNether = pCol >= BIOME_CAVE_END && pCol < BIOME_END_START;
+        if (inNether) {
+          // Beds explode in the Nether — arm a 3-second fuse
+          if (this._netherBedFuse <= 0) {
+            // Find the bed cell
+            let bedPos = null;
+            outer2: for (let dc = -3; dc <= 3; dc++) {
+              for (let dr = -1; dr <= 3; dr++) {
+                if (this.level.get(pRow + dr, pCol + dc) === BLOCK.BED) {
+                  bedPos = { col: pCol + dc, row: pRow + dr };
+                  break outer2;
+                }
+              }
+            }
+            if (bedPos) {
+              this._netherBedFuse = 180;  // 3 seconds at 60fps
+              this._netherBedPos  = bedPos;
+              this._notify('Beds explode in the Nether!', '#FF4444', 200);
+            }
+          }
+        } else {
+          let found = false;
+          outer: for (let dc = -3; dc <= 3 && !found; dc++) {
+            for (let dr = -1; dr <= 3 && !found; dr++) {
+              if (this.level.get(pRow + dr, pCol + dc) === BLOCK.BED) {
+                const r = pRow + dr, c = pCol + dc;
+                let lc = c;
+                while (lc > 0 && this.level.get(r, lc - 1) === BLOCK.BED) lc--;
+                const bedAnchor = { col: lc, row: r };
+                let idx = this.bedSpawns.findIndex(b => b.col === bedAnchor.col && b.row === bedAnchor.row);
+                if (idx < 0) idx = this.bedSpawns.push(bedAnchor) - 1;
+                this._activeSpawnBed = idx;
+                if (this._sandboxLoadKey) this._saveNormalProgress();
+                this._playSound('sounds/use-bed.mp3');
+                this._notify('Respawn point set!', '#FFDD44', 220);
+                found = true;
+              }
             }
           }
         }
@@ -6939,6 +7361,8 @@ class Game {
       if (this.gameMode !== 'sandbox') this._tryPlaceEyeFromHotbar();
       this._checkPortal();
       this._checkExitPortal();
+    } else if (this._contextAction === 'music_player') {
+      this._openMusicPlayerUI(this._nearMusicPlayer());
     } else {
       // No context: next hotbar slot (non-sandbox)
       if (this.gameMode !== 'sandbox') {
@@ -7820,7 +8244,7 @@ class Game {
                        (this.gameMode === 'platformer'  && !!this._platformerLoadKey);
     const threeBtn   = isSb || hasLvlSel;
     const tabH = 36;  // height of the tab bar at top of panel
-    const pw = 360, ph = (threeBtn ? 268 : 210) + tabH;
+    const pw = 360, ph = (threeBtn ? 268 : 240) + tabH;  // extra 30px for volume sliders
     const px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     const bw = 300, bx = (CANVAS_W - bw) / 2;
     const layout = {
@@ -7921,6 +8345,28 @@ class Game {
 
       // ── SETTINGS tab ───────────────────────────────────────
       if (this._pauseTab === 'settings') {
+        // Volume slider drag — runs every frame while mouse held (not just on click frames)
+        const slX = px + 90, slW = pw - 130;
+        const volY   = py + ph - 90;
+        const mSlY   = volY + 20;  // music slider row Y
+        const sSlY   = volY + 46;  // sfx slider row Y
+        if (this.input.mouse.down) {
+          const inM = mx >= slX && mx <= slX + slW && my >= mSlY + 4 && my <= mSlY + 22;
+          const inS = mx >= slX && mx <= slX + slW && my >= sSlY + 4 && my <= sSlY + 22;
+          if (this._pauseVolDrag === 'music' || (inM && !this._pauseVolDrag)) {
+            this._pauseVolDrag = 'music';
+            const v = Math.max(0, Math.min(1, (mx - slX) / slW));
+            this._worldAdvSettings.musicVolume = Math.round(v * 20) / 20;
+            if (this._musicSystem.bgAudio) this._musicSystem.bgAudio.volume = this._worldAdvSettings.musicVolume * MAX_AUDIO_VOLUME;
+          } else if (this._pauseVolDrag === 'sfx' || (inS && !this._pauseVolDrag)) {
+            this._pauseVolDrag = 'sfx';
+            const v = Math.max(0, Math.min(1, (mx - slX) / slW));
+            this._worldAdvSettings.sfxVolume = Math.round(v * 20) / 20;
+          }
+        } else {
+          this._pauseVolDrag = null;
+        }
+
         if (this.gameMode === 'sandbox') {
           // Sandbox: click/A → open full World Settings panel
           const inPanel = mx >= px && mx <= px + pw && my >= py + tabH && my <= py + ph;
@@ -7969,6 +8415,50 @@ class Game {
       }
       if (hit(cancelBtn)) this.state = 'paused';
     }
+  }
+
+  _drawPauseVolSliders(ctx, px, py, pw, ph, volY) {
+    const aws = this._worldAdvSettings;
+    const slX = px + 90, slW = pw - 130;
+    if (volY === undefined) volY = py + ph - 90;
+
+    // Divider + header
+    ctx.strokeStyle = '#333355'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(px + 10, volY - 6); ctx.lineTo(px + pw - 10, volY - 6); ctx.stroke();
+    ctx.font = 'bold 10px Courier New'; ctx.fillStyle = '#7788AA';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('♪ Volume', px + pw / 2, volY + 4);
+
+    const drawRow = (rY, label, vol) => {
+      ctx.font = '10px Courier New'; ctx.fillStyle = '#AAAACC';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(label, px + 10, rY + 13);
+      // Track
+      ctx.fillStyle = '#1A1A2A'; ctx.strokeStyle = '#444466'; ctx.lineWidth = 1;
+      ctx.fillRect(slX, rY + 8, slW, 10); ctx.strokeRect(slX, rY + 8, slW, 10);
+      // Fill
+      const fw = Math.round(vol * slW);
+      ctx.fillStyle = '#6644AA';
+      ctx.fillRect(slX + 1, rY + 9, Math.max(0, fw - 2), 8);
+      // Handle
+      ctx.fillStyle = '#AA88FF';
+      ctx.fillRect(slX + fw - 4, rY + 6, 8, 14);
+      // Pct
+      ctx.font = 'bold 10px Courier New'; ctx.fillStyle = '#CCAAFF';
+      ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      ctx.fillText(Math.round(vol * 100) + '%', px + pw - 8, rY + 13);
+    };
+
+    drawRow(volY + 20, 'Music', aws.musicVolume ?? DEFAULT_MUSIC_VOLUME);
+    drawRow(volY + 46, 'SFX',   aws.sfxVolume   ?? DEFAULT_SFX_VOLUME);
+
+    // Now playing
+    const curTrack = this._musicSystem.currentTrack
+      ? (MUSIC_DISCS[this._musicSystem.currentTrack]?.discName ?? '♪')
+      : '(none)';
+    ctx.font = '9px Courier New'; ctx.fillStyle = '#556677';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Now Playing: ' + curTrack, px + pw / 2, py + ph - 8);
   }
 
   _drawPauseOverlay(ctx) {
@@ -8094,7 +8584,8 @@ class Game {
           ctx.fillStyle = 'rgba(110,110,130,0.55)'; ctx.font = '9px Courier New';
           ctx.fillText(gpConn ? '[A] Open  [B] Back  [←→] Switch Tab  •  [P] shortcut'
                               : 'Click to open  •  [P] key shortcut from game',
-            CANVAS_W / 2, py + ph - 10);
+            CANVAS_W / 2, py + ph - 98);
+          this._drawPauseVolSliders(ctx, px, py, pw, ph);
         } else {
           // Normal / Platformer: 2-Player Co-op toggle
           const is2p = this._worldAdvSettings.twoPlayerMode;
@@ -8111,10 +8602,7 @@ class Game {
           _roundRect(ctx, tgX, tgY, tgW, tgH, 5); ctx.stroke();
           ctx.fillStyle = is2p ? '#88FF66' : '#888899'; ctx.font = 'bold 12px Courier New';
           ctx.fillText(is2p ? 'ON' : 'OFF', tgX + tgW / 2, tgY + tgH / 2);
-          ctx.fillStyle = 'rgba(110,110,130,0.55)'; ctx.font = '9px Courier New';
-          ctx.fillText(gpConn ? '[A] Toggle  [B] Back  [←→] Switch Tab'
-                              : 'Click to toggle  •  Esc to resume',
-            CANVAS_W / 2, py + ph - 10);
+          this._drawPauseVolSliders(ctx, px, py, pw, ph);
         }
       }
 
@@ -8283,7 +8771,7 @@ class Game {
     if (!pName || !wName) return;
     this._sbPlayerName = pName;
     this._sbWorldName  = wName;
-    const result = SandboxSaves.save(pName, wName, this.level, this.sandbox, this.player, this.redstone, this._dustBlocks, this._gateBlocks, this._transmitters, this._receivers, this._chests, this._ruinedPortals, this._endPortalAnchors, this._dragon, this._endCrystals, this._dragonDefeated, this._mobDropSettings, this._worldAdvSettings);
+    const result = SandboxSaves.save(pName, wName, this.level, this.sandbox, this.player, this.redstone, this._dustBlocks, this._gateBlocks, this._transmitters, this._receivers, this._chests, this._ruinedPortals, this._endPortalAnchors, this._dragon, this._endCrystals, this._dragonDefeated, this._mobDropSettings, this._worldAdvSettings, this._collectedDiscs, this._musicPlayerBlocks);
     if (result.ok) {
       this._historyStack = []; this._historyPos = -1; // clear history on successful save
       this._notify(`Saved: ${pName} — ${wName}`, '#44FF88', 300);
@@ -8645,6 +9133,8 @@ class Game {
       if (typeof this._worldAdvSettings.dayCycleMinutes === 'number')
         this._dayNight.halfCycleMs = this._worldAdvSettings.dayCycleMinutes * 60 * 1000 / 2;
     }
+    // Restore music data (Phase 13.5)
+    this._restoreMusicData(data);
 
     // Restore player position
     if (typeof data.playerPx === 'number') {
@@ -8946,6 +9436,11 @@ class Game {
     if (data.worldAdvSettings && typeof data.worldAdvSettings === 'object') {
       Object.assign(this._worldAdvSettings, data.worldAdvSettings);
     }
+    // Restore music data from sandbox save + normal progress collected discs
+    this._restoreMusicData(data);
+    if (progress && Array.isArray(progress.collectedDiscs)) {
+      for (const d of progress.collectedDiscs) this._collectedDiscs.add(d);
+    }
 
     // Restore day/night state from NormalProgress
     if (progress && progress.dayNight && typeof progress.dayNight === 'object') {
@@ -8971,7 +9466,7 @@ class Game {
     const result = NormalProgress.save(
       this._sandboxLoadKey, this.player, bed || null,
       this.level.grid, collectedKeys, this._chests, this._dayNight,
-      this._worldAdvSettings.twoPlayerMode
+      this._worldAdvSettings.twoPlayerMode, this._collectedDiscs
     );
     if (!result.ok) this._notify('Save failed: ' + result.error, '#FF4444', 200);
   }
@@ -9183,6 +9678,8 @@ class Game {
       if (typeof this._worldAdvSettings.dayCycleMinutes === 'number')
         this._dayNight.halfCycleMs = this._worldAdvSettings.dayCycleMinutes * 60 * 1000 / 2;
     }
+    // Restore music data (Phase 13.5)
+    this._restoreMusicData(data);
 
     // Snap camera to player
     this.camera.x = Math.max(0, Math.min(this.level.pixelWidth  - CANVAS_W, this.player.x - CANVAS_W / 2));
@@ -9353,6 +9850,651 @@ class Game {
     ctx.fillText('Press R or Enter to try again', CANVAS_W / 2, py + 165);
     ctx.textAlign = 'left';
     ctx.restore();
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // Phase 13.5 — Sound & Music System
+  // ══════════════════════════════════════════════════════════════
+
+  _initAudio() {
+    // Pre-load SFX into cache for zero-latency playback
+    this._preloadSounds();
+
+    // Create the single persistent background music element
+    const bg = new Audio();
+    bg.loop   = false; // manual next-track selection
+    bg.volume = 0;
+    bg.addEventListener('ended', () => {
+      if (!this._musicSystem.bossMusicActive) this._advancePlaylist();
+    });
+    bg.addEventListener('error', () => {
+      // Intro or track failed to load — advance to next available song
+      if (!this._musicSystem.bossMusicActive && !this._musicSystem.currentTrack) {
+        this._advancePlaylist();
+      }
+    });
+    this._musicSystem.bgAudio = bg;
+
+    // Seed collected discs with all defaultUnlocked entries
+    for (const [key, disc] of Object.entries(MUSIC_DISCS)) {
+      if (disc.defaultUnlocked) this._collectedDiscs.add(key);
+    }
+
+    // Crossfade from menu audio (which is already playing and has unlocked autoplay)
+    // into the game's intro. If menu audio isn't available, fall back to a direct play.
+    const menuAudio = window._menuAudio;
+    if (menuAudio && !menuAudio.paused) {
+      const startVol = menuAudio.volume;
+      const steps = 40;
+      let count = 0;
+      const iv = setInterval(() => {
+        count++;
+        menuAudio.volume = Math.max(0, startVol - count * (startVol / steps));
+        if (count >= steps) {
+          clearInterval(iv);
+          menuAudio.pause();
+          this._advancePlaylist();
+        }
+      }, 50);
+    } else {
+      // Menu audio wasn't playing (e.g. autoplay hadn't unlocked yet) —
+      // fall back to event-listener approach
+      const startAudio = () => {
+        document.removeEventListener('keydown',   startAudio, true);
+        document.removeEventListener('mousedown', startAudio, true);
+        this._advancePlaylist();
+      };
+      document.addEventListener('keydown',   startAudio, true);
+      document.addEventListener('mousedown', startAudio, true);
+    }
+  }
+
+  _playIntroMusic() {
+    const introFile = 'music/intro/intro.mp3';
+    const bg = this._musicSystem.bgAudio;
+    if (!bg) return;
+    bg.src    = introFile;
+    bg.volume = (this._worldAdvSettings.musicVolume ?? DEFAULT_MUSIC_VOLUME) * MAX_AUDIO_VOLUME;
+    bg.loop   = false;
+    const p = bg.play();
+    if (p) p.catch(() => {});
+    // After intro ends, start background playlist (handled by 'ended' listener → _advancePlaylist)
+  }
+
+  _advancePlaylist() {
+    if (this._musicSystem.bossMusicActive) return;
+    const songs = this._getEnabledSongs();
+    if (!songs.length) return;
+    // Exclude current track from selection if there are other options
+    let choices = songs.filter(k => k !== this._musicSystem.currentTrack);
+    if (!choices.length) choices = songs;
+    const key = choices[Math.floor(Math.random() * choices.length)];
+    this._playBackgroundTrack(key);
+  }
+
+  _getEnabledSongs() {
+    // Returns all collected disc keys except dedicated boss-battle overrides (those with droppedBy set)
+    return Object.keys(MUSIC_DISCS).filter(key => {
+      const disc = MUSIC_DISCS[key];
+      return !disc.droppedBy && this._collectedDiscs.has(key);
+    });
+  }
+
+  _playBackgroundTrack(discKey) {
+    const disc = MUSIC_DISCS[discKey];
+    if (!disc) return;
+    const bg = this._musicSystem.bgAudio;
+    if (!bg) return;
+    this._musicSystem.currentTrack = discKey;
+    this._fadeOutMusic(400, () => {
+      bg.src    = disc.audioFile;
+      bg.loop   = false;
+      bg.volume = 0;
+      const p = bg.play();
+      if (p) p.catch(() => {});
+      this._fadeInMusic(400);
+    });
+  }
+
+  _preloadSounds() {
+    const FILES = [
+      'sounds/bow-fire.mp3','sounds/attack-sword.mp3','sounds/placing-block.mp3',
+      'sounds/player-damaged.mp3','sounds/player-death.mp3','sounds/mining.mp3',
+      'sounds/item-collected.mp3','sounds/chest-open.mp3','sounds/use-bed.mp3',
+      'sounds/crafting-item.mp3','sounds/eat-apple.mp3',
+      'sounds/lever.mp3','sounds/trapdoor.mp3','sounds/piston.mp3','sounds/pressure-plate.mp3',
+      'sounds/nether-portal.mp3','sounds/enable-nether-portal.mp3',
+      'sounds/placing-eye-of-ender.mp3','sounds/enable-end-portal.mp3','sounds/end-portal.mp3',
+      'sounds/end-crystal-explosion.mp3',
+      'sounds/explosion-tnt.mp3','sounds/explosion-creeper.mp3','sounds/explosion-bed.mp3',
+      'sounds/ender-dragon.mp3','sounds/ender-dragon-fireball.mp3',
+      'sounds/ender-dragon-dive.mp3','sounds/ender-dragon-wing-flap.mp3',
+      'sounds/ender-dragon-defeated.mp3',
+      'sounds/mob-zombie.mp3','sounds/mob-skeleton.mp3','sounds/mob-creeper.mp3',
+      'sounds/mob-blaze.mp3','sounds/mob-enderman.mp3','sounds/mob-piglin.mp3',
+      'sounds/mob-spider.mp3',
+      'sounds/zombie-defeated.mp3','sounds/skeleton-defeated.mp3','sounds/blaze-defeated.mp3',
+      'sounds/piglin-defeated.mp3','sounds/creeper-defeated.mp3',
+      'sounds/enderman-defeated.mp3','sounds/spider-defeated.mp3',
+    ];
+    for (const f of FILES) {
+      if (this._audioCache[f]) continue;
+      try {
+        const a = new Audio();
+        a.preload = 'auto';
+        a.src = f;
+        this._audioCache[f] = a;
+      } catch (_) {}
+    }
+  }
+
+  _playSound(file, volMult = 1.0) {
+    const vol = (this._worldAdvSettings.sfxVolume ?? DEFAULT_SFX_VOLUME) * MAX_AUDIO_VOLUME * Math.max(0, volMult);
+    if (vol <= 0) return;
+    try {
+      let s = this._audioCache[file];
+      if (s) {
+        // Clone if already playing so overlapping sounds work
+        if (!s.paused && s.currentTime > 0) {
+          s = s.cloneNode();
+          s.volume = Math.min(1, vol);
+          s.play().catch(() => {});
+          return;
+        }
+        s.currentTime = 0;
+        s.volume = Math.min(1, vol);
+        s.play().catch(() => {});
+      } else {
+        // Not pre-loaded — create and cache on first use
+        const a = new Audio(file);
+        a.volume = Math.min(1, vol);
+        a.play().catch(() => {});
+        this._audioCache[file] = a;
+      }
+    } catch (_) {}
+  }
+
+  _fadeOutMusic(ms, callback) {
+    const bg = this._musicSystem.bgAudio;
+    if (!bg) { if (callback) callback(); return; }
+    if (this._musicSystem.fadeInterval) clearInterval(this._musicSystem.fadeInterval);
+    const steps    = Math.max(1, Math.round(ms / 50));
+    const stepVol  = bg.volume / steps;
+    let   count    = 0;
+    this._musicSystem.fadeInterval = setInterval(() => {
+      count++;
+      bg.volume = Math.max(0, bg.volume - stepVol);
+      if (count >= steps || bg.volume <= 0) {
+        clearInterval(this._musicSystem.fadeInterval);
+        this._musicSystem.fadeInterval = null;
+        bg.pause();
+        bg.volume = 0;
+        if (callback) callback();
+      }
+    }, 50);
+  }
+
+  _fadeInMusic(ms) {
+    const bg        = this._musicSystem.bgAudio;
+    if (!bg) return;
+    const target    = (this._worldAdvSettings.musicVolume ?? DEFAULT_MUSIC_VOLUME) * MAX_AUDIO_VOLUME;
+    const steps     = Math.max(1, Math.round(ms / 50));
+    const stepVol   = target / steps;
+    let   count     = 0;
+    if (this._musicSystem.fadeInterval) clearInterval(this._musicSystem.fadeInterval);
+    this._musicSystem.fadeInterval = setInterval(() => {
+      count++;
+      bg.volume = Math.min(target, bg.volume + stepVol);
+      if (count >= steps || bg.volume >= target) {
+        clearInterval(this._musicSystem.fadeInterval);
+        this._musicSystem.fadeInterval = null;
+        bg.volume = target;
+      }
+    }, 50);
+  }
+
+  _startBossMusic() {
+    this._musicSystem.bossMusicActive   = true;
+    this._musicSystem.lastNormalTrack   = this._musicSystem.currentTrack;
+    const bossDisc = Object.entries(MUSIC_DISCS).find(([, d]) => d.category === 'boss' && d.droppedBy === 'ENDER_DRAGON');
+    if (!bossDisc) return;
+    const bg = this._musicSystem.bgAudio;
+    if (!bg) return;
+    this._fadeOutMusic(500, () => {
+      bg.src    = bossDisc[1].audioFile;
+      bg.loop   = true;
+      bg.volume = 0;
+      const p = bg.play();
+      if (p) p.catch(() => {});
+      this._fadeInMusic(500);
+    });
+  }
+
+  _endBossMusic() {
+    this._musicSystem.bossMusicActive = false;
+    const bg = this._musicSystem.bgAudio;
+    if (bg) bg.loop = false;
+    this._fadeOutMusic(500, () => {
+      const resume = this._musicSystem.lastNormalTrack;
+      if (resume) this._playBackgroundTrack(resume);
+      else        this._advancePlaylist();
+    });
+  }
+
+  _startNetherMusic() {
+    const bossTracks = Object.entries(MUSIC_DISCS).filter(([k, d]) =>
+      d.category === 'boss' && !d.droppedBy && this._collectedDiscs.has(k));
+    if (!bossTracks.length) return; // no boss tracks available — keep background music
+    this._musicSystem.netherMusicActive = true;
+    this._musicSystem.lastNormalTrack   = this._musicSystem.currentTrack;
+    const [key, disc] = bossTracks[Math.floor(Math.random() * bossTracks.length)];
+    const bg = this._musicSystem.bgAudio;
+    if (!bg) return;
+    this._fadeOutMusic(1000, () => {
+      bg.src    = disc.audioFile;
+      bg.loop   = true;
+      bg.volume = 0;
+      this._musicSystem.currentTrack = key;
+      const p = bg.play();
+      if (p) p.catch(() => {});
+      this._fadeInMusic(1000);
+    });
+  }
+
+  _stopNetherMusic() {
+    this._musicSystem.netherMusicActive = false;
+    const bg = this._musicSystem.bgAudio;
+    if (bg) bg.loop = false;
+    this._fadeOutMusic(800, () => {
+      const resume = this._musicSystem.lastNormalTrack;
+      if (resume) this._playBackgroundTrack(resume);
+      else        this._advancePlaylist();
+    });
+  }
+
+  _playVictoryMusic() {
+    this._musicSystem.victoryMusicActive = true;
+    this._musicSystem.bossMusicActive    = false; // prevents endBossMusic from firing
+    const bg = this._musicSystem.bgAudio;
+    if (bg) bg.loop = false;
+    this._fadeOutMusic(800, () => {
+      if (!bg) return;
+      bg.src    = VICTORY_MUSIC_FILE;
+      bg.loop   = false;
+      bg.volume = 0;
+      const p = bg.play();
+      if (p) p.catch(() => {});
+      this._fadeInMusic(600);
+      // Clear the flag once the fanfare ends (the main 'ended' listener then resumes playlist)
+      bg.addEventListener('ended', () => {
+        this._musicSystem.victoryMusicActive = false;
+      }, { once: true });
+    });
+  }
+
+  _collectMusicDisc(discKey) {
+    if (!MUSIC_DISCS[discKey]) return;
+    if (this._collectedDiscs.has(discKey)) return; // already collected
+    this._collectedDiscs.add(discKey);
+    const disc = MUSIC_DISCS[discKey];
+    this._notify(`Unlocked: ${disc.discName}! (Music Player)`, '#CC88FF', 260);
+    // Add to inventory as a visual disc item
+    this.player.addBlock(BLOCK.MUSIC_DISC);
+  }
+
+  _playNearbyMobSound() {
+    const MOB_SOUNDS = {
+      Zombie:         'sounds/mob-zombie.mp3',
+      Skeleton:       'sounds/mob-skeleton.mp3',
+      Creeper:        'sounds/mob-creeper.mp3',
+      Blaze:          'sounds/mob-blaze.mp3',
+      Enderman:       'sounds/mob-enderman.mp3',
+      WitherSkeleton: 'sounds/mob-zombie.mp3',
+      Piglin:         'sounds/mob-piglin.mp3',
+      CaveSpider:     'sounds/mob-spider.mp3',
+    };
+    const nearby = this.mobManager.mobs.filter(m =>
+      m.alive &&
+      Math.hypot(m.cx - this.player.cx, m.cy - this.player.cy) < 600
+    );
+    if (!nearby.length) return;
+    const mob = nearby[Math.floor(Math.random() * nearby.length)];
+    const snd = MOB_SOUNDS[mob.constructor?.name] ?? MOB_SOUNDS[mob.type];
+    if (snd) this._playSound(snd);
+  }
+
+  // ── Music Player block helpers ────────────────────────────────
+
+  _nearMusicPlayer() {
+    const pCx = this.player.cx, pCy = this.player.cy;
+    for (const mp of this._musicPlayerBlocks.values()) {
+      const bCx = (mp.col + 0.5) * BLOCK_SIZE;
+      const bCy = (mp.row + 0.5) * BLOCK_SIZE;
+      if (Math.hypot(bCx - pCx, bCy - pCy) <= 3 * BLOCK_SIZE) return mp;
+    }
+    return null;
+  }
+
+  _openMusicPlayerUI(block) {
+    if (!block) return;
+    if (this._musicPlayerUI) { this._musicPlayerUI = null; return; }
+    this._musicPlayerUI = {
+      block,
+      mode: this.gameMode === 'sandbox' ? 'config' : 'jukebox',
+      tempSongs: new Set(block.configuredSongs || []),
+      scroll: 0,
+    };
+  }
+
+  _updateMusicPlayerUI() {
+    const ui = this._musicPlayerUI;
+    if (!ui) return;
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const L  = this._mpLayout();
+
+    if (this.input.isJustDown('Escape')) { this._musicPlayerUI = null; return; }
+
+    // Determine which keys to show
+    const allKeys = ui.mode === 'config'
+      ? Object.keys(MUSIC_DISCS)
+      : Object.keys(MUSIC_DISCS).filter(k => !MUSIC_DISCS[k].droppedBy && this._collectedDiscs.has(k));
+    const totalRows  = allKeys.length;
+    const maxScroll  = Math.max(0, totalRows - L.VISIBLE_ROWS);
+
+    // Scroll wheel (runs every frame, before click-only check)
+    if (this.input.scrollDelta !== 0) {
+      ui.scroll = Math.max(0, Math.min(maxScroll, ui.scroll + this.input.scrollDelta));
+    }
+
+    if (!this.input.mouse.clicked) return;
+
+    // Click outside → close
+    if (mx < L.px || mx > L.px + L.pw || my < L.py || my > L.py + L.ph) {
+      this._musicPlayerUI = null; return;
+    }
+
+    // Close (×) button
+    if (mx >= L.px + L.pw - 24 && mx <= L.px + L.pw - 4 && my >= L.py + 4 && my <= L.py + 24) {
+      this._musicPlayerUI = null; return;
+    }
+
+    // Scrollbar click — jump scroll position
+    if (totalRows > L.VISIBLE_ROWS && mx >= L.SCROLL_X && mx <= L.SCROLL_X + 10 && my >= L.CONTENT_Y && my <= L.CONTENT_Y + L.CONTENT_H) {
+      const frac = (my - L.CONTENT_Y) / L.CONTENT_H;
+      ui.scroll = Math.round(frac * maxScroll);
+      return;
+    }
+
+    // Shared: play button hit-test — works in all modes, plays track without closing panel
+    const _hitPlay = (rowY) =>
+      mx >= L.PLAY_BTN_X && mx <= L.PLAY_BTN_X + 20 && my >= rowY + 5 && my <= rowY + 22;
+
+    if (ui.mode === 'config') {
+      for (let i = 0; i < allKeys.length; i++) {
+        const key    = allKeys[i];
+        const locked = !this._collectedDiscs.has(key);
+        const rowY   = L.CONTENT_Y + (i - ui.scroll) * L.ROW_H;
+        if (rowY < L.CONTENT_Y - L.ROW_H || rowY > L.CONTENT_Y + L.CONTENT_H) continue;
+        // Play button (unlocked tracks only)
+        if (!locked && _hitPlay(rowY)) {
+          if (!this._musicSystem.bossMusicActive) this._playBackgroundTrack(key);
+          return;
+        }
+        // Checkbox (unlocked tracks only)
+        if (!locked && mx >= L.px + 14 && mx <= L.px + 26 && my >= rowY + 4 && my <= rowY + 16) {
+          if (ui.tempSongs.has(key)) ui.tempSongs.delete(key);
+          else                       ui.tempSongs.add(key);
+          return;
+        }
+      }
+      // Apply button
+      if (mx >= L.BTN1_X && mx <= L.BTN1_X + 80 && my >= L.BTN_Y && my <= L.BTN_Y + 28) {
+        ui.block.configuredSongs = [...ui.tempSongs];
+        ui.block.isConfigured    = true;
+        this._musicPlayerUI      = null;
+        this._notify('Music Player configured!', '#CC88FF', 160);
+        return;
+      }
+      // Cancel button
+      if (mx >= L.BTN2_X && mx <= L.BTN2_X + 80 && my >= L.BTN_Y && my <= L.BTN_Y + 28) {
+        this._musicPlayerUI = null;
+      }
+
+    } else {
+      // Jukebox mode — clicking anywhere on a row (row area or ▶ button) plays the track
+      for (let i = 0; i < allKeys.length; i++) {
+        const key  = allKeys[i];
+        const rowY = L.CONTENT_Y + (i - ui.scroll) * L.ROW_H;
+        if (rowY < L.CONTENT_Y - L.ROW_H || rowY > L.CONTENT_Y + L.CONTENT_H) continue;
+        if (my >= rowY && my <= rowY + L.ROW_H && mx >= L.px + 10 && mx <= L.PLAY_BTN_X + 20) {
+          if (!this._musicSystem.bossMusicActive) {
+            // Allow jukebox to override nether music; clear nether state so it doesn't restart
+            if (this._musicSystem.netherMusicActive) {
+              this._musicSystem.netherMusicActive = false;
+              this._musicSystem.lastNormalTrack = null;
+            }
+            this._playBackgroundTrack(key);
+            const dName = MUSIC_DISCS[key]?.discName ?? key;
+            this._notify(`Now playing: ${dName}`, '#CC88FF', 180);
+          }
+          return; // keep panel open
+        }
+      }
+      // Close button
+      if (mx >= L.BTN2_X && mx <= L.BTN2_X + 80 && my >= L.BTN_Y && my <= L.BTN_Y + 28) {
+        this._musicPlayerUI = null;
+      }
+    }
+  }
+
+  _mpLayout() {
+    const pw = 360, ph = 340;
+    const px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const CONTENT_Y    = py + 58;
+    const BTN_Y        = py + ph - 44;
+    const BTN1_X       = px + 16;
+    const BTN2_X       = px + pw - 96;
+    const ROW_H        = 28;
+    const CONTENT_H    = BTN_Y - CONTENT_Y - 4;
+    const VISIBLE_ROWS = Math.floor(CONTENT_H / ROW_H);
+    const SCROLL_X     = px + pw - 14;   // 10px scrollbar track
+    const PLAY_BTN_X   = SCROLL_X - 26;  // 20px play button, 6px gap from scrollbar
+    const LIST_RIGHT   = PLAY_BTN_X - 4; // song name area ends before play button
+    return { pw, ph, px, py, CONTENT_Y, BTN_Y, BTN1_X, BTN2_X, ROW_H, CONTENT_H, VISIBLE_ROWS, SCROLL_X, PLAY_BTN_X, LIST_RIGHT };
+  }
+
+  _drawMusicPlayerUI(ctx) {
+    const ui = this._musicPlayerUI;
+    if (!ui) return;
+    const L  = this._mpLayout();
+
+    // Determine which keys to show
+    const allKeys = ui.mode === 'config'
+      ? Object.keys(MUSIC_DISCS)
+      : Object.keys(MUSIC_DISCS).filter(k => !MUSIC_DISCS[k].droppedBy && this._collectedDiscs.has(k));
+    const totalRows  = allKeys.length;
+    const maxScroll  = Math.max(0, totalRows - L.VISIBLE_ROWS);
+    const scroll     = Math.max(0, Math.min(maxScroll, ui.scroll || 0));
+    const curKey     = this._musicSystem.currentTrack;
+
+    ctx.save();
+
+    // Backdrop
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+    // Panel
+    ctx.fillStyle = '#1A1020';
+    ctx.strokeStyle = '#886699'; ctx.lineWidth = 1;
+    ctx.fillRect(L.px, L.py, L.pw, L.ph);
+    ctx.strokeRect(L.px, L.py, L.pw, L.ph);
+
+    // Title bar
+    ctx.fillStyle = '#2A1A38';
+    ctx.fillRect(L.px, L.py, L.pw, 30);
+
+    // Close (×) button
+    ctx.fillStyle = '#553355';
+    ctx.fillRect(L.px + L.pw - 24, L.py + 4, 20, 20);
+    ctx.fillStyle = '#FFAAFF'; ctx.font = 'bold 13px Courier New';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('×', L.px + L.pw - 14, L.py + 14);
+
+    // Title
+    ctx.font = 'bold 12px Courier New'; ctx.fillStyle = '#DDAAFF';
+    ctx.textAlign = 'center';
+    if (ui.mode === 'config') {
+      ctx.fillText('MUSIC PLAYER — CONFIGURE', L.px + L.pw / 2, L.py + 16);
+      ctx.font = '10px Courier New'; ctx.fillStyle = '#887799';
+      ctx.fillText('Check songs for background rotation · Scroll to see all', L.px + L.pw / 2, L.py + 44);
+    } else {
+      ctx.fillText('MUSIC PLAYER', L.px + L.pw / 2, L.py + 16);
+      ctx.font = '10px Courier New'; ctx.fillStyle = '#887799';
+      const curName = curKey ? (MUSIC_DISCS[curKey]?.discName ?? curKey) : '(none)';
+      ctx.fillText('Now Playing: ' + curName, L.px + L.pw / 2, L.py + 44);
+    }
+
+    // ── Clipped content area ───────────────────────────────────
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(L.px + 8, L.CONTENT_Y, L.pw - 22, L.CONTENT_H + L.ROW_H);
+    ctx.clip();
+
+    for (let i = 0; i < allKeys.length; i++) {
+      const key    = allKeys[i];
+      const disc   = MUSIC_DISCS[key];
+      if (!disc) continue;
+      const rowY   = L.CONTENT_Y + (i - scroll) * L.ROW_H;
+      if (rowY + L.ROW_H < L.CONTENT_Y || rowY > L.CONTENT_Y + L.CONTENT_H + L.ROW_H) continue;
+
+      if (ui.mode === 'config') {
+        const locked  = !this._collectedDiscs.has(key);
+        const checked = ui.tempSongs.has(key);
+        // Checkbox
+        ctx.fillStyle  = locked ? '#1A1A26' : (checked ? '#553377' : '#1A1020');
+        ctx.strokeStyle = locked ? '#333344' : '#886699'; ctx.lineWidth = 1;
+        ctx.fillRect(L.px + 14, rowY + 6, 12, 12);
+        ctx.strokeRect(L.px + 14, rowY + 6, 12, 12);
+        if (checked) {
+          ctx.fillStyle = '#CC99FF'; ctx.font = 'bold 9px Courier New';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText('✓', L.px + 20, rowY + 12);
+        }
+        // Song name
+        const lockLabel = locked ? ' (locked)' : (MUSIC_DISCS[key].droppedBy ? ' ★' : '');
+        ctx.font = '11px Courier New';
+        ctx.fillStyle = locked ? '#3A3A4A' : '#CCAAFF';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(disc.discName + lockLabel, L.px + 32, rowY + 12);
+        // Play button (unlocked tracks only)
+        if (!locked) {
+          const mx2 = this.input.mouse.x, my2 = this.input.mouse.y;
+          const hov = mx2 >= L.PLAY_BTN_X && mx2 <= L.PLAY_BTN_X + 20 && my2 >= rowY + 5 && my2 <= rowY + 22;
+          ctx.fillStyle = hov ? '#553377' : '#2A1A38';
+          ctx.strokeStyle = '#886699'; ctx.lineWidth = 1;
+          ctx.fillRect(L.PLAY_BTN_X, rowY + 5, 20, 18);
+          ctx.strokeRect(L.PLAY_BTN_X, rowY + 5, 20, 18);
+          ctx.fillStyle = hov ? '#FFAAFF' : '#AA88FF';
+          ctx.font = '10px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText('▶', L.PLAY_BTN_X + 10, rowY + 14);
+        }
+
+      } else {
+        // Jukebox row — full row is clickable
+        const isPlaying = key === curKey;
+        const mx2 = this.input.mouse.x, my2 = this.input.mouse.y;
+        const rowHov = mx2 >= L.px + 10 && mx2 <= L.PLAY_BTN_X + 20
+                    && my2 >= rowY && my2 <= rowY + L.ROW_H;
+        const rowW = L.PLAY_BTN_X + 20 - (L.px + 10);
+        ctx.fillStyle = isPlaying ? 'rgba(100,50,150,0.45)'
+                      : rowHov    ? 'rgba(80,40,120,0.4)'
+                      :             'rgba(30,10,50,0.4)';
+        ctx.fillRect(L.px + 10, rowY + 2, rowW, 24);
+        if (isPlaying || rowHov) {
+          ctx.strokeStyle = isPlaying ? '#886699' : '#664488'; ctx.lineWidth = 1;
+          ctx.strokeRect(L.px + 10, rowY + 2, rowW, 24);
+        }
+        ctx.fillStyle = isPlaying ? '#FFAAFF' : rowHov ? '#DDBBFF' : '#CCAAFF';
+        ctx.font = isPlaying ? 'bold 11px Courier New' : '11px Courier New';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText((isPlaying ? '▶ ' : '   ') + disc.discName, L.px + 16, rowY + 14);
+        // ▶ button on right
+        const btnHov = mx2 >= L.PLAY_BTN_X && mx2 <= L.PLAY_BTN_X + 20 && my2 >= rowY + 5 && my2 <= rowY + 22;
+        ctx.fillStyle = btnHov ? '#553377' : '#2A1A38';
+        ctx.strokeStyle = '#886699'; ctx.lineWidth = 1;
+        ctx.fillRect(L.PLAY_BTN_X, rowY + 5, 20, 18);
+        ctx.strokeRect(L.PLAY_BTN_X, rowY + 5, 20, 18);
+        ctx.fillStyle = btnHov ? '#FFAAFF' : '#AA88FF';
+        ctx.font = '10px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('▶', L.PLAY_BTN_X + 10, rowY + 14);
+      }
+    }
+
+    if (ui.mode === 'jukebox' && allKeys.length === 0) {
+      ctx.fillStyle = '#554466'; ctx.font = '10px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('No music discs collected yet', L.px + L.pw / 2, L.CONTENT_Y + 30);
+    }
+
+    ctx.restore(); // end clip
+
+    // ── Scrollbar ────────────────────────────────────────────────
+    if (totalRows > L.VISIBLE_ROWS) {
+      const trackH  = L.CONTENT_H;
+      const thumbH  = Math.max(16, Math.round(trackH * L.VISIBLE_ROWS / totalRows));
+      const thumbY  = L.CONTENT_Y + (maxScroll > 0 ? Math.round((trackH - thumbH) * scroll / maxScroll) : 0);
+      ctx.fillStyle = '#221A2E';
+      ctx.fillRect(L.SCROLL_X, L.CONTENT_Y, 10, trackH);
+      ctx.fillStyle = '#886699';
+      ctx.fillRect(L.SCROLL_X, thumbY, 10, thumbH);
+    }
+
+    // ── Buttons ─────────────────────────────────────────────────
+    const _drawBtn = (bx, by, bw, bh, label, bg, fg) => {
+      ctx.fillStyle = bg; ctx.strokeStyle = '#886699'; ctx.lineWidth = 1;
+      ctx.fillRect(bx, by, bw, bh); ctx.strokeRect(bx, by, bw, bh);
+      ctx.fillStyle = fg; ctx.font = 'bold 11px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(label, bx + bw / 2, by + bh / 2);
+    };
+
+    if (ui.mode === 'config') {
+      _drawBtn(L.BTN1_X,     L.BTN_Y, 80, 28, 'Apply',  '#2A3A22', '#88FF66');
+      _drawBtn(L.BTN2_X,     L.BTN_Y, 80, 28, 'Cancel', '#2A1A20', '#AA8888');
+    } else {
+      _drawBtn(L.BTN2_X,     L.BTN_Y, 80, 28, 'Close',  '#2A1A20', '#AA8888');
+    }
+
+    // Credits
+    ctx.font = '8px Courier New'; ctx.fillStyle = '#443355';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText('Music by @LaudividniMusic and @T_en_M', L.px + L.pw / 2, L.py + L.ph - 6);
+
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+  }
+
+  // ── Music persistence helpers ─────────────────────────────────
+
+  _restoreMusicData(data) {
+    // Restore collected discs from sandbox save
+    if (Array.isArray(data.collectedDiscs)) {
+      for (const d of data.collectedDiscs) {
+        if (MUSIC_DISCS[d]) this._collectedDiscs.add(d);
+      }
+    }
+    // Restore music player block configs
+    if (Array.isArray(data.musicPlayerBlocks)) {
+      for (const mp of data.musicPlayerBlocks) {
+        if (typeof mp.col === 'number' && typeof mp.row === 'number') {
+          this._musicPlayerBlocks.set(`${mp.col},${mp.row}`, {
+            col: mp.col, row: mp.row,
+            isConfigured:   !!mp.isConfigured,
+            configuredSongs: Array.isArray(mp.configuredSongs) ? mp.configuredSongs : [],
+          });
+        }
+      }
+    }
   }
 }
 

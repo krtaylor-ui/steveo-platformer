@@ -34,6 +34,10 @@ class MenuSystem {
     this._platformerWorlds   = [];
     this._platformerPreviews = {};
 
+    // Background music (intro loop)
+    this._bgAudio      = null;   // HTMLAudioElement for menu music
+    this._audioTryPlay = null;   // pending first-gesture listener ref
+
     canvas.addEventListener('mousemove', e => {
       const r  = canvas.getBoundingClientRect();
       // Correct for CSS responsive scaling: convert screen px → canvas logical px.
@@ -51,11 +55,37 @@ class MenuSystem {
   start() {
     this._running = true;
     this._frame   = requestAnimationFrame(() => this._loop());
+    this._initMenuAudio();
   }
 
   _stop() {
     this._running = false;
     if (this._frame) { cancelAnimationFrame(this._frame); this._frame = null; }
+    // Remove the pending first-gesture listener so it doesn't fire while the game runs
+    if (this._audioTryPlay) {
+      document.removeEventListener('mousedown',  this._audioTryPlay);
+      document.removeEventListener('keydown',    this._audioTryPlay, true);
+      document.removeEventListener('touchstart', this._audioTryPlay);
+      this._audioTryPlay = null;
+    }
+  }
+
+  _initMenuAudio() {
+    if (!this._bgAudio) {
+      this._bgAudio       = new Audio('music/intro/intro.mp3');
+      this._bgAudio.loop  = true;
+      window._menuAudio   = this._bgAudio;
+    }
+    this._bgAudio.volume      = DEFAULT_MUSIC_VOLUME * MAX_AUDIO_VOLUME;
+    this._bgAudio.currentTime = 0;
+
+    // Try to play immediately — succeeds after a user gesture (start button click or return from game)
+    const p = this._bgAudio.play();
+    if (p instanceof Promise) {
+      p.catch(() => {
+        // Still blocked (called before any gesture) — the start button handler will call us again
+      });
+    }
   }
 
   _loop() {
@@ -108,7 +138,29 @@ class MenuSystem {
     window.game = null;
     this._setState(menuState);
     this._tick = 0;
-    this.start();
+    // Don't call _initMenuAudio via start() for this case — we do a manual fade-in below
+    this._running = true;
+    this._frame   = requestAnimationFrame(() => this._loop());
+    this._fadeInMenuAudio();
+  }
+
+  _fadeInMenuAudio() {
+    if (!this._bgAudio) {
+      this._bgAudio      = new Audio('music/intro/intro.mp3');
+      this._bgAudio.loop = true;
+      window._menuAudio  = this._bgAudio;
+    }
+    const target = DEFAULT_MUSIC_VOLUME * MAX_AUDIO_VOLUME;
+    this._bgAudio.volume      = 0;
+    this._bgAudio.currentTime = 0;
+    this._bgAudio.play().catch(() => {});
+    const steps = 40;
+    let count = 0;
+    const iv = setInterval(() => {
+      count++;
+      if (this._bgAudio) this._bgAudio.volume = Math.min(target, count * target / steps);
+      if (count >= steps) clearInterval(iv);
+    }, 50);
   }
 
   // ── Keyboard capture for sandbox new world ────────────────────
@@ -1277,7 +1329,8 @@ class MenuSystem {
 // ── Boot ─────────────────────────────────────────────────────────
 
 window.addEventListener('load', () => {
-  const canvas   = document.getElementById('gameCanvas');
-  window.menu    = new MenuSystem(canvas);
+  const canvas      = document.getElementById('gameCanvas');
+  window.menu       = new MenuSystem(canvas);
+  window._menuRef   = window.menu;   // exposed for start button audio unlock
   window.menu.start();
 });

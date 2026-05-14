@@ -53,6 +53,9 @@ const BLOCK = Object.freeze({
   // Phase 13
   GLOWSTONE:              48,   // Nether block; crafting ingredient for Respawn Anchor
   RESPAWN_ANCHOR:         49,   // Crafted from Obsidian + Glowstone; sets Nether respawn
+  // Phase 13.5 — Sound & Music
+  MUSIC_PLAYER:           50,   // Interactive jukebox block; sandbox-placeable
+  MUSIC_DISC:             51,   // Music disc item (never placed in grid; uses discKey property)
 });
 
 // Per-block properties
@@ -111,6 +114,8 @@ const BLOCK_DATA = {
   [BLOCK.ARROW]:                  { name: 'Arrow',                   hardness: 0,        mineable: false, solid: false, mineTier: 0, isItem: true },
   [BLOCK.GLOWSTONE]:              { name: 'Glowstone',               hardness: 60,       mineable: true,  solid: true,  mineTier: 0, emitsLight: true },
   [BLOCK.RESPAWN_ANCHOR]:         { name: 'Respawn Anchor',          hardness: 120,      mineable: true,  solid: true,  mineTier: 2 },
+  [BLOCK.MUSIC_PLAYER]:           { name: 'Music Player',            hardness: 80,       mineable: true,  solid: true,  mineTier: 0 },
+  [BLOCK.MUSIC_DISC]:             { name: 'Music Disc',              hardness: 0,        mineable: false, solid: false, mineTier: 0, isItem: true },
 };
 
 // ── Pixel-art block renderers ────────────────────────────────
@@ -171,6 +176,8 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.ARROW:                  _drawArrowItem(ctx, px, py, s);                break;
     case BLOCK.GLOWSTONE:              _drawGlowstone(ctx, px, py, s);               break;
     case BLOCK.RESPAWN_ANCHOR:         _drawRespawnAnchor(ctx, px, py, s, state.active); break;
+    case BLOCK.MUSIC_PLAYER:           _drawMusicPlayer(ctx, px, py, s, state.playing); break;
+    case BLOCK.MUSIC_DISC:             _drawMusicDiscItem(ctx, px, py, s, state.discName); break;
   }
 
   // Mining crack overlay
@@ -1186,6 +1193,63 @@ function _drawRespawnAnchor(ctx, px, py, s, active) {
     ctx.fillRect(cx - 1, cy - 8, 2, 16);
     ctx.fillRect(cx - 6, cy - 1, 12, 2);
   }
+}
+
+function _drawMusicPlayer(ctx, px, py, s, playing) {
+  // Dark wood body
+  ctx.fillStyle = '#2A1A0A';
+  ctx.fillRect(px, py, s, s);
+  // Wood grain panels
+  ctx.fillStyle = '#3D2510';
+  ctx.fillRect(px + 2, py + 2, s - 4, 10);
+  ctx.fillRect(px + 2, py + s - 12, s - 4, 10);
+  // Speaker grille (center)
+  ctx.fillStyle = '#1A0A00';
+  ctx.fillRect(px + 4, py + 14, s - 8, s - 28);
+  // Grille bars
+  ctx.fillStyle = '#3A2000';
+  for (let i = 0; i < 4; i++) {
+    ctx.fillRect(px + 4, py + 16 + i * 4, s - 8, 2);
+  }
+  // Note symbol (♪)
+  const playing_ = !!playing;
+  ctx.fillStyle = playing_ ? '#FFDD44' : '#665533';
+  ctx.font = 'bold 11px Courier New';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('♪', px + s / 2, py + s / 2);
+  ctx.textAlign = 'left';
+  // Glow when playing
+  if (playing_) {
+    ctx.fillStyle = 'rgba(255,220,0,0.18)';
+    ctx.fillRect(px, py, s, s);
+  }
+}
+
+function _drawMusicDiscItem(ctx, px, py, s, discName) {
+  const cx = px + s / 2, cy = py + s / 2;
+  // Dark background
+  ctx.fillStyle = '#111122';
+  ctx.fillRect(px + 2, py + 2, s - 4, s - 4);
+  // Disc body (dark record)
+  ctx.fillStyle = '#222233';
+  ctx.beginPath(); ctx.arc(cx, cy, 12, 0, Math.PI * 2); ctx.fill();
+  // Grooves
+  ctx.strokeStyle = '#2A2A44'; ctx.lineWidth = 1;
+  for (let r = 5; r <= 11; r += 2) {
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+  }
+  // Label (center circle)
+  ctx.fillStyle = '#AA44CC';
+  ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.fill();
+  // Center hole
+  ctx.fillStyle = '#111122';
+  ctx.beginPath(); ctx.arc(cx, cy, 1.5, 0, Math.PI * 2); ctx.fill();
+  // "DISC" label at bottom
+  ctx.fillStyle = '#8866AA';
+  ctx.font = 'bold 5px Courier New';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  ctx.fillText(discName ? discName.slice(0, 8) : 'DISC', cx, py + s - 2);
+  ctx.textAlign = 'left';
 }
 
 function _drawDragonEggItem(ctx, px, py, s) {

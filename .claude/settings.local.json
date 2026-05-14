@@ -29,7 +29,9 @@
       "Bash(curl -s http://localhost:8000)",
       "Bash(curl -s http://localhost:8000/js/game.js)",
       "Bash(curl -s http://localhost:8000/js/input.js)",
-      "Bash(curl -s http://localhost:8000/)"
+      "Bash(curl -s http://localhost:8000/)",
+      "Bash(grep -n \"^  }$\" /home/krtaylor/steveo_platformer/js/game.js)",
+      "Bash(awk -F: '$2 > 3033 && $2 < 3250 {print}')"
     ]
   }
 }

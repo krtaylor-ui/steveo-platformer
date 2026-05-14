@@ -24,6 +24,7 @@ class RedstoneSystem {
     for (const c of components) {
       this._map.set(`${c.col},${c.row}`, c);
     }
+    this.soundCallback = null;    // set by game.js: fn(file, volMult?)
   }
 
   getAt(col, row) {
@@ -48,6 +49,7 @@ class RedstoneSystem {
         comp.on = playerOnPlate;
         if (comp.on !== wasOn) {
           this._propagate(comp, level);
+          if (this.soundCallback) this.soundCallback('sounds/pressure-plate.mp3', 0.6);
         }
       }
     }
@@ -87,6 +89,8 @@ class RedstoneSystem {
 
   _activate(comp, signal, level) {
     if (comp.type === 'trapdoor') {
+      if (comp.open !== signal && this.soundCallback)
+        this.soundCallback('sounds/trapdoor.mp3', 0.65);
       comp.open = signal;
     } else if (comp.type === 'piston') {
       const wantExtended = comp.inverted ? !signal : signal;
@@ -97,16 +101,19 @@ class RedstoneSystem {
         const headBlock = level.get(headRow, headCol);
         if (headBlock === BLOCK.AIR) {
           comp.extended = true;
+          if (this.soundCallback) this.soundCallback('sounds/piston.mp3', 0.7);
         } else if (!_PISTON_UNPUSHABLE.has(headBlock)) {
           const beyondRow = headRow + dr, beyondCol = headCol + dc;
           if (level.get(beyondRow, beyondCol) === BLOCK.AIR) {
             level.set(beyondRow, beyondCol, headBlock);
             level.set(headRow,   headCol,   BLOCK.AIR);
             comp.extended = true;
+            if (this.soundCallback) this.soundCallback('sounds/piston.mp3', 0.7);
           }
         }
       } else if (!wantExtended && comp.extended) {
         comp.extended = false;
+        if (this.soundCallback) this.soundCallback('sounds/piston.mp3', 0.6);
       }
       // Sync animation target to logical state
       if (comp.animTarget === undefined) comp.animProgress = comp.extended ? 1 : 0;

@@ -39,7 +39,7 @@ const SandboxSaves = {
   // sandbox  — SandboxManager instance (has .placedEggs)
   // player   — Player instance (has .x, .y)
   // Returns { ok: true } or { ok: false, error: string }
-  save(playerName, worldName, level, sandbox, player, redstone, dustBlocks, gateBlocks, transmitters, receivers, chestsMap = null, ruinedPortals = null, endPortalAnchors = null, dragon = null, endCrystals = null, dragonDefeated = false, mobDropSettings = null, worldAdvSettings = null) {
+  save(playerName, worldName, level, sandbox, player, redstone, dustBlocks, gateBlocks, transmitters, receivers, chestsMap = null, ruinedPortals = null, endPortalAnchors = null, dragon = null, endCrystals = null, dragonDefeated = false, mobDropSettings = null, worldAdvSettings = null, collectedDiscs = null, musicPlayerBlocks = null) {
     const grid = level.grid.map(row => Array.from(row));
 
     const spawnEggs = sandbox
@@ -156,6 +156,14 @@ const SandboxSaves = {
       dragonDefeated: !!dragonDefeated,
       mobDropSettings:  mobDropSettings  ? JSON.parse(JSON.stringify(mobDropSettings))  : null,
       worldAdvSettings: worldAdvSettings ? JSON.parse(JSON.stringify(worldAdvSettings)) : null,
+      collectedDiscs:   collectedDiscs   ? [...collectedDiscs]                           : [],
+      musicPlayerBlocks: musicPlayerBlocks
+        ? [...musicPlayerBlocks.values()].map(mp => ({
+            col: mp.col, row: mp.row,
+            isConfigured: !!mp.isConfigured,
+            configuredSongs: mp.configuredSongs ? [...mp.configuredSongs] : [],
+          }))
+        : [],
     };
 
     const k = this.key(playerName, worldName);
@@ -216,7 +224,7 @@ const PROGRESS_PREFIX = 'nwprogress|';
 const NormalProgress = {
   key(sandboxKey) { return PROGRESS_PREFIX + sandboxKey; },
 
-  save(sandboxKey, player, bedPos = null, levelGrid = null, collectedItemKeys = null, chestsMap = null, dayNight = null, twoPlayerMode = false) {
+  save(sandboxKey, player, bedPos = null, levelGrid = null, collectedItemKeys = null, chestsMap = null, dayNight = null, twoPlayerMode = false, collectedDiscs = null) {
     const payload = {
       savedAt:     new Date().toISOString(),
       twoPlayerMode: !!twoPlayerMode,
@@ -247,6 +255,7 @@ const NormalProgress = {
         timer:      dayNight.timer,
         halfCycleMs: dayNight.halfCycleMs,
       } : null,
+      collectedDiscs: collectedDiscs ? [...collectedDiscs] : [],
     };
     try {
       localStorage.setItem(this.key(sandboxKey), JSON.stringify(payload));

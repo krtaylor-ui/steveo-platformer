@@ -72,6 +72,7 @@ const OTHER_PALETTE_ITEMS = [
   { kind: 'block', blockType: BLOCK.EYE_OF_ENDER },
   { kind: 'block', blockType: BLOCK.GOAL },
   { kind: 'block', blockType: BLOCK.TNT },
+  { kind: 'block', blockType: BLOCK.MUSIC_PLAYER },
   // ── Consumable items ─────────────────────────────────────────
   { kind: 'blockItem', blockType: BLOCK.ARROW, defaultCount: 20, name: 'Arrow Stack' },
   // ── Spawn Eggs ───────────────────────────────────────────────

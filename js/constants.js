@@ -103,3 +103,82 @@ const DAY_CYCLE_DEFAULT_MINUTES = 10;         // full cycle (day + night), confi
 const DAWN_DUSK_MS              = 30 * 1000;  // 30 s transition
 const SUN_ARC_START_ROW  = 18;  // world row at horizon (start/end of arc)
 const SUN_ARC_PEAK_ROW   =  5.0;  // world row at zenith (top of arc)
+
+// Phase 13.5 — Sound & Music System
+const MAX_AUDIO_VOLUME     = 0.10;  // hard ceiling: 100% slider = 10% actual browser volume
+const DEFAULT_MUSIC_VOLUME = 0.5;   // slider value (0–1); actual volume = this × MAX_AUDIO_VOLUME
+const DEFAULT_SFX_VOLUME   = 0.5;   // slider value (0–1); actual volume = this × MAX_AUDIO_VOLUME
+const VICTORY_MUSIC_FILE   = 'music/boss/victory.mp3';  // ~20s fanfare after Ender Dragon defeat
+
+// Music disc registry — each entry maps a disc key to its audio file and display name.
+// audioFile paths are relative to the game root (e.g. "music/background/newday.mp3").
+// Add more discs here; no other code changes needed.
+const MUSIC_DISCS = {
+  NEW_WORLD: {
+    discName:       'New World',
+    audioFile:      'music/background/New_World.mp3',
+    category:       'background',   // 'background' | 'boss'
+    defaultUnlocked: true,           // available from start without collecting
+  },
+  AXOLOTL: {
+    discName:       'Axolotl Paradise',
+    audioFile:      'music/background/Axolotl_Paradise.mp3',
+    category:       'background',
+    defaultUnlocked: true,
+  },
+  BREEZE: {
+    discName:       'Breeze',
+    audioFile:      'music/background/Breeze.mp3',
+    category:       'background',
+    defaultUnlocked: true,
+  },
+  CLOUDS: {
+    discName:       "Clouds",
+    audioFile:      'music/background/clouds.mp3',
+    category:       'boss',
+    defaultUnlocked: true,
+  },
+  NETHERITE: {
+    discName:       "Netherite",
+    audioFile:      'music/background/netherite.mp3',
+    category:       'boss',
+    defaultUnlocked: true,
+  },
+  NIGHTFALL: {
+    discName:       "Night Fall",
+    audioFile:      'music/background/Nightfall.mp3',
+    category:       'boss',
+    defaultUnlocked: true,
+  },
+  NO_ESCAPE: {
+    discName:       "No Escape",
+    audioFile:      'music/background/No_Escape.mp3',
+    category:       'boss',
+    defaultUnlocked: true,
+  },
+  SHRIEKER: {
+    discName:       "Shrieker",
+    audioFile:      'music/background/Shrieker.mp3',
+    category:       'boss',
+    defaultUnlocked: true,
+  },
+  SHULK: {
+    discName:       "Shulk",
+    audioFile:      'music/background/Shulk.mp3',
+    category:       'boss',
+    defaultUnlocked: true,
+  },
+  THUNDERSTORM: {
+    discName:       "Thunder Storm",
+    audioFile:      'music/background/Thunder_Storm.mp3',
+    category:       'boss',
+    defaultUnlocked: true,
+  },
+  DRAGONS_LAMENT: {
+    discName:       "The End",
+    audioFile:      'music/boss/The_End.mp3',
+    category:       'boss',
+    defaultUnlocked: false,
+    droppedBy:      'ENDER_DRAGON',  // drops when this boss is defeated
+  },
+};
