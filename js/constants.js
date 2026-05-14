@@ -113,6 +113,22 @@ const VICTORY_MUSIC_FILE   = 'music/boss/victory.mp3';  // ~20s fanfare after En
 // Music disc registry — each entry maps a disc key to its audio file and display name.
 // audioFile paths are relative to the game root (e.g. "music/background/newday.mp3").
 // Add more discs here; no other code changes needed.
+// Wither Boss (Phase 14)
+const WITHER_MAX_HP        = 200;
+const WITHER_ARENA_MIN_COL = 550;   // camera west bound during Wither fight
+const WITHER_ARENA_MAX_COL = 600;   // camera east bound during Wither fight
+// Camera Y lock: row 39 sits at the bottom edge of the canvas (no vertical scroll during fight)
+const WITHER_CAM_LOCK_Y    = 40 * BLOCK_SIZE - CANVAS_H;   // = 780 px
+const WITHER_SPAWN_COL     = 570;   // Wither spawn column (block units)
+const WITHER_SPAWN_ROW     = 30;    // Wither spawn row    (block units)
+const WITHER_PLAYER_COL    = 575;   // player arrival column (block units)
+const WITHER_PLAYER_ROW    = 35;    // player arrival row    (block units)
+const WITHER_BODY_W        = 96;    // forward-facing sprite width  (3 blocks)
+const WITHER_BODY_H        = 96;    // sprite height                (3 blocks)
+const WITHER_SIDE_W        = 32;    // left/right-facing sprite width (1 block)
+const WITHER_BASE_ROW      = 30;    // vertical centre row for sinusoidal bob
+const WITHER_MUSIC_FILE    = 'music/boss/wither.mp3';
+
 const MUSIC_DISCS = {
   NEW_WORLD: {
     discName:       'New World',

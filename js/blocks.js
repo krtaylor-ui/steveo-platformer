@@ -56,6 +56,11 @@ const BLOCK = Object.freeze({
   // Phase 13.5 — Sound & Music
   MUSIC_PLAYER:           50,   // Interactive jukebox block; sandbox-placeable
   MUSIC_DISC:             51,   // Music disc item (never placed in grid; uses discKey property)
+  // Phase 14 — Wither Boss
+  WITHER_SKELETON_HEAD:   52,   // item: placed in altar skull slots; dropped by Wither Skeletons
+  WITHER_SKULL_SLOT:      53,   // altar slot block: accepts Wither Skeleton Head
+  SOUL_SAND_SLOT:         54,   // altar slot block: accepts Soul Sand
+  ALTAR_BLOCK:            55,   // decorative altar base (solid, auto-placed)
 });
 
 // Per-block properties
@@ -108,6 +113,8 @@ const BLOCK_DATA = {
   [BLOCK.EYE_OF_ENDER]:           { name: 'Eye of Ender',            hardness: 0,        mineable: false, solid: false, mineTier: 0, isItem: true, isEye: true },
   // Virtual type 43 — palette/hotbar icon for End Portal tool; never placed in level grid
   43:                             { name: 'End Portal',              hardness: Infinity, mineable: false, solid: false, mineTier: 0 },
+  // Virtual type 56 — palette/hotbar icon for Wither Altar; never placed in level grid
+  56:                             { name: 'Wither Altar',            hardness: Infinity, mineable: false, solid: false, mineTier: 0 },
   [BLOCK.BLAZE_ROD]:              { name: 'Blaze Rod',               hardness: 0,        mineable: false, solid: false, mineTier: 0, isItem: true },
   [BLOCK.ENDER_PEARL]:            { name: 'Ender Pearl',             hardness: 0,        mineable: false, solid: false, mineTier: 0, isItem: true },
   [BLOCK.DRAGON_EGG]:             { name: 'Dragon Egg',              hardness: 0,        mineable: false, solid: false, mineTier: 0, isItem: true },
@@ -116,6 +123,11 @@ const BLOCK_DATA = {
   [BLOCK.RESPAWN_ANCHOR]:         { name: 'Respawn Anchor',          hardness: 120,      mineable: true,  solid: true,  mineTier: 2 },
   [BLOCK.MUSIC_PLAYER]:           { name: 'Music Player',            hardness: 80,       mineable: true,  solid: true,  mineTier: 0 },
   [BLOCK.MUSIC_DISC]:             { name: 'Music Disc',              hardness: 0,        mineable: false, solid: false, mineTier: 0, isItem: true },
+  // Phase 14
+  [BLOCK.WITHER_SKELETON_HEAD]:   { name: 'Wither Skull',   hardness: 0,        mineable: false, solid: false, mineTier: 0, isItem: true },
+  [BLOCK.WITHER_SKULL_SLOT]:      { name: 'Skull Slot',     hardness: Infinity, mineable: false, solid: false, mineTier: 0 },
+  [BLOCK.SOUL_SAND_SLOT]:         { name: 'Soul Sand Slot', hardness: Infinity, mineable: false, solid: false, mineTier: 0 },
+  [BLOCK.ALTAR_BLOCK]:            { name: 'Altar Block',    hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
 };
 
 // ── Pixel-art block renderers ────────────────────────────────
@@ -170,6 +182,7 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.END_PORTAL_FRAME_FULL:  _drawEndPortalFrame(ctx, px, py, s, true);     break;
     case BLOCK.EYE_OF_ENDER:           _drawEyeOfEnderItem(ctx, px, py, s);           break;
     case 43 /* END_PORTAL_ICON */:     _drawEndPortalIcon(ctx, px, py, s);            break;
+    case 56 /* WITHER_ALTAR_ICON */:   _drawWitherAltarIcon(ctx, px, py, s);          break;
     case BLOCK.BLAZE_ROD:              _drawBlazeRodItem(ctx, px, py, s);             break;
     case BLOCK.ENDER_PEARL:            _drawEnderPearlItem(ctx, px, py, s);           break;
     case BLOCK.DRAGON_EGG:             _drawDragonEggItem(ctx, px, py, s);            break;
@@ -178,6 +191,10 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.RESPAWN_ANCHOR:         _drawRespawnAnchor(ctx, px, py, s, state.active); break;
     case BLOCK.MUSIC_PLAYER:           _drawMusicPlayer(ctx, px, py, s, state.playing); break;
     case BLOCK.MUSIC_DISC:             _drawMusicDiscItem(ctx, px, py, s, state.discName); break;
+    case BLOCK.WITHER_SKELETON_HEAD:   _drawWitherSkullItem(ctx, px, py, s);            break;
+    case BLOCK.WITHER_SKULL_SLOT:      _drawWitherSkullSlot(ctx, px, py, s);            break;
+    case BLOCK.SOUL_SAND_SLOT:         _drawSoulSandSlotBlock(ctx, px, py, s);          break;
+    case BLOCK.ALTAR_BLOCK:            _drawAltarBlock(ctx, px, py, s);                 break;
   }
 
   // Mining crack overlay
@@ -1276,4 +1293,130 @@ function _drawDragonEggItem(ctx, px, py, s) {
   ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   ctx.fillText('EGG', cx, py + s - 3);
   ctx.textAlign = 'left';
+}
+
+function _drawWitherAltarIcon(ctx, px, py, s) {
+  // Miniature representation: skull on top, 3 sand blocks, base
+  ctx.fillStyle = '#0D0D1A'; ctx.fillRect(px, py, s, s);
+  const cw = s / 3;
+  // Row 0: skull slots
+  ctx.fillStyle = '#222233';
+  ctx.fillRect(px, py, cw - 1, cw - 1);
+  ctx.fillRect(px + cw * 2 + 1, py, cw - 1, cw - 1);
+  ctx.fillStyle = '#884466';
+  ctx.beginPath(); ctx.arc(px + cw / 2, py + cw / 2, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(px + cw * 2 + cw / 2 + 1, py + cw / 2, 4, 0, Math.PI * 2); ctx.fill();
+  // Row 1: soul sand
+  ctx.fillStyle = '#503820';
+  for (let i = 0; i < 3; i++) ctx.fillRect(px + i * cw + 1, py + cw + 1, cw - 2, cw - 2);
+  // Row 2: center sand
+  ctx.fillRect(px + cw + 1, py + cw * 2 + 1, cw - 2, cw - 2);
+  // Row 3: altar base
+  ctx.fillStyle = '#2A2028';
+  ctx.fillRect(px, py + cw * 3, s, cw);
+  ctx.strokeStyle = '#6633AA'; ctx.lineWidth = 1;
+  ctx.strokeRect(px + 0.5, py + cw * 3 + 0.5, s - 1, cw - 1);
+}
+
+// ── Phase 14: Wither Boss blocks ─────────────────────────────
+
+function _drawWitherSkullItem(ctx, px, py, s) {
+  const cx = px + s / 2, cy = py + s / 2;
+  ctx.fillStyle = '#1A1A1A';
+  ctx.fillRect(px + 1, py + 1, s - 2, s - 2);
+  // Skull dome
+  ctx.fillStyle = '#888888';
+  ctx.beginPath(); ctx.arc(cx, cy - 2, 9, Math.PI, 0); ctx.closePath(); ctx.fill();
+  // Jaw
+  ctx.fillStyle = '#777777';
+  ctx.fillRect(cx - 7, cy + 3, 14, 6);
+  // Eye sockets
+  ctx.fillStyle = '#222244';
+  ctx.fillRect(cx - 7, cy - 5, 5, 5);
+  ctx.fillRect(cx + 2, cy - 5, 5, 5);
+  // Glowing eyes
+  ctx.fillStyle = '#CC44FF';
+  ctx.fillRect(cx - 6, cy - 4, 3, 3);
+  ctx.fillRect(cx + 3, cy - 4, 3, 3);
+  // Teeth
+  ctx.fillStyle = '#DDDDDD';
+  for (let i = 0; i < 4; i++) ctx.fillRect(cx - 5 + i * 4, cy + 4, 2, 4);
+  ctx.fillStyle = '#AA66CC';
+  ctx.font = 'bold 5px Courier New';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  ctx.fillText('SKULL', cx, py + s - 1);
+  ctx.textAlign = 'left';
+}
+
+function _drawWitherSkullSlot(ctx, px, py, s) {
+  // Unfilled slot: dark border with faint skull hint
+  ctx.fillStyle = '#0D0D1A';
+  ctx.fillRect(px, py, s, s);
+  ctx.strokeStyle = '#554433';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(px + 1, py + 1, s - 2, s - 2);
+  // Faint skull outline
+  ctx.strokeStyle = 'rgba(136,68,102,0.5)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(px + s / 2, py + s / 2 - 2, 9, Math.PI, 0);
+  ctx.closePath(); ctx.stroke();
+  ctx.strokeRect(px + s / 2 - 7, py + s / 2 + 3, 14, 6);
+  // Corner marks
+  ctx.fillStyle = '#886644';
+  ctx.fillRect(px + 1, py + 1, 3, 3);
+  ctx.fillRect(px + s - 4, py + 1, 3, 3);
+  ctx.fillRect(px + 1, py + s - 4, 3, 3);
+  ctx.fillRect(px + s - 4, py + s - 4, 3, 3);
+}
+
+function _drawSoulSandSlotBlock(ctx, px, py, s) {
+  // Unfilled soul sand slot: dark border with faint sand texture hint
+  ctx.fillStyle = '#0D0D0A';
+  ctx.fillRect(px, py, s, s);
+  ctx.strokeStyle = '#554433';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(px + 1, py + 1, s - 2, s - 2);
+  // Faint sand colour wash
+  ctx.fillStyle = 'rgba(80,60,40,0.35)';
+  ctx.fillRect(px + 4, py + 4, s - 8, s - 8);
+  // Corner marks
+  ctx.fillStyle = '#886644';
+  ctx.fillRect(px + 1, py + 1, 3, 3);
+  ctx.fillRect(px + s - 4, py + 1, 3, 3);
+  ctx.fillRect(px + 1, py + s - 4, 3, 3);
+  ctx.fillRect(px + s - 4, py + s - 4, 3, 3);
+  // Small "S" label
+  ctx.fillStyle = 'rgba(140,110,70,0.6)';
+  ctx.font = 'bold 7px Courier New';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('S', px + s / 2, py + s / 2);
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+}
+
+function _drawAltarBlock(ctx, px, py, s) {
+  // Dark stone altar base with rune markings
+  ctx.fillStyle = '#1A1018';
+  ctx.fillRect(px, py, s, s);
+  // Stone texture
+  ctx.fillStyle = '#2A2028';
+  ctx.fillRect(px + 1, py + 1, s - 2, s - 2);
+  ctx.fillStyle = '#201820';
+  ctx.fillRect(px + 2, py + 2, 12, 12);
+  ctx.fillRect(px + s - 14, py + 2, 12, 12);
+  ctx.fillRect(px + 2, py + s - 14, 12, 12);
+  ctx.fillRect(px + s - 14, py + s - 14, 12, 12);
+  // Rune marks (purple glyphs)
+  ctx.strokeStyle = '#6633AA';
+  ctx.lineWidth = 1;
+  const cx = px + s / 2, cy = py + s / 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - 8, cy - 8); ctx.lineTo(cx, cy - 3); ctx.lineTo(cx + 8, cy - 8);
+  ctx.moveTo(cx - 8, cy + 8); ctx.lineTo(cx, cy + 3); ctx.lineTo(cx + 8, cy + 8);
+  ctx.moveTo(cx, cy - 3); ctx.lineTo(cx, cy + 3);
+  ctx.stroke();
+  // Outer border
+  ctx.strokeStyle = '#443344';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
 }

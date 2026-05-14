@@ -39,7 +39,7 @@ const SandboxSaves = {
   // sandbox  — SandboxManager instance (has .placedEggs)
   // player   — Player instance (has .x, .y)
   // Returns { ok: true } or { ok: false, error: string }
-  save(playerName, worldName, level, sandbox, player, redstone, dustBlocks, gateBlocks, transmitters, receivers, chestsMap = null, ruinedPortals = null, endPortalAnchors = null, dragon = null, endCrystals = null, dragonDefeated = false, mobDropSettings = null, worldAdvSettings = null, collectedDiscs = null, musicPlayerBlocks = null) {
+  save(playerName, worldName, level, sandbox, player, redstone, dustBlocks, gateBlocks, transmitters, receivers, chestsMap = null, ruinedPortals = null, endPortalAnchors = null, dragon = null, endCrystals = null, dragonDefeated = false, mobDropSettings = null, worldAdvSettings = null, collectedDiscs = null, musicPlayerBlocks = null, witherAltars = null) {
     const grid = level.grid.map(row => Array.from(row));
 
     const spawnEggs = sandbox
@@ -162,6 +162,12 @@ const SandboxSaves = {
             col: mp.col, row: mp.row,
             isConfigured: !!mp.isConfigured,
             configuredSongs: mp.configuredSongs ? [...mp.configuredSongs] : [],
+          }))
+        : [],
+      witherAltars: witherAltars
+        ? witherAltars.map(a => ({
+            anchorRow: a.anchorRow, anchorCol: a.anchorCol,
+            skulls: [...a.skulls], sand: [...a.sand],
           }))
         : [],
     };

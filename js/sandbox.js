@@ -47,6 +47,7 @@ const GEAR_PALETTE_ITEMS = [
 // Virtual block type for ruined portal tool — palette/hotbar only, never placed in grid
 const SB_RUINED_PORTAL = 37;
 const SB_END_PORTAL    = 43;  // virtual palette type for End Portal tool (types 40-42 are real blocks)
+const SB_WITHER_ALTAR  = 56;  // virtual palette type for Wither Altar 3×4 multi-block
 
 // "Other" palette tab: redstone, structural, spawn eggs
 const OTHER_PALETTE_ITEMS = [
@@ -70,6 +71,8 @@ const OTHER_PALETTE_ITEMS = [
   { kind: 'block', blockType: SB_RUINED_PORTAL },
   { kind: 'block', blockType: SB_END_PORTAL },
   { kind: 'block', blockType: BLOCK.EYE_OF_ENDER },
+  { kind: 'block', blockType: SB_WITHER_ALTAR },
+  { kind: 'block', blockType: BLOCK.WITHER_SKELETON_HEAD },
   { kind: 'block', blockType: BLOCK.GOAL },
   { kind: 'block', blockType: BLOCK.TNT },
   { kind: 'block', blockType: BLOCK.MUSIC_PLAYER },
@@ -155,6 +158,23 @@ const SB_MULTI_FOOTPRINT = {
     { dr: 4, dc: 1, type: BLOCK.OBSIDIAN },  // S (4,1)
     { dr: 4, dc: 2, type: BLOCK.OBSIDIAN },  // S (4,2)
     { dr: 4, dc: 3, type: BLOCK.OBSIDIAN },  // S (4,3)
+  ],
+  // Wither Altar (3 wide × 4 tall):
+  // Row 0: [WS][WS][WS]  ← Wither Skull Slots (3 needed)
+  // Row 1: [SS][SS][SS]   ← Soul Sand Slots (3)
+  // Row 2: [ ][SS][ ]     ← Soul Sand Slot (1 more)
+  // Row 3: [AB][AB][AB]   ← Altar Blocks (decorative, auto-placed)
+  [SB_WITHER_ALTAR]: [
+    { dr: 0, dc: 0, type: BLOCK.WITHER_SKULL_SLOT },
+    { dr: 0, dc: 1, type: BLOCK.WITHER_SKULL_SLOT },
+    { dr: 0, dc: 2, type: BLOCK.WITHER_SKULL_SLOT },
+    { dr: 1, dc: 0, type: BLOCK.SOUL_SAND_SLOT },
+    { dr: 1, dc: 1, type: BLOCK.SOUL_SAND_SLOT },
+    { dr: 1, dc: 2, type: BLOCK.SOUL_SAND_SLOT },
+    { dr: 2, dc: 1, type: BLOCK.SOUL_SAND_SLOT },
+    { dr: 3, dc: 0, type: BLOCK.ALTAR_BLOCK },
+    { dr: 3, dc: 1, type: BLOCK.ALTAR_BLOCK },
+    { dr: 3, dc: 2, type: BLOCK.ALTAR_BLOCK },
   ],
 };
 
