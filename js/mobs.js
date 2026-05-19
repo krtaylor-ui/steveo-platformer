@@ -1290,7 +1290,7 @@ class Enderman extends Mob {
 // ── Item Drop ─────────────────────────────────────────────────
 
 class ItemDrop {
-  constructor(x, y, itemKey, amount = 1) {
+  constructor(x, y, itemKey, amount = 1, pickupDelay = 0) {
     this.x       = x; this.y = y;
     this.vx      = (Math.random() - 0.5) * 4;
     this.vy      = -5;
@@ -1298,6 +1298,7 @@ class ItemDrop {
     this.amount  = amount;
     this.life    = ITEM_DROP_LIFETIME;
     this.alive   = true;
+    this.pickupDelay = pickupDelay;
     this.bobOffset = Math.random() * Math.PI * 2;
   }
 
@@ -1438,22 +1439,32 @@ class MobManager {
     this.playerArrows.push(new Arrow(x, y, vx, vy, damage, BOW_GRAVITY, true));
   }
 
+  // Returns the player (p1 or p2) closest to (cx, cy).
+  // If p2 is null or dead (hp <= 0 with no iframes), returns p1 unconditionally.
+  _nearestPlayer(cx, cy, p1, p2) {
+    if (!p2 || p2.hp <= 0) return p1;
+    const d1 = Math.hypot(p1.cx - cx, p1.cy - cy);
+    const d2 = Math.hypot(p2.cx - cx, p2.cy - cy);
+    return d1 <= d2 ? p1 : p2;
+  }
+
   // Called from game._update; returns amount of damage dealt to player this frame
-  update(player, level) {
+  update(player, level, player2 = null) {
     const hpBefore = player.hp;
 
     // Spawn point respawn
     this._updateSpawnPoints(player, level);
 
-    // Mob AI — deaths are collected and processed after all updates
+    // Mob AI — each mob targets the nearest active player
     for (const mob of this.mobs) {
       if (!mob.alive) continue;
+      const target = this._nearestPlayer(mob.cx, mob.cy, player, player2);
       if (mob instanceof Skeleton) {
-        mob.update(player, level, this.arrows);
+        mob.update(target, level, this.arrows);
       } else if (mob instanceof Blaze) {
-        mob.update(player, level, this.blazeShots);
+        mob.update(target, level, this.blazeShots);
       } else {
-        mob.update(player, level);
+        mob.update(target, level);
       }
       if (mob instanceof Enderman) mob.tryTeleport(level);
       // Kill mobs that are standing in lava
@@ -1521,7 +1532,11 @@ class MobManager {
     if (this._camera) this.updateAmbientSounds(this._camera);
 
     // Blaze shots
-    this.blazeShots = this.blazeShots.filter(bs => { bs.update(player, level); return bs.alive; });
+    this.blazeShots = this.blazeShots.filter(bs => {
+      const bsTarget = this._nearestPlayer(bs.x, bs.y, player, player2);
+      bs.update(bsTarget, level);
+      return bs.alive;
+    });
 
     // Deflected blaze shots — check mob collisions
     for (const bs of this.blazeShots) {
@@ -1550,12 +1565,13 @@ class MobManager {
     this.damageNums = this.damageNums.filter(d => d.update());
     this.explosions = this.explosions.filter(e => { e.life--; return e.life > 0; });
 
-    // XP orbs — animate and collect
+    // XP orbs — animate and collect (nearest player picks up)
     this.xpOrbs = this.xpOrbs.filter(orb => {
       orb.tick();
       if (orb.life <= 0) return false;
-      const dist = Math.hypot(orb.worldX - player.cx, orb.worldY - player.cy);
-      if (dist < 28) { player.gainXp(XP_PER_ORB); return false; }
+      const collector = this._nearestPlayer(orb.worldX, orb.worldY, player, player2);
+      const dist = Math.hypot(orb.worldX - collector.cx, orb.worldY - collector.cy);
+      if (dist < 28) { collector.gainXp(XP_PER_ORB); return false; }
       return true;
     });
 
@@ -1591,6 +1607,7 @@ class MobManager {
     const collected = [];
     for (const item of this.droppedItems) {
       if (!item.alive) continue;
+      if (item.pickupDelay > 0) { item.pickupDelay--; continue; }
       if (Math.hypot(item.x - pcx, item.y - pcy) < 32) {
         collected.push({ itemKey: item.itemKey, amount: item.amount });
         item.alive = false;
@@ -1600,8 +1617,8 @@ class MobManager {
   }
 
   dropItems(items) {
-    for (const { x, y, itemKey, amount } of items) {
-      this.droppedItems.push(new ItemDrop(x, y, itemKey, amount));
+    for (const { x, y, itemKey, amount, pickupDelay = 0 } of items) {
+      this.droppedItems.push(new ItemDrop(x, y, itemKey, amount, pickupDelay));
     }
   }
 

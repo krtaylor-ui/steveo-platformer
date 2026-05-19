@@ -1,0 +1,16 @@
+{
+  "worldId": "g-1778740640476-vj6",
+  "name": "g-1778740640476-vj6",
+  "mode": "sandbox",
+  "maxPlayers": 4,
+  "blocks": {
+    "12,10": 1
+  },
+  "items": [],
+  "multiplierSettings": {
+    "bossHealthMultiplier": 1,
+    "bossDamageMultiplier": 1,
+    "bossAttackRateMultiplier": 1
+  },
+  "playerCount": 0
+}

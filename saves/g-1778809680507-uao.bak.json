@@ -1,0 +1,14 @@
+{
+  "worldId": "g-1778809680507-uao",
+  "name": "g-1778809680507-uao",
+  "mode": "sandbox",
+  "maxPlayers": 4,
+  "blocks": {},
+  "items": [],
+  "multiplierSettings": {
+    "bossHealthMultiplier": 1,
+    "bossDamageMultiplier": 1,
+    "bossAttackRateMultiplier": 1
+  },
+  "playerCount": 0
+}

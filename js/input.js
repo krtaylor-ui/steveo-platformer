@@ -17,6 +17,12 @@ class InputManager {
     // Set by game.js before player.update() each frame
     this.controllerSensitivity    = 1.0;
     this.controllerAimSensitivity = 1.0;
+    this.controllerDeadzone       = 0.20; // overridden by worldAdvSettings.controllerDeadzone
+
+    // 'ijkl'  → P2 uses IJKL+U keys (default; P1 may also use arrow keys)
+    // 'arrows' → P2 uses Arrow keys+Insert/End/PageDown/Home; P1 is WASD-only
+    // Set each frame by game.js based on ControllerConfig assignments.
+    this.p2KeyMode = 'ijkl';
 
     this._bind();
   }
@@ -75,12 +81,12 @@ class InputManager {
         dpad1:     btn(15),  // Right
         dpad2:     btn(13),  // Down
         dpad3:     btn(14),  // Left
-        // Left stick (movement) with dead zone
-        moveX: this._applyDeadZone(a[0] ?? 0, GP_DEADZONE_STICK),
-        moveY: this._applyDeadZone(a[1] ?? 0, GP_DEADZONE_STICK),
-        // Right stick (aim) with dead zone
-        aimX:  this._applyDeadZone(a[2] ?? 0, GP_DEADZONE_STICK),
-        aimY:  this._applyDeadZone(a[3] ?? 0, GP_DEADZONE_STICK),
+        // Left stick (movement) with configurable dead zone
+        moveX: this._applyDeadZone(a[0] ?? 0, this.controllerDeadzone),
+        moveY: this._applyDeadZone(a[1] ?? 0, this.controllerDeadzone),
+        // Right stick (aim) with configurable dead zone
+        aimX:  this._applyDeadZone(a[2] ?? 0, this.controllerDeadzone),
+        aimY:  this._applyDeadZone(a[3] ?? 0, this.controllerDeadzone),
       };
     }
   }
@@ -97,15 +103,19 @@ class InputManager {
 
   _bind() {
     window.addEventListener('keydown', e => {
+      // Don't intercept keyboard events when a text input/textarea is focused (e.g. chat)
+      const ae = document.activeElement;
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
       this.keys[e.code]         = true;
       this._justPressed[e.code] = true;
       if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Tab','KeyU','KeyF','Escape',
-           'AltLeft','AltRight'].includes(e.code)) {
+           'AltLeft','AltRight','Insert','End','PageDown','Home'].includes(e.code)) {
         e.preventDefault();
       }
       if (e.ctrlKey && (e.code === 'KeyZ' || e.code === 'KeyY' || e.code === 'KeyC' || e.code === 'KeyV')) e.preventDefault();
     });
     window.addEventListener('keyup', e => {
+      // Clear keys regardless of focus so keys don't get stuck when losing focus mid-press
       this.keys[e.code] = false;
     });
 
@@ -140,6 +150,17 @@ class InputManager {
     }, { passive: false });
   }
 
+  // Move the virtual cursor using the right stick. Called every frame before any early returns
+  // so it works in all screens: gameplay, inventory, menus, popups, pause, etc.
+  // speedPx = pixels/frame at full deflection (scaled by controllerAimSensitivity).
+  applyStickCursor(speedPx, canvasW, canvasH) {
+    const gp = this.gamepads[0];
+    if (!gp || !gp.connected) return;
+    const sens = this.controllerAimSensitivity ?? 1.0;
+    this.mouse.x = Math.max(0, Math.min(canvasW, this.mouse.x + gp.aimX * speedPx * sens));
+    this.mouse.y = Math.max(0, Math.min(canvasH, this.mouse.y + gp.aimY * speedPx * sens));
+  }
+
   // Call at end of each frame to clear one-shot events
   flush() {
     this.mouse.clicked      = false;
@@ -154,34 +175,72 @@ class InputManager {
 
   // ── Action checks — merge keyboard + gamepad[0] ───────────
 
-  isLeft()   { return this.isDown('ArrowLeft')  || this.isDown('KeyA') || this.gamepads[0].moveX < 0; }
-  isRight()  { return this.isDown('ArrowRight') || this.isDown('KeyD') || this.gamepads[0].moveX > 0; }
-  isJump()   { return this.isDown('ArrowUp')    || this.isDown('KeyW') || this.gamepads[0].jump; }
-  isCrouch() { return this.isDown('ArrowDown')  || this.isDown('KeyS') || this.gamepads[0].crouch; }
-  isRun()    { return this.isDown('ShiftLeft')  || this.isDown('ShiftRight'); }
+  // When p2KeyMode === 'arrows', P2 owns the arrow keys so P1 uses WASD only.
+  isLeft()   {
+    const arr = this.p2KeyMode !== 'arrows' && this.isDown('ArrowLeft');
+    return arr || this.isDown('KeyA') || this.gamepads[0].moveX < 0;
+  }
+  isRight()  {
+    const arr = this.p2KeyMode !== 'arrows' && this.isDown('ArrowRight');
+    return arr || this.isDown('KeyD') || this.gamepads[0].moveX > 0;
+  }
+  isJump()   {
+    const arr = this.p2KeyMode !== 'arrows' && this.isDown('ArrowUp');
+    return arr || this.isDown('KeyW') || this.gamepads[0].jump;
+  }
+  isCrouch() {
+    const arr = this.p2KeyMode !== 'arrows' && this.isDown('ArrowDown');
+    return arr || this.isDown('KeyS') || this.gamepads[0].crouch;
+  }
+  isRun()    { return this.isDown('ShiftLeft') || this.isDown('ShiftRight'); }
   isAttack() { return this.isDown('Space') || this.gamepads[0].attack || this.gamepads[0].triggerR > 0.5; }
 
-  // Merged analog X movement axis: keyboard (±1) + left stick (scaled by sensitivity), clamped [-1,1]
+  // Merged analog X — P1 drops arrows when P2 owns them
   moveX() {
-    const kb = (this.isDown('ArrowRight') || this.isDown('KeyD') ? 1 : 0)
-             - (this.isDown('ArrowLeft')  || this.isDown('KeyA') ? 1 : 0);
+    const useArr = this.p2KeyMode !== 'arrows';
+    const kb = ((useArr && this.isDown('ArrowRight')) || this.isDown('KeyD') ? 1 : 0)
+             - ((useArr && this.isDown('ArrowLeft'))  || this.isDown('KeyA') ? 1 : 0);
     const gp = this.gamepads[0].moveX * (this.controllerSensitivity ?? 1.0);
     return Math.max(-1, Math.min(1, kb + gp));
   }
 
-  // ── Player 2 action checks — IJKL keyboard or gamepad[1] (Phase 12) ──────
-  isP2Left()   { return this.isDown(P2_KEY_LEFT)   || this.gamepads[1].moveX < 0; }
-  isP2Right()  { return this.isDown(P2_KEY_RIGHT)  || this.gamepads[1].moveX > 0; }
-  isP2Jump()   { return this.isDown(P2_KEY_JUMP)   || this.gamepads[1].jump; }
-  isP2Crouch() { return this.isDown(P2_KEY_CROUCH) || this.gamepads[1].crouch; }
-  isP2Attack() { return this.isDown(P2_KEY_ATTACK) || this.gamepads[1].attack || this.gamepads[1].triggerR > 0.5; }
+  // ── Player 2 action checks ────────────────────────────────────────────────
+  // 'ijkl'  mode: IJKL + U  (P1 is on gamepad or not sharing keyboard)
+  // 'arrows' mode: Arrow keys + Insert/End/PageDown/Home  (both players on keyboard)
+  isP2Left()   {
+    const kb = this.p2KeyMode === 'arrows' ? this.isDown('ArrowLeft')  : this.isDown(P2_KEY_LEFT);
+    return kb || this.gamepads[1].moveX < 0;
+  }
+  isP2Right()  {
+    const kb = this.p2KeyMode === 'arrows' ? this.isDown('ArrowRight') : this.isDown(P2_KEY_RIGHT);
+    return kb || this.gamepads[1].moveX > 0;
+  }
+  isP2Jump()   {
+    const kb = this.p2KeyMode === 'arrows' ? this.isDown('ArrowUp')    : this.isDown(P2_KEY_JUMP);
+    return kb || this.gamepads[1].jump;
+  }
+  isP2Crouch() {
+    const kb = this.p2KeyMode === 'arrows' ? this.isDown('ArrowDown')  : this.isDown(P2_KEY_CROUCH);
+    return kb || this.gamepads[1].crouch;
+  }
+  isP2Attack() {
+    const kb = this.p2KeyMode === 'arrows' ? this.isDown('Insert')     : this.isDown(P2_KEY_ATTACK);
+    return kb || this.gamepads[1].attack || this.gamepads[1].triggerR > 0.5;
+  }
 
-  // Merged analog X for P2: IJKL keyboard (±1) or gamepad[1] left stick
+  // Merged analog X for P2
   moveX2() {
-    const kb = (this.isDown(P2_KEY_RIGHT) ? 1 : 0) - (this.isDown(P2_KEY_LEFT) ? 1 : 0);
+    const kb = this.p2KeyMode === 'arrows'
+      ? (this.isDown('ArrowRight') ? 1 : 0) - (this.isDown('ArrowLeft') ? 1 : 0)
+      : (this.isDown(P2_KEY_RIGHT) ? 1 : 0) - (this.isDown(P2_KEY_LEFT) ? 1 : 0);
     const gp = this.gamepads[1].moveX * (this.controllerSensitivity ?? 1.0);
     return Math.max(-1, Math.min(1, kb + gp));
   }
+
+  // One-shot checks for P2 arrows-mode action keys (End / PageDown / Home)
+  isP2UseItem()  { return this.p2KeyMode === 'arrows' && this.isJustDown('End'); }
+  isP2UseLever() { return this.p2KeyMode === 'arrows' && this.isJustDown('PageDown'); }
+  isP2Inventory(){ return this.p2KeyMode === 'arrows' && this.isJustDown('Home'); }
 
   // Returns 0–8 if a number key 1–9 was just held, else -1
   hotbarKey() {

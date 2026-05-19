@@ -129,6 +129,9 @@ const WITHER_SIDE_W        = 32;    // left/right-facing sprite width (1 block)
 const WITHER_BASE_ROW      = 30;    // vertical centre row for sinusoidal bob
 const WITHER_MUSIC_FILE    = 'music/boss/wither.mp3';
 
+// Phase 16 — Multiplayer player colours (player 1-4)
+const PLAYER_COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A'];
+
 const MUSIC_DISCS = {
   NEW_WORLD: {
     discName:       'New World',

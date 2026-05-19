@@ -31,7 +31,21 @@
       "Bash(curl -s http://localhost:8000/js/input.js)",
       "Bash(curl -s http://localhost:8000/)",
       "Bash(grep -n \"^  }$\" /home/krtaylor/steveo_platformer/js/game.js)",
-      "Bash(awk -F: '$2 > 3033 && $2 < 3250 {print}')"
+      "Bash(awk -F: '$2 > 3033 && $2 < 3250 {print}')",
+      "Bash(npm install *)",
+      "Bash(curl -s http://localhost:3000/api/worlds)",
+      "Bash(kill %1)",
+      "Bash(curl *)",
+      "Bash(pkill -f \"node server-multiplayer.js\")",
+      "Bash(pkill -f \"node server-multiplayer\")",
+      "Bash(lsof -ti:3000)",
+      "Bash(xargs kill -9)",
+      "Bash(npm run *)",
+      "Read(//tmp/**)",
+      "Bash(git -C /home/krtaylor/steveo_platformer/.claude/worktrees/agent-a5ef2855ab8bda03f status)",
+      "Read(//outputs/**)",
+      "Bash(find / -name \"PHASE_16E_CONTROLLER_SYSTEM.md\")",
+      "Bash(awk 'NR>=700 && NR<=1980 && /return;/' /home/krtaylor/steveo_platformer/js/game.js)"
     ]
   }
 }

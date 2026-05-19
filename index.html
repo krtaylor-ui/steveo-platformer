@@ -121,17 +121,20 @@
   </div>
   <div id="controls">
     <kbd>WASD</kbd> Move &nbsp;·&nbsp;
-    <kbd>Space</kbd> Attack &nbsp;·&nbsp;
+    <kbd>Space</kbd> Attack/Bow &nbsp;·&nbsp;
     <kbd>Click</kbd> Mine/Place &nbsp;·&nbsp;
     <kbd>I</kbd> Inventory &nbsp;·&nbsp;
     <kbd>E</kbd> Chest &nbsp;·&nbsp;
     <kbd>U</kbd> Portal &nbsp;·&nbsp;
     <kbd>H</kbd> Help &nbsp;·&nbsp;
-    <kbd>Esc</kbd> Menu
+    <kbd>Esc</kbd> Menu &nbsp;·&nbsp;
+    2P: <kbd>IJKL</kbd>+<kbd>U</kbd>
   </div>
 
   <script src="js/constants.js"></script>
   <script src="js/blocks.js"></script>
+  <script src="js/controller-config.js"></script>
+  <script src="js/controller-input.js"></script>
   <script src="js/input.js"></script>
   <script src="js/camera.js"></script>
   <script src="js/mobs.js"></script>
@@ -141,9 +144,15 @@
   <script src="js/redstone.js"></script>
   <script src="js/world.js"></script>
   <script src="js/sandbox.js"></script>
+  <script src="js/save-migrations.js"></script>
   <script src="js/saves.js"></script>
   <script src="js/game.js"></script>
   <script src="js/menu.js"></script>
+  <!-- Phase 16: Multiplayer (socket.io loaded from CDN; falls back gracefully if unavailable) -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js" crossorigin="anonymous"></script>
+  <script src="js/multiplayer.js"></script>
+  <!-- Phase 16-A: Online lobby UI -->
+  <script src="js/online-ui.js"></script>
 
   <script>
     // ── Responsive canvas scaling ────────────────────────────────

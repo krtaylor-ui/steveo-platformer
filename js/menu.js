@@ -34,9 +34,14 @@ class MenuSystem {
     this._platformerWorlds   = [];
     this._platformerPreviews = {};
 
+    // Template worlds (fetched once from /templates/*.json; null = not loaded yet)
+    this._templates = { normal: undefined, platformer: undefined, sandbox: undefined };
+    this._fetchTemplates();
+
     // Background music (intro loop)
     this._bgAudio      = null;   // HTMLAudioElement for menu music
     this._audioTryPlay = null;   // pending first-gesture listener ref
+    this._menuMuted    = localStorage.getItem('menuMuted') === '1';
 
     canvas.addEventListener('mousemove', e => {
       const r  = canvas.getBoundingClientRect();
@@ -48,6 +53,22 @@ class MenuSystem {
     });
     // Suppress right-click context menu on canvas
     canvas.addEventListener('contextmenu', e => e.preventDefault());
+  }
+
+  // ── Template world loading ───────────────────────────────────
+
+  _fetchTemplates() {
+    const modes = ['normal', 'platformer', 'sandbox'];
+    for (const mode of modes) {
+      this._fetchTemplate(mode);
+    }
+  }
+
+  _fetchTemplate(mode) {
+    fetch(`/templates/world-${mode}.json?_=${Date.now()}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { this._templates[mode] = data || null; })
+      .catch(() => { this._templates[mode] = null; });
   }
 
   // ── Lifecycle ────────────────────────────────────────────────
@@ -76,7 +97,7 @@ class MenuSystem {
       this._bgAudio.loop  = true;
       window._menuAudio   = this._bgAudio;
     }
-    this._bgAudio.volume      = DEFAULT_MUSIC_VOLUME * MAX_AUDIO_VOLUME;
+    this._bgAudio.volume      = this._menuMuted ? 0 : DEFAULT_MUSIC_VOLUME * MAX_AUDIO_VOLUME;
     this._bgAudio.currentTime = 0;
 
     // Try to play immediately — succeeds after a user gesture (start button click or return from game)
@@ -116,6 +137,7 @@ class MenuSystem {
     }
 
     if (next === 'normalSelect') {
+      this._fetchTemplate('normal');
       this._normalWorlds   = SandboxSaves.list();
       this._normalPreviews = {};
       for (const w of this._normalWorlds) {
@@ -125,12 +147,17 @@ class MenuSystem {
     }
 
     if (next === 'platformerSelect') {
+      this._fetchTemplate('platformer');
       this._platformerWorlds   = SandboxSaves.list();
       this._platformerPreviews = {};
       for (const w of this._platformerWorlds) {
         const data = SandboxSaves.load(w.key);
         if (data?.grid) this._platformerPreviews[w.key] = this._buildMiniPreview(data.grid);
       }
+    }
+
+    if (next === 'sandboxSetup') {
+      this._fetchTemplate('sandbox');
     }
   }
 
@@ -154,6 +181,7 @@ class MenuSystem {
     this._bgAudio.volume      = 0;
     this._bgAudio.currentTime = 0;
     this._bgAudio.play().catch(() => {});
+    if (this._menuMuted) return;  // stay silent if muted
     const steps = 40;
     let count = 0;
     const iv = setInterval(() => {
@@ -205,7 +233,7 @@ class MenuSystem {
     this._stop();
     this._removeKeyListener();
     window.game = new Game('sandbox',
-      { playerName: name, worldName: world },
+      { playerName: name, worldName: world, templateData: this._templates.sandbox || null },
       () => this._returnFromGame()
     );
   }
@@ -243,6 +271,8 @@ class MenuSystem {
 
   _handleClicks() {
     if (!this.input.mouse.clicked) return;
+    // Mute button — always active regardless of screen
+    if (this._hit(10, 10, 58, 26)) { this._toggleMute(); return; }
     switch (this.state) {
       case 'main':             this._clickMain();             break;
       case 'normalSelect':     this._clickNormalSelect();     break;
@@ -256,12 +286,13 @@ class MenuSystem {
 
   // Main menu
   _mainButtons() {
-    const bw = 268, bh = 58, cx = CANVAS_W / 2, gap = 14;
-    const startY = 220;
+    const bw = 268, bh = 54, cx = CANVAS_W / 2, gap = 10;
+    const startY = 188;
     return [
       { label: 'Normal Mode',     sub: 'Adventure through a handcrafted world',   color: '#4CAF50', x: cx - bw/2, y: startY,              w: bw, h: bh },
       { label: 'Sandbox Mode',    sub: 'Build and explore freely',                color: '#FF9800', x: cx - bw/2, y: startY + bh + gap,    w: bw, h: bh },
-      { label: 'Platformer Mode', sub: 'Race through handcrafted challenge maps', color: '#2196F3', x: cx - bw/2, y: startY + (bh+gap)*2, w: bw, h: bh },
+      { label: 'Platformer Mode', sub: 'Race through handcrafted challenge maps', color: '#2196F3', x: cx - bw/2, y: startY + (bh+gap)*2,  w: bw, h: bh },
+      { label: 'Play Online',     sub: '4-player co-op • real-time sync',         color: '#9C27B0', x: cx - bw/2, y: startY + (bh+gap)*3,  w: bw, h: bh },
     ];
   }
 
@@ -270,6 +301,56 @@ class MenuSystem {
     if      (this._hit(btns[0].x, btns[0].y, btns[0].w, btns[0].h)) this._setState('normalSelect');
     else if (this._hit(btns[1].x, btns[1].y, btns[1].w, btns[1].h)) this._setState('sandboxSetup');
     else if (this._hit(btns[2].x, btns[2].y, btns[2].w, btns[2].h)) this._setState('platformerSelect');
+    else if (this._hit(btns[3].x, btns[3].y, btns[3].w, btns[3].h)) {
+      if (typeof OnlineUI === 'undefined') {
+        alert('Multiplayer requires a server. Run: node server-multiplayer.js');
+        return;
+      }
+      OnlineUI.show((mode, gameId, options) => this._launchOnlineGame(mode, gameId, options));
+    }
+  }
+
+  _launchOnlineGame(mode, gameId, options = {}) {
+    this._stop();
+    const gameOpts = {
+      onlineGameId:      gameId,
+      onlinePlayerName:  options.playerName,
+      onlineBrowserId:   options.browserId || null,
+      onlineAppearance: {
+        shirtColor: options.shirtColor,
+        pantsColor: options.pantsColor,
+        skinColor:  options.skinColor,
+      },
+      worldData:  options.worldData,
+      worldState: options.worldState,
+    };
+
+    // Load the saved world via the game's own path so _buildLevel uses the
+    // correct terrain instead of generating a fresh world (which would then
+    // get the server blocks merged on top via _applyServerBlocks).
+    if (options.worldKey) {
+      if      (mode === 'sandbox')    gameOpts.loadKey           = options.worldKey;
+      else if (mode === 'normal')     gameOpts.sandboxLoadKey    = options.worldKey;
+      else if (mode === 'platformer') gameOpts.platformerLoadKey = options.worldKey;
+    }
+
+    window.game = new Game(mode, gameOpts, (s) => {
+      if (s === 'online') this._returnToOnlineLobby();
+      else this._returnFromGame(s || 'main');
+    });
+  }
+
+  _returnToOnlineLobby() {
+    window.game = null;
+    this._setState('main');
+    this._tick = 0;
+    this._running = true;
+    this._frame = requestAnimationFrame(() => this._loop());
+    this._fadeInMenuAudio();
+    // Re-show the online UI lobby so the player can rejoin or browse
+    if (typeof OnlineUI !== 'undefined') {
+      OnlineUI.show((mode, gameId, opts) => this._launchOnlineGame(mode, gameId, opts));
+    }
   }
 
   // Normal select
@@ -282,12 +363,12 @@ class MenuSystem {
     const advBtn1pX = ac.x + ac.w - 156, advBtn2pX = ac.x + ac.w - 80;
     if (this._hit(advBtn1pX, btnY, btnW, btnH)) {
       this._stop();
-      window.game = new Game('normal', { world: 'adventure', twoPlayerMode: false }, (s) => this._returnFromGame(s));
+      window.game = new Game('normal', { world: 'adventure', twoPlayerMode: false, templateData: this._templates.normal || null }, (s) => this._returnFromGame(s));
       return;
     }
     if (this._hit(advBtn2pX, btnY, btnW, btnH)) {
       this._stop();
-      window.game = new Game('normal', { world: 'adventure', twoPlayerMode: true }, (s) => this._returnFromGame(s));
+      window.game = new Game('normal', { world: 'adventure', twoPlayerMode: true, templateData: this._templates.normal || null }, (s) => this._returnFromGame(s));
       return;
     }
 
@@ -455,9 +536,10 @@ class MenuSystem {
       const reader = new FileReader();
       reader.onload = (ev) => {
         try {
-          const data = JSON.parse(ev.target.result);
+          const raw  = JSON.parse(ev.target.result);
+          const data = (typeof SaveMigrations !== 'undefined') ? SaveMigrations.migrateSave(raw) : raw;
           if (!data || !Array.isArray(data.grid) || data.grid.length === 0) {
-            alert('Invalid level file — missing world grid.');
+            alert('Invalid level file — missing world grid (and could not auto-convert).');
             return;
           }
           const worldName  = data.worldName  || data.name || file.name.replace(/\.json$/i, '');
@@ -493,12 +575,12 @@ class MenuSystem {
     const advBtn1pX = ac.x + ac.w - 156, advBtn2pX = ac.x + ac.w - 80;
     if (this._hit(advBtn1pX, btnY, btnW, btnH)) {
       this._stop();
-      window.game = new Game('platformer', { world: 'adventure', twoPlayerMode: false }, (s) => this._returnFromGame(s || 'platformerSelect'));
+      window.game = new Game('platformer', { world: 'adventure', twoPlayerMode: false, templateData: this._templates.platformer || null }, (s) => this._returnFromGame(s || 'platformerSelect'));
       return;
     }
     if (this._hit(advBtn2pX, btnY, btnW, btnH)) {
       this._stop();
-      window.game = new Game('platformer', { world: 'adventure', twoPlayerMode: true }, (s) => this._returnFromGame(s || 'platformerSelect'));
+      window.game = new Game('platformer', { world: 'adventure', twoPlayerMode: true, templateData: this._templates.platformer || null }, (s) => this._returnFromGame(s || 'platformerSelect'));
       return;
     }
 
@@ -544,6 +626,34 @@ class MenuSystem {
       case 'sandboxTemplate':  this._drawSandboxTemplate();  break;
       case 'platformerSelect': this._drawPlatformerSelect(); break;
     }
+    this._drawMuteBtn();  // always drawn last so it sits above all screen content
+  }
+
+  _toggleMute() {
+    this._menuMuted = !this._menuMuted;
+    localStorage.setItem('menuMuted', this._menuMuted ? '1' : '0');
+    if (this._bgAudio) {
+      this._bgAudio.volume = this._menuMuted ? 0 : DEFAULT_MUSIC_VOLUME * MAX_AUDIO_VOLUME;
+    }
+  }
+
+  _drawMuteBtn() {
+    const ctx   = this.ctx;
+    const x = 10, y = 10, w = 58, h = 26;
+    const hov   = this._hit(x, y, w, h);
+    const muted = this._menuMuted;
+    ctx.fillStyle   = hov ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.60)';
+    _roundRect(ctx, x, y, w, h, 5); ctx.fill();
+    ctx.strokeStyle = muted ? '#555' : '#44BB44';
+    ctx.lineWidth   = 1;
+    _roundRect(ctx, x, y, w, h, 5); ctx.stroke();
+    ctx.fillStyle    = muted ? '#777' : '#55DD55';
+    ctx.font         = 'bold 11px Courier New';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(muted ? '♪ MUTE' : '♪  ON ', x + w / 2, y + h / 2);
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'alphabetic';
   }
 
   _drawBg() {

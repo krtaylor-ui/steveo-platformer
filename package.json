@@ -2,11 +2,22 @@
   "name": "steveo-platformer",
   "version": "1.0.0",
   "description": "Minecraft-inspired platformer game",
-  "main": "index.html",
+  "main": "server-multiplayer.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server-multiplayer.js",
+    "dev": "nodemon server-multiplayer.js",
+    "static": "node server.js"
   },
   "keywords": ["game", "platformer"],
-  "author": "Your Name",
-  "license": "MIT"
+  "author": "Kevin Taylor",
+  "license": "MIT",
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2"
+  }
 }

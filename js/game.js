@@ -33,6 +33,16 @@ const SLOT_GAP  = 3;
 const HOTBAR_Y  = CANVAS_H - SLOT_SIZE - 10;
 const HOTBAR_X  = (CANVAS_W - (9 * SLOT_SIZE + 8 * SLOT_GAP)) / 2;
 
+// Returns the menu state the player should land on after exiting a game.
+// Online games always return to the online lobby; local normal/platformer games
+// return to their level-select screen; everything else goes to the main menu.
+function _localMenuState(game) {
+  if (game._onlineGameId) return 'online';
+  if (game.gameMode === 'platformer') return 'platformerSelect';
+  if (game.gameMode === 'normal')     return 'normalSelect';
+  return undefined;
+}
+
 class Game {
   constructor(mode = 'normal', options = {}, onReturnToMenu = null) {
     this.canvas          = document.getElementById('gameCanvas');
@@ -44,17 +54,24 @@ class Game {
 
     // Must be initialized before _buildLevel() which reads twoPlayerMode (Phase 12)
     this._worldAdvSettings = {
-      disableDragonHealing:     false,
-      dayCycleMinutes:          DAY_CYCLE_DEFAULT_MINUTES,
-      nightSpawnBoost:          true,
-      fullMoonHpBoost:          true,
-      unlimitedArrows:          false,
-      controllerSensitivity:    1.0,
-      controllerAimSensitivity: 1.0,
-      twoPlayerMode:            options.twoPlayerMode ?? false,
-      disableXpSpeedBoost:      false,
-      musicVolume:              DEFAULT_MUSIC_VOLUME,
-      sfxVolume:                DEFAULT_SFX_VOLUME,
+      disableDragonHealing:      false,
+      dayCycleMinutes:           DAY_CYCLE_DEFAULT_MINUTES,
+      nightSpawnBoost:           true,
+      fullMoonHpBoost:           true,
+      unlimitedArrows:           false,
+      controllerSensitivity:     1.0,
+      controllerAimSensitivity:  1.0,
+      twoPlayerMode:             options.twoPlayerMode ?? false,
+      disableXpSpeedBoost:       false,
+      musicVolume:               DEFAULT_MUSIC_VOLUME,
+      sfxVolume:                 DEFAULT_SFX_VOLUME,
+      // Phase 16 — Multiplayer boss scaling
+      bossHealthMultiplier:      1.0,
+      bossDamageMultiplier:      1.0,
+      bossAttackRateMultiplier:  1.0,
+      chatDisabled:              false,
+      // Phase 16-E — Controller
+      controllerDeadzone:        GP_DEADZONE_STICK,
     };
     // Track the user's explicit pre-launch 2P choice so it can survive world-load overwrite
     this._launchTwoPlayerMode = options.twoPlayerMode;
@@ -166,13 +183,61 @@ class Game {
     // Phase 11D: End entry tracking + advanced world settings
     this._endEntryCell    = null;  // { col, row } set when player enters End Portal
     // _worldAdvSettings and player2 state initialized before _buildLevel() above
-    this._wsTab            = 'drops'; // 'drops' | 'time' | 'advanced' | 'input' | 'audio'
-    this._wsAudioDragTarget = null;   // 'music' | 'sfx' | null — tracks slider drag in Audio tab
-    this._pauseVolDrag      = null;   // 'music' | 'sfx' | null — tracks slider drag in pause SETTINGS tab
+    this._wsTab            = 'drops'; // 'drops' | 'time' | 'advanced' | 'input' | 'audio' | 'multiplayer'
+
+    // Phase 16 — Multiplayer
+    this._mpSyncTimer       = 0;    // frame counter for position-sync throttle (send every 3 frames)
+    this._mpInvSyncTimer    = 0;    // frame counter for inventory sync (every 1800 frames = 30s)
+    this._adminMode         = localStorage.getItem('mp_admin_mode') === '1';
+    this._dogsBuffer        = [];   // key sequence buffer for DOGS admin unlock
+    this._wsAudioDragTarget = null; // 'music' | 'sfx' | null — tracks slider drag in Audio tab
+    this._pauseVolDrag      = null; // 'music' | 'sfx' | null — tracks slider drag in pause SETTINGS tab
+
+    // Phase 16-B: Multiplayer polish state
+    this._onlineGameId       = options.onlineGameId || null;
+    this._chatMessages       = [];   // [{playerName, shirtColor, message, timestamp}]
+    this._lastActivity       = Date.now();
+    this._isAfk              = false;
+    this._afkCheckTimer      = 0;
+    this._gameNotifications  = [];   // [{text, color, timer}] — join/leave toasts
+    this._chatDomReady       = false;
+    this._onlineMenuOpen     = false; // non-pausing in-game online menu
+    this._afkListenerCleanup = null;  // cleanup fn for document AFK event listeners
+
+    // Auto-connect when launched via OnlineUI (Phase 16-A)
+    if (options.onlineGameId) {
+      const _gameId    = options.onlineGameId;
+      const _pName     = options.onlinePlayerName || 'Player';
+      const _app       = options.onlineAppearance || {};
+      const _wData     = options.worldData || options.worldState || null;
+      const _bid = options.onlineBrowserId || null;
+      setTimeout(() => {
+        if (window.multiplayerManager) {
+          const mgr = window.multiplayerManager;
+          mgr.connect(_gameId, _wData, _pName, _app, _bid);
+          mgr.onInventoryRestored = (state) => this._restoreOnlineInventory(state);
+          this._setupChatUI();
+          mgr.chatCallback = (data) => this._onChatMessage(data);
+        }
+        // Document-level AFK activity tracking (more reliable than per-frame polling)
+        const _onActivity = () => { this._lastActivity = Date.now(); };
+        document.addEventListener('keydown',   _onActivity, { passive: true });
+        document.addEventListener('mousemove', _onActivity, { passive: true });
+        document.addEventListener('mousedown', _onActivity, { passive: true });
+        document.addEventListener('wheel',     _onActivity, { passive: true });
+        this._afkListenerCleanup = () => {
+          document.removeEventListener('keydown',   _onActivity);
+          document.removeEventListener('mousemove', _onActivity);
+          document.removeEventListener('mousedown', _onActivity);
+          document.removeEventListener('wheel',     _onActivity);
+        };
+      }, 100);
+    }
 
     // Context action for gamepad RB (computed every frame)
-    this._contextAction = null;   // 'chest' | 'lever' | 'bed' | 'portal' | null
-    this._contextPrompt = null;   // display string e.g. '[RB] Open Chest'
+    this._contextAction  = null;   // 'chest'|'lever'|'bed'|'portal'|'apple'|... for P1
+    this._contextAction2 = null;   // same for P2
+    this._contextPrompt  = null;   // display string shown above player
 
     // Phase 11F: Day/night cycle
     this._dayNight = {
@@ -288,9 +353,12 @@ class Game {
           });
         }
       }
-      // Load saved world if a key was provided
+      // Load saved world or template
       if (options.loadKey) {
         this._loadSandboxWorld(options.loadKey);
+        this._syncTwoPlayerAfterLoad();
+      } else if (options.templateData) {
+        this._loadSandboxWorld(options.templateData);
         this._syncTwoPlayerAfterLoad();
       }
       // Auto-register the two built-in world portals so they appear with labels
@@ -304,23 +372,30 @@ class Game {
       }
     }
 
-    // Normal mode: load sandbox world if key provided
-    if (this.gameMode === 'normal' && this._sandboxLoadKey) {
-      this._loadNormalWorld(this._sandboxLoadKey);
-      this._syncTwoPlayerAfterLoad();
+    // Normal mode: load sandbox world (saved key) or template
+    if (this.gameMode === 'normal') {
+      if (this._sandboxLoadKey) {
+        this._loadNormalWorld(this._sandboxLoadKey);
+        this._syncTwoPlayerAfterLoad();
+      } else if (options.templateData) {
+        this._loadNormalWorld(options.templateData);
+        this._syncTwoPlayerAfterLoad();
+      }
     }
 
-    // Platformer mode: load sandbox world if key provided
-    if (this.gameMode === 'platformer' && this._platformerLoadKey) {
-      this._loadPlatformerWorld(this._platformerLoadKey);
-      this._syncTwoPlayerAfterLoad();
-      this.player.selectedSlot = 1; // start with sword selected
-      this._platformerStartMs  = Date.now();
-      // Reserve hotbar slots 5 and 6 (index 4/5) for portal-repair items in Platformer only
-      this.player.platformerSlots = new Map([
-        [BLOCK.OBSIDIAN,     4],   // slot 5 — ruined portal repair
-        [BLOCK.EYE_OF_ENDER, 5],   // slot 6 — End Portal activation
-      ]);
+    // Platformer mode: load sandbox world (saved key) or template
+    if (this.gameMode === 'platformer') {
+      const platData = this._platformerLoadKey || options.templateData;
+      if (platData) {
+        this._loadPlatformerWorld(platData);
+        this._syncTwoPlayerAfterLoad();
+        this.player.selectedSlot = 1;
+        this._platformerStartMs  = Date.now();
+        this.player.platformerSlots = new Map([
+          [BLOCK.OBSIDIAN,     4],
+          [BLOCK.EYE_OF_ENDER, 5],
+        ]);
+      }
     }
 
     // Portal fade transition
@@ -441,6 +516,10 @@ class Game {
   destroy() {
     this._running = false;
     this._closeSaveDialog();
+    // Clean up AFK document event listeners
+    if (this._afkListenerCleanup) { this._afkListenerCleanup(); this._afkListenerCleanup = null; }
+    // Remove chat DOM overlay if present
+    if (this._chatDomElement) { this._chatDomElement.remove(); this._chatDomElement = null; }
     // Fade out game audio so it doesn't bleed into the menu
     const bg = this._musicSystem?.bgAudio;
     if (bg && !bg.paused) {
@@ -462,9 +541,33 @@ class Game {
   _update(deltaMs = 16.67) {
     // ── Poll gamepad state first (Phase 11K-1) ──────────────
     this.input.updateGamepad();
+    // Right stick moves the cursor every frame — before any early returns so it works
+    // in inventory, menus, popups, pause, etc. Speed: ~14px/frame ≈ 1 sec to cross screen.
+    this.input.applyStickCursor(14, CANVAS_W, CANVAS_H);
     // Reset context action each frame (recomputed later if gameplay is active)
-    this._contextAction = null;
-    this._contextPrompt = null;
+    this._contextAction  = null;
+    this._contextAction2 = null;
+    this._contextPrompt  = null;
+
+    // ── Phase 16-B: AFK tracking (via document listeners) + notification decay ──
+    if (this._onlineGameId) {
+      // Activity timestamps set by document event listeners; check state every 600 frames (~10s)
+      this._afkCheckTimer++;
+      if (this._afkCheckTimer >= 600) {
+        this._afkCheckTimer = 0;
+        const nowAfk = Date.now() - this._lastActivity > 300000; // 5 min
+        if (nowAfk !== this._isAfk) {
+          this._isAfk = nowAfk;
+          if (window.multiplayerManager?.isConnected) {
+            window.multiplayerManager.sendStatus(this._isAfk);
+          }
+        }
+      }
+    }
+    // Game join/leave notification decay
+    if (this._gameNotifications) {
+      this._gameNotifications = this._gameNotifications.filter(n => { n.timer--; return n.timer > 0; });
+    }
 
     // ── Tutorial overlay — ? (Shift+/) toggles; checked before other input ──
     const _shiftHelp = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight');
@@ -513,6 +616,10 @@ class Game {
       } else if (this.inventoryOpen) {
         this._returnHeldItem();
         this.inventoryOpen = false;
+      } else if (this._onlineGameId) {
+        // Online: never pause — toggle the non-pausing online overlay menu
+        if (this._worldSettingsOpen) this._worldSettingsOpen = false;
+        else this._onlineMenuOpen = !this._onlineMenuOpen;
       } else if (this.state === 'playing')     this.state = 'paused';
       else if   (this.state === 'paused')      this.state = 'playing';
       else if   (this.state === 'confirmExit') this.state = 'paused';
@@ -555,8 +662,9 @@ class Game {
       }
       // M key → main menu from win screen
       if (this.input.isDown('KeyM')) {
+        if (this._onlineGameId) window.multiplayerManager?.disconnect();
         this.destroy();
-        if (this._onReturnToMenu) this._onReturnToMenu();
+        if (this._onReturnToMenu) this._onReturnToMenu(_localMenuState(this));
       }
       return;
     }
@@ -638,6 +746,14 @@ class Game {
       return;
     }
 
+    // ── Online in-game menu overlay: block gameplay input while open ──
+    if (this._onlineGameId && this._onlineMenuOpen) {
+      this._updateOnlineMenu();
+      if (this.player2) this.camera.followMidpoint(this.player, this.player2);
+      else              this.camera.follow(this.player);
+      return;
+    }
+
     // ── Dragon victory screen: intercept clicks, block gameplay ──
     if (this._dragonVictoryScreen) {
       if (this.input.mouse.clicked) {
@@ -650,9 +766,26 @@ class Game {
           this._dragonVictoryScreen = false;
         }
       }
+      if (this.input.isJustDown('KeyU') || this.input.gpJustDown(0, 'place') ||
+          this.input.gpJustDown(0, 'jump') || this.input.gpJustDown(0, 'menu')) {
+        this._dragonVictoryScreen = false;
+      }
       if (this.player2) this.camera.followMidpoint(this.player, this.player2);
       else              this.camera.follow(this.player);
       return;
+    }
+
+    // ── Wither victory screen: early dismiss via key/button ───
+    if (this._witherVictoryScreen) {
+      const ph = 210, panY = (CANVAS_H - ph) / 2;
+      const bw = 180, bh = 34;
+      const bx = (CANVAS_W - bw) / 2, by = panY + ph - 56;
+      const mx = this.input.mouse.x, my = this.input.mouse.y;
+      if ((this.input.mouse.clicked && mx >= bx && mx <= bx + bw && my >= by && my <= by + bh) ||
+          this.input.isJustDown('KeyU') || this.input.gpJustDown(0, 'place') ||
+          this.input.gpJustDown(0, 'jump') || this.input.gpJustDown(0, 'menu')) {
+        this._witherVictoryScreen = false;
+      }
     }
 
     // ── E key: open/close nearest chest (intercept before crafting menu) ──
@@ -685,6 +818,12 @@ class Game {
       }
     }
     this._iKeyWas = iDown;
+
+    // ── P2 Home key: toggle inventory (normal mode only) ──────
+    if (this.player2 && this.gameMode === 'normal' && this.input.isP2Inventory()) {
+      this.inventoryOpen = !this.inventoryOpen;
+      if (!this.inventoryOpen) this._returnHeldItem();
+    }
 
     // Sandbox palette/popup: handle clicks and freeze gameplay
     if (this.gameMode === 'sandbox' && this.sandbox) {
@@ -745,6 +884,13 @@ class Game {
 
     // Normal inventory open: handle clicks and freeze gameplay
     if (this.inventoryOpen) {
+      // Platformer chest: U / Y-button / A-button = Equip & Take; B-button = Leave
+      if (this.gameMode === 'platformer' && this._chestOpen) {
+        const confirm = this.input.isJustDown('KeyU') || this.input.isJustDown('KeyE') ||
+                        this.input.gpJustDown(0, 'place') || this.input.gpJustDown(0, 'jump');
+        if (confirm) { this._platChestTakeAll(); this._closeChest(); return; }
+        if (this.input.gpJustDown(0, 'crouch')) { this._closeChest(); return; }
+      }
       this._handleInventoryClick();
       return;
     }
@@ -860,6 +1006,11 @@ class Game {
       if (this.input.gpJustDown(0, 'place')) this.sandbox.togglePalette();
     }
 
+    // Normal/platformer controller: Y button → Use Item context action
+    if (this.gameMode !== 'sandbox' && this.input.gpJustDown(0, 'place')) {
+      this._executeContextAction(this.player);
+    }
+
     // ── Player 2 gamepad hotbar (Phase 12) ────────────────
     if (this.player2 && this._p2RespawnTimer === 0) {
       if (this.input.gpJustDown(1, 'dpad0')) this.player2.selectedSlot = 0;
@@ -868,12 +1019,21 @@ class Game {
       if (this.input.gpJustDown(1, 'dpad3')) this.player2.selectedSlot = 3;
       if (this.input.gpJustDown(1, 'prevSlot')) this.player2.selectedSlot = (this.player2.selectedSlot - 1 + 9) % 9;
       if (this.input.gpJustDown(1, 'context'))  this.player2.selectedSlot = (this.player2.selectedSlot + 1) % 9;
+      // Y button → Use Item context action
+      if (this.input.gpJustDown(1, 'place')) this._executeContextAction(this.player2);
     }
 
     // ── Player movement / weapon toggle ────────────────────
-    // Apply controller sensitivity so moveX() scales analog stick correctly
+    // Apply controller sensitivity and deadzone so moveX() scales analog stick correctly
     this.input.controllerSensitivity    = this._worldAdvSettings.controllerSensitivity    ?? 1.0;
     this.input.controllerAimSensitivity = this._worldAdvSettings.controllerAimSensitivity ?? 1.0;
+    this.input.controllerDeadzone       = this._worldAdvSettings.controllerDeadzone       ?? GP_DEADZONE_STICK;
+    // When both P1 and P2 are assigned keyboard, give P2 the arrow key set
+    if (typeof ControllerConfig !== 'undefined') {
+      const p1IsKb = ControllerConfig.getAssignment(1) === -1;
+      const p2IsKb = ControllerConfig.getAssignment(2) === -1;
+      this.input.p2KeyMode = (p1IsKb && p2IsKb) ? 'arrows' : 'ijkl';
+    }
     // Sync XP speed boost flag to player (and P2 if active)
     this.player.xpSpeedDisabled = !!this._worldAdvSettings.disableXpSpeedBoost;
     if (this.player2) this.player2.xpSpeedDisabled = !!this._worldAdvSettings.disableXpSpeedBoost;
@@ -987,11 +1147,9 @@ class Game {
       } else if (this.player.bowDrawing) {
         const charge = this.player.drawProgress;
         const speed  = BOW_MIN_SPEED + (BOW_MAX_SPEED - BOW_MIN_SPEED) * charge;
-        // Right stick overrides mouse aim when it has significant input
-        const gp0 = this.input.gamepads[0];
-        const gpAimMag = Math.hypot(gp0.aimX, gp0.aimY);
-        const angle = (gp0.connected && gpAimMag > 0.15)
-          ? Math.atan2(gp0.aimY, gp0.aimX)
+        // 2-player mode: snap-aim from movement keys. Single-player: mouse aim.
+        const angle = this.player2
+          ? this._snapAimAngle(this.player, this.input.isJump(), this.input.isCrouch())
           : Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
         this.mobManager.addPlayerArrow(
           this.player.cx, this.player.cy,
@@ -1025,12 +1183,43 @@ class Game {
       }
     }
 
-    // ── Player 2 melee attack (Phase 12) ──────────────────
+    // ── Player 2 weapon (bow or melee) ────────────────────
     if (this.player2 && this._p2RespawnTimer === 0) {
-      if (this.input.isP2Attack() && this.player2.attackCooldown === 0) {
-        this.mobManager.playerAttack(this.player2);
-        this.player2.attackCooldown = ATTACK_COOLDOWN;
-        this.player2.swingTimer     = 15;
+      const p2AttHeld = this.input.isP2Attack();
+      if (this.player2.bow) {
+        // ── P2 Bow ──
+        const hasArrows = this._worldAdvSettings.unlimitedArrows || this.player2.countItem(BLOCK.ARROW) > 0;
+        if (p2AttHeld && hasArrows) {
+          this.player2.bowDrawing   = true;
+          this.player2.drawProgress = Math.min(1, this.player2.drawProgress + 1 / BOW_CHARGE_FRAMES);
+        } else if (p2AttHeld && !hasArrows) {
+          this.player2.bowDrawing   = false;
+          this.player2.drawProgress = 0;
+        } else if (this.player2.bowDrawing) {
+          const charge = this.player2.drawProgress;
+          const speed  = BOW_MIN_SPEED + (BOW_MAX_SPEED - BOW_MIN_SPEED) * charge;
+          const angle  = this._snapAimAngle(this.player2, this.input.isP2Jump(), this.input.isP2Crouch());
+          this.mobManager.addPlayerArrow(
+            this.player2.cx, this.player2.cy,
+            Math.cos(angle) * speed, Math.sin(angle) * speed,
+            PLAYER_ARROW_DAMAGE
+          );
+          this._playSound('sounds/bow-fire.mp3');
+          if (!this._worldAdvSettings.unlimitedArrows) this._consumeArrowP2();
+          this.player2.bowDrawing   = false;
+          this.player2.drawProgress = 0;
+        } else {
+          this.player2.bowDrawing   = false;
+          this.player2.drawProgress = 0;
+        }
+      } else {
+        // ── P2 Melee ──
+        if (p2AttHeld && this.player2.attackCooldown === 0) {
+          this.mobManager.playerAttack(this.player2);
+          this.player2.attackCooldown = ATTACK_COOLDOWN;
+          this.player2.swingTimer     = 15;
+          this._playSound('sounds/attack-sword.mp3');
+        }
       }
     }
 
@@ -1045,10 +1234,19 @@ class Game {
     }
     this._lKeyWas = lDown;
 
+    // ── P2 PageDown: toggle nearest lever ─────────────────────
+    if (this.player2 && this.input.isP2UseLever()) {
+      const toggled = this.redstone.tryToggleLeverNear(this.level, this.player2);
+      if (toggled) {
+        this._rsStartFromSource(toggled.col, toggled.row, toggled.on);
+        this._playSound('sounds/lever.mp3', 0.7);
+      }
+    }
+
     // ── Gamepad RB: context-sensitive action ─────────────────
     this._computeContextAction();
     if (this.input.gpJustDown(0, 'context')) {
-      this._executeContextAction();
+      this.player.selectedSlot = (this.player.selectedSlot + 1) % 9;
     }
 
     // ── Redstone update (pressure plates, TNT countdown) ───
@@ -1139,6 +1337,11 @@ class Game {
       }
     }
 
+    // ── P2 End key / Y button: Use Item context action ─────────
+    if (this.player2 && this.input.isP2UseItem()) {
+      this._executeContextAction(this.player2);
+    }
+
     const isSandbox = this.gameMode === 'sandbox' && this.sandbox;
 
     // ── Sandbox: click-to-place / click-to-remove / egg popup ──
@@ -1205,6 +1408,7 @@ class Game {
               this.level.goalCol = hoverCol;
               this.level.goalRow = hoverRow;
             }
+            window.multiplayerManager?.placeBlock(hoverCol, hoverRow, sb);
             // Register lever/trapdoor/pressure_plate in redstone system
             if (sb === BLOCK.LEVER && !this.redstone.getAt(hoverCol, hoverRow)) {
               this.redstone.addComponent({type: 'lever', col: hoverCol, row: hoverRow, on: false, links: [], sandboxPlaced: true});
@@ -1344,6 +1548,7 @@ class Game {
             this._sandboxBrushRemove(hoverRow, hoverCol);
           } else {
             this._sandboxRemoveBlock(hoverRow, hoverCol, target);
+            window.multiplayerManager?.breakBlock(hoverCol, hoverRow);
           }
         }
       }
@@ -1403,8 +1608,12 @@ class Game {
 
     // ── Normal mode: click to place block (disabled in platformer) ─────────
     if (!isSandbox && this.gameMode !== 'platformer' && this.input.mouse.clicked && target === BLOCK.AIR) {
+      const _itemBeforePlace = this.player.selectedItem;
       const placed = this._tryPlace(hoverRow, hoverCol);
-      if (placed) this._checkPortalCompletion();
+      if (placed) {
+        this._checkPortalCompletion();
+        if (_itemBeforePlace) window.multiplayerManager?.placeBlock(hoverCol, hoverRow, _itemBeforePlace.type);
+      }
     }
 
     // ── Hold mouse: mine (disabled in sandbox and platformer) ──
@@ -1431,6 +1640,7 @@ class Game {
       );
       if (mineResult?.broken) {
         this._playSound('sounds/mining.mp3');
+        window.multiplayerManager?.breakBlock(hoverCol, hoverRow);
         if (mineResult.blockType === BLOCK.GOAL) {
           this.level.goalCol = -1;
           this.level.goalRow = -1;
@@ -1456,7 +1666,7 @@ class Game {
       this.mobManager.nightSpawnMultiplier = (!_dn.isDay && this._worldAdvSettings.nightSpawnBoost) ? 0.5 : 1.0;
       this.mobManager.fullMoonActive       = (!_dn.isDay && _dn.nightPhase === 3 && this._worldAdvSettings.fullMoonHpBoost);
       const hpBefore = this.player.hp;
-      this.mobManager.update(this.player, this.level);
+      this.mobManager.update(this.player, this.level, this.player2 || null);
       const dmgTaken = hpBefore - this.player.hp;
       if (dmgTaken > 0) {
         this.mobManager.addPlayerDamageNum(this.player, dmgTaken);
@@ -1499,7 +1709,15 @@ class Game {
         // P2 item collection
         const p2Collected = this.mobManager.collectDropsNear(this.player2);
         for (const { itemKey, amount } of p2Collected) {
-          if (typeof itemKey !== 'string') {
+          if (typeof itemKey === 'string') {
+            if (this.gameMode === 'platformer' && (ARMOR_DATA[itemKey] || TOOL_DATA[itemKey])) {
+              const dx = this.player2.x + this.player2.width / 2;
+              const dy = this.player2.y;
+              if (!this._platEquipItem(this.player2, itemKey, dx, dy)) {
+                this.mobManager.dropItems([{ x: dx, y: dy, itemKey, amount: 1, pickupDelay: 90 }]);
+              }
+            }
+          } else {
             for (let i = 0; i < amount; i++) this.player2.addBlock(itemKey);
           }
         }
@@ -1513,8 +1731,14 @@ class Game {
       for (const { itemKey, amount } of collected) {
         if (typeof itemKey === 'string') {
           if (itemKey.startsWith('disc:')) {
-            // Music disc — unlock song in playlist
             this._collectMusicDisc(itemKey.slice(5));
+          } else if (this.gameMode === 'platformer' && (ARMOR_DATA[itemKey] || TOOL_DATA[itemKey])) {
+            const dx = this.player.x + this.player.width / 2;
+            const dy = this.player.y;
+            if (!this._platEquipItem(this.player, itemKey, dx, dy)) {
+              // Rejected (same/worse) — return to world so another player can grab it
+              this.mobManager.dropItems([{ x: dx, y: dy, itemKey, amount: 1, pickupDelay: 90 }]);
+            }
           } else if (ARMOR_DATA[itemKey]) {
             this.player.addArmorItem(itemKey);
           } else if (TOOL_DATA[itemKey]) {
@@ -1700,25 +1924,48 @@ class Game {
     }
     this._godWas = godCombo;
 
-    // ── Portal: press U ────────────────────────────────────────
+     // DOGS admin-mode unlock (sequence: D-O-G-S)
+     { const k = Object.keys(this.input.keys).find(k => this.input.isJustDown(k));
+       if (k) {
+         const ch = k.replace('Key','').toLowerCase();
+         if ('dogs'.indexOf(ch) >= 0) {
+           this._dogsBuffer.push(ch);
+           if (this._dogsBuffer.length > 4) this._dogsBuffer.shift();
+           if (this._dogsBuffer.join('') === 'dogs') {
+             this._adminMode = true;
+             localStorage.setItem('mp_admin_mode', '1');
+             this._notify('Admin mode activated', '#FFD700', 180);
+             this._dogsBuffer = [];
+           }
+         } else {
+           this._dogsBuffer = [];
+         }
+       }
+     }
+
+    // ── G key: drop selected item (not sandbox, not god-combo) ─
+    if (!godCombo && this.input.isJustDown('KeyG') &&
+        this.gameMode !== 'sandbox' && !this.inventoryOpen && !this._worldSettingsOpen) {
+      this._dropCurrentItem();
+    }
+
+    // ── U key: Use Item (context-sensitive) ───────────────────
     const uNow = this.input.isDown('KeyU');
-    if (uNow && !this._uWas && this.portalCooldown <= 0) {
-      // Repair takes priority: if Obsidian selected near ruined portal, place a block
-      const repaired = this.gameMode !== 'sandbox' && this._tryRepairPortalFromHotbar();
-      if (!repaired) this._tryActivateRuinedPortal();
-      // Place Eye of Ender from hotbar on adjacent End Portal frame blocks
-      if (this.gameMode !== 'sandbox') this._tryPlaceEyeFromHotbar();
-      // Place items into nearby Wither Altar
-      this._tryPlaceAltarItem();
-      this._checkPortal();
-      this._checkExitPortal();
+    if (uNow && !this._uWas) {
+      this._executeContextAction(this.player);
     }
     this._uWas = uNow;
 
-    // ── God Mode teleport menu: press T ───────────────────────
-    const tNow = this.input.isDown('KeyT');
-    if (tNow && !this._tWas && this.player.godMode) {
-      this._teleportMenu = !this._teleportMenu;
+    // ── Phase 16-B: T key — open chat (online) or teleport (god mode) ───
+    const tNow  = this.input.isDown('KeyT');
+    const tEdge = tNow && !this._tWas;
+    if (tEdge) {
+      const chatInput = document.getElementById('mp-chat-input');
+      if (this._onlineGameId && chatInput && !this._worldAdvSettings.chatDisabled && document.activeElement !== chatInput) {
+        chatInput.focus();
+      } else if (this.player.godMode && !this._onlineGameId) {
+        this._teleportMenu = !this._teleportMenu;
+      }
     }
     this._tWas = tNow;
 
@@ -1770,10 +2017,12 @@ class Game {
       const pCol = Math.floor(this.player.x / BLOCK_SIZE);
       const pRow = Math.floor(this.player.y / BLOCK_SIZE);
       if (pCol >= BIOME_END_START && pRow >= 40 &&
-          !this._dragon && !this._dragonDefeated &&
+          !this._dragon &&
           !this._witherBoss && this._dragonSpritesLoaded) this._spawnDragon();
     }
     this._updateDragon();
+    // Exit portal proximity check — auto-triggers when player walks into it (no U key needed)
+    this._checkExitPortal();
 
     // ── Wither Boss ────────────────────────────────────────
     this._updateWither();
@@ -1819,6 +2068,26 @@ class Game {
     if (this.player.y + this.player.height > this.level.pixelHeight && !this.player.godMode) {
       this._triggerDeath('Fell into a pit');
     }
+
+    // ── Phase 16: Multiplayer sync ─────────────────────────────
+     if (window.multiplayerManager?.isConnected) {
+       this._mpSyncTimer++;
+       if (this._mpSyncTimer >= 3) {
+         this._mpSyncTimer = 0;
+         window.multiplayerManager.updatePosition(this.player.x, this.player.y, this.player.vx || 0, this.player.vy || 0);
+       }
+       // Sync inventory to server every 30 s (for Normal mode save + Platformer drop-on-disconnect)
+       this._mpInvSyncTimer++;
+       if (this._mpInvSyncTimer >= 1800) {
+         this._mpInvSyncTimer = 0;
+         this._syncInventoryToServer();
+       }
+       const netPicked = window.multiplayerManager.checkPickup(this.player);
+       for (const it of netPicked) {
+         if (it.type) this.player.addBlock(it.type);
+         this._playSound('sounds/item-collected.mp3', 0.7);
+       }
+     }
   }
 
   // ── Chest helpers ─────────────────────────────────────────
@@ -1861,6 +2130,50 @@ class Game {
     else if (data.type === 'shield')      { this.player.hasShield     = true; }
     else if (data.type === 'flint_steel') { this.player.hasFlintSteel = true; }
     this._notify(`Equipped ${data.name}!`, data.color, 180);
+  }
+
+  // Platformer-mode equipment upgrade logic.
+  // Returns true if itemKey was consumed (equipped), false if rejected (player already has equal/better).
+  // When upgrading, the displaced old item is dropped at (dropX, dropY) with a pickup delay.
+  _platEquipItem(player, itemKey, dropX, dropY) {
+    if (ARMOR_DATA[itemKey]) {
+      const ad  = ARMOR_DATA[itemKey];
+      const cur = player.equippedArmor[ad.piece];
+      const curProt = cur ? (ARMOR_DATA[cur]?.protection ?? 0) : -1;
+      if (ad.protection <= curProt) return false;
+      if (cur) this.mobManager.dropItems([{ x: dropX, y: dropY, itemKey: cur, amount: 1, pickupDelay: 90 }]);
+      player.equippedArmor[ad.piece] = itemKey;
+      this._notify(`Equipped ${ad.name}!`, ad.color ?? '#aaffaa', 180);
+      return true;
+    }
+    if (TOOL_DATA[itemKey]) {
+      const td = TOOL_DATA[itemKey];
+      if (td.type === 'pickaxe') {
+        const curKey  = player.pickaxe;
+        const curTier = curKey ? (TOOL_DATA[curKey]?.tier ?? -1) : -1;
+        if (td.tier <= curTier) return false;
+        if (curKey) this.mobManager.dropItems([{ x: dropX, y: dropY, itemKey: curKey, amount: 1, pickupDelay: 90 }]);
+        player.pickaxe = itemKey;
+        this._notify(`Equipped ${td.name}!`, td.color ?? '#aaffaa', 180);
+        return true;
+      }
+      if (td.type === 'sword') {
+        const curKey  = player.sword;
+        const curTier = curKey ? (TOOL_DATA[curKey]?.tier ?? -1) : -1;
+        if (td.tier <= curTier) return false;
+        if (curKey) this.mobManager.dropItems([{ x: dropX, y: dropY, itemKey: curKey, amount: 1, pickupDelay: 90 }]);
+        player.sword = itemKey;
+        this._notify(`Equipped ${td.name}!`, td.color ?? '#aaffaa', 180);
+        return true;
+      }
+      if (td.type === 'bow')         { if (player.bow)          return false; player.bow = itemKey; }
+      else if (td.type === 'shield') { if (player.hasShield)    return false; player.hasShield = true; }
+      else if (td.type === 'flint_steel') { if (player.hasFlintSteel) return false; player.hasFlintSteel = true; }
+      else return false;
+      this._notify(`Equipped ${td.name}!`, td.color ?? '#aaffaa', 180);
+      return true;
+    }
+    return false;
   }
 
   _cycleSandboxChestSlot(index) {
@@ -2260,35 +2573,31 @@ class Game {
   _platChestTakeAll() {
     const ch = this._chests.get(`${this._chestOpen.col},${this._chestOpen.row}`);
     if (!ch) return;
-    for (const item of ch.items) {
+    const chestX = this._chestOpen.col * BLOCK_SIZE + BLOCK_SIZE / 2;
+    const chestY = this._chestOpen.row * BLOCK_SIZE;
+    for (let idx = 0; idx < ch.items.length; idx++) {
+      const item = ch.items[idx];
       if (!item) continue;
-      const status = this._platChestItemStatus(item);
       if (item.type === 'tool' && TOOL_DATA[item.toolKey]) {
-        if (status === 'upgrade' || status === 'new') {
-          this._autoEquipTool(item.toolKey);
-        } else {
-          // Store lower-tier tools in inventory
-          for (let i = 0; i < 36; i++) {
-            if (!this.player.inventory[i]) { this.player.inventory[i] = { ...item }; break; }
-          }
+        if (this._platEquipItem(this.player, item.toolKey, chestX, chestY)) {
+          ch.items[idx] = null;
         }
+        // rejected → stays in chest
       } else if (item.type === 'armor' && ARMOR_DATA[item.armorKey]) {
-        if (status === 'upgrade' || status === 'new') {
-          this.player.addArmorItem(item.armorKey);
-        } else {
-          for (let i = 0; i < 36; i++) {
-            if (!this.player.inventory[i]) { this.player.inventory[i] = { ...item }; break; }
-          }
+        if (this._platEquipItem(this.player, item.armorKey, chestX, chestY)) {
+          ch.items[idx] = null;
         }
+        // rejected → stays in chest
       } else if (typeof item.type === 'number') {
         for (let n = 0; n < (item.count || 1); n++) this.player.addBlock(item.type);
+        ch.items[idx] = null;
       } else {
         for (let i = 0; i < 36; i++) {
           if (!this.player.inventory[i]) { this.player.inventory[i] = { ...item }; break; }
         }
+        ch.items[idx] = null;
       }
     }
-    ch.items.fill(null);
   }
 
   _handlePlatformerChestClick() {
@@ -2456,14 +2765,17 @@ class Game {
     });
 
     // "Equip & Take" button
+    const gpConn = this.input.gamepads[0].connected;
+    const equipLabel = gpConn ? '⚙ [Y] Equip & Take' : '⚙ Equip & Take';
+    const leaveLabel = gpConn ? '[B] Leave'           : 'Leave';
     const eHov = mx >= equipX && mx <= equipX + bw && my >= btnY && my <= btnY + bh;
-    ctx.fillStyle = eHov ? 'rgba(76,175,80,0.9)' : hasEquippable ? 'rgba(76,175,80,0.35)' : 'rgba(40,60,40,0.4)';
+    ctx.fillStyle = eHov || gpConn ? 'rgba(76,175,80,0.55)' : hasEquippable ? 'rgba(76,175,80,0.35)' : 'rgba(40,60,40,0.4)';
     _roundRect(ctx, equipX, btnY, bw, bh, 6); ctx.fill();
-    ctx.strokeStyle = eHov ? '#8BC34A' : hasEquippable ? '#4CAF50' : '#336633'; ctx.lineWidth = 1.5;
+    ctx.strokeStyle = eHov ? '#8BC34A' : gpConn ? '#5FC060' : hasEquippable ? '#4CAF50' : '#336633'; ctx.lineWidth = 1.5;
     _roundRect(ctx, equipX, btnY, bw, bh, 6); ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Courier New';
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 10px Courier New';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('⚙ Equip & Take', equipX + bw / 2, btnY + bh / 2);
+    ctx.fillText(equipLabel, equipX + bw / 2, btnY + bh / 2);
 
     // "Leave" button
     const cHov = mx >= closeX && mx <= closeX + bw && my >= btnY && my <= btnY + bh;
@@ -2471,8 +2783,8 @@ class Game {
     _roundRect(ctx, closeX, btnY, bw, bh, 6); ctx.fill();
     ctx.strokeStyle = cHov ? '#888' : '#444'; ctx.lineWidth = 1.5;
     _roundRect(ctx, closeX, btnY, bw, bh, 6); ctx.stroke();
-    ctx.fillStyle = '#ccc';
-    ctx.fillText('Leave', closeX + bw / 2, btnY + bh / 2);
+    ctx.fillStyle = '#ccc'; ctx.font = 'bold 10px Courier New';
+    ctx.fillText(leaveLabel, closeX + bw / 2, btnY + bh / 2);
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   }
 
@@ -2653,32 +2965,101 @@ class Game {
   _drawP2HUD(ctx) {
     const p2 = this.player2;
     if (!p2) return;
-    const HX = CANVAS_W - 180, HY = 8;
-    const HW = 168, HH = 36;
     ctx.save();
-    ctx.fillStyle = 'rgba(20,10,10,0.65)';
-    _roundRect(ctx, HX, HY, HW, HH, 5); ctx.fill();
-    ctx.strokeStyle = '#FF8888'; ctx.lineWidth = 1;
-    _roundRect(ctx, HX, HY, HW, HH, 5); ctx.stroke();
-    ctx.font = 'bold 9px Courier New'; ctx.fillStyle = '#FF8888';
-    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    ctx.fillText('P2', HX + 6, HY + 13);
-    // HP hearts
-    const maxH = PLAYER_MAX_HP, curH = Math.max(0, p2.hp);
-    const heartW = 8, gap = 2, startX = HX + 24;
-    for (let i = 0; i < maxH; i++) {
-      const hx = startX + i * (heartW + gap);
-      ctx.fillStyle = i < curH ? '#FF4444' : '#442222';
-      ctx.fillRect(hx, HY + 4, heartW, 8);
+
+    // ── HP bar (mirrored top-right) ──────────────────────────
+    const bw = 180, bh = 14;
+    const barR = CANVAS_W - 10;   // right edge of bar
+    const bx2  = barR - bw;        // left edge of bar = 610
+    const by2  = 10;
+
+    // Background pill (extends left for label area, mirrors P1's rightward extension)
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    _roundRect(ctx, bx2 - 46, by2 - 2, bw + 48, bh + 4, 4);
+    ctx.fill();
+
+    // Red track
+    ctx.fillStyle = '#550000';
+    ctx.fillRect(bx2, by2, bw, bh);
+
+    // Coloured fill (same pct logic as P1)
+    const hpPct = p2.hp / p2.maxHp;
+    ctx.fillStyle = hpPct > 0.6 ? '#22BB22' : hpPct > 0.3 ? '#BBBB00' : '#CC2222';
+    ctx.fillRect(bx2, by2, Math.round(bw * hpPct), bh);
+
+    // Segment ticks
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    for (let i = 1; i < p2.maxHp / 2; i++) {
+      ctx.fillRect(bx2 + Math.round(bw * (i / (p2.maxHp / 2))), by2, 1, bh);
     }
-    // Respawn overlay
+
+    // Border
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx2, by2, bw, bh);
+
+    // Heart icon + HP text — to the LEFT of the bar (right-aligned)
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#FF5566';
+    ctx.font = '13px serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('♥', bx2 - 4, by2 + 12);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px Courier New';
+    ctx.fillText(`${p2.hp}/${p2.maxHp}`, bx2 - 18, by2 + 11);
+
+    // "P2" label just left of HP text
+    ctx.fillStyle = '#88AAFF';
+    ctx.font = 'bold 9px Courier New';
+    ctx.fillText('P2', bx2 - 52, by2 + 11);
+
+    // ── XP bar (right-aligned below HP bar) ─────────────────
+    const xpW = 120, xpX2 = CANVAS_W - 10 - xpW, xpY2 = 30;
+    const xpFrac  = p2.xp / p2.maxXp;
+    const xpMaxed = p2.xp >= p2.maxXp;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    _roundRect(ctx, xpX2, xpY2, xpW, 13, 4); ctx.fill();
+
+    if (xpFrac > 0) {
+      ctx.fillStyle = xpMaxed ? '#FFD700' : '#22CC44';
+      _roundRect(ctx, xpX2, xpY2, Math.round(xpW * xpFrac), 13, 4); ctx.fill();
+    }
+
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    for (let i = 1; i < p2.maxXp; i++) {
+      ctx.fillRect(xpX2 + Math.round(xpW * i / p2.maxXp), xpY2, 1, 13);
+    }
+
+    // XP label right-aligned; speed hint left-aligned (same logic as P1 but mirrored)
+    ctx.fillStyle = xpMaxed ? '#FFD700' : '#fff';
+    ctx.font = xpMaxed ? 'bold 9px Courier New' : '9px Courier New';
+    ctx.textAlign = 'right';
+    ctx.fillText(xpMaxed ? 'XP MAX!' : `XP Lv.${p2.xpLevel}`, xpX2 + xpW - 4, xpY2 + 10);
+    if (p2.xp > 0 && !xpMaxed) {
+      const mult = Math.round(p2._xpMult * 10) / 10;
+      ctx.fillStyle = 'rgba(100,255,140,0.8)';
+      ctx.font = '8px Courier New';
+      ctx.textAlign = 'left';
+      ctx.fillText(`${mult}× spd`, xpX2 + 2, xpY2 + 10);
+    }
+
+    // Respawn overlay covering both bars
     if (this._p2RespawnTimer > 0) {
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      _roundRect(ctx, HX, HY, HW, HH, 5); ctx.fill();
-      ctx.font = 'bold 10px Courier New'; ctx.fillStyle = '#FF8888';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(`Respawn ${Math.ceil(this._p2RespawnTimer / 60)}s`, HX + HW / 2, HY + HH / 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      _roundRect(ctx, bx2 - 46, by2 - 2, bw + 48, bh + 4, 4); ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      _roundRect(ctx, xpX2, xpY2, xpW, 13, 4); ctx.fill();
+      ctx.fillStyle = '#FF8888';
+      ctx.font = 'bold 10px Courier New';
+      ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      ctx.fillText(`Respawn ${Math.ceil(this._p2RespawnTimer / 60)}s`, CANVAS_W - 10, by2 + bh / 2);
     }
+
+    // ── Compact 9-slot hotbar (right-aligned under XP bar) ──
+    this._drawCompactHotbar(ctx, p2, true);
+
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.restore();
   }
 
@@ -2772,6 +3153,13 @@ class Game {
 
     // END_PORTAL block — routes to End arrival point
     if (b === BLOCK.END_PORTAL) {
+      // If the dragon was previously defeated, reset it so it respawns on this entry
+      if (this._dragonDefeated || (this._dragon && !this._dragon.isAlive)) {
+        this._dragon             = null;
+        this._dragonDefeated     = false;
+        this._dragonExitPortal   = false;
+        this._dragonVictoryScreen = false;
+      }
       this._endEntryCell = { col: pCol, row: pRow }; // remember for exit portal return
       const destX = END_PORTAL_ARRIVAL_COL * BLOCK_SIZE - this.player.width / 2;
       const destY = END_PORTAL_ARRIVAL_ROW * BLOCK_SIZE - this.player.height;
@@ -2779,7 +3167,7 @@ class Game {
       this._playSound('sounds/end-portal.mp3');
       this._notify('Entering The End...', '#AA44FF', 200);
       // Start End battle music immediately (dragon spawns on next frame)
-      if (!this._musicSystem.bossMusicActive && !this._dragonDefeated) {
+      if (!this._musicSystem.bossMusicActive) {
         if (this._musicSystem.netherMusicActive) {
           this._musicSystem.netherMusicActive = false;
           this._musicSystem.lastNormalTrack = null;
@@ -2902,6 +3290,259 @@ class Game {
       return true;
     }
     return false;
+  }
+
+  // ── Phase 16: Drop current item (G key) ────────────────────
+
+  _dropCurrentItem() {
+    const item = this.player.selectedItem;
+    if (!item) return;
+    const blockType = item.type;
+    if (!blockType) return;
+    // Remove one of the item from the player's selected slot
+    this.player.takeSelected();
+    // Spawn as a local physics item drop (reuses mob ItemDrop)
+    if (typeof ItemDrop !== 'undefined') {
+      this.mobManager.droppedItems.push(new ItemDrop(
+        this.player.cx,
+        this.player.y + this.player.height / 2,
+        blockType, 1
+      ));
+    }
+    // Sync to multiplayer server
+    if (window.multiplayerManager?.isConnected) {
+      window.multiplayerManager.dropItem(blockType, this.player.cx, this.player.cy);
+    }
+    this._notify('Item dropped [G]', '#AAAAAA', 60);
+  }
+
+  _syncInventoryToServer() {
+    const mgr = window.multiplayerManager;
+    if (!mgr?.isConnected) return;
+    // Serialize hotbar slots into a flat array of {type, count} entries
+    const inv = (this.player.hotbar || []).map(slot => slot ? { type: slot.type, count: slot.count || 1 } : null);
+    mgr.syncInventory(inv, this.player.hp, this.player.x, this.player.y);
+  }
+
+  _restoreOnlineInventory(state) {
+    if (!state || !Array.isArray(state.inventory)) return;
+    // Restore hotbar from saved state
+    const slots = state.inventory;
+    for (let i = 0; i < slots.length && i < (this.player.hotbar?.length || 0); i++) {
+      if (slots[i]) this.player.hotbar[i] = { type: slots[i].type, count: slots[i].count || 1 };
+    }
+    if (state.hp > 0) this.player.hp = Math.min(state.hp, 20);
+    this._notify('Inventory restored from last session', '#44BBFF', 180);
+  }
+
+  // ── Phase 16-B: Chat UI ───────────────────────────────────
+
+  _escHtml(s) {
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  _setupChatUI() {
+    if (this._chatDomReady) return;
+    this._chatDomReady = true;
+
+    const chat = document.createElement('div');
+    chat.id = 'mp-chat';
+    chat.style.cssText = 'position:fixed;bottom:10px;left:10px;width:320px;z-index:100;font-family:monospace';
+    chat.innerHTML = `
+      <div id="mp-chat-msgs" style="background:rgba(0,0,0,0.6);color:#fff;padding:6px;height:140px;overflow-y:auto;font-size:12px;border-radius:4px 4px 0 0"></div>
+      <div style="display:flex">
+        <input id="mp-chat-input" type="text" maxlength="100" placeholder="Press T to chat..."
+               style="flex:1;background:rgba(0,0,0,0.8);color:#fff;border:none;padding:4px 6px;font-size:12px;outline:none">
+        <button id="mp-chat-send" style="background:#444;color:#fff;border:none;padding:4px 8px;cursor:pointer;font-size:12px">→</button>
+      </div>
+    `;
+    document.body.appendChild(chat);
+
+    const input  = document.getElementById('mp-chat-input');
+    const send   = document.getElementById('mp-chat-send');
+
+    const doSend = () => {
+      const val = input.value.trim();
+      if (!val) return;
+      if (window.multiplayerManager) window.multiplayerManager.sendChat(val);
+      input.value = '';
+      input.blur();
+    };
+
+    send.addEventListener('click', doSend);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); doSend(); }
+      if (e.key === 'Escape') { input.value = ''; input.blur(); }
+      // Consume the event so it doesn't trigger game actions
+      e.stopPropagation();
+    });
+    // Prevent keyup propagation too (keeps keys from getting stuck in game.input.keys)
+    input.addEventListener('keyup', e => e.stopPropagation());
+
+    // Clean up when game is destroyed
+    this._chatDomElement = chat;
+    if (this._worldAdvSettings.chatDisabled) chat.style.display = 'none';
+  }
+
+  _onChatMessage(data) {
+    this._chatMessages.push(data);
+    if (this._chatMessages.length > 100) this._chatMessages.shift();
+    const msgs = document.getElementById('mp-chat-msgs');
+    if (!msgs) return;
+    const div = document.createElement('div');
+    div.innerHTML = `<span style="color:${this._escHtml(data.shirtColor || '#ffffff')}">${this._escHtml(data.playerName || 'Unknown')}</span>: ${this._escHtml(data.message)}`;
+    msgs.appendChild(div);
+    // Keep last 100 DOM nodes
+    while (msgs.children.length > 100) msgs.removeChild(msgs.firstChild);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  // ── Phase 16-B: Join/leave game notification toasts ───────
+
+  _pushGameNotification(text, color) {
+    if (!this._gameNotifications) this._gameNotifications = [];
+    this._gameNotifications.push({ text, color, timer: 240 });
+  }
+
+  _drawGameNotifications(ctx) {
+    if (!this._gameNotifications || this._gameNotifications.length === 0) return;
+    ctx.save();
+    ctx.font         = 'bold 11px Courier New';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'top';
+    const cx = CANVAS_W / 2;
+    let y = 12;
+    for (const n of this._gameNotifications) {
+      const alpha = Math.min(1, n.timer / 30);
+      const tw    = ctx.measureText(n.text).width;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle   = 'rgba(0,0,0,0.65)';
+      _roundRect(ctx, cx - tw / 2 - 10, y - 2, tw + 20, 18, 4);
+      ctx.fill();
+      ctx.fillStyle   = n.color;
+      ctx.fillText(n.text, cx, y);
+      y += 22;
+    }
+    ctx.globalAlpha  = 1;
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+  }
+
+  // ── Online in-game menu (non-pausing) ─────────────────────
+
+  _onlineMenuLayout() {
+    const pw = 320, ph = 280;
+    const px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    return { pw, ph, px, py };
+  }
+
+  _updateOnlineMenu() {
+    if (!this.input.mouse.clicked) return;
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const { pw, ph, px, py } = this._onlineMenuLayout();
+    const bw = 240, bx = px + (pw - bw) / 2;
+    const btnH = 44;
+
+    // X close button
+    if (mx >= px + pw - 28 && mx <= px + pw - 8 && my >= py + 8 && my <= py + 28) {
+      this._onlineMenuOpen = false; return;
+    }
+
+    // Resume
+    const resumeY = py + 76;
+    if (mx >= bx && mx <= bx + bw && my >= resumeY && my <= resumeY + btnH) {
+      this._onlineMenuOpen = false; return;
+    }
+
+    // Settings
+    const settingsY = resumeY + btnH + 10;
+    if (mx >= bx && mx <= bx + bw && my >= settingsY && my <= settingsY + btnH) {
+      this._onlineMenuOpen = false;
+      this._worldSettingsOpen = true;
+      this._wsTab = 'advanced'; // sensible default: chat, 2p, etc.
+      return;
+    }
+
+    // Leave Game
+    const leaveY = settingsY + btnH + 10;
+    if (mx >= bx && mx <= bx + bw && my >= leaveY && my <= leaveY + btnH) {
+      window.multiplayerManager?.disconnect();
+      this.destroy();
+      if (this._onReturnToMenu) this._onReturnToMenu('online');
+      else location.reload();
+      return;
+    }
+  }
+
+  _drawOnlineMenu(ctx) {
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const { pw, ph, px, py } = this._onlineMenuLayout();
+    const bw = 240, bx = px + (pw - bw) / 2;
+    const btnH = 44;
+
+    ctx.save();
+
+    // Backdrop
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+    // Panel
+    ctx.fillStyle = '#13131f';
+    _roundRect(ctx, px, py, pw, ph, 10); ctx.fill();
+    ctx.strokeStyle = '#9C27B0'; ctx.lineWidth = 2;
+    _roundRect(ctx, px, py, pw, ph, 10); ctx.stroke();
+
+    // Header
+    ctx.font = 'bold 14px Courier New'; ctx.fillStyle = '#CE93D8';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('ONLINE GAME', px + pw / 2, py + 28);
+
+    // Online badge
+    const mgr = window.multiplayerManager;
+    if (mgr?.isConnected) {
+      ctx.font = '9px Courier New'; ctx.fillStyle = '#44EE44';
+      ctx.fillText(`● Connected  •  Player ${mgr.playerNumber ?? '?'}`, px + pw / 2, py + 48);
+    }
+
+    // X close button
+    { const xbx = px + pw - 28, xby = py + 8;
+      const xHov = mx >= xbx && mx <= xbx + 20 && my >= xby && my <= xby + 20;
+      ctx.fillStyle   = xHov ? 'rgba(255,80,80,0.3)' : 'rgba(0,0,0,0.4)';
+      _roundRect(ctx, xbx, xby, 20, 20, 4); ctx.fill();
+      ctx.strokeStyle = xHov ? '#FF5555' : '#554444'; ctx.lineWidth = 1;
+      _roundRect(ctx, xbx, xby, 20, 20, 4); ctx.stroke();
+      ctx.fillStyle = xHov ? '#fff' : '#AA7777';
+      ctx.font = 'bold 12px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('✕', xbx + 10, xby + 10); }
+
+    const drawBtn = (label, y, color) => {
+      const hov = mx >= bx && mx <= bx + bw && my >= y && my <= y + btnH;
+      ctx.fillStyle   = hov ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.55)';
+      _roundRect(ctx, bx, y, bw, btnH, 6); ctx.fill();
+      ctx.strokeStyle = hov ? color : `${color}66`; ctx.lineWidth = hov ? 2 : 1;
+      _roundRect(ctx, bx, y, bw, btnH, 6); ctx.stroke();
+      ctx.fillStyle = hov ? '#fff' : color;
+      ctx.font = 'bold 13px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(label, bx + bw / 2, y + btnH / 2);
+    };
+
+    const resumeY   = py + 76;
+    const settingsY = resumeY + btnH + 10;
+    const leaveY    = settingsY + btnH + 10;
+
+    drawBtn('▶  Resume Game',   resumeY,   '#88CCFF');
+    drawBtn('⚙  Settings',      settingsY, '#FFCC66');
+    drawBtn('⟵  Leave Game',   leaveY,    '#FF6B6B');
+
+    ctx.font = '9px Courier New'; ctx.fillStyle = '#444466';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Leaving disconnects you. Rejoin from the lobby.', px + pw / 2, leaveY + btnH + 18);
+
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.restore();
   }
 
   // ── Inventory helpers ──────────────────────────────────────
@@ -3139,6 +3780,7 @@ class Game {
   // ── Rendering ─────────────────────────────────────────────
 
   _render() {
+    window._gameRef = this; // Phase 16: expose for multiplayerManager callbacks
     const ctx      = this.ctx;
     const world    = this.camera.toWorld(this.input.mouse.x, this.input.mouse.y);
     const hoverCol = Math.floor(world.x / BLOCK_SIZE);
@@ -3198,6 +3840,9 @@ class Game {
 
     // Draw collectible placed items (platformer + normal mode)
     if (this.gameMode === 'platformer' || this.gameMode === 'normal') this._drawPlatformerItems(ctx);
+    // Phase 16: Draw items dropped by other players
+    if (window.multiplayerManager?.isConnected)
+      window.multiplayerManager.drawDroppedItems(ctx, this.camera);
 
     // Mobs, arrows, damage numbers, explosions (suppressed in sandbox)
     if (this.gameMode !== 'sandbox') this.mobManager.draw(ctx, this.camera);
@@ -3217,6 +3862,9 @@ class Game {
     }
 
     this.player.draw(ctx, this.camera);
+    // Phase 16: Draw other multiplayer players (behind P2 labels)
+    if (window.multiplayerManager?.isConnected)
+      window.multiplayerManager.drawOtherPlayers(ctx, this.camera);
     // Draw P2 + player labels when 2-player mode active (Phase 12)
     if (this.player2) {
       if (this._p2RespawnTimer === 0) {
@@ -3241,6 +3889,8 @@ class Game {
     }
     this._drawEndPortalForeground(ctx);
     this._drawHUD(ctx, hoverRow, hoverCol);
+    // Phase 16: Multiplayer HUD (player list + connection badge)
+    if (window.multiplayerManager?.isConnected) window.multiplayerManager.drawHUD(ctx);
 
     // Sandbox overlays: eggs, mode badge, palette, popup
     if (this.gameMode === 'sandbox' && this.sandbox) {
@@ -3262,6 +3912,7 @@ class Game {
     this._drawBiomeLabel(ctx, biome);
     this._drawBowCharge(ctx);
     this._drawNotifications(ctx);
+    if (this._onlineGameId) this._drawGameNotifications(ctx);
     if (this.gameMode !== 'sandbox' && this.player.godMode) this._drawGodModeBadge(ctx);
     if (this._teleportMenu && this.player.godMode) this._drawTeleportMenu(ctx);
     if (this.gameMode === 'platformer') this._drawPlatformerHUD(ctx);
@@ -3288,6 +3939,7 @@ class Game {
     if (this._musicPlayerUI)       this._drawMusicPlayerUI(ctx);
     if (this.state === 'dead') this._drawDead(ctx);
     if (this.state === 'won') this._drawWin(ctx);
+    if (this._onlineGameId && this._onlineMenuOpen) this._drawOnlineMenu(ctx);
     if (this.state === 'paused' || this.state === 'confirmExit') this._drawPauseOverlay(ctx);
     if (this._saveDialog) this._drawSaveDialog(ctx);
     if (this._tutorialOpen) this._drawTutorial(ctx);
@@ -5477,9 +6129,68 @@ class Game {
 
   // ── Arrow consumption ───────────────────────────────────────
 
+  // Returns aim angle (radians) for keyboard/snap-aim.
+  // upHeld = jump key held, downHeld = crouch key held at the moment of release.
+  _snapAimAngle(player, upHeld, downHeld) {
+    const f = player.facing;                        // 1=right, -1=left
+    if (upHeld && !downHeld) {
+      const moving = Math.abs(player.vx) > 0.5;
+      return moving
+        ? (f > 0 ? -Math.PI / 4 : -(Math.PI * 3 / 4))  // diagonal up in facing direction
+        : -Math.PI / 2;                                   // straight up when stationary
+    }
+    if (downHeld && !player.onGround) {
+      return f > 0 ? Math.PI / 4 : Math.PI * 3 / 4;     // diagonal down (airborne only)
+    }
+    return f > 0 ? 0 : Math.PI;                           // straight ahead
+  }
+
+  _exportAsTemplate() {
+    // Build a save object identical to what SandboxSaves.save() would produce,
+    // then trigger a browser download as JSON. Drop it in templates/ to use as
+    // the default world for any game mode.
+    const pName = this._sbPlayerName || 'Template';
+    const wName = this._sbWorldName  || 'world';
+    const result = SandboxSaves.save(
+      pName, wName,
+      this.level, this.sandbox, this.player,
+      this.redstone, this._dustBlocks, this._gateBlocks,
+      this._transmitters, this._receivers,
+      this._chests, this._ruinedPortals, this._endPortalAnchors,
+      this._dragon, this._endCrystals, this._dragonDefeated,
+      this._mobDropSettings, this._worldAdvSettings,
+      this._collectedDiscs, this._musicPlayerBlocks, this._witherAltars
+    );
+    if (!result.ok) { this._notify('Export failed: ' + (result.error || '?'), '#FF4444', 240); return; }
+    const raw = localStorage.getItem(SandboxSaves.key(pName, wName));
+    if (!raw) { this._notify('Export failed — save not found', '#FF4444', 180); return; }
+    const blob = new Blob([raw], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `world-sandbox.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    this._notify('Template exported — place in templates/ folder', '#88FF88', 240);
+  }
+
   _consumeArrow() {
     // Remove 1 arrow from hotbar first, then inventory
     for (const slots of [this.player.hotbar, this.player.inventory]) {
+      for (let i = 0; i < slots.length; i++) {
+        const s = slots[i];
+        if (s && s.type === BLOCK.ARROW && s.count > 0) {
+          s.count--;
+          if (s.count === 0) slots[i] = null;
+          return;
+        }
+      }
+    }
+  }
+
+  _consumeArrowP2() {
+    if (!this.player2) return;
+    for (const slots of [this.player2.hotbar, this.player2.inventory]) {
       for (let i = 0; i < slots.length; i++) {
         const s = slots[i];
         if (s && s.type === BLOCK.ARROW && s.count > 0) {
@@ -5696,17 +6407,18 @@ class Game {
 
   _spawnDragon() {
     const spawnCol = DRAGON_SPAWN_COL, spawnRow = DRAGON_SPAWN_ROW;
-    // Require 12 blocks of unobstructed (non-solid) space above spawn point
-    for (let dr = 1; dr <= 12; dr++) {
-      const b = this.level.get(spawnRow - dr, spawnCol);
-      if (BLOCK_DATA[b]?.solid) return;
-    }
+    // Reset defeat state so repeated fights work correctly
+    this._dragonDefeated    = false;
+    this._dragonExitPortal  = false;
+    this._dragonVictoryScreen = false;
+    const _dragonHpMult = this._worldAdvSettings?.bossHealthMultiplier ?? 1.0;
+    const _dragonMaxHp  = Math.round(100 * _dragonHpMult);
     this._dragon = {
       x:                      spawnCol * BLOCK_SIZE,
       y:                      spawnRow * BLOCK_SIZE,
       direction:              'left',
-      hp:                     100,
-      maxHp:                  100,
+      hp:                     _dragonMaxHp,
+      maxHp:                  _dragonMaxHp,
       animationFrame:         0,
       verticalDirection:      1,
       state:                  'flying',
@@ -5727,14 +6439,16 @@ class Game {
       nextRoarTime:           Math.random() * 4000 + 3000,  // 3-7 s in ms
       wingFlapPlayed:         false,
     };
-    // Restore saved state from load (if any)
+    // Restore saved in-progress state from load (skip defeated/dead states — they should respawn fresh)
     if (this._savedDragonState) {
       const ds = this._savedDragonState;
-      if (typeof ds.hp    === 'number') this._dragon.hp    = ds.hp;
-      if (typeof ds.x     === 'number') this._dragon.x     = ds.x;
-      if (typeof ds.y     === 'number') this._dragon.y     = ds.y;
-      if (ds.state)                     this._dragon.state = ds.state;
-      if (ds.fireballAttackDisabled)    this._dragon.fireballAttackDisabled = true;
+      if (ds.state !== 'defeated' && (ds.hp ?? 1) > 0) {
+        if (typeof ds.hp    === 'number') this._dragon.hp    = ds.hp;
+        if (typeof ds.x     === 'number') this._dragon.x     = ds.x;
+        if (typeof ds.y     === 'number') this._dragon.y     = ds.y;
+        if (ds.state)                     this._dragon.state = ds.state;
+        if (ds.fireballAttackDisabled)    this._dragon.fireballAttackDisabled = true;
+      }
       this._savedDragonState = null;
     }
   }
@@ -6185,6 +6899,11 @@ class Game {
     this._playSound('sounds/end-portal.mp3');
     this._portalTransition = { phase: 'out', timer: 0, destX, destY };
     this._notify('Leaving the End...', '#AA44FF', 120);
+    // Null dragon so re-entering the End portal spawns a fresh one
+    this._dragon             = null;
+    this._dragonDefeated     = false;
+    this._dragonExitPortal   = false;
+    this._dragonVictoryScreen = false;
     // Fade boss music when leaving End (dragon defeated at this point)
     if (this._musicSystem.bossMusicActive) this._endBossMusic();
   }
@@ -6288,11 +7007,11 @@ class Game {
       return;
     }
 
-    // Tab bar clicks
-    const TABS = [{ id: 'drops', label: 'Mob Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }];
+    // Tab bar clicks (6 tabs, stride=93, display width=90)
+    const TABS = [{ id: 'drops', label: 'Mob Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'multiplayer', label: 'Multiplayer' }];
     for (let t = 0; t < TABS.length; t++) {
-      const tx = L.px + 10 + t * 110;
-      if (mx >= tx && mx <= tx + 100 && my >= L.TAB_Y && my <= L.TAB_Y + L.TAB_H) {
+      const tx = L.px + 8 + t * 93;
+      if (mx >= tx && mx <= tx + 90 && my >= L.TAB_Y && my <= L.TAB_Y + L.TAB_H) {
         this._wsTab = TABS[t].id;
         return;
       }
@@ -6314,6 +7033,13 @@ class Game {
       if (mx >= tgX && mx <= tgX + tgW && my >= r2Y && my <= r2Y + tgH) {
         const cur  = SENS_VALS.findIndex(v => Math.abs(v - (this._worldAdvSettings.controllerAimSensitivity ?? 1.0)) < 0.01);
         this._worldAdvSettings.controllerAimSensitivity = SENS_VALS[(cur < 0 ? 2 : cur + 1) % SENS_VALS.length];
+      }
+      // Row 3: deadzone
+      const DZ_VALS = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30];
+      const r3Y = L.FIRST_ROW + 96;
+      if (mx >= tgX && mx <= tgX + tgW && my >= r3Y && my <= r3Y + tgH) {
+        const cur = DZ_VALS.findIndex(v => Math.abs(v - (this._worldAdvSettings.controllerDeadzone ?? GP_DEADZONE_STICK)) < 0.005);
+        this._worldAdvSettings.controllerDeadzone = DZ_VALS[(cur < 0 ? 3 : cur + 1) % DZ_VALS.length];
       }
       return;
     }
@@ -6352,14 +7078,102 @@ class Game {
       const r2Y = L.FIRST_ROW + 48;
       if (mx >= tgX && mx <= tgX + tgW && my >= r2Y && my <= r2Y + tgH)
         this._worldAdvSettings.unlimitedArrows = !this._worldAdvSettings.unlimitedArrows;
-      // Row 3: 2-Player Co-op
+      // Row 3: 2-Player Co-op (disabled in online games)
       const r3Y = L.FIRST_ROW + 96;
-      if (mx >= tgX && mx <= tgX + tgW && my >= r3Y && my <= r3Y + tgH)
+      if (!this._onlineGameId && mx >= tgX && mx <= tgX + tgW && my >= r3Y && my <= r3Y + tgH)
         this._applyTwoPlayerMode(!this._worldAdvSettings.twoPlayerMode);
       // Row 4: Disable XP Speed Boost
       const r4Y = L.FIRST_ROW + 144;
       if (mx >= tgX && mx <= tgX + tgW && my >= r4Y && my <= r4Y + tgH)
         this._worldAdvSettings.disableXpSpeedBoost = !this._worldAdvSettings.disableXpSpeedBoost;
+      // Row 5: Disable Chat
+      const r5Y = L.FIRST_ROW + 192;
+      if (mx >= tgX && mx <= tgX + tgW && my >= r5Y && my <= r5Y + tgH) {
+        this._worldAdvSettings.chatDisabled = !this._worldAdvSettings.chatDisabled;
+        const chatEl = this._chatDomElement;
+        if (chatEl) chatEl.style.display = this._worldAdvSettings.chatDisabled ? 'none' : '';
+      }
+      // Export as Template button (sandbox only)
+      if (this.gameMode === 'sandbox') {
+        const expBtnX = L.px + 12, expBtnW = L.pw - 24, expBtnH = 26, expBtnY = L.FIRST_ROW + 240;
+        if (mx >= expBtnX && mx <= expBtnX + expBtnW && my >= expBtnY && my <= expBtnY + expBtnH) {
+          this._exportAsTemplate();
+        }
+      }
+      return;
+    }
+
+    if (this._wsTab === 'multiplayer') {
+      const MP_MULT_OPTS = [0.5, 1.0, 1.5, 2.0, 3.0];
+      const tgX = L.px + L.pw - 82, tgW = 64, tgH = 24;
+      const aws = this._worldAdvSettings;
+      // Row 1: Boss Health Multiplier
+      const mr1Y = L.FIRST_ROW;
+      if (mx >= tgX && mx <= tgX + tgW && my >= mr1Y && my <= mr1Y + tgH) {
+        const cur = MP_MULT_OPTS.findIndex(v => Math.abs(v - (aws.bossHealthMultiplier ?? 1.0)) < 0.01);
+        aws.bossHealthMultiplier = MP_MULT_OPTS[(cur < 0 ? 1 : cur + 1) % MP_MULT_OPTS.length];
+        if (window.multiplayerManager?.isConnected) window.multiplayerManager.pushSettings({ bossHealthMultiplier: aws.bossHealthMultiplier });
+      }
+      // Row 2: Boss Damage Multiplier
+      const mr2Y = L.FIRST_ROW + 48;
+      if (mx >= tgX && mx <= tgX + tgW && my >= mr2Y && my <= mr2Y + tgH) {
+        const cur = MP_MULT_OPTS.findIndex(v => Math.abs(v - (aws.bossDamageMultiplier ?? 1.0)) < 0.01);
+        aws.bossDamageMultiplier = MP_MULT_OPTS[(cur < 0 ? 1 : cur + 1) % MP_MULT_OPTS.length];
+        if (window.multiplayerManager?.isConnected) window.multiplayerManager.pushSettings({ bossDamageMultiplier: aws.bossDamageMultiplier });
+      }
+      // Row 3: Boss Attack Rate Multiplier
+      const mr3Y = L.FIRST_ROW + 96;
+      if (mx >= tgX && mx <= tgX + tgW && my >= mr3Y && my <= mr3Y + tgH) {
+        const cur = MP_MULT_OPTS.findIndex(v => Math.abs(v - (aws.bossAttackRateMultiplier ?? 1.0)) < 0.01);
+        aws.bossAttackRateMultiplier = MP_MULT_OPTS[(cur < 0 ? 1 : cur + 1) % MP_MULT_OPTS.length];
+        if (window.multiplayerManager?.isConnected) window.multiplayerManager.pushSettings({ bossAttackRateMultiplier: aws.bossAttackRateMultiplier });
+      }
+      // Row 4: Connect / Disconnect button
+      const mr4Y = L.FIRST_ROW + 152;
+      const btnX = L.px + 16, btnW = L.pw - 32, btnH = 26;
+      if (mx >= btnX && mx <= btnX + btnW && my >= mr4Y && my <= mr4Y + btnH) {
+        if (window.multiplayerManager?.isConnected) {
+          window.multiplayerManager.disconnect();
+        } else {
+          // Build sparse block map for initial world state
+          const sparseBlocks = {};
+          if (this.level?.grid) {
+            for (let r = 0; r < this.level.grid.length; r++) {
+              for (let c = 0; c < this.level.grid[r].length; c++) {
+                const t = this.level.grid[r][c];
+                if (t !== 0) sparseBlocks[`${c},${r}`] = t;
+              }
+            }
+          }
+          const worldData = {
+            name:               this._sbWorldName || 'World',
+            blocks:             sparseBlocks,
+            multiplierSettings: {
+              bossHealthMultiplier:     aws.bossHealthMultiplier,
+              bossDamageMultiplier:     aws.bossDamageMultiplier,
+              bossAttackRateMultiplier: aws.bossAttackRateMultiplier,
+            },
+          };
+          window.multiplayerManager.connect(
+            this._sbWorldName || 'world',
+            worldData,
+            this._sbPlayerName || 'Player'
+          );
+        }
+      }
+      // Row 5: Download World (only when connected)
+      const mr5Y = L.FIRST_ROW + 192;
+      if (window.multiplayerManager?.isConnected &&
+          mx >= btnX && mx <= btnX + btnW && my >= mr5Y && my <= mr5Y + btnH) {
+        window.multiplayerManager.downloadWorld();
+      }
+      // Delete game (creator)
+      const delY = L.FIRST_ROW + 232;
+      if (window.multiplayerManager?.isCreator && mx >= btnX && mx <= btnX + btnW && my >= delY && my <= delY + btnH) {
+        if (confirm('Delete this game permanently? All players will be disconnected.')) {
+          window.multiplayerManager.deleteGame(window.multiplayerManager.worldId);
+        }
+      }
       return;
     }
 
@@ -6432,21 +7246,21 @@ class Game {
     ctx.textAlign = 'center';
     ctx.fillText('×', xbx + 10, xby + 11);
 
-    // Tab bar
-    const TABS = [{ id: 'drops', label: 'Mob Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }];
+    // Tab bar (6 tabs, stride=93, display width=90)
+    const TABS = [{ id: 'drops', label: 'Mob Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'multiplayer', label: 'Multiplayer' }];
     for (let t = 0; t < TABS.length; t++) {
-      const tx = L.px + 10 + t * 110;
+      const tx = L.px + 8 + t * 93;
       const active = this._wsTab === TABS[t].id;
       ctx.fillStyle  = active ? '#3A3A5A' : '#252535';
       ctx.strokeStyle = active ? '#8888CC' : '#444466';
       ctx.lineWidth = 1;
-      ctx.fillRect(tx, L.TAB_Y, 100, L.TAB_H);
-      ctx.strokeRect(tx, L.TAB_Y, 100, L.TAB_H);
-      ctx.font = active ? 'bold 10px Courier New' : '10px Courier New';
+      ctx.fillRect(tx, L.TAB_Y, 90, L.TAB_H);
+      ctx.strokeRect(tx, L.TAB_Y, 90, L.TAB_H);
+      ctx.font = active ? 'bold 9px Courier New' : '9px Courier New';
       ctx.fillStyle = active ? '#CCCCFF' : '#777788';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(TABS[t].label, tx + 50, L.TAB_Y + L.TAB_H / 2);
+      ctx.fillText(TABS[t].label, tx + 45, L.TAB_Y + L.TAB_H / 2);
     }
 
     // Separator under tab bar
@@ -6511,27 +7325,41 @@ class Game {
       ctx.fillText('P or Esc to close', L.px + L.pw / 2, L.CONTENT_Y + 8);
 
       const tgX = L.px + L.pw - 82, tgW = 64, tgH = 24;
-      const drawAdvRow = (rY, label, sub, active) => {
-        ctx.font = '11px Courier New'; ctx.fillStyle = '#AAAACC';
+      const drawAdvRow = (rY, label, sub, active, disabled = false) => {
+        ctx.font = '11px Courier New'; ctx.fillStyle = disabled ? '#555566' : '#AAAACC';
         ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
         ctx.fillText(label, L.MOB_COL, rY + 11);
-        ctx.font = '9px Courier New'; ctx.fillStyle = '#666677';
+        ctx.font = '9px Courier New'; ctx.fillStyle = disabled ? '#3A3A4A' : '#666677';
         ctx.fillText(sub, L.MOB_COL, rY + 26);
-        ctx.fillStyle  = active ? '#3A5A2A' : '#2A2A3A';
-        ctx.strokeStyle = active ? '#66CC44' : '#555577';
+        ctx.fillStyle  = disabled ? '#1E1E2A' : (active ? '#3A5A2A' : '#2A2A3A');
+        ctx.strokeStyle = disabled ? '#333344' : (active ? '#66CC44' : '#555577');
         ctx.lineWidth = 1;
         ctx.fillRect(tgX, rY, tgW, tgH);
         ctx.strokeRect(tgX, rY, tgW, tgH);
         ctx.font = 'bold 11px Courier New';
-        ctx.fillStyle = active ? '#88FF66' : '#888899';
+        ctx.fillStyle = disabled ? '#444455' : (active ? '#88FF66' : '#888899');
         ctx.textAlign = 'center';
-        ctx.fillText(active ? 'ON' : 'OFF', tgX + tgW / 2, rY + 13);
+        ctx.fillText(disabled ? 'N/A' : (active ? 'ON' : 'OFF'), tgX + tgW / 2, rY + 13);
       };
 
       drawAdvRow(L.FIRST_ROW,       'Disable Dragon Healing',  '(crystals stop healing the dragon)',    aws.disableDragonHealing);
       drawAdvRow(L.FIRST_ROW + 48,  'Unlimited Arrows',        '(bow fires without consuming arrows)',  aws.unlimitedArrows);
-      drawAdvRow(L.FIRST_ROW + 96,  '2-Player Co-op',          '(IJKL keys or 2nd gamepad for P2)',     aws.twoPlayerMode);
+      drawAdvRow(L.FIRST_ROW + 96,  '2-Player Co-op',          this._onlineGameId ? '(not available in online games)' : '(IJKL keys or 2nd gamepad for P2)', aws.twoPlayerMode, !!this._onlineGameId);
       drawAdvRow(L.FIRST_ROW + 144, 'Disable XP Speed Boost',  '(XP no longer increases move speed)',   aws.disableXpSpeedBoost);
+      drawAdvRow(L.FIRST_ROW + 192, 'Disable Chat',            '(hides chat window in online games)',   aws.chatDisabled);
+      // Export as Template button (sandbox only)
+      if (this.gameMode === 'sandbox') {
+        const expBtnX = L.px + 12, expBtnW = L.pw - 24, expBtnH = 26, expBtnY = L.FIRST_ROW + 240;
+        const expHov  = this.input.mouse.x >= expBtnX && this.input.mouse.x <= expBtnX + expBtnW &&
+                        this.input.mouse.y >= expBtnY && this.input.mouse.y <= expBtnY + expBtnH;
+        ctx.fillStyle   = expHov ? 'rgba(80,180,80,0.25)' : 'rgba(40,80,40,0.5)';
+        ctx.strokeStyle = expHov ? '#66CC66' : '#448844'; ctx.lineWidth = 1;
+        _roundRect(ctx, expBtnX, expBtnY, expBtnW, expBtnH, 4); ctx.fill();
+        _roundRect(ctx, expBtnX, expBtnY, expBtnW, expBtnH, 4); ctx.stroke();
+        ctx.font = 'bold 10px Courier New'; ctx.fillStyle = expHov ? '#AAFFAA' : '#88CC88';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('⬇  Export World as Template JSON', expBtnX + expBtnW / 2, expBtnY + 13);
+      }
     } else if (this._wsTab === 'input') {
       // ── Input Settings tab ────────────────────────────────────
       const mx2 = this.input.mouse.x, my2 = this.input.mouse.y;
@@ -6565,8 +7393,24 @@ class Game {
         '(right stick — click to adjust)',
         aws2.controllerAimSensitivity ?? 1.0);
 
+      // Deadzone row (reuse drawSensRow label area, but show % value)
+      const dzVal = aws2.controllerDeadzone ?? GP_DEADZONE_STICK;
+      drawSensRow(L.FIRST_ROW + 96, 'Stick Deadzone',
+        '(inner dead zone — click to adjust)',
+        1.0); // placeholder — overdrawn below
+      // Overdraw the value button with the actual deadzone %
+      const dzTgX = L.px + L.pw - 82, dzTgW = 64, dzTgH = 24;
+      const dzRY  = L.FIRST_ROW + 96;
+      const dzHov = mx2 >= dzTgX && mx2 <= dzTgX + dzTgW && my2 >= dzRY && my2 <= dzRY + dzTgH;
+      ctx.fillStyle = dzHov ? '#1A2A3A' : '#232333';
+      ctx.strokeStyle = dzHov ? '#44AAFF' : '#555577'; ctx.lineWidth = 1;
+      ctx.fillRect(dzTgX, dzRY, dzTgW, dzTgH); ctx.strokeRect(dzTgX, dzRY, dzTgW, dzTgH);
+      ctx.font = 'bold 11px Courier New'; ctx.fillStyle = '#88CCFF';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(Math.round(dzVal * 100) + '%', dzTgX + dzTgW / 2, dzRY + 13);
+
       // ── Connected controllers ──────────────────────────────
-      const gpListY = L.FIRST_ROW + 110;
+      const gpListY = L.FIRST_ROW + 158;
       ctx.font = 'bold 9px Courier New'; ctx.fillStyle = '#888899';
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
       ctx.fillText('CONNECTED CONTROLLERS', L.MOB_COL, gpListY);
@@ -6642,6 +7486,83 @@ class Game {
       ctx.textAlign = 'center';
       ctx.fillText('Music by @LaudividniMusic and @T_en_M', L.px + L.pw / 2, L.py + L.ph - 12);
       ctx.textAlign = 'left';
+    } else if (this._wsTab === 'multiplayer') {
+      // ── Multiplayer tab ────────────────────────────────────────
+      const aws = this._worldAdvSettings;
+      const tgW = 64, tgH = 24, tgX = L.px + L.pw - 82;
+      const MP_MULT_OPTS = [0.5, 1.0, 1.5, 2.0, 3.0];
+      const connected = !!window.multiplayerManager?.isConnected;
+      const statusColor = connected ? '#44EE44' : '#EE4444';
+      const statusText  = connected
+        ? `Connected as Player ${window.multiplayerManager.playerNumber} (${window.multiplayerManager.worldId})`
+        : 'Not connected';
+
+      // Status bar
+      ctx.font = '9px Courier New'; ctx.fillStyle = statusColor;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText(statusText, L.px + L.pw / 2, L.CONTENT_Y + 8);
+
+      ctx.font = '9px Courier New'; ctx.fillStyle = '#888899';
+      ctx.fillText('Boss scaling · click value to cycle · P or Esc to close', L.px + L.pw / 2, L.CONTENT_Y + 20);
+
+      const drawMpRow = (rY, label, sub, val) => {
+        ctx.font = '11px Courier New'; ctx.fillStyle = '#AAAACC';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(label, L.MOB_COL, rY + 11);
+        ctx.font = '9px Courier New'; ctx.fillStyle = '#666677';
+        ctx.fillText(sub, L.MOB_COL, rY + 26);
+        ctx.fillStyle  = '#2A3A2A'; ctx.strokeStyle = '#44CC44'; ctx.lineWidth = 1;
+        ctx.fillRect(tgX, rY, tgW, tgH);
+        ctx.strokeRect(tgX, rY, tgW, tgH);
+        ctx.font = 'bold 11px Courier New'; ctx.fillStyle = '#88FF66';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(`${val}×`, tgX + tgW / 2, rY + 13);
+      };
+
+      drawMpRow(L.FIRST_ROW,      'Boss Health',      'Multiplier (applies at boss spawn)', aws.bossHealthMultiplier ?? 1.0);
+      drawMpRow(L.FIRST_ROW + 48, 'Boss Damage',      'Multiplier (player damage received)',  aws.bossDamageMultiplier ?? 1.0);
+      drawMpRow(L.FIRST_ROW + 96, 'Boss Attack Rate', 'Multiplier (attack frequency)',       aws.bossAttackRateMultiplier ?? 1.0);
+
+      // Connect / Disconnect button
+      const mr4Y = L.FIRST_ROW + 152;
+      const btnX = L.px + 16, btnW = L.pw - 32, btnH = 26;
+      ctx.fillStyle  = connected ? '#3A1A1A' : '#1A3A1A';
+      ctx.strokeStyle = connected ? '#EE4444' : '#44EE44';
+      ctx.lineWidth = 1;
+      ctx.fillRect(btnX, mr4Y, btnW, btnH);
+      ctx.strokeRect(btnX, mr4Y, btnW, btnH);
+      ctx.font = 'bold 11px Courier New';
+      ctx.fillStyle = connected ? '#FF8888' : '#88FF88';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(connected ? '⊗  Disconnect from Server' : '⊕  Connect to Server', btnX + btnW / 2, mr4Y + 13);
+
+      // Download World button (only when connected)
+      if (connected) {
+        const mr5Y = L.FIRST_ROW + 192;
+        ctx.fillStyle  = '#1A2A3A'; ctx.strokeStyle = '#4488CC'; ctx.lineWidth = 1;
+        ctx.fillRect(btnX, mr5Y, btnW, btnH);
+        ctx.strokeRect(btnX, mr5Y, btnW, btnH);
+        ctx.font = 'bold 11px Courier New'; ctx.fillStyle = '#88CCFF';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('⬇  Download World as JSON', btnX + btnW / 2, mr5Y + 13);
+
+          // Delete Game button (creator only)
+          if (window.multiplayerManager?.isCreator) {
+            const delY = L.FIRST_ROW + 232;
+            const delHov = this._hit(btnX, delY, btnW, btnH);
+            ctx.fillStyle = delHov ? '#7f1010' : '#3a0808';
+            ctx.fillRect(btnX, delY, btnW, btnH);
+            ctx.strokeStyle = '#c62828'; ctx.lineWidth = 1;
+            ctx.strokeRect(btnX, delY, btnW, btnH);
+            ctx.fillStyle = delHov ? '#ffcdd2' : '#ef9a9a';
+            ctx.font = 'bold 11px Courier New';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('🗑 Delete Game', btnX + btnW/2, delY + btnH/2);
+            ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+          }
+      }
+
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     } else {
       // ── Mob Drops tab ─────────────────────────────────────────
       ctx.font = '9px Courier New';
@@ -6901,11 +7822,13 @@ class Game {
         this.player.y  = WITHER_PLAYER_ROW * BLOCK_SIZE;
         this.player.vx = 0; this.player.vy = 0;
 
+        const _witherHpMult = this._worldAdvSettings?.bossHealthMultiplier ?? 1.0;
+        const _witherHp     = Math.round(WITHER_MAX_HP * _witherHpMult);
         this._witherBoss = {
           x:          WITHER_SPAWN_COL * BLOCK_SIZE,
           y:          WITHER_SPAWN_ROW * BLOCK_SIZE,
-          hp:         WITHER_MAX_HP,
-          maxHp:      WITHER_MAX_HP,
+          hp:         _witherHp,
+          maxHp:      _witherHp,
           state:      'awakening',
           sprite:     'forward',
           vx:         0,
@@ -7466,8 +8389,13 @@ class Game {
     // XP bar and hotbar suppressed in sandbox (no XP gain, sandbox has its own hotbar)
     if (this.gameMode !== 'sandbox') {
       this._drawXpBar(ctx);
-      this._drawHotbar(ctx);
-      this._drawWeaponLabel(ctx);
+      if (this.player2) {
+        // 2P: compact hotbar sits just below the XP bar (mirrored layout with P2's on the right)
+        this._drawCompactHotbar(ctx, this.player, false);
+      } else {
+        this._drawHotbar(ctx);
+        this._drawWeaponLabel(ctx);
+      }
     }
     if (this.player.hasShield)     this._drawShieldIndicator(ctx);
     if (this.player.hasFlintSteel) this._drawFlintSteelIndicator(ctx);
@@ -7550,6 +8478,81 @@ class Game {
     ctx.fillStyle = '#fff';
     ctx.font      = 'bold 10px Courier New';
     ctx.fillText(`${p.hp}/${p.maxHp}`, bx + bw + 22, by + 11);
+  }
+
+  // Compact 9-slot hotbar used in 2P mode — width matches HP bar (180px).
+  // rightAlign=false → P1 left side; rightAlign=true → P2 right side.
+  _drawCompactHotbar(ctx, player, rightAlign) {
+    const SZ = 19, GAP = 1;
+    const totalW = 9 * SZ + 8 * GAP;   // 179px ≈ HP bar width (180px)
+    const hbX = rightAlign ? (CANVAS_W - 10 - totalW) : 10;
+    const hbY = 47;   // XP bar ends at y=43, +4px gap
+    const accentCol = rightAlign ? '#88AAFF' : '#FFD700';
+
+    for (let i = 0; i < 9; i++) {
+      const sx     = hbX + i * (SZ + GAP);
+      const sy     = hbY;
+      const slot   = player.hotbar[i];
+      const active = i === player.selectedSlot;
+
+      ctx.fillStyle   = active ? (rightAlign ? 'rgba(100,160,255,0.25)' : 'rgba(255,215,0,0.22)') : 'rgba(0,0,0,0.62)';
+      ctx.fillRect(sx, sy, SZ, SZ);
+      ctx.strokeStyle = active ? accentCol : '#555';
+      ctx.lineWidth   = active ? 1.5 : 1;
+      ctx.strokeRect(sx + 0.5, sy + 0.5, SZ - 1, SZ - 1);
+
+      // Tool slots 0–2
+      if (i <= 2) {
+        const toolKey  = i === 0 ? player.pickaxe : i === 1 ? player.sword : player.bow;
+        const toolIcon = i === 0 ? '⛏' : i === 1 ? '⚔' : '🏹';
+        const toolData = toolKey ? TOOL_DATA[toolKey] : null;
+        if (toolData) {
+          ctx.fillStyle    = toolData.color;
+          ctx.font         = `${SZ * 0.65}px serif`;
+          ctx.textAlign    = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(toolIcon, sx + SZ / 2, sy + SZ / 2);
+          ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        } else if (i === 2) {
+          ctx.fillStyle = 'rgba(180,140,80,0.35)';
+          ctx.font = `${SZ * 0.65}px serif`;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText('🏹', sx + SZ / 2, sy + SZ / 2);
+          ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        }
+      } else if (i === 3) {
+        const appleSlot = player.hotbar[3];
+        const hasApple  = appleSlot && appleSlot.type === BLOCK.APPLE && appleSlot.count > 0;
+        ctx.save();
+        if (!hasApple) ctx.globalAlpha = 0.3;
+        const pad = 2, scale = (SZ - pad * 2) / BLOCK_SIZE;
+        ctx.translate(sx + pad, sy + pad); ctx.scale(scale, scale);
+        drawBlock(ctx, BLOCK.APPLE, 0, 0, 0);
+        ctx.restore();
+        if (hasApple) {
+          ctx.fillStyle    = '#fff'; ctx.font = 'bold 7px Courier New';
+          ctx.textAlign    = 'right'; ctx.textBaseline = 'bottom';
+          ctx.fillText(appleSlot.count, sx + SZ - 1, sy + SZ - 1);
+          ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        }
+      } else if (slot) {
+        const pad = 2, scale = (SZ - pad * 2) / BLOCK_SIZE;
+        ctx.save();
+        ctx.translate(sx + pad, sy + pad); ctx.scale(scale, scale);
+        drawBlock(ctx, slot.type, 0, 0, 0);
+        ctx.restore();
+        ctx.fillStyle    = '#fff'; ctx.font = 'bold 7px Courier New';
+        ctx.textAlign    = 'right'; ctx.textBaseline = 'bottom';
+        ctx.fillText(slot.count, sx + SZ - 1, sy + SZ - 1);
+        ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+      }
+
+      // Slot number (tiny)
+      ctx.fillStyle    = active ? accentCol : 'rgba(255,255,255,0.28)';
+      ctx.font         = '6px Courier New';
+      ctx.textBaseline = 'top';
+      ctx.fillText(i + 1, sx + 2, sy + 1);
+      ctx.textBaseline = 'alphabetic';
+    }
   }
 
   _drawHotbar(ctx) {
@@ -7975,47 +8978,151 @@ class Game {
     return false;
   }
 
-  _computeContextAction() {
-    // Clear
-    this._contextAction = null;
-    this._contextPrompt = null;
-    // Priority: respawn_anchor > bed > chest > portal > music_player > lever
-    if (this._nearRespawnAnchor()) {
-      this._contextAction = 'respawn_anchor';
-      this._contextPrompt = '[RB] Set Nether Spawn';
-    } else if (this._nearBed()) {
-      this._contextAction = 'bed';
-      this._contextPrompt = this.gameMode === 'sandbox' ? '[RB] Save World' : '[RB] Set Spawn';
-    } else if (this._nearestChest()) {
-      this._contextAction = 'chest';
-      this._contextPrompt = this._chestOpen ? '[RB] Close Chest' : '[RB] Open Chest';
-    } else if (this._nearPortal()) {
-      this._contextAction = 'portal';
-      this._contextPrompt = '[RB] Use Portal';
-    } else if (this._nearMusicPlayer()) {
-      this._contextAction = 'music_player';
-      this._contextPrompt = '[RB] Music Player';
-    } else {
-      // Check for lever in range
-      if (this.redstone) {
-        const pCx = this.player.cx, pCy = this.player.cy;
-        const lev = this.redstone.components.find(c =>
-          c.type === 'lever' &&
-          Math.hypot((c.col + 0.5) * BLOCK_SIZE - pCx,
-                     (c.row + 0.5) * BLOCK_SIZE - pCy) <= 2.5 * BLOCK_SIZE);
-        if (lev) {
-          this._contextAction = 'lever';
-          this._contextPrompt = '[RB] Toggle Lever';
+  // Returns the nearest interactable object for `player`, or null.
+  // Result: { type, dist } — sorted by distance; apple is always last resort (dist=Infinity).
+  _nearestInteractable(player) {
+    const candidates = [];
+    const pCx  = player.cx, pCy = player.cy;
+    const pCol  = Math.floor(pCx / BLOCK_SIZE);
+    const pRow  = Math.floor(pCy / BLOCK_SIZE);
+    const dist  = (cx, cy) => Math.hypot(cx - pCx, cy - pCy);
+    const bCtr  = (c, r)   => [(c + 0.5) * BLOCK_SIZE, (r + 0.5) * BLOCK_SIZE];
+
+    // Chest
+    for (const ch of this._chests.values()) {
+      const [cx, cy] = bCtr(ch.col, ch.row);
+      const d = dist(cx, cy);
+      if (d <= 2.5 * BLOCK_SIZE) candidates.push({ type: 'chest', dist: d });
+    }
+
+    // Lever
+    if (this.redstone) {
+      for (const c of this.redstone.components) {
+        if (c.type !== 'lever') continue;
+        const [cx, cy] = bCtr(c.col, c.row);
+        const d = dist(cx, cy);
+        if (d <= 2.5 * BLOCK_SIZE) candidates.push({ type: 'lever', dist: d });
+      }
+    }
+
+    // Bed
+    let bedDist = Infinity;
+    for (let dc = -3; dc <= 3; dc++) {
+      for (let dr = -1; dr <= 3; dr++) {
+        if (this.level.get(pRow + dr, pCol + dc) === BLOCK.BED) {
+          const d = dist(...bCtr(pCol + dc, pRow + dr));
+          if (d < bedDist) bedDist = d;
         }
       }
     }
+    if (bedDist < Infinity) candidates.push({ type: 'bed', dist: bedDist });
+
+    // Respawn anchor
+    let anchorDist = Infinity;
+    for (let dc = -2; dc <= 2; dc++) {
+      for (let dr = -2; dr <= 2; dr++) {
+        if (this.level.get(pRow + dr, pCol + dc) === BLOCK.RESPAWN_ANCHOR) {
+          const d = dist(...bCtr(pCol + dc, pRow + dr));
+          if (d < anchorDist) anchorDist = d;
+        }
+      }
+    }
+    if (anchorDist < Infinity) candidates.push({ type: 'respawn_anchor', dist: anchorDist });
+
+    // Portal (nether / end / obsidian frame) — only when not on cooldown
+    if (this.portalCooldown <= 0) {
+      let portalDist = Infinity;
+      for (let dc = -4; dc <= 4; dc++) {
+        for (let dr = -4; dr <= 4; dr++) {
+          const c = pCol + dc, r = pRow + dr;
+          const b = this.level.get(r, c);
+          if (b === BLOCK.NETHER_PORTAL || b === BLOCK.END_PORTAL ||
+              b === BLOCK.END_PORTAL_FRAME || b === BLOCK.END_PORTAL_FRAME_FULL ||
+              this._portalObsidianCells.has(`${c},${r}`)) {
+            const d = dist(...bCtr(c, r));
+            if (d < portalDist) portalDist = d;
+          }
+        }
+      }
+      if (portalDist < Infinity) candidates.push({ type: 'portal', dist: portalDist });
+    }
+
+    // Wither altar — only when matching item selected
+    if (!this._witherBoss) {
+      const slot = player.hotbar[player.selectedSlot];
+      if (slot && (slot.type === BLOCK.WITHER_SKELETON_HEAD || slot.type === BLOCK.SOUL_SAND)) {
+        const altar = this._findNearbyWitherAltar(pCol, pRow, 4);
+        if (altar) {
+          const d = dist((altar.anchorCol + 1) * BLOCK_SIZE, (altar.anchorRow + 1.5) * BLOCK_SIZE);
+          candidates.push({ type: 'wither_altar', dist: d });
+        }
+      }
+    }
+
+    // Music player
+    for (const mp of this._musicPlayerBlocks.values()) {
+      const [cx, cy] = bCtr(mp.col, mp.row);
+      const d = dist(cx, cy);
+      if (d <= 3 * BLOCK_SIZE) candidates.push({ type: 'music_player', dist: d });
+    }
+
+    // Apple (hotbar fallback — always lowest priority)
+    const sel = player.hotbar[player.selectedSlot];
+    if (sel && sel.type === BLOCK.APPLE && sel.count > 0 && player.hp < player.maxHp) {
+      candidates.push({ type: 'apple', dist: Infinity });
+    }
+
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => a.dist - b.dist);
+    return candidates[0];
   }
 
-  _executeContextAction() {
-    if (this._contextAction === 'respawn_anchor') {
+  _computeContextAction() {
+    this._contextAction  = null;
+    this._contextPrompt  = null;
+    this._contextAction2 = null;
+
+    const p1 = this._nearestInteractable(this.player);
+    this._contextAction = p1?.type ?? null;
+
+    if (p1) {
+      const key = this.input.gamepads[0].connected ? '[RB]' : '[U]';
+      const labels = {
+        respawn_anchor: `${key} Set Nether Spawn`,
+        bed:            this.gameMode === 'sandbox' ? `${key} Save World` : `${key} Set Spawn`,
+        chest:          this._chestOpen ? `${key} Close Chest` : `${key} Open Chest`,
+        portal:         `${key} Use Portal`,
+        wither_altar:   `${key} Place Item`,
+        music_player:   `${key} Music Player`,
+        lever:          `${key} Toggle Lever`,
+        apple:          `${key} Eat Apple`,
+      };
+      this._contextPrompt = labels[p1.type] ?? null;
+    }
+
+    if (this.player2 && this._p2RespawnTimer === 0) {
+      this._contextAction2 = this._nearestInteractable(this.player2)?.type ?? null;
+    }
+  }
+
+  _executeContextAction(player = this.player) {
+    const isP2   = player === this.player2;
+    const action = isP2 ? this._contextAction2 : this._contextAction;
+    const pCol   = Math.floor(player.cx / BLOCK_SIZE);
+    const pRow   = Math.floor(player.cy / BLOCK_SIZE);
+
+    if (action === 'apple') {
+      if (player.hp < player.maxHp) {
+        const healed = player.heal(BLOCK_DATA[BLOCK.APPLE].healAmount);
+        player.takeFromSlot(player.selectedSlot);
+        this._playSound('sounds/eat-apple.mp3', 0.8);
+        this._notify(`${isP2 ? 'P2 ate' : 'Ate'} an apple! +${healed} HP`, '#44FF44', 120);
+      } else {
+        this._notify('Already at full health!', '#AAFFAA', 80);
+      }
+
+    } else if (action === 'respawn_anchor') {
       if (this.gameMode !== 'sandbox') {
-        const pCol = Math.floor(this.player.cx / BLOCK_SIZE);
-        const pRow = Math.floor(this.player.cy / BLOCK_SIZE);
         let anchor = null;
         outer_ra: for (let dc = -2; dc <= 2; dc++) {
           for (let dr = -2; dr <= 2; dr++) {
@@ -8026,41 +9133,50 @@ class Game {
           }
         }
         if (anchor) {
-          this._activeRespawnAnchor = anchor;
-          this._activeSpawnBed = -1;  // anchor overrides bed
+          if (isP2) {
+            this._p2SpawnX = (anchor.col + 0.5) * BLOCK_SIZE - player.width / 2;
+            this._p2SpawnY = anchor.row * BLOCK_SIZE;
+          } else {
+            this._activeRespawnAnchor = anchor;
+            this._activeSpawnBed = -1;
+            if (this._sandboxLoadKey) this._saveNormalProgress();
+          }
           this._playSound('sounds/use-bed.mp3', 0.8);
-          this._notify('Nether respawn point set!', '#AA88FF', 220);
-          if (this._sandboxLoadKey) this._saveNormalProgress();
+          this._notify(`${isP2 ? 'P2 ' : ''}Nether respawn point set!`, '#AA88FF', 220);
         }
       }
-    } else if (this._contextAction === 'chest') {
+
+    } else if (action === 'chest') {
       if (this._chestOpen) {
         this._closeChest();
       } else {
-        const ch = this._nearestChest();
-        if (ch) {
-          this._chestOpen    = ch;
+        let bestCh = null, bestDist = Infinity;
+        for (const ch of this._chests.values()) {
+          const d = Math.hypot((ch.col + 0.5) * BLOCK_SIZE - player.cx,
+                               (ch.row + 0.5) * BLOCK_SIZE - player.cy);
+          if (d <= 2.5 * BLOCK_SIZE && d < bestDist) { bestDist = d; bestCh = ch; }
+        }
+        if (bestCh) {
+          this._chestOpen    = bestCh;
           this.inventoryOpen = true;
           this.craftingMenu._eWasDown = true;
         }
       }
-    } else if (this._contextAction === 'lever') {
-      const toggled = this.redstone.tryToggleLeverNear(this.level, this.player);
+
+    } else if (action === 'lever') {
+      const toggled = this.redstone.tryToggleLeverNear(this.level, player);
       if (toggled) {
         this._rsStartFromSource(toggled.col, toggled.row, toggled.on);
         this._playSound('sounds/lever.mp3', 0.7);
       }
-    } else if (this._contextAction === 'bed') {
+
+    } else if (action === 'bed') {
       if (this.gameMode === 'sandbox') {
-        this._openSaveDialog();
+        if (!isP2) this._openSaveDialog();
       } else {
-        const pCol = Math.floor(this.player.cx / BLOCK_SIZE);
-        const pRow = Math.floor(this.player.cy / BLOCK_SIZE);
         const inNether = pCol >= BIOME_CAVE_END && pCol < BIOME_END_START;
         if (inNether) {
-          // Beds explode in the Nether — arm a 3-second fuse
           if (this._netherBedFuse <= 0) {
-            // Find the bed cell
             let bedPos = null;
             outer2: for (let dc = -3; dc <= 3; dc++) {
               for (let dr = -1; dr <= 3; dr++) {
@@ -8071,7 +9187,7 @@ class Game {
               }
             }
             if (bedPos) {
-              this._netherBedFuse = 180;  // 3 seconds at 60fps
+              this._netherBedFuse = 180;
               this._netherBedPos  = bedPos;
               this._notify('Beds explode in the Nether!', '#FF4444', 200);
             }
@@ -8085,30 +9201,70 @@ class Game {
                 let lc = c;
                 while (lc > 0 && this.level.get(r, lc - 1) === BLOCK.BED) lc--;
                 const bedAnchor = { col: lc, row: r };
-                let idx = this.bedSpawns.findIndex(b => b.col === bedAnchor.col && b.row === bedAnchor.row);
-                if (idx < 0) idx = this.bedSpawns.push(bedAnchor) - 1;
-                this._activeSpawnBed = idx;
-                if (this._sandboxLoadKey) this._saveNormalProgress();
+                if (isP2) {
+                  this._p2SpawnX = (lc + 0.5) * BLOCK_SIZE - player.width / 2;
+                  this._p2SpawnY = r * BLOCK_SIZE;
+                  this._notify('P2 respawn point set!', '#FFDD44', 220);
+                } else {
+                  let idx = this.bedSpawns.findIndex(b => b.col === bedAnchor.col && b.row === bedAnchor.row);
+                  if (idx < 0) idx = this.bedSpawns.push(bedAnchor) - 1;
+                  this._activeSpawnBed = idx;
+                  if (this._sandboxLoadKey) this._saveNormalProgress();
+                  this._notify('Respawn point set!', '#FFDD44', 220);
+                }
                 this._playSound('sounds/use-bed.mp3');
-                this._notify('Respawn point set!', '#FFDD44', 220);
                 found = true;
               }
             }
           }
         }
       }
-    } else if (this._contextAction === 'portal') {
+
+    } else if (action === 'portal') {
       if (this.gameMode !== 'sandbox') this._tryRepairPortalFromHotbar();
       this._tryActivateRuinedPortal();
       if (this.gameMode !== 'sandbox') this._tryPlaceEyeFromHotbar();
       this._checkPortal();
       this._checkExitPortal();
-    } else if (this._contextAction === 'music_player') {
-      this._openMusicPlayerUI(this._nearMusicPlayer());
+
+    } else if (action === 'wither_altar') {
+      if (!this._witherBoss) {
+        const slot = player.hotbar[player.selectedSlot];
+        if (!slot) return;
+        const altar = this._findNearbyWitherAltar(pCol, pRow, 4);
+        if (!altar) return;
+        if (slot.type === BLOCK.WITHER_SKELETON_HEAD) {
+          const idx = altar.skulls.indexOf(false);
+          if (idx === -1) { this._notify('All skull slots filled', '#886622', 80); return; }
+          altar.skulls[idx] = true;
+          player.takeFromSlot(player.selectedSlot);
+          this._playSound('sounds/place-block.mp3');
+          this._notify(`Wither Skull placed (${altar.skulls.filter(Boolean).length}/3)`, '#AA8833', 120);
+          this._checkAltarCompletion(altar);
+        } else if (slot.type === BLOCK.SOUL_SAND) {
+          const idx = altar.sand.indexOf(false);
+          if (idx === -1) { this._notify('All soul sand slots filled', '#886622', 80); return; }
+          altar.sand[idx] = true;
+          player.takeFromSlot(player.selectedSlot);
+          this._playSound('sounds/place-block.mp3');
+          this._notify(`Soul Sand placed (${altar.sand.filter(Boolean).length}/4)`, '#AA8833', 120);
+          this._checkAltarCompletion(altar);
+        }
+      }
+
+    } else if (action === 'music_player') {
+      let bestMp = null, bestDist = Infinity;
+      for (const mp of this._musicPlayerBlocks.values()) {
+        const d = Math.hypot((mp.col + 0.5) * BLOCK_SIZE - player.cx,
+                             (mp.row + 0.5) * BLOCK_SIZE - player.cy);
+        if (d <= 3 * BLOCK_SIZE && d < bestDist) { bestDist = d; bestMp = mp; }
+      }
+      if (bestMp) this._openMusicPlayerUI(bestMp);
+
     } else {
-      // No context: next hotbar slot (non-sandbox)
+      // No context: cycle hotbar slot
       if (this.gameMode !== 'sandbox') {
-        this.player.selectedSlot = (this.player.selectedSlot + 1) % 9;
+        player.selectedSlot = (player.selectedSlot + 1) % 9;
       }
     }
   }
@@ -8161,9 +9317,9 @@ class Game {
     ctx.restore();
   }
 
-  // Show context prompt label above the player when RB action is available
+  // Show context prompt label above the player when a Use Item action is available
   _drawContextPrompt(ctx) {
-    if (!this._contextPrompt || !this.input.gamepads[0].connected) return;
+    if (!this._contextPrompt) return;
     if (this.inventoryOpen || this.craftingMenu?.open) return;
     const sc = this.camera.toScreen(this.player.cx, this.player.y);
     ctx.save();
@@ -8200,24 +9356,28 @@ class Game {
   }
 
   _drawBowCharge(ctx) {
-    const p = this.player;
-    if (p.weaponMode !== 'bow' || !p.bowDrawing) return;
-    const charge = p.drawProgress;
-    const barW   = 100, barX = (CANVAS_W - barW) / 2;
-    const barY   = HOTBAR_Y - 24;
+    const drawBar = (charge, barX, barY, labelX) => {
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      _roundRect(ctx, barX - 2, barY - 2, 100 + 4, 12, 3); ctx.fill();
+      const col = charge < 0.5 ? '#FF8800' : charge < 0.9 ? '#FFDD00' : '#88FF44';
+      ctx.fillStyle = col;
+      _roundRect(ctx, barX, barY, 100 * charge, 8, 2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = '8px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${Math.round(charge * 100)}%`, labelX, barY - 4);
+      ctx.textAlign = 'left';
+    };
+
     ctx.save();
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    _roundRect(ctx, barX - 2, barY - 2, barW + 4, 12, 3);
-    ctx.fill();
-    const col = charge < 0.5 ? '#FF8800' : charge < 0.9 ? '#FFDD00' : '#88FF44';
-    ctx.fillStyle = col;
-    _roundRect(ctx, barX, barY, barW * charge, 8, 2);
-    ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.font      = '8px Courier New';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${Math.round(charge * 100)}%`, CANVAS_W / 2, barY - 4);
-    ctx.textAlign = 'left';
+    const p = this.player;
+    if (p.weaponMode === 'bow' && p.bowDrawing) {
+      const barX = this.player2 ? 10 : (CANVAS_W - 100) / 2;
+      drawBar(p.drawProgress, barX, HOTBAR_Y - 24, barX + 50);
+    }
+    if (this.player2?.bowDrawing) {
+      const barX = CANVAS_W - 110;
+      drawBar(this.player2.drawProgress, barX, HOTBAR_Y - 24, barX + 50);
+    }
     ctx.restore();
   }
 
@@ -8475,15 +9635,33 @@ class Game {
   }
 
   _drawCoords(ctx) {
-    const col = Math.floor(this.player.cx / BLOCK_SIZE);
-    const row = Math.floor(this.player.cy / BLOCK_SIZE);
+    const col      = Math.floor(this.player.cx / BLOCK_SIZE);
+    const row      = Math.floor(this.player.cy / BLOCK_SIZE);
+    const coordStr = `x:${col} y:${row}`;
+
+    // Platformer: append live timer on a second line
+    let timerStr = null;
+    if (this.gameMode === 'platformer' && this._platformerStartMs) {
+      const elapsed  = Date.now() - this._platformerStartMs;
+      const totalSec = Math.floor(elapsed / 1000);
+      const mins     = Math.floor(totalSec / 60);
+      const ss       = String(totalSec % 60).padStart(2, '0');
+      const cs       = String(Math.floor((elapsed % 1000) / 10)).padStart(2, '0');
+      timerStr = `⏱ ${mins}:${ss}.${cs}`;
+    }
+
+    const boxH = timerStr ? 36 : 20;
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    ctx.fillRect(CANVAS_W - 128, CANVAS_H - 26, 118, 20);
-    ctx.fillStyle    = '#888';
-    ctx.font         = '9px Courier New';
-    ctx.textAlign    = 'right';
-    ctx.fillText(`x:${col} y:${row}`, CANVAS_W - 10, CANVAS_H - 10);
-    ctx.textAlign    = 'left';
+    ctx.fillRect(CANVAS_W - 128, CANVAS_H - boxH - 6, 118, boxH);
+    ctx.font      = '9px Courier New';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#888';
+    ctx.fillText(coordStr, CANVAS_W - 10, CANVAS_H - (timerStr ? 22 : 10));
+    if (timerStr) {
+      ctx.fillStyle = '#FFD700';
+      ctx.fillText(timerStr, CANVAS_W - 10, CANVAS_H - 8);
+    }
+    ctx.textAlign = 'left';
   }
 
   // ── Overlays ─────────────────────────────────────────────
@@ -8564,17 +9742,23 @@ class Game {
     ];
 
     if (this.gameMode === 'platformer') return [
-      S('CONTROLS', [
-        R('[WASD / Arrows]',  'Move; W or Space = jump (double-jump available)'),
-        R('[C]',              'Crouch / use shield'),
-        R('[LMB]',            'Attack (no mining in platformer mode)'),
-        R('[RMB]',            'Use item'),
+      S('CONTROLS — PLAYER 1', [
+        R('[WASD / Arrows]',  'Move; W = jump (double-jump available)'),
+        R('[Space]',          'Attack / charge bow'),
+        R('[S / Down]',       'Crouch / use shield'),
         R('[U]',              'Place block in portal frame / enter portal'),
         R('[I]',              'Open inventory'),
         R('[E]',              'Open nearby chest'),
-        R('[B]',              'Toggle bed (set respawn point)'),
         R('[H] or [?]',       'Toggle this help screen'),
         R('[Esc]',            'Pause game'),
+      ]),
+      S('BOW AIMING', [
+        B('Hold Space to charge the bow — release to fire'),
+        B('Single-player: arrow flies toward the mouse cursor'),
+        B('2-player: aim is based on movement keys held at release:'),
+        R('  W/I held',       '→ Diagonal up (or straight up if still)'),
+        R('  S/K held + air', '→ Diagonal down'),
+        R('  Default',        '→ Straight ahead in facing direction'),
       ]),
       S('KEY DIFFERENCES FROM NORMAL', [
         B('NO MINING — all blocks are solid and cannot be broken'),
@@ -8582,6 +9766,17 @@ class Game {
         B('COMBAT FOCUSED — fight mobs to progress through levels'),
         B('PORTAL PUZZLES — repair portals to unlock the next area'),
         B('Double-jump available: press Jump again while airborne'),
+        B('Equipment auto-upgrades: picking up better gear replaces old (dropped nearby)'),
+        B('Shields and bows: can only carry one — pick up if you do not have one'),
+      ]),
+      S('2-PLAYER LOCAL CO-OP', [
+        R('P2 (IJKL mode)',   'IJKL to move, U to attack / charge bow'),
+        R('P2 (Arrows mode)', 'Arrows to move, Insert to attack'),
+        R('P2 Bow aim',       'Hold attack → aim I/K (or Up/Dn) → release'),
+        G(),
+        B('Both players share the same screen — camera follows midpoint'),
+        B('Equipment drops can be grabbed by either player — if rejected (same/better gear), it is re-dropped nearby for the other player'),
+        B('P2 respawns after 3 seconds on death'),
       ]),
       S('HOTBAR', [
         R('Slot 0',           'Sword — melee combat'),
@@ -8985,18 +10180,106 @@ class Game {
     const hasLvlSel  = (this.gameMode === 'normal'      && !!this._sandboxLoadKey) ||
                        (this.gameMode === 'platformer'  && !!this._platformerLoadKey);
     const threeBtn   = isSb || hasLvlSel;
+
+    // Controller-assignment rows — 2 players now; change this single number when 3-4P added
+    const numCtrlPlayers = (!isSb && !this._onlineGameId && this._worldAdvSettings.twoPlayerMode) ? 2 : 0;
+    // Each player row is 36px; add 22px for the section header
+    const ctrlExtra = numCtrlPlayers > 0 ? (22 + numCtrlPlayers * 36) : 0;
+
     const tabH = 36;  // height of the tab bar at top of panel
-    const pw = 360, ph = (threeBtn ? 268 : 240) + tabH;  // extra 30px for volume sliders
+    const pw = 360, ph = (threeBtn ? 268 : 240) + tabH + ctrlExtra;
     const px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     const bw = 300, bx = (CANVAS_W - bw) / 2;
     const layout = {
-      px, py, pw, ph, tabH,
+      px, py, pw, ph, tabH, numCtrlPlayers,
       resumeBtn: { x: bx, y: py + tabH + 88,                    w: bw, h: 44, label: '▶  Resume'      },
       menuBtn:   { x: bx, y: py + tabH + (threeBtn ? 204 : 146), w: bw, h: 44, label: '⟵  Main Menu' },
     };
     if (isSb)      layout.saveBtn     = { x: bx, y: py + tabH + 146, w: bw, h: 44, label: '💾  Save World'   };
     if (hasLvlSel) layout.levelSelBtn = { x: bx, y: py + tabH + 146, w: bw, h: 44, label: '🗺  Level Select'  };
     return layout;
+  }
+
+  // Generic N-player controller assignment rows.
+  // Drawn in the Settings tab when twoPlayerMode is on.
+  // To support 3-4 players later: pass a larger numPlayers value — nothing else changes.
+  _drawCtrlAssignRows(ctx, numPlayers, px, py, pw, tabH, mx, my) {
+    const OPTS      = [-1, 0, 1, 2, 3];   // -1 = keyboard; 0-3 = gamepad slots
+    const SEC_Y     = py + tabH + 128;    // section starts below the 2P toggle
+    const BTN_W     = 80, BTN_H = 26, ROW_H = 36;
+    const BTN_X     = px + pw - 24 - BTN_W;
+    const rawGps    = navigator.getGamepads ? navigator.getGamepads() : [];
+    // Player accent colours — add more entries when adding P3/P4
+    const P_COLORS  = { 1: '#FFD700', 2: '#88AAFF', 3: '#88FF88', 4: '#FF8888' };
+    // Keyboard key hints — P2 gets arrows only when both players are on keyboard
+    const bothKb = ControllerConfig.getAssignment(1) === -1 && ControllerConfig.getAssignment(2) === -1;
+    const KB_HINTS  = {
+      1: bothKb ? 'WASD / Space' : 'WASD / ↑↓',
+      2: bothKb ? '↑↓←→ / Ins'  : 'IJKL / U',
+      3: 'Numpad', 4: '—',
+    };
+
+    // Section header + divider line
+    ctx.save();
+    ctx.font = 'bold 9px Courier New'; ctx.fillStyle = '#888899';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText('INPUT ASSIGNMENT', px + 24, SEC_Y + 10);
+    ctx.strokeStyle = '#33334466'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(px + 24, SEC_Y + 14); ctx.lineTo(px + pw - 24, SEC_Y + 14);
+    ctx.stroke();
+
+    for (let p = 1; p <= numPlayers; p++) {
+      const rowY    = SEC_Y + 22 + (p - 1) * ROW_H;
+      const midY    = rowY + BTN_H / 2;
+      const assigned = ControllerConfig.getAssignment(p);
+      const gpRaw    = assigned >= 0 ? rawGps[assigned] : null;
+      const connected = !!(gpRaw && gpRaw.connected);
+      const pColor   = P_COLORS[p] ?? '#AAAACC';
+
+      // Row stripe
+      ctx.fillStyle = 'rgba(255,255,255,0.03)';
+      ctx.fillRect(px + 20, rowY - 2, pw - 40, BTN_H + 4);
+
+      // Player badge pill
+      ctx.fillStyle = `${pColor}22`;
+      _roundRect(ctx, px + 24, rowY + 2, 26, BTN_H - 4, 3); ctx.fill();
+      ctx.strokeStyle = pColor; ctx.lineWidth = 1;
+      _roundRect(ctx, px + 24, rowY + 2, 26, BTN_H - 4, 3); ctx.stroke();
+      ctx.fillStyle = pColor; ctx.font = 'bold 10px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(`P${p}`, px + 37, midY);
+
+      // Connection dot + description
+      if (assigned >= 0) {
+        // Dot
+        ctx.fillStyle = connected ? '#33DD55' : '#554455';
+        ctx.beginPath(); ctx.arc(px + 62, midY, 4, 0, Math.PI * 2); ctx.fill();
+        if (connected) { ctx.strokeStyle = '#66FF88'; ctx.lineWidth = 1; ctx.stroke(); }
+        // Text
+        ctx.fillStyle = connected ? '#AAAACC' : '#665577';
+        ctx.font = '9px Courier New'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        const label = connected ? `Gamepad ${assigned + 1}` : `Gamepad ${assigned + 1}  ✗`;
+        ctx.fillText(label, px + 74, midY);
+      } else {
+        // Keyboard: no dot, show key hint
+        ctx.fillStyle = '#AAAACC'; ctx.font = '9px Courier New';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(`Keyboard  (${KB_HINTS[p] ?? '—'})`, px + 58, midY);
+      }
+
+      // Cycle button
+      const btnHov = mx >= BTN_X && mx <= BTN_X + BTN_W && my >= rowY && my <= rowY + BTN_H;
+      ctx.fillStyle = btnHov ? '#1A2A3A' : '#232333';
+      ctx.strokeStyle = btnHov ? '#44AAFF' : '#555577'; ctx.lineWidth = 1;
+      _roundRect(ctx, BTN_X, rowY, BTN_W, BTN_H, 4); ctx.fill();
+      _roundRect(ctx, BTN_X, rowY, BTN_W, BTN_H, 4); ctx.stroke();
+      ctx.fillStyle = '#88CCFF'; ctx.font = 'bold 10px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(assigned === -1 ? 'Keyboard' : `Gamepad ${assigned + 1}`, BTN_X + BTN_W / 2, rowY + BTN_H / 2);
+    }
+
+    ctx.restore();
   }
 
   _confirmLayout() {
@@ -9014,7 +10297,7 @@ class Game {
     const clicked = this.input.mouse.clicked;
 
     if (this.state === 'paused') {
-      const { px, py, pw, ph, tabH, resumeBtn, menuBtn, saveBtn, levelSelBtn } = this._pauseLayout();
+      const { px, py, pw, ph, tabH, numCtrlPlayers, resumeBtn, menuBtn, saveBtn, levelSelBtn } = this._pauseLayout();
       const TABS = ['pause', 'settings', 'help'];
       const tabW = Math.floor(pw / 3);
 
@@ -9118,18 +10401,35 @@ class Game {
         } else {
           // Normal/Platformer: 2-player toggle
           const tgX = px + (pw - 64) / 2, tgY = py + tabH + 90, tgW = 64, tgH = 28;
-          if ((clicked && mx >= tgX && mx <= tgX + tgW && my >= tgY && my <= tgY + tgH)
-              || this.input.gpJustDown(0, 'jump')) {
+          if (!this._onlineGameId &&
+              ((clicked && mx >= tgX && mx <= tgX + tgW && my >= tgY && my <= tgY + tgH)
+               || this.input.gpJustDown(0, 'jump'))) {
             this.state = 'playing';
             this._applyTwoPlayerMode(!this._worldAdvSettings.twoPlayerMode);
             this._pauseTab = 'pause';
+          }
+
+          // Controller assignment row buttons (one per player when 2P is on)
+          if (numCtrlPlayers > 0 && clicked) {
+            const OPTS   = [-1, 0, 1, 2, 3];   // -1=keyboard, 0-3=gamepad slots
+            const SEC_Y  = py + tabH + 128;
+            const BTN_W  = 80, BTN_H = 26, ROW_H = 36;
+            const BTN_X  = px + pw - 24 - BTN_W;
+            for (let p = 1; p <= numCtrlPlayers; p++) {
+              const rowY = SEC_Y + 22 + (p - 1) * ROW_H;
+              if (mx >= BTN_X && mx <= BTN_X + BTN_W && my >= rowY && my <= rowY + BTN_H) {
+                const cur  = ControllerConfig.getAssignment(p);
+                const idx  = OPTS.indexOf(cur);
+                ControllerConfig.setAssignment(p, OPTS[(idx + 1) % OPTS.length]);
+              }
+            }
           }
         }
       }
 
       // ── HELP tab ───────────────────────────────────────────
       if (this._pauseTab === 'help') {
-        const maxScroll = 8;  // 15 rows - 7 visible
+        const maxScroll = Math.max(0, (this.player2 ? 20 : 15) - 7);
         if (this.input.gpJustDown(0, 'dpad0')) this._pauseHelpScroll = Math.max(0, this._pauseHelpScroll - 1);
         if (this.input.gpJustDown(0, 'dpad2')) this._pauseHelpScroll = Math.min(maxScroll, this._pauseHelpScroll + 1);
         if (this.input.scrollDelta !== 0)
@@ -9151,8 +10451,9 @@ class Game {
       }
       if (hit(confirmBtn)) {
         this._saveNormalProgress();
+        if (this._onlineGameId) window.multiplayerManager?.disconnect();
         this.destroy();
-        if (this._onReturnToMenu) this._onReturnToMenu();
+        if (this._onReturnToMenu) this._onReturnToMenu(_localMenuState(this));
         else location.reload();
       }
       if (hit(cancelBtn)) this.state = 'paused';
@@ -9212,7 +10513,7 @@ class Game {
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
     if (this.state === 'paused') {
-      const { px, py, pw, ph, tabH, resumeBtn, menuBtn, saveBtn, levelSelBtn } = this._pauseLayout();
+      const { px, py, pw, ph, tabH, numCtrlPlayers, resumeBtn, menuBtn, saveBtn, levelSelBtn } = this._pauseLayout();
       const TABS       = ['pause', 'settings', 'help'];
       const TAB_LABELS = ['⏸ PAUSE', '⚙ SETTINGS', '? HELP'];
       const tabW       = Math.floor(pw / 3);
@@ -9274,6 +10575,16 @@ class Game {
         ctx.font         = '10px Courier New';
         ctx.fillText(modeNames[this.gameMode] ?? this.gameMode, CANVAS_W / 2, py + tabH + 56);
 
+        // Platformer: show level name + creator in the gap above Resume
+        if (this.gameMode === 'platformer' && this._platformerLevelName) {
+          ctx.font      = '9px Courier New';
+          ctx.fillStyle = 'rgba(180,210,255,0.75)';
+          ctx.fillText(
+            `${this._platformerLevelName}  ·  by ${this._platformerCreator}`,
+            CANVAS_W / 2, py + tabH + 76
+          );
+        }
+
         const allBtns = saveBtn     ? [resumeBtn, saveBtn,     menuBtn]
                       : levelSelBtn ? [resumeBtn, levelSelBtn, menuBtn]
                       :               [resumeBtn, menuBtn];
@@ -9329,21 +10640,28 @@ class Game {
             CANVAS_W / 2, py + ph - 98);
           this._drawPauseVolSliders(ctx, px, py, pw, ph);
         } else {
-          // Normal / Platformer: 2-Player Co-op toggle
-          const is2p = this._worldAdvSettings.twoPlayerMode;
-          ctx.fillStyle = '#88AAFF'; ctx.font = 'bold 13px Courier New';
+          // Normal / Platformer: 2-Player Co-op toggle (disabled in online games)
+          const is2p  = this._worldAdvSettings.twoPlayerMode;
+          const noTwop = !!this._onlineGameId;
+          ctx.fillStyle = noTwop ? '#444466' : '#88AAFF'; ctx.font = 'bold 13px Courier New';
           ctx.fillText('2-Player Co-op', CANVAS_W / 2, py + tabH + 36);
           ctx.fillStyle = '#888899'; ctx.font = '10px Courier New';
-          ctx.fillText('IJKL keys or 2nd gamepad for Player 2', CANVAS_W / 2, py + tabH + 58);
-          ctx.fillText('If P2 joins mid-game, they spawn next to P1', CANVAS_W / 2, py + tabH + 74);
+          ctx.fillText(noTwop ? 'Not available in online games' : 'IJKL keys or 2nd gamepad for Player 2', CANVAS_W / 2, py + tabH + 58);
+          if (!noTwop) ctx.fillText('If P2 joins mid-game, they spawn next to P1', CANVAS_W / 2, py + tabH + 74);
           const tgX = px + (pw - 64) / 2, tgY = py + tabH + 90, tgW = 64, tgH = 28;
-          const tgHov = mx >= tgX && mx <= tgX + tgW && my >= tgY && my <= tgY + tgH;
-          ctx.fillStyle   = is2p ? '#3A5A2A' : '#2A2A3A';
+          const tgHov = !noTwop && mx >= tgX && mx <= tgX + tgW && my >= tgY && my <= tgY + tgH;
+          ctx.fillStyle   = noTwop ? '#1E1E2A' : (is2p ? '#3A5A2A' : '#2A2A3A');
           _roundRect(ctx, tgX, tgY, tgW, tgH, 5); ctx.fill();
-          ctx.strokeStyle = is2p ? '#66CC44' : '#555577'; ctx.lineWidth = tgHov || gpConn ? 2 : 1;
+          ctx.strokeStyle = noTwop ? '#333344' : (is2p ? '#66CC44' : '#555577'); ctx.lineWidth = tgHov || gpConn ? 2 : 1;
           _roundRect(ctx, tgX, tgY, tgW, tgH, 5); ctx.stroke();
-          ctx.fillStyle = is2p ? '#88FF66' : '#888899'; ctx.font = 'bold 12px Courier New';
-          ctx.fillText(is2p ? 'ON' : 'OFF', tgX + tgW / 2, tgY + tgH / 2);
+          ctx.fillStyle = noTwop ? '#444455' : (is2p ? '#88FF66' : '#888899'); ctx.font = 'bold 12px Courier New';
+          ctx.fillText(noTwop ? 'N/A' : (is2p ? 'ON' : 'OFF'), tgX + tgW / 2, tgY + tgH / 2);
+
+          // Controller assignment rows (only when 2P is active)
+          if (numCtrlPlayers > 0) {
+            this._drawCtrlAssignRows(ctx, numCtrlPlayers, px, py, pw, tabH, mx, my);
+          }
+
           this._drawPauseVolSliders(ctx, px, py, pw, ph);
         }
       }
@@ -9356,13 +10674,14 @@ class Game {
         ctx.font         = 'bold 13px Courier New';
         ctx.fillText('Controls Quick Reference', CANVAS_W / 2, py + tabH + 18);
 
+        const is2P = !!this.player2;
         const rows = [
-          ['Movement',    'WASD/Arrows / L-Stick'],
-          ['Jump',        'W/Up / [A button]'],
+          ['Movement',    'WASD / Arrows / L-Stick'],
+          ['Jump',        'W / Up / [A button]'],
           ['Sprint',      'Shift (full stick auto)'],
-          ['Crouch',      'S/Down / [B button]'],
+          ['Crouch',      'S / Down / [B button]'],
           ['Attack/Mine', 'Space / L-Click / [X]'],
-          ['Bow',         'Hold Space → aim → release'],
+          ['Bow (aim)',   is2P ? 'Hold Space → aim W/S → release' : 'Hold Space or L-Click → release'],
           ['Use/Place',   'Right-click'],
           ['Hotbar',      '1-9 / Scroll / D-Pad'],
           ['Inventory',   'I (Normal mode)'],
@@ -9372,6 +10691,13 @@ class Game {
           ['Checkpoint',  'F key (at bed)'],
           ['Settings',    'P key / [←→] SETTINGS tab'],
           ['Pause',       'Esc / Start button'],
+          ...(is2P ? [
+            ['─── P2 ───', '──────────────────────────'],
+            ['P2 Move',    this.input.p2KeyMode === 'arrows' ? 'Arrows' : 'IJKL'],
+            ['P2 Jump',    this.input.p2KeyMode === 'arrows' ? 'Up Arrow' : 'I'],
+            ['P2 Attack',  this.input.p2KeyMode === 'arrows' ? 'Insert' : 'U'],
+            ['P2 Bow aim', this.input.p2KeyMode === 'arrows' ? 'Hold Ins → aim Up/Dn → release' : 'Hold U → aim I/K → release'],
+          ] : []),
         ];
         const visible  = 7;
         const rowH     = 20;
@@ -9639,8 +10965,9 @@ class Game {
 
   // ── Sandbox load ──────────────────────────────────────────────
 
-  _loadSandboxWorld(key) {
-    const data = SandboxSaves.load(key);
+  _loadSandboxWorld(keyOrData) {
+    const raw  = typeof keyOrData === 'string' ? SandboxSaves.load(keyOrData) : keyOrData;
+    const data = SaveMigrations.migrateSave(raw);
     if (!data) {
       this._notify('Failed to load world!', '#FF4444', 300);
       return;
@@ -9895,8 +11222,9 @@ class Game {
 
   // ── Normal mode: play a Sandbox-created world ─────────────────
 
-  _loadNormalWorld(key) {
-    const data = SandboxSaves.load(key);
+  _loadNormalWorld(keyOrData) {
+    const raw  = typeof keyOrData === 'string' ? SandboxSaves.load(keyOrData) : keyOrData;
+    const data = SaveMigrations.migrateSave(raw);
     if (!data) { this._notify('Failed to load world!', '#FF4444', 300); return; }
 
     // Load progress early so grid snapshot can be applied before redstone/chest setup
@@ -10218,8 +11546,9 @@ class Game {
 
   // ── Platformer mode: play a Sandbox-created world as a platformer level ──
 
-  _loadPlatformerWorld(key) {
-    const data = SandboxSaves.load(key);
+  _loadPlatformerWorld(keyOrData) {
+    const raw  = typeof keyOrData === 'string' ? SandboxSaves.load(keyOrData) : keyOrData;
+    const data = SaveMigrations.migrateSave(raw);
     if (!data) { this._notify('Failed to load level!', '#FF4444', 300); return; }
 
     this._platformerLevelName = data.worldName  || 'Unknown Level';
@@ -10394,10 +11723,13 @@ class Game {
       }
     }
 
-    // Restore dragon + crystal states
-    this._savedDragonState = data.dragonState || null;
-    this._dragonDefeated   = !!data.dragonDefeated;
-    if (this._dragonDefeated) this._dragonExitPortal = true;
+    // Dragon: always fresh in platformer — sandbox defeat state must not carry over.
+    // The dragon will spawn when the player first enters the End via the portal.
+    this._savedDragonState    = null;
+    this._dragonDefeated      = false;
+    this._dragonExitPortal    = false;
+    this._dragonVictoryScreen = false;
+    // Crystal states still apply (destroyed crystals stay destroyed in the level grid)
     if (Array.isArray(data.crystalStates)) {
       for (const cs of data.crystalStates) {
         const crystal = this._endCrystals.find(c => c.col === cs.col && c.row === cs.row);
@@ -10522,51 +11854,8 @@ class Game {
     }
   }
 
-  _drawPlatformerHUD(ctx) {
-    ctx.save();
-
-    // ── Mode badge (top-left) ──────────────────────────────
-    const modeLabel = '▶ PLATFORMER';
-    ctx.font         = 'bold 10px Courier New';
-    ctx.textBaseline = 'middle';
-    ctx.textAlign    = 'left';
-    const mlw = ctx.measureText(modeLabel).width;
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    _roundRect(ctx, 8, 8, mlw + 16, 20, 4); ctx.fill();
-    ctx.fillStyle = '#2196F3';
-    ctx.fillText(modeLabel, 16, 18);
-
-    // ── Level name + creator (below mode badge) ────────────
-    if (this._platformerLevelName) {
-      const nameStr = `${this._platformerLevelName}  ·  by ${this._platformerCreator}`;
-      ctx.font      = '9px Courier New';
-      const nw      = ctx.measureText(nameStr).width;
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      _roundRect(ctx, 8, 32, nw + 14, 16, 3); ctx.fill();
-      ctx.fillStyle = 'rgba(180,210,255,0.85)';
-      ctx.fillText(nameStr, 15, 40);
-    }
-
-    // ── Live timer (top-right, beside notifications) ────────
-    if (this._platformerStartMs && this.state === 'playing') {
-      const elapsed  = Date.now() - this._platformerStartMs;
-      const totalSec = Math.floor(elapsed / 1000);
-      const mins     = Math.floor(totalSec / 60);
-      const ss       = String(totalSec % 60).padStart(2, '0');
-      const cs       = String(Math.floor((elapsed % 1000) / 10)).padStart(2, '0');
-      const timeStr  = `${mins}:${ss}.${cs}`;
-      ctx.font       = 'bold 11px Courier New';
-      ctx.textAlign  = 'right';
-      const tw       = ctx.measureText(timeStr).width;
-      ctx.fillStyle  = 'rgba(0,0,0,0.5)';
-      _roundRect(ctx, CANVAS_W - tw - 22, 8, tw + 16, 20, 4); ctx.fill();
-      ctx.fillStyle  = '#FFD700';
-      ctx.fillText(timeStr, CANVAS_W - 8, 18);
-    }
-
-    ctx.textAlign    = 'left';
-    ctx.textBaseline = 'alphabetic';
-    ctx.restore();
+  _drawPlatformerHUD(_ctx) {
+    // Mode badge, level name, and timer moved — see _drawCoords and pause menu.
   }
 
   _drawGameOver_UNUSED(ctx) {

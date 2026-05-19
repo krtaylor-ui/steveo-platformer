@@ -1,0 +1,21 @@
+{
+  "worldId": "g-1778853988003-sg7",
+  "name": "g-1778853988003-sg7",
+  "mode": "sandbox",
+  "maxPlayers": 4,
+  "blocks": {},
+  "items": [],
+  "multiplierSettings": {
+    "bossHealthMultiplier": 1,
+    "bossDamageMultiplier": 1,
+    "bossAttackRateMultiplier": 1
+  },
+  "playerCount": 1,
+  "saveVersion": 2,
+  "worldAdvSettings": {
+    "bossHealthMultiplier": 1,
+    "bossDamageMultiplier": 1,
+    "bossAttackRateMultiplier": 1
+  },
+  "savedAt": "2026-05-18T03:21:13.584Z"
+}
