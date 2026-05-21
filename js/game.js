@@ -893,7 +893,7 @@ class Game {
 
     // ── I key: toggle inventory / sandbox palette (disabled in platformer) ──
     const iDown = this.input.isDown('KeyI');
-    if (iDown && !this._iKeyWas && this.gameMode !== 'platformer') {
+    if (iDown && !this._iKeyWas && this.gameMode !== 'platformer' && this.gameMode !== 'speedrunner') {
       if (this.gameMode === 'sandbox' && this.sandbox) {
         this.sandbox.togglePalette();
       } else {
@@ -1745,6 +1745,7 @@ class Game {
     const isWallCol = hoverCol >= 285 && hoverCol <= 314;
     const canMine   = !isSandbox &&
                       this.gameMode !== 'platformer' &&
+                      this.gameMode !== 'speedrunner' &&
                       this.player.weaponMode === 'pickaxe' &&
                       this.input.mouse.down   &&
                       target !== BLOCK.AIR    &&
@@ -1753,12 +1754,12 @@ class Game {
 
     if (canMine) {
       this.level.startBreaking(hoverRow, hoverCol);
-    } else if (!isSandbox && this.gameMode !== 'platformer') {
+    } else if (!isSandbox && this.gameMode !== 'platformer' && this.gameMode !== 'speedrunner') {
       this.level.stopBreaking();
       this._tooWeakNotified = false;
     }
 
-    if (!isSandbox && this.gameMode !== 'platformer') {
+    if (!isSandbox && this.gameMode !== 'platformer' && this.gameMode !== 'speedrunner') {
       const mineResult = this.level.updateBreaking(
         this.player.cx, this.player.cy,
         this.player.pickaxeTier, this.player.pickaxeSpeed
