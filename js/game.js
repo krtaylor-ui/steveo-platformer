@@ -81,6 +81,8 @@ class Game {
       srTimeBoostIntervalSec:    5,
       srDistBoostEnabled:        true,
       srDistBoostIntervalBlocks: 5,
+      srMinZoomSpeed:            1.0,   // speed (effectiveMult) at which zoom starts; -1 = disabled
+      srMaxZoomSpeed:            null,  // speed at which max zoom is reached; null = srMaxMultiplier
       // Phase 17-D — Physics (per-world)
       physicsGravity:            GRAVITY,   // 0.66
       jumpPadVForce:             -18,       // launch velocity for JUMP_PAD blocks
@@ -413,6 +415,13 @@ class Game {
         if (!this.sandbox.findPortalAtCell(10, 328)) {
           this.sandbox.registerPortal(10, 328, 'nether'); // gets 'A' on fresh world
         }
+      }
+
+      // Ensure custom teleport points exist (new worlds get one Spawn entry; old saves default to same)
+      if (!Array.isArray(this._worldAdvSettings.customTeleportPoints)) {
+        this._worldAdvSettings.customTeleportPoints = [
+          { label: 'Spawn', x: this.level.spawnX, y: this.level.spawnY },
+        ];
       }
     }
 
@@ -7219,6 +7228,8 @@ class Game {
         srTimeBoostIntervalSec:    aws.srTimeBoostIntervalSec,
         srDistBoostEnabled:        aws.srDistBoostEnabled,
         srDistBoostIntervalBlocks: aws.srDistBoostIntervalBlocks,
+        srMinZoomSpeed:            aws.srMinZoomSpeed,
+        srMaxZoomSpeed:            aws.srMaxZoomSpeed,
       }));
     } catch {}
   }
@@ -7448,44 +7459,59 @@ class Game {
       const aws  = this._worldAdvSettings;
       const tgX  = L.px + L.pw - 82, tgW = 64, tgH = 24;
       const ivX  = tgX - 76,          ivW = 68;
-      const BASE_SPEED_OPTS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
-      const MAX_MULT_OPTS   = [1.0, 1.5, 2.0, 3.0, 4.0, 5.0];
-      const BOOST_PCT_OPTS  = [0.05, 0.10, 0.15, 0.20];
-      const TIME_INT_OPTS   = [1, 2, 5, 10, 20];
-      const DIST_INT_OPTS   = [1, 2, 5, 10, 20, 30];
+      const R    = 40; // must match draw section
+      const BASE_SPEED_OPTS   = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
+      const MAX_MULT_OPTS     = [1.0, 1.5, 2.0, 3.0, 4.0, 5.0];
+      const BOOST_PCT_OPTS    = [0.05, 0.10, 0.15, 0.20];
+      const TIME_INT_OPTS     = [1, 2, 5, 10, 20];
+      const DIST_INT_OPTS     = [1, 2, 5, 10, 20, 30];
+      const ZOOM_SPD_OPTS     = [-1, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0];
+      const MAX_ZOOM_SPD_OPTS = [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0];
+
+      const hit = (rY) => mx >= tgX && mx <= tgX + tgW && my >= rY && my <= rY + tgH;
 
       // Row 1: Base Speed
-      if (mx >= tgX && mx <= tgX + tgW && my >= L.FIRST_ROW && my <= L.FIRST_ROW + tgH) {
+      if (hit(L.FIRST_ROW)) {
         const cur = BASE_SPEED_OPTS.findIndex(v => Math.abs(v - (aws.srBaseSpeed ?? 1.0)) < 0.01);
         aws.srBaseSpeed = BASE_SPEED_OPTS[(cur < 0 ? 2 : cur + 1) % BASE_SPEED_OPTS.length];
       }
       // Row 2: Max Speed Cap
-      const r2Y = L.FIRST_ROW + 44;
-      if (mx >= tgX && mx <= tgX + tgW && my >= r2Y && my <= r2Y + tgH) {
+      if (hit(L.FIRST_ROW + R)) {
         const cur = MAX_MULT_OPTS.findIndex(v => Math.abs(v - (aws.srMaxMultiplier ?? 2.0)) < 0.01);
         aws.srMaxMultiplier = MAX_MULT_OPTS[(cur < 0 ? 2 : cur + 1) % MAX_MULT_OPTS.length];
       }
       // Row 3: Boost Per Tick
-      const r3Y = L.FIRST_ROW + 88;
-      if (mx >= tgX && mx <= tgX + tgW && my >= r3Y && my <= r3Y + tgH) {
+      if (hit(L.FIRST_ROW + R*2)) {
         const cur = BOOST_PCT_OPTS.findIndex(v => Math.abs(v - (aws.srBoostPct ?? 0.05)) < 0.005);
         aws.srBoostPct = BOOST_PCT_OPTS[(cur < 0 ? 0 : cur + 1) % BOOST_PCT_OPTS.length];
       }
       // Row 4: Time Boost — toggle + interval
-      const r4Y = L.FIRST_ROW + 132;
-      if (mx >= tgX && mx <= tgX + tgW && my >= r4Y && my <= r4Y + tgH)
+      const r4Y = L.FIRST_ROW + R*3;
+      if (hit(r4Y))
         aws.srTimeBoostEnabled = !(aws.srTimeBoostEnabled ?? true);
       if ((aws.srTimeBoostEnabled ?? true) && mx >= ivX && mx <= ivX + ivW && my >= r4Y && my <= r4Y + tgH) {
         const cur = TIME_INT_OPTS.indexOf(aws.srTimeBoostIntervalSec ?? 5);
         aws.srTimeBoostIntervalSec = TIME_INT_OPTS[(cur < 0 ? 2 : cur + 1) % TIME_INT_OPTS.length];
       }
       // Row 5: Distance Boost — toggle + interval
-      const r5Y = L.FIRST_ROW + 176;
-      if (mx >= tgX && mx <= tgX + tgW && my >= r5Y && my <= r5Y + tgH)
+      const r5Y = L.FIRST_ROW + R*4;
+      if (hit(r5Y))
         aws.srDistBoostEnabled = !(aws.srDistBoostEnabled ?? true);
       if ((aws.srDistBoostEnabled ?? true) && mx >= ivX && mx <= ivX + ivW && my >= r5Y && my <= r5Y + tgH) {
         const cur = DIST_INT_OPTS.indexOf(aws.srDistBoostIntervalBlocks ?? 5);
         aws.srDistBoostIntervalBlocks = DIST_INT_OPTS[(cur < 0 ? 2 : cur + 1) % DIST_INT_OPTS.length];
+      }
+      // Row 6: Min Zoom Speed
+      if (hit(L.FIRST_ROW + R*5)) {
+        const cur = ZOOM_SPD_OPTS.findIndex(v => Math.abs(v - (aws.srMinZoomSpeed ?? 1.0)) < 0.01);
+        aws.srMinZoomSpeed = ZOOM_SPD_OPTS[(cur < 0 ? 1 : cur + 1) % ZOOM_SPD_OPTS.length];
+      }
+      // Row 7: Max Zoom Speed
+      if (hit(L.FIRST_ROW + R*6)) {
+        const srMax = aws.srMaxMultiplier ?? SR_CONFIG.maxMultiplier;
+        const curVal = aws.srMaxZoomSpeed ?? srMax;
+        const cur = MAX_ZOOM_SPD_OPTS.findIndex(v => Math.abs(v - curVal) < 0.01);
+        aws.srMaxZoomSpeed = MAX_ZOOM_SPD_OPTS[(cur < 0 ? 1 : cur + 1) % MAX_ZOOM_SPD_OPTS.length];
       }
       // Persist SR settings immediately without requiring a full world save
       this._srPersistSettings();
@@ -7949,28 +7975,43 @@ class Game {
         ctx.fillText(ivLabel, ivX + ivW / 2, rY + 13);
       };
 
-      const BASE_SPEED_OPTS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
-      const MAX_MULT_OPTS   = [1.0, 1.5, 2.0, 3.0, 4.0, 5.0];
-      const BOOST_PCT_OPTS  = [0.05, 0.10, 0.15, 0.20];
+      const BASE_SPEED_OPTS  = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
+      const MAX_MULT_OPTS    = [1.0, 1.5, 2.0, 3.0, 4.0, 5.0];
+      const BOOST_PCT_OPTS   = [0.05, 0.10, 0.15, 0.20];
+      const ZOOM_SPD_OPTS    = [-1, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]; // -1 = disabled
+      const MAX_ZOOM_SPD_OPTS= [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0];
+      const R = 40; // row spacing (px) — tighter to fit 7 rows in panel
 
-      drawSrValRow(L.FIRST_ROW,      'Base Speed',
+      const minZV = aws.srMinZoomSpeed ?? 1.0;
+      const maxZV = aws.srMaxZoomSpeed ?? (aws.srMaxMultiplier ?? SR_CONFIG.maxMultiplier);
+      const minZStr = minZV < 0 ? 'OFF' : minZV.toFixed(1) + 'x';
+      const maxZStr = maxZV <= 1.0 ? 'Always' : maxZV.toFixed(1) + 'x';
+
+      drawSrValRow(L.FIRST_ROW,       'Base Speed',
         '(default movement speed multiplier)',
         (aws.srBaseSpeed ?? 1.0).toFixed(2) + 'x');
-      drawSrValRow(L.FIRST_ROW + 44, 'Max Speed Cap',
+      drawSrValRow(L.FIRST_ROW + R,   'Max Speed Cap',
         '(upper limit on total combined boost)',
         (aws.srMaxMultiplier ?? SR_CONFIG.maxMultiplier).toFixed(1) + 'x');
-      drawSrValRow(L.FIRST_ROW + 88, 'Boost Per Tick',
+      drawSrValRow(L.FIRST_ROW + R*2, 'Boost Per Tick',
         '(speed gain per time/distance interval)',
         Math.round((aws.srBoostPct ?? SR_CONFIG.timeBoostPct) * 100) + '%');
 
-      const tivSec    = aws.srTimeBoostIntervalSec      ?? SR_CONFIG.timeBoostIntervalSec;
-      const tivBlocks = aws.srDistBoostIntervalBlocks   ?? 5;
-      drawSrBoostRow(L.FIRST_ROW + 132, 'Time Boost',
+      const tivSec    = aws.srTimeBoostIntervalSec    ?? SR_CONFIG.timeBoostIntervalSec;
+      const tivBlocks = aws.srDistBoostIntervalBlocks ?? 5;
+      drawSrBoostRow(L.FIRST_ROW + R*3, 'Time Boost',
         '(accelerates after running continuously)',
         aws.srTimeBoostEnabled ?? true, `every ${tivSec}s`);
-      drawSrBoostRow(L.FIRST_ROW + 176, 'Distance Boost',
+      drawSrBoostRow(L.FIRST_ROW + R*4, 'Distance Boost',
         '(accelerates after covering ground)',
         aws.srDistBoostEnabled ?? true, `every ${tivBlocks}b`);
+
+      drawSrValRow(L.FIRST_ROW + R*5, 'Min Zoom Speed',
+        '(speed when zoom starts; OFF = never zoom)',
+        minZStr);
+      drawSrValRow(L.FIRST_ROW + R*6, 'Max Zoom Speed',
+        '(speed at which maximum zoom is reached)',
+        maxZStr);
 
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     } else if (this._wsTab === 'physics') {
@@ -10054,6 +10095,11 @@ class Game {
   }
 
   _teleportDests() {
+    // Custom points (sandbox-managed) take priority over hardcoded biome destinations
+    const custom = this._worldAdvSettings.customTeleportPoints;
+    if (Array.isArray(custom)) return custom;
+
+    // Adventure world fallback — hardcoded biome waypoints
     const dests = this._worldAdvSettings.isEmptySandbox ? [] : [
       { label: 'Spawn (Plains)',  x: 2 * BLOCK_SIZE,                                     y: 13 * BLOCK_SIZE - PLAYER_H },
       { label: 'Cave entrance',   x: 150 * BLOCK_SIZE,                                    y: 29 * BLOCK_SIZE - PLAYER_H },
@@ -10071,18 +10117,44 @@ class Game {
   }
 
   _handleTeleportMenuClick(mx, my) {
-    const pw = 340, btnH = 32, padV = 12;
-    const dests = this._teleportDests();
-    const ph = padV + 28 + dests.length * (btnH + 4) + padV;
-    const px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const isSandbox = this.gameMode === 'sandbox';
+    const custom    = Array.isArray(this._worldAdvSettings.customTeleportPoints);
+    const canEdit   = isSandbox && custom;
+    const dests     = this._teleportDests();
+    const canAdd    = canEdit && dests.length < 10;
+
+    const pw   = 400, btnH = 34, gap = 5, padV = 12;
+    const delW = canEdit ? 36 : 0;
+    const addH = canAdd ? btnH + gap : 0;
+    const ph   = padV + 28 + dests.length * (btnH + gap) + addH + padV;
+    const px   = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
 
     // Click outside closes menu
     if (mx < px || mx > px + pw || my < py || my > py + ph) {
       this._teleportMenu = false; return;
     }
+
+    const rowsY = py + padV + 28;
+
+    // Destination rows
     for (let i = 0; i < dests.length; i++) {
-      const by = py + padV + 28 + i * (btnH + 4);
-      if (mx >= px + 10 && mx <= px + pw - 10 && my >= by && my <= by + btnH) {
+      const by = rowsY + i * (btnH + gap);
+      const bx = px + 10;
+      const bw = pw - 20 - (delW > 0 ? delW + gap : 0);
+
+      // Delete button
+      if (canEdit) {
+        const dx = bx + bw + gap;
+        if (mx >= dx && mx <= dx + delW && my >= by && my <= by + btnH) {
+          if (window.confirm(`Delete "${dests[i].label}"?`)) {
+            this._worldAdvSettings.customTeleportPoints.splice(i, 1);
+          }
+          return;
+        }
+      }
+
+      // Teleport button
+      if (mx >= bx && mx <= bx + bw && my >= by && my <= by + btnH) {
         this.player.x = dests[i].x;
         this.player.y = dests[i].y;
         this.player.vx = 0; this.player.vy = 0;
@@ -10094,14 +10166,42 @@ class Game {
         return;
       }
     }
+
+    // "Set Teleportation Destination" button
+    if (canAdd) {
+      const ay = rowsY + dests.length * (btnH + gap) + gap;
+      if (mx >= px + 10 && mx <= px + pw - 10 && my >= ay && my <= ay + btnH) {
+        const col = Math.floor(this.player.cx / BLOCK_SIZE);
+        const row = Math.floor(this.player.cy / BLOCK_SIZE);
+        const defaultName = `x:${col} y:${row}`;
+        const name = window.prompt('Name this teleport destination:', defaultName);
+        if (name !== null) {
+          const label = name.trim() || defaultName;
+          this._worldAdvSettings.customTeleportPoints.push({
+            label,
+            x: this.player.x,
+            y: this.player.y,
+          });
+          this._notify(`Saved: ${label}`, '#66FF99', 180);
+        }
+        return;
+      }
+    }
   }
 
   _drawTeleportMenu(ctx) {
     const mx = this.input.mouse.x, my = this.input.mouse.y;
-    const pw = 340, btnH = 32, padV = 12;
-    const dests = this._teleportDests();
-    const ph = padV + 28 + dests.length * (btnH + 4) + padV;
-    const px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const isSandbox  = this.gameMode === 'sandbox';
+    const custom     = Array.isArray(this._worldAdvSettings.customTeleportPoints);
+    const canEdit    = isSandbox && custom;
+    const dests      = this._teleportDests();
+    const canAdd     = canEdit && dests.length < 10;
+
+    const pw   = 400, btnH = 34, gap = 5, padV = 12;
+    const delW = canEdit ? 36 : 0;                       // width of 🗑 column
+    const addH = canAdd ? btnH + gap : 0;
+    const ph   = padV + 28 + dests.length * (btnH + gap) + addH + padV;
+    const px   = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
 
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.65)';
@@ -10115,16 +10215,52 @@ class Game {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('⚡ GOD MODE — TELEPORT  [T / Esc to close]', CANVAS_W / 2, py + padV + 10);
 
+    const rowsY = py + padV + 28;
     for (let i = 0; i < dests.length; i++) {
-      const by = py + padV + 28 + i * (btnH + 4);
-      const hov = mx >= px + 10 && mx <= px + pw - 10 && my >= by && my <= by + btnH;
-      ctx.fillStyle = hov ? 'rgba(255,215,0,0.15)' : 'rgba(0,0,0,0.4)';
-      _roundRect(ctx, px + 10, by, pw - 20, btnH, 5); ctx.fill();
+      const by  = rowsY + i * (btnH + gap);
+      const bx  = px + 10;
+      const bw  = pw - 20 - (delW > 0 ? delW + gap : 0);
+      const hov = mx >= bx && mx <= bx + bw && my >= by && my <= by + btnH;
+      ctx.fillStyle   = hov ? 'rgba(255,215,0,0.15)' : 'rgba(0,0,0,0.4)';
+      _roundRect(ctx, bx, by, bw, btnH, 5); ctx.fill();
       ctx.strokeStyle = hov ? '#FFD700' : '#444'; ctx.lineWidth = hov ? 1.5 : 1;
-      _roundRect(ctx, px + 10, by, pw - 20, btnH, 5); ctx.stroke();
-      ctx.fillStyle = hov ? '#fff' : '#ccc'; ctx.font = '11px Courier New';
-      ctx.fillText(dests[i].label, CANVAS_W / 2, by + btnH / 2);
+      _roundRect(ctx, bx, by, bw, btnH, 5); ctx.stroke();
+      ctx.fillStyle   = hov ? '#fff' : '#ccc'; ctx.font = '11px Courier New';
+      ctx.textAlign   = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(dests[i].label, bx + bw / 2, by + btnH / 2);
+
+      // Delete button (sandbox only)
+      if (canEdit) {
+        const dx  = bx + bw + gap, dw = delW;
+        const dhov = mx >= dx && mx <= dx + dw && my >= by && my <= by + btnH;
+        ctx.fillStyle   = dhov ? 'rgba(255,60,60,0.35)' : 'rgba(80,20,20,0.6)';
+        _roundRect(ctx, dx, by, dw, btnH, 5); ctx.fill();
+        ctx.strokeStyle = dhov ? '#FF6666' : '#663333'; ctx.lineWidth = 1;
+        _roundRect(ctx, dx, by, dw, btnH, 5); ctx.stroke();
+        ctx.fillStyle = dhov ? '#fff' : '#FF9999'; ctx.font = '13px sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('🗑', dx + dw / 2, by + btnH / 2);
+      }
     }
+
+    // "Set Teleportation Destination" button
+    if (canAdd) {
+      const ay  = rowsY + dests.length * (btnH + gap) + gap;
+      const ahov = mx >= px + 10 && mx <= px + pw - 10 && my >= ay && my <= ay + btnH;
+      ctx.fillStyle   = ahov ? 'rgba(80,200,120,0.2)' : 'rgba(20,60,30,0.6)';
+      _roundRect(ctx, px + 10, ay, pw - 20, btnH, 5); ctx.fill();
+      ctx.strokeStyle = ahov ? '#66FF99' : '#336644'; ctx.lineWidth = 1;
+      _roundRect(ctx, px + 10, ay, pw - 20, btnH, 5); ctx.stroke();
+      ctx.fillStyle = ahov ? '#fff' : '#88FFAA'; ctx.font = 'bold 11px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('+ Set Teleportation Destination', CANVAS_W / 2, ay + btnH / 2);
+    } else if (canEdit && dests.length >= 10) {
+      const ay = rowsY + dests.length * (btnH + gap) + gap;
+      ctx.fillStyle = 'rgba(120,100,60,0.5)'; ctx.font = '9px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('Maximum 10 destinations reached — delete one to add more', CANVAS_W / 2, ay + 10);
+    }
+
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.restore();
   }
@@ -11747,6 +11883,8 @@ class Game {
     const data = SaveMigrations.migrateSave(raw);
     if (!data) { this._notify('Failed to load world!', '#FF4444', 300); return; }
 
+    this._resizeLevelFromData(data);
+
     // Load progress early so grid snapshot can be applied before redstone/chest setup
     const progress = !this._normalNewGame ? NormalProgress.load(key) : null;
 
@@ -12075,6 +12213,8 @@ class Game {
 
     this._platformerLevelName = data.worldName  || 'Unknown Level';
     this._platformerCreator   = data.playerName || 'Unknown';
+
+    this._resizeLevelFromData(data);
 
     // Apply the saved grid
     if (Array.isArray(data.grid)) {
@@ -12422,10 +12562,29 @@ class Game {
     };
   }
 
+  // Expand level dimensions in-place when a saved world is larger than the default buildWorld() size.
+  // Must be called before any grid data is copied in, so all set() calls land within bounds.
+  _resizeLevelFromData(data) {
+    const savedW = data.worldWidth  || (Array.isArray(data.grid) ? Math.max(1, ...data.grid.map(r => Array.isArray(r) ? r.length : 0)) : 0);
+    const savedH = data.worldHeight || (Array.isArray(data.grid) ? data.grid.length : 0);
+    if (savedW <= this.level.width && savedH <= this.level.height) return;
+    const newW = Math.max(savedW, this.level.width);
+    const newH = Math.max(savedH, this.level.height);
+    this.level.grid        = Array.from({ length: newH }, () => new Array(newW).fill(BLOCK.AIR));
+    this.level.width       = newW;
+    this.level.height      = newH;
+    this.level.pixelWidth  = newW * BLOCK_SIZE;
+    this.level.pixelHeight = newH * BLOCK_SIZE;
+    this.camera._levelW    = this.level.pixelWidth;
+    this.camera._levelH    = this.level.pixelHeight;
+  }
+
   _loadSpeedRunnerWorld(keyOrData) {
     const raw  = typeof keyOrData === 'string' ? SandboxSaves.load(keyOrData) : keyOrData;
     const data = (typeof SaveMigrations !== 'undefined') ? SaveMigrations.migrateSave(raw) : raw;
     if (!data) { this._notify('Failed to load SR level!', '#FF4444', 300); return; }
+
+    this._resizeLevelFromData(data);
 
     // Apply grid from save
     if (Array.isArray(data.grid)) {
@@ -12665,14 +12824,23 @@ class Game {
     // Reset block boost (re-set below if in contact)
     sr.boosts.blockBoost = 1.0;
 
-    // Camera zoom — linearly interpolate 1.0→0.72 as speed goes 1.0×→cap
-    const maxMult = (aws.srMaxMultiplier ?? SR_CONFIG.maxMultiplier) * baseSpeed;
-    const pct = Math.max(0, Math.min(1, (mult - 1.0) / Math.max(1, maxMult - 1.0)));
-    sr.srZoom      += (1.0 - pct * 0.28 - sr.srZoom)      * 0.08;
-    // Camera look-ahead — at max speed (pct=1, srZoom≈0.72) position the player
-    // ~10% from the trailing screen edge: (0.40×CANVAS_W)/0.72 − PLAYER_W/2 ≈ 434 world-px.
-    const SR_LA_MAX = (0.40 * CANVAS_W) / 0.72 - PLAYER_W / 2; // ≈ 434
-    const laTarget  = Math.sign(this.player.vx) * pct * SR_LA_MAX;
+    // Camera zoom — range [minZoomSpeed → maxZoomSpeed] maps to [no zoom → full zoom]
+    // effectiveMult is what the HUD shows (boost-only, no baseSpeed scaling).
+    const effectiveMult = this._srGetEffectiveMultiplier();
+    const srMaxMult  = aws.srMaxMultiplier ?? SR_CONFIG.maxMultiplier;
+    const minZoomSpd = aws.srMinZoomSpeed ?? 1.0;            // -1 = zoom disabled
+    const maxZoomSpd = aws.srMaxZoomSpeed ?? srMaxMult;      // null → same as speed cap
+
+    // zoomPct 0→1: disabled or min≥max → 0; otherwise linear interpolation clamped to [0,1]
+    let zoomPct = 0;
+    if (minZoomSpd >= 0 && maxZoomSpd > minZoomSpd) {
+      zoomPct = Math.max(0, Math.min(1, (effectiveMult - minZoomSpd) / (maxZoomSpd - minZoomSpd)));
+    }
+
+    sr.srZoom += (1.0 - zoomPct * 0.28 - sr.srZoom) * 0.08;
+    // Look-ahead stays locked to zoom level (same zoomPct drives both)
+    const SR_LA_MAX = (0.40 * CANVAS_W) / 0.72 - PLAYER_W / 2; // ≈ 434 world-px at max
+    const laTarget  = Math.sign(this.player.vx) * zoomPct * SR_LA_MAX;
     sr.srLookAhead += (laTarget - sr.srLookAhead) * 0.08;
 
     this._srCheckBoosterBlocks();
@@ -13111,9 +13279,12 @@ class Game {
     ctx.fillText(timeStr, CANVAS_W / 2, 31);
     ctx.restore();
 
-    // Speed meter — bottom left
-    const mult   = this._srGetEffectiveMultiplier();
-    const pct    = Math.max(0, Math.min(1, (mult - 1.0) / (SR_CONFIG.maxMultiplier - 1.0)));
+    // Speed meter — bottom left (bar spans 1.0× → srMaxMultiplier)
+    const mult      = this._srGetEffectiveMultiplier();
+    const srCapMult = this._worldAdvSettings.srMaxMultiplier ?? SR_CONFIG.maxMultiplier;
+    const pct       = srCapMult > 1.0
+      ? Math.max(0, Math.min(1, (mult - 1.0) / (srCapMult - 1.0)))
+      : 1.0;
     const meterW = 180, meterH = 14, mX = 10, mY = CANVAS_H - 40;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.5)';

@@ -2,7 +2,7 @@
 // constants.js — Game-wide tunable constants
 // ============================================================
 
-const GAME_VERSION = 'Phase 17-D  v1.0';
+const GAME_VERSION = 'Phase 17-D  v1.1';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
