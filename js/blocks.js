@@ -61,6 +61,10 @@ const BLOCK = Object.freeze({
   WITHER_SKULL_SLOT:      53,   // altar slot block: accepts Wither Skeleton Head
   SOUL_SAND_SLOT:         54,   // altar slot block: accepts Soul Sand
   ALTAR_BLOCK:            55,   // decorative altar base (solid, auto-placed)
+  // Phase 17 — Speed Runner Mode
+  SPEED_BOOSTER:          56,   // non-solid trigger zone (+50% speed on touch)
+  JUMP_PAD:               57,   // solid slime launch pad (big upward boost)
+  SPEED_ITEM:             58,   // collectible lightning bolt (+15% speed for 3 s)
 });
 
 // Per-block properties
@@ -128,6 +132,10 @@ const BLOCK_DATA = {
   [BLOCK.WITHER_SKULL_SLOT]:      { name: 'Skull Slot',     hardness: Infinity, mineable: false, solid: false, mineTier: 0 },
   [BLOCK.SOUL_SAND_SLOT]:         { name: 'Soul Sand Slot', hardness: Infinity, mineable: false, solid: false, mineTier: 0 },
   [BLOCK.ALTAR_BLOCK]:            { name: 'Altar Block',    hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
+  // Phase 17 — Speed Runner
+  [BLOCK.SPEED_BOOSTER]: { name: 'Speed Booster', hardness: Infinity, mineable: false, solid: false, mineTier: 0 },
+  [BLOCK.JUMP_PAD]:      { name: 'Jump Pad',       hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
+  [BLOCK.SPEED_ITEM]:    { name: 'Speed Item',     hardness: Infinity, mineable: false, solid: false, mineTier: 0 },
 };
 
 // ── Pixel-art block renderers ────────────────────────────────
@@ -195,6 +203,10 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.WITHER_SKULL_SLOT:      _drawWitherSkullSlot(ctx, px, py, s);            break;
     case BLOCK.SOUL_SAND_SLOT:         _drawSoulSandSlotBlock(ctx, px, py, s);          break;
     case BLOCK.ALTAR_BLOCK:            _drawAltarBlock(ctx, px, py, s);                 break;
+    // Phase 17 — Speed Runner blocks
+    case BLOCK.SPEED_BOOSTER:          _drawSpeedBoosterBlock(ctx, px, py, s);          break;
+    case BLOCK.JUMP_PAD:               _drawJumpPadBlock(ctx, px, py, s);               break;
+    case BLOCK.SPEED_ITEM:             _drawSpeedItemBlock(ctx, px, py, s);             break;
   }
 
   // Mining crack overlay
@@ -1419,4 +1431,67 @@ function _drawAltarBlock(ctx, px, py, s) {
   ctx.strokeStyle = '#443344';
   ctx.lineWidth = 1;
   ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
+}
+
+// ── Phase 17: Speed Runner block renderers ───────────────────
+
+function _drawSpeedBoosterBlock(ctx, px, py, s) {
+  ctx.fillStyle = 'rgba(255,215,0,0.22)';
+  ctx.fillRect(px, py, s, s);
+  ctx.strokeStyle = '#FFD700';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(px + 2, py + 2, s - 4, s - 4);
+  ctx.strokeStyle = 'rgba(255,200,0,0.65)';
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < 3; i++) {
+    const off = 7 + i * 9;
+    ctx.beginPath();
+    ctx.moveTo(px + off, py + 4);
+    ctx.lineTo(px + off - 8, py + s - 4);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#FFD700';
+  ctx.font = 'bold 11px Courier New';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('»»', px + s / 2, py + s / 2);
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+}
+
+function _drawJumpPadBlock(ctx, px, py, s) {
+  ctx.fillStyle = '#2D8A2D';
+  ctx.fillRect(px, py, s, s);
+  ctx.fillStyle = '#5CB85C';
+  ctx.fillRect(px + 2, py + 2, s - 4, 8);
+  const cx = px + s / 2, cy = py + s / 2;
+  ctx.strokeStyle = '#90EE90'; ctx.lineWidth = 1.5;
+  for (const r of [5, 9, 12]) {
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.fillStyle = '#BBFFBB';
+  ctx.font = 'bold 14px Courier New';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('↑', cx, cy);
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.strokeStyle = '#1A5C1A'; ctx.lineWidth = 1;
+  ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
+}
+
+function _drawSpeedItemBlock(ctx, px, py, s) {
+  const cx = px + s / 2, cy = py + s / 2;
+  ctx.fillStyle = 'rgba(255,230,0,0.15)';
+  ctx.fillRect(px, py, s, s);
+  ctx.fillStyle = '#FFE600';
+  ctx.strokeStyle = '#FF9900'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cx + 4,  py + 5);
+  ctx.lineTo(cx - 1,  cy - 1);
+  ctx.lineTo(cx + 4,  cy - 1);
+  ctx.lineTo(cx - 4,  py + s - 5);
+  ctx.lineTo(cx + 1,  cy + 2);
+  ctx.lineTo(cx - 3,  cy + 2);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,230,0,0.35)';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(cx, cy, s / 2 - 2, 0, Math.PI * 2); ctx.stroke();
 }

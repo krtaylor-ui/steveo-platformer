@@ -104,7 +104,9 @@ const SandboxSaves = {
     const payload = {
       playerName,
       worldName,
-      savedAt:   new Date().toISOString(),
+      savedAt:    new Date().toISOString(),
+      worldWidth:  level.width,
+      worldHeight: level.height,
       grid,
       spawnEggs,
       placedItems,

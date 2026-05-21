@@ -56,6 +56,7 @@ class Player {
     this.platformerSlots = null;
 
     // Sandbox / special modes
+    this.lives           = 3;      // 2P co-op lives (decremented on death)
     this.godMode         = false;  // no damage when true (sandbox mode)
     this.flying          = false;  // flight mode toggled by double-jump
     this.hyperSpeed      = false;  // 3× movement speed when toggled (H key)
@@ -289,7 +290,7 @@ class Player {
   _applyPhysics(level) {
     // Gravity — disabled while flying
     if (!this.flying) {
-      this.vy = Math.min(this.vy + GRAVITY, MAX_FALL_SPEED);
+      this.vy = Math.min(this.vy + (this._gravityOverride ?? GRAVITY), MAX_FALL_SPEED);
     }
 
     const wasOnGround = this.onGround;

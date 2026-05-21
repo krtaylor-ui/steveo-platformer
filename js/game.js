@@ -38,8 +38,9 @@ const HOTBAR_X  = (CANVAS_W - (9 * SLOT_SIZE + 8 * SLOT_GAP)) / 2;
 // return to their level-select screen; everything else goes to the main menu.
 function _localMenuState(game) {
   if (game._onlineGameId) return 'online';
-  if (game.gameMode === 'platformer') return 'platformerSelect';
-  if (game.gameMode === 'normal')     return 'normalSelect';
+  if (game.gameMode === 'platformer')   return 'platformerSelect';
+  if (game.gameMode === 'normal')       return 'normalSelect';
+  if (game.gameMode === 'speedrunner')  return 'speedrunnerSelect';
   return undefined;
 }
 
@@ -48,7 +49,7 @@ class Game {
     this.canvas          = document.getElementById('gameCanvas');
     this.ctx             = this.canvas.getContext('2d');
     this.input           = new InputManager(this.canvas);
-    this.gameMode        = mode;          // 'normal' | 'sandbox' | 'platformer'
+    this.gameMode        = mode;          // 'normal' | 'sandbox' | 'platformer' | 'speedrunner'
     this._onReturnToMenu = onReturnToMenu;
     this._running        = true;
 
@@ -72,6 +73,17 @@ class Game {
       chatDisabled:              false,
       // Phase 16-E — Controller
       controllerDeadzone:        GP_DEADZONE_STICK,
+      // Phase 17 — Speed Runner world settings
+      srBaseSpeed:               1.0,
+      srMaxMultiplier:           2.0,
+      srBoostPct:                0.05,
+      srTimeBoostEnabled:        true,
+      srTimeBoostIntervalSec:    5,
+      srDistBoostEnabled:        true,
+      srDistBoostIntervalBlocks: 5,
+      // Phase 17-D — Physics (per-world)
+      physicsGravity:            GRAVITY,   // 0.66
+      jumpPadVForce:             -18,       // launch velocity for JUMP_PAD blocks
     };
     // Track the user's explicit pre-launch 2P choice so it can survive world-load overwrite
     this._launchTwoPlayerMode = options.twoPlayerMode;
@@ -79,6 +91,7 @@ class Game {
     this._p2SpawnX       = 0;
     this._p2SpawnY       = 0;
     this._p2RespawnTimer = 0;
+    this._p1RespawnTimer = 0;  // 2P co-op: P1 uses timer instead of death modal
 
     // Phase 13: Particles + screen shake + Nether bed + Respawn Anchor
     this._particles           = [];
@@ -105,6 +118,24 @@ class Game {
     this._musicPlayerBlocks = new Map();    // "col,row" → {col,row,isConfigured,configuredSongs[]}
     this._musicPlayerUI    = null;          // null | {block, mode:'config'|'playback', tempSongs:Set}
     this._mobSoundTimer    = 0;            // counts up; mob sound fires every 300 frames
+
+    // Phase 17-D: Determine sandbox world dimensions before building the level.
+    // Peek at saved data (if loadKey given) or use caller-supplied dimensions.
+    this._sandboxDims = null;
+    if (this.gameMode === 'sandbox') {
+      if (options.worldWidth && options.worldHeight) {
+        this._sandboxDims = { width: options.worldWidth | 0, height: options.worldHeight | 0 };
+      } else if (options.loadKey && typeof options.loadKey === 'string') {
+        try {
+          const peeked = SandboxSaves.load(options.loadKey);
+          if (peeked?.worldWidth && peeked?.worldHeight) {
+            this._sandboxDims = { width: peeked.worldWidth, height: peeked.worldHeight };
+          } else if (peeked?.grid?.length > 0 && peeked.grid[0]?.length > 0) {
+            this._sandboxDims = { width: peeked.grid[0].length, height: peeked.grid.length };
+          }
+        } catch {}
+      }
+    }
 
     this._buildLevel();
 
@@ -135,9 +166,10 @@ class Game {
     this._invHeldSrc   = null;   // { loc:'hotbar'|'inventory', index }
 
     // Chest system
-    this._chests     = new Map();  // 'col,row' → {col, row, items: Array(8).fill(null)}
-    this._chestOpen  = null;       // {col, row} of open chest, or null
-    this._eChestWas  = false;
+    this._chests        = new Map();  // 'col,row' → {col, row, items: Array(8).fill(null)}
+    this._chestOpen     = null;       // {col, row} of open chest, or null
+    this._chestModalSel = 0;          // 0=Equip&Take, 1=Leave — keyboard/controller nav in chest modal
+    this._eChestWas     = false;
     // Sandbox chest: item being held for placement
     this._sbChestHeld = null;     // null | { item, source: 'palette'|'chest' }
 
@@ -183,7 +215,7 @@ class Game {
     // Phase 11D: End entry tracking + advanced world settings
     this._endEntryCell    = null;  // { col, row } set when player enters End Portal
     // _worldAdvSettings and player2 state initialized before _buildLevel() above
-    this._wsTab            = 'drops'; // 'drops' | 'time' | 'advanced' | 'input' | 'audio' | 'multiplayer'
+    this._wsTab            = 'drops'; // 'drops' | 'time' | 'advanced' | 'input' | 'audio' | 'multiplayer' | 'speedrunner'
 
     // Phase 16 — Multiplayer
     this._mpSyncTimer       = 0;    // frame counter for position-sync throttle (send every 3 frames)
@@ -237,7 +269,8 @@ class Game {
     // Context action for gamepad RB (computed every frame)
     this._contextAction  = null;   // 'chest'|'lever'|'bed'|'portal'|'apple'|... for P1
     this._contextAction2 = null;   // same for P2
-    this._contextPrompt  = null;   // display string shown above player
+    this._contextPrompt  = null;   // display string shown above P1
+    this._contextPrompt2 = null;   // display string shown above P2
 
     // Phase 11F: Day/night cycle
     this._dayNight = {
@@ -334,7 +367,8 @@ class Game {
     if (this.gameMode === 'sandbox') {
       this.sandbox = new SandboxManager();
       this.player.godMode = true;
-      // On a fresh (unsaved) world, convert built-in spawn points to visible sandbox eggs
+      // On a fresh (unsaved) world, convert built-in spawn points to visible sandbox eggs,
+      // then clear the mob manager's spawn list — sandbox mode never spawns mobs directly.
       if (!options.loadKey) {
         const MOB_TO_EGG = {
           Zombie: 'zombie', Skeleton: 'skeleton', Creeper: 'creeper',
@@ -352,6 +386,7 @@ class Game {
             bobOffset: Math.random() * Math.PI * 2,
           });
         }
+        this.mobManager.setupSpawnPoints([]); // clear; sandbox uses eggs, not direct spawn points
       }
       // Load saved world or template
       if (options.loadKey) {
@@ -361,14 +396,23 @@ class Game {
         this._loadSandboxWorld(options.templateData);
         this._syncTwoPlayerAfterLoad();
       }
+      // Brand-new empty sandbox world (from template): no preset mobs or portals.
+      // Persist the flag in _worldAdvSettings so it survives save/load.
+      if (this._sandboxDims && !options.loadKey && !options.templateData) {
+        this._worldAdvSettings.isEmptySandbox = true;
+      }
+
       // Auto-register the two built-in world portals so they appear with labels
       // and clicking them opens the link popup instead of deleting them.
+      // Skip for empty sandbox worlds (portals are at buildWorld() coordinates, not meaningful here).
       // Skip if already restored from a saved portalLinks array.
-      if (!this.sandbox.findPortalAtCell(10, 270)) {
-        this.sandbox.registerPortal(10, 270, 'overworld'); // gets '1' on fresh world
-      }
-      if (!this.sandbox.findPortalAtCell(10, 328)) {
-        this.sandbox.registerPortal(10, 328, 'nether'); // gets 'A' on fresh world
+      if (!this._worldAdvSettings.isEmptySandbox) {
+        if (!this.sandbox.findPortalAtCell(10, 270)) {
+          this.sandbox.registerPortal(10, 270, 'overworld'); // gets '1' on fresh world
+        }
+        if (!this.sandbox.findPortalAtCell(10, 328)) {
+          this.sandbox.registerPortal(10, 328, 'nether'); // gets 'A' on fresh world
+        }
       }
     }
 
@@ -398,6 +442,14 @@ class Game {
       }
     }
 
+    // Phase 17 — Speed Runner mode
+    this._sr = null;
+    if (this.gameMode === 'speedrunner') {
+      this._initSpeedRunnerMode(options);
+      const srData = options.speedrunnerLoadKey || options.templateData;
+      if (srData) this._loadSpeedRunnerWorld(srData);
+    }
+
     // Portal fade transition
     this._portalTransition = null; // { phase:'out'|'in', timer, destX, destY }
 
@@ -409,7 +461,9 @@ class Game {
   }
 
   _buildLevel() {
-    const data           = buildWorld();
+    const data = (this.gameMode === 'sandbox' && this._sandboxDims)
+      ? buildEmptySandboxWorld(this._sandboxDims.width, this._sandboxDims.height)
+      : buildWorld();
     this.level           = new Level(data);
     this.player          = new Player(data.spawnX, data.spawnY);
     this._p2SpawnX = data.spawnX + BLOCK_SIZE * 2;
@@ -422,6 +476,7 @@ class Game {
       this.player2 = null;
     }
     this._p2RespawnTimer = 0;
+    this._p1RespawnTimer = 0;
     this.mobManager                = new MobManager();
     this.mobManager.dropConfig     = this._mobDropSettings;
     this.mobManager.soundCallback  = (file, vol) => this._playSound(file, vol);
@@ -544,10 +599,22 @@ class Game {
     // Right stick moves the cursor every frame — before any early returns so it works
     // in inventory, menus, popups, pause, etc. Speed: ~14px/frame ≈ 1 sec to cross screen.
     this.input.applyStickCursor(14, CANVAS_W, CANVAS_H);
+    // Controller A button → simulate mouse click when any menu/overlay is open.
+    // Only applies to overlays (not gameplay) so A still jumps during normal play.
+    const _p1GpConnected = this.input.p1GpSlot >= 0 && this.input.gamepads[this.input.p1GpSlot]?.connected;
+    if (_p1GpConnected && this.input.p1JustDown('jump')) {
+      const inOverlay = this.inventoryOpen || this._worldSettingsOpen ||
+                        this.state === 'paused' || this.state === 'confirmExit' ||
+                        this.state === 'dead'   || this._tutorialOpen ||
+                        this._saveDialog != null || this._musicPlayerUI != null ||
+                        this.craftingMenu?.open;
+      if (inOverlay) this.input.mouse.clicked = true;
+    }
     // Reset context action each frame (recomputed later if gameplay is active)
     this._contextAction  = null;
     this._contextAction2 = null;
     this._contextPrompt  = null;
+    this._contextPrompt2 = null;
 
     // ── Phase 16-B: AFK tracking (via document listeners) + notification decay ──
     if (this._onlineGameId) {
@@ -607,7 +674,7 @@ class Game {
 
     // ── ESC: pause / unpause (not on win screen) ───────────────
     const escNow  = this.input.isDown('Escape');
-    const escEdge = (escNow && !this._escWas) || this.input.gpJustDown(0, 'menu');
+    const escEdge = (escNow && !this._escWas) || this.input.p1JustDown('menu');
     if (escEdge) {
       if (this._teleportMenu) {
         this._teleportMenu = false;
@@ -671,8 +738,10 @@ class Game {
 
     // ── First-frame mode notification ──────────────────────────
     if (this.frameCount === 1 && this.gameMode !== 'normal') {
-      const names = { sandbox: 'Sandbox', platformer: 'Platformer' };
-      this._notify(`${names[this.gameMode] ?? this.gameMode} mode active`, '#FFD700', 300);
+      const names = { sandbox: 'Sandbox', platformer: 'Platformer', speedrunner: 'Speed Runner' };
+      if (this.gameMode !== 'speedrunner') {  // SR shows its own start screen
+        this._notify(`${names[this.gameMode] ?? this.gameMode} mode active`, '#FFD700', 300);
+      }
     }
     if (this.frameCount === 1) {
       this._notify('Press H or ? for help', '#667788', 240);
@@ -690,6 +759,11 @@ class Game {
         this.player.x  = pt.destX;
         this.player.y  = pt.destY;
         this.player.vx = 0; this.player.vy = 0;
+        if (this.player2 && this._p2RespawnTimer === 0) {
+          this.player2.x  = pt.destX + BLOCK_SIZE;
+          this.player2.y  = pt.destY;
+          this.player2.vx = 0; this.player2.vy = 0;
+        }
         pt.phase = 'in';
         pt.timer = 0;
       } else if (pt.phase === 'in' && pt.timer >= 120) {
@@ -766,8 +840,8 @@ class Game {
           this._dragonVictoryScreen = false;
         }
       }
-      if (this.input.isJustDown('KeyU') || this.input.gpJustDown(0, 'place') ||
-          this.input.gpJustDown(0, 'jump') || this.input.gpJustDown(0, 'menu')) {
+      if (this.input.isJustDown('KeyU') || this.input.p1JustDown('place') ||
+          this.input.p1JustDown('jump') || this.input.p1JustDown('menu')) {
         this._dragonVictoryScreen = false;
       }
       if (this.player2) this.camera.followMidpoint(this.player, this.player2);
@@ -782,8 +856,8 @@ class Game {
       const bx = (CANVAS_W - bw) / 2, by = panY + ph - 56;
       const mx = this.input.mouse.x, my = this.input.mouse.y;
       if ((this.input.mouse.clicked && mx >= bx && mx <= bx + bw && my >= by && my <= by + bh) ||
-          this.input.isJustDown('KeyU') || this.input.gpJustDown(0, 'place') ||
-          this.input.gpJustDown(0, 'jump') || this.input.gpJustDown(0, 'menu')) {
+          this.input.isJustDown('KeyU') || this.input.p1JustDown('place') ||
+          this.input.p1JustDown('jump') || this.input.p1JustDown('menu')) {
         this._witherVictoryScreen = false;
       }
     }
@@ -796,8 +870,9 @@ class Game {
       } else {
         const ch = this._nearestChest();
         if (ch) {
-          this._chestOpen    = ch;
-          this.inventoryOpen = true;
+          this._chestOpen     = ch;
+          this._chestModalSel = 0;
+          this.inventoryOpen  = true;
           this.craftingMenu._eWasDown = true;  // consume E so crafting menu ignores it
           this._playSound('sounds/chest-open.mp3');
           // Show open-lid state
@@ -884,12 +959,23 @@ class Game {
 
     // Normal inventory open: handle clicks and freeze gameplay
     if (this.inventoryOpen) {
-      // Platformer chest: U / Y-button / A-button = Equip & Take; B-button = Leave
+      // Platformer chest: direction keys/dpad navigate buttons; confirm = Equip&Take or Leave
       if (this.gameMode === 'platformer' && this._chestOpen) {
+        const navLeft  = this.input.isJustDown('ArrowLeft')  || this.input.p1JustDown('dpad3') || this.input.p2JustDown('dpad3');
+        const navRight = this.input.isJustDown('ArrowRight') || this.input.p1JustDown('dpad1') || this.input.p2JustDown('dpad1');
+        if (navLeft)  this._chestModalSel = 0;
+        if (navRight) this._chestModalSel = 1;
         const confirm = this.input.isJustDown('KeyU') || this.input.isJustDown('KeyE') ||
-                        this.input.gpJustDown(0, 'place') || this.input.gpJustDown(0, 'jump');
-        if (confirm) { this._platChestTakeAll(); this._closeChest(); return; }
-        if (this.input.gpJustDown(0, 'crouch')) { this._closeChest(); return; }
+                        this.input.isJustDown('Space') ||
+                        this.input.p1JustDown('place') || this.input.p1JustDown('jump') || this.input.p1JustDown('attack') ||
+                        this.input.p2JustDown('place') || this.input.p2JustDown('jump') || this.input.p2JustDown('attack');
+        if (confirm) {
+          if (this._chestModalSel === 0) this._platChestTakeAll();
+          this._closeChest(); return;
+        }
+        if (this.input.isJustDown('Escape') || this.input.p1JustDown('crouch') || this.input.p2JustDown('crouch')) {
+          this._closeChest(); return;
+        }
       }
       this._handleInventoryClick();
       return;
@@ -983,44 +1069,39 @@ class Game {
           (this.player.selectedSlot + this.input.scrollDelta + 9) % 9;
       }
       // D-Pad: quick-select hotbar slots 0–3
-      if (this.input.gpJustDown(0, 'dpad0')) this.player.selectedSlot = 0;
-      if (this.input.gpJustDown(0, 'dpad1')) this.player.selectedSlot = 1;
-      if (this.input.gpJustDown(0, 'dpad2')) this.player.selectedSlot = 2;
-      if (this.input.gpJustDown(0, 'dpad3')) this.player.selectedSlot = 3;
+      if (this.input.p1JustDown('dpad0')) this.player.selectedSlot = 0;
+      if (this.input.p1JustDown('dpad1')) this.player.selectedSlot = 1;
+      if (this.input.p1JustDown('dpad2')) this.player.selectedSlot = 2;
+      if (this.input.p1JustDown('dpad3')) this.player.selectedSlot = 3;
       // LB: previous hotbar slot
-      if (this.input.gpJustDown(0, 'prevSlot')) {
+      if (this.input.p1JustDown('prevSlot')) {
         this.player.selectedSlot = (this.player.selectedSlot - 1 + 9) % 9;
       }
     }
 
     // Sandbox-only controller mappings (Phase 11K-2)
     if (this.gameMode === 'sandbox' && this.sandbox) {
-      const gp0   = this.input.gamepads[0];
-      const ltNow = gp0.triggerL > 0.5;
-      const rtNow = gp0.triggerR > 0.5;
+      const p1Slot = this.input.p1GpSlot >= 0 ? this.input.p1GpSlot : 0;
+      const gp0    = this.input.gamepads[p1Slot];
+      const ltNow  = gp0?.triggerL > 0.5;
+      const rtNow  = gp0?.triggerR > 0.5;
       if (ltNow && !this._ltWasDown) this._historyUndo();
       if (rtNow && !this._rtWasDown) this._historyRedo();
       this._ltWasDown = ltNow;
       this._rtWasDown = rtNow;
       // Y button → toggle sandbox palette
-      if (this.input.gpJustDown(0, 'place')) this.sandbox.togglePalette();
-    }
-
-    // Normal/platformer controller: Y button → Use Item context action
-    if (this.gameMode !== 'sandbox' && this.input.gpJustDown(0, 'place')) {
-      this._executeContextAction(this.player);
+      if (this.input.p1JustDown('place')) this.sandbox.togglePalette();
     }
 
     // ── Player 2 gamepad hotbar (Phase 12) ────────────────
     if (this.player2 && this._p2RespawnTimer === 0) {
-      if (this.input.gpJustDown(1, 'dpad0')) this.player2.selectedSlot = 0;
-      if (this.input.gpJustDown(1, 'dpad1')) this.player2.selectedSlot = 1;
-      if (this.input.gpJustDown(1, 'dpad2')) this.player2.selectedSlot = 2;
-      if (this.input.gpJustDown(1, 'dpad3')) this.player2.selectedSlot = 3;
-      if (this.input.gpJustDown(1, 'prevSlot')) this.player2.selectedSlot = (this.player2.selectedSlot - 1 + 9) % 9;
-      if (this.input.gpJustDown(1, 'context'))  this.player2.selectedSlot = (this.player2.selectedSlot + 1) % 9;
-      // Y button → Use Item context action
-      if (this.input.gpJustDown(1, 'place')) this._executeContextAction(this.player2);
+      if (this.input.p2JustDown('dpad0')) this.player2.selectedSlot = 0;
+      if (this.input.p2JustDown('dpad1')) this.player2.selectedSlot = 1;
+      if (this.input.p2JustDown('dpad2')) this.player2.selectedSlot = 2;
+      if (this.input.p2JustDown('dpad3')) this.player2.selectedSlot = 3;
+      if (this.input.p2JustDown('prevSlot')) this.player2.selectedSlot = (this.player2.selectedSlot - 1 + 9) % 9;
+      if (this.input.p2JustDown('context'))  this.player2.selectedSlot = (this.player2.selectedSlot + 1) % 9;
+      // P2 Y button handled after _computeContextAction below
     }
 
     // ── Player movement / weapon toggle ────────────────────
@@ -1028,23 +1109,40 @@ class Game {
     this.input.controllerSensitivity    = this._worldAdvSettings.controllerSensitivity    ?? 1.0;
     this.input.controllerAimSensitivity = this._worldAdvSettings.controllerAimSensitivity ?? 1.0;
     this.input.controllerDeadzone       = this._worldAdvSettings.controllerDeadzone       ?? GP_DEADZONE_STICK;
-    // When both P1 and P2 are assigned keyboard, give P2 the arrow key set
+    // Sync player input slots from ControllerConfig each frame
     if (typeof ControllerConfig !== 'undefined') {
-      const p1IsKb = ControllerConfig.getAssignment(1) === -1;
-      const p2IsKb = ControllerConfig.getAssignment(2) === -1;
-      this.input.p2KeyMode = (p1IsKb && p2IsKb) ? 'arrows' : 'ijkl';
+      this.input.p1GpSlot = ControllerConfig.getAssignment(1);
+      this.input.p2GpSlot = ControllerConfig.getAssignment(2);
     }
     // Sync XP speed boost flag to player (and P2 if active)
     this.player.xpSpeedDisabled = !!this._worldAdvSettings.disableXpSpeedBoost;
     if (this.player2) this.player2.xpSpeedDisabled = !!this._worldAdvSettings.disableXpSpeedBoost;
-    this.player.update(this.input, this.level);
+
+    // ── P1 respawn timer (2P co-op) ────────────────────────
+    if (this._p1RespawnTimer > 0) {
+      this._p1RespawnTimer--;
+      if (this._p1RespawnTimer === 0) {
+        const rx = this.player2 ? this.player2.x + BLOCK_SIZE : this.player.x;
+        const ry = this.player2 ? this.player2.y : this.player.y;
+        this.player.respawnAt(rx, ry);
+        this._notify('Player 1 rejoins!', '#FFD700', 120);
+      }
+    } else {
+      this.player._gravityOverride = this._worldAdvSettings.physicsGravity ?? GRAVITY;
+      this.player.update(this.input, this.level);
+    }
+
+    // Phase 17: Speed Runner post-update (boost multipliers, collision, ghost)
+    if (this.gameMode === 'speedrunner') this._updateSpeedRunner();
 
     // ── Player 2 update (Phase 12) ─────────────────────────
     if (this.player2) {
       if (this._p2RespawnTimer > 0) {
         this._p2RespawnTimer--;
         if (this._p2RespawnTimer === 0) {
-          this.player2.respawnAt(this._p2SpawnX, this._p2SpawnY);
+          const rx = this.player.x - BLOCK_SIZE;
+          const ry = this.player.y;
+          this.player2.respawnAt(rx, ry);
           this._notify('Player 2 rejoins!', '#88AAFF', 120);
         }
       } else {
@@ -1057,6 +1155,7 @@ class Game {
           isAttack: () => this.input.isP2Attack(),
           moveX:    () => this.input.moveX2(),
         };
+        this.player2._gravityOverride = this._worldAdvSettings.physicsGravity ?? GRAVITY;
         this.player2.update(p2input, this.level);
         this._resolvePlayerCollision(this.player, this.player2);
       }
@@ -1073,13 +1172,13 @@ class Game {
     // ── Lava: instant kill ─────────────────────────────────
     const pMidRow = Math.floor(this.player.cy / BLOCK_SIZE);
     const pMidCol = Math.floor(this.player.cx / BLOCK_SIZE);
-    if (this.level.get(pMidRow, pMidCol) === BLOCK.LAVA && !this.player.godMode && this.player.hp > 0) {
+    if (this._p1RespawnTimer === 0 && this.level.get(pMidRow, pMidCol) === BLOCK.LAVA && !this.player.godMode && this.player.hp > 0) {
       this.player.hp = 0;
       this._triggerDeath('Burned by lava');
     }
 
     // ── End void: instant kill when below bedrock floor or in void transition zone ────
-    if (!this.player.godMode && this.player.hp > 0) {
+    if (this._p1RespawnTimer === 0 && !this.player.godMode && this.player.hp > 0) {
       const feetRow = Math.floor((this.player.y + this.player.height) / BLOCK_SIZE);
       // End dimension void (below bedrock floor)
       if (pMidCol >= BIOME_END_START && feetRow > END_FLOOR_ROW + 1) {
@@ -1147,8 +1246,8 @@ class Game {
       } else if (this.player.bowDrawing) {
         const charge = this.player.drawProgress;
         const speed  = BOW_MIN_SPEED + (BOW_MAX_SPEED - BOW_MIN_SPEED) * charge;
-        // 2-player mode: snap-aim from movement keys. Single-player: mouse aim.
-        const angle = this.player2
+        // Keyboard players: snap-aim from movement keys. Controller/mouse: free aim.
+        const angle = this.input.p1GpSlot < 0
           ? this._snapAimAngle(this.player, this.input.isJump(), this.input.isCrouch())
           : Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
         this.mobManager.addPlayerArrow(
@@ -1243,10 +1342,27 @@ class Game {
       }
     }
 
-    // ── Gamepad RB: context-sensitive action ─────────────────
+    // ── Gamepad: context actions — must come AFTER _computeContextAction ─────
     this._computeContextAction();
-    if (this.input.gpJustDown(0, 'context')) {
+    // RB: cycle hotbar right (P1)
+    if (this.input.p1JustDown('context')) {
       this.player.selectedSlot = (this.player.selectedSlot + 1) % 9;
+    }
+    // Y button: Use Item (non-sandbox P1 and P2)
+    if (this.gameMode !== 'sandbox' && this.input.p1JustDown('place')) {
+      this._executeContextAction(this.player);
+    }
+    if (this.player2 && this._p2RespawnTimer === 0 && this.input.p2JustDown('place')) {
+      this._executeContextAction(this.player2);
+    }
+    // God mode cheat: hold all 4 face buttons + press Up
+    {
+      const slot = this.input.p1GpSlot >= 0 ? this.input.p1GpSlot : 0;
+      const gp   = this.input.gamepads[slot];
+      if (gp?.connected && gp.attack && gp.place && gp.jump && gp.crouch && this.input.p1JustDown('dpad0')) {
+        this.player.godMode = !this.player.godMode;
+        this._notify(this.player.godMode ? 'God Mode ON' : 'God Mode OFF', '#FFD700', 180);
+      }
     }
 
     // ── Redstone update (pressure plates, TNT countdown) ───
@@ -2029,6 +2145,7 @@ class Game {
 
     // ── Camera ─────────────────────────────────────────────
     if (this.player2) this.camera.followMidpoint(this.player, this.player2);
+    else if (this.gameMode === 'speedrunner' && this._sr) this._srFollowCamera();
     else              this.camera.follow(this.player);
 
     // Lock camera to Wither arena when fight is active (horizontal + vertical)
@@ -2048,7 +2165,7 @@ class Game {
     }
 
     // ── Win condition (not sandbox; goal star can be moved) ───
-    if (this.state === 'playing' && this.gameMode !== 'sandbox') {
+    if (this.state === 'playing' && this.gameMode !== 'sandbox' && this.gameMode !== 'speedrunner') {
       const gc = this.level.goalCol, gr = this.level.goalRow;
       if (gc >= 0 && this.level.get(gr, gc) === BLOCK.GOAL) {
         const gx = gc * BLOCK_SIZE, gy = gr * BLOCK_SIZE;
@@ -2765,26 +2882,37 @@ class Game {
     });
 
     // "Equip & Take" button
-    const gpConn = this.input.gamepads[0].connected;
+    const gpConn = this.input.p1GpSlot >= 0 && this.input.gamepads[this.input.p1GpSlot]?.connected;
     const equipLabel = gpConn ? '⚙ [Y] Equip & Take' : '⚙ Equip & Take';
     const leaveLabel = gpConn ? '[B] Leave'           : 'Leave';
-    const eHov = mx >= equipX && mx <= equipX + bw && my >= btnY && my <= btnY + bh;
-    ctx.fillStyle = eHov || gpConn ? 'rgba(76,175,80,0.55)' : hasEquippable ? 'rgba(76,175,80,0.35)' : 'rgba(40,60,40,0.4)';
+    const navSel0 = this._chestModalSel === 0;  // keyboard/controller focus on Equip
+    const navSel1 = this._chestModalSel === 1;  // keyboard/controller focus on Leave
+    const eHov = (mx >= equipX && mx <= equipX + bw && my >= btnY && my <= btnY + bh) || navSel0;
+    const cHov = (mx >= closeX && mx <= closeX + bw && my >= btnY && my <= btnY + bh) || navSel1;
+    ctx.fillStyle = eHov ? 'rgba(76,175,80,0.65)' : hasEquippable ? 'rgba(76,175,80,0.35)' : 'rgba(40,60,40,0.4)';
     _roundRect(ctx, equipX, btnY, bw, bh, 6); ctx.fill();
-    ctx.strokeStyle = eHov ? '#8BC34A' : gpConn ? '#5FC060' : hasEquippable ? '#4CAF50' : '#336633'; ctx.lineWidth = 1.5;
+    ctx.strokeStyle = eHov ? '#8BC34A' : hasEquippable ? '#4CAF50' : '#336633'; ctx.lineWidth = navSel0 ? 2.5 : 1.5;
     _roundRect(ctx, equipX, btnY, bw, bh, 6); ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.font = 'bold 10px Courier New';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(equipLabel, equipX + bw / 2, btnY + bh / 2);
 
     // "Leave" button
-    const cHov = mx >= closeX && mx <= closeX + bw && my >= btnY && my <= btnY + bh;
     ctx.fillStyle = cHov ? 'rgba(100,100,120,0.8)' : 'rgba(50,50,70,0.5)';
     _roundRect(ctx, closeX, btnY, bw, bh, 6); ctx.fill();
-    ctx.strokeStyle = cHov ? '#888' : '#444'; ctx.lineWidth = 1.5;
+    ctx.strokeStyle = cHov ? '#888' : '#444'; ctx.lineWidth = navSel1 ? 2.5 : 1.5;
     _roundRect(ctx, closeX, btnY, bw, bh, 6); ctx.stroke();
     ctx.fillStyle = '#ccc'; ctx.font = 'bold 10px Courier New';
     ctx.fillText(leaveLabel, closeX + bw / 2, btnY + bh / 2);
+
+    // Keyboard/controller nav hint
+    if (gpConn) {
+      ctx.fillStyle = '#667788'; ctx.font = '8px Courier New';
+      ctx.fillText('◄ ► to select  [Y]/[A] confirm  [B]/Esc close', CANVAS_W / 2, btnY + bh + 12);
+    } else {
+      ctx.fillStyle = '#667788'; ctx.font = '8px Courier New';
+      ctx.fillText('← → to select  U/Space confirm  Esc close', CANVAS_W / 2, btnY + bh + 12);
+    }
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   }
 
@@ -2841,10 +2969,34 @@ class Game {
   }
 
   _triggerDeath(cause = 'You died') {
-    if (this.state === 'dead') return; // already dead
+    if (this.state === 'dead' || this._p1RespawnTimer > 0) return; // already dead/respawning
     this._playSound('sounds/player-death.mp3');
     this._deathCause     = cause;
     this._deathTimestamp = Date.now();
+
+    // 2P co-op: use respawn timer instead of death modal
+    if (this.player2) {
+      this.player.lives = Math.max(0, (this.player.lives ?? 3) - 1);
+      if (this.player.lives <= 0) {
+        // P1 eliminated — promote P2 to solo; no death modal
+        this._notify('P1 eliminated! P2 continues solo.', '#FF4444', 240);
+        this.player     = this.player2;
+        this.player2    = null;
+        this._p2RespawnTimer = 0;
+        this._p1RespawnTimer = 0;
+        // Re-sync input slot: P2's slot becomes P1's slot
+        this.input.p1GpSlot = this.input.p2GpSlot;
+        this.input.p2GpSlot = 1;  // reset to default
+        if (typeof ControllerConfig !== 'undefined') {
+          ControllerConfig.setAssignment(1, this.input.p1GpSlot);
+        }
+        return;
+      }
+      this._notify(`P1: ${cause}`, '#FFD700', 150);
+      this._p1RespawnTimer = 180;
+      this.player.hp = this.player.maxHp;
+      return;
+    }
 
     const drops = [];
     if (this.gameMode === 'normal') {
@@ -2927,7 +3079,15 @@ class Game {
 
   _triggerP2Death(cause = 'Player 2 died') {
     if (this._p2RespawnTimer > 0) return;
+    this.player2.lives = Math.max(0, (this.player2.lives ?? 3) - 1);
     this._notify(`P2: ${cause}`, '#FF8888', 150);
+    if (this.player2.lives <= 0) {
+      // P2 out of lives — remove player2 from co-op, solo continues
+      this._notify('P2 Game Over — P1 continues solo!', '#FF4444', 240);
+      this.player2 = null;
+      this._p2RespawnTimer = 0;
+      return;
+    }
     this._p2RespawnTimer = 180; // 3 s at 60 fps
   }
 
@@ -3012,6 +3172,28 @@ class Game {
     ctx.fillStyle = '#88AAFF';
     ctx.font = 'bold 9px Courier New';
     ctx.fillText('P2', bx2 - 52, by2 + 11);
+
+    // 2P lives: small head icons to the LEFT of P2 HP bar (left of label area)
+    {
+      const livesLeft = p2.lives ?? 3;
+      const iconSz = 10, gap = 2;
+      const lx0 = bx2 - 52 - 2 * (iconSz + gap) - 4;  // left of "P2" label
+      for (let i = 0; i < 2; i++) {
+        const alive = i < livesLeft - 1;
+        const ix = lx0 + i * (iconSz + gap);
+        ctx.fillStyle = alive ? '#88AAFF' : 'rgba(30,40,80,0.6)';
+        ctx.fillRect(ix, by2 + 1, iconSz, iconSz);
+        ctx.strokeStyle = alive ? '#2244AA' : '#112233';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(ix, by2 + 1, iconSz, iconSz);
+        if (alive) {
+          ctx.fillStyle = '#5533AA';
+          ctx.fillRect(ix + 3, by2 + 3, 2, 2);
+          ctx.fillRect(ix + 7, by2 + 3, 2, 2);
+          ctx.fillRect(ix + 3, by2 + 7, 6, 2);
+        }
+      }
+    }
 
     // ── XP bar (right-aligned below HP bar) ─────────────────
     const xpW = 120, xpX2 = CANVAS_W - 10 - xpW, xpY2 = 30;
@@ -3110,8 +3292,8 @@ class Game {
   _snapCameraToPlayer() {
     const camX = this.player.x + PLAYER_W / 2 - CANVAS_W / 2;
     const camY = this.player.y + this.player.height / 2 - CANVAS_H * 0.55;
-    this.camera.x = Math.max(0, Math.min(WORLD_W * BLOCK_SIZE - CANVAS_W, camX));
-    this.camera.y = Math.max(0, Math.min(WORLD_H * BLOCK_SIZE - CANVAS_H, camY));
+    this.camera.x = Math.max(0, Math.min(this.level.pixelWidth  - CANVAS_W, camX));
+    this.camera.y = Math.max(0, Math.min(this.level.pixelHeight - CANVAS_H, camY));
   }
 
   _nearestMobName() {
@@ -3207,8 +3389,8 @@ class Game {
       }
     }
 
-    // Normal/platformer mode playing a sandbox world — use saved portal links
-    if ((this.gameMode === 'normal' || this.gameMode === 'platformer') && this._normalPortals.length > 0) {
+    // Normal/platformer/speedrunner mode playing a sandbox world — use saved portal links
+    if ((this.gameMode === 'normal' || this.gameMode === 'platformer' || this.gameMode === 'speedrunner') && this._normalPortals.length > 0) {
       const portal = this._normalPortals.find(p =>
         pRow >= p.anchorRow && pRow <= p.anchorRow + 4 &&
         pCol >= p.anchorCol && pCol <= p.anchorCol + 3
@@ -3782,6 +3964,7 @@ class Game {
   _render() {
     window._gameRef = this; // Phase 16: expose for multiplayerManager callbacks
     const ctx      = this.ctx;
+    const _p1GpConnected = this.input.p1GpSlot >= 0 && this.input.gamepads[this.input.p1GpSlot]?.connected;
     const world    = this.camera.toWorld(this.input.mouse.x, this.input.mouse.y);
     const hoverCol = Math.floor(world.x / BLOCK_SIZE);
     const hoverRow = Math.floor(world.y / BLOCK_SIZE);
@@ -3805,6 +3988,18 @@ class Game {
       this._drawCelestial(ctx);   // stars + sun/moon behind clouds
       this._drawClouds(ctx);
     }
+    // SR zoom — scale world around canvas center (sky stays unaffected, drawn above)
+    if (this.gameMode === 'speedrunner' && this._sr) {
+      const z = this._sr.srZoom ?? 1.0;
+      ctx.save();
+      if (z < 0.995) {
+        ctx.translate(CANVAS_W / 2, CANVAS_H / 2);
+        ctx.scale(z, z);
+        ctx.translate(-CANVAS_W / 2, -CANVAS_H / 2);
+      }
+    }
+    // Pass zoom to camera so level.draw can expand the rendered viewport
+    this.camera._srZoom = (this.gameMode === 'speedrunner' && this._sr) ? (this._sr.srZoom || 1.0) : 1.0;
     this.level.draw(ctx, this.camera, this.redstone);
     // Re-draw open chest with lid-open state on top
     if (this._chestOpen) {
@@ -3838,6 +4033,25 @@ class Game {
       this.level.drawHover(ctx, hoverRow, hoverCol, this.camera);
     }
 
+    // Bow aim crosshair — visible anywhere (including over air) when P1 controller is connected
+    if (this.player.weaponMode === 'bow' && _p1GpConnected && !this.inventoryOpen) {
+      const mx = this.input.mouse.x, my = this.input.mouse.y;
+      const r  = 9;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.80)';
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(mx - r, my); ctx.lineTo(mx - 3, my);
+      ctx.moveTo(mx + 3, my); ctx.lineTo(mx + r, my);
+      ctx.moveTo(mx, my - r); ctx.lineTo(mx, my - 3);
+      ctx.moveTo(mx, my + 3); ctx.lineTo(mx, my + r);
+      ctx.stroke();
+      ctx.strokeStyle = this.player.bowDrawing ? 'rgba(255,120,50,0.9)' : 'rgba(255,220,100,0.7)';
+      ctx.lineWidth   = 1;
+      ctx.beginPath(); ctx.arc(mx, my, 3, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+
     // Draw collectible placed items (platformer + normal mode)
     if (this.gameMode === 'platformer' || this.gameMode === 'normal') this._drawPlatformerItems(ctx);
     // Phase 16: Draw items dropped by other players
@@ -3861,7 +4075,8 @@ class Game {
       ctx.restore();
     }
 
-    this.player.draw(ctx, this.camera);
+    // Hide player during SR death explosion — parts drawn in _drawSRWorldOverlay instead
+    if (!(this.gameMode === 'speedrunner' && this._sr?.dead)) this.player.draw(ctx, this.camera);
     // Phase 16: Draw other multiplayer players (behind P2 labels)
     if (window.multiplayerManager?.isConnected)
       window.multiplayerManager.drawOtherPlayers(ctx, this.camera);
@@ -3888,6 +4103,11 @@ class Game {
       ctx.restore();
     }
     this._drawEndPortalForeground(ctx);
+    // SR world-space overlays (particles, ghost, speed items) drawn inside zoom context
+    if (this.gameMode === 'speedrunner' && this._sr) {
+      this._drawSRWorldOverlay(ctx);
+      ctx.restore(); // end SR zoom (matches save above)
+    }
     this._drawHUD(ctx, hoverRow, hoverCol);
     // Phase 16: Multiplayer HUD (player list + connection badge)
     if (window.multiplayerManager?.isConnected) window.multiplayerManager.drawHUD(ctx);
@@ -3913,9 +4133,10 @@ class Game {
     this._drawBowCharge(ctx);
     this._drawNotifications(ctx);
     if (this._onlineGameId) this._drawGameNotifications(ctx);
-    if (this.gameMode !== 'sandbox' && this.player.godMode) this._drawGodModeBadge(ctx);
+    if (this.gameMode !== 'sandbox' && this.gameMode !== 'speedrunner' && this.player.godMode) this._drawGodModeBadge(ctx);
     if (this._teleportMenu && this.player.godMode) this._drawTeleportMenu(ctx);
     if (this.gameMode === 'platformer') this._drawPlatformerHUD(ctx);
+    if (this.gameMode === 'speedrunner') this._drawSpeedRunnerHUD(ctx);
 
     // Inventory renders on top of world, below crafting menu
     if (this.inventoryOpen) this._drawInventory(ctx);
@@ -3937,14 +4158,41 @@ class Game {
     if (this._witherVictoryScreen)  this._drawWitherVictoryScreen(ctx);
     if (this._worldSettingsOpen)   this._drawWorldSettings(ctx);
     if (this._musicPlayerUI)       this._drawMusicPlayerUI(ctx);
-    if (this.state === 'dead') this._drawDead(ctx);
-    if (this.state === 'won') this._drawWin(ctx);
+    if (this.state === 'dead' && this.gameMode !== 'speedrunner') this._drawDead(ctx);
+    if (this.state === 'won'  && this.gameMode !== 'speedrunner') this._drawWin(ctx);
     if (this._onlineGameId && this._onlineMenuOpen) this._drawOnlineMenu(ctx);
     if (this.state === 'paused' || this.state === 'confirmExit') this._drawPauseOverlay(ctx);
     if (this._saveDialog) this._drawSaveDialog(ctx);
     if (this._tutorialOpen) this._drawTutorial(ctx);
 
+    // Controller cursor — drawn last so it sits on top of every overlay
+    if (_p1GpConnected) {
+      const inOverlay = this.inventoryOpen || this._worldSettingsOpen ||
+                        this.state === 'paused' || this.state === 'confirmExit' ||
+                        this.state === 'dead'   || this._tutorialOpen ||
+                        this._saveDialog != null || this._musicPlayerUI != null ||
+                        this.craftingMenu?.open;
+      if (inOverlay) this._drawControllerCursor(ctx);
+    }
+
     ctx.restore(); // matches screen-shake save at top of _render
+  }
+
+  _drawControllerCursor(ctx) {
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const r  = 7;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.88)';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(mx - r, my); ctx.lineTo(mx - 2, my);
+    ctx.moveTo(mx + 2, my); ctx.lineTo(mx + r, my);
+    ctx.moveTo(mx, my - r); ctx.lineTo(mx, my - 2);
+    ctx.moveTo(mx, my + 2); ctx.lineTo(mx, my + r);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.beginPath(); ctx.arc(mx, my, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
   }
 
   // ── Inventory panel ──────────────────────────────────────
@@ -6957,6 +7205,24 @@ class Game {
     ];
   }
 
+  _srPersistSettings() {
+    // Write SR settings to a quick-access key so SR mode picks them up without a full world save
+    if (!this._sbPlayerName || !this._sbWorldName) return;
+    const worldKey = SandboxSaves.key(this._sbPlayerName, this._sbWorldName);
+    const aws = this._worldAdvSettings;
+    try {
+      localStorage.setItem('sr_cfg_' + worldKey, JSON.stringify({
+        srBaseSpeed:               aws.srBaseSpeed,
+        srMaxMultiplier:           aws.srMaxMultiplier,
+        srBoostPct:                aws.srBoostPct,
+        srTimeBoostEnabled:        aws.srTimeBoostEnabled,
+        srTimeBoostIntervalSec:    aws.srTimeBoostIntervalSec,
+        srDistBoostEnabled:        aws.srDistBoostEnabled,
+        srDistBoostIntervalBlocks: aws.srDistBoostIntervalBlocks,
+      }));
+    } catch {}
+  }
+
   _updateWorldSettings() {
     const L    = this._wsLayout();
     const mx   = this.input.mouse.x, my = this.input.mouse.y;
@@ -7007,11 +7273,12 @@ class Game {
       return;
     }
 
-    // Tab bar clicks (6 tabs, stride=93, display width=90)
-    const TABS = [{ id: 'drops', label: 'Mob Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'multiplayer', label: 'Multiplayer' }];
+    // Tab bar clicks (8 tabs, stride=70, display width=67)
+    const TABS = [{ id: 'drops', label: 'Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'multiplayer', label: 'Multi' }, { id: 'speedrunner', label: 'SR' }, { id: 'physics', label: 'Physics' }];
+    const TAB_STRIDE = 70, TAB_W = 67;
     for (let t = 0; t < TABS.length; t++) {
-      const tx = L.px + 8 + t * 93;
-      if (mx >= tx && mx <= tx + 90 && my >= L.TAB_Y && my <= L.TAB_Y + L.TAB_H) {
+      const tx = L.px + 8 + t * TAB_STRIDE;
+      if (mx >= tx && mx <= tx + TAB_W && my >= L.TAB_Y && my <= L.TAB_Y + L.TAB_H) {
         this._wsTab = TABS[t].id;
         return;
       }
@@ -7177,6 +7444,73 @@ class Game {
       return;
     }
 
+    if (this._wsTab === 'speedrunner') {
+      const aws  = this._worldAdvSettings;
+      const tgX  = L.px + L.pw - 82, tgW = 64, tgH = 24;
+      const ivX  = tgX - 76,          ivW = 68;
+      const BASE_SPEED_OPTS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
+      const MAX_MULT_OPTS   = [1.0, 1.5, 2.0, 3.0, 4.0, 5.0];
+      const BOOST_PCT_OPTS  = [0.05, 0.10, 0.15, 0.20];
+      const TIME_INT_OPTS   = [1, 2, 5, 10, 20];
+      const DIST_INT_OPTS   = [1, 2, 5, 10, 20, 30];
+
+      // Row 1: Base Speed
+      if (mx >= tgX && mx <= tgX + tgW && my >= L.FIRST_ROW && my <= L.FIRST_ROW + tgH) {
+        const cur = BASE_SPEED_OPTS.findIndex(v => Math.abs(v - (aws.srBaseSpeed ?? 1.0)) < 0.01);
+        aws.srBaseSpeed = BASE_SPEED_OPTS[(cur < 0 ? 2 : cur + 1) % BASE_SPEED_OPTS.length];
+      }
+      // Row 2: Max Speed Cap
+      const r2Y = L.FIRST_ROW + 44;
+      if (mx >= tgX && mx <= tgX + tgW && my >= r2Y && my <= r2Y + tgH) {
+        const cur = MAX_MULT_OPTS.findIndex(v => Math.abs(v - (aws.srMaxMultiplier ?? 2.0)) < 0.01);
+        aws.srMaxMultiplier = MAX_MULT_OPTS[(cur < 0 ? 2 : cur + 1) % MAX_MULT_OPTS.length];
+      }
+      // Row 3: Boost Per Tick
+      const r3Y = L.FIRST_ROW + 88;
+      if (mx >= tgX && mx <= tgX + tgW && my >= r3Y && my <= r3Y + tgH) {
+        const cur = BOOST_PCT_OPTS.findIndex(v => Math.abs(v - (aws.srBoostPct ?? 0.05)) < 0.005);
+        aws.srBoostPct = BOOST_PCT_OPTS[(cur < 0 ? 0 : cur + 1) % BOOST_PCT_OPTS.length];
+      }
+      // Row 4: Time Boost — toggle + interval
+      const r4Y = L.FIRST_ROW + 132;
+      if (mx >= tgX && mx <= tgX + tgW && my >= r4Y && my <= r4Y + tgH)
+        aws.srTimeBoostEnabled = !(aws.srTimeBoostEnabled ?? true);
+      if ((aws.srTimeBoostEnabled ?? true) && mx >= ivX && mx <= ivX + ivW && my >= r4Y && my <= r4Y + tgH) {
+        const cur = TIME_INT_OPTS.indexOf(aws.srTimeBoostIntervalSec ?? 5);
+        aws.srTimeBoostIntervalSec = TIME_INT_OPTS[(cur < 0 ? 2 : cur + 1) % TIME_INT_OPTS.length];
+      }
+      // Row 5: Distance Boost — toggle + interval
+      const r5Y = L.FIRST_ROW + 176;
+      if (mx >= tgX && mx <= tgX + tgW && my >= r5Y && my <= r5Y + tgH)
+        aws.srDistBoostEnabled = !(aws.srDistBoostEnabled ?? true);
+      if ((aws.srDistBoostEnabled ?? true) && mx >= ivX && mx <= ivX + ivW && my >= r5Y && my <= r5Y + tgH) {
+        const cur = DIST_INT_OPTS.indexOf(aws.srDistBoostIntervalBlocks ?? 5);
+        aws.srDistBoostIntervalBlocks = DIST_INT_OPTS[(cur < 0 ? 2 : cur + 1) % DIST_INT_OPTS.length];
+      }
+      // Persist SR settings immediately without requiring a full world save
+      this._srPersistSettings();
+      return;
+    }
+
+    if (this._wsTab === 'physics') {
+      const aws = this._worldAdvSettings;
+      const tgX = L.px + L.pw - 82, tgW = 64, tgH = 24;
+      const GRAVITY_OPTS = [0.10, 0.20, 0.33, 0.50, 0.66, 0.80, 1.00, 1.20, 1.50];
+      const JUMPPAD_OPTS = [-6, -9, -12, -15, -18, -21, -24];
+      // Row 1: Gravity
+      if (mx >= tgX && mx <= tgX + tgW && my >= L.FIRST_ROW && my <= L.FIRST_ROW + tgH) {
+        const cur = GRAVITY_OPTS.findIndex(v => Math.abs(v - (aws.physicsGravity ?? GRAVITY)) < 0.005);
+        aws.physicsGravity = GRAVITY_OPTS[(cur < 0 ? 4 : cur + 1) % GRAVITY_OPTS.length];
+      }
+      // Row 2: Jump Pad Force
+      const r2Y = L.FIRST_ROW + 48;
+      if (mx >= tgX && mx <= tgX + tgW && my >= r2Y && my <= r2Y + tgH) {
+        const cur = JUMPPAD_OPTS.indexOf(aws.jumpPadVForce ?? -18);
+        aws.jumpPadVForce = JUMPPAD_OPTS[(cur < 0 ? 4 : cur + 1) % JUMPPAD_OPTS.length];
+      }
+      return;
+    }
+
     // ── Mob Drops tab ──────────────────────────────────────────
     for (let i = 0; i < mobs.length; i++) {
       const rowY = L.FIRST_ROW + i * L.ROW_H;
@@ -7246,21 +7580,22 @@ class Game {
     ctx.textAlign = 'center';
     ctx.fillText('×', xbx + 10, xby + 11);
 
-    // Tab bar (6 tabs, stride=93, display width=90)
-    const TABS = [{ id: 'drops', label: 'Mob Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'multiplayer', label: 'Multiplayer' }];
+    // Tab bar (8 tabs at stride=70, width=67)
+    const TABS = [{ id: 'drops', label: 'Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'multiplayer', label: 'Multi' }, { id: 'speedrunner', label: 'SR' }, { id: 'physics', label: 'Physics' }];
+    const TAB_STRIDE = 70, TAB_W = 67;
     for (let t = 0; t < TABS.length; t++) {
-      const tx = L.px + 8 + t * 93;
+      const tx = L.px + 8 + t * TAB_STRIDE;
       const active = this._wsTab === TABS[t].id;
       ctx.fillStyle  = active ? '#3A3A5A' : '#252535';
       ctx.strokeStyle = active ? '#8888CC' : '#444466';
       ctx.lineWidth = 1;
-      ctx.fillRect(tx, L.TAB_Y, 90, L.TAB_H);
-      ctx.strokeRect(tx, L.TAB_Y, 90, L.TAB_H);
+      ctx.fillRect(tx, L.TAB_Y, TAB_W, L.TAB_H);
+      ctx.strokeRect(tx, L.TAB_Y, TAB_W, L.TAB_H);
       ctx.font = active ? 'bold 9px Courier New' : '9px Courier New';
       ctx.fillStyle = active ? '#CCCCFF' : '#777788';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(TABS[t].label, tx + 45, L.TAB_Y + L.TAB_H / 2);
+      ctx.fillText(TABS[t].label, tx + TAB_W / 2, L.TAB_Y + L.TAB_H / 2);
     }
 
     // Separator under tab bar
@@ -7561,6 +7896,115 @@ class Game {
             ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
           }
       }
+
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    } else if (this._wsTab === 'speedrunner') {
+      // ── Speed Runner tab ──────────────────────────────────────
+      const aws  = this._worldAdvSettings;
+      const mx2  = this.input.mouse.x, my2 = this.input.mouse.y;
+      const tgX  = L.px + L.pw - 82, tgW = 64, tgH = 24;
+      const ivX  = tgX - 76,          ivW = 68;
+
+      ctx.font = '9px Courier New'; ctx.fillStyle = '#888899';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText('Applied when world is launched in Speed Runner mode  ·  P or Esc to close',
+        L.px + L.pw / 2, L.CONTENT_Y + 8);
+
+      // Helper: single cycle-value button row
+      const drawSrValRow = (rY, label, sub, valStr) => {
+        ctx.font = '11px Courier New'; ctx.fillStyle = '#AAAACC';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(label, L.MOB_COL, rY + 11);
+        ctx.font = '9px Courier New'; ctx.fillStyle = '#666677';
+        ctx.fillText(sub, L.MOB_COL, rY + 26);
+        const hov = mx2 >= tgX && mx2 <= tgX + tgW && my2 >= rY && my2 <= rY + tgH;
+        ctx.fillStyle = hov ? '#1A2A3A' : '#232333';
+        ctx.strokeStyle = hov ? '#44AAFF' : '#555577'; ctx.lineWidth = 1;
+        ctx.fillRect(tgX, rY, tgW, tgH); ctx.strokeRect(tgX, rY, tgW, tgH);
+        ctx.font = 'bold 11px Courier New'; ctx.fillStyle = '#88CCFF';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(valStr, tgX + tgW / 2, rY + 13);
+      };
+
+      // Helper: toggle + interval buttons row
+      const drawSrBoostRow = (rY, label, sub, enabled, ivLabel) => {
+        ctx.font = '11px Courier New'; ctx.fillStyle = '#AAAACC';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(label, L.MOB_COL, rY + 11);
+        ctx.font = '9px Courier New'; ctx.fillStyle = '#666677';
+        ctx.fillText(sub, L.MOB_COL, rY + 26);
+        // ON/OFF toggle
+        ctx.fillStyle   = enabled ? '#3A5A2A' : '#2A2A3A';
+        ctx.strokeStyle = enabled ? '#66CC44' : '#555577'; ctx.lineWidth = 1;
+        ctx.fillRect(tgX, rY, tgW, tgH); ctx.strokeRect(tgX, rY, tgW, tgH);
+        ctx.font = 'bold 11px Courier New'; ctx.fillStyle = enabled ? '#88FF66' : '#AAAACC';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(enabled ? 'ON' : 'OFF', tgX + tgW / 2, rY + 13);
+        // Interval cycle button (dimmed when disabled)
+        const ivHov = enabled && mx2 >= ivX && mx2 <= ivX + ivW && my2 >= rY && my2 <= rY + tgH;
+        ctx.fillStyle   = enabled ? (ivHov ? '#1A2A3A' : '#232333') : '#1A1A2A';
+        ctx.strokeStyle = enabled ? (ivHov ? '#44AAFF' : '#555577') : '#333344'; ctx.lineWidth = 1;
+        ctx.fillRect(ivX, rY, ivW, tgH); ctx.strokeRect(ivX, rY, ivW, tgH);
+        ctx.font = 'bold 11px Courier New'; ctx.fillStyle = enabled ? '#88CCFF' : '#445566';
+        ctx.fillText(ivLabel, ivX + ivW / 2, rY + 13);
+      };
+
+      const BASE_SPEED_OPTS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
+      const MAX_MULT_OPTS   = [1.0, 1.5, 2.0, 3.0, 4.0, 5.0];
+      const BOOST_PCT_OPTS  = [0.05, 0.10, 0.15, 0.20];
+
+      drawSrValRow(L.FIRST_ROW,      'Base Speed',
+        '(default movement speed multiplier)',
+        (aws.srBaseSpeed ?? 1.0).toFixed(2) + 'x');
+      drawSrValRow(L.FIRST_ROW + 44, 'Max Speed Cap',
+        '(upper limit on total combined boost)',
+        (aws.srMaxMultiplier ?? SR_CONFIG.maxMultiplier).toFixed(1) + 'x');
+      drawSrValRow(L.FIRST_ROW + 88, 'Boost Per Tick',
+        '(speed gain per time/distance interval)',
+        Math.round((aws.srBoostPct ?? SR_CONFIG.timeBoostPct) * 100) + '%');
+
+      const tivSec    = aws.srTimeBoostIntervalSec      ?? SR_CONFIG.timeBoostIntervalSec;
+      const tivBlocks = aws.srDistBoostIntervalBlocks   ?? 5;
+      drawSrBoostRow(L.FIRST_ROW + 132, 'Time Boost',
+        '(accelerates after running continuously)',
+        aws.srTimeBoostEnabled ?? true, `every ${tivSec}s`);
+      drawSrBoostRow(L.FIRST_ROW + 176, 'Distance Boost',
+        '(accelerates after covering ground)',
+        aws.srDistBoostEnabled ?? true, `every ${tivBlocks}b`);
+
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    } else if (this._wsTab === 'physics') {
+      // ── Physics tab ───────────────────────────────────────────
+      const aws  = this._worldAdvSettings;
+      const mx2  = this.input.mouse.x, my2 = this.input.mouse.y;
+      const tgX  = L.px + L.pw - 82, tgW = 64, tgH = 24;
+
+      ctx.font = '9px Courier New'; ctx.fillStyle = '#888899';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText('Per-world physics overrides  ·  P or Esc to close',
+        L.px + L.pw / 2, L.CONTENT_Y + 8);
+
+      const drawPhysRow = (rY, label, sub, valStr) => {
+        ctx.font = '11px Courier New'; ctx.fillStyle = '#AAAACC';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(label, L.MOB_COL, rY + 11);
+        ctx.font = '9px Courier New'; ctx.fillStyle = '#666677';
+        ctx.fillText(sub, L.MOB_COL, rY + 26);
+        const hov = mx2 >= tgX && mx2 <= tgX + tgW && my2 >= rY && my2 <= rY + tgH;
+        ctx.fillStyle = hov ? '#1A2A3A' : '#232333';
+        ctx.strokeStyle = hov ? '#44AAFF' : '#555577'; ctx.lineWidth = 1;
+        ctx.fillRect(tgX, rY, tgW, tgH); ctx.strokeRect(tgX, rY, tgW, tgH);
+        ctx.font = 'bold 11px Courier New'; ctx.fillStyle = '#88CCFF';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(valStr, tgX + tgW / 2, rY + 13);
+      };
+
+      drawPhysRow(L.FIRST_ROW, 'Gravity',
+        '(acceleration per frame — default 0.66)',
+        (aws.physicsGravity ?? GRAVITY).toFixed(2));
+      drawPhysRow(L.FIRST_ROW + 48, 'Jump Pad Force',
+        '(vertical launch on JUMP_PAD blocks)',
+        (aws.jumpPadVForce ?? -18).toString());
 
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     } else {
@@ -8383,6 +8827,13 @@ class Game {
 
   _drawHUD(ctx, hoverRow, hoverCol) {
     ctx.save();
+    // Speed Runner uses its own minimal HUD — skip the normal combat HUD
+    if (this.gameMode === 'speedrunner') {
+      this._drawCoords(ctx);
+      this._drawHelpButton(ctx);
+      ctx.restore();
+      return;
+    }
     this._drawHealthBar(ctx);
     this._drawDragonHUD(ctx);
     this._drawWitherHUD(ctx);
@@ -8478,6 +8929,38 @@ class Game {
     ctx.fillStyle = '#fff';
     ctx.font      = 'bold 10px Courier New';
     ctx.fillText(`${p.hp}/${p.maxHp}`, bx + bw + 22, by + 11);
+
+    // 2P co-op: P1 respawn overlay
+    if (this._p1RespawnTimer > 0) {
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      _roundRect(ctx, bx - 2, by - 2, bw + 48, bh + 4, 4); ctx.fill();
+      ctx.fillStyle = '#FFD700';
+      ctx.font = 'bold 10px Courier New';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(`Respawn ${Math.ceil(this._p1RespawnTimer / 60)}s`, bx, by + bh / 2);
+    }
+
+    // 2P lives: small head icons to the RIGHT of P1 HP bar
+    if (this.player2) {
+      const livesLeft = p.lives ?? 3;
+      const iconSz = 10, gap = 2;
+      const lx0 = bx + bw + 50;  // after heart + HP text
+      for (let i = 0; i < 2; i++) {
+        const alive = i < livesLeft - 1; // -1 because current life is "active"
+        const ix = lx0 + i * (iconSz + gap);
+        ctx.fillStyle = alive ? '#FFD700' : 'rgba(80,70,30,0.6)';
+        ctx.fillRect(ix, by + 1, iconSz, iconSz);
+        ctx.strokeStyle = alive ? '#AA8800' : '#443300';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(ix, by + 1, iconSz, iconSz);
+        if (alive) {
+          ctx.fillStyle = '#5533AA';
+          ctx.fillRect(ix + 3, by + 3, 2, 2);
+          ctx.fillRect(ix + 7, by + 3, 2, 2);
+          ctx.fillRect(ix + 3, by + 7, 6, 2);
+        }
+      }
+    }
   }
 
   // Compact 9-slot hotbar used in 2P mode — width matches HP bar (180px).
@@ -9081,27 +9564,33 @@ class Game {
     this._contextAction  = null;
     this._contextPrompt  = null;
     this._contextAction2 = null;
+    this._contextPrompt2 = null;
+
+    const _makeLabels = (key, chestOpen) => ({
+      respawn_anchor: `${key} Set Nether Spawn`,
+      bed:            this.gameMode === 'sandbox' ? `${key} Save World` : `${key} Set Spawn`,
+      chest:          chestOpen ? `${key} Close Chest` : `${key} Open Chest`,
+      portal:         `${key} Use Portal`,
+      wither_altar:   `${key} Place Item`,
+      music_player:   `${key} Music Player`,
+      lever:          `${key} Toggle Lever`,
+      apple:          `${key} Eat Apple`,
+    });
 
     const p1 = this._nearestInteractable(this.player);
     this._contextAction = p1?.type ?? null;
-
     if (p1) {
-      const key = this.input.gamepads[0].connected ? '[RB]' : '[U]';
-      const labels = {
-        respawn_anchor: `${key} Set Nether Spawn`,
-        bed:            this.gameMode === 'sandbox' ? `${key} Save World` : `${key} Set Spawn`,
-        chest:          this._chestOpen ? `${key} Close Chest` : `${key} Open Chest`,
-        portal:         `${key} Use Portal`,
-        wither_altar:   `${key} Place Item`,
-        music_player:   `${key} Music Player`,
-        lever:          `${key} Toggle Lever`,
-        apple:          `${key} Eat Apple`,
-      };
-      this._contextPrompt = labels[p1.type] ?? null;
+      const key = (this.input.p1GpSlot >= 0 && this.input.gamepads[this.input.p1GpSlot]?.connected) ? '[Y]' : '[U]';
+      this._contextPrompt = _makeLabels(key, !!this._chestOpen)[p1.type] ?? null;
     }
 
     if (this.player2 && this._p2RespawnTimer === 0) {
-      this._contextAction2 = this._nearestInteractable(this.player2)?.type ?? null;
+      const p2 = this._nearestInteractable(this.player2);
+      this._contextAction2 = p2?.type ?? null;
+      if (p2) {
+        const key2 = (this.input.p2GpSlot >= 0 && this.input.gamepads[this.input.p2GpSlot]?.connected) ? '[Y]' : '[U]';
+        this._contextPrompt2 = _makeLabels(key2, !!this._chestOpen)[p2.type] ?? null;
+      }
     }
   }
 
@@ -9157,9 +9646,11 @@ class Game {
           if (d <= 2.5 * BLOCK_SIZE && d < bestDist) { bestDist = d; bestCh = ch; }
         }
         if (bestCh) {
-          this._chestOpen    = bestCh;
-          this.inventoryOpen = true;
+          this._chestOpen     = bestCh;
+          this._chestModalSel = 0;
+          this.inventoryOpen  = true;
           this.craftingMenu._eWasDown = true;
+          this._playSound('sounds/chest-open.mp3');
         }
       }
 
@@ -9261,12 +9752,8 @@ class Game {
       }
       if (bestMp) this._openMusicPlayerUI(bestMp);
 
-    } else {
-      // No context: cycle hotbar slot
-      if (this.gameMode !== 'sandbox') {
-        player.selectedSlot = (player.selectedSlot + 1) % 9;
-      }
     }
+    // When Y button has no nearby interactable, do nothing (hotbar cycling is RB only)
   }
 
   // ── Controller status HUD (Phase 11K-1) ──────────────────
@@ -9319,22 +9806,30 @@ class Game {
 
   // Show context prompt label above the player when a Use Item action is available
   _drawContextPrompt(ctx) {
-    if (!this._contextPrompt) return;
     if (this.inventoryOpen || this.craftingMenu?.open) return;
-    const sc = this.camera.toScreen(this.player.cx, this.player.y);
     ctx.save();
     ctx.font = '9px Courier New';
-    const tw = ctx.measureText(this._contextPrompt).width;
-    const px = Math.max(4, Math.min(CANVAS_W - tw - 12, sc.x - tw / 2 - 4));
-    const py = Math.max(4, sc.y - 28);
-    ctx.fillStyle = 'rgba(0,0,0,0.72)';
-    _roundRect(ctx, px, py, tw + 8, 15, 3); ctx.fill();
-    ctx.fillStyle    = '#FFD700';
-    ctx.textAlign    = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(this._contextPrompt, px + 4, py + 7.5);
-    ctx.textAlign    = 'left';
-    ctx.textBaseline = 'alphabetic';
+
+    const _drawPrompt = (text, cx, playerTopY, color) => {
+      const tw = ctx.measureText(text).width;
+      const sc = this.camera.toScreen(cx, playerTopY);
+      const bx = Math.max(4, Math.min(CANVAS_W - tw - 12, sc.x - tw / 2 - 4));
+      const by = Math.max(4, sc.y - 28);
+      ctx.fillStyle = 'rgba(0,0,0,0.72)';
+      _roundRect(ctx, bx, by, tw + 8, 15, 3); ctx.fill();
+      ctx.fillStyle = color;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(text, bx + 4, by + 7.5);
+    };
+
+    if (this._contextPrompt) {
+      _drawPrompt(this._contextPrompt, this.player.cx, this.player.y, '#FFD700');
+    }
+    if (this._contextPrompt2 && this.player2) {
+      _drawPrompt(this._contextPrompt2, this.player2.cx, this.player2.y, '#88AAFF');
+    }
+
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.restore();
   }
 
@@ -9559,7 +10054,7 @@ class Game {
   }
 
   _teleportDests() {
-    const dests = [
+    const dests = this._worldAdvSettings.isEmptySandbox ? [] : [
       { label: 'Spawn (Plains)',  x: 2 * BLOCK_SIZE,                                     y: 13 * BLOCK_SIZE - PLAYER_H },
       { label: 'Cave entrance',   x: 150 * BLOCK_SIZE,                                    y: 29 * BLOCK_SIZE - PLAYER_H },
       { label: 'Nether portal',   x: 329 * BLOCK_SIZE,                                    y: 32 * BLOCK_SIZE - PLAYER_H },
@@ -9639,9 +10134,16 @@ class Game {
     const row      = Math.floor(this.player.cy / BLOCK_SIZE);
     const coordStr = `x:${col} y:${row}`;
 
-    // Platformer: append live timer on a second line
+    // Platformer / Speed Runner: append live timer on a second line
     let timerStr = null;
-    if (this.gameMode === 'platformer' && this._platformerStartMs) {
+    if (this.gameMode === 'speedrunner' && this._sr?.startMs && !this._sr?.won) {
+      const elapsed  = Date.now() - this._sr.startMs;
+      const totalSec = Math.floor(elapsed / 1000);
+      const mins     = Math.floor(totalSec / 60);
+      const ss       = String(totalSec % 60).padStart(2, '0');
+      const cs       = String(Math.floor((elapsed % 1000) / 10)).padStart(2, '0');
+      timerStr = `⚡ ${mins}:${ss}.${cs}`;
+    } else if (this.gameMode === 'platformer' && this._platformerStartMs) {
       const elapsed  = Date.now() - this._platformerStartMs;
       const totalSec = Math.floor(elapsed / 1000);
       const mins     = Math.floor(totalSec / 60);
@@ -10181,8 +10683,9 @@ class Game {
                        (this.gameMode === 'platformer'  && !!this._platformerLoadKey);
     const threeBtn   = isSb || hasLvlSel;
 
-    // Controller-assignment rows — 2 players now; change this single number when 3-4P added
-    const numCtrlPlayers = (!isSb && !this._onlineGameId && this._worldAdvSettings.twoPlayerMode) ? 2 : 0;
+    // Controller-assignment rows — always show P1 row; add P2 row in 2P mode
+    const numCtrlPlayers = (!isSb && !this._onlineGameId)
+      ? (this._worldAdvSettings.twoPlayerMode ? 2 : 1) : 0;
     // Each player row is 36px; add 22px for the section header
     const ctrlExtra = numCtrlPlayers > 0 ? (22 + numCtrlPlayers * 36) : 0;
 
@@ -10204,20 +10707,15 @@ class Game {
   // Drawn in the Settings tab when twoPlayerMode is on.
   // To support 3-4 players later: pass a larger numPlayers value — nothing else changes.
   _drawCtrlAssignRows(ctx, numPlayers, px, py, pw, tabH, mx, my) {
-    const OPTS      = [-1, 0, 1, 2, 3];   // -1 = keyboard; 0-3 = gamepad slots
+    // -1=KB1(WASD), -2=KB2(Arrows+Ins/Del); 0-3=gamepad slots
+    const OPTS      = [-1, -2, 0, 1, 2, 3];
     const SEC_Y     = py + tabH + 128;    // section starts below the 2P toggle
     const BTN_W     = 80, BTN_H = 26, ROW_H = 36;
     const BTN_X     = px + pw - 24 - BTN_W;
     const rawGps    = navigator.getGamepads ? navigator.getGamepads() : [];
     // Player accent colours — add more entries when adding P3/P4
     const P_COLORS  = { 1: '#FFD700', 2: '#88AAFF', 3: '#88FF88', 4: '#FF8888' };
-    // Keyboard key hints — P2 gets arrows only when both players are on keyboard
-    const bothKb = ControllerConfig.getAssignment(1) === -1 && ControllerConfig.getAssignment(2) === -1;
-    const KB_HINTS  = {
-      1: bothKb ? 'WASD / Space' : 'WASD / ↑↓',
-      2: bothKb ? '↑↓←→ / Ins'  : 'IJKL / U',
-      3: 'Numpad', 4: '—',
-    };
+    const KB_LABELS = { '-1': 'KB1 (WASD)', '-2': 'KB2 (Arrows)' };
 
     // Section header + divider line
     ctx.save();
@@ -10262,11 +10760,17 @@ class Game {
         const label = connected ? `Gamepad ${assigned + 1}` : `Gamepad ${assigned + 1}  ✗`;
         ctx.fillText(label, px + 74, midY);
       } else {
-        // Keyboard: no dot, show key hint
+        // Keyboard: no dot, show KB1/KB2 label
         ctx.fillStyle = '#AAAACC'; ctx.font = '9px Courier New';
         ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-        ctx.fillText(`Keyboard  (${KB_HINTS[p] ?? '—'})`, px + 58, midY);
+        ctx.fillText(KB_LABELS[String(assigned)] ?? 'Keyboard', px + 58, midY);
       }
+
+      // Cycle button label
+      let cycleLabel;
+      if (assigned === -1) cycleLabel = 'KB1';
+      else if (assigned === -2) cycleLabel = 'KB2';
+      else cycleLabel = `Gamepad ${assigned + 1}`;
 
       // Cycle button
       const btnHov = mx >= BTN_X && mx <= BTN_X + BTN_W && my >= rowY && my <= rowY + BTN_H;
@@ -10276,7 +10780,7 @@ class Game {
       _roundRect(ctx, BTN_X, rowY, BTN_W, BTN_H, 4); ctx.stroke();
       ctx.fillStyle = '#88CCFF'; ctx.font = 'bold 10px Courier New';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(assigned === -1 ? 'Keyboard' : `Gamepad ${assigned + 1}`, BTN_X + BTN_W / 2, rowY + BTN_H / 2);
+      ctx.fillText(cycleLabel, BTN_X + BTN_W / 2, rowY + BTN_H / 2);
     }
 
     ctx.restore();
@@ -10305,13 +10809,13 @@ class Game {
       if (this.input.isJustDown('KeyI')) { this._pauseTab = 'settings'; return; }
 
       // Gamepad: B button → resume
-      if (this.input.gpJustDown(0, 'crouch')) {
+      if (this.input.p1JustDown('crouch')) {
         this.state = 'playing'; this._pauseTab = 'pause'; return;
       }
 
       // Gamepad: D-Pad left/right → switch tab
-      const gpTabL = this.input.gpJustDown(0, 'dpad3');
-      const gpTabR = this.input.gpJustDown(0, 'dpad1');
+      const gpTabL = this.input.p1JustDown('dpad3');
+      const gpTabR = this.input.p1JustDown('dpad1');
       if (gpTabL || gpTabR) {
         const idx  = TABS.indexOf(this._pauseTab);
         this._pauseTab = TABS[((idx + (gpTabR ? 1 : -1)) + TABS.length) % TABS.length];
@@ -10342,8 +10846,8 @@ class Game {
         const N = allBtns.length;
 
         // Gamepad cursor
-        if (this.input.gpJustDown(0, 'dpad0')) this._pauseSelIdx = (this._pauseSelIdx - 1 + N) % N;
-        if (this.input.gpJustDown(0, 'dpad2')) this._pauseSelIdx = (this._pauseSelIdx + 1) % N;
+        if (this.input.p1JustDown('dpad0')) this._pauseSelIdx = (this._pauseSelIdx - 1 + N) % N;
+        if (this.input.p1JustDown('dpad2')) this._pauseSelIdx = (this._pauseSelIdx + 1) % N;
         if (this._pauseSelIdx >= N) this._pauseSelIdx = N - 1;
 
         const activateBtn = (btn) => {
@@ -10360,7 +10864,7 @@ class Game {
         };
 
         // Gamepad A → activate selected
-        if (this.input.gpJustDown(0, 'jump')) { activateBtn(allBtns[this._pauseSelIdx]); return; }
+        if (this.input.p1JustDown('jump')) { activateBtn(allBtns[this._pauseSelIdx]); return; }
 
         // Mouse clicks on buttons
         if (clicked) {
@@ -10395,7 +10899,7 @@ class Game {
         if (this.gameMode === 'sandbox') {
           // Sandbox: click/A → open full World Settings panel
           const inPanel = mx >= px && mx <= px + pw && my >= py + tabH && my <= py + ph;
-          if ((clicked && inPanel) || this.input.gpJustDown(0, 'jump')) {
+          if ((clicked && inPanel) || this.input.p1JustDown('jump')) {
             this.state = 'playing'; this._worldSettingsOpen = true; this._pauseTab = 'pause';
           }
         } else {
@@ -10403,7 +10907,7 @@ class Game {
           const tgX = px + (pw - 64) / 2, tgY = py + tabH + 90, tgW = 64, tgH = 28;
           if (!this._onlineGameId &&
               ((clicked && mx >= tgX && mx <= tgX + tgW && my >= tgY && my <= tgY + tgH)
-               || this.input.gpJustDown(0, 'jump'))) {
+               || this.input.p1JustDown('jump'))) {
             this.state = 'playing';
             this._applyTwoPlayerMode(!this._worldAdvSettings.twoPlayerMode);
             this._pauseTab = 'pause';
@@ -10411,7 +10915,7 @@ class Game {
 
           // Controller assignment row buttons (one per player when 2P is on)
           if (numCtrlPlayers > 0 && clicked) {
-            const OPTS   = [-1, 0, 1, 2, 3];   // -1=keyboard, 0-3=gamepad slots
+            const OPTS   = [-1, -2, 0, 1, 2, 3];  // -1=KB1, -2=KB2, 0-3=gamepad
             const SEC_Y  = py + tabH + 128;
             const BTN_W  = 80, BTN_H = 26, ROW_H = 36;
             const BTN_X  = px + pw - 24 - BTN_W;
@@ -10419,8 +10923,17 @@ class Game {
               const rowY = SEC_Y + 22 + (p - 1) * ROW_H;
               if (mx >= BTN_X && mx <= BTN_X + BTN_W && my >= rowY && my <= rowY + BTN_H) {
                 const cur  = ControllerConfig.getAssignment(p);
-                const idx  = OPTS.indexOf(cur);
-                ControllerConfig.setAssignment(p, OPTS[(idx + 1) % OPTS.length]);
+                let   idx  = OPTS.indexOf(cur);
+                let   next;
+                // KB2 is only valid if the other player has KB1
+                do {
+                  idx = (idx + 1) % OPTS.length;
+                  next = OPTS[idx];
+                  const otherAssign = ControllerConfig.getAssignment(p === 1 ? 2 : 1);
+                  if (next === -2 && otherAssign !== -1) continue; // skip KB2 if other player doesn't have KB1
+                  break;
+                } while (true);
+                ControllerConfig.setAssignment(p, next);
               }
             }
           }
@@ -10430,12 +10943,12 @@ class Game {
       // ── HELP tab ───────────────────────────────────────────
       if (this._pauseTab === 'help') {
         const maxScroll = Math.max(0, (this.player2 ? 20 : 15) - 7);
-        if (this.input.gpJustDown(0, 'dpad0')) this._pauseHelpScroll = Math.max(0, this._pauseHelpScroll - 1);
-        if (this.input.gpJustDown(0, 'dpad2')) this._pauseHelpScroll = Math.min(maxScroll, this._pauseHelpScroll + 1);
+        if (this.input.p1JustDown('dpad0')) this._pauseHelpScroll = Math.max(0, this._pauseHelpScroll - 1);
+        if (this.input.p1JustDown('dpad2')) this._pauseHelpScroll = Math.min(maxScroll, this._pauseHelpScroll + 1);
         if (this.input.scrollDelta !== 0)
           this._pauseHelpScroll = Math.max(0, Math.min(maxScroll, this._pauseHelpScroll + this.input.scrollDelta));
         const inPanel = mx >= px && mx <= px + pw && my >= py + tabH && my <= py + ph;
-        if ((clicked && inPanel) || this.input.gpJustDown(0, 'jump')) {
+        if ((clicked && inPanel) || this.input.p1JustDown('jump')) {
           this.state = 'playing'; this._tutorialOpen = true; this._tutorialScrollY = 0; this._pauseTab = 'pause';
         }
       }
@@ -10443,7 +10956,7 @@ class Game {
     } else if (this.state === 'confirmExit') {
       const { px, py, pw, confirmBtn, cancelBtn } = this._confirmLayout();
       // Gamepad: B button → cancel
-      if (this.input.gpJustDown(0, 'crouch')) { this.state = 'paused'; return; }
+      if (this.input.p1JustDown('crouch')) { this.state = 'paused'; return; }
       if (!clicked) return;
       // X button → back to pause
       if (mx >= px + pw - 28 && mx <= px + pw - 8 && my >= py + 8 && my <= py + 28) {
@@ -10517,7 +11030,7 @@ class Game {
       const TABS       = ['pause', 'settings', 'help'];
       const TAB_LABELS = ['⏸ PAUSE', '⚙ SETTINGS', '? HELP'];
       const tabW       = Math.floor(pw / 3);
-      const gpConn     = this.input.gamepads[0].connected;
+      const gpConn     = this.input.p1GpSlot >= 0 && this.input.gamepads[this.input.p1GpSlot]?.connected;
 
       // Panel background
       ctx.fillStyle = '#13131f';
@@ -10693,10 +11206,10 @@ class Game {
           ['Pause',       'Esc / Start button'],
           ...(is2P ? [
             ['─── P2 ───', '──────────────────────────'],
-            ['P2 Move',    this.input.p2KeyMode === 'arrows' ? 'Arrows' : 'IJKL'],
-            ['P2 Jump',    this.input.p2KeyMode === 'arrows' ? 'Up Arrow' : 'I'],
-            ['P2 Attack',  this.input.p2KeyMode === 'arrows' ? 'Insert' : 'U'],
-            ['P2 Bow aim', this.input.p2KeyMode === 'arrows' ? 'Hold Ins → aim Up/Dn → release' : 'Hold U → aim I/K → release'],
+            ['P2 Move',    this.input.p2GpSlot >= 0 ? 'L-Stick' : (this.input.p2GpSlot === -2 ? 'Arrows' : 'WASD')],
+            ['P2 Jump',    this.input.p2GpSlot >= 0 ? '[A]'     : (this.input.p2GpSlot === -2 ? 'Up' : 'W')],
+            ['P2 Attack',  this.input.p2GpSlot >= 0 ? '[X]'     : (this.input.p2GpSlot === -2 ? 'Insert' : 'Space')],
+            ['P2 Bow aim', this.input.p2GpSlot >= 0 ? 'Hold [X] → release' : (this.input.p2GpSlot === -2 ? 'Hold Ins → aim Up/Dn → release' : 'Hold Space → aim W/S → release')],
           ] : []),
         ];
         const visible  = 7;
@@ -10746,6 +11259,13 @@ class Game {
           CANVAS_W / 2, py + ph - 10
         );
       }
+
+      // Version label — bottom-left of panel, left-aligned (doesn't clash with centred hint)
+      ctx.fillStyle    = 'rgba(100,110,140,0.5)';
+      ctx.font         = '8px Courier New';
+      ctx.textAlign    = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(GAME_VERSION, px + 8, py + ph - 4);
 
     } else if (this.state === 'confirmExit') {
       const { px, py, pw, ph, confirmBtn, cancelBtn } = this._confirmLayout();
@@ -11259,13 +11779,15 @@ class Game {
       cave_spider: 'CaveSpider', piglin: 'Piglin', blaze: 'Blaze',
       wither_skeleton: 'WitherSkeleton', enderman: 'Enderman',
     };
-    if (Array.isArray(data.spawnEggs)) {
-      const eggSpawns = data.spawnEggs
-        .filter(e => e && typeof e.col === 'number' && typeof e.row === 'number' && EGG_TO_MOB[e.mobType])
-        .map(e => ({ col: e.col, row: e.row, mobTypeName: EGG_TO_MOB[e.mobType], timer: 0, active: true }));
-      // Merge with world's built-in spawn points
-      this.mobManager.setupSpawnPoints([...this.mobManager.spawnPoints, ...eggSpawns]);
-    }
+    // Replace buildWorld() default spawn points with only player-placed eggs.
+    // buildWorld() seeds the mob manager before this load runs; merging would spawn
+    // mobs at hardcoded buildWorld() positions even in custom worlds with no eggs.
+    const eggSpawns = Array.isArray(data.spawnEggs)
+      ? data.spawnEggs
+          .filter(e => e && typeof e.col === 'number' && typeof e.row === 'number' && EGG_TO_MOB[e.mobType])
+          .map(e => ({ col: e.col, row: e.row, mobTypeName: EGG_TO_MOB[e.mobType], timer: 0, active: true }))
+      : [];
+    this.mobManager.setupSpawnPoints(eggSpawns);
 
     // Load portal links for in-game routing (no sandbox manager needed)
     if (Array.isArray(data.portalLinks)) {
@@ -11571,12 +12093,12 @@ class Game {
       cave_spider: 'CaveSpider', piglin: 'Piglin', blaze: 'Blaze',
       wither_skeleton: 'WitherSkeleton', enderman: 'Enderman',
     };
-    if (Array.isArray(data.spawnEggs)) {
-      const eggSpawns = data.spawnEggs
-        .filter(e => e && typeof e.col === 'number' && typeof e.row === 'number' && EGG_TO_MOB[e.mobType])
-        .map(e => ({ col: e.col, row: e.row, mobTypeName: EGG_TO_MOB[e.mobType], timer: 0, active: true }));
-      this.mobManager.setupSpawnPoints([...this.mobManager.spawnPoints, ...eggSpawns]);
-    }
+    const eggSpawnsPf = Array.isArray(data.spawnEggs)
+      ? data.spawnEggs
+          .filter(e => e && typeof e.col === 'number' && typeof e.row === 'number' && EGG_TO_MOB[e.mobType])
+          .map(e => ({ col: e.col, row: e.row, mobTypeName: EGG_TO_MOB[e.mobType], timer: 0, active: true }))
+      : [];
+    this.mobManager.setupSpawnPoints(eggSpawnsPf);
 
     // Placed tool/weapon/block items → collectible pickups
     this._platformerItems = (Array.isArray(data.placedItems) ? data.placedItems : [])
@@ -11856,6 +12378,862 @@ class Game {
 
   _drawPlatformerHUD(_ctx) {
     // Mode badge, level name, and timer moved — see _drawCoords and pause menu.
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // Phase 17 — Speed Runner Mode
+  // ════════════════════════════════════════════════════════════
+
+  _initSpeedRunnerMode(_options) {
+    this._sr = {
+      startMs:         null,   // ms when race timer started (null = pre-race)
+      dead:            false,
+      deathMs:         0,
+      won:             false,
+      finishMs:        0,
+      ghostVisible:    true,
+      ghostData:       null,   // loaded best ghost for playback
+      ghostFrameIdx:   0,
+      ghostRec:        null,   // SpeedRunnerGhost recording current run
+      levelId:         null,
+      distanceTraveled:0,
+      lastX:           0,
+      boosts: {
+        timeBased:     1.0,
+        distBased:     1.0,
+        blockBoost:    1.0,   // reset each frame, set if touching booster
+        item:          1.0,
+        itemExpiresMs: 0,
+        itemStack:     0,
+      },
+      speedItems:      [],     // {col,row,collected,bobPhase}
+      goals:           [],     // {col,row}
+      nameEntry:       null,   // {letters,cursor} during name entry
+      nameEntryMs:     0,
+      leaderboard:     null,
+      showLeaderboard: false,
+      _kKeyWas:        false,
+      spawnX:          0,
+      spawnY:          0,
+      particles:       [],     // sparkle/firework particles
+      srZoom:          1.0,    // current camera zoom (lerps 1.0→0.72)
+      srLookAhead:     0,      // world-px look-ahead offset on camera.x
+      momentum: { running: false, runStartMs: 0, runDist: 0, lastVxSign: 0 },
+    };
+  }
+
+  _loadSpeedRunnerWorld(keyOrData) {
+    const raw  = typeof keyOrData === 'string' ? SandboxSaves.load(keyOrData) : keyOrData;
+    const data = (typeof SaveMigrations !== 'undefined') ? SaveMigrations.migrateSave(raw) : raw;
+    if (!data) { this._notify('Failed to load SR level!', '#FF4444', 300); return; }
+
+    // Apply grid from save
+    if (Array.isArray(data.grid)) {
+      for (let r = 0; r < data.grid.length; r++) {
+        const row = data.grid[r];
+        if (!Array.isArray(row)) continue;
+        for (let c = 0; c < row.length; c++) this.level.set(r, c, row[c]);
+      }
+    }
+
+    // Load SR world settings (base speed, boost config, etc.)
+    if (data.worldAdvSettings) Object.assign(this._worldAdvSettings, data.worldAdvSettings);
+
+    // Overlay with any SR-specific settings saved without a full world save
+    if (typeof keyOrData === 'string') {
+      try {
+        const quick = JSON.parse(localStorage.getItem('sr_cfg_' + keyOrData) || 'null');
+        if (quick) Object.assign(this._worldAdvSettings, quick);
+      } catch {}
+    }
+
+    // Unique level ID for ghost + leaderboard
+    this._sr.levelId = `${data.playerName || ''}:${data.worldName || ''}`;
+
+    // Scan grid for goals and speed items; extract speed items from grid (drawn dynamically)
+    this._sr.goals      = [];
+    this._sr.speedItems = [];
+    for (let r = 0; r < this.level.height; r++) {
+      for (let c = 0; c < this.level.width; c++) {
+        const b = this.level.grid[r][c];
+        if (b === BLOCK.GOAL) {
+          this._sr.goals.push({ col: c, row: r });
+        } else if (b === BLOCK.SPEED_ITEM) {
+          this._sr.speedItems.push({ col: c, row: r, collected: false, bobPhase: Math.random() * Math.PI * 2 });
+          this.level.set(r, c, BLOCK.AIR); // remove from grid; SR HUD draws these
+        }
+      }
+    }
+
+    // Load best ghost for this level
+    this._sr.ghostData = SpeedRunnerGhost.loadData(this._sr.levelId);
+
+    // Record spawn position
+    this._sr.spawnX = this.player.x;
+    this._sr.spawnY = this.player.y;
+    this._sr.lastX  = this.player.x;
+
+    // Portal links (same format as platformer mode)
+    if (Array.isArray(data.portalLinks)) {
+      this._normalPortals = data.portalLinks.map(p => ({
+        anchorRow: p.anchorRow, anchorCol: p.anchorCol,
+        biome:     p.biome,    label:     p.label,
+        destLabel: p.destLabel ?? null,
+      }));
+    }
+
+    // SR player setup: fast movement, no normal deaths or flight
+    this.player.godMode    = true;  // SR handles its own death; godMode blocks normal damage/death-screen
+    this.player.hyperSpeed = true;  // 3× base movement (applies via player._handleInput)
+
+    // Convert spawn eggs to mob spawners (same as platformer)
+    const EGG_TO_MOB = {
+      zombie:'Zombie', skeleton:'Skeleton', creeper:'Creeper',
+      cave_spider:'CaveSpider', piglin:'Piglin', blaze:'Blaze',
+      wither_skeleton:'WitherSkeleton', enderman:'Enderman',
+    };
+    const eggSpawnsSr = Array.isArray(data.spawnEggs)
+      ? data.spawnEggs
+          .filter(e => e && typeof e.col === 'number' && EGG_TO_MOB[e.mobType])
+          .map(e => ({ col: e.col, row: e.row, mobTypeName: EGG_TO_MOB[e.mobType], timer: 0, active: true }))
+      : [];
+    this.mobManager.setupSpawnPoints(eggSpawnsSr);
+
+    // Register interactive redstone devices so levers/trapdoors work in SR
+    for (let r = 0; r < this.level.height; r++) {
+      for (let c = 0; c < this.level.width; c++) {
+        const b = this.level.grid[r][c];
+        if (b === BLOCK.LEVER && !this.redstone.getAt(c, r)) {
+          this.redstone.addComponent({ type: 'lever', col: c, row: r, on: false, links: [] });
+        } else if (b === BLOCK.TRAPDOOR && !this.redstone.getAt(c, r)) {
+          this.redstone.addComponent({ type: 'trapdoor', col: c, row: r, open: false, links: [] });
+        }
+      }
+    }
+  }
+
+  _srGetEffectiveMultiplier() {
+    const b      = this._sr.boosts;
+    const now    = Date.now();
+    if (now > b.itemExpiresMs && b.item !== 1.0) { b.item = 1.0; b.itemStack = 0; }
+    const maxMult = this._worldAdvSettings.srMaxMultiplier ?? SR_CONFIG.maxMultiplier;
+    return Math.min(b.timeBased * b.distBased * b.blockBoost * b.item, maxMult);
+  }
+
+  _updateSpeedRunner() {
+    if (!this._sr) return;
+    const sr = this._sr;
+
+    // Disable flight even with godMode=true (SR is not a fly-through challenge)
+    if (this.player.flying) this.player.flying = false;
+
+    // Ghost toggle — K key
+    const kNow = this.input.isDown('KeyK');
+    if (kNow && !sr._kKeyWas) {
+      sr.ghostVisible = !sr.ghostVisible;
+      this._notify(sr.ghostVisible ? 'Ghost: ON' : 'Ghost: OFF', '#AAAAFF', 90);
+    }
+    sr._kKeyWas = kNow;
+
+    // Update sparkle particles
+    sr.particles = sr.particles.filter(p => {
+      p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.vx *= 0.96; p.life--;
+      return p.life > 0;
+    });
+
+    // ── Dead / respawn state ──────────────────────────────────
+    if (sr.dead) {
+      const elapsed = Date.now() - sr.deathMs;
+      // Animate explosion parts
+      for (const part of (sr.deathParts || [])) {
+        part.x   += part.vx;
+        part.y   += part.vy;
+        part.vy  += 0.35;   // gravity
+        part.vx  *= 0.98;   // air drag
+        part.rot += part.rotV;
+        if (elapsed > SR_CONFIG.respawnFadeMs)
+          part.alpha = Math.max(0, part.alpha - 0.04);
+      }
+      if (elapsed > SR_CONFIG.respawnFadeMs + SR_CONFIG.respawnWaitMs) {
+        if (this.input.isJustDown('Space') || this.input.p1JustDown('jump') ||
+            this.input.isJustDown('KeyW')) {
+          this._srRespawn();
+        }
+      }
+      sr.srZoom      += (1.0 - sr.srZoom)      * 0.08;
+      sr.srLookAhead += (0   - sr.srLookAhead) * 0.08;
+      return;
+    }
+
+    // ── Victory state ─────────────────────────────────────────
+    if (sr.won) {
+      if (sr.nameEntry) {
+        this._srHandleNameEntry();
+      } else if (sr.showLeaderboard) {
+        if (this.input.isJustDown('Space') || this.input.p1JustDown('jump') ||
+            this.input.mouse.clicked) {
+          sr.showLeaderboard = false;
+          this.destroy();
+          if (this._onReturnToMenu) this._onReturnToMenu('speedrunnerSelect');
+        }
+      }
+      sr.srZoom      += (1.0 - sr.srZoom)      * 0.08;
+      sr.srLookAhead += (0   - sr.srLookAhead) * 0.08;
+      return;
+    }
+
+    // ── Pre-race: player frozen at spawn until jump pressed ──
+    if (!sr.startMs) {
+      if (this.input.isJustDown('Space') || this.input.p1JustDown('jump') ||
+          this.input.isJustDown('KeyW')) {
+        sr.startMs       = Date.now();
+        sr.lastX         = this.player.x;
+        sr.ghostRec      = new SpeedRunnerGhost(sr.levelId);
+        sr.ghostFrameIdx = 0;
+      }
+      // Keep player frozen at spawn (player.update already ran — override it)
+      this.player.x  = sr.spawnX; this.player.y  = sr.spawnY;
+      this.player.vx = 0;         this.player.vy = 0;
+      sr.srZoom      += (1.0 - sr.srZoom)      * 0.08;
+      sr.srLookAhead += (0   - sr.srLookAhead) * 0.08;
+      return;
+    }
+
+    // ── Active race ───────────────────────────────────────────
+
+    const now    = Date.now();
+    const mom    = sr.momentum;
+    const vxSign = Math.sign(this.player.vx);
+    const aws    = this._worldAdvSettings;
+
+    // World-configurable boost params (fall back to SR_CONFIG defaults)
+    const boostPct       = aws.srBoostPct                 ?? SR_CONFIG.timeBoostPct;
+    const timeEnabled    = aws.srTimeBoostEnabled          ?? true;
+    const timeInterval   = aws.srTimeBoostIntervalSec      ?? SR_CONFIG.timeBoostIntervalSec;
+    const distEnabled    = aws.srDistBoostEnabled          ?? true;
+    const distIntervalPx = (aws.srDistBoostIntervalBlocks ?? 5) * BLOCK_SIZE;
+    const baseSpeed      = aws.srBaseSpeed                 ?? 1.0;
+
+    // Distance moved this frame (always track for total race stats)
+    const frameDx = Math.abs(this.player.x - sr.lastX);
+    sr.lastX = this.player.x;
+    sr.distanceTraveled += frameDx;
+
+    // Momentum-based boosts: reset on direction reversal or full stop
+    if (vxSign !== 0 && mom.lastVxSign !== 0 && vxSign !== mom.lastVxSign) {
+      // Direction change: zero velocity so mult doesn't amplify the reversal
+      this.player.vx  = 0;
+      sr.boosts.timeBased = 1.0;
+      sr.boosts.distBased = 1.0;
+      mom.running    = false;
+      mom.runStartMs = 0;
+      mom.runDist    = 0;
+    } else if (Math.abs(this.player.vx) < 0.2) {
+      // Stopped: drop boosts back to 1×
+      if (mom.running) {
+        sr.boosts.timeBased = 1.0;
+        sr.boosts.distBased = 1.0;
+        mom.running    = false;
+        mom.runStartMs = 0;
+        mom.runDist    = 0;
+      }
+    } else {
+      // Continuously running: accumulate momentum
+      if (!mom.running) {
+        mom.running    = true;
+        mom.runStartMs = now;
+        mom.runDist    = 0;
+      }
+      mom.runDist += frameDx;
+      const runSec = (now - mom.runStartMs) / 1000;
+      sr.boosts.timeBased = timeEnabled
+        ? Math.min(1.0 + Math.floor(runSec     / timeInterval)   * boostPct, SR_CONFIG.timeBoostCap)
+        : 1.0;
+      sr.boosts.distBased = distEnabled
+        ? Math.min(1.0 + Math.floor(mom.runDist / distIntervalPx) * boostPct, SR_CONFIG.distBoostCap)
+        : 1.0;
+    }
+    mom.lastVxSign = vxSign;
+
+    // Apply SR speed multiplier only while a direction key is held.
+    // Without this guard, the 0.72 deceleration factor in player.js is dominated by
+    // mult > 1 and the player accelerates on key release instead of slowing down.
+    const mult = this._srGetEffectiveMultiplier() * baseSpeed;
+    const activeInput = this.input.isLeft() || this.input.isRight();
+    if (activeInput && Math.abs(this.player.vx) > 0.1) this.player.vx *= mult;
+
+    // Reset block boost (re-set below if in contact)
+    sr.boosts.blockBoost = 1.0;
+
+    // Camera zoom — linearly interpolate 1.0→0.72 as speed goes 1.0×→cap
+    const maxMult = (aws.srMaxMultiplier ?? SR_CONFIG.maxMultiplier) * baseSpeed;
+    const pct = Math.max(0, Math.min(1, (mult - 1.0) / Math.max(1, maxMult - 1.0)));
+    sr.srZoom      += (1.0 - pct * 0.28 - sr.srZoom)      * 0.08;
+    // Camera look-ahead — at max speed (pct=1, srZoom≈0.72) position the player
+    // ~10% from the trailing screen edge: (0.40×CANVAS_W)/0.72 − PLAYER_W/2 ≈ 434 world-px.
+    const SR_LA_MAX = (0.40 * CANVAS_W) / 0.72 - PLAYER_W / 2; // ≈ 434
+    const laTarget  = Math.sign(this.player.vx) * pct * SR_LA_MAX;
+    sr.srLookAhead += (laTarget - sr.srLookAhead) * 0.08;
+
+    this._srCheckBoosterBlocks();
+    this._srCheckJumpPads();
+    this._srCheckSpeedItems();
+    this._srCheckGoals();
+    this._srCheckMobCollision();
+    this._srCheckProjectiles();
+
+    // Lava instant death
+    const pMidRow = Math.floor(this.player.cy / BLOCK_SIZE);
+    const pMidCol = Math.floor(this.player.cx / BLOCK_SIZE);
+    if (this.level.get(pMidRow, pMidCol) === BLOCK.LAVA) {
+      this._srTriggerDeath(); return;
+    }
+
+    // Void death
+    if (this.player.y + this.player.height > this.level.pixelHeight) {
+      this._srTriggerDeath(); return;
+    }
+
+    // Record ghost frame
+    if (sr.ghostRec) sr.ghostRec.record(this.player);
+
+    // Advance ghost playback
+    if (sr.ghostData && sr.ghostVisible && sr.ghostData.frames.length > 0) {
+      const t = Date.now() - sr.startMs;
+      while (sr.ghostFrameIdx < sr.ghostData.frames.length - 1 &&
+             sr.ghostData.frames[sr.ghostFrameIdx + 1].t <= t) {
+        sr.ghostFrameIdx++;
+      }
+    }
+  }
+
+  _srCheckBoosterBlocks() {
+    const p = this.player;
+    const bL = Math.floor(p.x / BLOCK_SIZE);
+    const bR = Math.floor((p.x + p.width  - 1) / BLOCK_SIZE);
+    const bT = Math.floor(p.y / BLOCK_SIZE);
+    const bB = Math.floor((p.y + p.height - 1) / BLOCK_SIZE);
+    for (let r = bT; r <= bB; r++) {
+      for (let c = bL; c <= bR; c++) {
+        if (this.level.get(r, c) === BLOCK.SPEED_BOOSTER) {
+          this._sr.boosts.blockBoost = 1.0 + SR_CONFIG.boosterBlockBoost;
+          return;
+        }
+      }
+    }
+  }
+
+  _srCheckJumpPads() {
+    if (!this.player.onGround) return;
+    const p     = this.player;
+    const bL    = Math.floor(p.x / BLOCK_SIZE);
+    const bR    = Math.floor((p.x + p.width - 1) / BLOCK_SIZE);
+    const bFeet = Math.floor((p.y + p.height) / BLOCK_SIZE);
+    for (let c = bL; c <= bR; c++) {
+      if (this.level.get(bFeet, c) === BLOCK.JUMP_PAD) {
+        this.player.vy        = this._worldAdvSettings.jumpPadVForce ?? SR_CONFIG.jumpPadVY;
+        this.player.onGround  = false;
+        this._playSound('sounds/jump.mp3', 0.9);
+        this._srAddParticles(c * BLOCK_SIZE + BLOCK_SIZE / 2, bFeet * BLOCK_SIZE, '#90EE90', 8);
+        return;
+      }
+    }
+  }
+
+  _srCheckSpeedItems() {
+    const px = this.player.cx, py = this.player.cy;
+    for (const item of this._sr.speedItems) {
+      if (item.collected) continue;
+      const ix = (item.col + 0.5) * BLOCK_SIZE;
+      const iy = (item.row + 0.5) * BLOCK_SIZE;
+      if (Math.hypot(px - ix, py - iy) >= BLOCK_SIZE * 1.2) continue;
+      item.collected = true;
+      const now    = Date.now();
+      const boosts = this._sr.boosts;
+      if (boosts.itemExpiresMs <= now) {
+        boosts.itemStack     = 1;
+        boosts.itemExpiresMs = now + SR_CONFIG.itemDurationMs;
+      } else {
+        boosts.itemStack     = Math.min(boosts.itemStack + 1, SR_CONFIG.itemStackMax);
+        boosts.itemExpiresMs += SR_CONFIG.itemExtensionMs;
+      }
+      boosts.item = 1.0 + SR_CONFIG.itemBoost * boosts.itemStack;
+      this._playSound('sounds/item-collected.mp3', 0.8);
+      this._srAddParticles(ix, iy, '#FFD700', 10);
+    }
+  }
+
+  _srCheckGoals() {
+    const p = this.player;
+    for (const g of this._sr.goals) {
+      const gx = g.col * BLOCK_SIZE, gy = g.row * BLOCK_SIZE;
+      if (p.x + p.width > gx && p.x < gx + BLOCK_SIZE &&
+          p.y + p.height > gy && p.y < gy + BLOCK_SIZE) {
+        this._srTriggerWin(); return;
+      }
+    }
+  }
+
+  _srCheckMobCollision() {
+    const p = this.player;
+    for (const mob of this.mobManager.mobs) {
+      if (!mob.alive || mob.hp <= 0) continue;
+      if (mob._touchesPlayer(p)) {
+        this._srTriggerDeath(); return;
+      }
+    }
+  }
+
+  _srCheckProjectiles() {
+    const p = this.player;
+    // Mob arrows (godMode blocks Arrow.update's takeDamage, so we check positions here)
+    for (const arr of this.mobManager.arrows) {
+      if (!arr.alive || arr.isPlayerArrow) continue;
+      if (arr.x > p.x && arr.x < p.x + p.width &&
+          arr.y > p.y && arr.y < p.y + p.height) {
+        arr.alive = false;
+        this._srTriggerDeath(); return;
+      }
+    }
+    // Blaze shots
+    if (this.mobManager.blazeShots) {
+      for (const bs of this.mobManager.blazeShots) {
+        if (!bs.alive || bs.deflected) continue;
+        if (bs.x > p.x && bs.x < p.x + p.width &&
+            bs.y > p.y && bs.y < p.y + p.height) {
+          bs.alive = false;
+          this._srTriggerDeath(); return;
+        }
+      }
+    }
+    // Wither skulls
+    if (this._wither) {
+      for (const sk of (this._wither.skulls || [])) {
+        if (sk.dead) continue;
+        if (sk.x > p.x && sk.x < p.x + p.width &&
+            sk.y > p.y && sk.y < p.y + p.height) {
+          sk.dead = true;
+          this._srTriggerDeath(); return;
+        }
+      }
+    }
+  }
+
+  _srTriggerDeath() {
+    if (this._sr.dead || this._sr.won) return;
+    this._sr.dead     = true;
+    this._sr.deathMs  = Date.now();
+    this._sr.ghostRec = null;
+    this._playSound('sounds/player-death.mp3');
+    this._srAddParticles(this.player.cx, this.player.cy, '#FF4444', 20);
+
+    // Build explosion — each body part is a rectangle with world-space position + physics
+    const px = this.player.x, py = this.player.y;
+    const partDefs = [
+      { cx: px+10, cy: py+ 8, w:16, h:16, color:'#F4C78A' }, // head skin
+      { cx: px+10, cy: py+ 2, w:16, h: 6, color:'#7D4E1A' }, // hair
+      { cx: px+10, cy: py+26, w:12, h:16, color:'#4A8FD4' }, // torso
+      { cx: px+10, cy: py+32, w:12, h: 4, color:'#2C5F8A' }, // belt
+      { cx: px+ 5, cy: py+24, w: 6, h:16, color:'#4A8FD4' }, // left arm
+      { cx: px+17, cy: py+24, w: 6, h:16, color:'#4A8FD4' }, // right arm
+      { cx: px+ 6, cy: py+41, w: 8, h:14, color:'#2C5F8A' }, // left leg
+      { cx: px+14, cy: py+41, w: 8, h:14, color:'#2C5F8A' }, // right leg
+      { cx: px+ 6, cy: py+50, w: 8, h: 4, color:'#3D1C02' }, // left shoe
+      { cx: px+14, cy: py+50, w: 8, h: 4, color:'#3D1C02' }, // right shoe
+    ];
+    this._sr.deathParts = partDefs.map(d => {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 2.5 + Math.random() * 5;
+      return {
+        x: d.cx, y: d.cy,
+        vx:   Math.cos(angle) * speed,
+        vy:   Math.sin(angle) * speed - 5, // bias upward
+        rot:  (Math.random() - 0.5) * 0.4,
+        rotV: (Math.random() - 0.5) * 0.22,
+        w: d.w, h: d.h,
+        color: d.color,
+        alpha: 1.0,
+      };
+    });
+  }
+
+  _srTriggerWin() {
+    if (this._sr.won) return;
+    const elapsed      = Date.now() - this._sr.startMs;
+    this._sr.won       = true;
+    this._sr.finishMs  = elapsed;
+    this._playSound('sounds/win.mp3');
+
+    // Burst fireworks from player position
+    for (let i = 0; i < 50; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 3 + Math.random() * 9;
+      this._sr.particles.push({
+        x: this.player.cx, y: this.player.cy,
+        vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 5,
+        life: 45 + Math.random() * 50,
+        color: ['#FF6B6B','#FFD700','#4ECDC4','#FFA07A','#FFFFFF'][i % 5],
+      });
+    }
+
+    // Save ghost if it's a new best
+    if (this._sr.ghostRec) {
+      this._sr.ghostRec.finish(elapsed);
+      const gData = this._sr.ghostRec.toSaveData(
+        this._sbPlayerName || 'Player', PLAYER_COLORS[0]
+      );
+      SpeedRunnerGhost.saveIfBest(gData, this._sr.levelId);
+      this._sr.ghostData = SpeedRunnerGhost.loadData(this._sr.levelId);
+    }
+
+    // Show name entry or leaderboard
+    if (SpeedRunnerLeaderboard.qualifies(this._sr.levelId, elapsed)) {
+      this._sr.nameEntry   = { letters: ['A','A','A',''], cursor: 0 };
+      this._sr.nameEntryMs = elapsed;
+    } else {
+      this._sr.leaderboard    = SpeedRunnerLeaderboard.get(this._sr.levelId);
+      this._sr.showLeaderboard = true;
+    }
+  }
+
+  _srHandleNameEntry() {
+    const ne = this._sr.nameEntry;
+    if (!ne) return;
+    if (this.input.isJustDown('ArrowLeft')  && ne.cursor > 0) ne.cursor--;
+    if (this.input.isJustDown('ArrowRight') && ne.cursor < 3) ne.cursor++;
+    if (this.input.isJustDown('ArrowUp')) {
+      if (ne.cursor === 3 && ne.letters[3] === '') {
+        ne.letters[3] = 'A';                // blank 4th → add 'A'
+      } else {
+        const c = ne.letters[ne.cursor].charCodeAt(0);
+        ne.letters[ne.cursor] = String.fromCharCode(c === 90 ? 65 : c + 1);
+      }
+    }
+    if (this.input.isJustDown('ArrowDown')) {
+      if (ne.cursor === 3 && ne.letters[3] === 'A') {
+        ne.letters[3] = '';                  // 'A' → remove optional 4th
+      } else if (ne.cursor !== 3 || ne.letters[3] !== '') {
+        const c = ne.letters[ne.cursor].charCodeAt(0);
+        ne.letters[ne.cursor] = String.fromCharCode(c === 65 ? 90 : c - 1);
+      }
+    }
+    if (this.input.isJustDown('Enter') || this.input.isJustDown('Space') ||
+        this.input.p1JustDown('jump')) {
+      const name = ne.letters.filter(l => l !== '').join('');
+      this._sr.leaderboard    = SpeedRunnerLeaderboard.add(this._sr.levelId, name, this._sr.nameEntryMs);
+      this._sr.nameEntry      = null;
+      this._sr.showLeaderboard = true;
+    }
+  }
+
+  _srRespawn() {
+    const sr = this._sr;
+    this.player.x  = sr.spawnX;
+    this.player.y  = sr.spawnY;
+    this.player.vx = 0;
+    this.player.vy = 0;
+    this.player.hp = this.player.maxHp;
+    sr.boosts = { timeBased:1.0, distBased:1.0, blockBoost:1.0, item:1.0, itemExpiresMs:0, itemStack:0 };
+    sr.momentum = { running: false, runStartMs: 0, runDist: 0, lastVxSign: 0 };
+    sr.distanceTraveled = 0;
+    sr.lastX  = sr.spawnX;
+    for (const item of sr.speedItems) item.collected = false;
+    sr.ghostRec      = null;
+    sr.deathParts    = null;
+    sr.dead          = false;
+    sr.startMs       = null;  // player must press jump again to start race
+    sr.ghostFrameIdx = 0;
+  }
+
+  _srFollowCamera() {
+    const sr = this._sr;
+    // Hard-snap X so the player stays centred regardless of speed.
+    // camera.follow() uses a 12 % lerp that falls behind at 150 %+ and lets the player run off-screen.
+    const lookAhead = sr?.srLookAhead ?? 0;
+    const targetX   = this.player.x + PLAYER_W / 2 - CANVAS_W / 2 + lookAhead;
+    this.camera.x   = Math.max(0, Math.min(this.camera._levelW - CANVAS_W, targetX));
+    // Y still lerps for smooth vertical tracking
+    const targetY   = this.player.y + this.player.height / 2 - CANVAS_H * 0.55;
+    this.camera.y  += (targetY - this.camera.y) * 0.10;
+    this.camera.y   = Math.max(0, Math.min(this.camera._levelH - CANVAS_H, this.camera.y));
+  }
+
+  _srAddParticles(x, y, color, count = 8) {
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 1 + Math.random() * 4;
+      this._sr.particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 2,
+        life: 20 + Math.random() * 25,
+        color,
+      });
+    }
+  }
+
+  // World-space SR overlays — drawn INSIDE the zoom transform (called from _render before ctx.restore)
+  _drawSRWorldOverlay(ctx) {
+    if (!this._sr) return;
+    const sr = this._sr;
+
+    // ── Death explosion parts ──────────────────────────────────
+    if (sr.dead && sr.deathParts) {
+      for (const part of sr.deathParts) {
+        if (part.alpha <= 0) continue;
+        const sx = Math.floor(part.x - this.camera.x);
+        const sy = Math.floor(part.y - this.camera.y);
+        ctx.save();
+        ctx.globalAlpha = part.alpha;
+        ctx.translate(sx, sy);
+        ctx.rotate(part.rot);
+        ctx.fillStyle = part.color;
+        ctx.fillRect(-part.w / 2, -part.h / 2, part.w, part.h);
+        ctx.restore();
+      }
+    }
+
+    // ── SR sparkle particles ───────────────────────────────────
+    ctx.save();
+    for (const p of sr.particles) {
+      const alpha = Math.min(1, p.life / 40);
+      const sz    = Math.max(1, 5 * alpha);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle   = p.color;
+      ctx.fillRect(p.x - this.camera.x - sz/2, p.y - this.camera.y - sz/2, sz, sz);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    // ── Ghost playback ─────────────────────────────────────────
+    if (sr.ghostData && sr.ghostVisible && sr.startMs && !sr.dead) {
+      const frames = sr.ghostData.frames;
+      if (frames.length > 0) {
+        const f  = frames[Math.min(sr.ghostFrameIdx, frames.length - 1)];
+        const sx = f.x - this.camera.x;
+        const sy = f.y - this.camera.y;
+        ctx.save();
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle   = sr.ghostData.playerColor || '#AAAAFF';
+        ctx.fillRect(sx, sy, PLAYER_W, PLAYER_H);
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle   = '#FFFFFF';
+        ctx.font        = 'bold 8px Courier New';
+        ctx.textAlign   = 'center';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText(sr.ghostData.playerName || 'Ghost', sx + PLAYER_W / 2, sy - 4);
+        ctx.textAlign   = 'left';
+        ctx.textBaseline = 'alphabetic';
+        ctx.restore();
+      }
+    }
+
+    // ── Speed items (floating, bobbing) ───────────────────────
+    const tBob = Date.now() / 500;
+    for (const item of sr.speedItems) {
+      if (item.collected) continue;
+      const sx = item.col * BLOCK_SIZE - this.camera.x;
+      const sy = item.row * BLOCK_SIZE - this.camera.y + Math.sin(tBob + item.bobPhase) * 3;
+      if (sx < -BLOCK_SIZE || sx > CANVAS_W + BLOCK_SIZE) continue;
+      drawBlock(ctx, BLOCK.SPEED_ITEM, Math.floor(sx), Math.floor(sy), 0);
+    }
+  }
+
+  _drawSpeedRunnerHUD(ctx) {
+    if (!this._sr) return;
+    const sr = this._sr;
+
+    // ── Pre-race start screen ──────────────────────────────────
+    if (!sr.startMs && !sr.dead && !sr.won) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      ctx.fillStyle    = '#FF6B6B';
+      ctx.font         = 'bold 38px Courier New';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('SPEED RUNNER', CANVAS_W / 2, CANVAS_H / 2 - 50);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font      = '18px Courier New';
+      ctx.fillText('Press SPACE or Jump to Start', CANVAS_W / 2, CANVAS_H / 2 + 5);
+      ctx.fillStyle = '#888';
+      ctx.font      = '11px Courier New';
+      ctx.fillText('[K] or Select  →  toggle ghost replay', CANVAS_W / 2, CANVAS_H / 2 + 36);
+      ctx.textAlign    = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.restore();
+      return;
+    }
+
+    // ── Dead / respawn overlay ─────────────────────────────────
+    if (sr.dead) {
+      const elapsed = Date.now() - sr.deathMs;
+      const fadeMs  = SR_CONFIG.respawnFadeMs;
+      const waitMs  = SR_CONFIG.respawnWaitMs;
+      ctx.save();
+      ctx.fillStyle = `rgba(0,0,0,${Math.min(0.75, elapsed / fadeMs * 0.75).toFixed(3)})`;
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      if (elapsed > fadeMs) {
+        ctx.fillStyle    = '#FF4444';
+        ctx.font         = 'bold 28px Courier New';
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('YOU DIED', CANVAS_W / 2, CANVAS_H / 2 - 40);
+        ctx.fillStyle = elapsed > fadeMs + waitMs ? '#FFFFFF' : '#FFAA44';
+        ctx.font      = '16px Courier New';
+        ctx.fillText(
+          elapsed > fadeMs + waitMs
+            ? 'Press SPACE to Restart'
+            : `Restarting...`,
+          CANVAS_W / 2, CANVAS_H / 2 + 10
+        );
+        ctx.textAlign    = 'left';
+        ctx.textBaseline = 'alphabetic';
+      }
+      ctx.restore();
+      return;
+    }
+
+    if (!sr.startMs) return;
+
+    // ── Active race HUD ────────────────────────────────────────
+    const elapsed = Date.now() - sr.startMs;
+
+    // Large timer — center top
+    const timeStr = srFormatTime(elapsed);
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(CANVAS_W / 2 - 92, 6, 184, 50);
+    ctx.fillStyle    = '#FFFFFF';
+    ctx.font         = 'bold 36px Courier New';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(timeStr, CANVAS_W / 2, 31);
+    ctx.restore();
+
+    // Speed meter — bottom left
+    const mult   = this._srGetEffectiveMultiplier();
+    const pct    = Math.max(0, Math.min(1, (mult - 1.0) / (SR_CONFIG.maxMultiplier - 1.0)));
+    const meterW = 180, meterH = 14, mX = 10, mY = CANVAS_H - 40;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(mX, mY, meterW, meterH);
+    const grad = ctx.createLinearGradient(mX, 0, mX + meterW, 0);
+    grad.addColorStop(0,   '#FFD700');
+    grad.addColorStop(0.5, '#FF9900');
+    grad.addColorStop(1,   '#FF6B6B');
+    ctx.fillStyle = grad;
+    ctx.fillRect(mX, mY, Math.round(meterW * pct), meterH);
+    ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1;
+    ctx.strokeRect(mX, mY, meterW, meterH);
+    ctx.fillStyle    = '#FFFFFF';
+    ctx.font         = '9px Courier New';
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(`SPD ${Math.round(mult * 100)}%`, mX, mY - 3);
+    ctx.restore();
+
+    // Item boost timer
+    const now = Date.now();
+    if (sr.boosts.itemExpiresMs > now) {
+      const remain = ((sr.boosts.itemExpiresMs - now) / 1000).toFixed(1);
+      ctx.save();
+      ctx.fillStyle    = '#FFD700';
+      ctx.font         = 'bold 12px Courier New';
+      ctx.textAlign    = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(`⚡×${sr.boosts.itemStack}  ${remain}s`, 10, CANVAS_H - 50);
+      ctx.restore();
+    }
+
+    // Ghost indicator (bottom right)
+    if (sr.ghostData) {
+      ctx.save();
+      ctx.fillStyle    = sr.ghostVisible ? 'rgba(170,170,255,0.85)' : 'rgba(80,80,120,0.65)';
+      ctx.font         = '9px Courier New';
+      ctx.textAlign    = 'right';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(
+        `[K] Ghost:${sr.ghostVisible ? 'ON' : 'OFF'}  Best:${srFormatTime(sr.ghostData.finishMs)}`,
+        CANVAS_W - 10, CANVAS_H - 10
+      );
+      ctx.restore();
+    }
+
+    // ── Victory overlay ────────────────────────────────────────
+    if (sr.won) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+      ctx.fillStyle    = '#FFD700';
+      ctx.font         = 'bold 44px Courier New';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('FINISH!', CANVAS_W / 2, CANVAS_H / 2 - 90);
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font      = 'bold 28px Courier New';
+      ctx.fillText(srFormatTime(sr.finishMs), CANVAS_W / 2, CANVAS_H / 2 - 44);
+
+      if (sr.nameEntry) {
+        const ne = sr.nameEntry;
+        ctx.fillStyle = '#FFDD44';
+        ctx.font      = 'bold 15px Courier New';
+        ctx.fillText('NEW HIGH SCORE! Enter your name:', CANVAS_W / 2, CANVAS_H / 2 + 4);
+        // 4 letter boxes, 4th is optional (may be empty)
+        const lx = CANVAS_W / 2 - 57;
+        for (let i = 0; i < 4; i++) {
+          const bx = lx + i * 38, by = CANVAS_H / 2 + 26;
+          const isEmpty = i === 3 && ne.letters[3] === '';
+          const isActive = i === ne.cursor;
+          ctx.fillStyle = isActive ? 'rgba(255,215,0,0.35)' : (isEmpty ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.12)');
+          ctx.fillRect(bx - 13, by - 22, 26, 30);
+          ctx.strokeStyle = isActive ? '#FFD700' : (isEmpty ? '#444' : '#666');
+          ctx.lineWidth   = isActive ? 2 : 1;
+          ctx.strokeRect(bx - 13, by - 22, 26, 30);
+          ctx.font         = 'bold 22px Courier New';
+          ctx.textBaseline = 'alphabetic';
+          if (isEmpty) {
+            // Show dashed placeholder for optional slot
+            ctx.fillStyle = isActive ? '#FFD700' : '#555';
+            ctx.font      = 'bold 18px Courier New';
+            ctx.fillText(isActive ? '_' : '·', bx, by);
+          } else {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillText(ne.letters[i], bx, by);
+          }
+          ctx.textBaseline = 'middle';
+          // "optional" label under 4th box
+          if (i === 3) {
+            ctx.font = '8px Courier New'; ctx.fillStyle = '#666';
+            ctx.fillText('opt', bx, by + 16);
+          }
+        }
+        ctx.fillStyle = '#999';
+        ctx.font      = '10px Courier New';
+        ctx.fillText('← → move  ↑ ↓ change letter  SPACE/Enter to confirm', CANVAS_W / 2, CANVAS_H / 2 + 82);
+
+      } else if (sr.showLeaderboard && sr.leaderboard) {
+        ctx.fillStyle = '#FFD700';
+        ctx.font      = 'bold 16px Courier New';
+        ctx.fillText('TOP TIMES', CANVAS_W / 2, CANVAS_H / 2 + 12);
+        ctx.font = '13px Courier New';
+        const lb = sr.leaderboard;
+        for (let i = 0; i < lb.length; i++) {
+          ctx.fillStyle = '#DDDDDD';
+          ctx.fillText(`#${i+1}  ${lb[i].name}  ${srFormatTime(lb[i].ms)}`,
+                       CANVAS_W / 2, CANVAS_H / 2 + 34 + i * 20);
+        }
+        ctx.fillStyle = '#777';
+        ctx.font      = '11px Courier New';
+        ctx.fillText('SPACE to continue', CANVAS_W / 2, CANVAS_H / 2 + 140);
+      }
+
+      ctx.textAlign    = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.restore();
+    }
   }
 
   _drawGameOver_UNUSED(ctx) {
@@ -12227,7 +13605,7 @@ class Game {
     const mx = this.input.mouse.x, my = this.input.mouse.y;
     const L  = this._mpLayout();
 
-    if (this.input.isJustDown('Escape')) { this._musicPlayerUI = null; return; }
+    if (this.input.isJustDown('Escape') || this.input.p1JustDown('crouch')) { this._musicPlayerUI = null; return; }
 
     // Determine which keys to show
     const allKeys = ui.mode === 'config'

@@ -103,10 +103,19 @@ class Level {
   // ── Rendering ──────────────────────────────────────────────
 
   draw(ctx, camera, redstone = null) {
-    const startCol = Math.max(0,             Math.floor(camera.x / BLOCK_SIZE) - 1);
-    const endCol   = Math.min(this.width-1,  Math.ceil((camera.x + CANVAS_W) / BLOCK_SIZE) + 1);
-    const startRow = Math.max(0,             Math.floor(camera.y / BLOCK_SIZE) - 1);
-    const endRow   = Math.min(this.height-1, Math.ceil((camera.y + CANVAS_H) / BLOCK_SIZE) + 1);
+    // SR zoom scales around canvas centre, so the visible world region is
+    // centred on (camera.x + CANVAS_W/2, camera.y + CANVAS_H/2) and expands
+    // symmetrically by 1/z in both directions.  The old formula only expanded
+    // the right/bottom edge, leaving left/top blocks unrendered at high speed.
+    const invZoom   = 1 / (camera._srZoom || 1.0);
+    const leftEdge  = camera.x + CANVAS_W / 2 * (1 - invZoom);
+    const rightEdge = camera.x + CANVAS_W / 2 * (1 + invZoom);
+    const topEdge   = camera.y + CANVAS_H / 2 * (1 - invZoom);
+    const botEdge   = camera.y + CANVAS_H / 2 * (1 + invZoom);
+    const startCol  = Math.max(0,             Math.floor(leftEdge  / BLOCK_SIZE) - 1);
+    const endCol    = Math.min(this.width-1,  Math.ceil( rightEdge / BLOCK_SIZE) + 1);
+    const startRow  = Math.max(0,             Math.floor(topEdge   / BLOCK_SIZE) - 1);
+    const endRow    = Math.min(this.height-1, Math.ceil( botEdge   / BLOCK_SIZE) + 1);
 
     for (let r = startRow; r <= endRow; r++) {
       for (let c = startCol; c <= endCol; c++) {

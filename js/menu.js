@@ -10,17 +10,23 @@ class MenuSystem {
 
     // States: 'main' | 'normalSelect' | 'sandboxSetup' | 'sandboxNew'
     //         | 'sandboxLoad' | 'sandboxTemplate' | 'platformerSelect'
+    //         | 'speedrunnerSelect'
     this.state    = 'main';
     this._tick    = 0;
     this._frame   = null;
     this._running = false;
-    this._mx      = 0;
-    this._my      = 0;
+    this._mx      = CANVAS_W / 2;
+    this._my      = CANVAS_H / 2;
 
     // Sandbox new-world text input
     this._sbFields   = ['', ''];  // [playerName, worldName]
     this._sbActive   = 0;
     this._kbListener = null;
+
+    // Sandbox new-world dimension config (Phase 17-D)
+    this._sbTemplate = 'empty';  // 'empty' | 'normal' | 'platformer' | 'speedrunner'
+    this._sbWidth    = 650;
+    this._sbHeight   = 60;
 
     // Load / delete state (sandbox)
     this._loadWorlds      = [];   // refreshed each time sandboxLoad is entered
@@ -33,6 +39,10 @@ class MenuSystem {
     // Platformer level select state
     this._platformerWorlds   = [];
     this._platformerPreviews = {};
+
+    // Speed Runner level select state
+    this._srWorlds   = [];
+    this._srPreviews = {};
 
     // Template worlds (fetched once from /templates/*.json; null = not loaded yet)
     this._templates = { normal: undefined, platformer: undefined, sandbox: undefined };
@@ -112,11 +122,46 @@ class MenuSystem {
   _loop() {
     if (!this._running) return;
     this._tick++;
+    this.input.updateGamepad();
+    this._applyControllerInput();
     this._handleClicks();
     if (!this._running) return;   // bail if a click triggered _stop()
     this._draw();
     this.input.flush();
     this._frame = requestAnimationFrame(() => this._loop());
+  }
+
+  _applyControllerInput() {
+    const gp = this.input.gamepads[0];
+    if (!gp?.connected) return;
+
+    // Left stick (or right stick) moves the menu cursor
+    const sens = 7;
+    const dx = Math.max(-1, Math.min(1, gp.moveX + gp.aimX)) * sens;
+    const dy = Math.max(-1, Math.min(1, gp.moveY + gp.aimY)) * sens;
+    this._mx = Math.max(0, Math.min(CANVAS_W, this._mx + dx));
+    this._my = Math.max(0, Math.min(CANVAS_H, this._my + dy));
+
+    // A button → simulate click at current cursor position
+    if (this.input.gpJustDown(0, 'jump')) {
+      this.input.mouse.clicked = true;
+      this.input.mouse.x = this._mx;
+      this.input.mouse.y = this._my;
+    }
+
+    // B button → navigate back
+    if (this.input.gpJustDown(0, 'crouch')) {
+      const backMap = {
+        normalSelect:      'main',
+        platformerSelect:  'main',
+        speedrunnerSelect: 'main',
+        sandboxSetup:      'main',
+        sandboxNew:        'sandboxSetup',
+        sandboxLoad:       'sandboxSetup',
+        sandboxTemplate:   'sandboxSetup',
+      };
+      if (backMap[this.state]) this._setState(backMap[this.state]);
+    }
   }
 
   // ── State transitions ─────────────────────────────────────────
@@ -126,8 +171,11 @@ class MenuSystem {
     this.state = next;
 
     if (next === 'sandboxNew' || next === 'sandboxTemplate') {
-      this._sbFields = ['', ''];
-      this._sbActive = 0;
+      this._sbFields   = ['', ''];
+      this._sbActive   = 0;
+      this._sbTemplate = 'empty';
+      this._sbWidth    = 650;
+      this._sbHeight   = 60;
       this._addKeyListener();
     }
 
@@ -153,6 +201,15 @@ class MenuSystem {
       for (const w of this._platformerWorlds) {
         const data = SandboxSaves.load(w.key);
         if (data?.grid) this._platformerPreviews[w.key] = this._buildMiniPreview(data.grid);
+      }
+    }
+
+    if (next === 'speedrunnerSelect') {
+      this._srWorlds   = SandboxSaves.list();
+      this._srPreviews = {};
+      for (const w of this._srWorlds) {
+        const data = SandboxSaves.load(w.key);
+        if (data?.grid) this._srPreviews[w.key] = this._buildMiniPreview(data.grid);
       }
     }
 
@@ -233,7 +290,8 @@ class MenuSystem {
     this._stop();
     this._removeKeyListener();
     window.game = new Game('sandbox',
-      { playerName: name, worldName: world, templateData: this._templates.sandbox || null },
+      { playerName: name, worldName: world,
+        worldWidth:  this._sbWidth, worldHeight: this._sbHeight },
       () => this._returnFromGame()
     );
   }
@@ -271,28 +329,30 @@ class MenuSystem {
 
   _handleClicks() {
     if (!this.input.mouse.clicked) return;
-    // Mute button — always active regardless of screen
-    if (this._hit(10, 10, 58, 26)) { this._toggleMute(); return; }
+    // Mute button — always active regardless of screen (top-right)
+    if (this._hit(CANVAS_W - 68, 10, 58, 26)) { this._toggleMute(); return; }
     switch (this.state) {
       case 'main':             this._clickMain();             break;
       case 'normalSelect':     this._clickNormalSelect();     break;
       case 'sandboxSetup':     this._clickSandboxSetup();     break;
       case 'sandboxNew':       this._clickSandboxNew();       break;
       case 'sandboxLoad':      this._clickSandboxLoad();      break;
-      case 'sandboxTemplate':  this._clickSandboxTemplate();  break;
-      case 'platformerSelect': this._clickPlatformerSelect(); break;
+      case 'sandboxTemplate':   this._clickSandboxTemplate();   break;
+      case 'platformerSelect':  this._clickPlatformerSelect();  break;
+      case 'speedrunnerSelect': this._clickSpeedRunnerSelect(); break;
     }
   }
 
   // Main menu
   _mainButtons() {
-    const bw = 268, bh = 54, cx = CANVAS_W / 2, gap = 10;
-    const startY = 188;
+    const bw = 260, bh = 48, cx = CANVAS_W / 2, gap = 8;
+    const startY = 175;
     return [
       { label: 'Normal Mode',     sub: 'Adventure through a handcrafted world',   color: '#4CAF50', x: cx - bw/2, y: startY,              w: bw, h: bh },
-      { label: 'Sandbox Mode',    sub: 'Build and explore freely',                color: '#FF9800', x: cx - bw/2, y: startY + bh + gap,    w: bw, h: bh },
+      { label: 'Sandbox Mode',    sub: 'Build and explore freely',                color: '#FF9800', x: cx - bw/2, y: startY + (bh+gap),    w: bw, h: bh },
       { label: 'Platformer Mode', sub: 'Race through handcrafted challenge maps', color: '#2196F3', x: cx - bw/2, y: startY + (bh+gap)*2,  w: bw, h: bh },
-      { label: 'Play Online',     sub: '4-player co-op • real-time sync',         color: '#9C27B0', x: cx - bw/2, y: startY + (bh+gap)*3,  w: bw, h: bh },
+      { label: 'Speed Runner',    sub: 'Beat the clock • ghost replays • leaderboards', color: '#FF5722', x: cx - bw/2, y: startY + (bh+gap)*3,  w: bw, h: bh },
+      { label: 'Play Online',     sub: '4-player co-op • real-time sync',         color: '#9C27B0', x: cx - bw/2, y: startY + (bh+gap)*4,  w: bw, h: bh },
     ];
   }
 
@@ -301,7 +361,8 @@ class MenuSystem {
     if      (this._hit(btns[0].x, btns[0].y, btns[0].w, btns[0].h)) this._setState('normalSelect');
     else if (this._hit(btns[1].x, btns[1].y, btns[1].w, btns[1].h)) this._setState('sandboxSetup');
     else if (this._hit(btns[2].x, btns[2].y, btns[2].w, btns[2].h)) this._setState('platformerSelect');
-    else if (this._hit(btns[3].x, btns[3].y, btns[3].w, btns[3].h)) {
+    else if (this._hit(btns[3].x, btns[3].y, btns[3].w, btns[3].h)) this._setState('speedrunnerSelect');
+    else if (this._hit(btns[4].x, btns[4].y, btns[4].w, btns[4].h)) {
       if (typeof OnlineUI === 'undefined') {
         alert('Multiplayer requires a server. Run: node server-multiplayer.js');
         return;
@@ -435,13 +496,47 @@ class MenuSystem {
     if (this._hit(CANVAS_W/2 - 80, 360, 160, 44)) this._submitSandboxTemplate();
   }
 
-  // Sandbox new
+  // Sandbox new — template presets (Phase 17-D)
+  _sbSetTemplate(id) {
+    this._sbTemplate = id;
+    const presets = { empty: [650, 60], normal: [650, 80], platformer: [650, 80], speedrunner: [3000, 60] };
+    const [w, h] = presets[id] || [650, 60];
+    this._sbWidth  = w;
+    this._sbHeight = h;
+  }
+
   _clickSandboxNew() {
     if (this._hit(20, 20, 90, 32)) { this._setState('sandboxSetup'); return; }
     const fw = 300, fx = CANVAS_W/2 - fw/2;
-    if (this._hit(fx, 218, fw, 44)) { this._sbActive = 0; return; }
-    if (this._hit(fx, 288, fw, 44)) { this._sbActive = 1; return; }
-    if (this._hit(CANVAS_W/2 - 72, 360, 144, 44)) this._submitSandboxNew();
+    // Text fields
+    if (this._hit(fx, 130, fw, 44)) { this._sbActive = 0; return; }
+    if (this._hit(fx, 194, fw, 44)) { this._sbActive = 1; return; }
+    // Template preset buttons (4 buttons across, same layout as draw code)
+    const TBW = 130, TBH = 36, TBY = 263;
+    const tbXStart = CANVAS_W/2 - (4*TBW + 3*8)/2;
+    const tbIds = ['empty', 'normal', 'platformer', 'speedrunner'];
+    for (let i = 0; i < 4; i++) {
+      const tx = tbXStart + i * (TBW + 8);
+      if (this._hit(tx, TBY, TBW, TBH)) { this._sbSetTemplate(tbIds[i]); return; }
+    }
+    // Width ◄ ► buttons
+    const sY = 320, sBW = 28, sBH = 28, wValX = CANVAS_W/2 - 120;
+    if (this._hit(wValX - 32, sY, sBW, sBH)) {
+      this._sbWidth = Math.max(25, this._sbWidth - 25); this._sbTemplate = 'custom'; return;
+    }
+    if (this._hit(wValX + 80, sY, sBW, sBH)) {
+      this._sbWidth = Math.min(4000, this._sbWidth + 25); this._sbTemplate = 'custom'; return;
+    }
+    // Height ◄ ► buttons
+    const hValX = CANVAS_W/2 + 60;
+    if (this._hit(hValX - 32, sY, sBW, sBH)) {
+      this._sbHeight = Math.max(16, this._sbHeight - 1); this._sbTemplate = 'custom'; return;
+    }
+    if (this._hit(hValX + 56, sY, sBW, sBH)) {
+      this._sbHeight = Math.min(100, this._sbHeight + 1); this._sbTemplate = 'custom'; return;
+    }
+    // Create button
+    if (this._hit(CANVAS_W/2 - 72, 380, 144, 44)) this._submitSandboxNew();
   }
 
   // Sandbox load
@@ -623,10 +718,30 @@ class MenuSystem {
       case 'sandboxSetup':     this._drawSandboxSetup();     break;
       case 'sandboxNew':       this._drawSandboxNew();       break;
       case 'sandboxLoad':      this._drawSandboxLoad();      break;
-      case 'sandboxTemplate':  this._drawSandboxTemplate();  break;
-      case 'platformerSelect': this._drawPlatformerSelect(); break;
+      case 'sandboxTemplate':   this._drawSandboxTemplate();   break;
+      case 'platformerSelect':  this._drawPlatformerSelect();  break;
+      case 'speedrunnerSelect': this._drawSpeedRunnerSelect(); break;
     }
-    this._drawMuteBtn();  // always drawn last so it sits above all screen content
+    this._drawMuteBtn();
+    if (this.input.gamepads[0]?.connected) this._drawControllerCursor();
+  }
+
+  _drawControllerCursor() {
+    const ctx = this.ctx;
+    const mx  = this._mx, my = this._my;
+    const r   = 7;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.88)';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(mx - r, my); ctx.lineTo(mx - 2, my);
+    ctx.moveTo(mx + 2, my); ctx.lineTo(mx + r, my);
+    ctx.moveTo(mx, my - r); ctx.lineTo(mx, my - 2);
+    ctx.moveTo(mx, my + 2); ctx.lineTo(mx, my + r);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.beginPath(); ctx.arc(mx, my, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
   }
 
   _toggleMute() {
@@ -639,7 +754,7 @@ class MenuSystem {
 
   _drawMuteBtn() {
     const ctx   = this.ctx;
-    const x = 10, y = 10, w = 58, h = 26;
+    const w = 58, h = 26, x = CANVAS_W - 10 - w, y = 10;
     const hov   = this._hit(x, y, w, h);
     const muted = this._menuMuted;
     ctx.fillStyle   = hov ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.60)';
@@ -785,10 +900,18 @@ class MenuSystem {
     this._drawLogo();
     for (const btn of this._mainButtons()) this._drawModeBtn(btn);
     const ctx = this.ctx;
-    ctx.fillStyle = 'rgba(80,90,110,0.5)';
-    ctx.font      = '9px Courier New';
-    ctx.textAlign = 'center';
-    ctx.fillText('Phase 5C  •  Press Esc in-game to switch modes', CANVAS_W/2, CANVAS_H - 68);
+    // Version — top-right, just below the mute button (mute is at y=10 h=26)
+    ctx.fillStyle    = 'rgba(160,180,230,0.6)';
+    ctx.font         = 'bold 8px Courier New';
+    ctx.textAlign    = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillText(GAME_VERSION, CANVAS_W - 10, 42);
+    // Hint line
+    ctx.fillStyle    = 'rgba(80,90,110,0.5)';
+    ctx.font         = '9px Courier New';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('Press Esc in-game to switch modes', CANVAS_W / 2, CANVAS_H - 68);
     ctx.textAlign = 'left';
   }
 
@@ -1049,7 +1172,7 @@ class MenuSystem {
     const fw  = 300, fh = 44, fx = CANVAS_W/2 - fw/2;
     const labels = ['Player Name', 'World Name'];
     const hints  = ['Your character name  (max 16 chars)', 'Your world\'s name  (max 24 chars)'];
-    const ys     = [218, 288];
+    const ys     = [130, 194];
 
     for (let i = 0; i < 2; i++) {
       const y      = ys[i];
@@ -1072,21 +1195,99 @@ class MenuSystem {
       ctx.textBaseline = 'alphabetic';
     }
 
-    ctx.fillStyle = 'rgba(100,100,120,0.55)';
-    ctx.font      = '9px Courier New';
-    ctx.textAlign = 'center';
-    ctx.fillText('[Tab] switch fields  •  [Enter] create  •  [Esc] cancel', CANVAS_W/2, 346);
+    // ── Template preset buttons ──
+    const TBW = 130, TBH = 36, TBY = 263;
+    const tbXStart = CANVAS_W/2 - (4*TBW + 3*8)/2;
+
+    ctx.font = 'bold 9px Courier New'; ctx.fillStyle = '#7ec8e3';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText('WORLD TEMPLATE', tbXStart, 254);
+
+    const templates = [
+      { id: 'empty',       label: 'Empty',       sub: '650×60',  color: '#607D8B' },
+      { id: 'normal',      label: 'Normal',       sub: '650×80',  color: '#4CAF50' },
+      { id: 'platformer',  label: 'Platformer',   sub: '650×80',  color: '#2196F3' },
+      { id: 'speedrunner', label: 'Speed Run',    sub: '3000×60', color: '#FF5722' },
+    ];
+    for (let i = 0; i < 4; i++) {
+      const t   = templates[i];
+      const tx  = tbXStart + i * (TBW + 8);
+      const sel = this._sbTemplate === t.id;
+      const hov = this._hit(tx, TBY, TBW, TBH);
+      ctx.fillStyle   = sel ? 'rgba(255,255,255,0.12)' : (hov ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.6)');
+      _roundRect(ctx, tx, TBY, TBW, TBH, 5); ctx.fill();
+      ctx.strokeStyle = sel ? t.color : (hov ? '#777' : '#333'); ctx.lineWidth = sel ? 2 : 1;
+      _roundRect(ctx, tx, TBY, TBW, TBH, 5); ctx.stroke();
+      if (sel) { ctx.fillStyle = t.color; _roundRect(ctx, tx, TBY, 4, TBH, 3); ctx.fill(); }
+      ctx.fillStyle = sel ? '#fff' : '#aaa'; ctx.font = 'bold 11px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(t.label, tx + TBW/2, TBY + TBH/2 - 7);
+      ctx.fillStyle = '#555'; ctx.font = '9px Courier New';
+      ctx.fillText(t.sub, tx + TBW/2, TBY + TBH/2 + 8);
+    }
+
+    // ── Size controls ──
+    const sY = 320, sBW = 28, sBH = 28;
+    const wValX = CANVAS_W/2 - 120, hValX = CANVAS_W/2 + 60;
+
+    ctx.font = '9px Courier New'; ctx.fillStyle = '#7ec8e3';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText('WIDTH (blocks)', wValX - 32, sY - 6);
+    ctx.fillText('HEIGHT (blocks)', hValX - 32, sY - 6);
+
+    const drawSizeCtrl = (valX, val) => {
+      // ◄ button
+      const lHov = this._hit(valX - 32, sY, sBW, sBH);
+      ctx.fillStyle   = lHov ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.5)';
+      _roundRect(ctx, valX - 32, sY, sBW, sBH, 4); ctx.fill();
+      ctx.strokeStyle = lHov ? '#999' : '#444'; ctx.lineWidth = 1;
+      _roundRect(ctx, valX - 32, sY, sBW, sBH, 4); ctx.stroke();
+      ctx.fillStyle = '#ccc'; ctx.font = 'bold 13px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('◄', valX - 32 + sBW/2, sY + sBH/2);
+      // Value display
+      ctx.fillStyle = '#eee'; ctx.font = 'bold 13px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(val), valX + 40, sY + sBH/2);
+    };
+
+    drawSizeCtrl(wValX, this._sbWidth);
+    // ► for width
+    const wrHov = this._hit(wValX + 80, sY, sBW, sBH);
+    ctx.fillStyle   = wrHov ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.5)';
+    _roundRect(ctx, wValX + 80, sY, sBW, sBH, 4); ctx.fill();
+    ctx.strokeStyle = wrHov ? '#999' : '#444'; ctx.lineWidth = 1;
+    _roundRect(ctx, wValX + 80, sY, sBW, sBH, 4); ctx.stroke();
+    ctx.fillStyle = '#ccc'; ctx.font = 'bold 13px Courier New';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('►', wValX + 80 + sBW/2, sY + sBH/2);
+
+    drawSizeCtrl(hValX, this._sbHeight);
+    // ► for height
+    const hrHov = this._hit(hValX + 56, sY, sBW, sBH);
+    ctx.fillStyle   = hrHov ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.5)';
+    _roundRect(ctx, hValX + 56, sY, sBW, sBH, 4); ctx.fill();
+    ctx.strokeStyle = hrHov ? '#999' : '#444'; ctx.lineWidth = 1;
+    _roundRect(ctx, hValX + 56, sY, sBW, sBH, 4); ctx.stroke();
+    ctx.fillStyle = '#ccc'; ctx.font = 'bold 13px Courier New';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('►', hValX + 56 + sBW/2, sY + sBH/2);
+
+    // Hint: pixel size display
+    ctx.fillStyle = 'rgba(100,100,120,0.55)'; ctx.font = '9px Courier New';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText(`${this._sbWidth * 32}×${this._sbHeight * 32} pixels  |  [Tab] switch fields  •  [Enter] create`, CANVAS_W/2, 360);
 
     const ready = this._sbFields[0].trim() && this._sbFields[1].trim();
-    const cHov  = ready && this._hit(CANVAS_W/2 - 72, 360, 144, 44);
+    const cHov  = ready && this._hit(CANVAS_W/2 - 72, 380, 144, 44);
     ctx.fillStyle   = cHov ? 'rgba(76,175,80,0.85)' : ready ? 'rgba(76,175,80,0.38)' : 'rgba(40,40,40,0.5)';
-    _roundRect(ctx, CANVAS_W/2 - 72, 360, 144, 44, 6); ctx.fill();
+    _roundRect(ctx, CANVAS_W/2 - 72, 380, 144, 44, 6); ctx.fill();
     ctx.strokeStyle = cHov ? '#8BC34A' : ready ? '#4CAF50' : '#2a2a2a'; ctx.lineWidth = 1.5;
-    _roundRect(ctx, CANVAS_W/2 - 72, 360, 144, 44, 6); ctx.stroke();
+    _roundRect(ctx, CANVAS_W/2 - 72, 380, 144, 44, 6); ctx.stroke();
     ctx.fillStyle    = ready ? '#fff' : '#444';
     ctx.font         = 'bold 13px Courier New';
     ctx.textBaseline = 'middle';
-    ctx.fillText('Create World', CANVAS_W/2, 382);
+    ctx.fillText('Create World', CANVAS_W/2, 402);
     ctx.textBaseline = 'alphabetic';
     ctx.textAlign    = 'left';
   }
@@ -1430,6 +1631,163 @@ class MenuSystem {
       ctx.textBaseline = 'alphabetic';
       ctx.fillText(`… and ${worlds.length - 4} more (load via Sandbox mode to see all)`,
         CANVAS_W / 2, listY + 4 * (cardH + gap) + 14);
+    }
+
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  }
+  // Speed Runner select
+  _clickSpeedRunnerSelect() {
+    if (this._hit(20, 20, 90, 32)) { this._setState('main'); return; }
+
+    const worlds = this._srWorlds;
+    const listY = 130, cardH = 64, gap = 6;
+    const cw = CANVAS_W - 80, cx = 40;
+    for (let i = 0; i < Math.min(worlds.length, 5); i++) {
+      const cy = listY + i * (cardH + gap);
+      if (this._hit(cx + cw - 80, cy + 14, 68, 36)) {
+        this._launchSpeedRunnerSandbox(worlds[i]);
+        return;
+      }
+    }
+  }
+
+  _launchSpeedRunnerSandbox(worldEntry) {
+    this._stop();
+    window.game = new Game(
+      'speedrunner',
+      { speedrunnerLoadKey: worldEntry.key, playerName: worldEntry.playerName },
+      (s) => this._returnFromGame(s || 'speedrunnerSelect')
+    );
+  }
+
+  _drawSpeedRunnerSelect() {
+    this._drawScreenTitle('SPEED RUNNER');
+    this._drawBackBtn();
+
+    const ctx    = this.ctx;
+    const worlds = this._srWorlds;
+    const listY  = 130, cardH = 64, gap = 6;
+    const cw = CANVAS_W - 80, cx = 40;
+    const SR_COLOR = '#FF5722';
+
+    if (worlds.length === 0) {
+      ctx.fillStyle    = 'rgba(80,90,110,0.5)';
+      ctx.font         = '10px Courier New';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('No saved Sandbox worlds — create one in Sandbox mode first', CANVAS_W / 2, 240);
+      ctx.fillStyle = 'rgba(255,87,34,0.5)';
+      ctx.font      = '9px Courier New';
+      ctx.fillText('Add GOAL, SPEED_BOOSTER, JUMP_PAD blocks to build a Speed Runner level', CANVAS_W / 2, 264);
+      ctx.textAlign    = 'left';
+      ctx.textBaseline = 'alphabetic';
+      return;
+    }
+
+    // Hint text
+    ctx.fillStyle    = 'rgba(255,87,34,0.55)';
+    ctx.font         = '9px Courier New';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('Place a GOAL block to set the finish line  •  Ghosts saved per level', CANVAS_W / 2, 118);
+    ctx.textAlign = 'left';
+
+    for (let i = 0; i < Math.min(worlds.length, 5); i++) {
+      const w    = worlds[i];
+      const cy   = listY + i * (cardH + gap);
+      const hov  = this._hit(cx, cy, cw, cardH);
+      const preview = this._srPreviews[w.key];
+
+      // Ghost best time badge (loaded from localStorage)
+      const ghostData = (typeof SpeedRunnerGhost !== 'undefined')
+        ? SpeedRunnerGhost.loadData(w.key) : null;
+      const lb = (typeof SpeedRunnerLeaderboard !== 'undefined')
+        ? SpeedRunnerLeaderboard.get(w.key) : [];
+      const bestMs = lb.length > 0 ? lb[0].ms : null;
+
+      // Card background
+      ctx.fillStyle   = hov ? 'rgba(255,87,34,0.08)' : 'rgba(0,0,0,0.55)';
+      _roundRect(ctx, cx, cy, cw, cardH, 6); ctx.fill();
+      ctx.strokeStyle = hov ? SR_COLOR : '#333'; ctx.lineWidth = 1;
+      _roundRect(ctx, cx, cy, cw, cardH, 6); ctx.stroke();
+
+      // Mini-preview strip
+      if (preview && preview.length > 0) {
+        const stripW = cw - 180, stripH = cardH - 2, stripX = cx + 1;
+        const pxW = stripW / preview.length;
+        ctx.save();
+        ctx.beginPath(); _roundRect(ctx, stripX, cy + 1, stripW, stripH - 1, 5); ctx.clip();
+        for (let j = 0; j < preview.length; j++) {
+          ctx.fillStyle = preview[j];
+          ctx.fillRect(Math.floor(stripX + j * pxW), cy + 1, Math.ceil(pxW) + 1, stripH - 1);
+        }
+        const grad = ctx.createLinearGradient(stripX, 0, stripX + stripW, 0);
+        grad.addColorStop(0,   'rgba(0,0,0,0)');
+        grad.addColorStop(0.5, 'rgba(0,0,0,0.35)');
+        grad.addColorStop(1,   'rgba(0,0,0,0.75)');
+        ctx.fillStyle = grad; ctx.fillRect(stripX, cy + 1, stripW, stripH - 1);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#5C1A0A';
+        _roundRect(ctx, cx, cy, 4, cardH, 3); ctx.fill();
+      }
+
+      // World name + author
+      ctx.fillStyle    = '#eee';
+      ctx.font         = 'bold 12px Courier New';
+      ctx.textAlign    = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(w.worldName, cx + 12, cy + cardH / 2 - 11);
+      ctx.fillStyle = '#aaa'; ctx.font = '9px Courier New';
+      ctx.fillText(`by ${w.playerName}`, cx + 12, cy + cardH / 2 + 5);
+
+      // Best time badge
+      if (bestMs !== null) {
+        const timeStr = (typeof srFormatTime !== 'undefined') ? srFormatTime(bestMs) : '';
+        ctx.fillStyle = 'rgba(255,215,0,0.2)';
+        _roundRect(ctx, cx + 12, cy + cardH / 2 + 14, 90, 14, 3); ctx.fill();
+        ctx.fillStyle    = '#FFD700';
+        ctx.font         = 'bold 8px Courier New';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`Best: ${timeStr}`, cx + 16, cy + cardH / 2 + 21);
+      } else {
+        ctx.fillStyle    = 'rgba(150,150,150,0.4)';
+        ctx.font         = '8px Courier New';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('No record yet', cx + 12, cy + cardH / 2 + 21);
+      }
+
+      // Ghost indicator
+      if (ghostData) {
+        ctx.fillStyle = 'rgba(255,87,34,0.25)';
+        _roundRect(ctx, cx + cw - 160, cy + 8, 50, 16, 3); ctx.fill();
+        ctx.fillStyle    = SR_COLOR;
+        ctx.font         = 'bold 7px Courier New';
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('GHOST', cx + cw - 135, cy + 16);
+      }
+
+      // Play button
+      const playHov = this._hit(cx + cw - 80, cy + 14, 68, 36);
+      ctx.fillStyle   = playHov ? 'rgba(255,87,34,0.9)' : 'rgba(255,87,34,0.3)';
+      _roundRect(ctx, cx + cw - 80, cy + 14, 68, 36, 5); ctx.fill();
+      ctx.strokeStyle = playHov ? '#FF8A65' : SR_COLOR; ctx.lineWidth = 1;
+      _roundRect(ctx, cx + cw - 80, cy + 14, 68, 36, 5); ctx.stroke();
+      ctx.fillStyle    = '#fff';
+      ctx.font         = 'bold 10px Courier New';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('▶ Race', cx + cw - 46, cy + 32);
+    }
+
+    if (worlds.length > 5) {
+      ctx.fillStyle = 'rgba(100,100,120,0.5)';
+      ctx.font      = '9px Courier New';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(`… and ${worlds.length - 5} more (load via Sandbox mode to see all)`,
+        CANVAS_W / 2, listY + 5 * (cardH + gap) + 14);
     }
 
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';

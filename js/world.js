@@ -179,6 +179,27 @@ function buildWorld() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Empty sandbox world (variable dimensions)
+// ─────────────────────────────────────────────────────────────
+
+function buildEmptySandboxWorld(width, height) {
+  const grid = Array.from({ length: height }, () => new Array(width).fill(BLOCK.AIR));
+  // Bedrock floor at bottom row
+  for (let c = 0; c < width; c++) grid[height - 1][c] = BLOCK.BEDROCK;
+  const spawnX = 2 * BLOCK_SIZE;
+  const spawnY = 2 * BLOCK_SIZE;
+  return {
+    grid, width, height,
+    goalCol: Math.max(0, width - 5), goalRow: height - 2,
+    spawnX, spawnY,
+    redstoneComponents: [],
+    spawnPoints: [],
+    bedPositions: [],
+    portalData: { obsidianSlots: [], cavePortalInterior: [], caveExit: null, netherExit: null },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
 // Biome builders
 // ─────────────────────────────────────────────────────────────
 
@@ -748,18 +769,7 @@ function buildTemplateWorldSave(playerName, worldName) {
     { label: 'A', biome: 'nether',    anchorRow: NE_PR, anchorCol: NE_PC, destLabel: '1' },
   ];
 
-  // ── Pre-placed spawn eggs — one for each mob type ────────
-  const spawnEggs = [
-    // Overworld mobs: one block above surface so mobs fall to ground
-    { col: 20,  row: surfH(20)  - 1, mobType: 'zombie'         },
-    { col: 40,  row: surfH(40)  - 1, mobType: 'skeleton'       },
-    { col: 60,  row: surfH(60)  - 1, mobType: 'creeper'        },
-    { col: 80,  row: surfH(80)  - 1, mobType: 'cave_spider'    },
-    // Nether mobs: inside upper nether cave (rows 3-14, cols 315-345)
-    { col: 328, row: 10,             mobType: 'piglin'          },
-    { col: 335, row: 10,             mobType: 'blaze'           },
-    { col: 342, row: 10,             mobType: 'wither_skeleton' },
-  ];
+  const spawnEggs = [];
 
   // ── Build and store save payload ─────────────────────────
   const payload = {

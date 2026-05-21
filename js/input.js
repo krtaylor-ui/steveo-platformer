@@ -1,6 +1,14 @@
 // ============================================================
 // input.js — Keyboard, mouse, and gamepad input manager
 // ============================================================
+//
+// Slot values (p1GpSlot / p2GpSlot):
+//   -1  = Keyboard 1  (WASD + Space)
+//   -2  = Keyboard 2  (Arrow keys + Insert/Delete)
+//   0-3 = Gamepad slot index
+//
+// Set p1GpSlot and p2GpSlot each frame from ControllerConfig.
+// ============================================================
 
 class InputManager {
   constructor(canvas) {
@@ -10,19 +18,25 @@ class InputManager {
     this.scrollDelta  = 0;
     this._canvas      = canvas;
 
-    // Gamepad state — 4 slots (Phase 11K-1)
+    // Gamepad state — 4 slots
     this.gamepads  = [0, 1, 2, 3].map(i => this._emptyGamepad(i));
     this._gpPrev   = [0, 1, 2, 3].map(i => this._emptyGamepad(i));
 
-    // Set by game.js before player.update() each frame
+    // Controller settings (set by game.js each frame)
     this.controllerSensitivity    = 1.0;
     this.controllerAimSensitivity = 1.0;
-    this.controllerDeadzone       = 0.20; // overridden by worldAdvSettings.controllerDeadzone
+    this.controllerDeadzone       = GP_DEADZONE_STICK;
 
-    // 'ijkl'  → P2 uses IJKL+U keys (default; P1 may also use arrow keys)
-    // 'arrows' → P2 uses Arrow keys+Insert/End/PageDown/Home; P1 is WASD-only
-    // Set each frame by game.js based on ControllerConfig assignments.
-    this.p2KeyMode = 'ijkl';
+    // Assigned input slots — set each frame by game.js from ControllerConfig
+    // -1 = KB1 (WASD), -2 = KB2 (Arrows), 0-3 = gamepad slot
+    this.p1GpSlot = 0;   // P1 default: gamepad 0
+    this.p2GpSlot = 1;   // P2 default: gamepad 1
+
+    // Legacy alias kept for compatibility in a few places that still read it
+    Object.defineProperty(this, 'p2KeyMode', {
+      get: () => this.p2GpSlot === -2 ? 'arrows' : 'ijkl',
+      set: () => {},  // no-op, use p2GpSlot instead
+    });
 
     this._bind();
   }
@@ -49,7 +63,7 @@ class InputManager {
   updateGamepad() {
     const raw = navigator.getGamepads ? navigator.getGamepads() : [];
     for (let i = 0; i < 4; i++) {
-      this._gpPrev[i]  = this.gamepads[i];   // snapshot for just-pressed detection
+      this._gpPrev[i]  = this.gamepads[i];
       const gp = raw[i];
       if (!gp || !gp.connected) {
         this.gamepads[i] = this._emptyGamepad(i);
@@ -63,35 +77,28 @@ class InputManager {
         id:        i,
         connected: true,
         rawId:     gp.id,
-        // Face buttons
-        jump:      btn(0),   // A / Cross
-        crouch:    btn(1),   // B / Circle
-        attack:    btn(2),   // X / Square
-        place:     btn(3),   // Y / Triangle
-        // Shoulder
-        prevSlot:  btn(4),   // LB / L1
-        context:   btn(5),   // RB / R1 — context action or next slot
-        // Triggers (analog, 0–1)
+        jump:      btn(0),   // A
+        crouch:    btn(1),   // B
+        attack:    btn(2),   // X
+        place:     btn(3),   // Y
+        prevSlot:  btn(4),   // LB
+        context:   btn(5),   // RB
         triggerL:  val(6) > GP_DEADZONE_TRIGGER ? val(6) : 0,
         triggerR:  val(7) > GP_DEADZONE_TRIGGER ? val(7) : 0,
-        // Menu
         menu:      btn(9),   // Start
-        // D-Pad
         dpad0:     btn(12),  // Up
         dpad1:     btn(15),  // Right
         dpad2:     btn(13),  // Down
         dpad3:     btn(14),  // Left
-        // Left stick (movement) with configurable dead zone
         moveX: this._applyDeadZone(a[0] ?? 0, this.controllerDeadzone),
         moveY: this._applyDeadZone(a[1] ?? 0, this.controllerDeadzone),
-        // Right stick (aim) with configurable dead zone
         aimX:  this._applyDeadZone(a[2] ?? 0, this.controllerDeadzone),
         aimY:  this._applyDeadZone(a[3] ?? 0, this.controllerDeadzone),
       };
     }
   }
 
-  // One-shot detection: true only on the frame a button transitions false→true
+  // One-shot just-pressed for a specific gamepad slot
   gpJustDown(slotIdx, btn) {
     const gp  = this.gamepads[slotIdx];
     const prv = this._gpPrev[slotIdx];
@@ -99,30 +106,30 @@ class InputManager {
     return !!gp[btn] && !prv[btn];
   }
 
+  // Slot-aware just-pressed helpers — use these instead of gpJustDown(0,…)
+  p1JustDown(btn) { return this.p1GpSlot >= 0 ? this.gpJustDown(this.p1GpSlot, btn) : false; }
+  p2JustDown(btn) { return this.p2GpSlot >= 0 ? this.gpJustDown(this.p2GpSlot, btn) : false; }
+
   // ── Keyboard / mouse binding ──────────────────────────────
 
   _bind() {
     window.addEventListener('keydown', e => {
-      // Don't intercept keyboard events when a text input/textarea is focused (e.g. chat)
       const ae = document.activeElement;
       if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
       this.keys[e.code]         = true;
       this._justPressed[e.code] = true;
       if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Tab','KeyU','KeyF','Escape',
-           'AltLeft','AltRight','Insert','End','PageDown','Home'].includes(e.code)) {
+           'AltLeft','AltRight','Insert','Delete','End','PageDown','Home'].includes(e.code)) {
         e.preventDefault();
       }
       if (e.ctrlKey && (e.code === 'KeyZ' || e.code === 'KeyY' || e.code === 'KeyC' || e.code === 'KeyV')) e.preventDefault();
     });
     window.addEventListener('keyup', e => {
-      // Clear keys regardless of focus so keys don't get stuck when losing focus mid-press
       this.keys[e.code] = false;
     });
 
     this._canvas.addEventListener('mousemove', e => {
       const rect   = this._canvas.getBoundingClientRect();
-      // rect.width/height reflect the CSS display size (after responsive scaling).
-      // Divide by the scale factor to convert screen pixels → canvas logical pixels.
       const scaleX = this._canvas.width  / rect.width;
       const scaleY = this._canvas.height / rect.height;
       this.mouse.x = (e.clientX - rect.left) * scaleX;
@@ -140,28 +147,24 @@ class InputManager {
       if (e.button === 0) this.mouse.down = false;
     });
     this._canvas.addEventListener('contextmenu', e => e.preventDefault());
-    this._canvas.addEventListener('mouseleave', () => {
-      this.mouse.down = false;
-    });
-    // Scroll wheel for hotbar slot cycling / brush size
+    this._canvas.addEventListener('mouseleave', () => { this.mouse.down = false; });
     this._canvas.addEventListener('wheel', e => {
       e.preventDefault();
       this.scrollDelta += e.deltaY > 0 ? 1 : -1;
     }, { passive: false });
   }
 
-  // Move the virtual cursor using the right stick. Called every frame before any early returns
-  // so it works in all screens: gameplay, inventory, menus, popups, pause, etc.
-  // speedPx = pixels/frame at full deflection (scaled by controllerAimSensitivity).
+  // Right-stick cursor movement — uses P1's assigned gamepad if it's a controller
   applyStickCursor(speedPx, canvasW, canvasH) {
-    const gp = this.gamepads[0];
+    const slot = this.p1GpSlot >= 0 ? this.p1GpSlot : 0;
+    const gp   = this.gamepads[slot];
     if (!gp || !gp.connected) return;
     const sens = this.controllerAimSensitivity ?? 1.0;
     this.mouse.x = Math.max(0, Math.min(canvasW, this.mouse.x + gp.aimX * speedPx * sens));
     this.mouse.y = Math.max(0, Math.min(canvasH, this.mouse.y + gp.aimY * speedPx * sens));
   }
 
-  // Call at end of each frame to clear one-shot events
+  // Clear one-shot events at end of frame
   flush() {
     this.mouse.clicked      = false;
     this.mouse.rightClicked = false;
@@ -173,74 +176,100 @@ class InputManager {
   isDown(code)     { return !!this.keys[code]; }
   isJustDown(code) { return !!this._justPressed[code]; }
 
-  // ── Action checks — merge keyboard + gamepad[0] ───────────
+  // ── P1 action checks (slot-aware) ────────────────────────
 
-  // When p2KeyMode === 'arrows', P2 owns the arrow keys so P1 uses WASD only.
+  _p1gp() { return this.p1GpSlot >= 0 ? (this.gamepads[this.p1GpSlot] ?? this._emptyGamepad(0)) : this._emptyGamepad(0); }
+
   isLeft()   {
-    const arr = this.p2KeyMode !== 'arrows' && this.isDown('ArrowLeft');
-    return arr || this.isDown('KeyA') || this.gamepads[0].moveX < 0;
+    const s = this.p1GpSlot;
+    if (s >= 0)  return this._p1gp().moveX < 0;
+    if (s === -2) return this.isDown('ArrowLeft');
+    return this.isDown('KeyA');  // KB1
   }
   isRight()  {
-    const arr = this.p2KeyMode !== 'arrows' && this.isDown('ArrowRight');
-    return arr || this.isDown('KeyD') || this.gamepads[0].moveX > 0;
+    const s = this.p1GpSlot;
+    if (s >= 0)  return this._p1gp().moveX > 0;
+    if (s === -2) return this.isDown('ArrowRight');
+    return this.isDown('KeyD');
   }
   isJump()   {
-    const arr = this.p2KeyMode !== 'arrows' && this.isDown('ArrowUp');
-    return arr || this.isDown('KeyW') || this.gamepads[0].jump;
+    const s = this.p1GpSlot;
+    if (s >= 0)  return this._p1gp().jump;
+    if (s === -2) return this.isDown('ArrowUp');
+    return this.isDown('KeyW');
   }
   isCrouch() {
-    const arr = this.p2KeyMode !== 'arrows' && this.isDown('ArrowDown');
-    return arr || this.isDown('KeyS') || this.gamepads[0].crouch;
+    const s = this.p1GpSlot;
+    if (s >= 0)  return this._p1gp().crouch;
+    if (s === -2) return this.isDown('ArrowDown');
+    return this.isDown('KeyS');
   }
-  isRun()    { return this.isDown('ShiftLeft') || this.isDown('ShiftRight'); }
-  isAttack() { return this.isDown('Space') || this.gamepads[0].attack || this.gamepads[0].triggerR > 0.5; }
-
-  // Merged analog X — P1 drops arrows when P2 owns them
+  isRun() {
+    if (this.p1GpSlot >= 0) return false;  // gamepad: full-stick deflection auto-runs
+    return this.isDown('ShiftLeft') || this.isDown('ShiftRight');
+  }
+  isAttack() {
+    const s = this.p1GpSlot;
+    if (s >= 0) return this._p1gp().attack || this._p1gp().triggerR > 0.5;
+    if (s === -2) return this.isDown('Insert');
+    return this.isDown('Space');  // KB1 — mouse button handled separately in game.js
+  }
   moveX() {
-    const useArr = this.p2KeyMode !== 'arrows';
-    const kb = ((useArr && this.isDown('ArrowRight')) || this.isDown('KeyD') ? 1 : 0)
-             - ((useArr && this.isDown('ArrowLeft'))  || this.isDown('KeyA') ? 1 : 0);
-    const gp = this.gamepads[0].moveX * (this.controllerSensitivity ?? 1.0);
-    return Math.max(-1, Math.min(1, kb + gp));
+    const s = this.p1GpSlot;
+    if (s >= 0) return this._p1gp().moveX * (this.controllerSensitivity ?? 1.0);
+    if (s === -2) return (this.isDown('ArrowRight') ? 1 : 0) - (this.isDown('ArrowLeft') ? 1 : 0);
+    return (this.isDown('KeyD') ? 1 : 0) - (this.isDown('KeyA') ? 1 : 0);
   }
 
-  // ── Player 2 action checks ────────────────────────────────────────────────
-  // 'ijkl'  mode: IJKL + U  (P1 is on gamepad or not sharing keyboard)
-  // 'arrows' mode: Arrow keys + Insert/End/PageDown/Home  (both players on keyboard)
+  // ── P2 action checks (slot-aware) ────────────────────────
+
+  _p2gp() { return this.p2GpSlot >= 0 ? (this.gamepads[this.p2GpSlot] ?? this._emptyGamepad(1)) : this._emptyGamepad(1); }
+
   isP2Left()   {
-    const kb = this.p2KeyMode === 'arrows' ? this.isDown('ArrowLeft')  : this.isDown(P2_KEY_LEFT);
-    return kb || this.gamepads[1].moveX < 0;
+    const s = this.p2GpSlot;
+    if (s >= 0)  return this._p2gp().moveX < 0;
+    if (s === -2) return this.isDown('ArrowLeft');
+    return this.isDown('KeyA');  // KB1 (P2 on KB1 when P1 is on gamepad)
   }
   isP2Right()  {
-    const kb = this.p2KeyMode === 'arrows' ? this.isDown('ArrowRight') : this.isDown(P2_KEY_RIGHT);
-    return kb || this.gamepads[1].moveX > 0;
+    const s = this.p2GpSlot;
+    if (s >= 0)  return this._p2gp().moveX > 0;
+    if (s === -2) return this.isDown('ArrowRight');
+    return this.isDown('KeyD');
   }
   isP2Jump()   {
-    const kb = this.p2KeyMode === 'arrows' ? this.isDown('ArrowUp')    : this.isDown(P2_KEY_JUMP);
-    return kb || this.gamepads[1].jump;
+    const s = this.p2GpSlot;
+    if (s >= 0)  return this._p2gp().jump;
+    if (s === -2) return this.isDown('ArrowUp');
+    return this.isDown('KeyW');
   }
   isP2Crouch() {
-    const kb = this.p2KeyMode === 'arrows' ? this.isDown('ArrowDown')  : this.isDown(P2_KEY_CROUCH);
-    return kb || this.gamepads[1].crouch;
+    const s = this.p2GpSlot;
+    if (s >= 0)  return this._p2gp().crouch;
+    if (s === -2) return this.isDown('ArrowDown');
+    return this.isDown('KeyS');
   }
   isP2Attack() {
-    const kb = this.p2KeyMode === 'arrows' ? this.isDown('Insert')     : this.isDown(P2_KEY_ATTACK);
-    return kb || this.gamepads[1].attack || this.gamepads[1].triggerR > 0.5;
+    const s = this.p2GpSlot;
+    if (s >= 0)  return this._p2gp().attack || this._p2gp().triggerR > 0.5;
+    if (s === -2) return this.isDown('Insert');
+    return this.isDown('Space');
   }
-
-  // Merged analog X for P2
   moveX2() {
-    const kb = this.p2KeyMode === 'arrows'
-      ? (this.isDown('ArrowRight') ? 1 : 0) - (this.isDown('ArrowLeft') ? 1 : 0)
-      : (this.isDown(P2_KEY_RIGHT) ? 1 : 0) - (this.isDown(P2_KEY_LEFT) ? 1 : 0);
-    const gp = this.gamepads[1].moveX * (this.controllerSensitivity ?? 1.0);
-    return Math.max(-1, Math.min(1, kb + gp));
+    const s = this.p2GpSlot;
+    if (s >= 0) return this._p2gp().moveX * (this.controllerSensitivity ?? 1.0);
+    if (s === -2) return (this.isDown('ArrowRight') ? 1 : 0) - (this.isDown('ArrowLeft') ? 1 : 0);
+    return (this.isDown('KeyD') ? 1 : 0) - (this.isDown('KeyA') ? 1 : 0);
   }
 
-  // One-shot checks for P2 arrows-mode action keys (End / PageDown / Home)
-  isP2UseItem()  { return this.p2KeyMode === 'arrows' && this.isJustDown('End'); }
-  isP2UseLever() { return this.p2KeyMode === 'arrows' && this.isJustDown('PageDown'); }
-  isP2Inventory(){ return this.p2KeyMode === 'arrows' && this.isJustDown('Home'); }
+  // Use Item / Lever / Inventory for keyboard players
+  isP2UseItem()  {
+    if (this.p2GpSlot === -2) return this.isJustDown('Delete');
+    if (this.p2GpSlot === -1) return this.isJustDown('KeyU');
+    return false;
+  }
+  isP2UseLever() { return this.p2GpSlot < 0 && this.isJustDown('Delete'); }
+  isP2Inventory(){ return this.p2GpSlot < 0 && this.isJustDown('KeyI'); }
 
   // Returns 0–8 if a number key 1–9 was just held, else -1
   hotbarKey() {

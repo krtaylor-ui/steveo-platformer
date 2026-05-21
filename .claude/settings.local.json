@@ -45,7 +45,9 @@
       "Bash(git -C /home/krtaylor/steveo_platformer/.claude/worktrees/agent-a5ef2855ab8bda03f status)",
       "Read(//outputs/**)",
       "Bash(find / -name \"PHASE_16E_CONTROLLER_SYSTEM.md\")",
-      "Bash(awk 'NR>=700 && NR<=1980 && /return;/' /home/krtaylor/steveo_platformer/js/game.js)"
+      "Bash(awk 'NR>=700 && NR<=1980 && /return;/' /home/krtaylor/steveo_platformer/js/game.js)",
+      "Bash(git *)",
+      "Bash(awk *)"
     ]
   }
 }

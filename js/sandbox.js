@@ -74,6 +74,10 @@ const OTHER_PALETTE_ITEMS = [
   { kind: 'block', blockType: SB_WITHER_ALTAR },
   { kind: 'block', blockType: BLOCK.WITHER_SKELETON_HEAD },
   { kind: 'block', blockType: BLOCK.GOAL },
+  // Speed Runner blocks
+  { kind: 'block', blockType: BLOCK.SPEED_BOOSTER },
+  { kind: 'block', blockType: BLOCK.JUMP_PAD },
+  { kind: 'block', blockType: BLOCK.SPEED_ITEM },
   { kind: 'block', blockType: BLOCK.TNT },
   { kind: 'block', blockType: BLOCK.MUSIC_PLAYER },
   // ── Consumable items ─────────────────────────────────────────
