@@ -95,9 +95,9 @@ loadSavedGames();
 // ============================================================
 
 app.post('/api/createGame', (req, res) => {
-  const { worldName, mode, playerLimit, password, creator } = req.body;
+  const { worldName, mode, maxPlayers, password, creatorName } = req.body;
 
-  if (!worldName || !mode || !playerLimit) {
+  if (!worldName || !mode || !maxPlayers) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
