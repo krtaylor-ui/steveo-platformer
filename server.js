@@ -6,87 +6,10 @@ const fs = require('fs');
 const path = require('path');
 
 // ============================================================
-// MAIN WEB SERVER (port 8000)
+// Express app for API + Multiplayer
 // ============================================================
-
-const PORT_WEB = process.env.PORT || 8000;
-
-const webServer = http.createServer((req, res) => {
-  // Remove query string
-  let urlPath = req.url.split('?')[0];
-  
-  // Prevent directory traversal
-  if (urlPath.includes('..')) {
-    res.writeHead(403, {'Content-Type': 'text/plain'});
-    res.end('Forbidden');
-    return;
-  }
-  
-  // Default to index.html for root
-  if (urlPath === '/') {
-    urlPath = '/index.html';
-  }
-  
-  // Build file path
-  let filePath = path.join(__dirname, urlPath);
-  
-  // Check if file exists
-  fs.stat(filePath, (err, stats) => {
-    if (err || !stats.isFile()) {
-      res.writeHead(404, {'Content-Type': 'text/plain'});
-      res.end('404 Not Found');
-      return;
-    }
-    
-    // Read file
-    fs.readFile(filePath, (readErr, data) => {
-      if (readErr) {
-        res.writeHead(500, {'Content-Type': 'text/plain'});
-        res.end('500 Server Error');
-        return;
-      }
-      
-      // Get MIME type
-      const ext = path.extname(filePath).toLowerCase();
-      const MIME_TYPES = {
-        '.html': 'text/html',
-        '.js': 'application/javascript',
-        '.css': 'text/css',
-        '.json': 'application/json',
-        '.png': 'image/png',
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.gif': 'image/gif',
-        '.svg': 'image/svg+xml',
-        '.wav': 'audio/wav',
-        '.mp3': 'audio/mpeg'
-      };
-      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-      
-      // Send file
-      res.writeHead(200, {'Content-Type': contentType});
-      res.end(data);
-    });
-  });
-});
-
-webServer.listen(PORT_WEB, '0.0.0.0', () => {
-  console.log(`Web server running on port ${PORT_WEB}`);
-});
-
-// ============================================================
-// MULTIPLAYER SERVER (port 3000 or custom)
-// ============================================================
-
-const PORT_MP = process.env.PORT_MULTIPLAYER || 3000;
 
 const app = express();
-const mpServer = http.createServer(app);
-const io = socketIo(mpServer, {
-  cors: { origin: '*', methods: ['GET', 'POST'] },
-  maxHttpBufferSize: 50 * 1024 * 1024,
-});
-
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
@@ -102,14 +25,12 @@ const LIFECYCLE = {
   sandbox:    { displayDays: 14, deleteDays: 15 },
 };
 
-// In-memory log of recently deleted games
 const deletedGamesLog = [];
 function logDeletion(entry) {
   deletedGamesLog.unshift({ ...entry, deletedAt: Date.now() });
   if (deletedGamesLog.length > 200) deletedGamesLog.pop();
 }
 
-// Default outfits
 const DEFAULT_OUTFITS = {
   1: { shirtColor: '#FF6B6B', pantsColor: '#1E1E1E', skinColor: '#F4C090' },
   2: { shirtColor: '#4ECDC4', pantsColor: '#2C5F7C', skinColor: '#F4C090' },
@@ -167,10 +88,11 @@ function loadSavedGames() {
   console.log(`Loaded ${worlds.size} saved games`);
 }
 
-// Load on startup
 loadSavedGames();
 
-// ── API Endpoints ──────────────────────────────────────────────
+// ============================================================
+// API ENDPOINTS (Express Routes)
+// ============================================================
 
 app.post('/api/createGame', (req, res) => {
   const { worldName, mode, playerLimit, password, creator } = req.body;
@@ -252,7 +174,74 @@ app.post('/api/deleteGame', (req, res) => {
   res.json({ success: true });
 });
 
-// ── Socket.io Events ──────────────────────────────────────────
+// ============================================================
+// STATIC FILE SERVING (Express Middleware)
+// ============================================================
+
+const MIME_TYPES = {
+  '.html': 'text/html',
+  '.js': 'application/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.wav': 'audio/wav',
+  '.mp3': 'audio/mpeg'
+};
+
+app.use((req, res, next) => {
+  // Skip API routes
+  if (req.url.startsWith('/api/')) {
+    return next();
+  }
+
+  let urlPath = req.url.split('?')[0];
+  
+  if (urlPath.includes('..')) {
+    res.writeHead(403, {'Content-Type': 'text/plain'});
+    res.end('Forbidden');
+    return;
+  }
+  
+  if (urlPath === '/') {
+    urlPath = '/index.html';
+  }
+  
+  let filePath = path.join(__dirname, urlPath);
+  
+  fs.stat(filePath, (err, stats) => {
+    if (err || !stats.isFile()) {
+      return next(); // Let Express handle 404
+    }
+    
+    fs.readFile(filePath, (readErr, data) => {
+      if (readErr) {
+        res.writeHead(500, {'Content-Type': 'text/plain'});
+        res.end('500 Server Error');
+        return;
+      }
+      
+      const ext = path.extname(filePath).toLowerCase();
+      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+      
+      res.writeHead(200, {'Content-Type': contentType});
+      res.end(data);
+    });
+  });
+});
+
+// ============================================================
+// SOCKET.IO
+// ============================================================
+
+const server = http.createServer(app);
+const io = socketIo(server, {
+  cors: { origin: '*', methods: ['GET', 'POST'] },
+  maxHttpBufferSize: 50 * 1024 * 1024,
+});
 
 io.on('connection', (socket) => {
   console.log(`Player connected: ${socket.id}`);
@@ -277,12 +266,14 @@ io.on('connection', (socket) => {
   });
 });
 
-// ── Start multiplayer server ──────────────────────────────────
+// ============================================================
+// START SERVER
+// ============================================================
 
-mpServer.listen(PORT_MP, '0.0.0.0', () => {
-  console.log(`Multiplayer server running on port ${PORT_MP}`);
+const PORT = process.env.PORT || 8000;
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n✅ Steveo Platformer Server Started`);
+  console.log(`   URL: http://0.0.0.0:${PORT}`);
+  console.log(`   API: ${PORT}/api/*`);
 });
-
-console.log(`\n✅ Steveo Platformer Server Started`);
-console.log(`   Web:        http://0.0.0.0:${PORT_WEB}`);
-console.log(`   Multiplayer: http://0.0.0.0:${PORT_MP}`);
