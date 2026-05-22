@@ -100,7 +100,8 @@ app.post('/api/createGame', (req, res) => {
   if (!worldName || !mode || !maxPlayers) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
-
+  const playerLimit = maxPlayers;
+  const creator = creatorName;
   const gameId = `game-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const passwordHash = password ? hashPassword(password) : null;
 
