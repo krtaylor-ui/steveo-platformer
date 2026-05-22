@@ -5,10 +5,13 @@
 
 const OnlineUI = (() => {
   // ── Server URL ─────────────────────────────────────────────
-  const SERVER =
-    (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
-      ? `${location.protocol}//${location.hostname}:3000`
-      : location.origin;
+// Commented out to get online to work - replaced the ' ' based on Claude feedback (KRT)
+//  const SERVER =
+//    (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+//      ? `${location.protocol}//${location.hostname}:3000`
+//      : location.origin;
+
+const SERVER = '';
 
   // ── Browser identity (stable per-browser creator token) ────
   function getBrowserId() {
