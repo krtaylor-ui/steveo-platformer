@@ -41,8 +41,10 @@ class MenuSystem {
     this._platformerPreviews = {};
 
     // Speed Runner level select state
-    this._srWorlds   = [];
-    this._srPreviews = {};
+    this._srWorlds        = [];
+    this._srPreviews      = {};
+    this._srDefaultWorld  = null;   // null = not loaded, undefined = loading
+    this._srDefaultPreview = null;
 
     // Template worlds (fetched once from /templates/*.json; null = not loaded yet)
     this._templates = { normal: undefined, platformer: undefined, sandbox: undefined };
@@ -205,6 +207,16 @@ class MenuSystem {
     }
 
     if (next === 'speedrunnerSelect') {
+      this._srDefaultWorld   = undefined;  // undefined = still loading
+      this._srDefaultPreview = null;
+      fetch('/default-worlds/speedrunner-default.json?_=' + Date.now())
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          this._srDefaultWorld = data || null;
+          if (data?.grid) this._srDefaultPreview = this._buildMiniPreview(data.grid);
+        })
+        .catch(() => { this._srDefaultWorld = null; });
+
       this._srWorlds   = SandboxSaves.list();
       this._srPreviews = {};
       for (const w of this._srWorlds) {
@@ -1639,10 +1651,22 @@ class MenuSystem {
   _clickSpeedRunnerSelect() {
     if (this._hit(20, 20, 90, 32)) { this._setState('main'); return; }
 
-    const worlds = this._srWorlds;
-    const listY = 130, cardH = 64, gap = 6;
     const cw = CANVAS_W - 80, cx = 40;
-    for (let i = 0; i < Math.min(worlds.length, 5); i++) {
+    const cardH = 64, gap = 6;
+
+    // Default world card (at top, like platformer's Adventure card)
+    if (this._srDefaultWorld) {
+      const ac = { x: cx, y: 106, w: cw, h: 68 };
+      if (this._hit(ac.x + ac.w - 80, ac.y + 14, 68, 40)) {
+        this._launchSpeedRunnerData(this._srDefaultWorld);
+        return;
+      }
+    }
+
+    // Saved worlds start below the default card
+    const listY = 198;
+    const worlds = this._srWorlds;
+    for (let i = 0; i < Math.min(worlds.length, 4); i++) {
       const cy = listY + i * (cardH + gap);
       if (this._hit(cx + cw - 80, cy + 14, 68, 36)) {
         this._launchSpeedRunnerSandbox(worlds[i]);
@@ -1660,58 +1684,108 @@ class MenuSystem {
     );
   }
 
+  _launchSpeedRunnerData(worldData) {
+    this._stop();
+    window.game = new Game(
+      'speedrunner',
+      { speedrunnerLoadKey: worldData, playerName: worldData.playerName || 'Player' },
+      (s) => this._returnFromGame(s || 'speedrunnerSelect')
+    );
+  }
+
   _drawSpeedRunnerSelect() {
     this._drawScreenTitle('SPEED RUNNER');
     this._drawBackBtn();
 
-    const ctx    = this.ctx;
-    const worlds = this._srWorlds;
-    const listY  = 130, cardH = 64, gap = 6;
-    const cw = CANVAS_W - 80, cx = 40;
+    const ctx = this.ctx;
     const SR_COLOR = '#FF5722';
+    const cw = CANVAS_W - 80, cx = 40;
 
-    if (worlds.length === 0) {
-      ctx.fillStyle    = 'rgba(80,90,110,0.5)';
-      ctx.font         = '10px Courier New';
-      ctx.textAlign    = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('No saved Sandbox worlds — create one in Sandbox mode first', CANVAS_W / 2, 240);
-      ctx.fillStyle = 'rgba(255,87,34,0.5)';
-      ctx.font      = '9px Courier New';
-      ctx.fillText('Add GOAL, SPEED_BOOSTER, JUMP_PAD blocks to build a Speed Runner level', CANVAS_W / 2, 264);
-      ctx.textAlign    = 'left';
-      ctx.textBaseline = 'alphabetic';
-      return;
+    // ── Default world card (at top, like platformer's Adventure card) ──────
+    const ac = { x: cx, y: 106, w: cw, h: 68 };
+    const hasDefault = !!this._srDefaultWorld;
+    const acHov    = hasDefault && this._hit(ac.x, ac.y, ac.w, ac.h);
+    const defBtnX  = ac.x + ac.w - 80, defBtnY = ac.y + 14, defBtnW = 68, defBtnH = 40;
+    const defBtnHov = hasDefault && this._hit(defBtnX, defBtnY, defBtnW, defBtnH);
+
+    ctx.fillStyle   = hasDefault ? (acHov ? 'rgba(255,87,34,0.10)' : 'rgba(0,0,0,0.65)') : 'rgba(0,0,0,0.3)';
+    _roundRect(ctx, ac.x, ac.y, ac.w, ac.h, 8); ctx.fill();
+    ctx.strokeStyle = hasDefault ? (acHov ? '#FFD700' : SR_COLOR) : '#333'; ctx.lineWidth = 1.5;
+    _roundRect(ctx, ac.x, ac.y, ac.w, ac.h, 8); ctx.stroke();
+    if (hasDefault) { ctx.fillStyle = SR_COLOR; _roundRect(ctx, ac.x, ac.y, 5, ac.h, 4); ctx.fill(); }
+
+    // Mini-preview strip for default world
+    if (this._srDefaultPreview?.length > 0) {
+      const stripW = ac.w - 160, stripH = ac.h - 2, stripX = ac.x + 1;
+      const pxW = stripW / this._srDefaultPreview.length;
+      ctx.save();
+      ctx.beginPath(); _roundRect(ctx, stripX, ac.y + 1, stripW, stripH - 1, 5); ctx.clip();
+      for (let j = 0; j < this._srDefaultPreview.length; j++) {
+        ctx.fillStyle = this._srDefaultPreview[j];
+        ctx.fillRect(Math.floor(stripX + j * pxW), ac.y + 1, Math.ceil(pxW) + 1, stripH - 1);
+      }
+      const grad = ctx.createLinearGradient(stripX, 0, stripX + stripW, 0);
+      grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(0.5, 'rgba(0,0,0,0.35)'); grad.addColorStop(1, 'rgba(0,0,0,0.75)');
+      ctx.fillStyle = grad; ctx.fillRect(stripX, ac.y + 1, stripW, stripH - 1);
+      ctx.restore();
     }
 
-    // Hint text
-    ctx.fillStyle    = 'rgba(255,87,34,0.55)';
-    ctx.font         = '9px Courier New';
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText('Place a GOAL block to set the finish line  •  Ghosts saved per level', CANVAS_W / 2, 118);
-    ctx.textAlign = 'left';
+    ctx.font = '22px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('🏃', ac.x + 28, ac.y + ac.h / 2);
+    ctx.fillStyle = hasDefault ? '#ddd' : '#555'; ctx.font = 'bold 13px Courier New';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText('Default Speed Run World', ac.x + 50, ac.y + ac.h / 2 - 10);
+    ctx.fillStyle = 'rgba(150,150,150,0.65)'; ctx.font = '9px Courier New';
+    const defSub = this._srDefaultWorld === undefined ? 'Loading…'
+      : hasDefault ? `${this._srDefaultWorld.worldName || 'Speed Run'}  |  ${this._srDefaultWorld.worldWidth || 3000} columns`
+      : 'Not available';
+    ctx.fillText(defSub, ac.x + 50, ac.y + ac.h / 2 + 8);
 
-    for (let i = 0; i < Math.min(worlds.length, 5); i++) {
+    ctx.font = 'bold 10px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle   = defBtnHov ? 'rgba(255,87,34,0.9)' : (hasDefault ? 'rgba(255,87,34,0.3)' : 'rgba(40,40,40,0.3)');
+    _roundRect(ctx, defBtnX, defBtnY, defBtnW, defBtnH, 5); ctx.fill();
+    ctx.strokeStyle = defBtnHov ? '#FF8A65' : (hasDefault ? SR_COLOR : '#333'); ctx.lineWidth = 1;
+    _roundRect(ctx, defBtnX, defBtnY, defBtnW, defBtnH, 5); ctx.stroke();
+    ctx.fillStyle = hasDefault ? '#fff' : '#555';
+    ctx.fillText('▶ Race', defBtnX + defBtnW / 2, defBtnY + defBtnH / 2);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+
+    // ── Divider ────────────────────────────────────────────────────────────
+    const worlds = this._srWorlds;
+    if (worlds.length > 0) {
+      ctx.fillStyle    = 'rgba(100,110,130,0.55)';
+      ctx.font         = '9px Courier New';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('— or play a saved Sandbox world as a Speed Runner level —', CANVAS_W / 2, 188);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    } else if (!hasDefault && this._srDefaultWorld !== undefined) {
+      ctx.fillStyle    = 'rgba(100,110,130,0.55)';
+      ctx.font         = '9px Courier New';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Create a Sandbox world with GOAL blocks to add your own levels', CANVAS_W / 2, 188);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    }
+
+    // ── Saved world cards ──────────────────────────────────────────────────
+    const listY = 198, cardH = 64, gap = 6;
+
+    for (let i = 0; i < Math.min(worlds.length, 4); i++) {
       const w    = worlds[i];
       const cy   = listY + i * (cardH + gap);
       const hov  = this._hit(cx, cy, cw, cardH);
       const preview = this._srPreviews[w.key];
 
-      // Ghost best time badge (loaded from localStorage)
-      const ghostData = (typeof SpeedRunnerGhost !== 'undefined')
-        ? SpeedRunnerGhost.loadData(w.key) : null;
-      const lb = (typeof SpeedRunnerLeaderboard !== 'undefined')
-        ? SpeedRunnerLeaderboard.get(w.key) : [];
+      const lb = (typeof SpeedRunnerLeaderboard !== 'undefined') ? SpeedRunnerLeaderboard.get(w.key) : [];
       const bestMs = lb.length > 0 ? lb[0].ms : null;
+      const ghostData = (typeof SpeedRunnerGhost !== 'undefined') ? SpeedRunnerGhost.loadData(w.key) : null;
 
-      // Card background
       ctx.fillStyle   = hov ? 'rgba(255,87,34,0.08)' : 'rgba(0,0,0,0.55)';
       _roundRect(ctx, cx, cy, cw, cardH, 6); ctx.fill();
       ctx.strokeStyle = hov ? SR_COLOR : '#333'; ctx.lineWidth = 1;
       _roundRect(ctx, cx, cy, cw, cardH, 6); ctx.stroke();
 
-      // Mini-preview strip
       if (preview && preview.length > 0) {
         const stripW = cw - 180, stripH = cardH - 2, stripX = cx + 1;
         const pxW = stripW / preview.length;
@@ -1722,9 +1796,7 @@ class MenuSystem {
           ctx.fillRect(Math.floor(stripX + j * pxW), cy + 1, Math.ceil(pxW) + 1, stripH - 1);
         }
         const grad = ctx.createLinearGradient(stripX, 0, stripX + stripW, 0);
-        grad.addColorStop(0,   'rgba(0,0,0,0)');
-        grad.addColorStop(0.5, 'rgba(0,0,0,0.35)');
-        grad.addColorStop(1,   'rgba(0,0,0,0.75)');
+        grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(0.5, 'rgba(0,0,0,0.35)'); grad.addColorStop(1, 'rgba(0,0,0,0.75)');
         ctx.fillStyle = grad; ctx.fillRect(stripX, cy + 1, stripW, stripH - 1);
         ctx.restore();
       } else {
@@ -1732,62 +1804,48 @@ class MenuSystem {
         _roundRect(ctx, cx, cy, 4, cardH, 3); ctx.fill();
       }
 
-      // World name + author
-      ctx.fillStyle    = '#eee';
-      ctx.font         = 'bold 12px Courier New';
-      ctx.textAlign    = 'left';
-      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#eee'; ctx.font = 'bold 12px Courier New';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       ctx.fillText(w.worldName, cx + 12, cy + cardH / 2 - 11);
       ctx.fillStyle = '#aaa'; ctx.font = '9px Courier New';
       ctx.fillText(`by ${w.playerName}`, cx + 12, cy + cardH / 2 + 5);
 
-      // Best time badge
       if (bestMs !== null) {
         const timeStr = (typeof srFormatTime !== 'undefined') ? srFormatTime(bestMs) : '';
         ctx.fillStyle = 'rgba(255,215,0,0.2)';
         _roundRect(ctx, cx + 12, cy + cardH / 2 + 14, 90, 14, 3); ctx.fill();
-        ctx.fillStyle    = '#FFD700';
-        ctx.font         = 'bold 8px Courier New';
-        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#FFD700'; ctx.font = 'bold 8px Courier New'; ctx.textBaseline = 'middle';
         ctx.fillText(`Best: ${timeStr}`, cx + 16, cy + cardH / 2 + 21);
       } else {
-        ctx.fillStyle    = 'rgba(150,150,150,0.4)';
-        ctx.font         = '8px Courier New';
-        ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'rgba(150,150,150,0.4)'; ctx.font = '8px Courier New'; ctx.textBaseline = 'middle';
         ctx.fillText('No record yet', cx + 12, cy + cardH / 2 + 21);
       }
 
-      // Ghost indicator
       if (ghostData) {
         ctx.fillStyle = 'rgba(255,87,34,0.25)';
         _roundRect(ctx, cx + cw - 160, cy + 8, 50, 16, 3); ctx.fill();
-        ctx.fillStyle    = SR_COLOR;
-        ctx.font         = 'bold 7px Courier New';
-        ctx.textAlign    = 'center';
-        ctx.textBaseline = 'middle';
+        ctx.fillStyle = SR_COLOR; ctx.font = 'bold 7px Courier New';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText('GHOST', cx + cw - 135, cy + 16);
       }
 
-      // Play button
       const playHov = this._hit(cx + cw - 80, cy + 14, 68, 36);
       ctx.fillStyle   = playHov ? 'rgba(255,87,34,0.9)' : 'rgba(255,87,34,0.3)';
       _roundRect(ctx, cx + cw - 80, cy + 14, 68, 36, 5); ctx.fill();
       ctx.strokeStyle = playHov ? '#FF8A65' : SR_COLOR; ctx.lineWidth = 1;
       _roundRect(ctx, cx + cw - 80, cy + 14, 68, 36, 5); ctx.stroke();
-      ctx.fillStyle    = '#fff';
-      ctx.font         = 'bold 10px Courier New';
-      ctx.textAlign    = 'center';
-      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 10px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText('▶ Race', cx + cw - 46, cy + 32);
     }
 
-    if (worlds.length > 5) {
+    if (worlds.length > 4) {
       ctx.fillStyle = 'rgba(100,100,120,0.5)';
       ctx.font      = '9px Courier New';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'alphabetic';
-      ctx.fillText(`… and ${worlds.length - 5} more (load via Sandbox mode to see all)`,
-        CANVAS_W / 2, listY + 5 * (cardH + gap) + 14);
+      ctx.fillText(`… and ${worlds.length - 4} more (load via Sandbox mode to see all)`,
+        CANVAS_W / 2, listY + 4 * (cardH + gap) + 14);
     }
 
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
