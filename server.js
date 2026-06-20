@@ -88,7 +88,35 @@ function loadSavedGames() {
   console.log(`Loaded ${worlds.size} saved games`);
 }
 
+function loadDefaultWorlds() {
+  const defaultWorldsDir = path.join(__dirname, 'default-worlds');
+
+  if (!fs.existsSync(defaultWorldsDir)) {
+    console.log('No default-worlds directory found');
+    return;
+  }
+
+  const files = fs.readdirSync(defaultWorldsDir);
+  files.forEach(file => {
+    if (file.endsWith('.json')) {
+      try {
+        const filePath = path.join(defaultWorldsDir, file);
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        const migrated = migrateSaveData(data);
+
+        const worldId = migrated.worldId || `world-${file.replace('.json', '')}`;
+        worlds.set(worldId, migrated);
+
+        console.log(`  ✓ Loaded default world: ${file}`);
+      } catch (err) {
+        console.error(`Error loading default world ${file}:`, err.message);
+      }
+    }
+  });
+}
+
 loadSavedGames();
+loadDefaultWorlds();
 
 // ============================================================
 // API ENDPOINTS (Express Routes)

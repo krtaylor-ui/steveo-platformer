@@ -29,8 +29,12 @@ class InputManager {
 
     // Assigned input slots — set each frame by game.js from ControllerConfig
     // -1 = KB1 (WASD), -2 = KB2 (Arrows), 0-3 = gamepad slot
-    this.p1GpSlot = 0;   // P1 default: gamepad 0
+    this.p1GpSlot = -1;  // P1 default: keyboard 1
     this.p2GpSlot = 1;   // P2 default: gamepad 1
+
+    // When true (single-player), P1 actions accept both keyboard AND any connected gamepad.
+    // Set each frame by game.js.
+    this.dualInput = false;
 
     // Legacy alias kept for compatibility in a few places that still read it
     Object.defineProperty(this, 'p2KeyMode', {
@@ -106,8 +110,26 @@ class InputManager {
     return !!gp[btn] && !prv[btn];
   }
 
+  // Returns first connected gamepad (used in dual-input single-player mode).
+  _anyGp() {
+    for (const gp of this.gamepads) { if (gp.connected) return gp; }
+    return this._emptyGamepad(0);
+  }
+
+  // Just-pressed across all connected gamepads (used in dual-input mode).
+  _anyGpJustDown(btn) {
+    for (let i = 0; i < 4; i++) {
+      const gp = this.gamepads[i], prv = this._gpPrev[i];
+      if (gp.connected && !!gp[btn] && !prv[btn]) return true;
+    }
+    return false;
+  }
+
   // Slot-aware just-pressed helpers — use these instead of gpJustDown(0,…)
-  p1JustDown(btn) { return this.p1GpSlot >= 0 ? this.gpJustDown(this.p1GpSlot, btn) : false; }
+  p1JustDown(btn) {
+    if (this.dualInput) return this._anyGpJustDown(btn);
+    return this.p1GpSlot >= 0 ? this.gpJustDown(this.p1GpSlot, btn) : false;
+  }
   p2JustDown(btn) { return this.p2GpSlot >= 0 ? this.gpJustDown(this.p2GpSlot, btn) : false; }
 
   // ── Keyboard / mouse binding ──────────────────────────────
@@ -156,8 +178,8 @@ class InputManager {
 
   // Right-stick cursor movement — uses P1's assigned gamepad if it's a controller
   applyStickCursor(speedPx, canvasW, canvasH) {
-    const slot = this.p1GpSlot >= 0 ? this.p1GpSlot : 0;
-    const gp   = this.gamepads[slot];
+    const gp = this.dualInput ? this._anyGp()
+                              : (this.p1GpSlot >= 0 ? this.gamepads[this.p1GpSlot] : this.gamepads[0]);
     if (!gp || !gp.connected) return;
     const sens = this.controllerAimSensitivity ?? 1.0;
     this.mouse.x = Math.max(0, Math.min(canvasW, this.mouse.x + gp.aimX * speedPx * sens));
@@ -181,42 +203,53 @@ class InputManager {
   _p1gp() { return this.p1GpSlot >= 0 ? (this.gamepads[this.p1GpSlot] ?? this._emptyGamepad(0)) : this._emptyGamepad(0); }
 
   isLeft()   {
+    if (this.dualInput) return this.isDown('KeyA') || this._anyGp().moveX < 0;
     const s = this.p1GpSlot;
-    if (s >= 0)  return this._p1gp().moveX < 0;
+    if (s >= 0)   return this._p1gp().moveX < 0;
     if (s === -2) return this.isDown('ArrowLeft');
     return this.isDown('KeyA');  // KB1
   }
   isRight()  {
+    if (this.dualInput) return this.isDown('KeyD') || this._anyGp().moveX > 0;
     const s = this.p1GpSlot;
-    if (s >= 0)  return this._p1gp().moveX > 0;
+    if (s >= 0)   return this._p1gp().moveX > 0;
     if (s === -2) return this.isDown('ArrowRight');
     return this.isDown('KeyD');
   }
   isJump()   {
+    if (this.dualInput) return this.isDown('KeyW') || this._anyGp().jump;
     const s = this.p1GpSlot;
-    if (s >= 0)  return this._p1gp().jump;
+    if (s >= 0)   return this._p1gp().jump;
     if (s === -2) return this.isDown('ArrowUp');
     return this.isDown('KeyW');
   }
   isCrouch() {
+    if (this.dualInput) return this.isDown('KeyS') || this._anyGp().crouch;
     const s = this.p1GpSlot;
-    if (s >= 0)  return this._p1gp().crouch;
+    if (s >= 0)   return this._p1gp().crouch;
     if (s === -2) return this.isDown('ArrowDown');
     return this.isDown('KeyS');
   }
   isRun() {
+    if (this.dualInput) return this.isDown('ShiftLeft') || this.isDown('ShiftRight');
     if (this.p1GpSlot >= 0) return false;  // gamepad: full-stick deflection auto-runs
     return this.isDown('ShiftLeft') || this.isDown('ShiftRight');
   }
   isAttack() {
+    if (this.dualInput) return this.isDown('Space') || this._anyGp().attack || this._anyGp().triggerR > 0.5;
     const s = this.p1GpSlot;
-    if (s >= 0) return this._p1gp().attack || this._p1gp().triggerR > 0.5;
+    if (s >= 0)   return this._p1gp().attack || this._p1gp().triggerR > 0.5;
     if (s === -2) return this.isDown('Insert');
     return this.isDown('Space');  // KB1 — mouse button handled separately in game.js
   }
   moveX() {
+    if (this.dualInput) {
+      const kb = (this.isDown('KeyD') ? 1 : 0) - (this.isDown('KeyA') ? 1 : 0);
+      const gp = this._anyGp().moveX * (this.controllerSensitivity ?? 1.0);
+      return Math.abs(kb) >= Math.abs(gp) ? kb : gp;
+    }
     const s = this.p1GpSlot;
-    if (s >= 0) return this._p1gp().moveX * (this.controllerSensitivity ?? 1.0);
+    if (s >= 0)   return this._p1gp().moveX * (this.controllerSensitivity ?? 1.0);
     if (s === -2) return (this.isDown('ArrowRight') ? 1 : 0) - (this.isDown('ArrowLeft') ? 1 : 0);
     return (this.isDown('KeyD') ? 1 : 0) - (this.isDown('KeyA') ? 1 : 0);
   }

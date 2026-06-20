@@ -68,6 +68,7 @@ function _mobPhysics(mob, level) {
 
 class Mob {
   constructor(x, y, w, h, hp) {
+    this.id      = ++Mob._nextId;
     this.x       = x;  this.y  = y;
     this.vx      = 0;  this.vy = 0;
     this.width   = w;  this.height = h;
@@ -95,6 +96,21 @@ class Mob {
 
   get cx() { return this.x + this.width  / 2; }
   get cy() { return this.y + this.height / 2; }
+
+  serialize() {
+    return {
+      id:          this.id,
+      type:        this.constructor.name,
+      x:           this.x,  y: this.y,
+      w:           this.width,  h: this.height,
+      hp:          this.hp,  maxHp: this.maxHp,
+      alive:       this.alive,
+      flipped:     this.facing > 0,
+      state:       this.state,
+      walkTimer:   this.walkTimer,
+      hitCooldown: this.hitCooldown,
+    };
+  }
 
   // Returns true if damage was applied
   takeDamage(amount, knockDir = 0) {
@@ -199,6 +215,8 @@ class Mob {
     }
   }
 }
+
+Mob._nextId = 0;
 
 // ── Zombie ───────────────────────────────────────────────────
 
@@ -1363,9 +1381,11 @@ class MobManager {
     this.blazeShots   = [];
     this.droppedItems = [];
     this.dropConfig   = null;  // set by game.js to _mobDropSettings
-    this.nightSpawnMultiplier = 1.0;   // set by game.js; 0.5 at night with boost on
-    this.fullMoonActive       = false; // set by game.js; true on full moon with boost on
+    this.nightSpawnMultiplier = 1.0;
+    this.fullMoonActive       = false;
+    this.onlinePlayers = []; // online player stubs for multi-target aggro (host only)
     this.soundCallback        = null;  // set by game.js: fn(file, volMult?)
+    this.dropCallback         = null;  // set by game.js: fn(items) — called when mob drops items (used for online relay)
     this._camera              = null;  // set by game.js after Camera is created
   }
 
@@ -1376,19 +1396,32 @@ class MobManager {
 
   // Spawn initial mobs from spawn points within activation range
   _updateSpawnPoints(player, level) {
-    const pcx = player.x + player.width / 2;
+    // Collect all player centers: host + online joiners
+    const playerCenters = [player.x + player.width / 2];
+    for (const op of this.onlinePlayers || []) {
+      playerCenters.push(op.x + PLAYER_W / 2);
+    }
+
     for (const sp of this.spawnPoints) {
       const spx = sp.col * BLOCK_SIZE;
-      const distToPlayer = Math.abs(spx - pcx);
 
-      // Only activate within range, but never spawn too close
-      if (distToPlayer > MOB_ACTIVATION_RANGE) continue;
-      if (distToPlayer < MOB_MIN_SPAWN_DIST)   continue;
+      // Find nearest player center for distance/screen checks
+      let minDist = Infinity, nearestCx = playerCenters[0];
+      for (const cx of playerCenters) {
+        const d = Math.abs(spx - cx);
+        if (d < minDist) { minDist = d; nearestCx = cx; }
+      }
 
-      // Don't respawn if spawn point is currently on screen
-      const camLeft  = pcx - CANVAS_W / 2;
-      const camRight = pcx + CANVAS_W / 2;
-      if (spx >= camLeft && spx <= camRight) continue;
+      // Only activate within range, but never spawn too close to any player
+      if (minDist > MOB_ACTIVATION_RANGE) continue;
+      if (minDist < MOB_MIN_SPAWN_DIST)   continue;
+
+      // Don't respawn if spawn point is on any player's screen
+      let onScreen = false;
+      for (const cx of playerCenters) {
+        if (spx >= cx - CANVAS_W / 2 && spx <= cx + CANVAS_W / 2) { onScreen = true; break; }
+      }
+      if (onScreen) continue;
 
       // Count alive mobs near this spawn
       const nearbyAlive = this.mobs.filter(m => {
@@ -1442,10 +1475,16 @@ class MobManager {
   // Returns the player (p1 or p2) closest to (cx, cy).
   // If p2 is null or dead (hp <= 0 with no iframes), returns p1 unconditionally.
   _nearestPlayer(cx, cy, p1, p2) {
-    if (!p2 || p2.hp <= 0) return p1;
-    const d1 = Math.hypot(p1.cx - cx, p1.cy - cy);
-    const d2 = Math.hypot(p2.cx - cx, p2.cy - cy);
-    return d1 <= d2 ? p1 : p2;
+    let best = p1, bestD = Math.hypot(p1.cx - cx, p1.cy - cy);
+    if (p2 && p2.hp > 0) {
+      const d = Math.hypot(p2.cx - cx, p2.cy - cy);
+      if (d < bestD) { best = p2; bestD = d; }
+    }
+    for (const op of this.onlinePlayers) {
+      const d = Math.hypot(op.cx - cx, op.cy - cy);
+      if (d < bestD) { best = op; bestD = d; }
+    }
+    return best;
   }
 
   // Called from game._update; returns amount of damage dealt to player this frame
@@ -1579,6 +1618,24 @@ class MobManager {
   }
 
   // Player swings weapon — hit all mobs within reach
+  // Returns array of serialized mob snapshots for multiplayer sync
+  serializeMobs() {
+    return this.mobs.filter(m => m.alive).map(m => m.serialize());
+  }
+
+  // Joiner-side: find remote mobs in attack range and return damage events to send
+  playerAttackRemoteCheck(player, remoteMobs) {
+    const damage = player.weaponDamage;
+    const hits = [];
+    for (const m of remoteMobs.values()) {
+      if (!m.alive) continue;
+      const cx = m.x + m.w / 2, cy = m.y + m.h / 2;
+      if (Math.hypot(cx - player.cx, cy - player.cy) <= ATTACK_REACH)
+        hits.push({ mobId: m.id, damage });
+    }
+    return hits;
+  }
+
   playerAttack(player) {
     const damage = player.weaponDamage;
     let anyHit   = false;
@@ -1620,6 +1677,7 @@ class MobManager {
     for (const { x, y, itemKey, amount, pickupDelay = 0 } of items) {
       this.droppedItems.push(new ItemDrop(x, y, itemKey, amount, pickupDelay));
     }
+    if (items.length > 0 && this.dropCallback) this.dropCallback(items);
   }
 
   addPlayerDamageNum(player, amount) {

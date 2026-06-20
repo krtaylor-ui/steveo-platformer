@@ -1,0 +1,25 @@
+{
+  "saveVersion": 2,
+  "worldId": "g-1779671541593-yh7",
+  "name": "g-1779671541593-yh7",
+  "mode": "sandbox",
+  "maxPlayers": 2,
+  "blocks": {},
+  "items": [],
+  "multiplierSettings": {
+    "bossHealthMultiplier": 1,
+    "bossDamageMultiplier": 1,
+    "bossAttackRateMultiplier": 1
+  },
+  "playerCount": 0,
+  "dustBlocks": [],
+  "gateBlocks": [],
+  "transmitters": [],
+  "receivers": [],
+  "sandboxLevers": [],
+  "sandboxTrapdoors": [],
+  "sandboxPistons": [],
+  "placedItems": [],
+  "spawnEggs": [],
+  "chests": []
+}

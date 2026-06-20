@@ -165,20 +165,12 @@ class World {
     this.placedItems     = Array.isArray(worldData.placedItems)     ? worldData.placedItems     : [];
     this.spawnEggs       = Array.isArray(worldData.spawnEggs)       ? worldData.spawnEggs       : [];
     this.chests          = Array.isArray(worldData.chests)          ? worldData.chests          : [];
-    // Phase 17-E: Live state (not persisted; reset on server restart)
-    this.cachedMobs      = [];
-    this.cachedDayNight  = null;
-    this.cachedChests    = {}; // 'col,row' → {col, row, items}
-    this.cachedAltars    = {}; // 'anchorRow,anchorCol' → {anchorRow, anchorCol, skulls, sand}
   }
 
   addPlayer(id, data)  { this.players.set(id, data); }
   removePlayer(id)     { this.players.delete(id); }
   getPlayerCount()     { return this.players.size; }
   isFull()             { return this.players.size >= this.maxPlayers; }
-
-  setBlock(col, row, type) { this.blocks[`${col},${row}`] = type; }
-  clearBlock(col, row)     { delete this.blocks[`${col},${row}`]; }
 
   nextPlayerNumber() {
     const used = new Set([...this.players.values()].map(p => p.number));
@@ -287,19 +279,14 @@ io.on('connection', socket => {
     const savedState = (ge && ge.playerStates && browserId)
       ? ge.playerStates[browserId] : null;
 
-    // Player 1 is always the host/creator — simpler and more reliable than browserId matching
-    const isCreator = number === 1;
+    const isCreator = !!(ge && ge.creatorBrowserId && ge.creatorBrowserId === browserId);
 
     socket.emit('joinSuccess', {
       playerId, playerNumber: number,
-      worldState:      world.toJSON(),
-      currentPlayers:  [...world.players.values()].filter(p => p.playerId !== playerId),
+      worldState:     world.toJSON(),
+      currentPlayers: [...world.players.values()].filter(p => p.playerId !== playerId),
       isCreator,
-      savedState:      (savedState && world.mode === 'normal') ? savedState : null,
-      cachedMobs:      world.cachedMobs,
-      cachedDayNight:  world.cachedDayNight,
-      cachedChests:    world.cachedChests,
-      cachedAltars:    world.cachedAltars,
+      savedState:     (savedState && world.mode === 'normal') ? savedState : null,
     });
 
     socket.to(worldId).emit('playerJoined', {
@@ -325,22 +312,7 @@ io.on('connection', socket => {
       pantsColor: pd.pantsColor,
       skinColor:  pd.skinColor,
       name:       pd.name,
-      facing:     data.facing,
-      crouching:  data.crouching,
-      swingTimer: data.swingTimer,
     });
-  });
-
-  // Phase 17-G: Host relays mob damage directly to target joiner's socket
-  socket.on('remotePlayerDamaged', data => {
-    const pd = players.get(socket.id);
-    if (!pd || !data.targetPlayerId) return;
-    for (const [sid, p] of players) {
-      if (p.worldId === pd.worldId && p.playerId === data.targetPlayerId) {
-        io.to(sid).emit('remotePlayerDamaged', data);
-        break;
-      }
-    }
   });
 
   socket.on('placeBlock', data => {
@@ -421,111 +393,6 @@ io.on('connection', socket => {
     io.to(pd.worldId).emit('settingsUpdated', world.multiplierSettings);
   });
 
-  // ── Phase 17-E: Mob state sync (host → server → joiners) ────
-  socket.on('mobState', data => {
-    const pd    = players.get(socket.id);
-    const world = worlds.get(pd?.worldId);
-    if (!world || !pd) return;
-    world.cachedMobs = data.mobs || [];
-    socket.to(pd.worldId).emit('mobState', { mobs: world.cachedMobs });
-  });
-
-  // Joiner hits a mob → relay damage to host (player 1)
-  socket.on('mobDamage', data => {
-    const pd = players.get(socket.id);
-    if (!pd) return;
-    for (const [sid, p] of players) {
-      if (p.worldId === pd.worldId && p.number === 1) {
-        io.to(sid).emit('mobDamage', { mobId: data.mobId, damage: data.damage, attackerId: pd.playerId });
-        break;
-      }
-    }
-  });
-
-  // Mob drops — relay to all players and cache so joiners see them
-  socket.on('mobDrops', data => {
-    const pd    = players.get(socket.id);
-    const world = worlds.get(pd?.worldId);
-    if (!world || !pd) return;
-    socket.to(pd.worldId).emit('mobDrops', { drops: data.drops || [] });
-  });
-
-  // Explosion — relay visual+block destruction to all joiners; update server block cache
-  socket.on('explosion', data => {
-    const pd    = players.get(socket.id);
-    const world = worlds.get(pd?.worldId);
-    if (!world || !pd) return;
-    const { col, row, radius } = data;
-    // Update server's block cache so new joiners see the destroyed blocks
-    if (typeof col === 'number' && typeof row === 'number' && typeof radius === 'number') {
-      for (let dr = -radius; dr <= radius; dr++) {
-        for (let dc = -radius; dc <= radius; dc++) {
-          if (dr * dr + dc * dc > radius * radius) continue;
-          world.clearBlock(col + dc, row + dr);
-        }
-      }
-    }
-    socket.to(pd.worldId).emit('explosion', { col, row, radius });
-  });
-
-  // Redstone state broadcast (host → joiners)
-  socket.on('redstoneState', data => {
-    const pd = players.get(socket.id);
-    if (!pd) return;
-    socket.to(pd.worldId).emit('redstoneState', { components: data.components || [], dustBlocks: data.dustBlocks || [] });
-  });
-
-  // Redstone action from joiner → relay to host (player 1)
-  socket.on('redstoneAction', data => {
-    const pd = players.get(socket.id);
-    if (!pd) return;
-    for (const [sid, p] of players) {
-      if (p.worldId === pd.worldId && p.number === 1) {
-        io.to(sid).emit('redstoneAction', { col: data.col, row: data.row, action: data.action, on: data.on, playerId: pd.playerId });
-        break;
-      }
-    }
-  });
-
-  // Chest contents sync — relay to all players and update server cache
-  socket.on('chestUpdate', data => {
-    const pd    = players.get(socket.id);
-    const world = worlds.get(pd?.worldId);
-    if (!world || !pd || !data.key) return;
-    world.cachedChests[data.key] = { col: data.col, row: data.row, items: data.items };
-    socket.to(pd.worldId).emit('chestUpdated', { col: data.col, row: data.row, items: data.items });
-  });
-
-  // ── Phase 17-F: Wither altar item sync ─────────────────────────────
-  socket.on('altarUpdate', data => {
-    const pd    = players.get(socket.id);
-    const world = worlds.get(pd?.worldId);
-    if (!world || !pd) return;
-    const key = `${data.anchorRow},${data.anchorCol}`;
-    world.cachedAltars[key] = { anchorRow: data.anchorRow, anchorCol: data.anchorCol, skulls: data.skulls, sand: data.sand };
-    socket.to(pd.worldId).emit('altarUpdated', data);
-  });
-
-  // ── Phase 17-F: Block change sync (portal activation, eye of ender) ─
-  socket.on('blockChanged', data => {
-    const pd    = players.get(socket.id);
-    const world = worlds.get(pd?.worldId);
-    if (!world || !pd) return;
-    for (const { row, col, block } of data.changes || []) {
-      world.blocks[`${row},${col}`] = block;
-    }
-    socket.to(pd.worldId).emit('blockChanged', data);
-  });
-
-  // ── Phase 17-E: Day/night sync (host → server → joiners) ────
-  socket.on('timeSync', data => {
-    const pd    = players.get(socket.id);
-    const world = worlds.get(pd?.worldId);
-    if (!world || !pd) return;
-    world.cachedDayNight = data.dayNight;
-    socket.to(pd.worldId).emit('timeSynced', { dayNight: data.dayNight });
-  });
-
   socket.on('syncInventory', data => {
     const pd = players.get(socket.id);
     if (!pd || !data) return;
@@ -575,14 +442,6 @@ io.on('connection', socket => {
         }
 
         ge.currentPlayers = Math.max(0, ge.currentPlayers - 1);
-
-        // Notify remaining players if the host (player 1) disconnects; remove from browse list
-        if (pd.number === 1) {
-          // Use io.to() — socket has already left its rooms at disconnect time
-          io.to(pd.worldId).emit('hostLeft', { hostName: pd.name });
-          games.delete(pd.worldId); // remove from browse list immediately
-          console.log(`  Host "${pd.name}" left world "${pd.worldId}" — game removed from browser`);
-        }
       }
 
       world.removePlayer(pd.playerId);

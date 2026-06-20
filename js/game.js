@@ -71,6 +71,7 @@ class Game {
       bossDamageMultiplier:      1.0,
       bossAttackRateMultiplier:  1.0,
       chatDisabled:              false,
+      showOnlineHealthBars:      true,
       // Phase 16-E — Controller
       controllerDeadzone:        GP_DEADZONE_STICK,
       // Phase 17 — Speed Runner world settings
@@ -252,6 +253,10 @@ class Game {
           mgr.onInventoryRestored = (state) => this._restoreOnlineInventory(state);
           this._setupChatUI();
           mgr.chatCallback = (data) => this._onChatMessage(data);
+          // Phase 17-E: Relay mob drops from host to all joiners via server
+          this.mobManager.dropCallback = (items) => {
+            if (mgr.isConnected && mgr.isCreator) mgr.sendMobDrops(items);
+          };
         }
         // Document-level AFK activity tracking (more reliable than per-frame polling)
         const _onActivity = () => { this._lastActivity = Date.now(); };
@@ -759,6 +764,28 @@ class Game {
     // ── Day/night timer (always advances, all modes) ───────────
     this._updateDayNight(deltaMs);
 
+    // ── Phase 17-E: Host broadcasts time / mob / redstone state to joiners ─
+    if (this._onlineGameId && window.multiplayerManager?.isConnected && window.multiplayerManager?.isCreator) {
+      const mgr = window.multiplayerManager;
+      // Time sync every 10 s (~600 frames)
+      if (this.frameCount % 600 === 0 && this.frameCount > 0) mgr.sendTimeSync(this._dayNight);
+      // Mob state every ~100ms (~6 frames) — includes projectiles so joiners see arrows/fireballs
+      if (this.frameCount % 6 === 0 && this.gameMode !== 'sandbox') {
+        const _arrows = this.mobManager.arrows.filter(a => a.alive).map(a => ({ x: a.x, y: a.y, vx: a.vx, vy: a.vy }));
+        const _blaze  = this.mobManager.blazeShots.filter(bs => bs.alive).map(bs => ({ x: bs.x, y: bs.y, vx: bs.vx, vy: bs.vy }));
+        mgr.sendMobState(this.mobManager.serializeMobs(), _arrows, _blaze);
+      }
+      // Redstone component states every 0.5 s (~30 frames)
+      if (this.frameCount % 30 === 0 && this.redstone?.components?.length) {
+        const rsSnap = this.redstone.components.map(c => ({
+          col: c.col, row: c.row, type: c.type,
+          on: c.on, open: c.open, extended: c.extended,
+        }));
+        const dustSnap = [...(this._dustBlocks?.values() ?? [])].map(d => ({ col: d.col, row: d.row, on: d.on, everTriggered: d.everTriggered }));
+        mgr.sendRedstoneState(rsSnap, dustSnap);
+      }
+    }
+
     // ── Portal fade transition — block gameplay while active ──
     if (this._portalTransition) {
       const pt = this._portalTransition;
@@ -1098,8 +1125,8 @@ class Game {
       if (rtNow && !this._rtWasDown) this._historyRedo();
       this._ltWasDown = ltNow;
       this._rtWasDown = rtNow;
-      // Y button → toggle sandbox palette
-      if (this.input.p1JustDown('place')) this.sandbox.togglePalette();
+      // Y button → toggle sandbox palette (only when no context action is available)
+      // Context action is computed later at _computeContextAction(); palette is the fallback.
     }
 
     // ── Player 2 gamepad hotbar (Phase 12) ────────────────
@@ -1123,6 +1150,9 @@ class Game {
       this.input.p1GpSlot = ControllerConfig.getAssignment(1);
       this.input.p2GpSlot = ControllerConfig.getAssignment(2);
     }
+    // Single-player: both keyboard and any connected gamepad drive P1 simultaneously.
+    // Disabled in 2-player co-op and online games to maintain per-player input isolation.
+    this.input.dualInput = !this.player2 && !this._onlineGameId;
     // Sync XP speed boost flag to player (and P2 if active)
     this.player.xpSpeedDisabled = !!this._worldAdvSettings.disableXpSpeedBoost;
     if (this.player2) this.player2.xpSpeedDisabled = !!this._worldAdvSettings.disableXpSpeedBoost;
@@ -1229,6 +1259,9 @@ class Game {
       }
     }
 
+    // Online joiner flag: host-authoritative mob sync; computed once per tick
+    const _isOnlineJoiner = !!(this._onlineGameId && window.multiplayerManager?.isConnected && !window.multiplayerManager?.isCreator);
+
     // ── Cursor world position ──────────────────────────────
     const world    = this.camera.toWorld(this.input.mouse.x, this.input.mouse.y);
     const hoverCol = Math.floor(world.x / BLOCK_SIZE);
@@ -1276,6 +1309,11 @@ class Game {
         this.mobManager.playerAttack(this.player);
         this._playerAttackDragon();
         this._playerMeleeWither();
+        // Joiner: also attack remote mobs via event
+        if (_isOnlineJoiner) {
+          for (const hit of this.mobManager.playerAttackRemoteCheck(this.player, window.multiplayerManager.remoteMobs))
+            window.multiplayerManager.sendMobDamage(hit.mobId, hit.damage);
+        }
         this.player.attackCooldown = ATTACK_COOLDOWN;
         this.player.swingTimer     = 15;
         this._playSound('sounds/attack-sword.mp3');
@@ -1286,6 +1324,11 @@ class Game {
         this.mobManager.playerAttack(this.player);
         this._playerAttackDragon();
         this._playerMeleeWither();
+        // Joiner: also attack remote mobs via event
+        if (_isOnlineJoiner) {
+          for (const hit of this.mobManager.playerAttackRemoteCheck(this.player, window.multiplayerManager.remoteMobs))
+            window.multiplayerManager.sendMobDamage(hit.mobId, hit.damage);
+        }
         this.player.attackCooldown = ATTACK_COOLDOWN;
         this.player.swingTimer     = 15;
       }
@@ -1357,9 +1400,13 @@ class Game {
     if (this.input.p1JustDown('context')) {
       this.player.selectedSlot = (this.player.selectedSlot + 1) % 9;
     }
-    // Y button: Use Item (non-sandbox P1 and P2)
-    if (this.gameMode !== 'sandbox' && this.input.p1JustDown('place')) {
-      this._executeContextAction(this.player);
+    // Y button: Use Item (all modes — sandbox falls back to palette if no action available)
+    if (this.input.p1JustDown('place')) {
+      if (this._contextAction) {
+        this._executeContextAction(this.player);
+      } else if (this.gameMode === 'sandbox' && this.sandbox) {
+        this.sandbox.togglePalette();
+      }
     }
     if (this.player2 && this._p2RespawnTimer === 0 && this.input.p2JustDown('place')) {
       this._executeContextAction(this.player2);
@@ -1375,7 +1422,29 @@ class Game {
     }
 
     // ── Redstone update (pressure plates, TNT countdown) ───
-    this.redstone.update(this.level, this.player, this.input);
+    if (_isOnlineJoiner) {
+      // Joiners skip full redstone propagation — host-synced states are authoritative.
+      // Only detect which pressure plates the local player is standing on and relay changes.
+      if (!this._ppCache) this._ppCache = new Map();
+      const _p = this.player;
+      for (const comp of this.redstone.components) {
+        if (comp.type !== 'pressure_plate') continue;
+        const px = comp.col * BLOCK_SIZE, py = comp.row * BLOCK_SIZE;
+        const onPlate = _p.x + _p.width > px + 4 && _p.x < px + BLOCK_SIZE - 4 &&
+                        Math.abs((_p.y + _p.height) - (py + BLOCK_SIZE)) < 8;
+        const key = `${comp.col},${comp.row}`;
+        if (this._ppCache.get(key) !== onPlate) {
+          this._ppCache.set(key, onPlate);
+          window.multiplayerManager.sendRedstoneAction(comp.col, comp.row, 'pressurePlate', onPlate);
+        }
+      }
+    } else {
+      // Host (or offline): run full redstone propagation, including joiner plate positions.
+      const _rsExtraOn = (this._onlineGameId && window.multiplayerManager?.isCreator)
+        ? (col, row) => window.multiplayerManager.joinersOnPlates?.has(`${col},${row}`) ?? false
+        : null;
+      this.redstone.update(this.level, this.player, this.input, _rsExtraOn);
+    }
     this.redstone.updatePistonAnimations();
     this._applyPistonKnockback();
     // Before TNT explodes, drop items from any chests in blast radius + play sound + visual
@@ -1403,6 +1472,10 @@ class Game {
       this._screenShake.intensity = 5;
       this._screenShake.frames    = 12;
       this._screenShake.maxFrames = 12;
+      // Phase 17-E: relay explosion to joiners (host only)
+      if (this._onlineGameId && window.multiplayerManager?.isConnected && window.multiplayerManager?.isCreator) {
+        window.multiplayerManager.sendExplosion(ev.col, ev.row, ev.radius);
+      }
     }
     this.mobManager.explosionEvents = [];
     this.redstone.tickTnt(this.level, this.mobManager);
@@ -1787,13 +1860,60 @@ class Game {
     }
 
     // ── Mob AI + combat (suppressed in sandbox — mobs appear as eggs) ──
+    // _isOnlineJoiner computed near top of _update(); reused here.
     if (!isSandbox) {
       const _dn = this._dayNight;
       this.mobManager.nightSpawnMultiplier = (!_dn.isDay && this._worldAdvSettings.nightSpawnBoost) ? 0.5 : 1.0;
       this.mobManager.fullMoonActive       = (!_dn.isDay && _dn.nightPhase === 3 && this._worldAdvSettings.fullMoonHpBoost);
+      // Online host: give mob AI stubs for joiner positions so mobs chase all players
+      if (this._onlineGameId && window.multiplayerManager?.isCreator) {
+        this.mobManager.onlinePlayers = Object.entries(window.multiplayerManager.otherPlayers)
+          .filter(([, p]) => p.hp > 0)
+          .map(([pid, p]) => ({
+            x: p.x, y: p.y, hp: p.hp, iFrames: 0,
+            width: PLAYER_W, height: PLAYER_H,
+            crouching: false, hasShield: false, _playerId: pid, _pendingDamage: null,
+            get cx() { return this.x + PLAYER_W / 2; },
+            get cy() { return this.y + PLAYER_H / 2; },
+            takeDamage(amount, dir) { if (!this._pendingDamage) this._pendingDamage = { amount, dir }; },
+          }));
+      } else {
+        this.mobManager.onlinePlayers = [];
+      }
       const hpBefore = this.player.hp;
-      this.mobManager.update(this.player, this.level, this.player2 || null);
+      if (!_isOnlineJoiner) {
+        this.mobManager.update(this.player, this.level, this.player2 || null);
+      } else {
+        // Joiners skip mob AI but still need item physics so drops settle and stay visible.
+        this.mobManager.droppedItems = this.mobManager.droppedItems.filter(item => {
+          item.update(this.level);
+          return item.alive;
+        });
+      }
       const dmgTaken = hpBefore - this.player.hp;
+
+      // Online host: relay pending damage from mob AI to joiners; check arrows vs joiners
+      if (this._onlineGameId && window.multiplayerManager?.isCreator) {
+        const mgr = window.multiplayerManager;
+        for (const stub of this.mobManager.onlinePlayers) {
+          if (stub._pendingDamage) {
+            mgr.sendRemotePlayerDamaged(stub._playerId, stub._pendingDamage.amount, stub._pendingDamage.dir);
+            stub._pendingDamage = null;
+          }
+        }
+        // Arrow hits on joiners (arrows only check local player in update; check joiners here)
+        for (const stub of this.mobManager.onlinePlayers) {
+          this.mobManager.arrows = this.mobManager.arrows.filter(a => {
+            if (!a.alive || a.isPlayerArrow) return a.alive;
+            if (a.x > stub.x && a.x < stub.x + PLAYER_W &&
+                a.y > stub.y && a.y < stub.y + PLAYER_H) {
+              mgr.sendRemotePlayerDamaged(stub._playerId, a.damage, Math.sign(a.vx));
+              a.alive = false; return false;
+            }
+            return true;
+          });
+        }
+      }
       if (dmgTaken > 0) {
         this.mobManager.addPlayerDamageNum(this.player, dmgTaken);
         this._playSound('sounds/player-damaged.mp3');
@@ -2201,7 +2321,10 @@ class Game {
        this._mpSyncTimer++;
        if (this._mpSyncTimer >= 3) {
          this._mpSyncTimer = 0;
-         window.multiplayerManager.updatePosition(this.player.x, this.player.y, this.player.vx || 0, this.player.vy || 0);
+         window.multiplayerManager.updatePosition(
+           this.player.x, this.player.y, this.player.vx || 0, this.player.vy || 0,
+           this.player.facing, this.player.crouching, this.player.swingTimer || 0
+         );
        }
        // Sync inventory to server every 30 s (for Normal mode save + Platformer drop-on-disconnect)
        this._mpInvSyncTimer++;
@@ -2229,6 +2352,10 @@ class Game {
 
   _closeChest() {
     if (!this._chestOpen) return;
+    if (this._onlineGameId && window.multiplayerManager?.isConnected) {
+      const ch = this._chests.get(`${this._chestOpen.col},${this._chestOpen.row}`);
+      if (ch) window.multiplayerManager.sendChestUpdate(ch.col, ch.row, ch.items);
+    }
     this._returnHeldItem();
     this._sbChestHeld  = null;
     this._chestOpen    = null;
@@ -2321,6 +2448,9 @@ class Game {
       return it.type === cur.type;
     });
     ch.items[index] = BANK[(curIdx + 1) % BANK.length];
+    if (this._onlineGameId && window.multiplayerManager?.isConnected) {
+      window.multiplayerManager.sendChestUpdate(ch.col, ch.row, ch.items);
+    }
   }
 
   // ── Sandbox chest panel ───────────────────────────────────────
@@ -3429,8 +3559,8 @@ class Game {
     }
 
     // Built-in world portal logic (non-sandbox, or unregistered portals)
-    const inCave   = pCol >= 271 && pCol <= 272 && pRow >= 11 && pRow <= 13;
-    const inNether = pCol >= 329 && pCol <= 330 && pRow >= 11 && pRow <= 13;
+    const inCave   = pCol >= 271 && pCol <= 272 && pRow >= 31 && pRow <= 33;
+    const inNether = pCol >= 329 && pCol <= 330 && pRow >= 31 && pRow <= 33;
     if (inCave) {
       this._portalTransition = { phase: 'out', timer: 0, destX: pd.caveExit.x, destY: pd.caveExit.y };
       this._playSound('sounds/nether-portal.mp3');
@@ -3451,6 +3581,10 @@ class Game {
     if (this.level.get(pd.cavePortalInterior[0].row, pd.cavePortalInterior[0].col) === BLOCK.NETHER_PORTAL) return;
     for (const pos of pd.cavePortalInterior) {
       this.level.set(pos.row, pos.col, BLOCK.NETHER_PORTAL);
+    }
+    if (this._onlineGameId && window.multiplayerManager?.isCreator) {
+      const changes = pd.cavePortalInterior.map(pos => ({ row: pos.row, col: pos.col, block: BLOCK.NETHER_PORTAL }));
+      window.multiplayerManager.sendBlockChanged(changes);
     }
     this._notify('Nether portal activated! Jump to enter.', '#AA00FF', 300);
   }
@@ -4121,6 +4255,8 @@ class Game {
     this._drawHUD(ctx, hoverRow, hoverCol);
     // Phase 16: Multiplayer HUD (player list + connection badge)
     if (window.multiplayerManager?.isConnected) window.multiplayerManager.drawHUD(ctx);
+    // Phase 17-E: Remote mob rendering for online joiners
+    if (window.multiplayerManager?.isConnected) window.multiplayerManager.drawRemoteMobs(ctx, this.camera);
 
     // Sandbox overlays: eggs, mode badge, palette, popup
     if (this.gameMode === 'sandbox' && this.sandbox) {
@@ -6542,6 +6678,17 @@ class Game {
         this._playSound('sounds/placing-eye-of-ender.mp3');
         this._notify(`Eye of Ender placed! (${anchor.eyeCount}/5)`, '#AA44FF', 140);
       }
+      if (this._onlineGameId && window.multiplayerManager?.isCreator) {
+        const changes = [{ row, col, block: BLOCK.END_PORTAL_FRAME_FULL }];
+        if (anchor.eyeCount >= 5) {
+          for (let dr = 0; dr <= 2; dr++)
+            for (let dc = 1; dc <= 3; dc++)
+              changes.push({ row: anchor.row + dr, col: anchor.col + dc, block: BLOCK.END_PORTAL });
+        }
+        window.multiplayerManager.sendBlockChanged(changes, {
+          endPortalAnchor: { col: anchor.col, row: anchor.row, eyeCount: anchor.eyeCount, active: anchor.active },
+        });
+      }
       return;
     }
     this._notify('No inactive portal frame here', '#888888', 80);
@@ -7285,8 +7432,10 @@ class Game {
       return;
     }
 
-    // Tab bar clicks (8 tabs, stride=70, display width=67)
-    const TABS = [{ id: 'drops', label: 'Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'multiplayer', label: 'Multi' }, { id: 'speedrunner', label: 'SR' }, { id: 'physics', label: 'Physics' }];
+    // Tab bar clicks — sandbox shows all 8 tabs; other modes only show the 4 player-relevant tabs
+    const _allWsTabs = [{ id: 'drops', label: 'Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'multiplayer', label: 'Multi' }, { id: 'speedrunner', label: 'SR' }, { id: 'physics', label: 'Physics' }];
+    const _playTabIds = ['advanced', 'input', 'audio', 'multiplayer'];
+    const TABS = (this.gameMode === 'sandbox') ? _allWsTabs : _allWsTabs.filter(t => _playTabIds.includes(t.id));
     const TAB_STRIDE = 70, TAB_W = 67;
     for (let t = 0; t < TABS.length; t++) {
       const tx = L.px + 8 + t * TAB_STRIDE;
@@ -7320,6 +7469,17 @@ class Game {
         const cur = DZ_VALS.findIndex(v => Math.abs(v - (this._worldAdvSettings.controllerDeadzone ?? GP_DEADZONE_STICK)) < 0.005);
         this._worldAdvSettings.controllerDeadzone = DZ_VALS[(cur < 0 ? 3 : cur + 1) % DZ_VALS.length];
       }
+      // Row 4: P1 input assignment (cycles KB1 → KB2 → Gamepad 1-4)
+      if (typeof ControllerConfig !== 'undefined') {
+        const asgY  = L.FIRST_ROW + 130;
+        const INOPTS = [-1, -2, 0, 1, 2, 3];
+        if (mx >= tgX && mx <= tgX + tgW && my >= asgY && my <= asgY + tgH) {
+          const cur  = INOPTS.indexOf(ControllerConfig.getAssignment(1));
+          const next = INOPTS[(cur < 0 ? 2 : cur + 1) % INOPTS.length];
+          ControllerConfig.setAssignment(1, next);
+          this.input.p1GpSlot = next;
+        }
+      }
       return;
     }
 
@@ -7349,109 +7509,120 @@ class Game {
 
     if (this._wsTab === 'advanced') {
       const tgX = L.px + L.pw - 82, tgW = 64, tgH = 24;
-      // Row 1: Dragon Healing
-      const r1Y = L.FIRST_ROW;
-      if (mx >= tgX && mx <= tgX + tgW && my >= r1Y && my <= r1Y + tgH)
-        this._worldAdvSettings.disableDragonHealing = !this._worldAdvSettings.disableDragonHealing;
-      // Row 2: Unlimited Arrows
-      const r2Y = L.FIRST_ROW + 48;
-      if (mx >= tgX && mx <= tgX + tgW && my >= r2Y && my <= r2Y + tgH)
-        this._worldAdvSettings.unlimitedArrows = !this._worldAdvSettings.unlimitedArrows;
-      // Row 3: 2-Player Co-op (disabled in online games)
-      const r3Y = L.FIRST_ROW + 96;
-      if (!this._onlineGameId && mx >= tgX && mx <= tgX + tgW && my >= r3Y && my <= r3Y + tgH)
-        this._applyTwoPlayerMode(!this._worldAdvSettings.twoPlayerMode);
-      // Row 4: Disable XP Speed Boost
-      const r4Y = L.FIRST_ROW + 144;
-      if (mx >= tgX && mx <= tgX + tgW && my >= r4Y && my <= r4Y + tgH)
-        this._worldAdvSettings.disableXpSpeedBoost = !this._worldAdvSettings.disableXpSpeedBoost;
-      // Row 5: Disable Chat
-      const r5Y = L.FIRST_ROW + 192;
-      if (mx >= tgX && mx <= tgX + tgW && my >= r5Y && my <= r5Y + tgH) {
-        this._worldAdvSettings.chatDisabled = !this._worldAdvSettings.chatDisabled;
-        const chatEl = this._chatDomElement;
-        if (chatEl) chatEl.style.display = this._worldAdvSettings.chatDisabled ? 'none' : '';
-      }
-      // Export as Template button (sandbox only)
       if (this.gameMode === 'sandbox') {
+        // Row 1: Dragon Healing
+        if (mx >= tgX && mx <= tgX + tgW && my >= L.FIRST_ROW && my <= L.FIRST_ROW + tgH)
+          this._worldAdvSettings.disableDragonHealing = !this._worldAdvSettings.disableDragonHealing;
+        // Row 2: Unlimited Arrows
+        if (mx >= tgX && mx <= tgX + tgW && my >= L.FIRST_ROW + 48 && my <= L.FIRST_ROW + 48 + tgH)
+          this._worldAdvSettings.unlimitedArrows = !this._worldAdvSettings.unlimitedArrows;
+        // Row 3: 2-Player Co-op (disabled in online games)
+        if (!this._onlineGameId && mx >= tgX && mx <= tgX + tgW && my >= L.FIRST_ROW + 96 && my <= L.FIRST_ROW + 96 + tgH)
+          this._applyTwoPlayerMode(!this._worldAdvSettings.twoPlayerMode);
+        // Row 4: Disable XP Speed Boost
+        if (mx >= tgX && mx <= tgX + tgW && my >= L.FIRST_ROW + 144 && my <= L.FIRST_ROW + 144 + tgH)
+          this._worldAdvSettings.disableXpSpeedBoost = !this._worldAdvSettings.disableXpSpeedBoost;
+        // Row 5: Show Players Health
+        if (mx >= tgX && mx <= tgX + tgW && my >= L.FIRST_ROW + 192 && my <= L.FIRST_ROW + 192 + tgH)
+          this._worldAdvSettings.showOnlineHealthBars = !(this._worldAdvSettings.showOnlineHealthBars !== false);
+        // Export as Template button
         const expBtnX = L.px + 12, expBtnW = L.pw - 24, expBtnH = 26, expBtnY = L.FIRST_ROW + 240;
-        if (mx >= expBtnX && mx <= expBtnX + expBtnW && my >= expBtnY && my <= expBtnY + expBtnH) {
+        if (mx >= expBtnX && mx <= expBtnX + expBtnW && my >= expBtnY && my <= expBtnY + expBtnH)
           this._exportAsTemplate();
-        }
+      } else {
+        // Row 1: 2-Player Co-op (disabled in online games)
+        if (!this._onlineGameId && mx >= tgX && mx <= tgX + tgW && my >= L.FIRST_ROW && my <= L.FIRST_ROW + tgH)
+          this._applyTwoPlayerMode(!this._worldAdvSettings.twoPlayerMode);
+        // Row 2: Show Players Health
+        if (mx >= tgX && mx <= tgX + tgW && my >= L.FIRST_ROW + 48 && my <= L.FIRST_ROW + 48 + tgH)
+          this._worldAdvSettings.showOnlineHealthBars = !(this._worldAdvSettings.showOnlineHealthBars !== false);
       }
       return;
     }
 
     if (this._wsTab === 'multiplayer') {
-      const MP_MULT_OPTS = [0.5, 1.0, 1.5, 2.0, 3.0];
-      const tgX = L.px + L.pw - 82, tgW = 64, tgH = 24;
       const aws = this._worldAdvSettings;
-      // Row 1: Boss Health Multiplier
-      const mr1Y = L.FIRST_ROW;
-      if (mx >= tgX && mx <= tgX + tgW && my >= mr1Y && my <= mr1Y + tgH) {
-        const cur = MP_MULT_OPTS.findIndex(v => Math.abs(v - (aws.bossHealthMultiplier ?? 1.0)) < 0.01);
-        aws.bossHealthMultiplier = MP_MULT_OPTS[(cur < 0 ? 1 : cur + 1) % MP_MULT_OPTS.length];
-        if (window.multiplayerManager?.isConnected) window.multiplayerManager.pushSettings({ bossHealthMultiplier: aws.bossHealthMultiplier });
-      }
-      // Row 2: Boss Damage Multiplier
-      const mr2Y = L.FIRST_ROW + 48;
-      if (mx >= tgX && mx <= tgX + tgW && my >= mr2Y && my <= mr2Y + tgH) {
-        const cur = MP_MULT_OPTS.findIndex(v => Math.abs(v - (aws.bossDamageMultiplier ?? 1.0)) < 0.01);
-        aws.bossDamageMultiplier = MP_MULT_OPTS[(cur < 0 ? 1 : cur + 1) % MP_MULT_OPTS.length];
-        if (window.multiplayerManager?.isConnected) window.multiplayerManager.pushSettings({ bossDamageMultiplier: aws.bossDamageMultiplier });
-      }
-      // Row 3: Boss Attack Rate Multiplier
-      const mr3Y = L.FIRST_ROW + 96;
-      if (mx >= tgX && mx <= tgX + tgW && my >= mr3Y && my <= mr3Y + tgH) {
-        const cur = MP_MULT_OPTS.findIndex(v => Math.abs(v - (aws.bossAttackRateMultiplier ?? 1.0)) < 0.01);
-        aws.bossAttackRateMultiplier = MP_MULT_OPTS[(cur < 0 ? 1 : cur + 1) % MP_MULT_OPTS.length];
-        if (window.multiplayerManager?.isConnected) window.multiplayerManager.pushSettings({ bossAttackRateMultiplier: aws.bossAttackRateMultiplier });
-      }
-      // Row 4: Connect / Disconnect button
-      const mr4Y = L.FIRST_ROW + 152;
       const btnX = L.px + 16, btnW = L.pw - 32, btnH = 26;
-      if (mx >= btnX && mx <= btnX + btnW && my >= mr4Y && my <= mr4Y + btnH) {
-        if (window.multiplayerManager?.isConnected) {
-          window.multiplayerManager.disconnect();
-        } else {
-          // Build sparse block map for initial world state
-          const sparseBlocks = {};
-          if (this.level?.grid) {
-            for (let r = 0; r < this.level.grid.length; r++) {
-              for (let c = 0; c < this.level.grid[r].length; c++) {
-                const t = this.level.grid[r][c];
-                if (t !== 0) sparseBlocks[`${c},${r}`] = t;
-              }
+
+      const doConnect = () => {
+        const sparseBlocks = {};
+        if (this.level?.grid) {
+          for (let r = 0; r < this.level.grid.length; r++) {
+            for (let c = 0; c < this.level.grid[r].length; c++) {
+              const t = this.level.grid[r][c];
+              if (t !== 0) sparseBlocks[`${c},${r}`] = t;
             }
           }
-          const worldData = {
-            name:               this._sbWorldName || 'World',
-            blocks:             sparseBlocks,
-            multiplierSettings: {
-              bossHealthMultiplier:     aws.bossHealthMultiplier,
-              bossDamageMultiplier:     aws.bossDamageMultiplier,
-              bossAttackRateMultiplier: aws.bossAttackRateMultiplier,
-            },
-          };
-          window.multiplayerManager.connect(
-            this._sbWorldName || 'world',
-            worldData,
-            this._sbPlayerName || 'Player'
-          );
         }
-      }
-      // Row 5: Download World (only when connected)
-      const mr5Y = L.FIRST_ROW + 192;
-      if (window.multiplayerManager?.isConnected &&
-          mx >= btnX && mx <= btnX + btnW && my >= mr5Y && my <= mr5Y + btnH) {
-        window.multiplayerManager.downloadWorld();
-      }
-      // Delete game (creator)
-      const delY = L.FIRST_ROW + 232;
-      if (window.multiplayerManager?.isCreator && mx >= btnX && mx <= btnX + btnW && my >= delY && my <= delY + btnH) {
-        if (confirm('Delete this game permanently? All players will be disconnected.')) {
-          window.multiplayerManager.deleteGame(window.multiplayerManager.worldId);
+        window.multiplayerManager.connect(
+          this._sbWorldName || 'world',
+          { name: this._sbWorldName || 'World', blocks: sparseBlocks,
+            multiplierSettings: { bossHealthMultiplier: aws.bossHealthMultiplier, bossDamageMultiplier: aws.bossDamageMultiplier, bossAttackRateMultiplier: aws.bossAttackRateMultiplier } },
+          this._sbPlayerName || 'Player'
+        );
+      };
+
+      if (this.gameMode === 'sandbox') {
+        const MP_MULT_OPTS = [0.5, 1.0, 1.5, 2.0, 3.0];
+        const tgX = L.px + L.pw - 82, tgW = 64, tgH = 24;
+        // Row 1: Boss Health Multiplier
+        if (mx >= tgX && mx <= tgX + tgW && my >= L.FIRST_ROW && my <= L.FIRST_ROW + tgH) {
+          const cur = MP_MULT_OPTS.findIndex(v => Math.abs(v - (aws.bossHealthMultiplier ?? 1.0)) < 0.01);
+          aws.bossHealthMultiplier = MP_MULT_OPTS[(cur < 0 ? 1 : cur + 1) % MP_MULT_OPTS.length];
+          if (window.multiplayerManager?.isConnected) window.multiplayerManager.pushSettings({ bossHealthMultiplier: aws.bossHealthMultiplier });
         }
+        // Row 2: Boss Damage Multiplier
+        if (mx >= tgX && mx <= tgX + tgW && my >= L.FIRST_ROW + 48 && my <= L.FIRST_ROW + 48 + tgH) {
+          const cur = MP_MULT_OPTS.findIndex(v => Math.abs(v - (aws.bossDamageMultiplier ?? 1.0)) < 0.01);
+          aws.bossDamageMultiplier = MP_MULT_OPTS[(cur < 0 ? 1 : cur + 1) % MP_MULT_OPTS.length];
+          if (window.multiplayerManager?.isConnected) window.multiplayerManager.pushSettings({ bossDamageMultiplier: aws.bossDamageMultiplier });
+        }
+        // Row 3: Boss Attack Rate Multiplier
+        if (mx >= tgX && mx <= tgX + tgW && my >= L.FIRST_ROW + 96 && my <= L.FIRST_ROW + 96 + tgH) {
+          const cur = MP_MULT_OPTS.findIndex(v => Math.abs(v - (aws.bossAttackRateMultiplier ?? 1.0)) < 0.01);
+          aws.bossAttackRateMultiplier = MP_MULT_OPTS[(cur < 0 ? 1 : cur + 1) % MP_MULT_OPTS.length];
+          if (window.multiplayerManager?.isConnected) window.multiplayerManager.pushSettings({ bossAttackRateMultiplier: aws.bossAttackRateMultiplier });
+        }
+        // Row 4: Disable Chat toggle
+        if (mx >= tgX && mx <= tgX + tgW && my >= L.FIRST_ROW + 144 && my <= L.FIRST_ROW + 144 + tgH) {
+          aws.chatDisabled = !aws.chatDisabled;
+          const chatEl = this._chatDomElement;
+          if (chatEl) chatEl.style.display = aws.chatDisabled ? 'none' : '';
+        }
+        // Connect / Disconnect button
+        const mr5Y = L.FIRST_ROW + 200;
+        if (mx >= btnX && mx <= btnX + btnW && my >= mr5Y && my <= mr5Y + btnH) {
+          if (window.multiplayerManager?.isConnected) window.multiplayerManager.disconnect();
+          else doConnect();
+        }
+        // Download World
+        const dlY = L.FIRST_ROW + 240;
+        if (window.multiplayerManager?.isConnected &&
+            mx >= btnX && mx <= btnX + btnW && my >= dlY && my <= dlY + btnH)
+          window.multiplayerManager.downloadWorld();
+        // Delete game (creator)
+        const delY = L.FIRST_ROW + 280;
+        if (window.multiplayerManager?.isCreator && mx >= btnX && mx <= btnX + btnW && my >= delY && my <= delY + btnH) {
+          if (confirm('Delete this game permanently? All players will be disconnected.'))
+            window.multiplayerManager.deleteGame(window.multiplayerManager.worldId);
+        }
+      } else {
+        // Non-sandbox: Disable Chat toggle + connect/disconnect + download
+        const nsTgX = L.px + L.pw - 82, nsTgW = 64, nsTgH = 24;
+        if (mx >= nsTgX && mx <= nsTgX + nsTgW && my >= L.FIRST_ROW && my <= L.FIRST_ROW + nsTgH) {
+          aws.chatDisabled = !aws.chatDisabled;
+          const chatEl = this._chatDomElement;
+          if (chatEl) chatEl.style.display = aws.chatDisabled ? 'none' : '';
+        }
+        const nsBtnY = L.FIRST_ROW + 56;
+        if (mx >= btnX && mx <= btnX + btnW && my >= nsBtnY && my <= nsBtnY + btnH) {
+          if (window.multiplayerManager?.isConnected) window.multiplayerManager.disconnect();
+          else doConnect();
+        }
+        const dlY = nsBtnY + 48;
+        if (window.multiplayerManager?.isConnected &&
+            mx >= btnX && mx <= btnX + btnW && my >= dlY && my <= dlY + btnH)
+          window.multiplayerManager.downloadWorld();
       }
       return;
     }
@@ -7607,8 +7778,10 @@ class Game {
     ctx.textAlign = 'center';
     ctx.fillText('×', xbx + 10, xby + 11);
 
-    // Tab bar (8 tabs at stride=70, width=67)
-    const TABS = [{ id: 'drops', label: 'Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'multiplayer', label: 'Multi' }, { id: 'speedrunner', label: 'SR' }, { id: 'physics', label: 'Physics' }];
+    // Tab bar — sandbox shows all 8 tabs; other modes show only 4 player-relevant tabs
+    const _allWsTabs2 = [{ id: 'drops', label: 'Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'multiplayer', label: 'Multi' }, { id: 'speedrunner', label: 'SR' }, { id: 'physics', label: 'Physics' }];
+    const _playTabIds2 = ['advanced', 'input', 'audio', 'multiplayer'];
+    const TABS = (this.gameMode === 'sandbox') ? _allWsTabs2 : _allWsTabs2.filter(t => _playTabIds2.includes(t.id));
     const TAB_STRIDE = 70, TAB_W = 67;
     for (let t = 0; t < TABS.length; t++) {
       const tx = L.px + 8 + t * TAB_STRIDE;
@@ -7704,13 +7877,12 @@ class Game {
         ctx.fillText(disabled ? 'N/A' : (active ? 'ON' : 'OFF'), tgX + tgW / 2, rY + 13);
       };
 
-      drawAdvRow(L.FIRST_ROW,       'Disable Dragon Healing',  '(crystals stop healing the dragon)',    aws.disableDragonHealing);
-      drawAdvRow(L.FIRST_ROW + 48,  'Unlimited Arrows',        '(bow fires without consuming arrows)',  aws.unlimitedArrows);
-      drawAdvRow(L.FIRST_ROW + 96,  '2-Player Co-op',          this._onlineGameId ? '(not available in online games)' : '(IJKL keys or 2nd gamepad for P2)', aws.twoPlayerMode, !!this._onlineGameId);
-      drawAdvRow(L.FIRST_ROW + 144, 'Disable XP Speed Boost',  '(XP no longer increases move speed)',   aws.disableXpSpeedBoost);
-      drawAdvRow(L.FIRST_ROW + 192, 'Disable Chat',            '(hides chat window in online games)',   aws.chatDisabled);
-      // Export as Template button (sandbox only)
       if (this.gameMode === 'sandbox') {
+        drawAdvRow(L.FIRST_ROW,       'Disable Dragon Healing',  '(crystals stop healing the dragon)',    aws.disableDragonHealing);
+        drawAdvRow(L.FIRST_ROW + 48,  'Unlimited Arrows',        '(bow fires without consuming arrows)',  aws.unlimitedArrows);
+        drawAdvRow(L.FIRST_ROW + 96,  '2-Player Co-op',          this._onlineGameId ? '(not available in online games)' : '(IJKL keys or 2nd gamepad for P2)', aws.twoPlayerMode, !!this._onlineGameId);
+        drawAdvRow(L.FIRST_ROW + 144, 'Disable XP Speed Boost',  '(XP no longer increases move speed)',   aws.disableXpSpeedBoost);
+        drawAdvRow(L.FIRST_ROW + 192, 'Show Players Health',     '(other players health bars in top-right)', aws.showOnlineHealthBars !== false);
         const expBtnX = L.px + 12, expBtnW = L.pw - 24, expBtnH = 26, expBtnY = L.FIRST_ROW + 240;
         const expHov  = this.input.mouse.x >= expBtnX && this.input.mouse.x <= expBtnX + expBtnW &&
                         this.input.mouse.y >= expBtnY && this.input.mouse.y <= expBtnY + expBtnH;
@@ -7721,6 +7893,9 @@ class Game {
         ctx.font = 'bold 10px Courier New'; ctx.fillStyle = expHov ? '#AAFFAA' : '#88CC88';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText('⬇  Export World as Template JSON', expBtnX + expBtnW / 2, expBtnY + 13);
+      } else {
+        drawAdvRow(L.FIRST_ROW,      '2-Player Co-op',      this._onlineGameId ? '(not available in online games)' : '(IJKL keys or 2nd gamepad for P2)', aws.twoPlayerMode, !!this._onlineGameId);
+        drawAdvRow(L.FIRST_ROW + 48, 'Show Players Health', '(other players health bars in top-right)', aws.showOnlineHealthBars !== false);
       }
     } else if (this._wsTab === 'input') {
       // ── Input Settings tab ────────────────────────────────────
@@ -7770,6 +7945,26 @@ class Game {
       ctx.font = 'bold 11px Courier New'; ctx.fillStyle = '#88CCFF';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(Math.round(dzVal * 100) + '%', dzTgX + dzTgW / 2, dzRY + 13);
+
+      // ── P1 input assignment ────────────────────────────────
+      if (typeof ControllerConfig !== 'undefined') {
+        const asgY   = L.FIRST_ROW + 130;
+        const asgVal = ControllerConfig.getAssignment(1);
+        const asgLabelMap = { '-1': 'KB1 (WASD)', '-2': 'KB2 (Arrows)' };
+        const asgText = asgVal >= 0 ? `Gamepad ${asgVal + 1}` : (asgLabelMap[String(asgVal)] ?? 'KB1');
+        ctx.font = '11px Courier New'; ctx.fillStyle = '#AAAACC';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText('P1 Input', L.MOB_COL, asgY + 11);
+        ctx.font = '9px Courier New'; ctx.fillStyle = '#666677';
+        ctx.fillText('(controller or keyboard — click to cycle)', L.MOB_COL, asgY + 26);
+        const asgHov = mx2 >= tgX && mx2 <= tgX + tgW && my2 >= asgY && my2 <= asgY + tgH;
+        ctx.fillStyle = asgHov ? '#1A2A3A' : '#232333';
+        ctx.strokeStyle = asgHov ? '#44AAFF' : '#555577'; ctx.lineWidth = 1;
+        ctx.fillRect(tgX, asgY, tgW, tgH); ctx.strokeRect(tgX, asgY, tgW, tgH);
+        ctx.font = 'bold 10px Courier New'; ctx.fillStyle = '#88CCFF';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(asgText, tgX + tgW / 2, asgY + 13);
+      }
 
       // ── Connected controllers ──────────────────────────────
       const gpListY = L.FIRST_ROW + 158;
@@ -7852,65 +8047,77 @@ class Game {
       // ── Multiplayer tab ────────────────────────────────────────
       const aws = this._worldAdvSettings;
       const tgW = 64, tgH = 24, tgX = L.px + L.pw - 82;
-      const MP_MULT_OPTS = [0.5, 1.0, 1.5, 2.0, 3.0];
       const connected = !!window.multiplayerManager?.isConnected;
       const statusColor = connected ? '#44EE44' : '#EE4444';
       const statusText  = connected
         ? `Connected as Player ${window.multiplayerManager.playerNumber} (${window.multiplayerManager.worldId})`
         : 'Not connected';
+      const btnX = L.px + 16, btnW = L.pw - 32, btnH = 26;
 
       // Status bar
       ctx.font = '9px Courier New'; ctx.fillStyle = statusColor;
       ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
       ctx.fillText(statusText, L.px + L.pw / 2, L.CONTENT_Y + 8);
 
-      ctx.font = '9px Courier New'; ctx.fillStyle = '#888899';
-      ctx.fillText('Boss scaling · click value to cycle · P or Esc to close', L.px + L.pw / 2, L.CONTENT_Y + 20);
+      if (this.gameMode === 'sandbox') {
+        const MP_MULT_OPTS = [0.5, 1.0, 1.5, 2.0, 3.0];
+        ctx.font = '9px Courier New'; ctx.fillStyle = '#888899';
+        ctx.fillText('Boss scaling · click value to cycle · P or Esc to close', L.px + L.pw / 2, L.CONTENT_Y + 20);
 
-      const drawMpRow = (rY, label, sub, val) => {
-        ctx.font = '11px Courier New'; ctx.fillStyle = '#AAAACC';
-        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-        ctx.fillText(label, L.MOB_COL, rY + 11);
-        ctx.font = '9px Courier New'; ctx.fillStyle = '#666677';
-        ctx.fillText(sub, L.MOB_COL, rY + 26);
-        ctx.fillStyle  = '#2A3A2A'; ctx.strokeStyle = '#44CC44'; ctx.lineWidth = 1;
-        ctx.fillRect(tgX, rY, tgW, tgH);
-        ctx.strokeRect(tgX, rY, tgW, tgH);
-        ctx.font = 'bold 11px Courier New'; ctx.fillStyle = '#88FF66';
+        const drawMpRow = (rY, label, sub, val) => {
+          ctx.font = '11px Courier New'; ctx.fillStyle = '#AAAACC';
+          ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+          ctx.fillText(label, L.MOB_COL, rY + 11);
+          ctx.font = '9px Courier New'; ctx.fillStyle = '#666677';
+          ctx.fillText(sub, L.MOB_COL, rY + 26);
+          ctx.fillStyle  = '#2A3A2A'; ctx.strokeStyle = '#44CC44'; ctx.lineWidth = 1;
+          ctx.fillRect(tgX, rY, tgW, tgH);
+          ctx.strokeRect(tgX, rY, tgW, tgH);
+          ctx.font = 'bold 11px Courier New'; ctx.fillStyle = '#88FF66';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(`${val}×`, tgX + tgW / 2, rY + 13);
+        };
+        const drawMpToggleRow = (rY, label, sub, active) => {
+          ctx.font = '11px Courier New'; ctx.fillStyle = '#AAAACC';
+          ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+          ctx.fillText(label, L.MOB_COL, rY + 11);
+          ctx.font = '9px Courier New'; ctx.fillStyle = '#666677';
+          ctx.fillText(sub, L.MOB_COL, rY + 26);
+          ctx.fillStyle  = active ? '#3A5A2A' : '#2A2A3A';
+          ctx.strokeStyle = active ? '#66CC44' : '#555577';
+          ctx.lineWidth = 1;
+          ctx.fillRect(tgX, rY, tgW, tgH); ctx.strokeRect(tgX, rY, tgW, tgH);
+          ctx.font = 'bold 11px Courier New';
+          ctx.fillStyle = active ? '#88FF66' : '#888899';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(active ? 'ON' : 'OFF', tgX + tgW / 2, rY + 13);
+        };
+
+        drawMpRow(L.FIRST_ROW,       'Boss Health',      'Multiplier (applies at boss spawn)',  aws.bossHealthMultiplier ?? 1.0);
+        drawMpRow(L.FIRST_ROW + 48,  'Boss Damage',      'Multiplier (player damage received)', aws.bossDamageMultiplier ?? 1.0);
+        drawMpRow(L.FIRST_ROW + 96,  'Boss Attack Rate', 'Multiplier (attack frequency)',       aws.bossAttackRateMultiplier ?? 1.0);
+        drawMpToggleRow(L.FIRST_ROW + 144, 'Disable Chat', '(hides chat window in online games)', aws.chatDisabled);
+
+        // Connect / Disconnect button
+        const mr5Y = L.FIRST_ROW + 200;
+        ctx.fillStyle  = connected ? '#3A1A1A' : '#1A3A1A';
+        ctx.strokeStyle = connected ? '#EE4444' : '#44EE44'; ctx.lineWidth = 1;
+        ctx.fillRect(btnX, mr5Y, btnW, btnH); ctx.strokeRect(btnX, mr5Y, btnW, btnH);
+        ctx.font = 'bold 11px Courier New';
+        ctx.fillStyle = connected ? '#FF8888' : '#88FF88';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(`${val}×`, tgX + tgW / 2, rY + 13);
-      };
+        ctx.fillText(connected ? '⊗  Disconnect from Server' : '⊕  Connect to Server', btnX + btnW / 2, mr5Y + 13);
 
-      drawMpRow(L.FIRST_ROW,      'Boss Health',      'Multiplier (applies at boss spawn)', aws.bossHealthMultiplier ?? 1.0);
-      drawMpRow(L.FIRST_ROW + 48, 'Boss Damage',      'Multiplier (player damage received)',  aws.bossDamageMultiplier ?? 1.0);
-      drawMpRow(L.FIRST_ROW + 96, 'Boss Attack Rate', 'Multiplier (attack frequency)',       aws.bossAttackRateMultiplier ?? 1.0);
+        if (connected) {
+          const dlY = L.FIRST_ROW + 240;
+          ctx.fillStyle  = '#1A2A3A'; ctx.strokeStyle = '#4488CC'; ctx.lineWidth = 1;
+          ctx.fillRect(btnX, dlY, btnW, btnH); ctx.strokeRect(btnX, dlY, btnW, btnH);
+          ctx.font = 'bold 11px Courier New'; ctx.fillStyle = '#88CCFF';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText('⬇  Download World as JSON', btnX + btnW / 2, dlY + 13);
 
-      // Connect / Disconnect button
-      const mr4Y = L.FIRST_ROW + 152;
-      const btnX = L.px + 16, btnW = L.pw - 32, btnH = 26;
-      ctx.fillStyle  = connected ? '#3A1A1A' : '#1A3A1A';
-      ctx.strokeStyle = connected ? '#EE4444' : '#44EE44';
-      ctx.lineWidth = 1;
-      ctx.fillRect(btnX, mr4Y, btnW, btnH);
-      ctx.strokeRect(btnX, mr4Y, btnW, btnH);
-      ctx.font = 'bold 11px Courier New';
-      ctx.fillStyle = connected ? '#FF8888' : '#88FF88';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(connected ? '⊗  Disconnect from Server' : '⊕  Connect to Server', btnX + btnW / 2, mr4Y + 13);
-
-      // Download World button (only when connected)
-      if (connected) {
-        const mr5Y = L.FIRST_ROW + 192;
-        ctx.fillStyle  = '#1A2A3A'; ctx.strokeStyle = '#4488CC'; ctx.lineWidth = 1;
-        ctx.fillRect(btnX, mr5Y, btnW, btnH);
-        ctx.strokeRect(btnX, mr5Y, btnW, btnH);
-        ctx.font = 'bold 11px Courier New'; ctx.fillStyle = '#88CCFF';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('⬇  Download World as JSON', btnX + btnW / 2, mr5Y + 13);
-
-          // Delete Game button (creator only)
           if (window.multiplayerManager?.isCreator) {
-            const delY = L.FIRST_ROW + 232;
+            const delY = L.FIRST_ROW + 280;
             const delHov = this._hit(btnX, delY, btnW, btnH);
             ctx.fillStyle = delHov ? '#7f1010' : '#3a0808';
             ctx.fillRect(btnX, delY, btnW, btnH);
@@ -7919,9 +8126,49 @@ class Game {
             ctx.fillStyle = delHov ? '#ffcdd2' : '#ef9a9a';
             ctx.font = 'bold 11px Courier New';
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText('🗑 Delete Game', btnX + btnW/2, delY + btnH/2);
-            ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+            ctx.fillText('🗑 Delete Game', btnX + btnW / 2, delY + btnH / 2);
           }
+        }
+      } else {
+        // Non-sandbox: Disable Chat toggle + connect/disconnect + download
+        ctx.font = '9px Courier New'; ctx.fillStyle = '#888899';
+        ctx.fillText('P or Esc to close', L.px + L.pw / 2, L.CONTENT_Y + 20);
+
+        // Disable Chat toggle
+        const nsToggleRow = (rY, label, sub, active) => {
+          ctx.font = '11px Courier New'; ctx.fillStyle = '#AAAACC';
+          ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+          ctx.fillText(label, L.MOB_COL, rY + 11);
+          ctx.font = '9px Courier New'; ctx.fillStyle = '#666677';
+          ctx.fillText(sub, L.MOB_COL, rY + 26);
+          ctx.fillStyle  = active ? '#3A5A2A' : '#2A2A3A';
+          ctx.strokeStyle = active ? '#66CC44' : '#555577'; ctx.lineWidth = 1;
+          ctx.fillRect(tgX, rY, tgW, tgH); ctx.strokeRect(tgX, rY, tgW, tgH);
+          ctx.font = 'bold 11px Courier New';
+          ctx.fillStyle = active ? '#88FF66' : '#888899';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(active ? 'ON' : 'OFF', tgX + tgW / 2, rY + 13);
+        };
+        nsToggleRow(L.FIRST_ROW, 'Disable Chat', '(hides chat window in online games)', aws.chatDisabled);
+
+        // Connect / Disconnect button
+        const nsBtnY = L.FIRST_ROW + 56;
+        ctx.fillStyle  = connected ? '#3A1A1A' : '#1A3A1A';
+        ctx.strokeStyle = connected ? '#EE4444' : '#44EE44'; ctx.lineWidth = 1;
+        ctx.fillRect(btnX, nsBtnY, btnW, btnH); ctx.strokeRect(btnX, nsBtnY, btnW, btnH);
+        ctx.font = 'bold 11px Courier New';
+        ctx.fillStyle = connected ? '#FF8888' : '#88FF88';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(connected ? '⊗  Disconnect from Server' : '⊕  Connect to Server', btnX + btnW / 2, nsBtnY + 13);
+
+        if (connected) {
+          const dlY = nsBtnY + 48;
+          ctx.fillStyle  = '#1A2A3A'; ctx.strokeStyle = '#4488CC'; ctx.lineWidth = 1;
+          ctx.fillRect(btnX, dlY, btnW, btnH); ctx.strokeRect(btnX, dlY, btnW, btnH);
+          ctx.font = 'bold 11px Courier New'; ctx.fillStyle = '#88CCFF';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText('⬇  Download World as JSON', btnX + btnW / 2, dlY + 13);
+        }
       }
 
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
@@ -8260,6 +8507,8 @@ class Game {
       this._playSound('sounds/place-block.mp3');
       const n = altar.skulls.filter(Boolean).length;
       this._notify(`Wither Skull placed (${n}/3)`, '#AA8833', 120);
+      if (this._onlineGameId && window.multiplayerManager?.isCreator)
+        window.multiplayerManager.sendAltarUpdate(altar.anchorRow, altar.anchorCol, altar.skulls, altar.sand);
       this._checkAltarCompletion(altar);
     } else if (slot.type === BLOCK.SOUL_SAND) {
       const idx = altar.sand.indexOf(false);
@@ -8269,6 +8518,8 @@ class Game {
       this._playSound('sounds/place-block.mp3');
       const n = altar.sand.filter(Boolean).length;
       this._notify(`Soul Sand placed (${n}/4)`, '#AA8833', 120);
+      if (this._onlineGameId && window.multiplayerManager?.isCreator)
+        window.multiplayerManager.sendAltarUpdate(altar.anchorRow, altar.anchorCol, altar.skulls, altar.sand);
       this._checkAltarCompletion(altar);
     }
   }
@@ -8809,6 +9060,12 @@ class Game {
     for (const [dr, dc] of Game.RP_GAP_OFFSETS) {
       this._portalObsidianCells.add(`${anchorCol + dc},${anchorRow + dr}`);
     }
+    if (this._onlineGameId && window.multiplayerManager?.isCreator) {
+      const changes = Game.RP_INTERIOR_OFFSETS.map(([dr, dc]) => ({
+        row: anchorRow + dr, col: anchorCol + dc, block: BLOCK.NETHER_PORTAL,
+      }));
+      window.multiplayerManager.sendBlockChanged(changes, { ruinedPortal: { anchorRow, anchorCol } });
+    }
     return true;
   }
 
@@ -8818,6 +9075,62 @@ class Game {
       this.level.set(anchorRow + dr, anchorCol + dc, BLOCK.OBSIDIAN);
     }
     this._activateRuinedPortal(anchorRow, anchorCol);
+  }
+
+  // Scan the live grid and re-populate _portalObsidianCells.
+  // Called by multiplayer.js after the server overwrites the grid, so joining players
+  // get the same non-solid portal/obsidian behaviour as the session creator.
+  _rebuildPortalObsidianFromGrid() {
+    if (!this.level) return;
+    this._portalObsidianCells.clear();
+    const { width: W, height: H, grid } = this.level;
+    for (let r = 0; r < H; r++) {
+      for (let c = 0; c < W; c++) {
+        if (grid[r][c] !== BLOCK.NETHER_PORTAL) continue;
+        // Any OBSIDIAN block orthogonally adjacent to an active portal interior is non-solid.
+        for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1],[-2,0],[2,0],[0,-2],[0,2]]) {
+          const nr = r + dr, nc = c + dc;
+          if (nr >= 0 && nr < H && nc >= 0 && nc < W && grid[nr][nc] === BLOCK.OBSIDIAN) {
+            this._portalObsidianCells.add(`${nc},${nr}`);
+          }
+        }
+      }
+    }
+    // Also detect ruined-portal frames: look for the 6-cell OBSIDIAN frame pattern.
+    const FO = Game.RP_FRAME_OFFSETS;
+    for (let r = 0; r < H; r++) {
+      for (let c = 0; c < W; c++) {
+        if (FO.every(([dr, dc]) => {
+          const nr = r + dr, nc = c + dc;
+          return nr >= 0 && nr < H && nc >= 0 && nc < W && grid[nr][nc] === BLOCK.OBSIDIAN;
+        })) {
+          for (const [dr, dc] of FO) this._portalObsidianCells.add(`${c + dc},${r + dr}`);
+        }
+      }
+    }
+  }
+
+  // Scan the live grid and register redstone-interactive blocks that joiners
+  // don't have components for (lever, trapdoor, pressure_plate, tnt).
+  // Called after _applyServerBlocks so online joiners can interact with them.
+  _rebuildRedstoneFromGrid() {
+    if (!this.level || !this.redstone) return;
+    const { width: W, height: H, grid } = this.level;
+    for (let r = 0; r < H; r++) {
+      for (let c = 0; c < W; c++) {
+        const b = grid[r][c];
+        if      (b === BLOCK.LEVER          && !this.redstone.getAt(c, r))
+          this.redstone.addComponent({type: 'lever',          col: c, row: r, on: false,    links: [], sandboxPlaced: true});
+        else if (b === BLOCK.TRAPDOOR       && !this.redstone.getAt(c, r))
+          this.redstone.addComponent({type: 'trapdoor',       col: c, row: r, open: false,  links: [], sandboxPlaced: true});
+        else if (b === BLOCK.PRESSURE_PLATE && !this.redstone.getAt(c, r))
+          this.redstone.addComponent({type: 'pressure_plate', col: c, row: r, on: false,    links: [], sandboxPlaced: true});
+        else if (b === BLOCK.TNT            && !this.redstone.getAt(c, r))
+          this.redstone.addComponent({type: 'tnt',            col: c, row: r, fuse: 0,      links: [], sandboxPlaced: true});
+        else if (b === BLOCK.PISTON_BODY    && !this.redstone.getAt(c, r))
+          this.redstone.addComponent({type: 'piston',         col: c, row: r, dir: 'right', inverted: false, extended: false, links: [], sandboxPlaced: true});
+      }
+    }
   }
 
   _restoreRuinedPortals(savedArray) {
@@ -9697,10 +10010,18 @@ class Game {
       }
 
     } else if (action === 'lever') {
-      const toggled = this.redstone.tryToggleLeverNear(this.level, player);
-      if (toggled) {
-        this._rsStartFromSource(toggled.col, toggled.row, toggled.on);
+      const _isJoiner = !!(this._onlineGameId && window.multiplayerManager?.isConnected && !window.multiplayerManager?.isCreator);
+      if (_isJoiner) {
+        // Relay to host — host runs the redstone logic, state syncs back within 0.5 s
+        const lv = this.redstone.findNearestLever(player);
+        if (lv) window.multiplayerManager.sendRedstoneAction(lv.col, lv.row, 'toggleLever');
         this._playSound('sounds/lever.mp3', 0.7);
+      } else {
+        const toggled = this.redstone.tryToggleLeverNear(this.level, player);
+        if (toggled) {
+          this._rsStartFromSource(toggled.col, toggled.row, toggled.on);
+          this._playSound('sounds/lever.mp3', 0.7);
+        }
       }
 
     } else if (action === 'bed') {
@@ -11425,15 +11746,16 @@ class Game {
 
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#FF9966';
+      const _isHost = !!(this._onlineGameId && window.multiplayerManager?.isCreator);
+      ctx.fillStyle = _isHost ? '#FF6666' : '#FF9966';
       ctx.font      = 'bold 17px Courier New';
-      ctx.fillText('Return to Main Menu?', CANVAS_W / 2, py + 36);
-      ctx.fillStyle = '#888899';
+      ctx.fillText(_isHost ? 'Leave and End Session?' : 'Return to Main Menu?', CANVAS_W / 2, py + 36);
+      ctx.fillStyle = _isHost ? '#FF8888' : '#888899';
       ctx.font      = '11px Courier New';
-      ctx.fillText('Any unsaved progress will be lost.', CANVAS_W / 2, py + 64);
+      ctx.fillText(_isHost ? 'You are the host. All players will be kicked.' : 'Any unsaved progress will be lost.', CANVAS_W / 2, py + 64);
       ctx.fillStyle = 'rgba(100,100,100,0.45)';
       ctx.font      = '9px Courier New';
-      ctx.fillText('Any unsaved progress in Sandbox will be lost.', CANVAS_W / 2, py + 84);
+      ctx.fillText(_isHost ? 'The game session will end permanently.' : 'Any unsaved progress in Sandbox will be lost.', CANVAS_W / 2, py + 84);
 
       const btnDefs = [
         { ...confirmBtn, color: '#FF6644' },

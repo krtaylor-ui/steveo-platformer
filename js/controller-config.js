@@ -7,9 +7,9 @@
 const ControllerConfig = (() => {
   const STORAGE_KEY = 'steveo_ctrl_config_v1';
 
-  // Default: Player 1 → gamepad slot 0, Player 2 → gamepad slot 1
+  // Default: Player 1 → KB1 (WASD+Space), Player 2 → gamepad slot 1
   // Slot -1 = KB1 (WASD+Space), -2 = KB2 (Arrows+Ins/Del), 0-3 = gamepad slot.
-  let _assignments = { 1: 0, 2: 1 };
+  let _assignments = { 1: -1, 2: 1 };
 
   function _load() {
     try {

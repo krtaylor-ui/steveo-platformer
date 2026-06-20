@@ -31,22 +31,21 @@ class RedstoneSystem {
     return this._map.get(`${col},${row}`) || null;
   }
 
-  // Called once per frame — updates pressure plates based on player position
-  update(level, player, input) {
+  // Called once per frame — updates pressure plates based on player position.
+  // extraOnFn(col, row) → bool: optional extra "is-on" source (e.g. online joiners).
+  update(level, player, input, extraOnFn) {
     for (const comp of this.components) {
       if (comp.type === 'pressure_plate') {
         const platePx = comp.col * BLOCK_SIZE;
         const platePy = comp.row * BLOCK_SIZE;
         const playerFeetY = player.y + player.height;
-        // Plate is drawn near the bottom of its cell; player stands on the floor
-        // one row below, so check against the bottom edge (platePy + BLOCK_SIZE).
         const playerOnPlate =
           player.x + player.width > platePx + 4 &&
           player.x < platePx + BLOCK_SIZE - 4 &&
           Math.abs(playerFeetY - (platePy + BLOCK_SIZE)) < 8;
 
         const wasOn = comp.on;
-        comp.on = playerOnPlate;
+        comp.on = playerOnPlate || !!(extraOnFn && extraOnFn(comp.col, comp.row));
         if (comp.on !== wasOn) {
           this._propagate(comp, level);
           if (this.soundCallback) this.soundCallback('sounds/pressure-plate.mp3', 0.6);
@@ -56,6 +55,21 @@ class RedstoneSystem {
   }
 
   // L key — toggle nearest lever within 64px of player centre
+  // Find nearest lever without toggling it (used by online joiners to relay the action)
+  findNearestLever(player) {
+    const pcx = player.x + player.width / 2;
+    const pcy = player.y + player.height / 2;
+    let best = null, bestDist = 64;
+    for (const comp of this.components) {
+      if (comp.type !== 'lever') continue;
+      const cx = comp.col * BLOCK_SIZE + BLOCK_SIZE / 2;
+      const cy = comp.row * BLOCK_SIZE + BLOCK_SIZE / 2;
+      const d  = Math.hypot(cx - pcx, cy - pcy);
+      if (d < bestDist) { bestDist = d; best = comp; }
+    }
+    return best;
+  }
+
   tryToggleLeverNear(level, player) {
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
