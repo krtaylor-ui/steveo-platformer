@@ -209,6 +209,9 @@ setupWorldsRoutes(app);
 const setupFriendsRoutes = require('./server/friends-routes');
 setupFriendsRoutes(app);
 
+const setupGameSessionsRoutes = require('./server/game-sessions-routes');
+setupGameSessionsRoutes(app);
+
 // ============================================================
 // API ENDPOINTS (Express Routes)
 // ============================================================

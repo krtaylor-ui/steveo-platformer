@@ -5,8 +5,13 @@
 // (js/multiplayer.js); this module is discovery + lobby + handoff.
 // ============================================================
 
+// Lobby player swatch colors (mirrors the engine's PLAYER_COLORS, which lives
+// inside js/multiplayer.js's IIFE and isn't global).
+const ONLINE_PLAYER_COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A'];
+
 const ONLINE_PLAY = {
   currentUser: null,
+  currentSessionMode: null,
   friends: [],            // [{id, friendId, friendUsername, status, direction}]
   pendingRequests: [],    // PENDING rows (sent + received), enriched
   friendGames: [],        // active sessions from friends (Phase 2B)
@@ -173,11 +178,18 @@ const ONLINE_PLAY = {
   },
 
   // ════════════════════════════════════════════════════════════
-  // FRIEND GAMES + LOBBY  (implemented in Phase 2B)
+  // FRIEND GAMES (discovery)
   // ════════════════════════════════════════════════════════════
   async loadFriendGames() {
-    // Phase 2B will fetch GET /api/friends/:id/active-games.
-    this.friendGames = [];
+    try {
+      const res = await AUTH.authedFetch(`/api/friends/${this.currentUser.id}/active-games`);
+      if (!res.ok) throw new Error('load failed');
+      const data = await res.json();
+      this.friendGames = data.sessions || [];
+    } catch (e) {
+      console.error('loadFriendGames error:', e);
+      this.friendGames = [];
+    }
     this.renderFriendGames();
   },
 
@@ -185,15 +197,156 @@ const ONLINE_PLAY = {
     const list = document.getElementById('friend-games-list');
     if (!list) return;
     if (!this.friendGames.length) {
-      list.innerHTML = '<p class="empty-note">No active games from friends right now.</p>';
+      list.innerHTML = '<p class="empty-note">No active games from friends right now. Create one!</p>';
       return;
     }
-    // Phase 2B: render joinable game cards.
+    list.innerHTML = this.friendGames.map(g => `
+      <div class="game-card">
+        <h3>${this._esc(g.world_name)}</h3>
+        <p>Host: ${this._esc(g.creator_name)}</p>
+        <p>Players: ${g.player_count}/${g.max_players}</p>
+        <button class="btn btn-primary" data-act="join-game" data-id="${g.id}" ${g.is_full ? 'disabled' : ''}>
+          ${g.is_full ? 'Full' : 'Join Game'}
+        </button>
+      </div>`).join('');
   },
 
-  openCreateGameModal() {
-    // Phase 2B: populate worlds + show modal. For now, inform the user.
-    alert('Creating online games arrives in the next step (Phase 2B).');
+  // ════════════════════════════════════════════════════════════
+  // CREATE GAME
+  // ════════════════════════════════════════════════════════════
+  async openCreateGameModal() {
+    const modal = document.getElementById('create-online-game-modal');
+    this._status(document.getElementById('create-online-game-status'), '', '');
+    await this._loadWorldsForMode();
+    modal.style.display = 'flex';
+  },
+
+  closeCreateGameModal() {
+    document.getElementById('create-online-game-modal').style.display = 'none';
+  },
+
+  async _loadWorldsForMode() {
+    const mode = document.getElementById('online-mode-select').value;
+    const sel = document.getElementById('online-world-select');
+    sel.innerHTML = '<option value="">Loading worlds...</option>';
+    try {
+      const res = await AUTH.authedFetch(`/api/worlds?mode=${mode}`);
+      const data = await res.json();
+      const worlds = data.worlds || [];
+      if (!worlds.length) {
+        sel.innerHTML = '<option value="">No worlds available for this mode</option>';
+        return;
+      }
+      sel.innerHTML = worlds.map(w =>
+        `<option value="${w.id}">${this._esc(w.world_name)}${w.mine ? ' (yours)' : ''}</option>`
+      ).join('');
+    } catch (e) {
+      console.error('load worlds error:', e);
+      sel.innerHTML = '<option value="">Failed to load worlds</option>';
+    }
+  },
+
+  async createGame(e) {
+    e.preventDefault();
+    const status = document.getElementById('create-online-game-status');
+    const worldId = document.getElementById('online-world-select').value;
+    const maxPlayers = parseInt(document.getElementById('online-max-players-select').value, 10);
+    const mode = document.getElementById('online-mode-select').value;
+    if (!worldId) { this._status(status, 'Select a world', 'err'); return; }
+
+    try {
+      const res = await AUTH.authedFetch('/api/game-sessions/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ worldId, maxPlayers }),
+      });
+      const data = await res.json();
+      if (!res.ok) { this._status(status, `❌ ${data.error || 'Failed'}`, 'err'); return; }
+      this.currentSession = data;
+      this.currentSessionMode = mode;
+      this.closeCreateGameModal();
+      this.showLobby();
+    } catch (err) {
+      console.error('createGame error:', err);
+      this._status(status, '❌ Network error', 'err');
+    }
+  },
+
+  // ════════════════════════════════════════════════════════════
+  // JOIN + LOBBY
+  // ════════════════════════════════════════════════════════════
+  async joinGame(sessionId) {
+    try {
+      const res = await AUTH.authedFetch(`/api/game-sessions/${sessionId}/join`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || 'Failed to join'); this.loadFriendGames(); return; }
+      this.currentSession = data;
+      this.currentSessionMode = null; // joiner infers mode from session world on launch (Phase 2C)
+      this.showLobby();
+    } catch (e) {
+      console.error('joinGame error:', e);
+      alert('Network error joining game');
+    }
+  },
+
+  showLobby() {
+    document.getElementById('online-play-screen').style.display = 'none';
+    document.getElementById('online-lobby-screen').style.display = 'block';
+    this.updateLobbyDisplay();
+  },
+
+  async refreshLobby() {
+    if (!this.currentSession) return;
+    try {
+      const res = await AUTH.authedFetch(`/api/game-sessions/${this.currentSession.id}`);
+      if (res.ok) { this.currentSession = await res.json(); this.updateLobbyDisplay(); }
+    } catch (e) { /* non-fatal */ }
+  },
+
+  updateLobbyDisplay() {
+    const s = this.currentSession;
+    if (!s) return;
+    document.getElementById('lobby-world-name').textContent = `World: ${s.world_name || ''}`;
+    const count = (s.players || []).length;
+    document.getElementById('lobby-players-count').textContent = `Players: ${count}/${s.max_players}`;
+
+    const list = document.getElementById('lobby-players-list');
+    const isHost = s.creator_id === this.currentUser.id;
+    list.innerHTML = (s.player_list || []).map((p, i) => `
+      <div class="player-item">
+        <span class="player-color" style="background:${ONLINE_PLAYER_COLORS[i % ONLINE_PLAYER_COLORS.length]}"></span>
+        <span class="player-name">${this._esc(p.username)}${p.id === s.creator_id ? ' 👑' : ''}${p.id === this.currentUser.id ? ' (you)' : ''}</span>
+      </div>`).join('');
+
+    const startBtn = document.getElementById('start-game-btn');
+    // Only the host launches the game; needs at least 2 players present.
+    if (isHost) {
+      startBtn.style.display = '';
+      startBtn.disabled = count < 2;
+      startBtn.textContent = count < 2 ? 'Waiting for players…' : `Start Game (${count})`;
+    } else {
+      startBtn.style.display = '';
+      startBtn.disabled = true;
+      startBtn.textContent = 'Waiting for host to start…';
+    }
+  },
+
+  async leaveLobby() {
+    const s = this.currentSession;
+    if (s) {
+      try { await AUTH.authedFetch(`/api/game-sessions/${s.id}/leave`, { method: 'POST' }); }
+      catch (e) { /* best effort */ }
+    }
+    this.currentSession = null;
+    document.getElementById('online-lobby-screen').style.display = 'none';
+    document.getElementById('online-play-screen').style.display = 'block';
+    this.loadFriendGames();
+  },
+
+  startGame() {
+    // Phase 2C: launch new Game(mode, { onlineGameId: session.id, ... }) which
+    // auto-connects the socket.io engine. Placeholder until that lands.
+    alert('Launching into the live game arrives in the next step (Phase 2C).');
   },
 
   // ── helpers ──────────────────────────────────────────────────
@@ -236,16 +389,26 @@ const ONLINE_PLAY = {
     document.getElementById('online-refresh-games-btn')?.addEventListener('click', () => this.loadFriendGames());
     document.getElementById('online-create-game-btn')?.addEventListener('click', () => this.openCreateGameModal());
 
-    // Delegated request/friend action buttons (rows are re-rendered).
+    // Create-game modal
+    document.getElementById('online-mode-select')?.addEventListener('change', () => this._loadWorldsForMode());
+    document.getElementById('create-online-game-form')?.addEventListener('submit', (e) => this.createGame(e));
+    document.getElementById('cancel-online-create-btn')?.addEventListener('click', () => this.closeCreateGameModal());
+
+    // Lobby
+    document.getElementById('leave-lobby-btn')?.addEventListener('click', () => this.leaveLobby());
+    document.getElementById('start-game-btn')?.addEventListener('click', () => this.startGame());
+
+    // Delegated request/friend/game action buttons (rows are re-rendered).
     document.getElementById('online-play-screen')?.addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-act]');
       if (!btn) return;
       const id = btn.dataset.id;
       switch (btn.dataset.act) {
-        case 'approve':  this._friendAction(id, '/confirm'); break;
-        case 'reject':   this._friendAction(id, '/reject', 'POST', 'Reject this friend request?'); break;
-        case 'cancel':   this._friendAction(id, '/cancel', 'POST', 'Cancel this friend request?'); break;
-        case 'unfriend': this._friendAction(id, '', 'DELETE', 'Remove this friend?'); break;
+        case 'approve':   this._friendAction(id, '/confirm'); break;
+        case 'reject':    this._friendAction(id, '/reject', 'POST', 'Reject this friend request?'); break;
+        case 'cancel':    this._friendAction(id, '/cancel', 'POST', 'Cancel this friend request?'); break;
+        case 'unfriend':  this._friendAction(id, '', 'DELETE', 'Remove this friend?'); break;
+        case 'join-game': this.joinGame(id); break;
       }
     });
   },
