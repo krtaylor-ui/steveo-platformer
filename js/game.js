@@ -1996,6 +1996,13 @@ class Game {
         this._playSound('sounds/player-damaged.mp3');
         this._checkDeath();
       }
+      // Online JOINERS receive mob damage via the host-relayed 'remotePlayerDamaged'
+      // socket event, which lands outside the local dmgTaken accounting above — so
+      // the death check never ran and joiners couldn't die at 0 HP. Check here each
+      // frame (idempotent: _triggerDeath no-ops once already dead/respawning).
+      if (this._onlineGameId && window.multiplayerManager && !window.multiplayerManager.isCreator) {
+        this._checkDeath();
+      }
 
       // ── Player 2 mob damage pass (Phase 12) ───────────────
       if (this.player2 && this._p2RespawnTimer === 0) {
