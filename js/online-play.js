@@ -318,17 +318,13 @@ const ONLINE_PLAY = {
         <span class="player-name">${this._esc(p.username)}${p.id === s.creator_id ? ' 👑' : ''}${p.id === this.currentUser.id ? ' (you)' : ''}</span>
       </div>`).join('');
 
+    // Each member enters the shared room when ready; the socket.io engine syncs
+    // whoever is connected (no separate "host started" broadcast needed). The
+    // host (creator) is just whoever connects first → engine player 1.
     const startBtn = document.getElementById('start-game-btn');
-    // Only the host launches the game; needs at least 2 players present.
-    if (isHost) {
-      startBtn.style.display = '';
-      startBtn.disabled = count < 2;
-      startBtn.textContent = count < 2 ? 'Waiting for players…' : `Start Game (${count})`;
-    } else {
-      startBtn.style.display = '';
-      startBtn.disabled = true;
-      startBtn.textContent = 'Waiting for host to start…';
-    }
+    startBtn.style.display = '';
+    startBtn.disabled = false;
+    startBtn.textContent = isHost ? `Enter Game (host) · ${count}/${s.max_players}` : `Enter Game · ${count}/${s.max_players}`;
   },
 
   async leaveLobby() {
@@ -343,10 +339,87 @@ const ONLINE_PLAY = {
     this.loadFriendGames();
   },
 
+  // ════════════════════════════════════════════════════════════
+  // LAUNCH (Phase 2C): enter the live game. new Game({ onlineGameId })
+  // auto-connects the socket.io engine (game.js constructor).
+  // ════════════════════════════════════════════════════════════
   startGame() {
-    // Phase 2C: launch new Game(mode, { onlineGameId: session.id, ... }) which
-    // auto-connects the socket.io engine. Placeholder until that lands.
-    alert('Launching into the live game arrives in the next step (Phase 2C).');
+    const s = this.currentSession;
+    if (!s) return;
+
+    // Tear down the legacy menu loop + any prior game (mirrors GAME_PLAY.init).
+    if (window.menu && typeof window.menu._stop === 'function') window.menu._stop();
+    if (window.game && typeof window.game.destroy === 'function') window.game.destroy();
+
+    // Hide all overlays to reveal the shared canvas; show the play HUD.
+    document.getElementById('online-lobby-screen').style.display = 'none';
+    document.getElementById('online-play-screen').style.display = 'none';
+    document.getElementById('dashboard-screen').style.display = 'none';
+    const hud = document.getElementById('play-hud');
+    if (hud) hud.style.display = 'flex';
+    const title = document.getElementById('play-hud-title');
+    if (title) title.textContent = `${s.world_name || 'Online Game'} (Online)`;
+
+    const modeLower = (s.mode || 'NORMAL').toLowerCase();
+    const user = this.currentUser;
+    const options = {
+      onlineGameId:     s.id,
+      onlinePlayerName: user.username,
+      onlineAppearance: {
+        shirtColor: user.avatar_color || '#FF6B6B',
+        pantsColor: '#1E1E1E',
+        skinColor:  '#F4C090',
+      },
+      worldData:  s.world_state,
+      worldState: s.world_state,
+    };
+    // Normal/platformer build the adventure level first, then the session world
+    // data overrides it — same as the single-player cloud-game path.
+    if (modeLower === 'normal' || modeLower === 'platformer') {
+      options.world = 'adventure';
+      options.templateData = s.world_state;
+    }
+
+    window.game = new Game(modeLower, options, () => this._onOnlineGameExit());
+
+    // Reroute the shared HUD buttons to the online teardown (the Phase-1 HUD
+    // wiring points Exit at GAME_SELECTION, which isn't our flow).
+    const pauseBtn = document.getElementById('play-hud-pause');
+    const exitBtn  = document.getElementById('play-hud-exit');
+    if (pauseBtn) { pauseBtn.textContent = 'Pause'; pauseBtn.onclick = () => this._togglePause(); }
+    if (exitBtn) {
+      exitBtn.onclick = () => {
+        if (window.game && typeof window.game.destroy === 'function') window.game.destroy();
+        window.game = null;
+        this._onOnlineGameExit();
+      };
+    }
+  },
+
+  _togglePause() {
+    if (!window.game) return;
+    const paused = window.game.state === 'paused';
+    window.game.state = paused ? 'playing' : 'paused';
+    const btn = document.getElementById('play-hud-pause');
+    if (btn) btn.textContent = paused ? 'Pause' : 'Resume';
+  },
+
+  // Game exited (HUD Exit button or in-game Esc → Exit). Leave the session and
+  // return to the online screen.
+  async _onOnlineGameExit() {
+    window.game = null;
+    const hud = document.getElementById('play-hud');
+    if (hud) hud.style.display = 'none';
+
+    const s = this.currentSession;
+    if (s) {
+      try { await AUTH.authedFetch(`/api/game-sessions/${s.id}/leave`, { method: 'POST' }); }
+      catch (e) { /* best effort */ }
+    }
+    this.currentSession = null;
+
+    document.getElementById('online-play-screen').style.display = 'block';
+    this.refreshAll();
   },
 
   // ── helpers ──────────────────────────────────────────────────

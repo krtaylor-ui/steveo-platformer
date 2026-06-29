@@ -55,7 +55,7 @@ module.exports = function setupGameSessionsRoutes(app) {
 
       const { data: world, error: worldError } = await supabaseAdmin
         .from('worlds')
-        .select('id, world_name, world_data')
+        .select('id, world_name, world_data, mode')
         .eq('id', worldId)
         .maybeSingle();
 
@@ -78,7 +78,7 @@ module.exports = function setupGameSessionsRoutes(app) {
         .single();
 
       if (error) throw error;
-      res.json({ ...session, world_name: world.world_name });
+      res.json({ ...session, world_name: world.world_name, mode: world.mode });
     } catch (error) {
       console.error('Create session error:', error);
       res.status(500).json({ error: 'Failed to create session' });
@@ -285,7 +285,7 @@ module.exports = function setupGameSessionsRoutes(app) {
   // Attach world_name + per-player {id, username} for lobby rendering.
   async function enrich(session) {
     const [{ data: world }, { data: users }] = await Promise.all([
-      supabaseAdmin.from('worlds').select('world_name').eq('id', session.world_id).maybeSingle(),
+      supabaseAdmin.from('worlds').select('world_name, mode').eq('id', session.world_id).maybeSingle(),
       (session.players || []).length
         ? supabaseAdmin.from('users').select('id, username').in('id', session.players)
         : Promise.resolve({ data: [] }),
@@ -294,6 +294,7 @@ module.exports = function setupGameSessionsRoutes(app) {
     return {
       ...session,
       world_name: world?.world_name || 'Unknown World',
+      mode: world?.mode || 'NORMAL',
       player_list: (session.players || []).map(id => ({ id, username: nameById.get(id) || 'Player' })),
     };
   }
