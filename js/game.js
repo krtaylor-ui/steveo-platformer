@@ -9212,8 +9212,12 @@ class Game {
     for (let r = 0; r < H; r++) {
       for (let c = 0; c < W; c++) {
         if (grid[r][c] !== BLOCK.NETHER_PORTAL) continue;
-        // Any OBSIDIAN block orthogonally adjacent to an active portal interior is non-solid.
-        for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1],[-2,0],[2,0],[0,-2],[0,2]]) {
+        // OBSIDIAN adjacent to an active portal interior is non-solid so the
+        // player can step through the opening — but NEVER the obsidian BELOW the
+        // portal: that is the base the player stands on. Marking it non-solid
+        // (the old [1,0]/[2,0] downward offsets) made joiners fall through the
+        // portal base (the host never runs this scan, so its base stayed solid).
+        for (const [dr, dc] of [[-1,0],[0,-1],[0,1],[-2,0],[0,-2],[0,2]]) {
           const nr = r + dr, nc = c + dc;
           if (nr >= 0 && nr < H && nc >= 0 && nc < W && grid[nr][nc] === BLOCK.OBSIDIAN) {
             this._portalObsidianCells.add(`${nc},${nr}`);
