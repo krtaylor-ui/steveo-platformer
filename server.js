@@ -118,6 +118,15 @@ function loadDefaultWorlds() {
 loadSavedGames();
 loadDefaultWorlds();
 
+
+require('dotenv').config();
+// Setup auth routes (this adds the endpoints)
+const { registerAuthRoutes } = require('./server/auth-routes');
+registerAuthRoutes(app);
+
+const setupGamesRoutes = require('./server/games-routes');
+setupGamesRoutes(app);
+
 // ============================================================
 // API ENDPOINTS (Express Routes)
 // ============================================================

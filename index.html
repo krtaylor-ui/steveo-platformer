@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Steveo Platformer</title>
+  <link rel="stylesheet" href="style.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
@@ -109,6 +110,168 @@
   </style>
 </head>
 <body>
+
+  <!-- ── Login / Signup Screen ─────────────────────────────── -->
+  <div id="login-screen" style="display: none;">
+    <div class="auth-box">
+      <h2>⛏ Steveo Platformer</h2>
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tab-login">Login</button>
+        <button class="auth-tab" id="tab-signup">Sign Up</button>
+      </div>
+
+      <form class="auth-form" id="form-login" style="display: flex;">
+        <input type="email" id="login-email" placeholder="Email" autocomplete="email" required>
+        <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" required>
+        <button type="submit" class="auth-submit" data-label="Login">Login</button>
+      </form>
+
+      <form class="auth-form" id="form-signup" style="display: none;">
+        <input type="text" id="signup-username" placeholder="Username" autocomplete="username" required>
+        <input type="email" id="signup-email" placeholder="Email" autocomplete="email" required>
+        <input type="password" id="signup-password" placeholder="Password (min 6 chars)" autocomplete="new-password" required>
+        <button type="submit" class="auth-submit" data-label="Create Account">Create Account</button>
+      </form>
+
+      <p class="auth-error" id="auth-error"></p>
+    </div>
+  </div>
+
+  <!-- ── Game Selection Screen ────────────────────────────── -->
+  <div id="game-selection-screen" style="display: none;">
+    <div class="game-selection-container">
+
+      <div class="game-selection-header">
+        <button id="game-selection-back-btn" class="btn-back">← Back to Dashboard</button>
+        <h2 id="game-selection-mode-title">Normal Mode</h2>
+      </div>
+
+      <div class="game-slots-container">
+        <div class="game-slot" id="slot-0">
+          <div class="slot-number">Slot 1</div>
+          <div class="slot-content">
+            <p class="empty-text">Empty</p>
+            <button class="btn btn-primary create-game-btn" data-slot="0">Create New Game</button>
+          </div>
+        </div>
+        <div class="game-slot" id="slot-1">
+          <div class="slot-number">Slot 2</div>
+          <div class="slot-content">
+            <p class="empty-text">Empty</p>
+            <button class="btn btn-primary create-game-btn" data-slot="1">Create New Game</button>
+          </div>
+        </div>
+        <div class="game-slot" id="slot-2">
+          <div class="slot-number">Slot 3</div>
+          <div class="slot-content">
+            <p class="empty-text">Empty</p>
+            <button class="btn btn-primary create-game-btn" data-slot="2">Create New Game</button>
+          </div>
+        </div>
+        <div class="game-slot" id="slot-3">
+          <div class="slot-number">Slot 4</div>
+          <div class="slot-content">
+            <p class="empty-text">Empty</p>
+            <button class="btn btn-primary create-game-btn" data-slot="3">Create New Game</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Create Game Modal ─────────────────────────────────── -->
+  <div id="create-game-modal" style="display: none;">
+    <div class="modal-content">
+      <h3>Create New Game</h3>
+      <form id="create-game-form">
+        <div class="form-group">
+          <label>Game Name:</label>
+          <input type="text" id="game-name-input" placeholder="My Game" required>
+        </div>
+        <div class="form-group">
+          <label>World:</label>
+          <select id="world-select" required>
+            <option value="">Select a world...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <button type="submit" class="btn btn-primary">Create Game</button>
+          <button type="button" class="btn btn-secondary" id="cancel-create-btn">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Dashboard Screen ──────────────────────────────────── -->
+  <div id="dashboard-screen" style="display: none;">
+    <div class="dashboard-container">
+
+      <div class="dashboard-header">
+        <h1>⛏ Steveo Platformer</h1>
+        <div class="user-info">
+          <span id="username-display">Welcome, Player!</span>
+          <button id="logout-btn" class="btn btn-small">Logout</button>
+        </div>
+      </div>
+
+      <div class="dashboard-content">
+
+        <section class="game-modes-section">
+          <h2>One Player Games</h2>
+          <div class="game-modes-grid">
+
+            <div class="game-mode-card" id="normal-mode-btn">
+              <div class="mode-icon">🌍</div>
+              <h3>Normal</h3>
+              <p>Mining, crafting, and building</p>
+            </div>
+
+            <div class="game-mode-card" id="platformer-mode-btn">
+              <div class="mode-icon">🏃</div>
+              <h3>Platformer</h3>
+              <p>Classic level-based gameplay</p>
+            </div>
+
+            <div class="game-mode-card" id="speedrunner-mode-btn">
+              <div class="mode-icon">⚡</div>
+              <h3>Speed Runner</h3>
+              <p>Time trials and racing</p>
+            </div>
+
+            <div class="game-mode-card" id="sandbox-mode-btn">
+              <div class="mode-icon">🛠️</div>
+              <h3>Sandbox</h3>
+              <p>Build and create worlds</p>
+            </div>
+
+          </div>
+        </section>
+
+        <section class="quick-play-section">
+          <h2>Quick Play</h2>
+          <div class="quick-play-container">
+            <div class="most-recent-world">
+              <h3>Most Recently Played</h3>
+              <div class="world-card">
+                <p id="most-recent-text">No worlds played yet</p>
+                <button id="quick-play-btn" class="btn btn-primary" style="display: none;">Quick Play</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="online-play-section">
+          <div class="online-play-button">
+            <button id="online-play-btn" class="btn btn-large">Online Play</button>
+            <p>Play with friends</p>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
   <div id="start-screen">
     <h2>⛏ Steveo Platformer</h2>
     <button id="start-button">Start Game</button>
@@ -131,6 +294,9 @@
     2P: <kbd>IJKL</kbd>+<kbd>U</kbd>
   </div>
 
+  <script src="js/auth.js"></script>
+  <script src="js/dashboard.js"></script>
+  <script src="js/game-selection.js"></script>
   <script src="js/constants.js?v=17g5"></script>
   <script src="js/blocks.js?v=17g5"></script>
   <script src="js/controller-config.js?v=17g5"></script>

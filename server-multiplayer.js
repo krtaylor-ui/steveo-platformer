@@ -3,12 +3,14 @@
 // Phase 16-A: Game creation, browser, passwords, appearances
 // ============================================================
 
+require('dotenv').config();
 const express  = require('express');
 const http     = require('http');
 const socketIo = require('socket.io');
 const cors     = require('cors');
 const fs       = require('fs');
 const path     = require('path');
+const { registerAuthRoutes } = require('./server/auth-routes');
 
 const app    = express();
 const server = http.createServer(app);
@@ -598,6 +600,9 @@ io.on('connection', socket => {
     console.log(`[-] ${socket.id} (${pd.name})`);
   });
 });
+
+// ── REST: Auth ────────────────────────────────────────────────
+registerAuthRoutes(app);
 
 // ── REST: Game management ─────────────────────────────────────
 
