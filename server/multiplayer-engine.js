@@ -299,6 +299,19 @@ io.on('connection', socket => {
     io.to(pd.worldId).emit('itemPickedUp', { itemId: data.itemId, byPlayer: pd.playerId, type: item.type });
   });
 
+  // Server-authoritative claim of a PLACED collectible (identified by index).
+  // First claimer wins; everyone is told so they remove it, only the claimer
+  // grants it. Prevents two players collecting the same floor item.
+  socket.on('claimItem', data => {
+    const pd = players.get(socket.id);
+    const world = worlds.get(pd?.worldId);
+    if (!world || !pd || data.key == null) return;
+    if (!world.claimedPlaced) world.claimedPlaced = new Set();
+    if (world.claimedPlaced.has(data.key)) return;
+    world.claimedPlaced.add(data.key);
+    io.to(pd.worldId).emit('itemClaimed', { key: data.key, byPlayer: pd.playerId });
+  });
+
   socket.on('bossDamage', data => {
     const pd = players.get(socket.id);
     if (!pd) return;
@@ -382,7 +395,7 @@ io.on('connection', socket => {
         }
       }
     }
-    socket.to(pd.worldId).emit('explosion', { col, row, radius });
+    socket.to(pd.worldId).emit('explosion', { col, row, radius, sound: data.sound });
   });
 
   // Redstone state broadcast (host → joiners)

@@ -360,7 +360,7 @@
         // Visual + sound
         const cx = col * BLOCK_SIZE + BLOCK_SIZE / 2, cy = row * BLOCK_SIZE + BLOCK_SIZE / 2;
         game.mobManager.explosions.push(new ExplosionEffect(cx, cy, (radius + 0.5) * BLOCK_SIZE));
-        if (game._playSound) game._playSound('sounds/explosion-creeper.mp3');
+        if (game._playSound) game._playSound(data.sound || 'sounds/explosion-creeper.mp3');
         game._screenShake = { intensity: 5, frames: 12, maxFrames: 12 };
       });
 
@@ -598,6 +598,11 @@
         if (data.byPlayer === this.playerId && data.type != null && typeof this.onItemGranted === 'function') {
           this.onItemGranted(data.type);
         }
+      });
+
+      // Server-authoritative claim result for placed collectibles.
+      s.on('itemClaimed', data => {
+        if (typeof this.onPlacedItemClaimed === 'function') this.onPlacedItemClaimed(data.key, data.byPlayer);
       });
 
       s.on('bossDamaged', data => {
@@ -965,6 +970,13 @@
       this.socket.emit('mobDamage', { mobId, damage, knockDir });
     },
 
+    // Request to claim a placed collectible (by index). Server grants to the
+    // first claimer and echoes itemClaimed{key,byPlayer}.
+    claimPlacedItem(key) {
+      if (!this.socket || !this.isConnected) return;
+      this.socket.emit('claimItem', { key });
+    },
+
     // Phase 17-E: Host broadcasts mob drop events
     sendMobDrops(drops) {
       if (!this.socket || !this.isConnected || !drops.length) return;
@@ -972,9 +984,9 @@
     },
 
     // Phase 17-E: Host broadcasts explosion (block destruction + visual)
-    sendExplosion(col, row, radius) {
+    sendExplosion(col, row, radius, sound) {
       if (!this.socket || !this.isConnected) return;
-      this.socket.emit('explosion', { col, row, radius });
+      this.socket.emit('explosion', { col, row, radius, sound });
     },
 
     // Phase 17-E: Host broadcasts redstone component states and dust block states

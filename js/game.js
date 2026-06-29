@@ -265,6 +265,15 @@ class Game {
             if (type != null) this.player.addBlock(type);
             this._playSound('sounds/item-collected.mp3', 0.7);
           };
+          // Server-authoritative pickup for PLACED collectibles (_platformerItems):
+          // the server picks the first claimer; everyone removes the item, only
+          // the claimer actually collects it.
+          mgr.onPlacedItemClaimed = (key, byPlayer) => {
+            const it = this._platformerItems[key];
+            if (!it || it.collected) return;
+            if (byPlayer === mgr.playerId) this._collectPlatformerItem(it);
+            else it.collected = true; // someone else got it — remove, don't grant
+          };
           // Phase 17-E: Relay mob drops from host to all joiners via server
           this.mobManager.dropCallback = (items) => {
             if (mgr.isConnected && mgr.isCreator) mgr.sendMobDrops(items);
@@ -1516,6 +1525,11 @@ class Game {
         this._screenShake.intensity = 8;
         this._screenShake.frames    = 18;
         this._screenShake.maxFrames = 18;
+        // Relay TNT explosion to joiners (host only). Mirrors the creeper relay
+        // below — without this, joiners never saw TNT blasts.
+        if (this._onlineGameId && window.multiplayerManager?.isConnected && window.multiplayerManager?.isCreator) {
+          window.multiplayerManager.sendExplosion(comp.col, comp.row, R, 'sounds/explosion-tnt.mp3');
+        }
         for (const ch of this._chests.values()) {
           if (Math.abs(ch.col - comp.col) <= R && Math.abs(ch.row - comp.row) <= R)
             this._dropChestItems(ch.col, ch.row);
@@ -2100,12 +2114,21 @@ class Game {
 
     // ── Collect placed tool/weapon/armor items (platformer + normal) ──
     if (this.gameMode === 'platformer' || this.gameMode === 'normal') {
-      for (const it of this._platformerItems) {
-        if (it.collected) continue;
+      const _online = !!(this._onlineGameId && window.multiplayerManager?.isConnected);
+      for (let i = 0; i < this._platformerItems.length; i++) {
+        const it = this._platformerItems[i];
+        if (it.collected || it._claimPending) continue;
         const dx = this.player.cx - it.wx;
         const dy = (this.player.y + this.player.height / 2) - it.wy;
         if (Math.sqrt(dx * dx + dy * dy) < BLOCK_SIZE * 1.5) {
-          this._collectPlatformerItem(it);
+          if (_online) {
+            // Server-authoritative claim (by index) so two players can't both
+            // collect the same placed item. Grant happens in onPlacedItemClaimed.
+            it._claimPending = true;
+            window.multiplayerManager.claimPlacedItem(i);
+          } else {
+            this._collectPlatformerItem(it);
+          }
         }
       }
 
