@@ -738,8 +738,13 @@
       ctx.save();
       for (const id in this.otherPlayers) {
         const p  = this.otherPlayers[id];
-        const sx = Math.floor(p.x - camera.x);
-        const sy = Math.floor(p.y - camera.y);
+        // Interpolate the render position toward the latest network position so
+        // remote players move smoothly between the ~20Hz position updates instead
+        // of stepping. Snap on large jumps (teleport / portal / respawn).
+        if (p.rx == null || Math.hypot(p.x - p.rx, p.y - p.ry) > 96) { p.rx = p.x; p.ry = p.y; }
+        else { p.rx += (p.x - p.rx) * 0.35; p.ry += (p.y - p.ry) * 0.35; }
+        const sx = Math.floor(p.rx - camera.x);
+        const sy = Math.floor(p.ry - camera.y);
         if (sx < -48 || sx > 848 || sy < -60 || sy > 560) continue;
 
         // Advance walk animation locally every draw frame
@@ -1044,9 +1049,17 @@
         WitherSkeleton: typeof WitherSkeleton !== 'undefined' ? WitherSkeleton : null,
         Enderman: typeof Enderman !== 'undefined' ? Enderman : null,
       };
+      // Per-mob smoothed render positions (mob snapshots arrive at ~10Hz).
+      if (!this._mobRender) this._mobRender = new Map();
+      for (const id of this._mobRender.keys()) if (!this.remoteMobs.has(id)) this._mobRender.delete(id);
+
       for (const m of this.remoteMobs.values()) {
         if (!m.alive) continue;
-        const sx = Math.floor(m.x - camera.x);
+        // Interpolate toward the latest snapshot so mobs glide instead of stepping.
+        let rp = this._mobRender.get(m.id);
+        if (!rp || Math.hypot(m.x - rp.rx, m.y - rp.ry) > 96) { rp = { rx: m.x, ry: m.y }; this._mobRender.set(m.id, rp); }
+        else { rp.rx += (m.x - rp.rx) * 0.35; rp.ry += (m.y - rp.ry) * 0.35; }
+        const sx = Math.floor(rp.rx - camera.x);
         if (sx + (m.w || 32) < -40 || sx > CANVAS_W + 40) continue;
 
         const Cls = CLASS_MAP[m.type];
@@ -1054,8 +1067,8 @@
 
         // Lightweight stub — inherits draw/_drawBody/_flashAlpha/_drawHealthBar via prototype
         const stub = Object.create(Cls.prototype);
-        stub.x           = m.x;
-        stub.y           = m.y;
+        stub.x           = rp.rx;
+        stub.y           = rp.ry;
         stub.width       = m.w;
         stub.height      = m.h;
         stub.hp          = m.hp;
@@ -1072,6 +1085,11 @@
 
         stub.draw(ctx, camera);
       }
+
+      // Extrapolate projectiles by their velocity between the ~10Hz snapshots so
+      // they fly smoothly instead of jumping; the next snapshot re-syncs them.
+      for (const a of this.remoteArrows)     { a.x  += (a.vx  || 0); a.y  += (a.vy  || 0); }
+      for (const bs of this.remoteBlazeShots) { bs.x += (bs.vx || 0); bs.y += (bs.vy || 0); }
 
       // Draw remote enemy arrows
       for (const a of this.remoteArrows) {
