@@ -87,6 +87,10 @@ class Game {
       // Phase 17-D — Physics (per-world)
       physicsGravity:            GRAVITY,   // 0.66
       jumpPadVForce:             -18,       // launch velocity for JUMP_PAD blocks
+      // Phase 1 Refinement — per-world movement config
+      jumpHeightBlocks:          null,      // null = use default JUMP_VELOCITY; else apex in blocks
+      airJumpEnabled:            false,     // allow one mid-air (double) jump
+      sprintEnabled:             true,      // Shift = 2× ground speed
     };
     // Track the user's explicit pre-launch 2P choice so it can survive world-load overwrite
     this._launchTwoPlayerMode = options.twoPlayerMode;
@@ -143,6 +147,7 @@ class Game {
     this._buildLevel();
 
     this.state         = 'playing'; // 'playing' | 'won' | 'dead' | 'paused' | 'confirmExit'
+    this.totalGameTime = 0;         // persistent total play time (ms); managed by GAME_TIMER
     this.frameCount    = 0;
     this.clouds        = this._makeClouds();
     this.craftingMenu  = new CraftingMenu();
@@ -1036,13 +1041,40 @@ class Game {
       this._worldSettingsOpen = !this._worldSettingsOpen;
     }
 
-    // ── H key: hyper speed toggle (sandbox / god mode only) ──────
+    // ── H key: hyper speed cycle — Normal → 3× → 6× → Normal (sandbox / god mode only) ──
     if (this.input.isJustDown('KeyH')) {
       if (this.gameMode === 'sandbox' || this.player.godMode) {
-        this.player.hyperSpeed = !this.player.hyperSpeed;
-        this._notify(this.player.hyperSpeed ? 'Hyper Speed ON ⚡' : 'Hyper Speed OFF', this.player.hyperSpeed ? '#FFDD44' : '#888888', 150);
+        const p = this.player;
+        p.hyperLevel      = (p.hyperLevel + 1) % 3;
+        p.hyperSpeed      = p.hyperLevel > 0;        // keep existing 3× flag in sync
+        p.speedMultiplier = p.hyperLevel === 2 ? 2 : 1; // stacks on top → 6× at level 2
+        const msg = ['Hyper Speed OFF', 'Hyper Speed ON ⚡ (3×)', '2× Hyper Speed ⚡⚡ (6×)'][p.hyperLevel];
+        this._notify(msg, p.hyperLevel ? '#FFDD44' : '#888888', 150);
       } else {
         this._notify('Hyper Speed requires God Mode', '#888888', 120);
+      }
+    }
+
+    // ── X key: phase-through-blocks toggle (sandbox / god mode only) ──
+    if (this.input.isJustDown('KeyX')) {
+      if (this.gameMode === 'sandbox' || this.player.godMode) {
+        this.player.canPhaseThrough = !this.player.canPhaseThrough;
+        this._notify(
+          this.player.canPhaseThrough ? 'Phase-Through ON 👻' : 'Phase-Through OFF',
+          this.player.canPhaseThrough ? '#B084FF' : '#888888', 150
+        );
+      } else {
+        this._notify('Phase-Through requires God Mode', '#888888', 120);
+      }
+    }
+
+    // ── God Mode invariant: phase-through + hyper speed reset when god mode is off ──
+    if (!this.player.godMode) {
+      this.player.canPhaseThrough = false;
+      if (this.player.hyperLevel !== 0) {
+        this.player.hyperLevel      = 0;
+        this.player.hyperSpeed      = false;
+        this.player.speedMultiplier = 1;
       }
     }
 
@@ -1167,7 +1199,7 @@ class Game {
         this._notify('Player 1 rejoins!', '#FFD700', 120);
       }
     } else {
-      this.player._gravityOverride = this._worldAdvSettings.physicsGravity ?? GRAVITY;
+      this._applyMovementConfig(this.player);
       this.player.update(this.input, this.level);
     }
 
@@ -1194,7 +1226,7 @@ class Game {
           isAttack: () => this.input.isP2Attack(),
           moveX:    () => this.input.moveX2(),
         };
-        this.player2._gravityOverride = this._worldAdvSettings.physicsGravity ?? GRAVITY;
+        this._applyMovementConfig(this.player2);
         this.player2.update(p2input, this.level);
         this._resolvePlayerCollision(this.player, this.player2);
       }
@@ -3231,6 +3263,21 @@ class Game {
     this._p2RespawnTimer = 180; // 3 s at 60 fps
   }
 
+  // Push per-world movement settings (gravity, jump height, air jump, sprint)
+  // onto a player before its update(). Jump velocity is derived from gravity so
+  // the configured apex (in blocks) holds regardless of the gravity setting:
+  //   apex_px = v² / (2g)  →  v = √(2 · g · apex_blocks · BLOCK_SIZE)
+  _applyMovementConfig(p) {
+    const aws = this._worldAdvSettings;
+    const g   = aws.physicsGravity ?? GRAVITY;
+    p._gravityOverride = g;
+    p._sprintEnabled   = aws.sprintEnabled !== false;
+    p._airJumpEnabled  = !!aws.airJumpEnabled;
+    p._jumpVelocityOverride = aws.jumpHeightBlocks
+      ? -Math.sqrt(2 * g * aws.jumpHeightBlocks * BLOCK_SIZE)
+      : null;
+  }
+
   _resolvePlayerCollision(p1, p2) {
     const overlapX = (p1.x + p1.width)  - p2.x;
     const overlapX2= (p2.x + p2.width)  - p1.x;
@@ -4279,7 +4326,7 @@ class Game {
     this._drawBowCharge(ctx);
     this._drawNotifications(ctx);
     if (this._onlineGameId) this._drawGameNotifications(ctx);
-    if (this.gameMode !== 'sandbox' && this.gameMode !== 'speedrunner' && this.player.godMode) this._drawGodModeBadge(ctx);
+    if (this.gameMode !== 'speedrunner' && (this.player.godMode || this.player.hyperLevel > 0)) this._drawGodModeHud(ctx);
     if (this._teleportMenu && this.player.godMode) this._drawTeleportMenu(ctx);
     if (this.gameMode === 'platformer') this._drawPlatformerHUD(ctx);
     if (this.gameMode === 'speedrunner') this._drawSpeedRunnerHUD(ctx);
@@ -7706,6 +7753,23 @@ class Game {
         const cur = JUMPPAD_OPTS.indexOf(aws.jumpPadVForce ?? -18);
         aws.jumpPadVForce = JUMPPAD_OPTS[(cur < 0 ? 4 : cur + 1) % JUMPPAD_OPTS.length];
       }
+      // Row 3: Jump Height (player jump apex, in blocks; null = default)
+      const JUMPH_OPTS = [null, 2, 2.5, 3, 3.5, 4, 4.5, 5];
+      const r3Y = L.FIRST_ROW + 96;
+      if (mx >= tgX && mx <= tgX + tgW && my >= r3Y && my <= r3Y + tgH) {
+        const cur = JUMPH_OPTS.findIndex(v => v === (aws.jumpHeightBlocks ?? null));
+        aws.jumpHeightBlocks = JUMPH_OPTS[(cur < 0 ? 0 : cur + 1) % JUMPH_OPTS.length];
+      }
+      // Row 4: Air Jump (double jump) toggle
+      const r4Y = L.FIRST_ROW + 144;
+      if (mx >= tgX && mx <= tgX + tgW && my >= r4Y && my <= r4Y + tgH) {
+        aws.airJumpEnabled = !aws.airJumpEnabled;
+      }
+      // Row 5: Sprint toggle (default on)
+      const r5Y = L.FIRST_ROW + 192;
+      if (mx >= tgX && mx <= tgX + tgW && my >= r5Y && my <= r5Y + tgH) {
+        aws.sprintEnabled = (aws.sprintEnabled === false);
+      }
       return;
     }
 
@@ -8294,6 +8358,15 @@ class Game {
       drawPhysRow(L.FIRST_ROW + 48, 'Jump Pad Force',
         '(vertical launch on JUMP_PAD blocks)',
         (aws.jumpPadVForce ?? -18).toString());
+      drawPhysRow(L.FIRST_ROW + 96, 'Jump Height',
+        '(player jump apex in blocks — default ~3.5)',
+        aws.jumpHeightBlocks ? aws.jumpHeightBlocks + ' bl' : 'Default');
+      drawPhysRow(L.FIRST_ROW + 144, 'Air Jump',
+        '(allow one mid-air double jump)',
+        aws.airJumpEnabled ? 'On' : 'Off');
+      drawPhysRow(L.FIRST_ROW + 192, 'Sprint',
+        '(hold Shift to move 2× speed)',
+        aws.sprintEnabled !== false ? 'On' : 'Off');
 
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     } else {
@@ -10397,21 +10470,30 @@ class Game {
     ctx.restore();
   }
 
-  _drawGodModeBadge(ctx) {
-    const label  = '⚡ GOD MODE';
+  // Creator/dev status line (top-left): Speed level, God Mode, Phase-Through.
+  _drawGodModeHud(ctx) {
+    const p = this.player;
+    const speedTxt = `🚀 ${['1×', '3×', '6×'][p.hyperLevel] || '1×'}`;
+    const segs = [
+      { t: speedTxt,                          c: '#4CAF50' },
+      { t: `🛡️ ${p.godMode ? 'ON' : 'OFF'}`,  c: p.godMode ? '#FF6B6B' : '#999999' },
+      { t: `👻 ${p.canPhaseThrough ? 'ON' : 'OFF'}`, c: p.canPhaseThrough ? '#B084FF' : '#999999' },
+    ];
     ctx.save();
-    ctx.font         = 'bold 10px Courier New';
+    ctx.font         = 'bold 11px Courier New';
     ctx.textBaseline = 'middle';
     ctx.textAlign    = 'left';
-    const tw   = ctx.measureText(label).width;
-    const bx   = 8, by = 8, bw = tw + 16, bh = 20;
-    const pulse = 0.65 + 0.35 * Math.sin(this.frameCount * 0.1);
-    ctx.globalAlpha = pulse;
-    ctx.fillStyle   = 'rgba(0,0,0,0.55)';
+    const gap = 14, padX = 10, bx = 8, by = 8, bh = 22;
+    let bw = padX * 2;
+    for (let i = 0; i < segs.length; i++) bw += ctx.measureText(segs[i].t).width + (i ? gap : 0);
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
     _roundRect(ctx, bx, by, bw, bh, 4); ctx.fill();
-    ctx.fillStyle   = '#FFD700';
-    ctx.fillText(label, bx + 8, by + bh / 2);
-    ctx.globalAlpha  = 1;
+    let x = bx + padX;
+    for (const s of segs) {
+      ctx.fillStyle = s.c;
+      ctx.fillText(s.t, x, by + bh / 2 + 1);
+      x += ctx.measureText(s.t).width + gap;
+    }
     ctx.textBaseline = 'alphabetic';
     ctx.restore();
   }
@@ -12202,14 +12284,19 @@ class Game {
   // ── Normal mode: play a Sandbox-created world ─────────────────
 
   _loadNormalWorld(keyOrData) {
-    const raw  = typeof keyOrData === 'string' ? SandboxSaves.load(keyOrData) : keyOrData;
+    // Loaded either from a localStorage save (string key, legacy menu flow) or
+    // directly from cloud world_data (object, new game-slot flow).
+    const key  = typeof keyOrData === 'string' ? keyOrData : null;
+    const raw  = key ? SandboxSaves.load(key) : keyOrData;
     const data = SaveMigrations.migrateSave(raw);
     if (!data) { this._notify('Failed to load world!', '#FF4444', 300); return; }
 
     this._resizeLevelFromData(data);
 
-    // Load progress early so grid snapshot can be applied before redstone/chest setup
-    const progress = !this._normalNewGame ? NormalProgress.load(key) : null;
+    // NormalProgress is a localStorage-only checkpoint keyed by the save key, so
+    // it only applies to the legacy string-key flow. Cloud games persist via
+    // GAME_STATE/AUTO_SAVE instead, so there's no progress to overlay (key=null).
+    const progress = (key && !this._normalNewGame) ? NormalProgress.load(key) : null;
 
     // Apply saved grid
     if (Array.isArray(data.grid)) {
@@ -12410,7 +12497,7 @@ class Game {
     // Restore player progress (if any saved and not starting fresh)
     if (this._normalNewGame) {
       // New Game: clear any existing checkpoint and start 1 minute into the day
-      NormalProgress.remove(key);
+      if (key) NormalProgress.remove(key); // only the legacy localStorage flow has a key
       this._dayNight.timer = 60 * 1000;
     } else {
       if (progress) {
@@ -13771,6 +13858,8 @@ class Game {
     const bg = new Audio();
     bg.loop   = false; // manual next-track selection
     bg.volume = 0;
+    // Respect the global music-mute preference (toggled from the dashboard).
+    if (typeof MUSIC_CONTROL !== 'undefined') bg.muted = MUSIC_CONTROL.isMuted();
     bg.addEventListener('ended', () => {
       if (!this._musicSystem.bossMusicActive && !this._musicSystem.witherMusicActive) this._advancePlaylist();
     });

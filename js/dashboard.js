@@ -10,8 +10,33 @@ const DASHBOARD = {
       return;
     }
 
+    // A cached user isn't proof of a live session — the token may have expired.
+    // Validate (and refresh if possible) before trusting the login state.
+    const sessionOk = await AUTH.ensureValidSession();
+    if (!sessionOk) {
+      AUTH._clearSession();
+      this.currentUser = null;
+      this._showLogin();
+      return;
+    }
+
+    // Show the "Steveo Platformer" title screen first; its Start button (wired
+    // in index.html) unlocks audio + intro music, then calls _enterDashboard().
+    this._showTitleScreen();
+  },
+
+  // Title splash shown after login. The Start button is the user gesture that
+  // unlocks the intro music, mirroring the original pre-login flow.
+  _showTitleScreen() {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('dashboard-screen').style.display = 'none';
+    document.getElementById('start-screen').style.display = 'flex';
+  },
+
+  // Reveal the dashboard (game select). Called from the title-screen Start button.
+  _enterDashboard() {
     this._showDashboard();
-    this._setupListeners();
+    if (!this._listenersBound) { this._setupListeners(); this._listenersBound = true; }
     this._updateUserDisplay();
     this._loadMostRecentWorld();
   },
@@ -41,8 +66,6 @@ const DASHBOARD = {
     document.getElementById('speedrunner-mode-btn')?.addEventListener('click', () => this._navigateToMode('SPEEDRUNNER'));
     document.getElementById('sandbox-mode-btn')?.addEventListener('click', () => this._navigateToMode('SANDBOX'));
 
-    document.getElementById('quick-play-btn')?.addEventListener('click', () => this._quickPlay());
-
     document.getElementById('online-play-btn')?.addEventListener('click', () => {
       alert('Online Play — coming in Phase 2!');
     });
@@ -50,23 +73,81 @@ const DASHBOARD = {
     document.getElementById('logout-btn')?.addEventListener('click', () => this._logout());
   },
 
+  // Kept name for existing callers; renders the Quick Play card grid.
   async _loadMostRecentWorld() {
-    // Populated in Phase 1D when game history is tracked
-    const text = document.getElementById('most-recent-text');
-    const btn = document.getElementById('quick-play-btn');
-    if (text) text.textContent = 'Play your first world to see it here';
-    if (btn) btn.style.display = 'none';
+    this._renderQuickPlay();
+  },
+
+  // Render 4 equal-sized cards inside the white frame. The most recently played
+  // game sits in the rightmost cell; older games shift left and fall off at 4.
+  _renderQuickPlay() {
+    const grid = document.getElementById('quick-play-grid');
+    if (!grid) return;
+
+    const recent = (typeof QUICK_PLAY !== 'undefined') ? QUICK_PLAY.getGames().slice(0, 4) : [];
+    this.mostRecentWorld = recent[0] || null;
+
+    // recent is most-recent-first → leftmost cell is the most recent game.
+    // Newly played games unshift to the front (left); older ones shift right
+    // and the 4th falls off. Right-pad with empty cells to always show 4.
+    const cells = recent.concat(Array(Math.max(0, 4 - recent.length)).fill(null));
+
+    grid.innerHTML = cells.map(g => {
+      if (!g) return `<div class="qp-card qp-empty"><p class="qp-empty-text">Empty</p></div>`;
+      return `
+        <div class="qp-card">
+          <div class="qp-card-body">
+            <h4 class="qp-game-name">${this._esc(g.gameName)}</h4>
+            <p class="qp-world-name">World: ${this._esc(g.worldName)}</p>
+            <p class="qp-mode">${this._esc(this._modeLabel(g.mode))}</p>
+          </div>
+          <div class="qp-actions">
+            <button class="btn btn-primary qp-play-btn" data-game-id="${g.gameId}" data-mode="${g.mode}">Play</button>
+            <button class="btn btn-secondary qp-remove-btn" data-game-id="${g.gameId}">Remove</button>
+          </div>
+        </div>`;
+    }).join('');
+
+    grid.querySelectorAll('.qp-play-btn').forEach(b =>
+      b.addEventListener('click', (e) => {
+        const el = e.currentTarget;
+        this._launchRecent(el.dataset.gameId, el.dataset.mode);
+      }));
+    grid.querySelectorAll('.qp-remove-btn').forEach(b =>
+      b.addEventListener('click', (e) => {
+        if (typeof QUICK_PLAY !== 'undefined') QUICK_PLAY.removeGame(e.currentTarget.dataset.gameId);
+        this._renderQuickPlay();
+      }));
+  },
+
+  _modeLabel(m) {
+    return { NORMAL: 'Normal', PLATFORMER: 'Platformer', SPEEDRUNNER: 'Speed Runner', SANDBOX: 'Sandbox' }[m] || m || '';
+  },
+
+  _esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  },
+
+  // Launch a recent game from the dashboard. Prime GAME_SELECTION with the
+  // game's mode so the exit flow (which returns to the slot list) works.
+  _launchRecent(gameId, mode) {
+    if (typeof QUICK_PLAY !== 'undefined') {
+      // Playing a Quick Play game makes it the most-recent → bump to the front
+      // (leftmost) so its position updates, even if it wasn't already first.
+      const entry = QUICK_PLAY.getGames().find(g => String(g.gameId) === String(gameId));
+      if (entry) QUICK_PLAY.addGame(entry);
+    }
+    if (typeof GAME_SELECTION !== 'undefined' && mode) GAME_SELECTION.currentMode = mode;
+    document.getElementById('dashboard-screen').style.display = 'none';
+    GAME_PLAY.init(gameId);
   },
 
   _navigateToMode(mode) {
-    GAME_SELECTION.init(mode);
-  },
-
-  _quickPlay() {
-    if (this.mostRecentWorld) {
-      console.log(`Quick playing: ${this.mostRecentWorld.name}`);
+    if (mode === 'SANDBOX') {
+      SANDBOX.init();
     } else {
-      alert('No recent worlds. Create a new game first!');
+      GAME_SELECTION.init(mode);
     }
   },
 
@@ -125,10 +206,7 @@ const AUTH_UI = {
     try {
       await fn();
       DASHBOARD.currentUser = AUTH.getUser();
-      DASHBOARD._showDashboard();
-      DASHBOARD._setupListeners();
-      DASHBOARD._updateUserDisplay();
-      DASHBOARD._loadMostRecentWorld();
+      DASHBOARD._showTitleScreen();
     } catch (err) {
       this._showError(err.message);
     } finally {

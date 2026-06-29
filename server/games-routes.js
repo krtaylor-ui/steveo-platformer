@@ -1,5 +1,8 @@
 const { supabaseAdmin } = require('./supabase-client');
 
+// Fixed owner of seeded default/system worlds (mirrors server.js).
+const SYSTEM_USER_ID = '00000000-0000-4000-8000-000000000001';
+
 const verifyToken = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -17,6 +20,61 @@ const verifyToken = async (req, res, next) => {
 
 module.exports = function setupGamesRoutes(app) {
 
+  app.get('/api/worlds', verifyToken, async (req, res) => {
+    try {
+      const { mode } = req.query;
+
+      if (!mode || !['NORMAL', 'PLATFORMER', 'SPEEDRUNNER'].includes(mode)) {
+        return res.status(400).json({ error: 'Invalid or missing mode' });
+      }
+
+      // The new-game world dropdown = published worlds of this mode (system
+      // defaults + community) PLUS the requesting player's OWN worlds of this
+      // mode, regardless of publish state — so a creator can start a game from
+      // their own sandbox build before (or without) publishing it. Filtering is
+      // on the `mode` column, which is kept in sync with gameModeDefault for
+      // sandbox worlds and is also set on the seeded system worlds.
+      const cols = 'id, world_name, creator_name, mode, creator_id, created_at';
+
+      const [{ data: published, error: pErr }, { data: own, error: oErr }] = await Promise.all([
+        supabaseAdmin.from('worlds').select(cols)
+          .eq('mode', mode).eq('is_published', true)
+          .order('created_at', { ascending: false }),
+        supabaseAdmin.from('worlds').select(cols)
+          .eq('mode', mode).eq('creator_id', req.user.id)
+          .order('created_at', { ascending: false }),
+      ]);
+      if (pErr) throw pErr;
+      if (oErr) throw oErr;
+
+      // Ordering: System default(s) first (the canonical "Default" starting
+      // world), then the player's own worlds, then other published/community
+      // worlds. Dedupe by id across all three buckets.
+      const pub = published || [];
+      const sysDefaults = pub.filter(w => w.creator_id === SYSTEM_USER_ID);
+      const community = pub.filter(w => w.creator_id !== SYSTEM_USER_ID);
+
+      const seen = new Set();
+      const worlds = [];
+      for (const w of [...sysDefaults, ...(own || []), ...community]) {
+        if (seen.has(w.id)) continue;
+        seen.add(w.id);
+        worlds.push({
+          id: w.id,
+          world_name: w.world_name,
+          creator_name: w.creator_name,
+          mode: w.mode,
+          mine: w.creator_id === req.user.id,
+        });
+      }
+
+      res.json({ worlds, mode, count: worlds.length });
+    } catch (error) {
+      console.error('Get worlds error:', error);
+      res.status(500).json({ error: 'Failed to get worlds' });
+    }
+  });
+
   app.get('/api/games', verifyToken, async (req, res) => {
     try {
       const { mode } = req.query;
@@ -33,6 +91,17 @@ module.exports = function setupGamesRoutes(app) {
         .order('slot_number', { ascending: true });
 
       if (error) throw error;
+
+      // Attach each game's world_name (games table only stores world_id).
+      const worldIds = [...new Set(games.map(g => g.world_id).filter(Boolean))];
+      if (worldIds.length) {
+        const { data: worlds } = await supabaseAdmin
+          .from('worlds')
+          .select('id, world_name')
+          .in('id', worldIds);
+        const nameById = new Map((worlds || []).map(w => [w.id, w.world_name]));
+        games.forEach(g => { g.world_name = nameById.get(g.world_id) || null; });
+      }
 
       const slots = [null, null, null, null];
       games.forEach(game => {
@@ -122,6 +191,11 @@ module.exports = function setupGamesRoutes(app) {
         .select()
         .single();
 
+      // 23505 = unique_violation: the slot was taken between the pre-check and
+      // the insert (e.g. a double-submit). Report it cleanly instead of as a 500.
+      if (gameError?.code === '23505') {
+        return res.status(409).json({ error: 'Slot already occupied' });
+      }
       if (gameError) throw gameError;
 
       res.json(newGame);

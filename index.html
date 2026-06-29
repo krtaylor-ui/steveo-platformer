@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Steveo Platformer</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=17g8">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
@@ -203,6 +203,171 @@
     </div>
   </div>
 
+  <!-- ── Sandbox Screen (world browser) ────────────────────── -->
+  <div id="sandbox-screen" style="display: none;">
+    <div class="sandbox-container">
+
+      <div class="sandbox-header">
+        <button id="sandbox-back-btn" class="btn-back">← Back to Dashboard</button>
+        <h2>Sandbox Mode</h2>
+        <button id="create-world-btn" class="btn btn-primary">+ Create World</button>
+      </div>
+
+      <div class="sandbox-controls">
+        <div class="filter-group">
+          <label>Filter:</label>
+          <select id="mode-filter">
+            <option value="all">All</option>
+            <option value="normal">Normal</option>
+            <option value="platformer">Platformer</option>
+            <option value="speedrunner">Speed Runner</option>
+          </select>
+        </div>
+        <div class="sort-group">
+          <label>Sort:</label>
+          <select id="sort-filter">
+            <option value="newest">Newest</option>
+            <option value="oldest">Oldest</option>
+            <option value="alphabetical">Alphabetical</option>
+          </select>
+        </div>
+        <button id="import-games-btn" class="btn btn-secondary">Import from Games</button>
+        <button id="import-file-btn" class="btn btn-secondary">Import from File</button>
+      </div>
+
+      <div id="world-list" class="world-list"></div>
+
+      <div class="pagination">
+        <button id="prev-page-btn" class="btn btn-small">Previous</button>
+        <span id="page-info">Page 1 of 1</span>
+        <button id="next-page-btn" class="btn btn-small">Next</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Create World Modal ────────────────────────────────── -->
+  <div id="create-world-modal" style="display: none;">
+    <div class="modal-content">
+      <h3>Create New World</h3>
+      <form id="create-world-form">
+        <div class="form-group">
+          <label>World Name:</label>
+          <input type="text" id="world-name-input" placeholder="My World" required>
+        </div>
+        <div class="form-group">
+          <label>Description:</label>
+          <textarea id="world-description-input" placeholder="Optional description" rows="2"></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Width (blocks):</label>
+            <input type="number" id="world-width-input" value="650" min="100" max="2000" required>
+            <small>100-2000 blocks</small>
+          </div>
+          <div class="form-group">
+            <label>Height (blocks):</label>
+            <input type="number" id="world-height-input" value="60" min="30" max="500" required>
+            <small>30-500 blocks</small>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Default Game Mode:</label>
+          <select id="game-mode-default-input" required>
+            <option value="NRM">Normal</option>
+            <option value="PLT">Platformer</option>
+            <option value="RUN">Speed Runner</option>
+          </select>
+          <small>What mode should this world open in by default?</small>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Gravity:</label>
+            <select id="gravity-level-input">
+              <option value="0.4">Low (floaty)</option>
+              <option value="0.66" selected>Normal</option>
+              <option value="0.9">High (heavy)</option>
+            </select>
+            <small>How fast the player falls</small>
+          </div>
+          <div class="form-group">
+            <label>Jump Height:</label>
+            <select id="jump-height-input">
+              <option value="2">2 blocks</option>
+              <option value="2.5">2.5 blocks</option>
+              <option value="3">3 blocks</option>
+              <option value="3.5" selected>3.5 blocks (default)</option>
+              <option value="4">4 blocks</option>
+              <option value="4.5">4.5 blocks</option>
+              <option value="5">5 blocks</option>
+            </select>
+            <small>Jump apex, independent of gravity</small>
+          </div>
+        </div>
+        <div class="form-group">
+          <label><input type="checkbox" id="air-jump-input"> Enable Air Jump (double jump)</label>
+          <small>One extra jump while airborne</small>
+        </div>
+        <div class="form-group">
+          <label><input type="checkbox" id="sprint-input" checked> Enable Sprint (Shift)</label>
+          <small>Hold Shift to move 2× speed</small>
+        </div>
+
+        <div class="form-group">
+          <button type="submit" class="btn btn-primary">Create</button>
+          <button type="button" class="btn btn-secondary" id="cancel-world-create-btn">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Import Games Modal ────────────────────────────────── -->
+  <div id="import-games-modal" style="display: none;">
+    <div class="modal-content">
+      <h3>Import Saved Games</h3>
+      <p>Select games to convert to sandbox worlds:</p>
+      <div id="games-list" class="games-list"></div>
+      <div class="form-group">
+        <button id="import-selected-btn" class="btn btn-primary">Import Selected</button>
+        <button id="cancel-import-btn" class="btn btn-secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Import from File Modal ────────────────────────────── -->
+  <div id="import-file-modal" style="display: none;">
+    <div class="modal-content">
+      <h3>Import World from File</h3>
+
+      <div id="file-import-section">
+        <div class="form-group">
+          <label>Select JSON File:</label>
+          <input type="file" id="world-file-input" accept=".json" required>
+        </div>
+
+        <div id="mode-mismatch-warning" style="display: none;" class="warning-box">
+          <strong>⚠️ Mode Mismatch:</strong>
+          <p id="mismatch-text"></p>
+          <label>
+            <input type="checkbox" id="confirm-mode-override">
+            I understand and want to import as <span id="override-mode-span"></span>
+          </label>
+        </div>
+
+        <div class="form-group">
+          <button type="button" class="btn btn-primary" id="confirm-import-btn">Import</button>
+          <button type="button" class="btn btn-secondary" id="cancel-import-file-btn">Cancel</button>
+        </div>
+      </div>
+
+      <div id="import-success-section" style="display: none;">
+        <p>✅ World imported successfully!</p>
+        <p id="imported-world-name"></p>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Dashboard Screen ──────────────────────────────────── -->
   <div id="dashboard-screen" style="display: none;">
     <div class="dashboard-container">
@@ -210,6 +375,7 @@
       <div class="dashboard-header">
         <h1>⛏ Steveo Platformer</h1>
         <div class="user-info">
+          <button id="music-mute-btn" class="btn-mute" title="Mute music">🔊</button>
           <span id="username-display">Welcome, Player!</span>
           <button id="logout-btn" class="btn btn-small">Logout</button>
         </div>
@@ -251,13 +417,7 @@
         <section class="quick-play-section">
           <h2>Quick Play</h2>
           <div class="quick-play-container">
-            <div class="most-recent-world">
-              <h3>Most Recently Played</h3>
-              <div class="world-card">
-                <p id="most-recent-text">No worlds played yet</p>
-                <button id="quick-play-btn" class="btn btn-primary" style="display: none;">Quick Play</button>
-              </div>
-            </div>
+            <div id="quick-play-grid" class="quick-play-grid"></div>
           </div>
         </section>
 
@@ -268,6 +428,63 @@
           </div>
         </section>
 
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Play HUD (shown while a game is active) ─────────────── -->
+  <div id="play-hud" style="display: none;">
+    <div class="play-hud-left">
+      <span id="play-hud-title" class="play-hud-title">Game</span>
+      <span id="save-indicator" class="save-indicator saved">Saved</span>
+    </div>
+    <div class="play-hud-center">
+      <span id="game-timer-hud" class="game-timer-hud">⏱️ Session 0:00  ·  Game 0:00</span>
+    </div>
+    <div class="play-hud-right">
+      <button id="play-hud-pause" class="play-hud-btn">Pause</button>
+      <button id="play-hud-exit"  class="play-hud-btn play-hud-btn-exit">Exit Game</button>
+    </div>
+  </div>
+
+  <!-- ── Sandbox Editor HUD (overlays the shared canvas) ────── -->
+  <div id="sandbox-editor-hud" style="display: none;">
+    <div class="sb-editor-left">
+      <button id="sb-editor-back-btn" class="play-hud-btn">← Worlds</button>
+      <span id="sandbox-editor-title" class="play-hud-title">World</span>
+      <span id="sb-save-indicator" class="save-indicator">Unsaved changes</span>
+    </div>
+    <div class="sb-editor-right">
+      <button id="sb-save-btn" class="play-hud-btn">Save</button>
+      <button id="sb-publish-btn" class="play-hud-btn">Publish</button>
+      <button id="sb-export-btn" class="play-hud-btn">Export</button>
+      <button id="sb-copy-btn" class="play-hud-btn">Copy</button>
+      <button id="sb-delete-btn" class="play-hud-btn play-hud-btn-exit">Delete</button>
+    </div>
+  </div>
+
+  <!-- ── Game Loading Overlay ──────────────────────────────── -->
+  <div id="game-loading-overlay" style="display: none;">
+    <div class="game-loading-spinner">
+      <div class="game-loading-ring"></div>
+      <p>Loading game...</p>
+    </div>
+  </div>
+
+  <!-- ── Game Config Startup Screen ────────────────────────── -->
+  <div id="game-config-startup" style="display: none;">
+    <div class="startup-content">
+      <h2 id="startup-world-name">World Name</h2>
+      <p id="startup-world-mode">Game Mode: Normal</p>
+      <div class="startup-config">
+        <div class="config-item"><span class="config-label">⚙️ Gravity:</span><span id="startup-gravity">Normal</span></div>
+        <div class="config-item"><span class="config-label">🏃 Jump Height:</span><span id="startup-jump-height">3.4 blocks</span></div>
+        <div class="config-item"><span class="config-label">✈️ Air Jump:</span><span id="startup-air-jump">❌ Disabled</span></div>
+        <div class="config-item"><span class="config-label">💨 Sprint:</span><span id="startup-sprint">✅ Enabled</span></div>
+      </div>
+      <div class="startup-footer">
+        <p id="startup-instructions">Press SPACE to start</p>
+        <button id="startup-start-btn" class="btn btn-primary">Start Game</button>
       </div>
     </div>
   </div>
@@ -294,32 +511,40 @@
     2P: <kbd>IJKL</kbd>+<kbd>U</kbd>
   </div>
 
-  <script src="js/auth.js"></script>
-  <script src="js/dashboard.js"></script>
-  <script src="js/game-selection.js"></script>
-  <script src="js/constants.js?v=17g5"></script>
-  <script src="js/blocks.js?v=17g5"></script>
-  <script src="js/controller-config.js?v=17g5"></script>
-  <script src="js/controller-input.js?v=17g5"></script>
-  <script src="js/input.js?v=17g5"></script>
-  <script src="js/camera.js?v=17g5"></script>
-  <script src="js/mobs.js?v=17g5"></script>
-  <script src="js/crafting.js?v=17g5"></script>
-  <script src="js/player.js?v=17g5"></script>
-  <script src="js/level.js?v=17g5"></script>
-  <script src="js/redstone.js?v=17g5"></script>
-  <script src="js/world.js?v=17g5"></script>
-  <script src="js/sandbox.js?v=17g5"></script>
-  <script src="js/save-migrations.js?v=17g5"></script>
-  <script src="js/saves.js?v=17g5"></script>
-  <script src="js/speedrunner-mode.js?v=17g5"></script>
-  <script src="js/game.js?v=17g5"></script>
-  <script src="js/menu.js?v=17g5"></script>
+  <script src="js/auth.js?v=17g8"></script>
+  <script src="js/dashboard.js?v=17g8"></script>
+  <script src="js/game-selection.js?v=17g8"></script>
+  <script src="js/constants.js?v=17g8"></script>
+  <script src="js/blocks.js?v=17g8"></script>
+  <script src="js/controller-config.js?v=17g8"></script>
+  <script src="js/controller-input.js?v=17g8"></script>
+  <script src="js/input.js?v=17g8"></script>
+  <script src="js/camera.js?v=17g8"></script>
+  <script src="js/mobs.js?v=17g8"></script>
+  <script src="js/crafting.js?v=17g8"></script>
+  <script src="js/player.js?v=17g8"></script>
+  <script src="js/level.js?v=17g8"></script>
+  <script src="js/redstone.js?v=17g8"></script>
+  <script src="js/world.js?v=17g8"></script>
+  <script src="js/sandbox.js?v=17g8"></script>
+  <script src="js/save-migrations.js?v=17g8"></script>
+  <script src="js/saves.js?v=17g8"></script>
+  <script src="js/speedrunner-mode.js?v=17g8"></script>
+  <script src="js/game.js?v=17g8"></script>
+  <script src="js/menu.js?v=17g8"></script>
   <!-- Phase 16: Multiplayer (socket.io loaded from CDN; falls back gracefully if unavailable) -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js" crossorigin="anonymous"></script>
-  <script src="js/multiplayer.js"></script>
+  <script src="js/multiplayer.js?v=17g8"></script>
   <!-- Phase 16-A: Online lobby UI -->
-  <script src="js/online-ui.js"></script>
+  <script src="js/online-ui.js?v=17g8"></script>
+  <!-- Phase 1D: Game play + auto-save -->
+  <script src="js/music.js?v=17g8"></script>
+  <script src="js/game-timer.js?v=17g8"></script>
+  <script src="js/game-state.js?v=17g8"></script>
+  <script src="js/auto-save.js?v=17g8"></script>
+  <script src="js/game-play.js?v=17g8"></script>
+  <!-- Phase 1E: Sandbox world browser + editor -->
+  <script src="js/sandbox-ui.js?v=17g8"></script>
 
   <script>
     // ── Responsive canvas scaling ────────────────────────────────
@@ -359,10 +584,28 @@
       if (!screen || !btn) return;
       btn.addEventListener('click', () => {
         screen.style.display = 'none';
-        // Audio is now unlocked for this page context.
-        // The menu's _initMenuAudio() will start the intro loop.
-        if (window._menuRef && typeof window._menuRef._initMenuAudio === 'function') {
-          window._menuRef._initMenuAudio();
+        // This click is the user gesture that unlocks audio. Start the intro
+        // music directly (don't depend on the menu having booted / its blocked
+        // autoplay). Reuse the menu's audio element if it exists.
+        try {
+          if (window._menuRef && typeof window._menuRef._initMenuAudio === 'function') {
+            window._menuRef._initMenuAudio();
+          }
+          let a = window._menuAudio;
+          if (!a) {
+            a = new Audio('music/intro/intro.mp3');
+            a.loop = true;
+            window._menuAudio = a;
+          }
+          if (typeof DEFAULT_MUSIC_VOLUME !== 'undefined' && typeof MAX_AUDIO_VOLUME !== 'undefined') {
+            a.volume = DEFAULT_MUSIC_VOLUME * MAX_AUDIO_VOLUME;
+          }
+          a.muted = (typeof MUSIC_CONTROL !== 'undefined') ? MUSIC_CONTROL.isMuted() : false;
+          if (a.paused) { const p = a.play(); if (p && p.catch) p.catch(() => {}); }
+        } catch (e) { /* audio optional */ }
+        // Post-login flow: the title screen leads into the dashboard.
+        if (typeof DASHBOARD !== 'undefined' && DASHBOARD.currentUser) {
+          DASHBOARD._enterDashboard();
         }
       });
     })();

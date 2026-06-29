@@ -4,6 +4,8 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const { supabaseAdmin } = require('./server/supabase-client');
 
 // ============================================================
 // Express app for API + Multiplayer
@@ -88,7 +90,49 @@ function loadSavedGames() {
   console.log(`Loaded ${worlds.size} saved games`);
 }
 
-function loadDefaultWorlds() {
+// worlds.id / games.world_id are UUID columns, so default worlds need a stable
+// UUID — not a free-form string. Derive one deterministically from the filename
+// (UUID v5 style) so the same file always maps to the same id across restarts,
+// keeping the insert idempotent.
+function defaultWorldUuid(file) {
+  const h = crypto.createHash('sha1')
+    .update(`steveo-default-world:${file}`)
+    .digest('hex');
+  const variant = ((parseInt(h.substr(16, 2), 16) & 0x3f) | 0x80).toString(16);
+  return [
+    h.substr(0, 8),
+    h.substr(8, 4),
+    '5' + h.substr(13, 3),     // version 5
+    variant + h.substr(18, 2), // variant 10xx
+    h.substr(20, 12),
+  ].join('-');
+}
+
+function detectMode(file) {
+  if (file.includes('speedrunner')) return 'SPEEDRUNNER';
+  if (file.includes('normal')) return 'NORMAL';
+  return 'PLATFORMER';
+}
+
+// worlds.creator_id is a NOT NULL FK into public.users, so default ("System")
+// worlds need a real owner row. Seed a dedicated, fixed system user once so the
+// worlds inserts have a stable creator to reference.
+const SYSTEM_USER_ID = '00000000-0000-4000-8000-000000000001';
+
+async function ensureSystemUser() {
+  const { error } = await supabaseAdmin
+    .from('users')
+    .upsert({
+      id: SYSTEM_USER_ID,
+      username: 'System',
+      email: 'system@steveo.local',
+      avatar_color: '#888888',
+    }, { onConflict: 'id' });
+
+  if (error) throw new Error(`Failed to ensure system user: ${error.message}`);
+}
+
+async function loadDefaultWorlds() {
   const defaultWorldsDir = path.join(__dirname, 'default-worlds');
 
   if (!fs.existsSync(defaultWorldsDir)) {
@@ -96,27 +140,58 @@ function loadDefaultWorlds() {
     return;
   }
 
+  await ensureSystemUser();
+
   const files = fs.readdirSync(defaultWorldsDir);
-  files.forEach(file => {
-    if (file.endsWith('.json')) {
-      try {
-        const filePath = path.join(defaultWorldsDir, file);
-        const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-        const migrated = migrateSaveData(data);
+  for (const file of files) {
+    if (!file.endsWith('.json')) continue;
+    try {
+      const filePath = path.join(defaultWorldsDir, file);
+      const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      const migrated = migrateSaveData(data);
 
-        const worldId = migrated.worldId || `world-${file.replace('.json', '')}`;
-        worlds.set(worldId, migrated);
+      const worldId = defaultWorldUuid(file);
+      const mode = detectMode(file);
+      worlds.set(worldId, migrated);
 
-        console.log(`  ✓ Loaded default world: ${file}`);
-      } catch (err) {
-        console.error(`Error loading default world ${file}:`, err.message);
+      // Mirror into Supabase so /api/games/create can find the world by id.
+      const { data: existing } = await supabaseAdmin
+        .from('worlds')
+        .select('id')
+        .eq('id', worldId)
+        .single();
+
+      if (existing) {
+        console.log(`  ✓ Default world already exists: ${file}`);
+        continue;
       }
+
+      // Display name: explicit world_name wins; otherwise any "*-default" file
+      // shows as a clean "Default" in its mode's dropdown, else the filename.
+      const baseName = file.replace('.json', '');
+      const displayName = data.world_name || (/-default$/.test(baseName) ? 'Default' : baseName);
+
+      const { error: insertError } = await supabaseAdmin
+        .from('worlds')
+        .insert({
+          id: worldId,
+          world_name: displayName,
+          creator_id: SYSTEM_USER_ID,
+          creator_name: 'System',
+          mode,
+          world_data: migrated,
+          is_published: true,
+        });
+
+      if (insertError) throw insertError;
+      console.log(`  ✓ Loaded default world: ${file} (${mode})`);
+    } catch (err) {
+      console.error(`Error loading default world ${file}:`, err.message);
     }
-  });
+  }
 }
 
 loadSavedGames();
-loadDefaultWorlds();
 
 
 require('dotenv').config();
@@ -126,6 +201,9 @@ registerAuthRoutes(app);
 
 const setupGamesRoutes = require('./server/games-routes');
 setupGamesRoutes(app);
+
+const setupWorldsRoutes = require('./server/worlds-routes');
+setupWorldsRoutes(app);
 
 // ============================================================
 // API ENDPOINTS (Express Routes)
@@ -310,8 +388,14 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 8000;
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n✅ Steveo Platformer Server Started`);
-  console.log(`   URL: http://0.0.0.0:${PORT}`);
-  console.log(`   API: ${PORT}/api/*`);
-});
+async function startServer() {
+  await loadDefaultWorlds();
+
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n✅ Steveo Platformer Server Started`);
+    console.log(`   URL: http://0.0.0.0:${PORT}`);
+    console.log(`   API: ${PORT}/api/*`);
+  });
+}
+
+startServer();

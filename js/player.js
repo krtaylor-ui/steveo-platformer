@@ -60,6 +60,9 @@ class Player {
     this.godMode         = false;  // no damage when true (sandbox mode)
     this.flying          = false;  // flight mode toggled by double-jump
     this.hyperSpeed      = false;  // 3× movement speed when toggled (H key)
+    this.hyperLevel      = 0;      // 0=normal, 1=hyper(3×), 2=2×hyper(6×) — H key cycles
+    this.speedMultiplier = 1;      // extra multiplier stacked on top of hyperSpeed (1 or 2)
+    this.canPhaseThrough = false;  // noclip: walk through blocks (X key, god mode only)
     this.xpSpeedDisabled = false;  // set by game.js from worldAdvSettings.disableXpSpeedBoost
 
     // Jump buffer / coyote time
@@ -201,8 +204,13 @@ class Player {
   }
 
   _handleInput(input) {
-    const hsMult = this.hyperSpeed ? 3 : 1;
-    const speed  = (this.crouching ? this.crouchSpeed : this.moveSpeed) * hsMult;
+    // Existing hyper speed stays 3×; speedMultiplier (1 or 2) stacks on top → 6× at level 2.
+    const hsMult = (this.hyperSpeed ? 3 : 1) * (this.speedMultiplier || 1);
+    // Sprint (Shift / isRun) doubles ground speed when enabled per-world.
+    const sprinting = this._sprintEnabled && !this.crouching &&
+                      typeof input.isRun === 'function' && input.isRun();
+    const sprintMult = sprinting ? 2 : 1;
+    const speed  = (this.crouching ? this.crouchSpeed : this.moveSpeed) * hsMult * sprintMult;
     this.running = !this.crouching;
 
     // Horizontal movement — analog-aware (uses left stick magnitude when available)
@@ -217,6 +225,18 @@ class Player {
     } else {
       this.vx *= 0.72;
       if (Math.abs(this.vx) < 0.2) this.vx = 0;
+    }
+
+    // ── Phase-through (noclip) ────────────────────────────────
+    // Free vertical movement, no gravity, no collisions (handled in _applyPhysics).
+    if (this.canPhaseThrough) {
+      this.crouching = false;
+      if (input.isJump())        this.vy = -this.moveSpeed * hsMult;
+      else if (input.isCrouch()) this.vy =  this.moveSpeed * hsMult;
+      else                       this.vy =  0;
+      if (this._jumpBuffer > 0) this._jumpBuffer--;
+      if (this._coyoteTime > 0) this._coyoteTime--;
+      return;
     }
 
     // ── Flying mode ──────────────────────────────────────────
@@ -256,8 +276,9 @@ class Player {
     }
 
     // Jump (with coyote time + jump buffer)
-    const jumpNow = input.isJump();
-    if (jumpNow && !this._jumpPressed) {
+    const jumpNow  = input.isJump();
+    const jumpEdge = jumpNow && !this._jumpPressed;
+    if (jumpEdge) {
       // Double-jump while airborne → enable flight (only in god mode)
       if (!this.onGround && this._frameNum - this._lastJumpFrame < 14 && this.godMode) {
         this.flying      = true;
@@ -270,12 +291,22 @@ class Player {
     }
     this._jumpPressed = jumpNow;
 
+    // Jump velocity may be overridden per-world (configurable jump height).
+    const jumpVel = this._jumpVelocityOverride ?? JUMP_VELOCITY;
+
     if (this._coyoteTime > 0 && this._jumpBuffer > 0 && !this.crouching) {
-      this.vy          = JUMP_VELOCITY;
+      this.vy          = jumpVel;
       this._jumpBuffer = 0;
       this._coyoteTime = 0;
       this.onGround    = false;
       this.jumpSquish  = 1;
+    } else if (jumpEdge && this._airJumpEnabled && !this.flying && !this.onGround &&
+               this._coyoteTime === 0 && !this.crouching && (this._airJumpsUsed || 0) < 1) {
+      // Air jump (double jump): one mid-air boost when enabled per-world.
+      this.vy            = jumpVel;
+      this._airJumpsUsed = (this._airJumpsUsed || 0) + 1;
+      this._jumpBuffer   = 0;
+      this.jumpSquish    = 1;
     }
 
     if (this._jumpBuffer > 0) this._jumpBuffer--;
@@ -288,6 +319,14 @@ class Player {
   }
 
   _applyPhysics(level) {
+    // ── Phase-through (noclip): move freely, ignore all block collisions ──
+    if (this.canPhaseThrough) {
+      this.x = Math.max(0, this.x + this.vx);
+      this.y += this.vy;
+      this.onGround = false;
+      return;
+    }
+
     // Gravity — disabled while flying
     if (!this.flying) {
       this.vy = Math.min(this.vy + (this._gravityOverride ?? GRAVITY), MAX_FALL_SPEED);
@@ -310,6 +349,7 @@ class Player {
           this.y        = r * BLOCK_SIZE - this.height;
           this.vy       = 0;
           this.onGround = true;
+          this._airJumpsUsed = 0;                // landing refreshes the air jump
           if (!wasOnGround) this.jumpSquish = 0.85;
           if (this.flying) this.flying = false;  // auto-land when touching ground
           stopped = true;

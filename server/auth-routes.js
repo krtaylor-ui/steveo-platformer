@@ -136,6 +136,29 @@ function registerAuthRoutes(app) {
     }
   });
 
+  // POST /api/auth/refresh — exchange a refresh token for a fresh access token
+  app.post('/api/auth/refresh', async (req, res) => {
+    try {
+      const { refreshToken } = req.body;
+      if (!refreshToken) return res.status(400).json({ error: 'No refresh token' });
+
+      const { data, error } = await supabaseAuth.auth.refreshSession({ refresh_token: refreshToken });
+      if (error || !data?.session) {
+        return res.status(401).json({ error: 'Refresh failed' });
+      }
+
+      res.json({
+        session: {
+          accessToken: data.session.access_token,
+          refreshToken: data.session.refresh_token,
+        },
+      });
+    } catch (err) {
+      console.error('Refresh error:', err);
+      res.status(500).json({ error: 'Refresh failed' });
+    }
+  });
+
   // POST /api/auth/logout
   app.post('/api/auth/logout', verifyToken, async (req, res) => {
     try {
