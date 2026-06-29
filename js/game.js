@@ -1293,6 +1293,11 @@ class Game {
 
     // Online joiner flag: host-authoritative mob sync; computed once per tick
     const _isOnlineJoiner = !!(this._onlineGameId && window.multiplayerManager?.isConnected && !window.multiplayerManager?.isCreator);
+    // Mob simulation is host-only. This is true for any non-host in an online
+    // game — including the pre-connection window before isCreator is known —
+    // so a joiner can NEVER spawn/simulate local mobs (which would otherwise
+    // appear as a frozen, unsynced "ghost" mob only the joiner sees).
+    const _onlineNonHost = !!(this._onlineGameId && !window.multiplayerManager?.isCreator);
 
     // ── Cursor world position ──────────────────────────────
     const world    = this.camera.toWorld(this.input.mouse.x, this.input.mouse.y);
@@ -1913,7 +1918,7 @@ class Game {
         this.mobManager.onlinePlayers = [];
       }
       const hpBefore = this.player.hp;
-      if (!_isOnlineJoiner) {
+      if (!_onlineNonHost) {
         this.mobManager.update(this.player, this.level, this.player2 || null);
       } else {
         // Joiners skip mob AI but still need item physics so drops settle and stay visible.

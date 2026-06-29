@@ -235,6 +235,14 @@
 
         // Phase 17-E: Apply cached mob/time state from host
         const game = window._gameRef;
+        // Joiners are not authoritative for mobs. Wipe any locally-spawned mobs
+        // (e.g. spawned in the brief window before the connection set isCreator,
+        // or placed at world build) so only host-synced remote mobs are shown.
+        if (!data.isCreator && game?.mobManager) {
+          game.mobManager.mobs.length = 0;
+          if (Array.isArray(game.mobManager.arrows)) game.mobManager.arrows.length = 0;
+          if (Array.isArray(game.mobManager.blazeShots)) game.mobManager.blazeShots.length = 0;
+        }
         if (Array.isArray(data.cachedMobs) && !data.isCreator) {
           this.remoteMobs.clear();
           for (const m of data.cachedMobs) this.remoteMobs.set(m.id, m);
@@ -483,11 +491,44 @@
         }
       });
 
-      // Phase 17-E: Host disconnected — show overlay for remaining players
+      // Phase 17-E: Host disconnected — show overlay for remaining players.
+      // (Only emitted when there is no one left to promote; normally the server
+      // promotes a remaining player to host instead — see 'becameHost'.)
       s.on('hostLeft', data => {
         if (this.isCreator) return;
         this.hostLeft = true;
         this._showHostLeftOverlay(data.hostName || 'The host');
+      });
+
+      // The previous host left and the server promoted THIS player to host.
+      // Take over authoritative duties (mob/time simulation) so the game
+      // continues; the original host can rejoin later as a normal player.
+      s.on('becameHost', data => {
+        if (this.isCreator) return;
+        this.isCreator    = true;
+        this.playerNumber = data.playerNumber || 1;
+        this.hostLeft     = false;
+        // Drop render-only remote mobs; as host we now simulate locally.
+        this.remoteMobs.clear();
+        this.remoteArrows = [];
+        this.remoteBlazeShots = [];
+        this._notify('You are now the host', '#FFD700');
+        const game = window._gameRef;
+        if (game?._pushGameNotification) game._pushGameNotification('You are now the host', '#FFD700');
+        // Bootstrap host state for the others (mirrors the joinSuccess host path).
+        setTimeout(() => {
+          const g = window._gameRef;
+          if (!g || !this.socket) return;
+          this.sendTimeSync(g._dayNight);
+          if (g.gameMode !== 'sandbox') this.sendMobState(g.mobManager.serializeMobs());
+        }, 50);
+      });
+
+      // Another player became the host (cosmetic: update their number so the
+      // lobby/HUD reflects the new host).
+      s.on('hostChanged', data => {
+        const p = this.otherPlayers[data.newHostId];
+        if (p) p.number = 1;
       });
 
       s.on('playerJoined', data => {

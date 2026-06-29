@@ -85,6 +85,43 @@ module.exports = function setupGameSessionsRoutes(app) {
     }
   });
 
+  // ── GET /api/game-sessions/mine ────────────────────────────────────────────
+  // The caller's own ACTIVE sessions, so a host who left can rejoin their game
+  // (their own session never appears in friends' discovery). Registered BEFORE
+  // /:sessionId so "mine" isn't matched as a session id.
+  app.get('/api/game-sessions/mine', verifyToken, async (req, res) => {
+    try {
+      const { data: sessions, error } = await supabaseAdmin
+        .from('game_sessions')
+        .select('id, world_id, players, max_players, status, created_at')
+        .eq('creator_id', req.user.id)
+        .eq('status', 'ACTIVE')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      const worldIds = [...new Set((sessions || []).map(s => s.world_id))];
+      const { data: worlds } = worldIds.length
+        ? await supabaseAdmin.from('worlds').select('id, world_name').in('id', worldIds)
+        : { data: [] };
+      const worldName = new Map((worlds || []).map(w => [w.id, w.world_name]));
+
+      res.json({
+        sessions: (sessions || []).map(s => ({
+          id: s.id,
+          world_id: s.world_id,
+          world_name: worldName.get(s.world_id) || 'Unknown World',
+          player_count: (s.players || []).length,
+          max_players: s.max_players,
+          status: s.status,
+          mine: true,
+        })),
+      });
+    } catch (error) {
+      console.error('My sessions error:', error);
+      res.status(500).json({ error: 'Failed to load your games' });
+    }
+  });
+
   // ── GET /api/game-sessions/:sessionId ──────────────────────────────────────
   // Session details enriched with world name + player usernames.
   app.get('/api/game-sessions/:sessionId', verifyToken, async (req, res) => {

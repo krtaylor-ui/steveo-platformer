@@ -15,6 +15,7 @@ const ONLINE_PLAY = {
   friends: [],            // [{id, friendId, friendUsername, status, direction}]
   pendingRequests: [],    // PENDING rows (sent + received), enriched
   friendGames: [],        // active sessions from friends (Phase 2B)
+  myGames: [],            // caller's own active sessions (for rejoin)
   currentSession: null,   // session being lobbied/played (Phase 2B)
   _listenersBound: false,
 
@@ -181,26 +182,36 @@ const ONLINE_PLAY = {
   // FRIEND GAMES (discovery)
   // ════════════════════════════════════════════════════════════
   async loadFriendGames() {
-    try {
-      const res = await AUTH.authedFetch(`/api/friends/${this.currentUser.id}/active-games`);
-      if (!res.ok) throw new Error('load failed');
-      const data = await res.json();
-      this.friendGames = data.sessions || [];
-    } catch (e) {
-      console.error('loadFriendGames error:', e);
-      this.friendGames = [];
-    }
+    const fetchJson = (url) => AUTH.authedFetch(url)
+      .then(r => (r.ok ? r.json() : { sessions: [] }))
+      .catch(() => ({ sessions: [] }));
+    const [friend, mine] = await Promise.all([
+      fetchJson(`/api/friends/${this.currentUser.id}/active-games`),
+      fetchJson('/api/game-sessions/mine'),
+    ]);
+    this.friendGames = friend.sessions || [];
+    this.myGames = mine.sessions || [];
     this.renderFriendGames();
   },
 
   renderFriendGames() {
     const list = document.getElementById('friend-games-list');
     if (!list) return;
-    if (!this.friendGames.length) {
-      list.innerHTML = '<p class="empty-note">No active games from friends right now. Create one!</p>';
+    const mine = this.myGames || [];
+    const friends = this.friendGames || [];
+    if (!mine.length && !friends.length) {
+      list.innerHTML = '<p class="empty-note">No active games right now. Create one!</p>';
       return;
     }
-    list.innerHTML = this.friendGames.map(g => `
+    // Own games first (Rejoin — /join is idempotent, so capacity never blocks a
+    // returning member), then friends' joinable games.
+    const mineHtml = mine.map(g => `
+      <div class="game-card">
+        <h3>${this._esc(g.world_name)}</h3>
+        <p>Your game · ${g.player_count}/${g.max_players} players</p>
+        <button class="btn btn-primary" data-act="join-game" data-id="${g.id}">Rejoin</button>
+      </div>`).join('');
+    const friendsHtml = friends.map(g => `
       <div class="game-card">
         <h3>${this._esc(g.world_name)}</h3>
         <p>Host: ${this._esc(g.creator_name)}</p>
@@ -209,6 +220,7 @@ const ONLINE_PLAY = {
           ${g.is_full ? 'Full' : 'Join Game'}
         </button>
       </div>`).join('');
+    list.innerHTML = mineHtml + friendsHtml;
   },
 
   // ════════════════════════════════════════════════════════════

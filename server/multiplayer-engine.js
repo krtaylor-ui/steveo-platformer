@@ -486,12 +486,28 @@ io.on('connection', socket => {
 
         ge.currentPlayers = Math.max(0, ge.currentPlayers - 1);
 
-        // Notify remaining players if the host (player 1) disconnects; remove from browse list
-        if (pd.number === 1) {
-          // Use io.to() — socket has already left its rooms at disconnect time
+        // Legacy browse-list cleanup when the host leaves (no-op without a ge).
+        if (pd.number === 1) games.delete(pd.worldId);
+      }
+
+      // Host (player 1) handover. NOTE: this lives OUTSIDE the `if (ge)` block
+      // because the session-based server has no `games` entries — the old logic
+      // here never ran. If the host leaves with players still present, promote
+      // the lowest-numbered remaining player to host so the game continues and
+      // the original host can rejoin later as a normal player. Only when nobody
+      // remains do we signal a terminal "host left".
+      if (pd.number === 1) {
+        const remaining = [...world.players.values()].filter(p => p.playerId !== pd.playerId);
+        if (remaining.length) {
+          remaining.sort((a, b) => a.number - b.number);
+          const heir = remaining[0];
+          heir.number = 1;  // take over the host slot (playerId stays stable)
+          io.to(heir.socketId).emit('becameHost', { playerNumber: 1 });
+          io.to(pd.worldId).emit('hostChanged', { newHostId: heir.playerId, hostName: heir.name });
+          console.log(`  Host "${pd.name}" left "${pd.worldId}" — promoted "${heir.name}" to host`);
+        } else {
           io.to(pd.worldId).emit('hostLeft', { hostName: pd.name });
-          games.delete(pd.worldId); // remove from browse list immediately
-          console.log(`  Host "${pd.name}" left world "${pd.worldId}" — game removed from browser`);
+          console.log(`  Host "${pd.name}" left "${pd.worldId}" — no players to promote`);
         }
       }
 
