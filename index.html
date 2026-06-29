@@ -124,6 +124,7 @@
         <input type="email" id="login-email" placeholder="Email" autocomplete="email" required>
         <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" required>
         <button type="submit" class="auth-submit" data-label="Login">Login</button>
+        <button type="button" id="forgot-password-link" class="auth-link">Forgot password?</button>
       </form>
 
       <form class="auth-form" id="form-signup" style="display: none;">
@@ -133,7 +134,31 @@
         <button type="submit" class="auth-submit" data-label="Create Account">Create Account</button>
       </form>
 
+      <!-- Forgot-password: request a reset email -->
+      <form class="auth-form" id="form-forgot" style="display: none;">
+        <p class="auth-hint">Enter your email and we'll send you a reset link.</p>
+        <input type="email" id="forgot-email" placeholder="Email" autocomplete="email" required>
+        <button type="submit" class="auth-submit" data-label="Send Reset Link">Send Reset Link</button>
+        <button type="button" id="forgot-back-link" class="auth-link">← Back to login</button>
+        <p class="auth-status" id="forgot-status"></p>
+      </form>
+
       <p class="auth-error" id="auth-error"></p>
+    </div>
+  </div>
+
+  <!-- ── Reset Password Screen (opened from the email recovery link) ── -->
+  <div id="reset-password-screen" style="display: none;">
+    <div class="auth-box">
+      <h2>⛏ Reset Password</h2>
+      <form class="auth-form" id="form-reset">
+        <p class="auth-hint">Choose a new password for your account.</p>
+        <input type="password" id="reset-password" placeholder="New password (min 6 chars)" autocomplete="new-password" required>
+        <input type="password" id="reset-password-confirm" placeholder="Confirm new password" autocomplete="new-password" required>
+        <button type="submit" class="auth-submit" data-label="Set New Password">Set New Password</button>
+        <p class="auth-status" id="reset-status"></p>
+        <p class="auth-error" id="reset-error"></p>
+      </form>
     </div>
   </div>
 

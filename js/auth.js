@@ -126,6 +126,47 @@ const AUTH = {
     return response;
   },
 
+  // Send a password-reset email. `redirectTo` is where the email link returns
+  // the user (with a recovery token in the URL hash) — must be allow-listed in
+  // Supabase Auth → URL Configuration.
+  async requestPasswordReset(email, redirectTo) {
+    const response = await fetch('/api/auth/request-reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, redirectTo }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Request failed');
+    return data;
+  },
+
+  // Complete a reset using the recovery access token from the email link.
+  async completePasswordReset(accessToken, newPassword) {
+    const response = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accessToken, newPassword }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Reset failed');
+    return data;
+  },
+
+  // Detect a Supabase recovery redirect (#access_token=...&type=recovery&...).
+  // Returns the recovery access token if present, else null, and strips the
+  // hash so a refresh doesn't re-open the reset screen.
+  getRecoveryFromHash() {
+    const hash = window.location.hash || '';
+    if (hash.indexOf('type=recovery') === -1) return null;
+    const params = new URLSearchParams(hash.slice(1));
+    const token = params.get('access_token');
+    if (params.get('type') === 'recovery' && token) {
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+      return token;
+    }
+    return null;
+  },
+
   _storeSession(data) {
     this.token = data.session.accessToken;
     this.refreshToken = data.session.refreshToken;
