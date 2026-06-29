@@ -12403,6 +12403,10 @@ class Game {
           destLabel: p.destLabel ?? null,
         }));
     }
+    // Derive portal-frame solidity from the grid (frame walk-through, base solid)
+    // so pre-built portals are enterable in single-player and as host — joiners
+    // already do this on join, leaving single-player/host with all-solid obsidian.
+    this._rebuildPortalObsidianFromGrid();
 
     // Placed tool/weapon/armor/block items → collectible world drops (same pipeline as platformer)
     this._platformerItems = (Array.isArray(data.placedItems) ? data.placedItems : [])
@@ -12730,6 +12734,8 @@ class Game {
         destLabel: p.destLabel ?? null,
       }));
     }
+    // Frame walk-through / base-solid portal solidity derived from the grid.
+    this._rebuildPortalObsidianFromGrid();
 
     // Register interactive blocks in redstone so they work in platformer mode
     for (let r = 0; r < this.level.height; r++) {
@@ -13106,6 +13112,8 @@ class Game {
         destLabel: p.destLabel ?? null,
       }));
     }
+    // Frame walk-through / base-solid portal solidity derived from the grid.
+    this._rebuildPortalObsidianFromGrid();
 
     // SR player setup: fast movement, no normal deaths or flight
     this.player.godMode    = true;  // SR handles its own death; godMode blocks normal damage/death-screen
