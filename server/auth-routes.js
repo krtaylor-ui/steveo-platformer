@@ -169,6 +169,60 @@ function registerAuthRoutes(app) {
       res.status(500).json({ error: 'Logout failed' });
     }
   });
+
+  // POST /api/auth/request-reset — send a password-reset email.
+  // Supabase emails a recovery link that redirects back to `redirectTo` with a
+  // recovery access_token in the URL hash; the client then calls reset-password.
+  // Always responds 200 (even for unknown emails) so we don't leak which
+  // addresses are registered.
+  app.post('/api/auth/request-reset', async (req, res) => {
+    try {
+      const { email, redirectTo } = req.body || {};
+      if (!email) return res.status(400).json({ error: 'Email required' });
+
+      const options = redirectTo ? { redirectTo } : undefined;
+      const { error } = await supabaseAuth.auth.resetPasswordForEmail(email, options);
+      // Log server-side (e.g. SMTP not configured) but don't surface to caller.
+      if (error) console.error('request-reset (suppressed):', error.message);
+
+      res.json({ message: 'If that email is registered, a reset link has been sent.' });
+    } catch (err) {
+      console.error('Request reset error:', err);
+      // Still 200 — don't reveal anything to the caller.
+      res.json({ message: 'If that email is registered, a reset link has been sent.' });
+    }
+  });
+
+  // POST /api/auth/reset-password — complete a reset.
+  // `accessToken` is the short-lived recovery token from the email link's hash.
+  // We validate it (identifies the user), then set the new password via the
+  // admin API — no prior session required.
+  app.post('/api/auth/reset-password', async (req, res) => {
+    try {
+      const { accessToken, newPassword } = req.body || {};
+      if (!accessToken || !newPassword) {
+        return res.status(400).json({ error: 'Missing reset token or new password' });
+      }
+      if (newPassword.length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      }
+
+      const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+      if (error || !user) {
+        return res.status(401).json({ error: 'Reset link is invalid or has expired — request a new one' });
+      }
+
+      const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(user.id, {
+        password: newPassword,
+      });
+      if (updateError) return res.status(400).json({ error: updateError.message });
+
+      res.json({ message: 'Password updated. You can now log in with your new password.' });
+    } catch (err) {
+      console.error('Reset password error:', err);
+      res.status(500).json({ error: 'Failed to reset password' });
+    }
+  });
 }
 
 module.exports = { registerAuthRoutes, verifyToken };

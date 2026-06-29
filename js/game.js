@@ -258,6 +258,22 @@ class Game {
           mgr.onInventoryRestored = (state) => this._restoreOnlineInventory(state);
           this._setupChatUI();
           mgr.chatCallback = (data) => this._onChatMessage(data);
+          // Server-authoritative item pickup: the item is only added to MY
+          // inventory when the server confirms I'm the claimer (prevents two
+          // players both collecting the same floor item).
+          mgr.onItemGranted = (type) => {
+            if (type != null) this.player.addBlock(type);
+            this._playSound('sounds/item-collected.mp3', 0.7);
+          };
+          // Server-authoritative pickup for PLACED collectibles (_platformerItems):
+          // the server picks the first claimer; everyone removes the item, only
+          // the claimer actually collects it.
+          mgr.onPlacedItemClaimed = (key, byPlayer) => {
+            const it = this._platformerItems[key];
+            if (!it || it.collected) return;
+            if (byPlayer === mgr.playerId) this._collectPlatformerItem(it);
+            else it.collected = true; // someone else got it — remove, don't grant
+          };
           // Phase 17-E: Relay mob drops from host to all joiners via server
           this.mobManager.dropCallback = (items) => {
             if (mgr.isConnected && mgr.isCreator) mgr.sendMobDrops(items);
@@ -1293,6 +1309,11 @@ class Game {
 
     // Online joiner flag: host-authoritative mob sync; computed once per tick
     const _isOnlineJoiner = !!(this._onlineGameId && window.multiplayerManager?.isConnected && !window.multiplayerManager?.isCreator);
+    // Mob simulation is host-only. This is true for any non-host in an online
+    // game — including the pre-connection window before isCreator is known —
+    // so a joiner can NEVER spawn/simulate local mobs (which would otherwise
+    // appear as a frozen, unsynced "ghost" mob only the joiner sees).
+    const _onlineNonHost = !!(this._onlineGameId && !window.multiplayerManager?.isCreator);
 
     // ── Cursor world position ──────────────────────────────
     const world    = this.camera.toWorld(this.input.mouse.x, this.input.mouse.y);
@@ -1344,7 +1365,7 @@ class Game {
         // Joiner: also attack remote mobs via event
         if (_isOnlineJoiner) {
           for (const hit of this.mobManager.playerAttackRemoteCheck(this.player, window.multiplayerManager.remoteMobs))
-            window.multiplayerManager.sendMobDamage(hit.mobId, hit.damage);
+            window.multiplayerManager.sendMobDamage(hit.mobId, hit.damage, hit.knockDir);
         }
         this.player.attackCooldown = ATTACK_COOLDOWN;
         this.player.swingTimer     = 15;
@@ -1359,7 +1380,7 @@ class Game {
         // Joiner: also attack remote mobs via event
         if (_isOnlineJoiner) {
           for (const hit of this.mobManager.playerAttackRemoteCheck(this.player, window.multiplayerManager.remoteMobs))
-            window.multiplayerManager.sendMobDamage(hit.mobId, hit.damage);
+            window.multiplayerManager.sendMobDamage(hit.mobId, hit.damage, hit.knockDir);
         }
         this.player.attackCooldown = ATTACK_COOLDOWN;
         this.player.swingTimer     = 15;
@@ -1409,10 +1430,22 @@ class Game {
     // ── L key: toggle nearest lever ────────────────────────
     const lDown = this.input.isDown('KeyL');
     if (lDown && !this._lKeyWas) {
-      const toggled = this.redstone.tryToggleLeverNear(this.level, this.player);
-      if (toggled) {
-        this._rsStartFromSource(toggled.col, toggled.row, toggled.on);
-        this._playSound('sounds/lever.mp3', 0.7);
+      const _isJoiner = !!(this._onlineGameId && window.multiplayerManager?.isConnected && !window.multiplayerManager?.isCreator);
+      if (_isJoiner) {
+        // Relay to host — the host owns redstone state and syncs it back within
+        // 0.5s. Toggling locally would be reverted by the next redstoneState
+        // broadcast, showing as an on→off flicker from a single keypress.
+        const lv = this.redstone.findNearestLever(this.player);
+        if (lv) {
+          window.multiplayerManager.sendRedstoneAction(lv.col, lv.row, 'toggleLever');
+          this._playSound('sounds/lever.mp3', 0.7);
+        }
+      } else {
+        const toggled = this.redstone.tryToggleLeverNear(this.level, this.player);
+        if (toggled) {
+          this._rsStartFromSource(toggled.col, toggled.row, toggled.on);
+          this._playSound('sounds/lever.mp3', 0.7);
+        }
       }
     }
     this._lKeyWas = lDown;
@@ -1492,6 +1525,11 @@ class Game {
         this._screenShake.intensity = 8;
         this._screenShake.frames    = 18;
         this._screenShake.maxFrames = 18;
+        // Relay TNT explosion to joiners (host only). Mirrors the creeper relay
+        // below — without this, joiners never saw TNT blasts.
+        if (this._onlineGameId && window.multiplayerManager?.isConnected && window.multiplayerManager?.isCreator) {
+          window.multiplayerManager.sendExplosion(comp.col, comp.row, R, 'sounds/explosion-tnt.mp3');
+        }
         for (const ch of this._chests.values()) {
           if (Math.abs(ch.col - comp.col) <= R && Math.abs(ch.row - comp.row) <= R)
             this._dropChestItems(ch.col, ch.row);
@@ -1913,7 +1951,7 @@ class Game {
         this.mobManager.onlinePlayers = [];
       }
       const hpBefore = this.player.hp;
-      if (!_isOnlineJoiner) {
+      if (!_onlineNonHost) {
         this.mobManager.update(this.player, this.level, this.player2 || null);
       } else {
         // Joiners skip mob AI but still need item physics so drops settle and stay visible.
@@ -1921,6 +1959,13 @@ class Game {
           item.update(this.level);
           return item.alive;
         });
+        // Explosion visuals (TNT/creeper) arrive via the 'explosion' socket event
+        // and are pushed to mobManager.explosions. Since mobManager.update() is
+        // skipped here, tick their lifetimes so they fade out instead of
+        // lingering forever on the joiner's screen.
+        if (Array.isArray(this.mobManager.explosions)) {
+          this.mobManager.explosions = this.mobManager.explosions.filter(e => { e.life--; return e.life > 0; });
+        }
       }
       const dmgTaken = hpBefore - this.player.hp;
 
@@ -2069,12 +2114,21 @@ class Game {
 
     // ── Collect placed tool/weapon/armor items (platformer + normal) ──
     if (this.gameMode === 'platformer' || this.gameMode === 'normal') {
-      for (const it of this._platformerItems) {
-        if (it.collected) continue;
+      const _online = !!(this._onlineGameId && window.multiplayerManager?.isConnected);
+      for (let i = 0; i < this._platformerItems.length; i++) {
+        const it = this._platformerItems[i];
+        if (it.collected || it._claimPending) continue;
         const dx = this.player.cx - it.wx;
         const dy = (this.player.y + this.player.height / 2) - it.wy;
         if (Math.sqrt(dx * dx + dy * dy) < BLOCK_SIZE * 1.5) {
-          this._collectPlatformerItem(it);
+          if (_online) {
+            // Server-authoritative claim (by index) so two players can't both
+            // collect the same placed item. Grant happens in onPlacedItemClaimed.
+            it._claimPending = true;
+            window.multiplayerManager.claimPlacedItem(i);
+          } else {
+            this._collectPlatformerItem(it);
+          }
         }
       }
 
@@ -2364,11 +2418,9 @@ class Game {
          this._mpInvSyncTimer = 0;
          this._syncInventoryToServer();
        }
-       const netPicked = window.multiplayerManager.checkPickup(this.player);
-       for (const it of netPicked) {
-         if (it.type) this.player.addBlock(it.type);
-         this._playSound('sounds/item-collected.mp3', 0.7);
-       }
+       // Requests pickup of nearby items; the actual inventory grant happens
+       // in the server-confirmed itemPickedUp handler (mgr.onItemGranted).
+       window.multiplayerManager.checkPickup(this.player);
      }
   }
 
@@ -9160,8 +9212,12 @@ class Game {
     for (let r = 0; r < H; r++) {
       for (let c = 0; c < W; c++) {
         if (grid[r][c] !== BLOCK.NETHER_PORTAL) continue;
-        // Any OBSIDIAN block orthogonally adjacent to an active portal interior is non-solid.
-        for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1],[-2,0],[2,0],[0,-2],[0,2]]) {
+        // OBSIDIAN adjacent to an active portal interior is non-solid so the
+        // player can step through the opening — but NEVER the obsidian BELOW the
+        // portal: that is the base the player stands on. Marking it non-solid
+        // (the old [1,0]/[2,0] downward offsets) made joiners fall through the
+        // portal base (the host never runs this scan, so its base stayed solid).
+        for (const [dr, dc] of [[-1,0],[0,-1],[0,1],[-2,0],[0,-2],[0,2]]) {
           const nr = r + dr, nc = c + dc;
           if (nr >= 0 && nr < H && nc >= 0 && nc < W && grid[nr][nc] === BLOCK.OBSIDIAN) {
             this._portalObsidianCells.add(`${nc},${nr}`);
@@ -12347,6 +12403,10 @@ class Game {
           destLabel: p.destLabel ?? null,
         }));
     }
+    // Derive portal-frame solidity from the grid (frame walk-through, base solid)
+    // so pre-built portals are enterable in single-player and as host — joiners
+    // already do this on join, leaving single-player/host with all-solid obsidian.
+    this._rebuildPortalObsidianFromGrid();
 
     // Placed tool/weapon/armor/block items → collectible world drops (same pipeline as platformer)
     this._platformerItems = (Array.isArray(data.placedItems) ? data.placedItems : [])
@@ -12674,6 +12734,8 @@ class Game {
         destLabel: p.destLabel ?? null,
       }));
     }
+    // Frame walk-through / base-solid portal solidity derived from the grid.
+    this._rebuildPortalObsidianFromGrid();
 
     // Register interactive blocks in redstone so they work in platformer mode
     for (let r = 0; r < this.level.height; r++) {
@@ -13050,6 +13112,8 @@ class Game {
         destLabel: p.destLabel ?? null,
       }));
     }
+    // Frame walk-through / base-solid portal solidity derived from the grid.
+    this._rebuildPortalObsidianFromGrid();
 
     // SR player setup: fast movement, no normal deaths or flight
     this.player.godMode    = true;  // SR handles its own death; godMode blocks normal damage/death-screen

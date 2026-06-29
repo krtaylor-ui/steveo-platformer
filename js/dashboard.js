@@ -3,6 +3,14 @@ const DASHBOARD = {
   mostRecentWorld: null,
 
   async init() {
+    // A recovery link (Forgot Password email) takes priority over everything:
+    // show the reset-password screen regardless of any cached session.
+    const recoveryToken = AUTH.getRecoveryFromHash();
+    if (recoveryToken) {
+      AUTH_UI.showResetScreen(recoveryToken);
+      return;
+    }
+
     this.currentUser = AUTH.getUser();
 
     if (!this.currentUser) {
@@ -67,7 +75,7 @@ const DASHBOARD = {
     document.getElementById('sandbox-mode-btn')?.addEventListener('click', () => this._navigateToMode('SANDBOX'));
 
     document.getElementById('online-play-btn')?.addEventListener('click', () => {
-      alert('Online Play — coming in Phase 2!');
+      if (typeof ONLINE_PLAY !== 'undefined') ONLINE_PLAY.init();
     });
 
     document.getElementById('logout-btn')?.addEventListener('click', () => this._logout());
@@ -167,6 +175,7 @@ const AUTH_UI = {
   init() {
     this._setupTabs();
     this._setupForms();
+    this._setupForgotReset();
   },
 
   _setupTabs() {
@@ -180,7 +189,91 @@ const AUTH_UI = {
     document.getElementById('tab-signup').classList.toggle('active', mode === 'signup');
     document.getElementById('form-login').style.display = mode === 'login' ? 'flex' : 'none';
     document.getElementById('form-signup').style.display = mode === 'signup' ? 'flex' : 'none';
+    const forgot = document.getElementById('form-forgot');
+    if (forgot) forgot.style.display = 'none';
     this._clearError();
+  },
+
+  // ── Forgot / reset password ────────────────────────────────
+  _setupForgotReset() {
+    document.getElementById('forgot-password-link')?.addEventListener('click', () => this._showForgotView());
+    document.getElementById('forgot-back-link')?.addEventListener('click', () => this._switchTab('login'));
+
+    document.getElementById('form-forgot')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('forgot-email').value.trim();
+      const status = document.getElementById('forgot-status');
+      if (!email) return;
+      const btn = e.target.querySelector('.auth-submit');
+      if (btn) btn.disabled = true;
+      status.style.color = '#aab';
+      status.textContent = 'Sending…';
+      try {
+        // Recovery link returns here; the hash is detected on load (init()).
+        const redirectTo = window.location.origin + window.location.pathname;
+        const res = await AUTH.requestPasswordReset(email, redirectTo);
+        status.style.color = '#6bd08a';
+        status.textContent = res.message || 'If that email is registered, a reset link has been sent.';
+      } catch (err) {
+        status.style.color = '#ff8080';
+        status.textContent = err.message || 'Something went wrong.';
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+
+    document.getElementById('form-reset')?.addEventListener('submit', (e) => this._submitReset(e));
+  },
+
+  _showForgotView() {
+    document.getElementById('form-login').style.display = 'none';
+    document.getElementById('form-signup').style.display = 'none';
+    document.getElementById('form-forgot').style.display = 'flex';
+    document.getElementById('tab-login').classList.remove('active');
+    document.getElementById('tab-signup').classList.remove('active');
+    this._clearError();
+    const s = document.getElementById('forgot-status');
+    if (s) s.textContent = '';
+  },
+
+  showResetScreen(token) {
+    this._resetToken = token;
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('start-screen').style.display = 'none';
+    document.getElementById('dashboard-screen').style.display = 'none';
+    document.getElementById('reset-password-screen').style.display = 'flex';
+  },
+
+  async _submitReset(e) {
+    e.preventDefault();
+    const pw = document.getElementById('reset-password').value;
+    const confirmPw = document.getElementById('reset-password-confirm').value;
+    const err = document.getElementById('reset-error');
+    const status = document.getElementById('reset-status');
+    err.textContent = '';
+    status.textContent = '';
+    if (pw.length < 6) { err.textContent = 'Password must be at least 6 characters'; return; }
+    if (pw !== confirmPw) { err.textContent = 'Passwords do not match'; return; }
+
+    const btn = e.target.querySelector('.auth-submit');
+    if (btn) btn.disabled = true;
+    status.style.color = '#aab';
+    status.textContent = 'Updating…';
+    try {
+      await AUTH.completePasswordReset(this._resetToken, pw);
+      status.style.color = '#6bd08a';
+      status.textContent = 'Password updated! Redirecting to login…';
+      setTimeout(() => {
+        document.getElementById('reset-password-screen').style.display = 'none';
+        this._resetToken = null;
+        DASHBOARD._showLogin();
+        this._switchTab('login');
+      }, 1500);
+    } catch (e2) {
+      err.textContent = e2.message || 'Failed to reset password';
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   },
 
   _setupForms() {

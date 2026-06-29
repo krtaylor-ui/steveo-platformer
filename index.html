@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Steveo Platformer</title>
-  <link rel="stylesheet" href="style.css?v=17g8">
+  <link rel="stylesheet" href="style.css?v=17h2">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
@@ -124,6 +124,7 @@
         <input type="email" id="login-email" placeholder="Email" autocomplete="email" required>
         <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" required>
         <button type="submit" class="auth-submit" data-label="Login">Login</button>
+        <button type="button" id="forgot-password-link" class="auth-link">Forgot password?</button>
       </form>
 
       <form class="auth-form" id="form-signup" style="display: none;">
@@ -133,7 +134,31 @@
         <button type="submit" class="auth-submit" data-label="Create Account">Create Account</button>
       </form>
 
+      <!-- Forgot-password: request a reset email -->
+      <form class="auth-form" id="form-forgot" style="display: none;">
+        <p class="auth-hint">Enter your email and we'll send you a reset link.</p>
+        <input type="email" id="forgot-email" placeholder="Email" autocomplete="email" required>
+        <button type="submit" class="auth-submit" data-label="Send Reset Link">Send Reset Link</button>
+        <button type="button" id="forgot-back-link" class="auth-link">← Back to login</button>
+        <p class="auth-status" id="forgot-status"></p>
+      </form>
+
       <p class="auth-error" id="auth-error"></p>
+    </div>
+  </div>
+
+  <!-- ── Reset Password Screen (opened from the email recovery link) ── -->
+  <div id="reset-password-screen" style="display: none;">
+    <div class="auth-box">
+      <h2>⛏ Reset Password</h2>
+      <form class="auth-form" id="form-reset">
+        <p class="auth-hint">Choose a new password for your account.</p>
+        <input type="password" id="reset-password" placeholder="New password (min 6 chars)" autocomplete="new-password" required>
+        <input type="password" id="reset-password-confirm" placeholder="Confirm new password" autocomplete="new-password" required>
+        <button type="submit" class="auth-submit" data-label="Set New Password">Set New Password</button>
+        <p class="auth-status" id="reset-status"></p>
+        <p class="auth-error" id="reset-error"></p>
+      </form>
     </div>
   </div>
 
@@ -432,6 +457,132 @@
     </div>
   </div>
 
+  <!-- ── Online Play Screen (Phase 2) ───────────────────────── -->
+  <div id="online-play-screen" style="display: none;">
+    <div class="online-play-container">
+
+      <div class="online-header">
+        <button id="online-back-btn" class="btn btn-small">← Dashboard</button>
+        <h2>Online Play</h2>
+        <span id="online-user-display"></span>
+      </div>
+
+      <div class="online-tabs">
+        <button class="online-tab active" data-tab="friend-games">Friend Games</button>
+        <button class="online-tab" data-tab="pending-friends">Requests</button>
+        <button class="online-tab" data-tab="add-friend">Add Friend</button>
+        <button class="online-tab" data-tab="my-friends">My Friends</button>
+      </div>
+
+      <!-- Friend Games -->
+      <div id="friend-games-tab" class="online-tab-content active">
+        <div class="online-section-head">
+          <h3>Active games from friends</h3>
+          <div>
+            <button id="online-refresh-games-btn" class="btn btn-small">⟳ Refresh</button>
+            <button id="online-create-game-btn" class="btn btn-primary">+ Create Game</button>
+          </div>
+        </div>
+        <div id="friend-games-list" class="games-list"></div>
+      </div>
+
+      <!-- Pending Requests -->
+      <div id="pending-friends-tab" class="online-tab-content">
+        <div class="pending-section">
+          <h3>📤 Requests Sent</h3>
+          <div id="pending-sent-list" class="requests-list"></div>
+          <p id="pending-sent-empty" class="empty-note" style="display:none;">No outgoing requests</p>
+        </div>
+        <hr class="online-divider">
+        <div class="pending-section">
+          <h3>📥 Requests Received</h3>
+          <div id="pending-received-list" class="requests-list"></div>
+          <p id="pending-received-empty" class="empty-note" style="display:none;">No incoming requests</p>
+        </div>
+      </div>
+
+      <!-- Add Friend -->
+      <div id="add-friend-tab" class="online-tab-content">
+        <div class="form-group">
+          <label>Friend Username:</label>
+          <input type="text" id="add-friend-input" placeholder="Enter username" autocomplete="off">
+          <button id="add-friend-btn" class="btn btn-primary">Send Request</button>
+        </div>
+        <div id="add-friend-status" class="online-status"></div>
+      </div>
+
+      <!-- My Friends -->
+      <div id="my-friends-tab" class="online-tab-content">
+        <h3>Friends</h3>
+        <div id="my-friends-list" class="requests-list"></div>
+        <p id="my-friends-empty" class="empty-note" style="display:none;">No friends yet — add some!</p>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Create Online Game Modal (Phase 2) ─────────────────── -->
+  <div id="create-online-game-modal" style="display: none;">
+    <div class="modal-content">
+      <h3>Create Online Game</h3>
+      <form id="create-online-game-form">
+        <div class="form-group">
+          <label>Game Name:</label>
+          <input type="text" id="online-game-name-input" placeholder="My Online Game" required>
+        </div>
+        <div class="form-group">
+          <label>Mode:</label>
+          <select id="online-mode-select">
+            <option value="NORMAL">Normal</option>
+            <option value="PLATFORMER">Platformer</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>World:</label>
+          <select id="online-world-select" required>
+            <option value="">Loading worlds...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Max Players:</label>
+          <select id="online-max-players-select">
+            <option value="2">2 Players</option>
+            <option value="3">3 Players</option>
+            <option value="4" selected>4 Players</option>
+          </select>
+        </div>
+        <div id="create-online-game-status" class="online-status"></div>
+        <div class="form-group form-actions">
+          <button type="submit" class="btn btn-primary">Create &amp; Open Lobby</button>
+          <button type="button" class="btn btn-secondary" id="cancel-online-create-btn">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Online Lobby Screen (Phase 2) ──────────────────────── -->
+  <div id="online-lobby-screen" style="display: none;">
+    <div class="lobby-container">
+      <div class="lobby-header">
+        <h2>Game Lobby</h2>
+        <button id="leave-lobby-btn" class="btn btn-small">Leave</button>
+      </div>
+      <div class="lobby-content">
+        <div class="lobby-info">
+          <p id="lobby-world-name">World</p>
+          <p id="lobby-players-count">Players: 1/2</p>
+        </div>
+        <div class="lobby-players">
+          <h3>Players</h3>
+          <div id="lobby-players-list" class="players-list"></div>
+        </div>
+        <div class="lobby-actions">
+          <button id="start-game-btn" class="btn btn-primary" disabled>Waiting for players…</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Play HUD (shown while a game is active) ─────────────── -->
   <div id="play-hud" style="display: none;">
     <div class="play-hud-left">
@@ -511,40 +662,42 @@
     2P: <kbd>IJKL</kbd>+<kbd>U</kbd>
   </div>
 
-  <script src="js/auth.js?v=17g8"></script>
-  <script src="js/dashboard.js?v=17g8"></script>
-  <script src="js/game-selection.js?v=17g8"></script>
-  <script src="js/constants.js?v=17g8"></script>
-  <script src="js/blocks.js?v=17g8"></script>
-  <script src="js/controller-config.js?v=17g8"></script>
-  <script src="js/controller-input.js?v=17g8"></script>
-  <script src="js/input.js?v=17g8"></script>
-  <script src="js/camera.js?v=17g8"></script>
-  <script src="js/mobs.js?v=17g8"></script>
-  <script src="js/crafting.js?v=17g8"></script>
-  <script src="js/player.js?v=17g8"></script>
-  <script src="js/level.js?v=17g8"></script>
-  <script src="js/redstone.js?v=17g8"></script>
-  <script src="js/world.js?v=17g8"></script>
-  <script src="js/sandbox.js?v=17g8"></script>
-  <script src="js/save-migrations.js?v=17g8"></script>
-  <script src="js/saves.js?v=17g8"></script>
-  <script src="js/speedrunner-mode.js?v=17g8"></script>
-  <script src="js/game.js?v=17g8"></script>
-  <script src="js/menu.js?v=17g8"></script>
+  <script src="js/auth.js?v=17h2"></script>
+  <script src="js/dashboard.js?v=17h2"></script>
+  <script src="js/game-selection.js?v=17h2"></script>
+  <script src="js/constants.js?v=17h2"></script>
+  <script src="js/blocks.js?v=17h2"></script>
+  <script src="js/controller-config.js?v=17h2"></script>
+  <script src="js/controller-input.js?v=17h2"></script>
+  <script src="js/input.js?v=17h2"></script>
+  <script src="js/camera.js?v=17h2"></script>
+  <script src="js/mobs.js?v=17h2"></script>
+  <script src="js/crafting.js?v=17h2"></script>
+  <script src="js/player.js?v=17h2"></script>
+  <script src="js/level.js?v=17h2"></script>
+  <script src="js/redstone.js?v=17h2"></script>
+  <script src="js/world.js?v=17h2"></script>
+  <script src="js/sandbox.js?v=17h2"></script>
+  <script src="js/save-migrations.js?v=17h2"></script>
+  <script src="js/saves.js?v=17h2"></script>
+  <script src="js/speedrunner-mode.js?v=17h2"></script>
+  <script src="js/game.js?v=17h2"></script>
+  <script src="js/menu.js?v=17h2"></script>
   <!-- Phase 16: Multiplayer (socket.io loaded from CDN; falls back gracefully if unavailable) -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js" crossorigin="anonymous"></script>
-  <script src="js/multiplayer.js?v=17g8"></script>
+  <script src="js/multiplayer.js?v=17h2"></script>
   <!-- Phase 16-A: Online lobby UI -->
-  <script src="js/online-ui.js?v=17g8"></script>
+  <script src="js/online-ui.js?v=17h2"></script>
   <!-- Phase 1D: Game play + auto-save -->
-  <script src="js/music.js?v=17g8"></script>
-  <script src="js/game-timer.js?v=17g8"></script>
-  <script src="js/game-state.js?v=17g8"></script>
-  <script src="js/auto-save.js?v=17g8"></script>
-  <script src="js/game-play.js?v=17g8"></script>
+  <script src="js/music.js?v=17h2"></script>
+  <script src="js/game-timer.js?v=17h2"></script>
+  <script src="js/game-state.js?v=17h2"></script>
+  <script src="js/auto-save.js?v=17h2"></script>
+  <script src="js/game-play.js?v=17h2"></script>
   <!-- Phase 1E: Sandbox world browser + editor -->
-  <script src="js/sandbox-ui.js?v=17g8"></script>
+  <script src="js/sandbox-ui.js?v=17h2"></script>
+
+  <script src="js/online-play.js?v=17h2"></script>
 
   <script>
     // ── Responsive canvas scaling ────────────────────────────────

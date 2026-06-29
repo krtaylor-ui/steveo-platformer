@@ -82,14 +82,31 @@ const GAME_STATE = {
           }))
       : [];
 
-    // Portal links
-    const portalLinks = Array.isArray(game._normalPortals)
-      ? game._normalPortals.map(pt => ({
-          label: pt.label, biome: pt.biome,
-          anchorRow: pt.anchorRow, anchorCol: pt.anchorCol,
-          destLabel: pt.destLabel ?? null,
-        }))
-      : [];
+    // Portal links. In the SANDBOX EDITOR portals live in sandbox.sandboxPortals
+    // (with destId routing); in normal/platformer play they live in
+    // _normalPortals. Prefer whichever is populated — previously this only read
+    // _normalPortals (empty while editing), so saving from the editor silently
+    // dropped all portal routing. Mirrors SandboxSaves.save (resolves destId →
+    // destLabel) so the cloud save round-trips like the legacy localStorage save.
+    let portalLinks = [];
+    if (game.sandbox && Array.isArray(game.sandbox.sandboxPortals) && game.sandbox.sandboxPortals.length) {
+      portalLinks = game.sandbox.sandboxPortals.map(p => {
+        const dest = (p.destId != null) ? game.sandbox.findPortalById(p.destId) : null;
+        return {
+          label: p.label, biome: p.biome,
+          anchorRow: p.anchorRow, anchorCol: p.anchorCol,
+          destLabel: dest?.label ?? null,
+          ruined: p.ruined ?? false,
+        };
+      });
+    } else if (Array.isArray(game._normalPortals)) {
+      portalLinks = game._normalPortals.map(pt => ({
+        label: pt.label, biome: pt.biome,
+        anchorRow: pt.anchorRow, anchorCol: pt.anchorCol,
+        destLabel: pt.destLabel ?? null,
+        ruined: pt.ruined ?? false,
+      }));
+    }
 
     // Ruined portals
     const ruinedPortals = game._ruinedPortals

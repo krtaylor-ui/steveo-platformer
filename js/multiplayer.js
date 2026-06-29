@@ -235,6 +235,14 @@
 
         // Phase 17-E: Apply cached mob/time state from host
         const game = window._gameRef;
+        // Joiners are not authoritative for mobs. Wipe any locally-spawned mobs
+        // (e.g. spawned in the brief window before the connection set isCreator,
+        // or placed at world build) so only host-synced remote mobs are shown.
+        if (!data.isCreator && game?.mobManager) {
+          game.mobManager.mobs.length = 0;
+          if (Array.isArray(game.mobManager.arrows)) game.mobManager.arrows.length = 0;
+          if (Array.isArray(game.mobManager.blazeShots)) game.mobManager.blazeShots.length = 0;
+        }
         if (Array.isArray(data.cachedMobs) && !data.isCreator) {
           this.remoteMobs.clear();
           for (const m of data.cachedMobs) this.remoteMobs.set(m.id, m);
@@ -306,7 +314,7 @@
         if (!game) return;
         const mob = game.mobManager.mobs.find(m => m.id === data.mobId && m.alive);
         if (mob) {
-          mob.takeDamage(data.damage, 0);
+          mob.takeDamage(data.damage, data.knockDir || 0);
           // Push updated state immediately so joiner sees HP change
           this.socket.emit('mobState', { mobs: game.mobManager.serializeMobs() });
         }
@@ -352,7 +360,7 @@
         // Visual + sound
         const cx = col * BLOCK_SIZE + BLOCK_SIZE / 2, cy = row * BLOCK_SIZE + BLOCK_SIZE / 2;
         game.mobManager.explosions.push(new ExplosionEffect(cx, cy, (radius + 0.5) * BLOCK_SIZE));
-        if (game._playSound) game._playSound('sounds/explosion-creeper.mp3');
+        if (game._playSound) game._playSound(data.sound || 'sounds/explosion-creeper.mp3');
         game._screenShake = { intensity: 5, frames: 12, maxFrames: 12 };
       });
 
@@ -483,11 +491,50 @@
         }
       });
 
-      // Phase 17-E: Host disconnected — show overlay for remaining players
+      // Phase 17-E: Host disconnected — show overlay for remaining players.
+      // (Only emitted when there is no one left to promote; normally the server
+      // promotes a remaining player to host instead — see 'becameHost'.)
       s.on('hostLeft', data => {
         if (this.isCreator) return;
         this.hostLeft = true;
         this._showHostLeftOverlay(data.hostName || 'The host');
+      });
+
+      // The previous host left and the server promoted THIS player to host.
+      // Take over authoritative duties (mob/time simulation) so the game
+      // continues; the original host can rejoin later as a normal player.
+      s.on('becameHost', data => {
+        if (this.isCreator) return;
+        this.isCreator    = true;
+        this.playerNumber = data.playerNumber || 1;
+        this.hostLeft     = false;
+        // Adopt the mobs we were rendering as a joiner so the SAME mobs persist
+        // under the new host (instead of despawning/respawning), then drop the
+        // render-only snapshots and simulate locally from here on.
+        const _g = window._gameRef;
+        if (_g?.mobManager && typeof _g.mobManager.adoptSerializedMobs === 'function' && this.remoteMobs.size) {
+          _g.mobManager.adoptSerializedMobs([...this.remoteMobs.values()]);
+        }
+        this.remoteMobs.clear();
+        this.remoteArrows = [];
+        this.remoteBlazeShots = [];
+        this._notify('You are now the host', '#FFD700');
+        const game = window._gameRef;
+        if (game?._pushGameNotification) game._pushGameNotification('You are now the host', '#FFD700');
+        // Bootstrap host state for the others (mirrors the joinSuccess host path).
+        setTimeout(() => {
+          const g = window._gameRef;
+          if (!g || !this.socket) return;
+          this.sendTimeSync(g._dayNight);
+          if (g.gameMode !== 'sandbox') this.sendMobState(g.mobManager.serializeMobs());
+        }, 50);
+      });
+
+      // Another player became the host (cosmetic: update their number so the
+      // lobby/HUD reflects the new host).
+      s.on('hostChanged', data => {
+        const p = this.otherPlayers[data.newHostId];
+        if (p) p.number = 1;
       });
 
       s.on('playerJoined', data => {
@@ -552,6 +599,16 @@
 
       s.on('itemPickedUp', data => {
         this.droppedItems = this.droppedItems.filter(it => it.id !== data.itemId);
+        if (this._pendingPickups) this._pendingPickups.delete(data.itemId);
+        // Server-authoritative grant: only the confirmed claimer collects it.
+        if (data.byPlayer === this.playerId && data.type != null && typeof this.onItemGranted === 'function') {
+          this.onItemGranted(data.type);
+        }
+      });
+
+      // Server-authoritative claim result for placed collectibles.
+      s.on('itemClaimed', data => {
+        if (typeof this.onPlacedItemClaimed === 'function') this.onPlacedItemClaimed(data.key, data.byPlayer);
       });
 
       s.on('bossDamaged', data => {
@@ -654,17 +711,22 @@
     // Check if local player is close enough to pick up any network item
     checkPickup(player) {
       const PICKUP_RANGE = 40;
-      const collected = [];
+      if (!this._pendingPickups) this._pendingPickups = new Set();
       this.droppedItems = this.droppedItems.filter(it => {
         const dx = player.cx - it.x, dy = player.cy - it.y;
         if (Math.hypot(dx, dy) < PICKUP_RANGE) {
-          this.pickupItem(it.id);
-          collected.push(it);
-          return false;
+          // Request only (dedup per item id). The server grants the item to the
+          // FIRST claimer and echoes itemPickedUp{byPlayer,type}; we add it to
+          // our inventory only on that echo — so two players can't both get it.
+          if (!this._pendingPickups.has(it.id)) {
+            this._pendingPickups.add(it.id);
+            this.pickupItem(it.id);
+          }
+          return false; // optimistic visual removal; server confirms for all
         }
         return true;
       });
-      return collected;
+      return []; // grant happens in the itemPickedUp handler
     },
 
     // ── Rendering ──────────────────────────────────────────────
@@ -676,8 +738,13 @@
       ctx.save();
       for (const id in this.otherPlayers) {
         const p  = this.otherPlayers[id];
-        const sx = Math.floor(p.x - camera.x);
-        const sy = Math.floor(p.y - camera.y);
+        // Interpolate the render position toward the latest network position so
+        // remote players move smoothly between the ~20Hz position updates instead
+        // of stepping. Snap on large jumps (teleport / portal / respawn).
+        if (p.rx == null || Math.hypot(p.x - p.rx, p.y - p.ry) > 96) { p.rx = p.x; p.ry = p.y; }
+        else { p.rx += (p.x - p.rx) * 0.35; p.ry += (p.y - p.ry) * 0.35; }
+        const sx = Math.floor(p.rx - camera.x);
+        const sy = Math.floor(p.ry - camera.y);
         if (sx < -48 || sx > 848 || sy < -60 || sy > 560) continue;
 
         // Advance walk animation locally every draw frame
@@ -909,9 +976,16 @@
     },
 
     // Phase 17-E: Joiner sends damage event to server → relayed to host
-    sendMobDamage(mobId, damage) {
+    sendMobDamage(mobId, damage, knockDir = 0) {
       if (!this.socket || !this.isConnected) return;
-      this.socket.emit('mobDamage', { mobId, damage });
+      this.socket.emit('mobDamage', { mobId, damage, knockDir });
+    },
+
+    // Request to claim a placed collectible (by index). Server grants to the
+    // first claimer and echoes itemClaimed{key,byPlayer}.
+    claimPlacedItem(key) {
+      if (!this.socket || !this.isConnected) return;
+      this.socket.emit('claimItem', { key });
     },
 
     // Phase 17-E: Host broadcasts mob drop events
@@ -921,9 +995,9 @@
     },
 
     // Phase 17-E: Host broadcasts explosion (block destruction + visual)
-    sendExplosion(col, row, radius) {
+    sendExplosion(col, row, radius, sound) {
       if (!this.socket || !this.isConnected) return;
-      this.socket.emit('explosion', { col, row, radius });
+      this.socket.emit('explosion', { col, row, radius, sound });
     },
 
     // Phase 17-E: Host broadcasts redstone component states and dust block states
@@ -975,9 +1049,17 @@
         WitherSkeleton: typeof WitherSkeleton !== 'undefined' ? WitherSkeleton : null,
         Enderman: typeof Enderman !== 'undefined' ? Enderman : null,
       };
+      // Per-mob smoothed render positions (mob snapshots arrive at ~10Hz).
+      if (!this._mobRender) this._mobRender = new Map();
+      for (const id of this._mobRender.keys()) if (!this.remoteMobs.has(id)) this._mobRender.delete(id);
+
       for (const m of this.remoteMobs.values()) {
         if (!m.alive) continue;
-        const sx = Math.floor(m.x - camera.x);
+        // Interpolate toward the latest snapshot so mobs glide instead of stepping.
+        let rp = this._mobRender.get(m.id);
+        if (!rp || Math.hypot(m.x - rp.rx, m.y - rp.ry) > 96) { rp = { rx: m.x, ry: m.y }; this._mobRender.set(m.id, rp); }
+        else { rp.rx += (m.x - rp.rx) * 0.35; rp.ry += (m.y - rp.ry) * 0.35; }
+        const sx = Math.floor(rp.rx - camera.x);
         if (sx + (m.w || 32) < -40 || sx > CANVAS_W + 40) continue;
 
         const Cls = CLASS_MAP[m.type];
@@ -985,8 +1067,8 @@
 
         // Lightweight stub — inherits draw/_drawBody/_flashAlpha/_drawHealthBar via prototype
         const stub = Object.create(Cls.prototype);
-        stub.x           = m.x;
-        stub.y           = m.y;
+        stub.x           = rp.rx;
+        stub.y           = rp.ry;
         stub.width       = m.w;
         stub.height      = m.h;
         stub.hp          = m.hp;
@@ -995,14 +1077,19 @@
         stub.walkTimer   = m.walkTimer   || 0;
         stub.hitCooldown = m.hitCooldown || 0;
         stub.facing      = m.flipped ? 1 : -1;
-        // Creeper fuse state
-        stub.fusing      = false;
-        stub.fuseTimer   = 0;
+        // Creeper fuse state (drives the pre-explosion swell/flash animation)
+        stub.fusing      = m.fusing || false;
+        stub.fuseTimer   = m.fuseTimer || 0;
         // Blaze float offset — derive a stable value from mob id so it animates
         stub.floatOffset = (m.id || 0) * 1.3;
 
         stub.draw(ctx, camera);
       }
+
+      // Extrapolate projectiles by their velocity between the ~10Hz snapshots so
+      // they fly smoothly instead of jumping; the next snapshot re-syncs them.
+      for (const a of this.remoteArrows)     { a.x  += (a.vx  || 0); a.y  += (a.vy  || 0); }
+      for (const bs of this.remoteBlazeShots) { bs.x += (bs.vx || 0); bs.y += (bs.vy || 0); }
 
       // Draw remote enemy arrows
       for (const a of this.remoteArrows) {

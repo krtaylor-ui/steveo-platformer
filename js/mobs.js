@@ -109,6 +109,10 @@ class Mob {
       state:       this.state,
       walkTimer:   this.walkTimer,
       hitCooldown: this.hitCooldown,
+      // Creeper pre-detonation state (undefined/0 for other mobs) so joiners can
+      // render the swell/flash animation before it explodes.
+      fusing:      this.fusing || false,
+      fuseTimer:   this.fuseTimer || 0,
     };
   }
 
@@ -1468,6 +1472,25 @@ class MobManager {
     return mob;
   }
 
+  // Rebuild real mobs from serialized snapshots — used when a joiner is promoted
+  // to host so the SAME mobs (type/position/hp/id) persist and keep simulating,
+  // rather than despawning and respawning fresh under the new host.
+  adoptSerializedMobs(snapshots) {
+    for (const m of snapshots || []) {
+      if (!m || m.alive === false) continue;
+      const mob = this._createMob(m.type, m.x, m.y);
+      if (!mob) continue;
+      mob.x = m.x; mob.y = m.y;
+      if (m.hp    != null)        mob.hp    = m.hp;
+      if (m.maxHp != null)        mob.maxHp = m.maxHp;
+      if (m.id    != null)        mob.id    = m.id;
+      if (m.flipped !== undefined) mob.facing = m.flipped ? 1 : -1;
+      if (m.fusing  !== undefined) mob.fusing = m.fusing;
+      if (m.fuseTimer != null)     mob.fuseTimer = m.fuseTimer;
+      this.mobs.push(mob);
+    }
+  }
+
   addPlayerArrow(x, y, vx, vy, damage) {
     this.playerArrows.push(new Arrow(x, y, vx, vy, damage, BOW_GRAVITY, true));
   }
@@ -1631,7 +1654,7 @@ class MobManager {
       if (!m.alive) continue;
       const cx = m.x + m.w / 2, cy = m.y + m.h / 2;
       if (Math.hypot(cx - player.cx, cy - player.cy) <= ATTACK_REACH)
-        hits.push({ mobId: m.id, damage });
+        hits.push({ mobId: m.id, damage, knockDir: Math.sign(cx - player.cx) || 1 });
     }
     return hits;
   }

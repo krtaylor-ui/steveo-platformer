@@ -205,6 +205,13 @@ setupGamesRoutes(app);
 const setupWorldsRoutes = require('./server/worlds-routes');
 setupWorldsRoutes(app);
 
+// Phase 2: online multiplayer — friends + game sessions
+const setupFriendsRoutes = require('./server/friends-routes');
+setupFriendsRoutes(app);
+
+const setupGameSessionsRoutes = require('./server/game-sessions-routes');
+setupGameSessionsRoutes(app);
+
 // ============================================================
 // API ENDPOINTS (Express Routes)
 // ============================================================
@@ -359,28 +366,12 @@ const io = socketIo(server, {
   maxHttpBufferSize: 50 * 1024 * 1024,
 });
 
-io.on('connection', (socket) => {
-  console.log(`Player connected: ${socket.id}`);
-
-  socket.on('playerJoined', (data) => {
-    players.set(socket.id, {
-      socketId: socket.id,
-      playerName: data.playerName,
-      appearance: data.appearance,
-    });
-    socket.broadcast.emit('playerJoined', { playerId: socket.id, ...data });
-  });
-
-  socket.on('updatePosition', (data) => {
-    socket.broadcast.emit('playerMoved', { playerId: socket.id, ...data });
-  });
-
-  socket.on('disconnect', () => {
-    console.log(`Player disconnected: ${socket.id}`);
-    players.delete(socket.id);
-    socket.broadcast.emit('playerLeft', { playerId: socket.id });
-  });
-});
+// Phase 2C: attach the full real-time multiplayer engine (remote players,
+// blocks, mobs, redstone, chat, drops, day/night) to this server's socket.io.
+// The browser client connects to window.location.origin = this server, so the
+// engine must live here — not on the legacy worker (server-multiplayer.js).
+const { attachMultiplayer } = require('./server/multiplayer-engine');
+attachMultiplayer(io);
 
 // ============================================================
 // START SERVER
