@@ -258,6 +258,13 @@ class Game {
           mgr.onInventoryRestored = (state) => this._restoreOnlineInventory(state);
           this._setupChatUI();
           mgr.chatCallback = (data) => this._onChatMessage(data);
+          // Server-authoritative item pickup: the item is only added to MY
+          // inventory when the server confirms I'm the claimer (prevents two
+          // players both collecting the same floor item).
+          mgr.onItemGranted = (type) => {
+            if (type != null) this.player.addBlock(type);
+            this._playSound('sounds/item-collected.mp3', 0.7);
+          };
           // Phase 17-E: Relay mob drops from host to all joiners via server
           this.mobManager.dropCallback = (items) => {
             if (mgr.isConnected && mgr.isCreator) mgr.sendMobDrops(items);
@@ -1414,10 +1421,22 @@ class Game {
     // ── L key: toggle nearest lever ────────────────────────
     const lDown = this.input.isDown('KeyL');
     if (lDown && !this._lKeyWas) {
-      const toggled = this.redstone.tryToggleLeverNear(this.level, this.player);
-      if (toggled) {
-        this._rsStartFromSource(toggled.col, toggled.row, toggled.on);
-        this._playSound('sounds/lever.mp3', 0.7);
+      const _isJoiner = !!(this._onlineGameId && window.multiplayerManager?.isConnected && !window.multiplayerManager?.isCreator);
+      if (_isJoiner) {
+        // Relay to host — the host owns redstone state and syncs it back within
+        // 0.5s. Toggling locally would be reverted by the next redstoneState
+        // broadcast, showing as an on→off flicker from a single keypress.
+        const lv = this.redstone.findNearestLever(this.player);
+        if (lv) {
+          window.multiplayerManager.sendRedstoneAction(lv.col, lv.row, 'toggleLever');
+          this._playSound('sounds/lever.mp3', 0.7);
+        }
+      } else {
+        const toggled = this.redstone.tryToggleLeverNear(this.level, this.player);
+        if (toggled) {
+          this._rsStartFromSource(toggled.col, toggled.row, toggled.on);
+          this._playSound('sounds/lever.mp3', 0.7);
+        }
       }
     }
     this._lKeyWas = lDown;
@@ -1926,6 +1945,13 @@ class Game {
           item.update(this.level);
           return item.alive;
         });
+        // Explosion visuals (TNT/creeper) arrive via the 'explosion' socket event
+        // and are pushed to mobManager.explosions. Since mobManager.update() is
+        // skipped here, tick their lifetimes so they fade out instead of
+        // lingering forever on the joiner's screen.
+        if (Array.isArray(this.mobManager.explosions)) {
+          this.mobManager.explosions = this.mobManager.explosions.filter(e => { e.life--; return e.life > 0; });
+        }
       }
       const dmgTaken = hpBefore - this.player.hp;
 
@@ -2369,11 +2395,9 @@ class Game {
          this._mpInvSyncTimer = 0;
          this._syncInventoryToServer();
        }
-       const netPicked = window.multiplayerManager.checkPickup(this.player);
-       for (const it of netPicked) {
-         if (it.type) this.player.addBlock(it.type);
-         this._playSound('sounds/item-collected.mp3', 0.7);
-       }
+       // Requests pickup of nearby items; the actual inventory grant happens
+       // in the server-confirmed itemPickedUp handler (mgr.onItemGranted).
+       window.multiplayerManager.checkPickup(this.player);
      }
   }
 

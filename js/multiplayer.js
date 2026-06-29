@@ -314,7 +314,7 @@
         if (!game) return;
         const mob = game.mobManager.mobs.find(m => m.id === data.mobId && m.alive);
         if (mob) {
-          mob.takeDamage(data.damage, 0);
+          mob.takeDamage(data.damage, data.knockDir || 0);
           // Push updated state immediately so joiner sees HP change
           this.socket.emit('mobState', { mobs: game.mobManager.serializeMobs() });
         }
@@ -593,6 +593,11 @@
 
       s.on('itemPickedUp', data => {
         this.droppedItems = this.droppedItems.filter(it => it.id !== data.itemId);
+        if (this._pendingPickups) this._pendingPickups.delete(data.itemId);
+        // Server-authoritative grant: only the confirmed claimer collects it.
+        if (data.byPlayer === this.playerId && data.type != null && typeof this.onItemGranted === 'function') {
+          this.onItemGranted(data.type);
+        }
       });
 
       s.on('bossDamaged', data => {
@@ -695,17 +700,22 @@
     // Check if local player is close enough to pick up any network item
     checkPickup(player) {
       const PICKUP_RANGE = 40;
-      const collected = [];
+      if (!this._pendingPickups) this._pendingPickups = new Set();
       this.droppedItems = this.droppedItems.filter(it => {
         const dx = player.cx - it.x, dy = player.cy - it.y;
         if (Math.hypot(dx, dy) < PICKUP_RANGE) {
-          this.pickupItem(it.id);
-          collected.push(it);
-          return false;
+          // Request only (dedup per item id). The server grants the item to the
+          // FIRST claimer and echoes itemPickedUp{byPlayer,type}; we add it to
+          // our inventory only on that echo — so two players can't both get it.
+          if (!this._pendingPickups.has(it.id)) {
+            this._pendingPickups.add(it.id);
+            this.pickupItem(it.id);
+          }
+          return false; // optimistic visual removal; server confirms for all
         }
         return true;
       });
-      return collected;
+      return []; // grant happens in the itemPickedUp handler
     },
 
     // ── Rendering ──────────────────────────────────────────────
@@ -950,9 +960,9 @@
     },
 
     // Phase 17-E: Joiner sends damage event to server → relayed to host
-    sendMobDamage(mobId, damage) {
+    sendMobDamage(mobId, damage, knockDir = 0) {
       if (!this.socket || !this.isConnected) return;
-      this.socket.emit('mobDamage', { mobId, damage });
+      this.socket.emit('mobDamage', { mobId, damage, knockDir });
     },
 
     // Phase 17-E: Host broadcasts mob drop events

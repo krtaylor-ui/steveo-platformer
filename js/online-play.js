@@ -16,6 +16,7 @@ const ONLINE_PLAY = {
   pendingRequests: [],    // PENDING rows (sent + received), enriched
   friendGames: [],        // active sessions from friends (Phase 2B)
   myGames: [],            // caller's own active sessions (for rejoin)
+  _pollTimer: null,       // periodic refresh of the active-games list
   currentSession: null,   // session being lobbied/played (Phase 2B)
   _listenersBound: false,
 
@@ -28,6 +29,22 @@ const ONLINE_PLAY = {
     const dn = document.getElementById('online-user-display');
     if (dn) dn.textContent = `@${this.currentUser.username}`;
     await this.refreshAll();
+    this._startPolling();
+  },
+
+  // Poll the active-games list so newly-created games appear without the user
+  // having to navigate away and back. Only refreshes while the online screen is
+  // actually visible (not in a lobby or an active game).
+  _startPolling() {
+    if (this._pollTimer) return;
+    this._pollTimer = setInterval(() => {
+      const screen = document.getElementById('online-play-screen');
+      if (screen && screen.style.display !== 'none') this.loadFriendGames();
+    }, 5000);
+  },
+
+  _stopPolling() {
+    if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
   },
 
   async refreshAll() {
@@ -42,6 +59,7 @@ const ONLINE_PLAY = {
   },
 
   _backToDashboard() {
+    this._stopPolling();
     document.getElementById('online-play-screen').style.display = 'none';
     document.getElementById('online-lobby-screen').style.display = 'none';
     document.getElementById('dashboard-screen').style.display = 'block';
@@ -302,6 +320,7 @@ const ONLINE_PLAY = {
   },
 
   showLobby() {
+    this._stopPolling();
     document.getElementById('online-play-screen').style.display = 'none';
     document.getElementById('online-lobby-screen').style.display = 'block';
     this.updateLobbyDisplay();
@@ -349,6 +368,7 @@ const ONLINE_PLAY = {
     document.getElementById('online-lobby-screen').style.display = 'none';
     document.getElementById('online-play-screen').style.display = 'block';
     this.loadFriendGames();
+    this._startPolling();
   },
 
   // ════════════════════════════════════════════════════════════
@@ -358,6 +378,7 @@ const ONLINE_PLAY = {
   startGame() {
     const s = this.currentSession;
     if (!s) return;
+    this._stopPolling();
 
     // Tear down the legacy menu loop + any prior game (mirrors GAME_PLAY.init).
     if (window.menu && typeof window.menu._stop === 'function') window.menu._stop();
@@ -432,6 +453,7 @@ const ONLINE_PLAY = {
 
     document.getElementById('online-play-screen').style.display = 'block';
     this.refreshAll();
+    this._startPolling();
   },
 
   // ── helpers ──────────────────────────────────────────────────

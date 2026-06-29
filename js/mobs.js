@@ -1631,7 +1631,7 @@ class MobManager {
       if (!m.alive) continue;
       const cx = m.x + m.w / 2, cy = m.y + m.h / 2;
       if (Math.hypot(cx - player.cx, cy - player.cy) <= ATTACK_REACH)
-        hits.push({ mobId: m.id, damage });
+        hits.push({ mobId: m.id, damage, knockDir: Math.sign(cx - player.cx) || 1 });
     }
     return hits;
   }

@@ -168,7 +168,13 @@ io.on('connection', socket => {
     }
 
     const number   = world.nextPlayerNumber();
-    const playerId = `player${number}`;
+    // Unique, stable per-connection id — NOT derived from `number`. Host
+    // promotion reassigns `number` (→1) while keeping playerId fixed; if ids
+    // were `player${number}` a rejoining player could be handed a number whose
+    // id collides with the promoted player, overwriting them in world.players
+    // (which caused the original host to be kicked, and player ghosting).
+    world._pidSeq = (world._pidSeq || 0) + 1;
+    const playerId = `p${world._pidSeq}`;
     const outfit   = DEFAULT_OUTFITS[number] || DEFAULT_OUTFITS[1];
 
     const playerData = {
@@ -287,9 +293,10 @@ io.on('connection', socket => {
     const world = worlds.get(pd?.worldId);
     if (!world || !pd) return;
     const idx = world.items.findIndex(it => it.id === data.itemId);
-    if (idx < 0) return;
+    if (idx < 0) return;  // already taken by someone else — first claimer wins
+    const item = world.items[idx];
     world.items.splice(idx, 1);
-    io.to(pd.worldId).emit('itemPickedUp', { itemId: data.itemId, byPlayer: pd.playerId });
+    io.to(pd.worldId).emit('itemPickedUp', { itemId: data.itemId, byPlayer: pd.playerId, type: item.type });
   });
 
   socket.on('bossDamage', data => {
