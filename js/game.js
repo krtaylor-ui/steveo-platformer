@@ -1365,7 +1365,7 @@ class Game {
         // Joiner: also attack remote mobs via event
         if (_isOnlineJoiner) {
           for (const hit of this.mobManager.playerAttackRemoteCheck(this.player, window.multiplayerManager.remoteMobs))
-            window.multiplayerManager.sendMobDamage(hit.mobId, hit.damage);
+            window.multiplayerManager.sendMobDamage(hit.mobId, hit.damage, hit.knockDir);
         }
         this.player.attackCooldown = ATTACK_COOLDOWN;
         this.player.swingTimer     = 15;
@@ -1380,7 +1380,7 @@ class Game {
         // Joiner: also attack remote mobs via event
         if (_isOnlineJoiner) {
           for (const hit of this.mobManager.playerAttackRemoteCheck(this.player, window.multiplayerManager.remoteMobs))
-            window.multiplayerManager.sendMobDamage(hit.mobId, hit.damage);
+            window.multiplayerManager.sendMobDamage(hit.mobId, hit.damage, hit.knockDir);
         }
         this.player.attackCooldown = ATTACK_COOLDOWN;
         this.player.swingTimer     = 15;

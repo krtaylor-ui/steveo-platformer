@@ -508,7 +508,13 @@
         this.isCreator    = true;
         this.playerNumber = data.playerNumber || 1;
         this.hostLeft     = false;
-        // Drop render-only remote mobs; as host we now simulate locally.
+        // Adopt the mobs we were rendering as a joiner so the SAME mobs persist
+        // under the new host (instead of despawning/respawning), then drop the
+        // render-only snapshots and simulate locally from here on.
+        const _g = window._gameRef;
+        if (_g?.mobManager && typeof _g.mobManager.adoptSerializedMobs === 'function' && this.remoteMobs.size) {
+          _g.mobManager.adoptSerializedMobs([...this.remoteMobs.values()]);
+        }
         this.remoteMobs.clear();
         this.remoteArrows = [];
         this.remoteBlazeShots = [];
@@ -1058,9 +1064,9 @@
         stub.walkTimer   = m.walkTimer   || 0;
         stub.hitCooldown = m.hitCooldown || 0;
         stub.facing      = m.flipped ? 1 : -1;
-        // Creeper fuse state
-        stub.fusing      = false;
-        stub.fuseTimer   = 0;
+        // Creeper fuse state (drives the pre-explosion swell/flash animation)
+        stub.fusing      = m.fusing || false;
+        stub.fuseTimer   = m.fuseTimer || 0;
         // Blaze float offset — derive a stable value from mob id so it animates
         stub.floatOffset = (m.id || 0) * 1.3;
 

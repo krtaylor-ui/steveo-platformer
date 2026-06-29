@@ -366,7 +366,7 @@ io.on('connection', socket => {
     if (!pd) return;
     for (const [sid, p] of players) {
       if (p.worldId === pd.worldId && p.number === 1) {
-        io.to(sid).emit('mobDamage', { mobId: data.mobId, damage: data.damage, attackerId: pd.playerId });
+        io.to(sid).emit('mobDamage', { mobId: data.mobId, damage: data.damage, knockDir: data.knockDir, attackerId: pd.playerId });
         break;
       }
     }
