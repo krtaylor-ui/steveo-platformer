@@ -357,7 +357,14 @@ io.on('connection', socket => {
     const world = worlds.get(pd?.worldId);
     if (!world || !pd) return;
     world.cachedMobs = data.mobs || [];
-    socket.to(pd.worldId).emit('mobState', { mobs: world.cachedMobs });
+    // Forward arrows + blaze shots too — the relay previously rebuilt the
+    // payload with only `mobs`, so joiners never received enemy projectiles
+    // (their remoteArrows/remoteBlazeShots stayed empty and nothing rendered).
+    socket.to(pd.worldId).emit('mobState', {
+      mobs: world.cachedMobs,
+      arrows: data.arrows || [],
+      blazeShots: data.blazeShots || [],
+    });
   });
 
   // Joiner hits a mob → relay damage to host (player 1)
