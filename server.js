@@ -205,6 +205,10 @@ setupGamesRoutes(app);
 const setupWorldsRoutes = require('./server/worlds-routes');
 setupWorldsRoutes(app);
 
+// Phase 2: online multiplayer — friends + game sessions
+const setupFriendsRoutes = require('./server/friends-routes');
+setupFriendsRoutes(app);
+
 // ============================================================
 // API ENDPOINTS (Express Routes)
 // ============================================================

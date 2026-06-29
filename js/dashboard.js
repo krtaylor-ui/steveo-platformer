@@ -67,7 +67,7 @@ const DASHBOARD = {
     document.getElementById('sandbox-mode-btn')?.addEventListener('click', () => this._navigateToMode('SANDBOX'));
 
     document.getElementById('online-play-btn')?.addEventListener('click', () => {
-      alert('Online Play — coming in Phase 2!');
+      if (typeof ONLINE_PLAY !== 'undefined') ONLINE_PLAY.init();
     });
 
     document.getElementById('logout-btn')?.addEventListener('click', () => this._logout());
