@@ -670,10 +670,18 @@ class Game {
       if (p) { p.teamId = p.teamId ?? null; p.teamColor = p.teamColor ?? null; }
     }
 
-    // Enemies: drive from designed spawners (spawn eggs) when present; otherwise
-    // spawn the default Skeleton bots (Quick Play / built-in map / back-compat).
-    if (this.mobManager.spawnPoints.length > 0) {
-      // Per-spawner frequency + active cap, on-screen spawning (Phase 3A.2).
+    // Disable mob drops when requested (pre-launch toggle, all modes; default off).
+    this.mobManager.dropsDisabled = !!this.arenaConfig.disableMobDrops;
+
+    // Enemies:
+    //  • SURVIVAL_WAVES → ignore spawn eggs + default bots entirely; ARENA_MODES
+    //    spawns escalating waves from the designed spawn-lines.
+    //  • else if spawn eggs present → per-spawner frequency/cap on-screen spawning.
+    //  • else → default Skeleton bots (Quick Play / built-in map / back-compat).
+    if (this.arenaConfig.arenaGameMode === 'SURVIVAL_WAVES') {
+      this.mobManager.spawnPoints = [];
+      this.mobManager.arenaMode = false;
+    } else if (this.mobManager.spawnPoints.length > 0) {
       this.mobManager.arenaMode = true;
     } else {
       // No ambient respawns: spawnPoints is empty, so default bots don't respawn.
@@ -778,6 +786,9 @@ class Game {
   _zoomOverrideAllowed() {
     return this.gameMode === 'sandbox' || !!(this.player && this.player.godMode);
   }
+
+  // Bottom-left EXIT button used in Universal Test World (Phase 3A.3).
+  _testExitRect() { return { x: 10, y: CANVAS_H - 32, w: 116, h: 24 }; }
 
   // ── Phase 3A.3: unified view zoom (all modes) ───────────────
   // Resolution order: Speed-Runner's own speed-zoom → manual Z override
@@ -1044,6 +1055,18 @@ class Game {
       if (this.input.mouse.x >= BTN_X && this.input.mouse.x <= BTN_X + 24 &&
           this.input.mouse.y >= BTN_Y && this.input.mouse.y <= BTN_Y + 24) {
         this._tutorialOpen = true; this._tutorialScrollY = 0;
+      }
+    }
+
+    // Test World: clickable EXIT button — works any time, including the arena end
+    // screen, so you're never stuck (Phase 3A.3). Esc also exits (handled below).
+    if (this._testMode && this.input.mouse.clicked) {
+      const r = this._testExitRect();
+      const mx = this.input.mouse.x, my = this.input.mouse.y;
+      if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) {
+        this.destroy();
+        if (this._onReturnToMenu) this._onReturnToMenu();
+        return;
       }
     }
 
@@ -9930,15 +9953,19 @@ class Game {
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     }
     if (this._testMode) {
-      const label = '🧪 TEST — Esc to exit';
-      ctx.font = 'bold 11px Courier New';
-      const lw = ctx.measureText(label).width;
-      const bx = 10, by = CANVAS_H - 26;
-      ctx.fillStyle = 'rgba(255,152,0,0.85)';
-      _roundRect(ctx, bx, by, lw + 18, 20, 4); ctx.fill();
-      ctx.fillStyle = '#1b1b1b'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      ctx.fillText(label, bx + 9, by + 10);
-      ctx.textBaseline = 'alphabetic';
+      const r = this._testExitRect();
+      const mx = this.input.mouse.x, my = this.input.mouse.y;
+      const hov = mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h;
+      ctx.fillStyle = hov ? 'rgba(220,60,60,0.95)' : 'rgba(220,60,60,0.8)';
+      _roundRect(ctx, r.x, r.y, r.w, r.h, 5); ctx.fill();
+      ctx.strokeStyle = '#ff9a9a'; ctx.lineWidth = 1; _roundRect(ctx, r.x, r.y, r.w, r.h, 5); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('✕ EXIT TEST', r.x + r.w / 2, r.y + r.h / 2);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      // small hint
+      ctx.fillStyle = 'rgba(255,180,120,0.9)'; ctx.font = '8px Courier New'; ctx.textAlign = 'left';
+      ctx.fillText('🧪 Test (Esc)', r.x, r.y - 4);
     }
     this._drawHelpButton(ctx);
     this._drawControllerStatus(ctx);

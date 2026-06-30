@@ -27,7 +27,7 @@ const ARENA_PRELAUNCH = {
     // Per-type sections
     this._toggle('pl-emerald-rounds-group', modeKey === 'COLLECT_EMERALDS');
     this._toggle('pl-mob-difficulty-group', modeKey === 'MOB_HUNTER' || modeKey === 'COLLECT_EMERALDS');
-    this._toggle('pl-initial-mobs-group',   modeKey === 'SURVIVAL_WAVES');
+    this._toggle('pl-waves-group',          modeKey === 'SURVIVAL_WAVES');
 
     this._wire();
     modal.style.display = 'flex';
@@ -40,8 +40,8 @@ const ARENA_PRELAUNCH = {
     this._wired = true;
     const rounds = document.getElementById('pl-emerald-rounds');
     rounds?.addEventListener('input', (e) => { const v = document.getElementById('pl-rounds-val'); if (v) v.textContent = e.target.value; });
-    const mobs = document.getElementById('pl-initial-mobs');
-    mobs?.addEventListener('input', (e) => { const v = document.getElementById('pl-initial-mobs-val'); if (v) v.textContent = e.target.value; });
+    const waves = document.getElementById('pl-waves');
+    waves?.addEventListener('input', (e) => { const v = document.getElementById('pl-waves-val'); if (v) v.textContent = e.target.value; });
     document.getElementById('pl-cancel-btn')?.addEventListener('click', () => this.hide());
     document.getElementById('pl-start-btn')?.addEventListener('click', () => this._start());
   },
@@ -50,9 +50,11 @@ const ARENA_PRELAUNCH = {
     const num = (id, dflt) => { const el = document.getElementById(id); const n = el ? parseInt(el.value, 10) : NaN; return Number.isFinite(n) ? n : dflt; };
     const val = (id, dflt) => { const el = document.getElementById(id); return el ? el.value : dflt; };
 
+    const chk = (id) => { const el = document.getElementById(id); return !!(el && el.checked); };
     const cfg = {
       gameDuration:  num('pl-match-length', 300) * 1000,
       playerHealthHp: num('pl-player-health', 6),
+      disableMobDrops: chk('pl-disable-drops'), // all modes; default off
     };
     if (this._mode === 'COLLECT_EMERALDS') {
       cfg.emeraldRounds = num('pl-emerald-rounds', 3);
@@ -60,7 +62,7 @@ const ARENA_PRELAUNCH = {
     } else if (this._mode === 'MOB_HUNTER') {
       cfg.mobDifficulty = val('pl-mob-difficulty', 'MEDIUM');
     } else if (this._mode === 'SURVIVAL_WAVES') {
-      cfg.initialMobCount = num('pl-initial-mobs', 5);
+      cfg.survivalWaveCount = num('pl-waves', 5);
     }
 
     const cb = this._onStart;

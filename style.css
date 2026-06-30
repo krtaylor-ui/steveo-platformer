@@ -1057,6 +1057,8 @@
 #import-file-modal,
 #arena-settings-modal,
 #arena-mode-select-modal,
+#arena-prelaunch-modal,
+#test-world-modal,
 #arena-leaderboard-modal {
   position: fixed;
   inset: 0;
@@ -1072,6 +1074,8 @@
 #import-file-modal .modal-content,
 #arena-settings-modal .modal-content,
 #arena-mode-select-modal .modal-content,
+#arena-prelaunch-modal .modal-content,
+#test-world-modal .modal-content,
 #arena-leaderboard-modal .modal-content {
   max-width: 500px;
 }

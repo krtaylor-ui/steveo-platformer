@@ -1802,7 +1802,9 @@ class MobManager {
       this.xpOrbs.push(new XpOrb(ox, oy));
     }
 
-    // Item drops — use configurable dropConfig if set, else hardcoded defaults
+    // Item drops — suppressed entirely when drops are disabled (arena toggle).
+    if (this.dropsDisabled) return;
+    // use configurable dropConfig if set, else hardcoded defaults
     const drops = [];
     const MOB_CLASS_TO_KEY = {
       Zombie: 'zombie', Skeleton: 'skeleton', Creeper: 'creeper',
