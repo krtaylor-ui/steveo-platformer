@@ -75,6 +75,7 @@ class Game {
       bossAttackRateMultiplier:  1.0,
       chatDisabled:              false,
       showOnlineHealthBars:      true,
+      compactHotbar:             false,    // Phase 3A.3 — use the small hotbar in all modes
       // Phase 16-E — Controller
       controllerDeadzone:        GP_DEADZONE_STICK,
       // Phase 17 — Speed Runner world settings
@@ -8080,6 +8081,9 @@ class Game {
         // Row 2: Show Players Health
         if (mx >= tgX && mx <= tgX + tgW && my >= L.FIRST_ROW + 48 && my <= L.FIRST_ROW + 48 + tgH)
           this._worldAdvSettings.showOnlineHealthBars = !(this._worldAdvSettings.showOnlineHealthBars !== false);
+        // Row 3: Compact Hotbar
+        if (mx >= tgX && mx <= tgX + tgW && my >= L.FIRST_ROW + 96 && my <= L.FIRST_ROW + 96 + tgH)
+          this._worldAdvSettings.compactHotbar = !this._worldAdvSettings.compactHotbar;
       }
       return;
     }
@@ -8502,6 +8506,7 @@ class Game {
       } else {
         drawAdvRow(L.FIRST_ROW,      '2-Player Co-op',      this._onlineGameId ? '(not available in online games)' : '(IJKL keys or 2nd gamepad for P2)', aws.twoPlayerMode, !!this._onlineGameId);
         drawAdvRow(L.FIRST_ROW + 48, 'Show Players Health', '(other players health bars in top-right)', aws.showOnlineHealthBars !== false);
+        drawAdvRow(L.FIRST_ROW + 96, 'Compact Hotbar',      '(small hotbar under the XP bar)', aws.compactHotbar === true);
       }
     } else if (this._wsTab === 'input') {
       // ── Input Settings tab ────────────────────────────────────
@@ -9882,8 +9887,8 @@ class Game {
     // XP bar and hotbar suppressed in sandbox (no XP gain, sandbox has its own hotbar)
     if (this.gameMode !== 'sandbox') {
       this._drawXpBar(ctx);
-      if (this.player2 || this.isArena) {
-        // 2P / local-MP and Arena: compact hotbar under the XP bar (no big hotbar).
+      if (this.player2 || this.isArena || this._worldAdvSettings.compactHotbar) {
+        // 2P / local-MP, Arena, or the Compact-Hotbar setting: small hotbar under XP.
         this._drawCompactHotbar(ctx, this.player, false);
       } else {
         this._drawHotbar(ctx);
