@@ -619,8 +619,10 @@ class Game {
         && this._arenaTemplateData.worldAdvSettings) {
       Object.assign(this._worldAdvSettings, this._arenaTemplateData.worldAdvSettings);
     }
-    // Apply per-world arena config (Phase 3A.2).
-    const maxHp = Math.max(2, Math.min(40, this._worldAdvSettings.arenaPlayerMaxHealth || 20));
+    // Apply per-world arena config (Phase 3A.2). Pre-launch playerHealthHp
+    // (Phase 3A.3) overrides the world default when present.
+    const hpSrc = this.arenaConfig.playerHealthHp || this._worldAdvSettings.arenaPlayerMaxHealth || 20;
+    const maxHp = Math.max(2, Math.min(40, hpSrc));
     this.player.maxHp = maxHp;
     if (this.player2) this.player2.maxHp = maxHp;
     this.redstoneSpeed = Math.max(0.5, Math.min(2.0, this._worldAdvSettings.redstoneSpeed || 1.0));

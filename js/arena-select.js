@@ -91,7 +91,15 @@ const ARENA_SELECT = {
         return;
       }
     }
-    this.chooseMode(mode => this._launch(templateData, mode ? { arenaGameMode: mode } : {}));
+    this.chooseMode(mode => {
+      // Real game types go through the pre-launch settings modal; the null
+      // "Quick Battle (vs bots)" launches straight away.
+      if (mode && typeof ARENA_PRELAUNCH !== 'undefined' && ARENA_PRELAUNCH.show) {
+        ARENA_PRELAUNCH.show(mode, (cfg) => this._launch(templateData, { arenaGameMode: mode, arenaConfig: cfg }));
+      } else {
+        this._launch(templateData, mode ? { arenaGameMode: mode } : {});
+      }
+    });
   },
 
   // Show the game-mode picker, then call onPick(modeKeyOrNull). Reused by the
