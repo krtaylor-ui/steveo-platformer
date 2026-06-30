@@ -85,6 +85,11 @@ const SANDBOX = {
       if (confirm('Delete this world? This cannot be undone.')) this.deleteWorld(this.selectedWorldId);
     });
     document.getElementById('sb-test-arena-btn')?.addEventListener('click', () => this.launchArenaTest());
+    // Universal Test World (Phase 3A.3)
+    document.getElementById('sb-test-world-btn')?.addEventListener('click', () => { if (typeof TEST_WORLD !== 'undefined') TEST_WORLD.open(); });
+    document.getElementById('test-world-cancel-btn')?.addEventListener('click', () => { if (typeof TEST_WORLD !== 'undefined') TEST_WORLD.hide(); });
+    document.querySelectorAll('.test-world-mode').forEach(btn =>
+      btn.addEventListener('click', () => { if (typeof TEST_WORLD !== 'undefined') TEST_WORLD.choose(btn.dataset.mode); }));
 
     // Arena Settings modal (Phase 3A.2)
     document.getElementById('sb-arena-settings-btn')?.addEventListener('click', () => this.openArenaSettings());

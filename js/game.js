@@ -51,6 +51,7 @@ class Game {
     this.input           = new InputManager(this.canvas);
     this.gameMode        = mode;          // 'normal' | 'sandbox' | 'platformer' | 'speedrunner'
     this._onReturnToMenu = onReturnToMenu;
+    this._testMode       = !!(options && options.testMode); // Universal Test World — no persistence
     this._running        = true;
 
     // Must be initialized before _buildLevel() which reads twoPlayerMode (Phase 12)
@@ -970,7 +971,13 @@ class Game {
     const escNow  = this.input.isDown('Escape');
     const escEdge = (escNow && !this._escWas) || this.input.p1JustDown('menu');
     if (escEdge) {
-      if (this.isArena && this.arenaState.phase === 'ended') {
+      if (this._testMode) {
+        // Universal Test World (Phase 3A.3): Esc always exits straight back to the
+        // editor — no pause, no persistence.
+        this.destroy();
+        if (this._onReturnToMenu) this._onReturnToMenu();
+        return;
+      } else if (this.isArena && this.arenaState.phase === 'ended') {
         this.destroy();
         if (this._onReturnToMenu) this._onReturnToMenu();
         return;
@@ -9817,6 +9824,17 @@ class Game {
       ctx.fillText(label, CANVAS_W / 2, by + 9);
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     }
+    if (this._testMode) {
+      const label = '🧪 TEST — Esc to exit';
+      ctx.font = 'bold 11px Courier New';
+      const lw = ctx.measureText(label).width;
+      const bx = 10, by = CANVAS_H - 26;
+      ctx.fillStyle = 'rgba(255,152,0,0.85)';
+      _roundRect(ctx, bx, by, lw + 18, 20, 4); ctx.fill();
+      ctx.fillStyle = '#1b1b1b'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(label, bx + 9, by + 10);
+      ctx.textBaseline = 'alphabetic';
+    }
     this._drawHelpButton(ctx);
     this._drawControllerStatus(ctx);
     this._drawContextPrompt(ctx);
@@ -9937,6 +9955,8 @@ class Game {
   _submitArenaResultOnce() {
     if (this._arenaResultSubmitted) return;
     this._arenaResultSubmitted = true;
+    if (this._testMode) return; // Test World never records to the leaderboard
+
     const mode = this.arenaConfig.arenaGameMode;
     if (!mode || typeof LEADERBOARD_SYSTEM === 'undefined' || !LEADERBOARD_SYSTEM.submit) return;
     const score = (typeof ARENA_MODES !== 'undefined') ? ARENA_MODES.score(this) : (this.arenaState.scores.p1 || 0);

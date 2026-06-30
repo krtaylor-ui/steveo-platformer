@@ -622,6 +622,7 @@
       <span id="sb-save-indicator" class="save-indicator">Unsaved changes</span>
     </div>
     <div class="sb-editor-right">
+      <button id="sb-test-world-btn" class="play-hud-btn">🧪 Test World</button>
       <button id="sb-test-arena-btn" class="play-hud-btn">⚔ Test in Arena</button>
       <button id="sb-arena-settings-btn" class="play-hud-btn" style="display: none;">⚙ Arena Settings</button>
       <button id="sb-save-btn" class="play-hud-btn">Save</button>
@@ -634,6 +635,21 @@
 
   <!-- Arena Settings are now the "Arena" tab in the canvas World Settings modal
        (Phase 3A.3) — the separate HTML modal was retired. -->
+
+  <!-- ── Universal Test World Modal (Phase 3A.3) ───────────── -->
+  <div id="test-world-modal" style="display: none;">
+    <div class="modal-content">
+      <h3>🧪 Test World</h3>
+      <p style="font-size: 0.85em; opacity: 0.8;">Play your current layout in any mode. Nothing is saved or recorded — Esc returns to the editor.</p>
+      <div class="form-group">
+        <button class="btn btn-primary test-world-mode" data-mode="normal"      style="display:block;width:100%;margin:6px 0;">Normal</button>
+        <button class="btn btn-primary test-world-mode" data-mode="platformer"  style="display:block;width:100%;margin:6px 0;">Platformer</button>
+        <button class="btn btn-primary test-world-mode" data-mode="speedrunner" style="display:block;width:100%;margin:6px 0;">Speed Runner</button>
+        <button class="btn btn-primary test-world-mode" data-mode="arena"       style="display:block;width:100%;margin:6px 0;">Arena</button>
+      </div>
+      <button id="test-world-cancel-btn" class="btn btn-secondary">Cancel</button>
+    </div>
+  </div>
 
   <!-- ── Arena Mode Selector Modal (Phase 3A.2) ────────────── -->
   <div id="arena-mode-select-modal" style="display: none;">
