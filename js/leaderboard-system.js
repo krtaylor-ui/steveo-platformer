@@ -8,10 +8,9 @@
 
 const LEADERBOARD_SYSTEM = {
   MODE_LABELS: {
-    FIGHT_MOBS: 'Fight Mobs',
+    MOB_HUNTER: 'Mob Hunter',
     COLLECT_EMERALDS: 'Collect Emeralds',
     KING_OF_HILL: 'King of the Hill',
-    TIME_ATTACK: 'Time Attack',
     SURVIVAL_WAVES: 'Survival Waves',
   },
 
@@ -41,7 +40,7 @@ const LEADERBOARD_SYSTEM = {
     }
   },
 
-  async showModal(mode = 'FIGHT_MOBS') {
+  async showModal(mode = 'MOB_HUNTER') {
     const modal = document.getElementById('arena-leaderboard-modal');
     if (!modal) return;
     modal.style.display = 'flex';

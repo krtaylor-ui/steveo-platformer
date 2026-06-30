@@ -17,8 +17,9 @@ const verifyToken = async (req, res, next) => {
   }
 };
 
-// Must match ARENA_MODES (js/arena-modes.js). Deathmatch (null mode) is not ranked.
-const VALID_MODES = ['FIGHT_MOBS', 'COLLECT_EMERALDS', 'KING_OF_HILL', 'TIME_ATTACK', 'SURVIVAL_WAVES'];
+// Must match ARENA_MODES active types (js/arena-modes.js). PvP modes (Deathmatch,
+// Capture the Flag) are not ranked yet (Phase 3B/3C).
+const VALID_MODES = ['MOB_HUNTER', 'COLLECT_EMERALDS', 'KING_OF_HILL', 'SURVIVAL_WAVES'];
 
 module.exports = function setupArenaLeaderboardRoutes(app) {
   // ── Submit an arena result ─────────────────────────────────────

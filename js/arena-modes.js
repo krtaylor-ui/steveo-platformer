@@ -6,21 +6,28 @@
 // each frame (its win condition flips arenaState.phase to 'ended'); _drawArenaHUD
 // shows getHUDText(); _drawArenaEnd shows label() + score().
 //
-//   FIGHT_MOBS       waves of bots; score = kills; timer-bound
-//   COLLECT_EMERALDS collect every emerald to win; score = emeralds
-//   KING_OF_HILL     hold the arena-center radius; win at the hold target
-//   TIME_ATTACK      collect every emerald; scored by time remaining
-//   SURVIVAL_WAVES   endless until death; score = kills
+//   MOB_HUNTER       hunt mobs before time runs out; score = kills; timer-bound
+//   COLLECT_EMERALDS collect every emerald (cycled across groups/rounds); score = emeralds
+//   KING_OF_HILL     hold the designed hill (or arena center); win at the hold target
+//   SURVIVAL_WAVES   escalating waves until death; score = kills
+//   DEATHMATCH       (Phase 3B — PvP) reserved/greyed
+//   CAPTURE_FLAG     (Phase 3C — teams + PvP) reserved/greyed
 // ============================================================
 
 const ARENA_MODES = {
   DEFS: {
-    FIGHT_MOBS:       { label: 'Fight Mobs',      desc: 'Defeat the bots before time runs out.' },
+    MOB_HUNTER:       { label: 'Mob Hunter',      desc: 'Hunt down the mobs before time runs out.' },
     COLLECT_EMERALDS: { label: 'Collect Emeralds', desc: 'Grab every emerald in the arena.' },
-    KING_OF_HILL:     { label: 'King of the Hill', desc: 'Hold the center to win.' },
-    TIME_ATTACK:      { label: 'Time Attack',     desc: 'Collect all emeralds as fast as you can.' },
-    SURVIVAL_WAVES:   { label: 'Survival Waves',  desc: 'Endless waves — survive as long as you can.' },
+    KING_OF_HILL:     { label: 'King of the Hill', desc: 'Hold the hill to win.' },
+    SURVIVAL_WAVES:   { label: 'Survival Waves',  desc: 'Escalating waves — survive as long as you can.' },
+    // Reserved — implemented in later phases (need PvP / teams). Shown greyed in pickers.
+    DEATHMATCH:       { label: 'Deathmatch',       desc: 'Most player eliminations wins. (Coming soon)', comingSoon: true },
+    CAPTURE_FLAG:     { label: 'Capture the Flag', desc: 'Capture the enemy flag. (Coming soon)',        comingSoon: true },
   },
+
+  // Game types playable right now (excludes coming-soon/PvP types).
+  activeKeys() { return Object.keys(this.DEFS).filter(k => !this.DEFS[k].comingSoon); },
+  isComingSoon(key) { return !!(this.DEFS[key] && this.DEFS[key].comingSoon); },
 
   HOLD_TARGET_FRAMES: 1200,         // 20s @60fps to win King of the Hill
   HILL_RADIUS_BLOCKS: 4,
@@ -48,8 +55,7 @@ const ARENA_MODES = {
     const a = game.arenaState;
     switch (ms.key) {
       case 'COLLECT_EMERALDS':
-      case 'TIME_ATTACK':
-        if (typeof EMERALD_SYSTEM !== 'undefined' && EMERALD_SYSTEM.allCollected()) a.phase = 'ended';
+        if (typeof EMERALD_SYSTEM !== 'undefined' && EMERALD_SYSTEM.allRoundsComplete()) a.phase = 'ended';
         break;
       case 'KING_OF_HILL':
         if (this._holding(game)) ms.holdFrames++;
@@ -62,7 +68,7 @@ const ARENA_MODES = {
         if (p1Dead && p2Dead) a.phase = 'ended';
         break;
       }
-      case 'FIGHT_MOBS':
+      case 'MOB_HUNTER':
       default:
         break; // timer-bound; the caller ends on timeUp
     }
@@ -76,16 +82,10 @@ const ARENA_MODES = {
     switch (ms.key) {
       case 'COLLECT_EMERALDS':
         return (typeof EMERALD_SYSTEM !== 'undefined') ? EMERALD_SYSTEM.collected : 0;
-      case 'TIME_ATTACK': {
-        const dur = game.arenaConfig.gameDuration || 0;
-        const elapsed = game.arenaState.gameStartTime
-          ? (game.arenaState.endTime || Date.now()) - game.arenaState.gameStartTime : 0;
-        return Math.max(0, Math.round((dur - elapsed) / 1000));
-      }
       case 'KING_OF_HILL':
         return Math.round(ms.holdFrames / 60);
       default:
-        return kills; // FIGHT_MOBS, SURVIVAL_WAVES
+        return kills; // MOB_HUNTER, SURVIVAL_WAVES
     }
   },
 
@@ -94,8 +94,7 @@ const ARENA_MODES = {
     const ms = game._arenaMode; if (!ms) return '';
     switch (ms.key) {
       case 'COLLECT_EMERALDS':
-      case 'TIME_ATTACK':
-        return (typeof EMERALD_SYSTEM !== 'undefined') ? `Emeralds: ${EMERALD_SYSTEM.collected}/${EMERALD_SYSTEM.total}` : '';
+        return (typeof EMERALD_SYSTEM !== 'undefined') ? EMERALD_SYSTEM.hudText() : '';
       case 'KING_OF_HILL':
         return `Hold: ${Math.round(ms.holdFrames / 60)}s / ${Math.round(this.HOLD_TARGET_FRAMES / 60)}s`;
       case 'SURVIVAL_WAVES':

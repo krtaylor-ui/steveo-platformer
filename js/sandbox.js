@@ -442,7 +442,9 @@ class SandboxManager {
   placeEmerald(wx, wy) {
     const col = Math.floor(wx / BLOCK_SIZE), row = Math.floor(wy / BLOCK_SIZE);
     if (this.placedEmeralds.some(e => e.col === col && e.row === row)) return;
-    this.placedEmeralds.push({ col, row, wx: col * BLOCK_SIZE + BLOCK_SIZE / 2, wy: row * BLOCK_SIZE + BLOCK_SIZE / 2 });
+    // Phase 3A.3 — emerald GROUP (1–3). New emeralds inherit the last-used group;
+    // change per-emerald via the popup. Group cycling drives Collect-Emeralds rounds.
+    this.placedEmeralds.push({ col, row, wx: col * BLOCK_SIZE + BLOCK_SIZE / 2, wy: row * BLOCK_SIZE + BLOCK_SIZE / 2, group: this.lastEmeraldGroup || 1 });
   }
   placePowerup(wx, wy) {
     const col = Math.floor(wx / BLOCK_SIZE), row = Math.floor(wy / BLOCK_SIZE);
@@ -470,6 +472,12 @@ class SandboxManager {
     const types = SB_POWERUP_TYPES.map(t => t.type);
     const cur   = types.indexOf(this.placedPowerups[idx].powerType);
     this.placedPowerups[idx].powerType = types[(cur + 1) % types.length];
+  }
+  cycleEmeraldGroup(idx) {
+    if (idx < 0 || idx >= this.placedEmeralds.length) return;
+    const g = ((this.placedEmeralds[idx].group || 1) % 3) + 1; // 1→2→3→1
+    this.placedEmeralds[idx].group = g;
+    this.lastEmeraldGroup = g; // new emeralds default to the last group you set
   }
   removeEmerald(idx) { if (idx >= 0 && idx < this.placedEmeralds.length) this.placedEmeralds.splice(idx, 1); this.popup = null; }
   removePowerup(idx) { if (idx >= 0 && idx < this.placedPowerups.length) this.placedPowerups.splice(idx, 1); this.popup = null; }
@@ -787,8 +795,9 @@ class SandboxManager {
     // Emerald popup (popH = 120, matches _drawPopup) — Phase 3A.2
     if (this.popup.kind === 'emerald') {
       if (mx >= px + pw - 26 && mx <= px + pw - 6 && my >= py + 6 && my <= py + 26) { this.closePopup(); return true; }
-      if (mx < px || mx > px + pw || my < py || my > py + 120) { this.closePopup(); return false; }
-      if (mx >= px + 14 && mx <= px + pw - 14 && my >= py + 76 && my <= py + 106) { this.removeEmerald(this.popup.emeraldIdx); return true; }
+      if (mx < px || mx > px + pw || my < py || my > py + 168) { this.closePopup(); return false; }
+      if (mx >= px + 14 && mx <= px + pw - 14 && my >= py + 88  && my <= py + 118) { this.cycleEmeraldGroup(this.popup.emeraldIdx); return true; }
+      if (mx >= px + 14 && mx <= px + pw - 14 && my >= py + 124 && my <= py + 154) { this.removeEmerald(this.popup.emeraldIdx); return true; }
       return true;
     }
 
@@ -955,6 +964,14 @@ class SandboxManager {
       if (sx < -40 || sx > CANVAS_W + 40 || sy < -40 || sy > CANVAS_H + 40) continue;
       const sel = this.popup?.kind === 'emerald' && this.popup.emeraldIdx === i;
       _drawEmeraldIcon(ctx, sx, sy, frameCount, sel);
+      // Group tag (1–3) so designers can see grouping at a glance.
+      ctx.save();
+      ctx.fillStyle = '#0a3d1e'; ctx.globalAlpha = 0.85;
+      ctx.beginPath(); ctx.arc(sx + 9, sy - 9, 7, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1; ctx.fillStyle = '#9fffce';
+      ctx.font = 'bold 9px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(e.group || 1), sx + 9, sy - 9);
+      ctx.restore();
     }
   }
 
@@ -1704,7 +1721,7 @@ class SandboxManager {
     if (this.popup.kind === 'emerald') {
       const em = this.placedEmeralds[this.popup.emeraldIdx];
       if (!em) { this.popup = null; ctx.restore(); return; }
-      const popH = 120;
+      const popH = 168;
       ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
       ctx.fillStyle = '#13131f'; _roundRect(ctx, px, py, pw, popH, 8); ctx.fill();
       ctx.strokeStyle = '#2ecc71'; ctx.lineWidth = 2; _roundRect(ctx, px, py, pw, popH, 8); ctx.stroke();
@@ -1712,7 +1729,10 @@ class SandboxManager {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText('EMERALD', CANVAS_W / 2, py + 18);
       _drawEmeraldIcon(ctx, CANVAS_W / 2, py + 48, 0, false);
-      _btn('✕  Remove', px + 14, py + 76, pw - 28, 30, '#FF6644', '#553333');
+      ctx.fillStyle = '#2ecc71'; ctx.font = 'bold 11px Courier New';
+      ctx.fillText(`Group ${em.group || 1}  (Collect-Emeralds rounds)`, CANVAS_W / 2, py + 74);
+      _btn('⟳  Change Group', px + 14, py + 88,  pw - 28, 30, '#7ec8e3', '#445566');
+      _btn('✕  Remove',       px + 14, py + 124, pw - 28, 30, '#FF6644', '#553333');
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
       ctx.restore();
       return;

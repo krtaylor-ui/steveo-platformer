@@ -161,7 +161,9 @@ class Game {
         options.arenaConfig || {}
       );
       this.arenaRespawnFrames = Math.max(1, Math.round(this.arenaConfig.respawnDelay / (1000 / 60)));
-      this.arenaState  = { phase: 'countdown', countdownStart: null, gameStartTime: null, endTime: null, scores: { p1: 0, p2: 0 } };
+      this.arenaState  = { phase: 'countdown', countdownStart: null, gameStartTime: null, endTime: null, scores: { p1: 0, p2: 0 },
+        // Reserved for Phase 3C teams (no logic yet).
+        teamsEnabled: false, teamScores: { A: 0, B: 0 } };
       this._arenaSpawns = { p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 } };
       // A user-designed arena (played from the picker / editor Test) arrives as a saved grid.
       this._arenaTemplateData = options.templateData || options.worldData || null;
@@ -633,6 +635,11 @@ class Game {
     this._worldAdvSettings.unlimitedArrows = true;
     this._armArenaPlayer(this.player, this._arenaSpawns.p1);
     if (this.player2) this._armArenaPlayer(this.player2, this._arenaSpawns.p2);
+
+    // Reserved team fields (Phase 3C — no logic yet; see [[phase3-arena-redesign]]).
+    for (const p of [this.player, this.player2]) {
+      if (p) { p.teamId = p.teamId ?? null; p.teamColor = p.teamColor ?? null; }
+    }
 
     // Enemies: drive from designed spawners (spawn eggs) when present; otherwise
     // spawn the default Skeleton bots (Quick Play / built-in map / back-compat).
