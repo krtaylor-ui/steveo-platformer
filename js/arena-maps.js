@@ -65,6 +65,27 @@ function _buildDeathmatchSmall() {
   };
 }
 
+// Empty arena "shell" at an arbitrary W×H: bedrock perimeter + stone floor, no
+// cover. The starter layout for a freshly created arena of ANY size (Phase 3A.3),
+// so the chosen world dimensions are honored instead of the fixed 25×15 map.
+function buildArenaStarterWorld(width, height) {
+  const W = Math.max(10, width | 0), H = Math.max(8, height | 0);
+  const grid = Array.from({ length: H }, () => new Array(W).fill(BLOCK.AIR));
+  const set = (r, c, b) => { if (r >= 0 && r < H && c >= 0 && c < W) grid[r][c] = b; };
+  const FLOOR = H - 2;
+  for (let c = 0; c < W; c++) set(H - 1, c, BLOCK.BEDROCK);
+  for (let r = 0; r < H; r++) { set(r, 0, BLOCK.BEDROCK); set(r, W - 1, BLOCK.BEDROCK); }
+  for (let c = 1; c < W - 1; c++) set(FLOOR, c, BLOCK.STONE);
+  return {
+    grid, width: W, height: H,
+    goalCol: W - 5, goalRow: H - 2,
+    spawnX: 2 * BLOCK_SIZE, spawnY: (FLOOR - 3) * BLOCK_SIZE,
+    redstoneComponents: [], spawnPoints: [], bedPositions: [],
+    portalData: _arenaEmptyPortalData(),
+    _arena: { playerSpawns: [{ col: 2, row: FLOOR - 3 }, { col: W - 3, row: FLOOR - 3 }] },
+  };
+}
+
 // ── User-designed arena (from saved world_data) ───────────────
 // Mirrors the grid + basic-redstone reconstruction that `_loadSandboxWorld`
 // performs, minus the dust/gate/transmitter overlays (those live on the Game
@@ -72,7 +93,14 @@ function _buildDeathmatchSmall() {
 // save has no usable grid so `_buildLevel` falls back to the built-in map.
 function buildArenaWorldDataFromSave(save) {
   const data = (typeof SaveMigrations !== 'undefined') ? SaveMigrations.migrateSave(save) : save;
-  if (!data || !Array.isArray(data.grid) || !data.grid.length) return null;
+  if (!data || !Array.isArray(data.grid) || !data.grid.length) {
+    // No grid yet (freshly created arena) — honor the saved dimensions with a
+    // sized shell instead of falling back to the built-in 25×15 map.
+    if (data && data.worldWidth && data.worldHeight) {
+      return buildArenaStarterWorld(data.worldWidth, data.worldHeight);
+    }
+    return null;
+  }
 
   const H = data.worldHeight || data.grid.length;
   const W = data.worldWidth  || (Array.isArray(data.grid[0]) ? data.grid[0].length : 0);

@@ -530,9 +530,11 @@ class Game {
     const data = this.gameMode === 'arena'
       // Play a user-designed arena from its saved grid, else the built-in default map.
       ? (buildArenaWorldDataFromSave(this._arenaTemplateData) || buildArenaWorldData(this.arenaConfig?.mapName || 'DEATHMATCH_SMALL'))
-      // New ARN sandbox world (no grid yet): open the editor on the starter arena layout.
+      // New ARN sandbox world (no grid yet): open the editor on a starter arena
+      // shell at the world's chosen dimensions (Phase 3A.3 — was fixed 25×15).
       : (this.gameMode === 'sandbox' && this._arenaStarter)
-        ? buildArenaWorldData('DEATHMATCH_SMALL')
+        ? buildArenaStarterWorld(this._sandboxDims ? this._sandboxDims.width : 25,
+                                 this._sandboxDims ? this._sandboxDims.height : 15)
         : (this.gameMode === 'sandbox' && this._sandboxDims)
           ? buildEmptySandboxWorld(this._sandboxDims.width, this._sandboxDims.height)
           : buildWorld();

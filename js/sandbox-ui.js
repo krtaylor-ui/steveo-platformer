@@ -521,9 +521,10 @@ const SANDBOX = {
       if (asBtn) asBtn.style.display = isArena ? '' : 'none';
       const options = hasGrid
         ? { templateData: data }
-        // Fresh ARN world: open the editor on the Deathmatch starter layout (walls + cover).
+        // Fresh ARN world: open the editor on a starter arena shell at the world's
+        // chosen size (Phase 3A.3 — previously hardcoded 25×15).
         : isArena
-          ? { worldWidth: 25, worldHeight: 15, arenaStarter: true }
+          ? { worldWidth: data.worldWidth || 25, worldHeight: data.worldHeight || 15, arenaStarter: true }
           : { worldWidth: data.worldWidth || 650, worldHeight: data.worldHeight || 60 };
 
       window.game = new Game('sandbox', options, () => this._onEditorExit());

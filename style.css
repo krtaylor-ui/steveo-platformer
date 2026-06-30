@@ -1193,21 +1193,34 @@
   left: 0;
   right: 0;
   display: none;
+  flex-wrap: nowrap;            /* never grow to a 2nd row (would cover the game) */
   justify-content: space-between;
   align-items: center;
-  gap: 10px;
-  padding: 8px 16px;
+  gap: 8px;
+  padding: 5px 12px;           /* slim strip so it doesn't cover the play area */
   background: rgba(0, 0, 0, 0.85);
   border-bottom: 2px solid #333;
   z-index: 1500;
 }
 
-.sb-editor-left,
+.sb-editor-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;              /* keep Back + title intact */
+}
+
 .sb-editor-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow-x: auto;           /* if buttons ever overflow, scroll — don't wrap/cover */
 }
+
+/* Compact buttons inside the editor bar so the whole row fits on one line. */
+#sandbox-editor-hud .play-hud-btn { padding: 4px 9px; font-size: 0.76rem; white-space: nowrap; }
 
 @media (max-width: 768px) {
   .sandbox-controls {
