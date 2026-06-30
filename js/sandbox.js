@@ -1255,6 +1255,14 @@ class SandboxManager {
     ctx.restore();
   }
 
+  // Small label centred at the bottom of a hotbar slot (Phase 3A.3 arena tools).
+  _sbSlotLabel(ctx, text, color, sx, sy) {
+    ctx.fillStyle = color; ctx.font = '6px Courier New';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.fillText(text, sx + SB_SLOT_SIZE / 2, sy + SB_SLOT_SIZE - 4);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  }
+
   // ── HUD ───────────────────────────────────────────────────────
   _drawHUD(ctx, player, frameCount, input) {
     ctx.save();
@@ -1393,6 +1401,24 @@ class SandboxManager {
           ctx.fillText(`×${entry.count ?? 20}`, ecx, sy + SB_SLOT_SIZE - 4);
           ctx.textAlign    = 'left';
           ctx.textBaseline = 'alphabetic';
+        } else if (entry.kind === 'emerald') {
+          const ecx = sx + SB_SLOT_SIZE / 2, ecy = sy + SB_SLOT_SIZE / 2 - 3;
+          _drawEmeraldIcon(ctx, ecx, ecy, 0, false);
+          this._sbSlotLabel(ctx, 'EMRLD', '#2ecc71', sx, sy);
+        } else if (entry.kind === 'powerup') {
+          const ecx = sx + SB_SLOT_SIZE / 2, ecy = sy + SB_SLOT_SIZE / 2 - 3;
+          _drawPowerupIcon(ctx, ecx, ecy, 'HEALTH', 0, false);
+          this._sbSlotLabel(ctx, 'POWER', '#e67e22', sx, sy);
+        } else if (entry.kind === 'hill') {
+          const ecx = sx + SB_SLOT_SIZE / 2, ecy = sy + SB_SLOT_SIZE / 2 - 2;
+          ctx.fillStyle = '#f1c40f'; ctx.fillRect(ecx - 11, ecy + 2, 22, 5);
+          ctx.fillStyle = '#fff7c0'; ctx.font = 'bold 11px Courier New';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('★', ecx, ecy - 5);
+          this._sbSlotLabel(ctx, 'HILL', '#f1c40f', sx, sy);
+        } else if (entry.kind === 'spawnline') {
+          const ecx = sx + SB_SLOT_SIZE / 2, ecy = sy + SB_SLOT_SIZE / 2 - 3;
+          _drawSpawnLineMarker(ctx, ecx, ecy, 1, 0);
+          this._sbSlotLabel(ctx, 'SPAWN', '#9b59b6', sx, sy);
         }
       }
 
@@ -1549,11 +1575,15 @@ class SandboxManager {
         else if (itm.kind === 'egg')   selected = this.isEggSelected       && this.selectedEggKey       === itm.key;
         else if (itm.kind === 'emerald') selected = this.isEmeraldSelected;
         else if (itm.kind === 'powerup') selected = this.isPowerupSelected;
+        else if (itm.kind === 'hill')      selected = this.isHillSelected;
+        else if (itm.kind === 'spawnline') selected = this.isSpawnLineSelected;
         else if (itm.kind === 'dust')  selected = this.isDustSelected;
         else if (itm.kind === 'gate')  selected = this.isGateSelected      && this.selectedGateType     === itm.gateType;
         else if (itm.kind === 'blockItem') selected = this.isBlockItemSelected && this.selectedBlockItemType === itm.blockType;
         else selected = !this.isEggSelected && !this.isToolSelected && !this.isDustSelected &&
-                        !this.isGateSelected && !this.isBlockItemSelected && this.selectedBlock === itm.blockType;
+                        !this.isGateSelected && !this.isBlockItemSelected && !this.isEmeraldSelected &&
+                        !this.isPowerupSelected && !this.isHillSelected && !this.isSpawnLineSelected &&
+                        this.selectedBlock === itm.blockType;
       } else {
         selected = !this.isEggSelected && !this.isToolSelected && !this.isDustSelected &&
                    !this.isBlockItemSelected && this.selectedBlock === items[i];
@@ -1681,6 +1711,18 @@ class SandboxManager {
           ctx.fillStyle = itm.color; ctx.font = '7px Courier New'; ctx.textBaseline = 'bottom';
           ctx.fillText(itm.name, cxc, gy - 1);
         }
+      } else if (isSpecialTab && itm.kind === 'hill') {
+        ctx.fillStyle = '#f1c40f'; ctx.fillRect(cxc - 12, cyc + 2, 24, 5);
+        ctx.fillStyle = '#fff7c0'; ctx.font = 'bold 12px Courier New';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('★', cxc, cyc - 5);
+        ctx.fillStyle = selected ? '#fff' : '#aaa'; ctx.font = '7px Courier New'; ctx.textBaseline = 'bottom';
+        ctx.fillText('HILL', cxc, gy + slotSz - 4);
+        if (hov) { ctx.fillStyle = itm.color; ctx.fillText(itm.name, cxc, gy - 1); }
+      } else if (isSpecialTab && itm.kind === 'spawnline') {
+        _drawSpawnLineMarker(ctx, cxc, cyc - 2, 1, 0);
+        ctx.fillStyle = selected ? '#fff' : '#aaa'; ctx.font = '7px Courier New';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText('SPWN', cxc, gy + slotSz - 4);
+        if (hov) { ctx.fillStyle = itm.color; ctx.fillText(itm.name, cxc, gy - 1); }
       } else {
         // Block (either special tab block kind or regular tab block)
         const btype = isSpecialTab ? itm.blockType : items[i];
