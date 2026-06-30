@@ -121,7 +121,7 @@ const EMERALD_SYSTEM = {
     for (const e of this._activeEmeralds()) {
       if (e.collected) continue;
       const sx = e.wx - camera.x, sy = e.wy - camera.y;
-      if (sx < -40 || sx > CANVAS_W + 40 || sy < -40 || sy > CANVAS_H + 40) continue;
+      if (sx < camera.viewMinX() - 40 || sx > camera.viewMaxX() + 40 || sy < camera.viewMinY() - 40 || sy > camera.viewMaxY() + 40) continue;
       _drawEmeraldIcon(ctx, sx, sy, frameCount, false);
     }
   },

@@ -164,6 +164,9 @@ class Game {
     this.isArena = (this.gameMode === 'arena');
     // New ARN sandbox worlds (no grid yet) open in the editor with the starter layout.
     this._arenaStarter = !!options.arenaStarter;
+    // True when the SANDBOX editor is editing an arena world (fresh or with a grid),
+    // so the editor view can auto-fit single-screen arenas like play does (Phase 3A.3).
+    this._editArena = this._arenaStarter || !!(options.templateData && options.templateData.gameModeDefault === 'ARN');
     if (this.isArena) {
       this.arenaConfig = Object.assign(
         { gameDuration: 300000, respawnDelay: 2000, botCount: 3, mapName: 'DEATHMATCH_SMALL',
@@ -772,12 +775,34 @@ class Game {
     if (this.gameMode === 'speedrunner' && this._sr) return this._sr.srZoom ?? 1.0;
     if (this._zoomOverride != null && this._zoomOverrideAllowed()) {
       const z = this._zoomOverride;
-      // Keep the arena framed/centered under the override (non-arena uses follow()).
-      if (this.isArena) { const c = this._clampArenaCam(this.level.pixelWidth / 2, this.level.pixelHeight / 2, z); this.camera.x = c.x; this.camera.y = c.y; }
+      this._focusCam(z); // keep the player (or arena) on screen under the override
       return z;
     }
     if (this.isArena) return this._arenaActiveZoom();
+    // Sandbox editing an arena single-screen world → fit the whole arena (like play).
+    if (this.gameMode === 'sandbox' && this._editArena && this._worldAdvSettings.arenaViewType !== 'scrolling') {
+      const z = this._fitZoom();
+      const c = this._clampArenaCam(this.level.pixelWidth / 2, this.level.pixelHeight / 2, z);
+      this.camera.x = c.x; this.camera.y = c.y;
+      return z;
+    }
     return Math.max(0.2, Math.min(4, (this._worldAdvSettings && this._worldAdvSettings.worldZoom) || 1.0));
+  }
+
+  // Re-centre the camera so the focus stays on screen under zoom `z`. Arenas frame
+  // the level centre; everything else frames the player (midpoint in 2-player).
+  // Reuses the zoom-aware clamp so the viewport never leaves the level.
+  _focusCam(z) {
+    let fx, fy;
+    if (this.isArena) { fx = this.level.pixelWidth / 2; fy = this.level.pixelHeight / 2; }
+    else {
+      const p = this.player;
+      fx = p.x + (p.width || PLAYER_W) / 2;
+      fy = p.y + (p.height || PLAYER_H) / 2;
+      if (this.player2) { fx = (fx + this.player2.x + (this.player2.width || PLAYER_W) / 2) / 2; fy = (fy + this.player2.y + (this.player2.height || PLAYER_H) / 2) / 2; }
+    }
+    const c = this._clampArenaCam(fx, fy, z);
+    this.camera.x = c.x; this.camera.y = c.y;
   }
 
   // Zoom that fits the whole level in the viewport (≤1 so small levels aren't
@@ -1455,7 +1480,7 @@ class Game {
     if (this._zoomOverrideAllowed() && this.input.isJustDown('KeyZ')
         && !this.input.isDown('ControlLeft') && !this.input.isDown('ControlRight')) {
       this._zoomOverrideIdx = (this._zoomOverrideIdx + 1) % 5;
-      this._zoomOverride = [1.0, 2.0, 3.0, 4.0, null][this._zoomOverrideIdx];
+      this._zoomOverride = [0.25, 0.6, 1.0, 1.5, null][this._zoomOverrideIdx];
       const pct = this._zoomOverride == null ? 'Default' : `${Math.round(this._zoomOverride * 100)}%`;
       this._notify(`Zoom: ${pct}`, '#7ec8e3', 90);
     }
@@ -9857,8 +9882,8 @@ class Game {
     // XP bar and hotbar suppressed in sandbox (no XP gain, sandbox has its own hotbar)
     if (this.gameMode !== 'sandbox') {
       this._drawXpBar(ctx);
-      if (this.player2) {
-        // 2P: compact hotbar sits just below the XP bar (mirrored layout with P2's on the right)
+      if (this.player2 || this.isArena) {
+        // 2P / local-MP and Arena: compact hotbar under the XP bar (no big hotbar).
         this._drawCompactHotbar(ctx, this.player, false);
       } else {
         this._drawHotbar(ctx);

@@ -265,7 +265,7 @@ class Zombie extends Mob {
     if (!this.alive) return;
     const sx = Math.floor(this.x - camera.x);
     const sy = Math.floor(this.y - camera.y);
-    if (sx > CANVAS_W + 40 || sx + this.width < -40) return;
+    if (sx > camera.viewMaxX() + 40 || sx + this.width < camera.viewMinX() - 40) return;
 
     ctx.save();
     this._flashAlpha(ctx);
@@ -390,7 +390,7 @@ class Skeleton extends Mob {
     if (!this.alive) return;
     const sx = Math.floor(this.x - camera.x);
     const sy = Math.floor(this.y - camera.y);
-    if (sx > CANVAS_W + 40 || sx + this.width < -40) return;
+    if (sx > camera.viewMaxX() + 40 || sx + this.width < camera.viewMinX() - 40) return;
 
     ctx.save();
     this._flashAlpha(ctx);
@@ -540,7 +540,7 @@ class Creeper extends Mob {
     if (!this.alive) return;
     const sx = Math.floor(this.x - camera.x);
     const sy = Math.floor(this.y - camera.y);
-    if (sx > CANVAS_W + 40 || sx + this.width < -40) return;
+    if (sx > camera.viewMaxX() + 40 || sx + this.width < camera.viewMinX() - 40) return;
 
     // Fuse flash: speeds up as timer runs out
     const flashInterval = this.fuseTimer > 120 ? 20 : this.fuseTimer > 60 ? 10 : 5;
@@ -654,7 +654,7 @@ class Arrow {
     if (!this.alive) return;
     const sx    = this.x - camera.x;
     const sy    = this.y - camera.y;
-    if (sx < -20 || sx > CANVAS_W + 20) return;
+    if (sx < camera.viewMinX() - 20 || sx > camera.viewMaxX() + 20) return;
     const angle = Math.atan2(this.vy, this.vx);
 
     ctx.save();
@@ -699,7 +699,7 @@ class DamageNumber {
   draw(ctx, camera) {
     const sx = this.worldX - camera.x;
     const sy = this.worldY - camera.y;
-    if (sx < -40 || sx > CANVAS_W + 40 || sy < -40 || sy > CANVAS_H + 40) return;
+    if (sx < camera.viewMinX() - 40 || sx > camera.viewMaxX() + 40 || sy < camera.viewMinY() - 40 || sy > camera.viewMaxY() + 40) return;
 
     const alpha = Math.min(1, this.life / this.maxLife * 2.5);
     ctx.save();
@@ -749,7 +749,7 @@ class XpOrb {
   draw(ctx, camera) {
     const sx = this.worldX - camera.x;
     const sy = this.displayY - camera.y;
-    if (sx < -20 || sx > CANVAS_W + 20 || sy < -20 || sy > CANVAS_H + 20) return;
+    if (sx < camera.viewMinX() - 20 || sx > camera.viewMaxX() + 20 || sy < camera.viewMinY() - 20 || sy > camera.viewMaxY() + 20) return;
 
     const fadeAlpha = Math.min(1, this.life / 60);   // fade in last 1 s
     const pulse     = 1 + Math.sin(this.age * 0.12 + this.bobPhase) * 0.18;
@@ -869,7 +869,7 @@ class CaveSpider extends Mob {
     if (!this.alive) return;
     const sx = Math.floor(this.x - camera.x);
     const sy = Math.floor(this.y - camera.y);
-    if (sx < -40 || sx > CANVAS_W + 40) return;
+    if (sx < camera.viewMinX() - 40 || sx > camera.viewMaxX() + 40) return;
 
     ctx.save();
     this._flashAlpha(ctx);
@@ -930,7 +930,7 @@ class Piglin extends Mob {
     if (!this.alive) return;
     const sx = Math.floor(this.x - camera.x);
     const sy = Math.floor(this.y - camera.y);
-    if (sx < -40 || sx > CANVAS_W + 40) return;
+    if (sx < camera.viewMinX() - 40 || sx > camera.viewMaxX() + 40) return;
 
     ctx.save();
     this._flashAlpha(ctx);
@@ -1006,7 +1006,7 @@ class BlazeShot {
     if (!this.alive) return;
     const sx = Math.floor(this.x - camera.x);
     const sy = Math.floor(this.y - camera.y);
-    if (sx < -20 || sx > CANVAS_W + 20) return;
+    if (sx < camera.viewMinX() - 20 || sx > camera.viewMaxX() + 20) return;
 
     const t   = Date.now() / 100;
     const glo = 0.7 + Math.sin(t) * 0.3;
@@ -1089,7 +1089,7 @@ class Blaze extends Mob {
     const osc = Math.sin(Date.now() / 300 + this.floatOffset) * 4;
     const sx  = Math.floor(this.x - camera.x);
     const sy  = Math.floor(this.y + osc - camera.y);
-    if (sx < -40 || sx > CANVAS_W + 40) return;
+    if (sx < camera.viewMinX() - 40 || sx > camera.viewMaxX() + 40) return;
 
     ctx.save();
     this._flashAlpha(ctx);
@@ -1153,7 +1153,7 @@ class WitherSkeleton extends Mob {
     if (!this.alive) return;
     const sx = Math.floor(this.x - camera.x);
     const sy = Math.floor(this.y - camera.y);
-    if (sx < -40 || sx > CANVAS_W + 40) return;
+    if (sx < camera.viewMinX() - 40 || sx > camera.viewMaxX() + 40) return;
 
     ctx.save();
     this._flashAlpha(ctx);
@@ -1280,7 +1280,7 @@ class Enderman extends Mob {
     if (!this.alive) return;
     const sx = Math.floor(this.x - camera.x);
     const sy = Math.floor(this.y - camera.y);
-    if (sx < -40 || sx > CANVAS_W + 40) return;
+    if (sx < camera.viewMinX() - 40 || sx > camera.viewMaxX() + 40) return;
 
     ctx.save();
     this._flashAlpha(ctx);
@@ -1353,7 +1353,7 @@ class ItemDrop {
     const bob = Math.sin(Date.now() / 400 + this.bobOffset) * 2;
     const sx  = Math.floor(this.x - camera.x);
     const sy  = Math.floor(this.y - camera.y + bob);
-    if (sx < -20 || sx > CANVAS_W + 20) return;
+    if (sx < camera.viewMinX() - 20 || sx > camera.viewMaxX() + 20) return;
 
     // Glowing item block
     const alpha = this.life < 300 ? (this.life / 300) : 1;
@@ -1767,7 +1767,7 @@ class MobManager {
       if (!mob.alive) continue;
       const sx = mob.x - camera.x;
       const sy = mob.y - camera.y;
-      const onScreen = sx > -48 && sx < CANVAS_W + 48 && sy > -48 && sy < CANVAS_H + 48;
+      const onScreen = sx > camera.viewMinX() - 48 && sx < camera.viewMaxX() + 48 && sy > camera.viewMinY() - 48 && sy < camera.viewMaxY() + 48;
       if (onScreen && !mob.soundPlayed) {
         const snd = AMBIENT_SOUNDS[mob.constructor.name];
         if (snd) this.soundCallback(snd, 0.6);

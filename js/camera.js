@@ -55,4 +55,13 @@ class Camera {
     const wy = (sy - CANVAS_H / 2) / z + CANVAS_H / 2 + this.y;
     return { x: wx, y: wy };
   }
+
+  // Visible raw-screen bounds under the current zoom (scale-about-canvas-centre).
+  // At z=1 these are 0..CANVAS_W / 0..CANVAS_H; when zoomed OUT (z<1) they widen,
+  // so entity draw-culling must use these instead of the raw CANVAS_W/H constants
+  // (otherwise mobs/arrows past the un-zoomed edge get wrongly hidden).
+  viewMinX() { const z = this._srZoom || 1.0; return CANVAS_W / 2 - (CANVAS_W / 2) / z; }
+  viewMaxX() { const z = this._srZoom || 1.0; return CANVAS_W / 2 + (CANVAS_W / 2) / z; }
+  viewMinY() { const z = this._srZoom || 1.0; return CANVAS_H / 2 - (CANVAS_H / 2) / z; }
+  viewMaxY() { const z = this._srZoom || 1.0; return CANVAS_H / 2 + (CANVAS_H / 2) / z; }
 }
