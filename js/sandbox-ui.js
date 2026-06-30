@@ -101,28 +101,14 @@ const SANDBOX = {
     document.getElementById('as-zoom-mode')?.addEventListener('change', (e) => this._syncPresetZoomVisibility(e.target.value));
   },
 
-  // ── Arena Settings modal (Phase 3A.2) ──────────────────────────
-  // Reads/writes window.game._worldAdvSettings; values persist on the next Save
-  // (already serialized via GAME_STATE.serialize → worldAdvSettings).
+  // ── Arena Settings (Phase 3A.3) ────────────────────────────────
+  // Consolidated into the canvas World Settings modal as the "Arena" tab
+  // (retired the separate HTML modal). The editor button just opens it there.
   openArenaSettings() {
     const g = window.game;
     if (!g || !g._worldAdvSettings) { alert('Open a world first.'); return; }
-    const s = g._worldAdvSettings;
-    const health = Math.max(2, Math.min(40, s.arenaPlayerMaxHealth ?? 20));
-    const zoomMode = s.arenaZoomMode || 'NONE';
-    const presetZoom = Math.max(0.3, Math.min(1.5, s.arenaPresetZoom ?? 1.0));
-    const redstone = Math.max(0.5, Math.min(2.0, s.redstoneSpeed ?? 1.0));
-
-    document.getElementById('as-health').value = String(health);
-    document.getElementById('as-health-val').textContent = String(Math.round(health / 2));
-    document.getElementById('as-zoom-mode').value = zoomMode;
-    document.getElementById('as-preset-zoom').value = String(presetZoom);
-    document.getElementById('as-zoom-val').textContent = `${presetZoom.toFixed(2)}×`;
-    document.getElementById('as-redstone').value = String(redstone);
-    document.getElementById('as-redstone-val').textContent = `${redstone.toFixed(2)}×`;
-    this._syncPresetZoomVisibility(zoomMode);
-
-    document.getElementById('arena-settings-modal').style.display = 'flex';
+    g._worldSettingsOpen = true;
+    g._wsTab = 'arena';
   },
 
   hideArenaSettings() {

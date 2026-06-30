@@ -7896,10 +7896,10 @@ class Game {
     }
 
     // Tab bar clicks — sandbox shows all 8 tabs; other modes only show the 4 player-relevant tabs
-    const _allWsTabs = [{ id: 'drops', label: 'Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'multiplayer', label: 'Multi' }, { id: 'speedrunner', label: 'SR' }, { id: 'physics', label: 'Physics' }];
+    const _allWsTabs = [{ id: 'drops', label: 'Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'multiplayer', label: 'Multi' }, { id: 'speedrunner', label: 'SR' }, { id: 'physics', label: 'Physics' }, { id: 'arena', label: 'Arena' }];
     const _playTabIds = ['advanced', 'input', 'audio', 'multiplayer'];
     const TABS = (this.gameMode === 'sandbox') ? _allWsTabs : _allWsTabs.filter(t => _playTabIds.includes(t.id));
-    const TAB_STRIDE = 70, TAB_W = 67;
+    const TAB_STRIDE = Math.floor((L.pw - 16) / TABS.length), TAB_W = TAB_STRIDE - 3;
     for (let t = 0; t < TABS.length; t++) {
       const tx = L.px + 8 + t * TAB_STRIDE;
       if (mx >= tx && mx <= tx + TAB_W && my >= L.TAB_Y && my <= L.TAB_Y + L.TAB_H) {
@@ -8189,6 +8189,32 @@ class Game {
       return;
     }
 
+    if (this._wsTab === 'arena') {
+      const aws  = this._worldAdvSettings;
+      const tgX  = L.px + L.pw - 100, tgW = 86, tgH = 22, rowH = 30;
+      const cyc  = (arr, cur) => arr[(arr.indexOf(cur) + 1) % arr.length];
+      const cycF = (arr, cur) => { const i = arr.findIndex(v => Math.abs(v - cur) < 0.001); return arr[(i < 0 ? 0 : i + 1) % arr.length]; };
+      const hitRow = (i) => { const rY = L.FIRST_ROW + i * rowH; return mx >= tgX && mx <= tgX + tgW && my >= rY && my <= rY + tgH; };
+      if (hitRow(0)) aws.arenaPlayerMaxHealth = cyc([2,4,6,8,10,12,14,16,18,20], aws.arenaPlayerMaxHealth || 20);
+      else if (hitRow(1)) aws.arenaViewType = (aws.arenaViewType === 'scrolling') ? 'single' : 'scrolling';
+      else if (hitRow(2)) aws.arenaZoomMode = cyc(['NONE','PRESET','DYNAMIC'], aws.arenaZoomMode || 'NONE');
+      else if (hitRow(3)) aws.arenaPresetZoom = cycF([0.3,0.5,0.7,1.0,1.2,1.5], aws.arenaPresetZoom || 1.0);
+      else if (hitRow(4)) aws.arenaMobHealth = cyc(['EASY','MEDIUM','HARD'], aws.arenaMobHealth || 'MEDIUM');
+      else if (hitRow(5)) aws.arenaRespawnTime = cyc([0,1,2,3,5,8,10], aws.arenaRespawnTime ?? 2);
+      else if (hitRow(6)) aws.redstoneSpeed = cycF([0.5,0.75,1.0,1.25,1.5,2.0], aws.redstoneSpeed || 1.0);
+      else if (Array.isArray(this._wsArenaChips)) {
+        for (const c of this._wsArenaChips) {
+          if (mx >= c.x && mx <= c.x + c.w && my >= c.y && my <= c.y + c.h) {
+            if (!Array.isArray(aws.arenaEnabledTypes)) aws.arenaEnabledTypes = [];
+            const idx = aws.arenaEnabledTypes.indexOf(c.key);
+            if (idx >= 0) aws.arenaEnabledTypes.splice(idx, 1); else aws.arenaEnabledTypes.push(c.key);
+            break;
+          }
+        }
+      }
+      return;
+    }
+
     // ── Mob Drops tab ──────────────────────────────────────────
     for (let i = 0; i < mobs.length; i++) {
       const rowY = L.FIRST_ROW + i * L.ROW_H;
@@ -8222,6 +8248,18 @@ class Game {
         }
       }
     }
+  }
+
+  // Warnings for the Arena settings tab: an enabled game type missing its
+  // required design element (uses the editor's placed objects). Phase 3A.3.
+  _arenaSettingsWarnings(enabled) {
+    const w = [];
+    const sb = this.sandbox;
+    if (!sb) return w;
+    if (enabled.includes('KING_OF_HILL') && !sb.placedHill) w.push('King of the Hill: no Hill placed');
+    if (enabled.includes('COLLECT_EMERALDS') && (!sb.placedEmeralds || sb.placedEmeralds.length === 0)) w.push('Collect Emeralds: no emeralds placed');
+    if (enabled.includes('SURVIVAL_WAVES') && (!sb.placedSpawnLines || sb.placedSpawnLines.length === 0)) w.push('Survival Waves: no Spawn Lines placed');
+    return w;
   }
 
   _drawWorldSettings(ctx) {
@@ -8259,10 +8297,10 @@ class Game {
     ctx.fillText('×', xbx + 10, xby + 11);
 
     // Tab bar — sandbox shows all 8 tabs; other modes show only 4 player-relevant tabs
-    const _allWsTabs2 = [{ id: 'drops', label: 'Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'multiplayer', label: 'Multi' }, { id: 'speedrunner', label: 'SR' }, { id: 'physics', label: 'Physics' }];
+    const _allWsTabs2 = [{ id: 'drops', label: 'Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'multiplayer', label: 'Multi' }, { id: 'speedrunner', label: 'SR' }, { id: 'physics', label: 'Physics' }, { id: 'arena', label: 'Arena' }];
     const _playTabIds2 = ['advanced', 'input', 'audio', 'multiplayer'];
     const TABS = (this.gameMode === 'sandbox') ? _allWsTabs2 : _allWsTabs2.filter(t => _playTabIds2.includes(t.id));
-    const TAB_STRIDE = 70, TAB_W = 67;
+    const TAB_STRIDE = Math.floor((L.pw - 16) / TABS.length), TAB_W = TAB_STRIDE - 3;
     for (let t = 0; t < TABS.length; t++) {
       const tx = L.px + 8 + t * TAB_STRIDE;
       const active = this._wsTab === TABS[t].id;
@@ -8784,6 +8822,71 @@ class Game {
         '(hold Shift to move 2× speed)',
         aws.sprintEnabled !== false ? 'On' : 'Off');
 
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    } else if (this._wsTab === 'arena') {
+      // ── Arena tab (Phase 3A.3) ────────────────────────────────
+      const aws  = this._worldAdvSettings;
+      const mx2  = this.input.mouse.x, my2 = this.input.mouse.y;
+      const tgX  = L.px + L.pw - 100, tgW = 86, tgH = 22;
+      ctx.font = '9px Courier New'; ctx.fillStyle = '#888899';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText('Per-world arena defaults  ·  P or Esc to close', L.px + L.pw / 2, L.CONTENT_Y + 8);
+
+      const rowH = 30;
+      const drawRow = (i, label, valStr) => {
+        const rY = L.FIRST_ROW + i * rowH;
+        ctx.font = '11px Courier New'; ctx.fillStyle = '#AAAACC';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(label, L.MOB_COL, rY + 11);
+        const hov = mx2 >= tgX && mx2 <= tgX + tgW && my2 >= rY && my2 <= rY + tgH;
+        ctx.fillStyle = hov ? '#1A2A3A' : '#232333';
+        ctx.strokeStyle = hov ? '#44AAFF' : '#555577'; ctx.lineWidth = 1;
+        ctx.fillRect(tgX, rY, tgW, tgH); ctx.strokeRect(tgX, rY, tgW, tgH);
+        ctx.font = 'bold 11px Courier New'; ctx.fillStyle = '#88CCFF';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(valStr, tgX + tgW / 2, rY + 12);
+        return rY;
+      };
+
+      const hp = aws.arenaPlayerMaxHealth || 20;
+      drawRow(0, 'Player Health', `${Math.round(hp / 2)} ❤`);
+      drawRow(1, 'World View',    (aws.arenaViewType === 'scrolling') ? 'Scrolling' : 'Single');
+      drawRow(2, 'Zoom Mode',     aws.arenaZoomMode || 'NONE');
+      drawRow(3, 'Preset Zoom',   `${(aws.arenaPresetZoom || 1).toFixed(2)}x`);
+      drawRow(4, 'Mob Health',    aws.arenaMobHealth || 'MEDIUM');
+      drawRow(5, 'Respawn Time',  `${aws.arenaRespawnTime ?? 2}s`);
+      drawRow(6, 'Redstone Speed',`${(aws.redstoneSpeed || 1).toFixed(2)}x`);
+
+      // Enabled game types — 4 inline toggle chips + greyed coming-soon note.
+      const typesY = L.FIRST_ROW + 7 * rowH;
+      ctx.font = '11px Courier New'; ctx.fillStyle = '#AAAACC';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText('Game Types', L.MOB_COL, typesY + 11);
+      const enabled = Array.isArray(aws.arenaEnabledTypes) ? aws.arenaEnabledTypes : [];
+      const chips = [['MOB_HUNTER','Hunt'],['COLLECT_EMERALDS','Emrld'],['KING_OF_HILL','Hill'],['SURVIVAL_WAVES','Wave']];
+      const chipW = 56, chipX0 = L.px + 120;
+      this._wsArenaChips = [];
+      chips.forEach(([key, lbl], ci) => {
+        const cx = chipX0 + ci * (chipW + 4);
+        const on = enabled.includes(key);
+        const hov = mx2 >= cx && mx2 <= cx + chipW && my2 >= typesY && my2 <= typesY + tgH;
+        ctx.fillStyle = on ? (hov ? '#2e6b3a' : '#27562f') : (hov ? '#3a2a2a' : '#2a2333');
+        ctx.strokeStyle = on ? '#4CAF50' : '#555577'; ctx.lineWidth = 1;
+        ctx.fillRect(cx, typesY, chipW, tgH); ctx.strokeRect(cx, typesY, chipW, tgH);
+        ctx.font = 'bold 10px Courier New'; ctx.fillStyle = on ? '#9fffce' : '#888899';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(lbl, cx + chipW / 2, typesY + 12);
+        this._wsArenaChips.push({ x: cx, y: typesY, w: chipW, h: tgH, key });
+      });
+
+      // Warnings (enabled type missing its required design element).
+      const warn = this._arenaSettingsWarnings(enabled);
+      if (warn.length) {
+        ctx.font = '9px Courier New'; ctx.fillStyle = '#FF9800';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        ctx.fillText('⚠ ' + warn[0], L.MOB_COL, typesY + 40);
+        if (warn[1]) ctx.fillText('⚠ ' + warn[1], L.MOB_COL, typesY + 53);
+      }
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     } else {
       // ── Mob Drops tab ─────────────────────────────────────────

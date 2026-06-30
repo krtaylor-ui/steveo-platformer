@@ -641,36 +641,8 @@
     </div>
   </div>
 
-  <!-- ── Arena Settings Modal (Phase 3A.2) ─────────────────── -->
-  <div id="arena-settings-modal" style="display: none;">
-    <div class="modal-content">
-      <h3>⚙ Arena Settings</h3>
-      <div class="form-group">
-        <label>Player Health: <span id="as-health-val">10</span> ❤</label>
-        <input type="range" id="as-health" min="2" max="40" step="2" value="20">
-      </div>
-      <div class="form-group">
-        <label>Zoom Mode:</label>
-        <select id="as-zoom-mode">
-          <option value="NONE">None</option>
-          <option value="PRESET">Preset</option>
-          <option value="DYNAMIC">Dynamic (co-op)</option>
-        </select>
-      </div>
-      <div class="form-group" id="as-preset-zoom-group">
-        <label>Preset Zoom: <span id="as-zoom-val">1.00×</span></label>
-        <input type="range" id="as-preset-zoom" min="0.3" max="1.5" step="0.05" value="1.0">
-      </div>
-      <div class="form-group">
-        <label>Redstone Speed: <span id="as-redstone-val">1.00×</span></label>
-        <input type="range" id="as-redstone" min="0.5" max="2.0" step="0.1" value="1.0">
-      </div>
-      <div class="form-row">
-        <button id="as-cancel-btn" class="btn btn-secondary">Cancel</button>
-        <button id="as-apply-btn" class="btn btn-primary">Apply</button>
-      </div>
-    </div>
-  </div>
+  <!-- Arena Settings are now the "Arena" tab in the canvas World Settings modal
+       (Phase 3A.3) — the separate HTML modal was retired. -->
 
   <!-- ── Arena Mode Selector Modal (Phase 3A.2) ────────────── -->
   <div id="arena-mode-select-modal" style="display: none;">
