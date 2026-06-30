@@ -52,6 +52,8 @@ class Game {
     this.gameMode        = mode;          // 'normal' | 'sandbox' | 'platformer' | 'speedrunner'
     this._onReturnToMenu = onReturnToMenu;
     this._testMode       = !!(options && options.testMode); // Universal Test World — no persistence
+    this._zoomOverride   = null; // Z-key manual zoom (sandbox/God): null = prescribed default
+    this._zoomOverrideIdx = -1;  // -1 = default; 0..3 = 100/200/300/400%
     this._running        = true;
 
     // Must be initialized before _buildLevel() which reads twoPlayerMode (Phase 12)
@@ -92,6 +94,9 @@ class Game {
       jumpHeightBlocks:          null,      // null = use default JUMP_VELOCITY; else apex in blocks
       airJumpEnabled:            false,     // allow one mid-air (double) jump
       sprintEnabled:             true,      // Shift = 2× ground speed
+      // Phase 3A.3 — universal per-world "prescribed" zoom (all modes). The
+      // sandbox/God-mode Z key cycles 100/200/300/400% then back to this default.
+      worldZoom:                 1.0,       // 0.5–2.0 base view zoom
       // Phase 3A.2 — per-world arena config
       arenaPlayerMaxHealth:      20,        // hp (2–40); UI shows hearts = hp/2
       arenaZoomMode:             'NONE',    // 'NONE' | 'PRESET' | 'DYNAMIC'
@@ -755,12 +760,46 @@ class Game {
     p.respawnAt(spawn.x, spawn.y);
   }
 
-  // ── Phase 3A.2: Arena zoom ──────────────────────────────────
-  // Returns the active arena zoom (1.0 = none) and, for PRESET/DYNAMIC, recenters
-  // the camera under the zoomed viewport (overriding _setupArena's fixed center).
+  // The manual Z zoom is available while editing (sandbox) or in God mode.
+  _zoomOverrideAllowed() {
+    return this.gameMode === 'sandbox' || !!(this.player && this.player.godMode);
+  }
+
+  // ── Phase 3A.3: unified view zoom (all modes) ───────────────
+  // Resolution order: Speed-Runner's own speed-zoom → manual Z override
+  // (sandbox/God) → arena prescribed zoom → universal worldZoom default.
+  _resolveViewZoom() {
+    if (this.gameMode === 'speedrunner' && this._sr) return this._sr.srZoom ?? 1.0;
+    if (this._zoomOverride != null && this._zoomOverrideAllowed()) {
+      const z = this._zoomOverride;
+      // Keep the arena framed/centered under the override (non-arena uses follow()).
+      if (this.isArena) { const c = this._clampArenaCam(this.level.pixelWidth / 2, this.level.pixelHeight / 2, z); this.camera.x = c.x; this.camera.y = c.y; }
+      return z;
+    }
+    if (this.isArena) return this._arenaActiveZoom();
+    return Math.max(0.2, Math.min(4, (this._worldAdvSettings && this._worldAdvSettings.worldZoom) || 1.0));
+  }
+
+  // Zoom that fits the whole level in the viewport (≤1 so small levels aren't
+  // magnified). Used by single-screen/fixed-camera arenas (Phase 3A.3).
+  _fitZoom() {
+    return Math.max(0.2, Math.min(1.0, Math.min(CANVAS_W / this.level.pixelWidth, CANVAS_H / this.level.pixelHeight)));
+  }
+
+  // ── Phase 3A.2/3A.3: Arena zoom ─────────────────────────────
+  // Returns the active arena zoom (1.0 = none) and recenters the camera under the
+  // zoomed viewport (overriding _setupArena's fixed center). Single-screen with no
+  // explicit zoom mode auto-fits the whole arena on screen.
   _arenaActiveZoom() {
     const s = this._worldAdvSettings;
     const mode = (s && s.arenaZoomMode) || 'NONE';
+    // Single-screen (fixed camera) + no manual mode → fit the whole arena.
+    if (mode === 'NONE' && (s && s.arenaViewType) !== 'scrolling') {
+      const z = this._fitZoom();
+      const cam = this._clampArenaCam(this.level.pixelWidth / 2, this.level.pixelHeight / 2, z);
+      this.camera.x = cam.x; this.camera.y = cam.y;
+      return z;
+    }
     if (mode === 'PRESET') {
       const z = Math.max(0.3, Math.min(1.5, (s && s.arenaPresetZoom) || 1.0));
       const cam = this._clampArenaCam(this.level.pixelWidth / 2, this.level.pixelHeight / 2, z);
@@ -1408,6 +1447,17 @@ class Game {
         this.player.hyperSpeed      = false;
         this.player.speedMultiplier = 1;
       }
+    }
+
+    // ── Z: cycle manual zoom override (sandbox editor or God mode) ──
+    // Plain Z (Ctrl+Z stays Undo) steps 100→200→300→400% then back to the
+    // world's prescribed default zoom. Works in every mode while editing/God.
+    if (this._zoomOverrideAllowed() && this.input.isJustDown('KeyZ')
+        && !this.input.isDown('ControlLeft') && !this.input.isDown('ControlRight')) {
+      this._zoomOverrideIdx = (this._zoomOverrideIdx + 1) % 5;
+      this._zoomOverride = [1.0, 2.0, 3.0, 4.0, null][this._zoomOverrideIdx];
+      const pct = this._zoomOverride == null ? 'Default' : `${Math.round(this._zoomOverride * 100)}%`;
+      this._notify(`Zoom: ${pct}`, '#7ec8e3', 90);
     }
 
     // ── Undo / redo + copy/paste (sandbox only) ────────────────
@@ -4595,12 +4645,7 @@ class Game {
     // out, or DYNAMIC co-op fit). The matching ctx.restore() is below, after the
     // world overlays. Unlike SR (zoom-out only), arena PRESET can also zoom IN, so
     // the transform applies whenever zoom differs from 1.0 in either direction.
-    let _activeZoom = 1.0;
-    if (this.gameMode === 'speedrunner' && this._sr) {
-      _activeZoom = this._sr.srZoom ?? 1.0;
-    } else if (this.isArena) {
-      _activeZoom = this._arenaActiveZoom(); // also recenters the arena camera under zoom
-    }
+    const _activeZoom = this._resolveViewZoom();
     ctx.save();
     if (Math.abs(_activeZoom - 1.0) > 0.005) {
       ctx.translate(CANVAS_W / 2, CANVAS_H / 2);
@@ -8197,6 +8242,13 @@ class Game {
       if (mx >= tgX && mx <= tgX + tgW && my >= r5Y && my <= r5Y + tgH) {
         aws.sprintEnabled = (aws.sprintEnabled === false);
       }
+      // Row 6: Default Zoom (base view zoom, all modes)
+      const r6Y = L.FIRST_ROW + 240;
+      if (mx >= tgX && mx <= tgX + tgW && my >= r6Y && my <= r6Y + tgH) {
+        const Z = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+        const cur = Z.findIndex(v => Math.abs(v - (aws.worldZoom ?? 1.0)) < 0.001);
+        aws.worldZoom = Z[(cur < 0 ? 2 : cur + 1) % Z.length];
+      }
       return;
     }
 
@@ -8832,6 +8884,9 @@ class Game {
       drawPhysRow(L.FIRST_ROW + 192, 'Sprint',
         '(hold Shift to move 2× speed)',
         aws.sprintEnabled !== false ? 'On' : 'Off');
+      drawPhysRow(L.FIRST_ROW + 240, 'Default Zoom',
+        '(base view zoom; Z cycles 100-400% in sandbox/God)',
+        `${(aws.worldZoom || 1).toFixed(2)}x`);
 
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     } else if (this._wsTab === 'arena') {
