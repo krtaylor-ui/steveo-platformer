@@ -59,6 +59,10 @@ const ARENA_MODES = {
 
   initMode(modeKey, game) {
     const ms = { key: modeKey, holdFrames: 0 };
+    if (modeKey === 'KING_OF_HILL') {
+      ms.ownerId = null;  // null | 'p1' | 'p2' — sticky hill ownership
+      ms.holdP1 = 0; ms.holdP2 = 0; // frames each player has owned the hill
+    }
     if (modeKey === 'SURVIVAL_WAVES') {
       ms.wave = 0;
       ms.totalWaves = Math.max(1, Math.min(15, (game.arenaConfig && game.arenaConfig.survivalWaveCount) || this.SURVIVAL_DEFAULT.length));
@@ -68,25 +72,25 @@ const ARENA_MODES = {
     game._arenaMode = ms;
   },
 
-  // True while any player controls the hill. Uses the designed W×H control zone
+  // True while player `p` is touching the hill. Uses the designed W×H control zone
   // (game._arenaHill) if placed — the player's horizontal centre must be over the
   // zone and their feet within it (allows standing on top of a thin platform OR
   // inside a tall zone) — else the arena-centre radius (hill-less worlds).
-  _holding(game) {
+  _onHill(game, p) {
+    if (!p) return false;
     const hill = game._arenaHill;
-    const within = (p) => {
-      if (!p) return false;
-      const pcx = p.x + (p.width || PLAYER_W) / 2;
-      if (hill) {
-        const feetY = p.y + (p.height || PLAYER_H);
-        return pcx >= hill.x && pcx <= hill.x + hill.w && feetY >= hill.y - 10 && feetY <= hill.y + hill.h + 14;
-      }
-      const cx = game.level.pixelWidth / 2, cy = game.level.pixelHeight / 2;
-      const pcy = p.y + (p.height || PLAYER_H) / 2;
-      return Math.hypot(pcx - cx, pcy - cy) <= this.HILL_RADIUS_BLOCKS * BLOCK_SIZE;
-    };
-    return within(game.player) || within(game.player2);
+    const pcx = p.x + (p.width || PLAYER_W) / 2;
+    if (hill) {
+      const feetY = p.y + (p.height || PLAYER_H);
+      return pcx >= hill.x && pcx <= hill.x + hill.w && feetY >= hill.y - 10 && feetY <= hill.y + hill.h + 14;
+    }
+    const cx = game.level.pixelWidth / 2, cy = game.level.pixelHeight / 2;
+    const pcy = p.y + (p.height || PLAYER_H) / 2;
+    return Math.hypot(pcx - cx, pcy - cy) <= this.HILL_RADIUS_BLOCKS * BLOCK_SIZE;
   },
+
+  // Current sticky owner of the hill ('p1' | 'p2' | null) — used for the hill colour.
+  hillOwner(game) { return (game._arenaMode && game._arenaMode.ownerId) || null; },
 
   // Spawn one survival wave from its config def (zombies + skeletons, HP ×hp),
   // distributed across the designed spawn-lines (or spread across the top if none).
@@ -138,10 +142,20 @@ const ARENA_MODES = {
       case 'COLLECT_EMERALDS':
         if (typeof EMERALD_SYSTEM !== 'undefined' && EMERALD_SYSTEM.allRoundsComplete()) a.phase = 'ended';
         break;
-      case 'KING_OF_HILL':
-        if (this._holding(game)) ms.holdFrames++;
-        if (ms.holdFrames >= this.HOLD_TARGET_FRAMES) a.phase = 'ended';
+      case 'KING_OF_HILL': {
+        const p1On = this._onHill(game, game.player);
+        const p2On = game.player2 ? this._onHill(game, game.player2) : false;
+        // Sticky ownership: the owner keeps the hill until a DIFFERENT player touches
+        // it while the owner is NOT touching. An unowned hill goes to the first toucher.
+        if (ms.ownerId === 'p1')      { if (!p1On && p2On) ms.ownerId = 'p2'; }
+        else if (ms.ownerId === 'p2') { if (!p2On && p1On) ms.ownerId = 'p1'; }
+        else                          { if (p1On) ms.ownerId = 'p1'; else if (p2On) ms.ownerId = 'p2'; }
+        // The owner accrues control time continuously while they own it.
+        if (ms.ownerId === 'p1') ms.holdP1++;
+        else if (ms.ownerId === 'p2') ms.holdP2++;
+        if (Math.max(ms.holdP1, ms.holdP2) >= this.HOLD_TARGET_FRAMES) a.phase = 'ended';
         break;
+      }
       case 'SURVIVAL_WAVES': {
         // Lose: no player alive (solo: P1 dead; co-op: both dead).
         const p1Dead = !game.player || game.player.hp <= 0;
@@ -171,7 +185,7 @@ const ARENA_MODES = {
       case 'COLLECT_EMERALDS':
         return (typeof EMERALD_SYSTEM !== 'undefined') ? EMERALD_SYSTEM.collected : 0;
       case 'KING_OF_HILL':
-        return Math.round(ms.holdFrames / 60);
+        return Math.round(Math.max(ms.holdP1 || 0, ms.holdP2 || 0) / 60);
       case 'SURVIVAL_WAVES':
         return kills + (ms.wave || 0) * 50 + (ms.cleared ? 100 : 0); // +50/wave, +1/kill, +100 clear-all
       default:
@@ -185,8 +199,11 @@ const ARENA_MODES = {
     switch (ms.key) {
       case 'COLLECT_EMERALDS':
         return (typeof EMERALD_SYSTEM !== 'undefined') ? EMERALD_SYSTEM.hudText() : '';
-      case 'KING_OF_HILL':
-        return `Hold: ${Math.round(ms.holdFrames / 60)}s / ${Math.round(this.HOLD_TARGET_FRAMES / 60)}s`;
+      case 'KING_OF_HILL': {
+        const owner = ms.ownerId ? ms.ownerId.toUpperCase() : '—';
+        const t = Math.round(Math.max(ms.holdP1 || 0, ms.holdP2 || 0) / 60);
+        return `Hill: ${owner}   ${t}s / ${Math.round(this.HOLD_TARGET_FRAMES / 60)}s`;
+      }
       case 'SURVIVAL_WAVES':
         return `Wave ${Math.max(1, ms.wave)}/${ms.totalWaves || '?'}   Kills: ${game.arenaState.scores.p1 || 0}`;
       default:

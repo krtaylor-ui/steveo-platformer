@@ -963,8 +963,10 @@ class Game {
     if (typeof POWERUP_SYSTEM !== 'undefined' && POWERUP_SYSTEM.draw) POWERUP_SYSTEM.draw(ctx, this.camera, this.frameCount);
     // King-of-the-Hill platform — tinted green while held, gold otherwise (Phase 3A.3).
     if (this._arenaHill && this._arenaMode && this._arenaMode.key === 'KING_OF_HILL' && typeof _drawHillPlatform === 'function') {
-      const held = (typeof ARENA_MODES !== 'undefined') && ARENA_MODES._holding(this);
-      _drawHillPlatform(ctx, this._arenaHill.x - this.camera.x, this._arenaHill.y - this.camera.y, held ? '#42e06a' : '#f1c40f',
+      // Hill tinted by its sticky owner: P1 blue, P2 red, unclaimed gold.
+      const owner = (typeof ARENA_MODES !== 'undefined' && ARENA_MODES.hillOwner) ? ARENA_MODES.hillOwner(this) : null;
+      const color = owner === 'p1' ? '#42a0ff' : owner === 'p2' ? '#ff5a5a' : '#f1c40f';
+      _drawHillPlatform(ctx, this._arenaHill.x - this.camera.x, this._arenaHill.y - this.camera.y, color,
         this._arenaHill.w / BLOCK_SIZE, this._arenaHill.h / BLOCK_SIZE);
     }
   }
@@ -4866,8 +4868,12 @@ class Game {
       ctx.restore();
     }
 
-    // Hide player during SR death explosion — parts drawn in _drawSRWorldOverlay instead
-    if (!(this.gameMode === 'speedrunner' && this._sr?.dead)) this.player.draw(ctx, this.camera);
+    // Hide the player while dead/respawning so only the body-part scatter shows
+    // (no lingering "ghost" sprite). SR uses its own dead flag; other modes use the
+    // respawn timer (arena/co-op) or the solo death state.
+    const _p1Hidden = (this.gameMode === 'speedrunner' && this._sr?.dead)
+                      || this._p1RespawnTimer > 0 || this.state === 'dead';
+    if (!_p1Hidden) this.player.draw(ctx, this.camera);
     // Phase 16: Draw other multiplayer players (behind P2 labels)
     if (window.multiplayerManager?.isConnected)
       window.multiplayerManager.drawOtherPlayers(ctx, this.camera);
