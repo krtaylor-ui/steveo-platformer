@@ -150,9 +150,13 @@ const ARENA_MODES = {
         if (ms.ownerId === 'p1')      { if (!p1On && p2On) ms.ownerId = 'p2'; }
         else if (ms.ownerId === 'p2') { if (!p2On && p1On) ms.ownerId = 'p1'; }
         else                          { if (p1On) ms.ownerId = 'p1'; else if (p2On) ms.ownerId = 'p2'; }
-        // The owner accrues control time continuously while they own it.
-        if (ms.ownerId === 'p1') ms.holdP1++;
-        else if (ms.ownerId === 'p2') ms.holdP2++;
+        // Multiplayer: the owner accrues continuously while they own it (sticky).
+        // Single-player: accrue only while actually standing on the hill.
+        const isMP = !!game.player2;
+        const ownerOn = (ms.ownerId === 'p1' && p1On) || (ms.ownerId === 'p2' && p2On);
+        if (ms.ownerId && (isMP || ownerOn)) {
+          if (ms.ownerId === 'p1') ms.holdP1++; else ms.holdP2++;
+        }
         if (Math.max(ms.holdP1, ms.holdP2) >= this.HOLD_TARGET_FRAMES) a.phase = 'ended';
         break;
       }
