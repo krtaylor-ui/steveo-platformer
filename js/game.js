@@ -149,6 +149,16 @@ class Game {
     if (this.gameMode === 'sandbox') {
       if (options.worldWidth && options.worldHeight) {
         this._sandboxDims = { width: options.worldWidth | 0, height: options.worldHeight | 0 };
+      } else if (options.templateData) {
+        // Reopening a saved world (editWorld passes templateData) — size the level
+        // to the saved dimensions, else the saved grid. Without this the editor fell
+        // through to the 600-wide default world and stamped the grid at top-left.
+        const peeked = options.templateData;
+        if (peeked.worldWidth && peeked.worldHeight) {
+          this._sandboxDims = { width: peeked.worldWidth | 0, height: peeked.worldHeight | 0 };
+        } else if (peeked.grid?.length > 0 && peeked.grid[0]?.length > 0) {
+          this._sandboxDims = { width: peeked.grid[0].length, height: peeked.grid.length };
+        }
       } else if (options.loadKey && typeof options.loadKey === 'string') {
         try {
           const peeked = SandboxSaves.load(options.loadKey);
@@ -4791,6 +4801,11 @@ class Game {
     }
     // Arena world-space overlays (emeralds, power-ups) drawn inside the zoom context
     if (this.isArena) this._drawArenaWorldOverlay(ctx);
+    // Sandbox WORLD overlays (placed eggs/emeralds/power-ups/hill/spawn-lines/items
+    // + portal labels) must scale with the zoom too — draw them inside the transform.
+    if (this.gameMode === 'sandbox' && this.sandbox && this.sandbox.drawWorld) {
+      this.sandbox.drawWorld(ctx, this.camera, this.frameCount);
+    }
     ctx.restore(); // end world zoom (matches the unconditional save above)
     this._drawHUD(ctx, hoverRow, hoverCol);
     // Phase 16: Multiplayer HUD (player list + connection badge)
@@ -4798,9 +4813,9 @@ class Game {
     // Phase 17-E: Remote mob rendering for online joiners
     if (window.multiplayerManager?.isConnected) window.multiplayerManager.drawRemoteMobs(ctx, this.camera);
 
-    // Sandbox overlays: eggs, mode badge, palette, popup
+    // Sandbox HUD (palette, hotbar, popups) — screen-space, NOT zoomed.
     if (this.gameMode === 'sandbox' && this.sandbox) {
-      this.sandbox.draw(ctx, this.camera, this.input, this.player, this.frameCount);
+      this.sandbox.drawHud(ctx, this.input, this.player, this.frameCount);
       this._drawUndoIndicator(ctx);
       if (this._pasteMode) {
         ctx.save();

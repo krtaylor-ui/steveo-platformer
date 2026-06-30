@@ -982,7 +982,9 @@ class SandboxManager {
 
   // ── Drawing ──────────────────────────────────────────────────
 
-  draw(ctx, camera, input, player, frameCount) {
+  // World-space overlays — drawn INSIDE the camera zoom transform so they scale +
+  // line up with the blocks (Phase 3A.3 zoom fix).
+  drawWorld(ctx, camera, frameCount) {
     this._drawPlacedItems(ctx, camera, frameCount);
     this._drawPlacedEggs(ctx, camera, frameCount);
     this._drawPlacedEmeralds(ctx, camera, frameCount);
@@ -990,10 +992,20 @@ class SandboxManager {
     this._drawPlacedHill(ctx, camera);
     this._drawPlacedSpawnLines(ctx, camera, frameCount);
     this._drawPortalLabels(ctx, camera);
+  }
+
+  // Screen-space HUD (palette, hotbar, popups) — drawn OUTSIDE the zoom transform.
+  drawHud(ctx, input, player, frameCount) {
     this._drawHUD(ctx, player, frameCount, input);
     if (this.paletteOpen)  this._drawPalette(ctx, input);
     if (this.popup)        this._drawPopup(ctx, input);
     if (this.portalPopup)  this._drawPortalPopup(ctx, input);
+  }
+
+  // Back-compat: full draw (world overlays + HUD) for any caller not split-aware.
+  draw(ctx, camera, input, player, frameCount) {
+    this.drawWorld(ctx, camera, frameCount);
+    this.drawHud(ctx, input, player, frameCount);
   }
 
   _drawPlacedItems(ctx, camera, frameCount) {
@@ -1001,7 +1013,7 @@ class SandboxManager {
       const it  = this.placedItems[i];
       const sx  = it.wx - camera.x;
       const sy  = it.wy - camera.y;
-      if (sx < -30 || sx > CANVAS_W + 30 || sy < -30 || sy > CANVAS_H + 30) continue;
+      if (sx < camera.viewMinX() - 30 || sx > camera.viewMaxX() + 30 || sy < camera.viewMinY() - 30 || sy > camera.viewMaxY() + 30) continue;
       const bob = (it.vy === 0) ? Math.sin(frameCount * 0.05 + it.bobOffset) * 2 : 0;
       const sel = this.popup?.kind === 'item' && this.popup.itemIdx === i;
       const cx = Math.floor(sx);
@@ -1068,7 +1080,7 @@ class SandboxManager {
       const e  = this.placedEggs[i];
       const sx = e.wx - camera.x;
       const sy = e.wy - camera.y;
-      if (sx < -50 || sx > CANVAS_W + 50 || sy < -50 || sy > CANVAS_H + 50) continue;
+      if (sx < camera.viewMinX() - 50 || sx > camera.viewMaxX() + 50 || sy < camera.viewMinY() - 50 || sy > camera.viewMaxY() + 50) continue;
       const def = SPAWN_EGG_DEFS.find(d => d.key === e.mobType) || SPAWN_EGG_DEFS[0];
       const sel = this.popup?.kind === 'egg' && this.popup.eggIdx === i;
       _drawEgg(ctx, sx, sy, def, frameCount, sel);
@@ -1079,7 +1091,7 @@ class SandboxManager {
     for (let i = 0; i < this.placedEmeralds.length; i++) {
       const e  = this.placedEmeralds[i];
       const sx = e.wx - camera.x, sy = e.wy - camera.y;
-      if (sx < -40 || sx > CANVAS_W + 40 || sy < -40 || sy > CANVAS_H + 40) continue;
+      if (sx < camera.viewMinX() - 40 || sx > camera.viewMaxX() + 40 || sy < camera.viewMinY() - 40 || sy > camera.viewMaxY() + 40) continue;
       const sel = this.popup?.kind === 'emerald' && this.popup.emeraldIdx === i;
       _drawEmeraldIcon(ctx, sx, sy, frameCount, sel);
       // Group tag (1–3) so designers can see grouping at a glance.
@@ -1097,7 +1109,7 @@ class SandboxManager {
     for (let i = 0; i < this.placedPowerups.length; i++) {
       const p  = this.placedPowerups[i];
       const sx = p.wx - camera.x, sy = p.wy - camera.y;
-      if (sx < -40 || sx > CANVAS_W + 40 || sy < -40 || sy > CANVAS_H + 40) continue;
+      if (sx < camera.viewMinX() - 40 || sx > camera.viewMaxX() + 40 || sy < camera.viewMinY() - 40 || sy > camera.viewMaxY() + 40) continue;
       const sel = this.popup?.kind === 'powerup' && this.popup.powerupIdx === i;
       _drawPowerupIcon(ctx, sx, sy, p.powerType, frameCount, sel);
     }
@@ -1113,7 +1125,7 @@ class SandboxManager {
   _drawPlacedSpawnLines(ctx, camera, frameCount) {
     for (const s of this.placedSpawnLines) {
       const sx = s.wx - camera.x, sy = s.wy - camera.y;
-      if (sx < -40 || sx > CANVAS_W + 40 || sy < -40 || sy > CANVAS_H + 40) continue;
+      if (sx < camera.viewMinX() - 40 || sx > camera.viewMaxX() + 40 || sy < camera.viewMinY() - 40 || sy > camera.viewMaxY() + 40) continue;
       _drawSpawnLineMarker(ctx, sx, sy, s.line || 1, frameCount);
     }
   }
@@ -1125,7 +1137,7 @@ class SandboxManager {
       // Centre of the 4×5 portal footprint
       const cx = (p.anchorCol + 2) * BLOCK_SIZE - camera.x;
       const cy = (p.anchorRow + 2.5) * BLOCK_SIZE - camera.y;
-      if (cx < -50 || cx > CANVAS_W + 50 || cy < -50 || cy > CANVAS_H + 50) continue;
+      if (cx < camera.viewMinX() - 50 || cx > camera.viewMaxX() + 50 || cy < camera.viewMinY() - 50 || cy > camera.viewMaxY() + 50) continue;
 
       const isNether = p.biome === 'nether';
       const color    = isNether ? '#FF8844' : '#44BBFF';
