@@ -697,7 +697,7 @@ class Game {
     // (arena-modes falls back to the arena-centre radius).
     const hill = this._arenaTemplateData && this._arenaTemplateData.placedHill;
     this._arenaHill = (hill && typeof hill.col === 'number' && typeof hill.row === 'number')
-      ? { x: hill.col * BLOCK_SIZE, y: hill.row * BLOCK_SIZE, w: 4 * BLOCK_SIZE, h: BLOCK_SIZE }
+      ? { x: hill.col * BLOCK_SIZE, y: hill.row * BLOCK_SIZE, w: (hill.w || 4) * BLOCK_SIZE, h: (hill.h || 1) * BLOCK_SIZE }
       : null;
 
     // Survival-wave spawn markers (pixels), grouped by line (Phase 3A.3).
@@ -882,7 +882,8 @@ class Game {
     // King-of-the-Hill platform — tinted green while held, gold otherwise (Phase 3A.3).
     if (this._arenaHill && this._arenaMode && this._arenaMode.key === 'KING_OF_HILL' && typeof _drawHillPlatform === 'function') {
       const held = (typeof ARENA_MODES !== 'undefined') && ARENA_MODES._holding(this);
-      _drawHillPlatform(ctx, this._arenaHill.x - this.camera.x, this._arenaHill.y - this.camera.y, held ? '#42e06a' : '#f1c40f');
+      _drawHillPlatform(ctx, this._arenaHill.x - this.camera.x, this._arenaHill.y - this.camera.y, held ? '#42e06a' : '#f1c40f',
+        this._arenaHill.w / BLOCK_SIZE, this._arenaHill.h / BLOCK_SIZE);
     }
   }
 
@@ -12826,7 +12827,9 @@ class Game {
         .filter(s => s && typeof s.col === 'number' && typeof s.row === 'number')
         .map(s => ({ col: s.col, row: s.row, wx: s.col * BLOCK_SIZE + BLOCK_SIZE / 2, wy: s.row * BLOCK_SIZE + BLOCK_SIZE / 2, line: (s.line >= 1 && s.line <= 4) ? s.line : 1 }));
       this.sandbox.placedHill = (data.placedHill && typeof data.placedHill.col === 'number' && typeof data.placedHill.row === 'number')
-        ? { col: data.placedHill.col, row: data.placedHill.row } : null;
+        ? { col: data.placedHill.col, row: data.placedHill.row,
+            w: Math.max(1, Math.min(20, data.placedHill.w || 4)), h: Math.max(1, Math.min(20, data.placedHill.h || 1)) }
+        : null;
     }
 
     // Restore sandbox portal registry + links

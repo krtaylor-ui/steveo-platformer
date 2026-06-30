@@ -248,7 +248,9 @@ class SandboxManager {
     this.placedPowerups = []; // [{col,row,wx,wy,powerType}]
     // Arena objectives (Phase 3A.3)
     this.placedSpawnLines = []; // [{col,row,wx,wy,line}] survival-wave spawn markers
-    this.placedHill       = null; // {col,row} King-of-the-Hill platform anchor (4 wide × 1 tall)
+    this.placedHill       = null; // {col,row,w,h} King-of-the-Hill control zone (default 4×1)
+    this.lastHillW        = 4;     // default/last hill width  (1–20 blocks)
+    this.lastHillH        = 1;     // default/last hill height (1–20 blocks)
 
     // Config popup for a placed egg / item drop
     this.popup = null; // { kind:'egg'|'item', eggIdx|itemIdx } or null
@@ -513,13 +515,21 @@ class SandboxManager {
   // ── Hill (King of the Hill) — single 4-wide platform anchor (Phase 3A.3) ──
   placeHill(wx, wy) {
     const col = Math.floor(wx / BLOCK_SIZE), row = Math.floor(wy / BLOCK_SIZE);
-    this.placedHill = { col, row }; // only one allowed — replaces any existing
+    // Resizable W×H control zone (Phase 3A.3); inherits the last-used size.
+    this.placedHill = { col, row, w: this.lastHillW || 4, h: this.lastHillH || 1 };
   }
-  // True if (wx,wy) hits the placed 4-wide hill platform.
+  // True if (wx,wy) hits anywhere in the placed W×H hill zone.
   hitTestHill(wx, wy) {
     if (!this.placedHill) return false;
     const col = Math.floor(wx / BLOCK_SIZE), row = Math.floor(wy / BLOCK_SIZE);
-    return row === this.placedHill.row && col >= this.placedHill.col && col <= this.placedHill.col + 3;
+    const H = this.placedHill;
+    return col >= H.col && col <= H.col + (H.w || 4) - 1 && row >= H.row && row <= H.row + (H.h || 1) - 1;
+  }
+  resizeHill(dw, dh) {
+    if (!this.placedHill) return;
+    this.placedHill.w = Math.max(1, Math.min(20, (this.placedHill.w || 4) + dw));
+    this.placedHill.h = Math.max(1, Math.min(20, (this.placedHill.h || 1) + dh));
+    this.lastHillW = this.placedHill.w; this.lastHillH = this.placedHill.h;
   }
   removeHill() { this.placedHill = null; this.popup = null; }
   openHillPopup() { this.popup = { kind: 'hill' }; }
@@ -892,8 +902,18 @@ class SandboxManager {
     // Hill popup (popH = 120) — Phase 3A.3 (remove only; size/shape locked)
     if (this.popup.kind === 'hill') {
       if (mx >= px + pw - 26 && mx <= px + pw - 6 && my >= py + 6 && my <= py + 26) { this.closePopup(); return true; }
-      if (mx < px || mx > px + pw || my < py || my > py + 120) { this.closePopup(); return false; }
-      if (mx >= px + 14 && mx <= px + pw - 14 && my >= py + 76 && my <= py + 106) { this.removeHill(); return true; }
+      if (mx < px || mx > px + pw || my < py || my > py + 200) { this.closePopup(); return false; }
+      // Width steppers (row at py+60)
+      if (my >= py + 60 && my <= py + 84) {
+        if (mx >= px + 14 && mx <= px + 42)           { this.resizeHill(-1, 0); return true; }
+        if (mx >= px + pw - 42 && mx <= px + pw - 14) { this.resizeHill(1, 0);  return true; }
+      }
+      // Height steppers (row at py+108)
+      if (my >= py + 108 && my <= py + 132) {
+        if (mx >= px + 14 && mx <= px + 42)           { this.resizeHill(0, -1); return true; }
+        if (mx >= px + pw - 42 && mx <= px + pw - 14) { this.resizeHill(0, 1);  return true; }
+      }
+      if (mx >= px + 14 && mx <= px + pw - 14 && my >= py + 160 && my <= py + 190) { this.removeHill(); return true; }
       return true;
     }
 
@@ -1087,7 +1107,7 @@ class SandboxManager {
     if (!this.placedHill) return;
     const sx = this.placedHill.col * BLOCK_SIZE - camera.x;
     const sy = this.placedHill.row * BLOCK_SIZE - camera.y;
-    _drawHillPlatform(ctx, sx, sy, '#f1c40f');
+    _drawHillPlatform(ctx, sx, sy, '#f1c40f', this.placedHill.w, this.placedHill.h);
   }
 
   _drawPlacedSpawnLines(ctx, camera, frameCount) {
@@ -1915,18 +1935,31 @@ class SandboxManager {
       return;
     }
 
-    // ── Hill popup (Phase 3A.3) — remove only (4×1 locked) ────
+    // ── Hill popup (Phase 3A.3) — resizable W×H control zone ──
     if (this.popup.kind === 'hill') {
-      const popH = 120;
+      const hw = this.placedHill?.w || 4, hh = this.placedHill?.h || 1;
+      const popH = 200;
       ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
       ctx.fillStyle = '#13131f'; _roundRect(ctx, px, py, pw, popH, 8); ctx.fill();
       ctx.strokeStyle = '#f1c40f'; ctx.lineWidth = 2; _roundRect(ctx, px, py, pw, popH, 8); ctx.stroke();
       ctx.fillStyle = '#FFD700'; ctx.font = 'bold 12px Courier New';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText('HILL (King of the Hill)', CANVAS_W / 2, py + 22);
-      ctx.fillStyle = '#cfcf9f'; ctx.font = '10px Courier New';
-      ctx.fillText('4 blocks wide — locked size', CANVAS_W / 2, py + 46);
-      _btn('✕  Remove', px + 14, py + 76, pw - 28, 30, '#FF6644', '#553333');
+      ctx.fillStyle = '#cfcf9f'; ctx.font = '9px Courier New';
+      ctx.fillText('Control zone — stand inside to hold', CANVAS_W / 2, py + 40);
+      const _hrow = (label, valueText, by) => {
+        ctx.fillStyle = '#9fb0c0'; ctx.font = '9px Courier New';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+        ctx.fillText(label, CANVAS_W / 2, by - 3);
+        _btn('−', px + 14, by, 28, 24, '#7ec8e3', '#445566');
+        _btn('+', px + pw - 42, by, 28, 24, '#7ec8e3', '#445566');
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 12px Courier New';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(valueText, CANVAS_W / 2, by + 12);
+      };
+      _hrow('Width',  `${hw} blocks`, py + 60);
+      _hrow('Height', `${hh} blocks`, py + 108);
+      _btn('✕  Remove', px + 14, py + 160, pw - 28, 30, '#FF6644', '#553333');
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
       ctx.restore();
       return;
@@ -2070,15 +2103,15 @@ function _powerupDef(type) {
 
 // Hill platform: 4 blocks wide × 1 tall, anchored at top-left (sx,sy) in screen px.
 // `color` tints it (designer gold; in-game it can take the controller's colour). Phase 3A.3.
-function _drawHillPlatform(ctx, sx, sy, color) {
+function _drawHillPlatform(ctx, sx, sy, color, wBlocks, hBlocks) {
   ctx.save();
-  const w = 4 * BLOCK_SIZE, h = BLOCK_SIZE;
+  const w = (wBlocks || 4) * BLOCK_SIZE, h = (hBlocks || 1) * BLOCK_SIZE;
   ctx.fillStyle = color || '#f1c40f';
-  ctx.globalAlpha = 0.85;
+  ctx.globalAlpha = h > BLOCK_SIZE ? 0.45 : 0.85; // taller zones are translucent so you see inside
   ctx.fillRect(sx, sy, w, h);
   ctx.globalAlpha = 1;
   ctx.strokeStyle = '#fff7c0'; ctx.lineWidth = 2; ctx.strokeRect(sx + 1, sy + 1, w - 2, h - 2);
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
   ctx.font = 'bold 11px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('★ HILL', sx + w / 2, sy + h / 2);
   ctx.restore();

@@ -42,9 +42,10 @@ const ARENA_MODES = {
     game._arenaMode = ms;
   },
 
-  // True while any player controls the hill. Uses the designed 4-wide platform
-  // (game._arenaHill) if placed — player must stand on top of it — else the
-  // arena-centre radius (back-compat for hill-less worlds).
+  // True while any player controls the hill. Uses the designed W×H control zone
+  // (game._arenaHill) if placed — the player's horizontal centre must be over the
+  // zone and their feet within it (allows standing on top of a thin platform OR
+  // inside a tall zone) — else the arena-centre radius (hill-less worlds).
   _holding(game) {
     const hill = game._arenaHill;
     const within = (p) => {
