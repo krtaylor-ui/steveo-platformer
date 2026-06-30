@@ -140,7 +140,13 @@ const GAME_STATE = {
       // Persistent total play time (ms) — kept current by GAME_TIMER each tick.
       totalGameTime: game.totalGameTime || 0,
       grid,
-      spawnEggs: [],
+      // Spawn eggs (mob spawners) — carries Phase 3A.2 per-spawner fields
+      // (spawnFrequency, maxActiveMobs). Previously hardcoded [], so editor
+      // spawners never persisted or reached arena play.
+      spawnEggs: game.sandbox ? game.sandbox.placedEggs.map(e => ({ ...e })) : [],
+      // Arena collectibles (Phase 3A.2)
+      emeralds: game.sandbox ? game.sandbox.placedEmeralds.map(e => ({ ...e })) : [],
+      powerups: game.sandbox ? game.sandbox.placedPowerups.map(p => ({ ...p })) : [],
       placedItems,
       portalLinks,
       sandboxLevers,

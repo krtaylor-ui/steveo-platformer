@@ -187,7 +187,7 @@
 
 .game-modes-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 20px;
 }
 
@@ -222,6 +222,58 @@
   color: #666;
   font-size: 0.9rem;
 }
+
+/* Sandbox — full-width feature panel below the play-mode tiles */
+.sandbox-feature-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: linear-gradient(135deg, #2c3e50 0%, #4a6079 100%);
+  color: #fff;
+  border-radius: 12px;
+  padding: 22px 28px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
+}
+
+.sandbox-feature-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+}
+
+.sandbox-feature-icon {
+  font-size: 2.6rem;
+  line-height: 1;
+}
+
+.sandbox-feature-text { flex: 1; }
+
+.sandbox-feature-text h3 {
+  margin: 0 0 4px;
+  font-size: 1.4rem;
+}
+
+.sandbox-feature-text p {
+  margin: 0;
+  color: #cdd6e0;
+  font-size: 0.9rem;
+}
+
+.sandbox-feature-cta {
+  font-weight: bold;
+  font-size: 1rem;
+  white-space: nowrap;
+  opacity: 0.9;
+}
+
+@media (max-width: 480px) {
+  .sandbox-feature-card { flex-direction: column; text-align: center; }
+}
+
+/* Arena picker */
+.sandbox-header-spacer { width: 150px; }
+.arena-quickplay-card { border: 2px solid #c0392b; }
 
 /* Quick Play Section */
 .quick-play-section h2 {
@@ -926,6 +978,7 @@
 .mode-badge.mode-NRM { background: #4a90d9; }  /* Normal */
 .mode-badge.mode-PLT { background: #9b59b6; }  /* Platformer */
 .mode-badge.mode-RUN { background: #e67e22; }  /* Speed Runner */
+.mode-badge.mode-ARN { background: #c0392b; }  /* Arena */
 
 /* Inline mode picker in the card actions */
 .mode-select-label {
@@ -1001,7 +1054,10 @@
 /* New modals share the create-game-modal overlay treatment */
 #create-world-modal,
 #import-games-modal,
-#import-file-modal {
+#import-file-modal,
+#arena-settings-modal,
+#arena-mode-select-modal,
+#arena-leaderboard-modal {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
@@ -1013,9 +1069,20 @@
 
 #create-world-modal .modal-content,
 #import-games-modal .modal-content,
-#import-file-modal .modal-content {
+#import-file-modal .modal-content,
+#arena-settings-modal .modal-content,
+#arena-mode-select-modal .modal-content,
+#arena-leaderboard-modal .modal-content {
   max-width: 500px;
 }
+
+/* Arena leaderboard modal */
+#lb-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+#lb-tabs .lb-tab { font-size: 0.8rem; padding: 4px 8px; }
+.lb-list { min-height: 120px; }
+.lb-ol { list-style: decimal inside; margin: 0; padding: 0; }
+.lb-ol li { display: flex; justify-content: space-between; padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.lb-ol .lb-score { font-weight: bold; color: #FFD700; }
 
 /* Two-up field layout (width / height) */
 .form-row {

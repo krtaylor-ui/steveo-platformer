@@ -187,8 +187,10 @@ class RedstoneSystem {
   }
 
   // Called once per frame to advance piston animation (6 frames ≈ 100ms at 60fps)
-  updatePistonAnimations() {
-    const SPEED = 1 / 6;
+  updatePistonAnimations(speedMult = 1) {
+    // Phase 3A.2: speedMult scales the per-frame extend/retract step (arena
+    // redstoneSpeed); 1 = the original 6-frame animation.
+    const SPEED = (1 / 6) * (speedMult || 1);
     for (const comp of this.components) {
       if (comp.type !== 'piston') continue;
       if (comp.animProgress === undefined) comp.animProgress = comp.extended ? 1 : 0;

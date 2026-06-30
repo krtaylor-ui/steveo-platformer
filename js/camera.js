@@ -36,13 +36,23 @@ class Camera {
     this.y = Math.max(0, Math.min(this._levelH - CANVAS_H,  this.y));
   }
 
-  // Convert world coords → screen coords
+  // Convert world coords → screen coords.
+  // NOTE: this is the RAW (un-zoomed) projection. The renderer applies zoom via a
+  // ctx scale-about-center transform, so anything drawn inside that transform must
+  // use these raw coords (the ctx scale supplies the zoom). Only mouse→world
+  // (toWorld) operates on raw, untransformed screen coords and so is zoom-aware.
   toScreen(wx, wy) {
     return { x: wx - this.x, y: wy - this.y };
   }
 
-  // Convert screen coords → world coords
+  // Convert screen coords → world coords. Mouse events are in raw screen space
+  // (unaffected by the ctx zoom transform), so undo the scale-about-canvas-center
+  // before applying the camera offset: world = (screen - center)/z + center + cam.
+  // _srZoom is set by Game._render each frame (1.0 when no zoom is active).
   toWorld(sx, sy) {
-    return { x: sx + this.x, y: sy + this.y };
+    const z = this._srZoom || 1.0;
+    const wx = (sx - CANVAS_W / 2) / z + CANVAS_W / 2 + this.x;
+    const wy = (sy - CANVAS_H / 2) / z + CANVAS_H / 2 + this.y;
+    return { x: wx, y: wy };
   }
 }

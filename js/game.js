@@ -91,6 +91,11 @@ class Game {
       jumpHeightBlocks:          null,      // null = use default JUMP_VELOCITY; else apex in blocks
       airJumpEnabled:            false,     // allow one mid-air (double) jump
       sprintEnabled:             true,      // Shift = 2× ground speed
+      // Phase 3A.2 — per-world arena config
+      arenaPlayerMaxHealth:      20,        // hp (2–40); UI shows hearts = hp/2
+      arenaZoomMode:             'NONE',    // 'NONE' | 'PRESET' | 'DYNAMIC'
+      arenaPresetZoom:           1.0,       // 0.3–1.5 (PRESET mode)
+      redstoneSpeed:             1.0,       // 0.5–2.0 cadence multiplier (coarse)
     };
     // Track the user's explicit pre-launch 2P choice so it can survive world-load overwrite
     this._launchTwoPlayerMode = options.twoPlayerMode;
@@ -142,6 +147,24 @@ class Game {
           }
         } catch {}
       }
+    }
+
+    // Phase 3A.1 — Arena mode init (must precede _buildLevel, which branches on it)
+    this.isArena = (this.gameMode === 'arena');
+    // New ARN sandbox worlds (no grid yet) open in the editor with the starter layout.
+    this._arenaStarter = !!options.arenaStarter;
+    if (this.isArena) {
+      this.arenaConfig = Object.assign(
+        { gameDuration: 300000, respawnDelay: 2000, botCount: 3, mapName: 'DEATHMATCH_SMALL',
+          // Phase 3A.2 — selected game mode (null → Phase 3A.1 Deathmatch behavior).
+          arenaGameMode: options.arenaGameMode || null },
+        options.arenaConfig || {}
+      );
+      this.arenaRespawnFrames = Math.max(1, Math.round(this.arenaConfig.respawnDelay / (1000 / 60)));
+      this.arenaState  = { phase: 'countdown', countdownStart: null, gameStartTime: null, endTime: null, scores: { p1: 0, p2: 0 } };
+      this._arenaSpawns = { p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 } };
+      // A user-designed arena (played from the picker / editor Test) arrives as a saved grid.
+      this._arenaTemplateData = options.templateData || options.worldData || null;
     }
 
     this._buildLevel();
@@ -496,9 +519,15 @@ class Game {
   }
 
   _buildLevel() {
-    const data = (this.gameMode === 'sandbox' && this._sandboxDims)
-      ? buildEmptySandboxWorld(this._sandboxDims.width, this._sandboxDims.height)
-      : buildWorld();
+    const data = this.gameMode === 'arena'
+      // Play a user-designed arena from its saved grid, else the built-in default map.
+      ? (buildArenaWorldDataFromSave(this._arenaTemplateData) || buildArenaWorldData(this.arenaConfig?.mapName || 'DEATHMATCH_SMALL'))
+      // New ARN sandbox world (no grid yet): open the editor on the starter arena layout.
+      : (this.gameMode === 'sandbox' && this._arenaStarter)
+        ? buildArenaWorldData('DEATHMATCH_SMALL')
+        : (this.gameMode === 'sandbox' && this._sandboxDims)
+          ? buildEmptySandboxWorld(this._sandboxDims.width, this._sandboxDims.height)
+          : buildWorld();
     this.level           = new Level(data);
     this.player          = new Player(data.spawnX, data.spawnY);
     this._p2SpawnX = data.spawnX + BLOCK_SIZE * 2;
@@ -562,6 +591,190 @@ class Game {
                              this.player.x - CANVAS_W / 2));
     this.camera.y = Math.max(0, Math.min(this.level.pixelHeight - CANVAS_H,
                              this.player.y - CANVAS_H * 0.55));
+
+    // Phase 3A.1 — arena setup (fixed camera, bots, gear, scoring) on top of the built level
+    if (this.gameMode === 'arena') this._setupArena(data);
+  }
+
+  // ── Phase 3A.1: Arena setup ────────────────────────────────
+  // Works for both the built-in map (data._arena present) and user-designed
+  // arenas loaded from a saved grid (spawns/bots derived from the grid).
+  _setupArena(data) {
+    const m   = data._arena;       // present only for the built-in map
+    const W   = this.level.width;
+    const H   = this.level.height;
+
+    // Arena skips the _loadXxxWorld path, so saved per-world settings (zoom mode,
+    // player health, redstone speed, …) never get applied. Pull them from the
+    // template here so the editor's ⚙ Arena Settings take effect in play.
+    if (this._arenaTemplateData && typeof this._arenaTemplateData.worldAdvSettings === 'object'
+        && this._arenaTemplateData.worldAdvSettings) {
+      Object.assign(this._worldAdvSettings, this._arenaTemplateData.worldAdvSettings);
+    }
+    // Apply per-world arena config (Phase 3A.2).
+    const maxHp = Math.max(2, Math.min(40, this._worldAdvSettings.arenaPlayerMaxHealth || 20));
+    this.player.maxHp = maxHp;
+    if (this.player2) this.player2.maxHp = maxHp;
+    this.redstoneSpeed = Math.max(0.5, Math.min(2.0, this._worldAdvSettings.redstoneSpeed || 1.0));
+
+    // Player spawn positions (pixels). Built-in map carries explicit spawns;
+    // saved grids use the level's default spawn (P1) + a right-side column (P2).
+    if (m && m.playerSpawns?.length) {
+      const s0 = m.playerSpawns[0];
+      const s1 = m.playerSpawns[1] || s0;
+      this._arenaSpawns.p1 = { x: s0.col * BLOCK_SIZE, y: s0.row * BLOCK_SIZE };
+      this._arenaSpawns.p2 = { x: s1.col * BLOCK_SIZE, y: s1.row * BLOCK_SIZE };
+    } else {
+      this._arenaSpawns.p1 = { x: this.level.spawnX, y: this.level.spawnY };
+      this._arenaSpawns.p2 = { x: (W - 3) * BLOCK_SIZE, y: this.level.spawnY };
+    }
+
+    // Arm players with the bow + unlimited arrows so combat works immediately.
+    this._worldAdvSettings.unlimitedArrows = true;
+    this._armArenaPlayer(this.player, this._arenaSpawns.p1);
+    if (this.player2) this._armArenaPlayer(this.player2, this._arenaSpawns.p2);
+
+    // Enemies: drive from designed spawners (spawn eggs) when present; otherwise
+    // spawn the default Skeleton bots (Quick Play / built-in map / back-compat).
+    if (this.mobManager.spawnPoints.length > 0) {
+      // Per-spawner frequency + active cap, on-screen spawning (Phase 3A.2).
+      this.mobManager.arenaMode = true;
+    } else {
+      // No ambient respawns: spawnPoints is empty, so default bots don't respawn.
+      const botCols = (m && m.botSpawns?.length)
+        ? m.botSpawns.map(b => b.col)
+        : this._arenaBotColumns(W, this.arenaConfig.botCount);
+      for (const col of botCols.slice(0, this.arenaConfig.botCount)) {
+        const footY = this._arenaFloorY(col, H);
+        const bot = this.mobManager._createMob('Skeleton', col * BLOCK_SIZE, footY);
+        if (bot) this.mobManager.mobs.push(bot);
+      }
+    }
+
+    // Kill attribution → arena scores.
+    this.mobManager.onKill = (owner) => {
+      if (this.arenaState.scores[owner] != null) this.arenaState.scores[owner]++;
+    };
+
+    // Fixed camera: neutralize all follow calls + frame the whole arena centered.
+    this.camera.follow = () => {};
+    this.camera.followMidpoint = () => {};
+    this.camera.x = Math.max(0, Math.min(this.level.pixelWidth  - CANVAS_W, (this.level.pixelWidth  - CANVAS_W) / 2));
+    this.camera.y = Math.max(0, Math.min(this.level.pixelHeight - CANVAS_H, (this.level.pixelHeight - CANVAS_H) / 2));
+
+    // Phase 3A.2 — collectibles + power-ups + game mode.
+    if (typeof EMERALD_SYSTEM !== 'undefined') EMERALD_SYSTEM.init(this);
+    if (typeof POWERUP_SYSTEM !== 'undefined') POWERUP_SYSTEM.init(this);
+    if (typeof ARENA_MODES !== 'undefined' && this.arenaConfig.arenaGameMode && ARENA_MODES.initMode) {
+      ARENA_MODES.initMode(this.arenaConfig.arenaGameMode, this);
+    }
+  }
+
+  // Per-running-frame: emerald + power-up pickups for each player, then tick
+  // power-up effect timers. Score is credited to the picking player. (Phase 3A.2)
+  _updateArenaCollectibles() {
+    const award = (p, who) => {
+      if (!p) return;
+      if (typeof EMERALD_SYSTEM !== 'undefined') {
+        EMERALD_SYSTEM.checkPickup(p, () => { if (this.arenaState.scores[who] != null) this.arenaState.scores[who]++; });
+      }
+      if (typeof POWERUP_SYSTEM !== 'undefined') POWERUP_SYSTEM.checkPickup(p);
+    };
+    award(this.player, 'p1');
+    if (this.player2) award(this.player2, 'p2');
+    if (typeof POWERUP_SYSTEM !== 'undefined') POWERUP_SYSTEM.update(this);
+  }
+
+  // Evenly spread N bot columns across the interior (avoiding the side walls).
+  _arenaBotColumns(W, n) {
+    const cols = [];
+    const lo = 2, hi = W - 3;
+    const span = Math.max(1, hi - lo);
+    for (let i = 0; i < n; i++) cols.push(Math.round(lo + span * ((i + 1) / (n + 1))));
+    return cols;
+  }
+
+  // Top of the first solid tile in a column (pixels) so a mob stands on the floor.
+  _arenaFloorY(col, H) {
+    for (let r = 0; r < H; r++) {
+      if (this.level.isSolid(r, col)) return r * BLOCK_SIZE;
+    }
+    return (H - 1) * BLOCK_SIZE;
+  }
+
+  _armArenaPlayer(p, spawn) {
+    p.bow = 'BOW';
+    p.selectedSlot = 2; // bow slot (weaponMode getter → 'bow')
+    p.hp = p.maxHp;
+    p.respawnAt(spawn.x, spawn.y);
+  }
+
+  // ── Phase 3A.2: Arena zoom ──────────────────────────────────
+  // Returns the active arena zoom (1.0 = none) and, for PRESET/DYNAMIC, recenters
+  // the camera under the zoomed viewport (overriding _setupArena's fixed center).
+  _arenaActiveZoom() {
+    const s = this._worldAdvSettings;
+    const mode = (s && s.arenaZoomMode) || 'NONE';
+    if (mode === 'PRESET') {
+      const z = Math.max(0.3, Math.min(1.5, (s && s.arenaPresetZoom) || 1.0));
+      const cam = this._clampArenaCam(this.level.pixelWidth / 2, this.level.pixelHeight / 2, z);
+      this.camera.x = cam.x; this.camera.y = cam.y;
+      return z;
+    }
+    // DYNAMIC is co-op only (needs a second local player to frame between).
+    if (mode === 'DYNAMIC' && this.player2) {
+      const t = this._computeDynamicZoom();
+      this._arenaDynZoom = (this._arenaDynZoom == null)
+        ? t.z
+        : this._arenaDynZoom + (t.z - this._arenaDynZoom) * 0.1; // smooth-lerp
+      const cam = this._clampArenaCam(t.fx, t.fy, this._arenaDynZoom);
+      this.camera.x = cam.x; this.camera.y = cam.y;
+      return this._arenaDynZoom;
+    }
+    return 1.0; // NONE → keep the fixed centering from _setupArena
+  }
+
+  // Zoom + focus that frames both players (+padding) within the canvas.
+  _computeDynamicZoom() {
+    const p1 = this.player, p2 = this.player2;
+    const pad = 3 * BLOCK_SIZE;
+    const minX = Math.min(p1.x, p2.x), maxX = Math.max(p1.x + p1.width,  p2.x + p2.width);
+    const minY = Math.min(p1.y, p2.y), maxY = Math.max(p1.y + p1.height, p2.y + p2.height);
+    const zW = CANVAS_W / ((maxX - minX) + pad * 2);
+    const zH = CANVAS_H / ((maxY - minY) + pad * 2);
+    const z  = Math.max(0.3, Math.min(1.5, Math.min(zW, zH)));
+    return { z, fx: (minX + maxX) / 2, fy: (minY + maxY) / 2 };
+  }
+
+  // Center the camera on (fx,fy) and clamp so the zoomed viewport stays within the
+  // level. Scale is about canvas center, so the world point at screen-center is
+  // camX + CANVAS_W/2 (independent of z); the visible half-extent is (CANVAS/2)/z.
+  _clampArenaCam(fx, fy, z) {
+    const halfW = (CANVAS_W / 2) / z, halfH = (CANVAS_H / 2) / z;
+    let camX = fx - CANVAS_W / 2;
+    let camY = fy - CANVAS_H / 2;
+    const minCamX = halfW - CANVAS_W / 2;
+    const maxCamX = this.level.pixelWidth  - halfW - CANVAS_W / 2;
+    const minCamY = halfH - CANVAS_H / 2;
+    const maxCamY = this.level.pixelHeight - halfH - CANVAS_H / 2;
+    camX = (minCamX > maxCamX) ? (this.level.pixelWidth  - CANVAS_W) / 2 : Math.max(minCamX, Math.min(maxCamX, camX));
+    camY = (minCamY > maxCamY) ? (this.level.pixelHeight - CANVAS_H) / 2 : Math.max(minCamY, Math.min(maxCamY, camY));
+    return { x: camX, y: camY };
+  }
+
+  // Arena world-space overlays (emeralds, power-ups), drawn inside the zoom ctx so
+  // they scale with the world. Systems are populated in Parts 4/6; guarded so this
+  // is a no-op until they load.
+  _drawArenaWorldOverlay(ctx) {
+    if (typeof EMERALD_SYSTEM !== 'undefined' && EMERALD_SYSTEM.draw) EMERALD_SYSTEM.draw(ctx, this.camera, this.frameCount);
+    if (typeof POWERUP_SYSTEM !== 'undefined' && POWERUP_SYSTEM.draw) POWERUP_SYSTEM.draw(ctx, this.camera, this.frameCount);
+  }
+
+  // Redstone propagation step in frames (coarse per-world cadence; Phase 3A.2).
+  // Baseline 6 frames; redstoneSpeed>1 shortens it, <1 lengthens it. Defaults to
+  // 1.0 outside arena (redstoneSpeed unset).
+  _rsStepFrames() {
+    return Math.max(1, Math.round(6 / (this.redstoneSpeed || 1.0)));
   }
 
   // ── Blocky Minecraft-style clouds ───────────────────────────
@@ -711,7 +924,11 @@ class Game {
     const escNow  = this.input.isDown('Escape');
     const escEdge = (escNow && !this._escWas) || this.input.p1JustDown('menu');
     if (escEdge) {
-      if (this._teleportMenu) {
+      if (this.isArena && this.arenaState.phase === 'ended') {
+        this.destroy();
+        if (this._onReturnToMenu) this._onReturnToMenu();
+        return;
+      } else if (this._teleportMenu) {
         this._teleportMenu = false;
       } else if (this._chestOpen) {
         this._closeChest();
@@ -769,6 +986,48 @@ class Game {
         if (this._onReturnToMenu) this._onReturnToMenu(_localMenuState(this));
       }
       return;
+    }
+
+    // ── Phase 3A.1: Arena state machine ───────────────────────
+    if (this.isArena) {
+      const a = this.arenaState;
+      if (a.phase === 'countdown') {
+        if (a.countdownStart == null) a.countdownStart = Date.now();
+        if (Date.now() - a.countdownStart >= 3600) { // 3·2·1·GO ≈ 3.6s
+          a.phase = 'running';
+          a.gameStartTime = Date.now();
+        }
+        return; // freeze gameplay during the countdown
+      }
+      if (a.phase === 'ended') {
+        return; // freeze on the end screen (ESC to exit, handled above)
+      }
+      // running: collectibles + power-ups update every frame.
+      this._updateArenaCollectibles();
+
+      // A game mode (Phase 3A.2) owns the win condition when one is set;
+      // otherwise fall back to the Phase 3A.1 Deathmatch rule.
+      const dur = this.arenaConfig.gameDuration;
+      const timeUp = dur > 0 && Date.now() - a.gameStartTime >= dur;
+      if (typeof ARENA_MODES !== 'undefined' && this.arenaConfig.arenaGameMode && ARENA_MODES.update) {
+        ARENA_MODES.update(this); // flips a.phase to 'ended' via its win condition
+        if (a.phase === 'ended' || timeUp) { // timeUp ends timer-bound modes (e.g. Fight Mobs)
+          a.phase = 'ended';
+          a.endTime = a.endTime || Date.now();
+          return;
+        }
+      } else {
+        // Spawner-driven arenas continually respawn, so they never run out of
+        // bots — end only on the timer. Default-bot Deathmatch ends when the last
+        // bot dies (or on the timer).
+        const aliveBots = this.mobManager.mobs.filter(mb => mb.alive).length;
+        const allDead = !this.mobManager.arenaMode && aliveBots === 0;
+        if (allDead || timeUp) {
+          a.phase = 'ended';
+          a.endTime = Date.now();
+          return;
+        }
+      }
     }
 
     // ── First-frame mode notification ──────────────────────────
@@ -1209,10 +1468,10 @@ class Game {
     if (this._p1RespawnTimer > 0) {
       this._p1RespawnTimer--;
       if (this._p1RespawnTimer === 0) {
-        const rx = this.player2 ? this.player2.x + BLOCK_SIZE : this.player.x;
-        const ry = this.player2 ? this.player2.y : this.player.y;
+        const rx = this.isArena ? this._arenaSpawns.p1.x : (this.player2 ? this.player2.x + BLOCK_SIZE : this.player.x);
+        const ry = this.isArena ? this._arenaSpawns.p1.y : (this.player2 ? this.player2.y : this.player.y);
         this.player.respawnAt(rx, ry);
-        this._notify('Player 1 rejoins!', '#FFD700', 120);
+        this._notify(this.isArena ? 'Respawned!' : 'Player 1 rejoins!', '#FFD700', 120);
       }
     } else {
       this._applyMovementConfig(this.player);
@@ -1227,10 +1486,10 @@ class Game {
       if (this._p2RespawnTimer > 0) {
         this._p2RespawnTimer--;
         if (this._p2RespawnTimer === 0) {
-          const rx = this.player.x - BLOCK_SIZE;
-          const ry = this.player.y;
+          const rx = this.isArena ? this._arenaSpawns.p2.x : this.player.x - BLOCK_SIZE;
+          const ry = this.isArena ? this._arenaSpawns.p2.y : this.player.y;
           this.player2.respawnAt(rx, ry);
-          this._notify('Player 2 rejoins!', '#88AAFF', 120);
+          this._notify(this.isArena ? 'P2 respawned!' : 'Player 2 rejoins!', '#88AAFF', 120);
         }
       } else {
         const p2input = {
@@ -1333,7 +1592,8 @@ class Game {
       const aimDown = this.input.isAttack() || this.input.mouse.down;
       if (aimDown && hasArrows) {
         this.player.bowDrawing   = true;
-        this.player.drawProgress = Math.min(1, this.player.drawProgress + 1 / BOW_CHARGE_FRAMES);
+        // Phase 3A.2 — FIRE_RATE power-up charges the bow faster (_fireRateMult).
+        this.player.drawProgress = Math.min(1, this.player.drawProgress + (1 / BOW_CHARGE_FRAMES) * (this.player._fireRateMult || 1));
       } else if (aimDown && !hasArrows) {
         // Cancel any in-progress draw — no arrows
         this.player.bowDrawing   = false;
@@ -1349,7 +1609,8 @@ class Game {
           this.player.cx, this.player.cy,
           Math.cos(angle) * speed,
           Math.sin(angle) * speed,
-          PLAYER_ARROW_DAMAGE
+          PLAYER_ARROW_DAMAGE,
+          'p1'
         );
         this._playSound('sounds/bow-fire.mp3');
         if (!this._worldAdvSettings.unlimitedArrows) this._consumeArrow();
@@ -1395,7 +1656,7 @@ class Game {
         const hasArrows = this._worldAdvSettings.unlimitedArrows || this.player2.countItem(BLOCK.ARROW) > 0;
         if (p2AttHeld && hasArrows) {
           this.player2.bowDrawing   = true;
-          this.player2.drawProgress = Math.min(1, this.player2.drawProgress + 1 / BOW_CHARGE_FRAMES);
+          this.player2.drawProgress = Math.min(1, this.player2.drawProgress + (1 / BOW_CHARGE_FRAMES) * (this.player2._fireRateMult || 1));
         } else if (p2AttHeld && !hasArrows) {
           this.player2.bowDrawing   = false;
           this.player2.drawProgress = 0;
@@ -1406,7 +1667,8 @@ class Game {
           this.mobManager.addPlayerArrow(
             this.player2.cx, this.player2.cy,
             Math.cos(angle) * speed, Math.sin(angle) * speed,
-            PLAYER_ARROW_DAMAGE
+            PLAYER_ARROW_DAMAGE,
+            'p2'
           );
           this._playSound('sounds/bow-fire.mp3');
           if (!this._worldAdvSettings.unlimitedArrows) this._consumeArrowP2();
@@ -1510,7 +1772,7 @@ class Game {
         : null;
       this.redstone.update(this.level, this.player, this.input, _rsExtraOn);
     }
-    this.redstone.updatePistonAnimations();
+    this.redstone.updatePistonAnimations(this.redstoneSpeed || 1);
     this._applyPistonKnockback();
     // Before TNT explodes, drop items from any chests in blast radius + play sound + visual
     for (const comp of this.redstone.components) {
@@ -1645,10 +1907,16 @@ class Game {
         // Check for floating placed objects first (eggs and item drops)
         const eggIdx  = this.sandbox.hitTestEggs(world.x, world.y);
         const itemIdx = this.sandbox.hitTestItems(world.x, world.y);
+        const emIdx   = this.sandbox.hitTestEmeralds(world.x, world.y);
+        const puIdx   = this.sandbox.hitTestPowerups(world.x, world.y);
         if (eggIdx >= 0) {
           this.sandbox.openPopup(eggIdx);
         } else if (itemIdx >= 0) {
           this.sandbox.openItemPopup(itemIdx);
+        } else if (emIdx >= 0) {
+          this.sandbox.openEmeraldPopup(emIdx);
+        } else if (puIdx >= 0) {
+          this.sandbox.openPowerupPopup(puIdx);
         } else if (target === BLOCK.AIR) {
           // Empty space → place selected item type
           if (this.sandbox.isDustSelected) {
@@ -1657,6 +1925,10 @@ class Game {
             this._notify('Gate must be placed on a solid block — click a block surface', '#CC4444', 120);
           } else if (this.sandbox.isEggSelected) {
             this.sandbox.placeEgg(world.x, world.y);
+          } else if (this.sandbox.isEmeraldSelected) {
+            this.sandbox.placeEmerald(world.x, world.y);
+          } else if (this.sandbox.isPowerupSelected) {
+            this.sandbox.placePowerup(world.x, world.y);
           } else if (this.sandbox.isToolSelected || this.sandbox.isBlockItemSelected) {
             this.sandbox.placeItem(world.x, world.y);
           } else if (this.sandbox.isMultiBlock) {
@@ -3205,6 +3477,14 @@ class Game {
     this._deathCause     = cause;
     this._deathTimestamp = Date.now();
 
+    // Arena: unlimited respawns at the player's spawn after a short delay (no death modal/elimination)
+    if (this.isArena) {
+      this._notify('Respawning…', '#FFD700', this.arenaRespawnFrames);
+      this._p1RespawnTimer = this.arenaRespawnFrames;
+      this.player.hp = this.player.maxHp;
+      return;
+    }
+
     // 2P co-op: use respawn timer instead of death modal
     if (this.player2) {
       this.player.lives = Math.max(0, (this.player.lives ?? 3) - 1);
@@ -3310,6 +3590,12 @@ class Game {
 
   _triggerP2Death(cause = 'Player 2 died') {
     if (this._p2RespawnTimer > 0) return;
+    // Arena: unlimited respawns, no elimination
+    if (this.isArena) {
+      this._p2RespawnTimer = this.arenaRespawnFrames;
+      this.player2.hp = this.player2.maxHp;
+      return;
+    }
     this.player2.lives = Math.max(0, (this.player2.lives ?? 3) - 1);
     this._notify(`P2: ${cause}`, '#FF8888', 150);
     if (this.player2.lives <= 0) {
@@ -4238,18 +4524,26 @@ class Game {
       this._drawCelestial(ctx);   // stars + sun/moon behind clouds
       this._drawClouds(ctx);
     }
-    // SR zoom — scale world around canvas center (sky stays unaffected, drawn above)
+    // World-space zoom — scale around canvas center (sky stays unaffected, drawn
+    // above). Used by Speed-Runner (zoom-out at speed) and Arena (PRESET zoom in/
+    // out, or DYNAMIC co-op fit). The matching ctx.restore() is below, after the
+    // world overlays. Unlike SR (zoom-out only), arena PRESET can also zoom IN, so
+    // the transform applies whenever zoom differs from 1.0 in either direction.
+    let _activeZoom = 1.0;
     if (this.gameMode === 'speedrunner' && this._sr) {
-      const z = this._sr.srZoom ?? 1.0;
-      ctx.save();
-      if (z < 0.995) {
-        ctx.translate(CANVAS_W / 2, CANVAS_H / 2);
-        ctx.scale(z, z);
-        ctx.translate(-CANVAS_W / 2, -CANVAS_H / 2);
-      }
+      _activeZoom = this._sr.srZoom ?? 1.0;
+    } else if (this.isArena) {
+      _activeZoom = this._arenaActiveZoom(); // also recenters the arena camera under zoom
     }
-    // Pass zoom to camera so level.draw can expand the rendered viewport
-    this.camera._srZoom = (this.gameMode === 'speedrunner' && this._sr) ? (this._sr.srZoom || 1.0) : 1.0;
+    ctx.save();
+    if (Math.abs(_activeZoom - 1.0) > 0.005) {
+      ctx.translate(CANVAS_W / 2, CANVAS_H / 2);
+      ctx.scale(_activeZoom, _activeZoom);
+      ctx.translate(-CANVAS_W / 2, -CANVAS_H / 2);
+    }
+    // Pass zoom to camera so level.draw expands the rendered viewport and toWorld
+    // (mouse→world, e.g. bow aim) undoes the scale correctly.
+    this.camera._srZoom = _activeZoom;
     this.level.draw(ctx, this.camera, this.redstone);
     // Re-draw open chest with lid-open state on top
     if (this._chestOpen) {
@@ -4356,8 +4650,10 @@ class Game {
     // SR world-space overlays (particles, ghost, speed items) drawn inside zoom context
     if (this.gameMode === 'speedrunner' && this._sr) {
       this._drawSRWorldOverlay(ctx);
-      ctx.restore(); // end SR zoom (matches save above)
     }
+    // Arena world-space overlays (emeralds, power-ups) drawn inside the zoom context
+    if (this.isArena) this._drawArenaWorldOverlay(ctx);
+    ctx.restore(); // end world zoom (matches the unconditional save above)
     this._drawHUD(ctx, hoverRow, hoverCol);
     // Phase 16: Multiplayer HUD (player list + connection badge)
     if (window.multiplayerManager?.isConnected) window.multiplayerManager.drawHUD(ctx);
@@ -4412,6 +4708,8 @@ class Game {
     if (this._musicPlayerUI)       this._drawMusicPlayerUI(ctx);
     if (this.state === 'dead' && this.gameMode !== 'speedrunner') this._drawDead(ctx);
     if (this.state === 'won'  && this.gameMode !== 'speedrunner') this._drawWin(ctx);
+    if (this.isArena && this.arenaState.phase === 'countdown') this._drawArenaCountdown(ctx);
+    if (this.isArena && this.arenaState.phase === 'ended')     this._drawArenaEnd(ctx);
     if (this._onlineGameId && this._onlineMenuOpen) this._drawOnlineMenu(ctx);
     if (this.state === 'paused' || this.state === 'confirmExit') this._drawPauseOverlay(ctx);
     if (this._saveDialog) this._drawSaveDialog(ctx);
@@ -5171,24 +5469,24 @@ class Game {
       // because a pending ON may be in the queue and must be cancelled/overridden.
       const dust = this._dustBlocks.get(`${c},${r}`);
       if (dust && (dust.on !== powered || !powered)) {
-        this._rsEnqueue({ col: c, row: r, powered, frame: this.frameCount + 6 });
+        this._rsEnqueue({ col: c, row: r, powered, frame: this.frameCount + this._rsStepFrames() });
       }
       // Adjacent transmitter block
       if (this.level.get(r, c) === BLOCK.TRANSMITTER) {
-        this._rsEnqueue({ type: 'transmitter', col: c, row: r, frame: this.frameCount + 6 });
+        this._rsEnqueue({ type: 'transmitter', col: c, row: r, frame: this.frameCount + this._rsStepFrames() });
       }
       // Adjacent gate with input facing this source
       const gate = this._gateBlocks.get(`${c},${r}`);
       if (gate && gate.inputSide) {
         const [gdr, gdc] = GD[gate.inputSide];
         if (c + gdc === srcCol && r + gdr === srcRow) {
-          this._rsEnqueue({ type: 'gate', col: c, row: r, frame: this.frameCount + 6 });
+          this._rsEnqueue({ type: 'gate', col: c, row: r, frame: this.frameCount + this._rsStepFrames() });
         }
       }
       if (gate && gate.type === 'and' && gate.inputSide2) {
         const [gdr2, gdc2] = GD[gate.inputSide2];
         if (c + gdc2 === srcCol && r + gdr2 === srcRow) {
-          this._rsEnqueue({ type: 'gate', col: c, row: r, frame: this.frameCount + 6 });
+          this._rsEnqueue({ type: 'gate', col: c, row: r, frame: this.frameCount + this._rsStepFrames() });
         }
       }
     }
@@ -5430,7 +5728,7 @@ class Game {
 
   // Power (or unpower) adjacent dust/devices from a receiver block.
   _rsStartFromReceiver(col, row, powered, frame) {
-    const f = frame ?? (this.frameCount + 6);
+    const f = frame ?? (this.frameCount + this._rsStepFrames());
     const DIRS = [[0,1],[0,-1],[1,0],[-1,0]];
     for (const [dr, dc] of DIRS) {
       const nc = col + dc, nr = row + dr;
@@ -6088,6 +6386,8 @@ class Game {
       chests: [...this._chests.entries()].map(([k, v]) => [k, {...v, items: [...v.items]}]),
       eggs:   this.sandbox ? this.sandbox.placedEggs.map(e => ({...e})) : [],
       items:  this.sandbox ? this.sandbox.placedItems.map(i => ({...i})) : [],
+      emeralds: this.sandbox ? this.sandbox.placedEmeralds.map(e => ({...e})) : [],
+      powerups: this.sandbox ? this.sandbox.placedPowerups.map(p => ({...p})) : [],
       ruinedPortals: [...this._ruinedPortals.entries()].map(([k, v]) => [k, {...v}]),
       portalObsidian: [...this._portalObsidianCells],
       endPortalAnchors: [...this._endPortalAnchors.entries()].map(([k, v]) => [k, {...v}]),
@@ -6115,6 +6415,8 @@ class Game {
     if (this.sandbox) {
       this.sandbox.placedEggs  = snap.eggs.map(e => ({...e}));
       this.sandbox.placedItems = snap.items.map(i => ({...i}));
+      this.sandbox.placedEmeralds = (snap.emeralds || []).map(e => ({...e}));
+      this.sandbox.placedPowerups = (snap.powerups || []).map(p => ({...p}));
     }
 
     // Restore ruined portals
@@ -9361,7 +9663,128 @@ class Game {
     this._drawControllerStatus(ctx);
     this._drawContextPrompt(ctx);
     if (this.player2) this._drawP2HUD(ctx);
+    if (this.isArena) this._drawArenaHUD(ctx);
     ctx.restore();
+  }
+
+  // ── Phase 3A.1: Arena HUD (timer + kills + bots), drawn over the canvas HUD ──
+  _drawArenaHUD(ctx) {
+    ctx.save();
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+
+    // Timer (counts down to the limit, or up if unlimited)
+    let t = this.arenaState.gameStartTime ? (this.arenaState.endTime || Date.now()) - this.arenaState.gameStartTime : 0;
+    const dur = this.arenaConfig.gameDuration;
+    const shown = dur > 0 ? Math.max(0, dur - t) : t;
+    const sec = Math.floor(shown / 1000), mm = Math.floor(sec / 60), ss = sec % 60;
+    ctx.font = 'bold 18px Courier New';
+    ctx.fillStyle = '#FFD700';
+    ctx.fillText(`${mm}:${String(ss).padStart(2, '0')}`, CANVAS_W / 2, 14);
+
+    // Kills + bots remaining
+    const k1 = this.arenaState.scores.p1 || 0;
+    const bots = this.mobManager.mobs.filter(m => m.alive).length;
+    ctx.font = 'bold 13px Courier New';
+    ctx.fillStyle = '#FFFFFF';
+    const line = this.player2
+      ? `P1: ${k1}    P2: ${this.arenaState.scores.p2 || 0}    Bots: ${bots}`
+      : `Kills: ${k1}    Bots: ${bots}`;
+    ctx.fillText(line, CANVAS_W / 2, 32);
+
+    // Game-mode objective line (Phase 3A.2).
+    if (typeof ARENA_MODES !== 'undefined' && this.arenaConfig.arenaGameMode) {
+      const mt = ARENA_MODES.getHUDText(this);
+      if (mt) {
+        ctx.font = '11px Courier New';
+        ctx.fillStyle = '#FFD27F';
+        ctx.fillText(mt, CANVAS_W / 2, 62);
+      }
+    }
+
+    // Zoom readout (only when a zoom is active).
+    const z = this.camera._srZoom || 1.0;
+    if (Math.abs(z - 1.0) > 0.005) {
+      ctx.font = '11px Courier New';
+      ctx.fillStyle = '#9FD3FF';
+      ctx.fillText(`Zoom: ${z.toFixed(2)}×`, CANVAS_W / 2, 48);
+    }
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+  }
+
+  // ── Phase 3A.1: Arena countdown overlay (3·2·1·GO) ──
+  _drawArenaCountdown(ctx) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    const el = this.arenaState.countdownStart ? Date.now() - this.arenaState.countdownStart : 0;
+    const label = el < 1000 ? '3' : el < 2000 ? '2' : el < 3000 ? '1' : 'GO!';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = label === 'GO!' ? '#4CAF50' : '#FFD700';
+    ctx.font = 'bold 120px Arial';
+    ctx.fillText(label, CANVAS_W / 2, CANVAS_H / 2);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 18px Arial';
+    ctx.fillText('Deathmatch — defeat the bots!', CANVAS_W / 2, CANVAS_H / 2 + 90);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+  }
+
+  // ── Arena end screen (Phase 3A.1 Deathmatch + 3A.2 modes) ──
+  _drawArenaEnd(ctx) {
+    this._submitArenaResultOnce(); // leaderboard submit (once), mode runs only
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.82)';
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 48px Arial';
+    ctx.fillText('Game Over!', CANVAS_W / 2, CANVAS_H / 2 - 70);
+
+    const mode = this.arenaConfig.arenaGameMode;
+    const k1 = this.arenaState.scores.p1 || 0;
+    ctx.fillStyle = '#FFFFFF';
+    if (mode && typeof ARENA_MODES !== 'undefined') {
+      ctx.font = 'bold 26px Arial';
+      ctx.fillText(ARENA_MODES.label(mode), CANVAS_W / 2, CANVAS_H / 2 - 20);
+      ctx.font = 'bold 22px Arial';
+      ctx.fillText(`Score: ${ARENA_MODES.score(this)}`, CANVAS_W / 2, CANVAS_H / 2 + 16);
+    } else if (this.player2) {
+      const k2 = this.arenaState.scores.p2 || 0;
+      const winner = k1 === k2 ? "It's a tie!" : (k1 > k2 ? 'Player 1 wins!' : 'Player 2 wins!');
+      ctx.font = 'bold 28px Arial';
+      ctx.fillText(winner, CANVAS_W / 2, CANVAS_H / 2 - 18);
+      ctx.font = 'bold 20px Arial';
+      ctx.fillText(`P1: ${k1} kills     P2: ${k2} kills`, CANVAS_W / 2, CANVAS_H / 2 + 22);
+    } else {
+      ctx.font = 'bold 26px Arial';
+      ctx.fillText(`You defeated ${k1} bot${k1 === 1 ? '' : 's'}!`, CANVAS_W / 2, CANVAS_H / 2 - 14);
+    }
+    ctx.fillStyle = '#AAAAAA';
+    ctx.font = 'bold 18px Arial';
+    ctx.fillText('Press ESC to exit', CANVAS_W / 2, CANVAS_H / 2 + 72);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+  }
+
+  // Submit the arena result to the leaderboard exactly once (mode runs only).
+  _submitArenaResultOnce() {
+    if (this._arenaResultSubmitted) return;
+    this._arenaResultSubmitted = true;
+    const mode = this.arenaConfig.arenaGameMode;
+    if (!mode || typeof LEADERBOARD_SYSTEM === 'undefined' || !LEADERBOARD_SYSTEM.submit) return;
+    const score = (typeof ARENA_MODES !== 'undefined') ? ARENA_MODES.score(this) : (this.arenaState.scores.p1 || 0);
+    const durMs  = (this.arenaState.gameStartTime && this.arenaState.endTime)
+      ? this.arenaState.endTime - this.arenaState.gameStartTime : 0;
+    LEADERBOARD_SYSTEM.submit(mode, score, Math.round(durMs / 1000));
   }
 
   _drawHelpButton(ctx) {
@@ -12118,7 +12541,20 @@ class Game {
           wx:      e.col * BLOCK_SIZE + BLOCK_SIZE / 2,
           wy:      e.row * BLOCK_SIZE + BLOCK_SIZE / 2,
           mobType: e.mobType || 'zombie',
+          // Phase 3A.2 — per-spawner arena fields (default when absent on old saves)
+          spawnFrequency: typeof e.spawnFrequency === 'number' ? e.spawnFrequency : 2,
+          maxActiveMobs:  typeof e.maxActiveMobs  === 'number' ? e.maxActiveMobs  : 3,
         }));
+    }
+
+    // Restore arena collectibles (Phase 3A.2)
+    if (this.sandbox) {
+      this.sandbox.placedEmeralds = (Array.isArray(data.emeralds) ? data.emeralds : [])
+        .filter(e => e && typeof e.col === 'number' && typeof e.row === 'number')
+        .map(e => ({ col: e.col, row: e.row, wx: e.col * BLOCK_SIZE + BLOCK_SIZE / 2, wy: e.row * BLOCK_SIZE + BLOCK_SIZE / 2 }));
+      this.sandbox.placedPowerups = (Array.isArray(data.powerups) ? data.powerups : [])
+        .filter(p => p && typeof p.col === 'number' && typeof p.row === 'number')
+        .map(p => ({ col: p.col, row: p.row, wx: p.col * BLOCK_SIZE + BLOCK_SIZE / 2, wy: p.row * BLOCK_SIZE + BLOCK_SIZE / 2, powerType: p.powerType || 'HEALTH' }));
     }
 
     // Restore sandbox portal registry + links

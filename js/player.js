@@ -111,8 +111,9 @@ class Player {
 
   // Speed scales linearly: ×1.0 at XP 0, ×2.0 at XP max (level 5); disabled by world setting
   get _xpMult()       { return this.xpSpeedDisabled ? 1 : 1 + this.xp / this.maxXp; }
-  get moveSpeed()     { return MOVE_SPEED   * this._xpMult; }
-  get crouchSpeed()   { return CROUCH_SPEED * this._xpMult; }
+  // _speedBoostMult is the arena SPEED power-up multiplier (Phase 3A.2); 1 when inactive.
+  get moveSpeed()     { return MOVE_SPEED   * this._xpMult * (this._speedBoostMult || 1); }
+  get crouchSpeed()   { return CROUCH_SPEED * this._xpMult * (this._speedBoostMult || 1); }
 
   gainXp(amount) {
     if (this.godMode) return; // no XP in sandbox mode
@@ -160,6 +161,12 @@ class Player {
   takeDamage(amount, knockDir = 0) {
     if (this.godMode)   return false;
     if (this.iframes > 0) return false;
+    // Phase 3A.2 — arena SHIELD power-up absorbs the next hit entirely.
+    if (this.shield > 0) {
+      this.shield--;
+      this.iframes = IFRAMES;
+      return false;
+    }
     const actual = Math.max(1, amount - this.getArmorReduction());
     this.hp     = Math.max(0, this.hp - actual);
     this.iframes = IFRAMES;

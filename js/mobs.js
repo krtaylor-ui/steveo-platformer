@@ -1390,7 +1390,9 @@ class MobManager {
     this.onlinePlayers = []; // online player stubs for multi-target aggro (host only)
     this.soundCallback        = null;  // set by game.js: fn(file, volMult?)
     this.dropCallback         = null;  // set by game.js: fn(items) — called when mob drops items (used for online relay)
+    this.onKill               = null;  // set by game.js (arena): fn(ownerId, mob) — a player arrow killed a mob
     this._camera              = null;  // set by game.js after Camera is created
+    this.arenaMode            = false; // Phase 3A.2: arena spawners (on-screen, per-spawner freq/cap)
   }
 
   // Set up spawn points from world data
@@ -1400,6 +1402,11 @@ class MobManager {
 
   // Spawn initial mobs from spawn points within activation range
   _updateSpawnPoints(player, level) {
+    // Arena spawners are the OPPOSITE of ambient spawning: they intentionally
+    // spawn on-screen, ignore min-distance, and cap per-spawner rather than by a
+    // global proximity rule. Phase 3A.2.
+    if (this.arenaMode) { this._updateArenaSpawnPoints(level); return; }
+
     // Collect all player centers: host + online joiners
     const playerCenters = [player.x + player.width / 2];
     for (const op of this.onlinePlayers || []) {
@@ -1449,6 +1456,32 @@ class MobManager {
     }
   }
 
+  // Arena spawner update (Phase 3A.2): per-spawner cadence + active cap, no
+  // screen/min-distance suppression. Each spawned mob is tagged with its spawn
+  // point index so the cap is counted per-spawner.
+  _updateArenaSpawnPoints(level) {
+    for (let i = 0; i < this.spawnPoints.length; i++) {
+      const sp = this.spawnPoints[i];
+      if (sp.active === false) continue;
+
+      // Per-spawner active cap.
+      const cap = Math.max(1, sp.maxActiveMobs ?? 3);
+      const aliveHere = this.mobs.filter(m => m.alive && m.spawnPointIdx === i).length;
+      if (aliveHere >= cap) continue;
+
+      // Per-spawner cadence (spawnFrequency = mobs per 10s; 600 frames ≈ 10s @60fps).
+      if (sp.timer > 0) { sp.timer--; continue; }
+
+      let gr = sp.row;
+      while (gr < level.height - 1 && !level.isSolid(gr, sp.col)) gr++;
+      const mob = this._createMob(sp.mobTypeName, sp.col * BLOCK_SIZE, gr * BLOCK_SIZE);
+      if (mob) { mob.spawnPointIdx = i; this.mobs.push(mob); }
+
+      const freq = Math.max(1, sp.spawnFrequency ?? 2);
+      sp.timer = Math.max(1, Math.round(600 / freq));
+    }
+  }
+
   _createMob(typeName, mx, my) {
     let mob;
     switch (typeName) {
@@ -1491,8 +1524,10 @@ class MobManager {
     }
   }
 
-  addPlayerArrow(x, y, vx, vy, damage) {
-    this.playerArrows.push(new Arrow(x, y, vx, vy, damage, BOW_GRAVITY, true));
+  addPlayerArrow(x, y, vx, vy, damage, owner = 'p1') {
+    const a = new Arrow(x, y, vx, vy, damage, BOW_GRAVITY, true);
+    a.owner = owner; // arena kill attribution ('p1' | 'p2')
+    this.playerArrows.push(a);
   }
 
   // Returns the player (p1 or p2) closest to (cx, cy).
@@ -1577,6 +1612,7 @@ class MobManager {
           if (mob.takeDamage(pa.damage, dir)) {
             this.damageNums.push(new DamageNumber(mob.cx, mob.y - 8, pa.damage, '#00EEFF'));
           }
+          if (!mob.alive) this.onKill?.(pa.owner || 'p1', mob); // arena scoring
           pa.alive = false;
           break;
         }

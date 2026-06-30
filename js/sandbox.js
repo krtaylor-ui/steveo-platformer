@@ -82,8 +82,19 @@ const OTHER_PALETTE_ITEMS = [
   { kind: 'block', blockType: BLOCK.MUSIC_PLAYER },
   // ── Consumable items ─────────────────────────────────────────
   { kind: 'blockItem', blockType: BLOCK.ARROW, defaultCount: 20, name: 'Arrow Stack' },
+  // ── Arena collectibles (Phase 3A.2) ──────────────────────────
+  { kind: 'emerald', name: 'Emerald',  color: '#2ecc71' },
+  { kind: 'powerup', name: 'Power-Up', color: '#e67e22' },
   // ── Spawn Eggs ───────────────────────────────────────────────
   ...SPAWN_EGG_DEFS.map(d => ({ kind: 'egg', ...d })),
+];
+
+// Power-up types (editor cycle order). Runtime effects live in powerup-system.js.
+const SB_POWERUP_TYPES = [
+  { type: 'HEALTH',    label: 'Health',    color: '#e74c3c', symbol: '✚' },
+  { type: 'SPEED',     label: 'Speed',     color: '#3498db', symbol: '»' },
+  { type: 'FIRE_RATE', label: 'Fire Rate', color: '#f1c40f', symbol: '🏹' },
+  { type: 'SHIELD',    label: 'Shield',    color: '#9b59b6', symbol: '⛨' },
 ];
 
 // Multi-block footprint templates — anchor is dr=0,dc=0 (top-left cell)
@@ -206,6 +217,8 @@ class SandboxManager {
     this.selectedGateType      = null;   // null | 'not' | 'and'
     this.selectedBlockItemType  = null;  // non-null → placing block-item stacks
     this.selectedBlockItemCount = 20;   // default stack size for block items
+    this.selectedEmerald       = false; // true → placing emeralds (Phase 3A.2)
+    this.selectedPowerup       = false; // true → placing power-ups (Phase 3A.2)
     this.brushSize             = 1;     // 1 | 2 | 4
 
     // Quick-access hotbar (8 block slots)
@@ -223,6 +236,10 @@ class SandboxManager {
     // Placed weapon/tool drops: [{col,row,wx,wy,toolKey,bobOffset}]
     this.placedItems = [];
 
+    // Arena collectibles (Phase 3A.2)
+    this.placedEmeralds = []; // [{col,row,wx,wy}]
+    this.placedPowerups = []; // [{col,row,wx,wy,powerType}]
+
     // Config popup for a placed egg / item drop
     this.popup = null; // { kind:'egg'|'item', eggIdx|itemIdx } or null
 
@@ -237,12 +254,16 @@ class SandboxManager {
   get isDustSelected()      { return this.selectedDust; }
   get isGateSelected()      { return this.selectedGateType     !== null; }
   get isBlockItemSelected() { return this.selectedBlockItemType !== null; }
+  get isEmeraldSelected()   { return this.selectedEmerald; }
+  get isPowerupSelected()   { return this.selectedPowerup; }
 
   // Returns a hotbar entry object representing the current selection.
   _currentSelectionEntry() {
     if (this.isBlockItemSelected) return { kind: 'blockItem', value: this.selectedBlockItemType, count: this.selectedBlockItemCount };
     if (this.isToolSelected)      return { kind: 'tool',      value: this.selectedToolKey };
     if (this.isEggSelected)       return { kind: 'egg',       value: this.selectedEggKey  };
+    if (this.isEmeraldSelected)   return { kind: 'emerald',   value: 'emerald' };
+    if (this.isPowerupSelected)   return { kind: 'powerup',   value: 'powerup' };
     if (this.isDustSelected)      return { kind: 'dust',      value: 'dust' };
     if (this.isGateSelected)      return { kind: 'gate',      value: this.selectedGateType };
     return { kind: 'block', value: this.selectedBlock };
@@ -254,6 +275,20 @@ class SandboxManager {
     this.selectedDust          = false;
     this.selectedGateType      = null;
     this.selectedBlockItemType = null;
+    this.selectedEmerald       = false;
+    this.selectedPowerup       = false;
+    if (entry.kind === 'emerald') {
+      this.selectedEmerald = true;
+      this.selectedEggKey  = null;
+      this.selectedToolKey = null;
+      return;
+    }
+    if (entry.kind === 'powerup') {
+      this.selectedPowerup = true;
+      this.selectedEggKey  = null;
+      this.selectedToolKey = null;
+      return;
+    }
     if (entry.kind === 'block') {
       this.selectedBlock   = entry.value;
       this.selectedEggKey  = null;
@@ -282,7 +317,8 @@ class SandboxManager {
 
   get isMultiBlock() {
     return !this.isEggSelected && !this.isToolSelected && !this.isDustSelected &&
-           !this.isGateSelected && !this.isBlockItemSelected && !!SB_MULTI_FOOTPRINT[this.selectedBlock];
+           !this.isGateSelected && !this.isBlockItemSelected &&
+           !this.isEmeraldSelected && !this.isPowerupSelected && !!SB_MULTI_FOOTPRINT[this.selectedBlock];
   }
 
   // Returns array of {r, c, type} for the current multi-block item, or null.
@@ -380,6 +416,9 @@ class SandboxManager {
       wx: col * BLOCK_SIZE + BLOCK_SIZE / 2,
       wy: row * BLOCK_SIZE + BLOCK_SIZE / 2,
       mobType: this.selectedEggKey,
+      // Phase 3A.2 — per-spawner arena tuning (mobs per 10s + active cap).
+      spawnFrequency: 2,
+      maxActiveMobs:  3,
     });
   }
 
@@ -398,6 +437,44 @@ class SandboxManager {
     if (idx >= 0 && idx < this.placedEggs.length) this.placedEggs.splice(idx, 1);
     this.popup = null;
   }
+
+  // ── Arena collectibles (Phase 3A.2) ─────────────────────────
+  placeEmerald(wx, wy) {
+    const col = Math.floor(wx / BLOCK_SIZE), row = Math.floor(wy / BLOCK_SIZE);
+    if (this.placedEmeralds.some(e => e.col === col && e.row === row)) return;
+    this.placedEmeralds.push({ col, row, wx: col * BLOCK_SIZE + BLOCK_SIZE / 2, wy: row * BLOCK_SIZE + BLOCK_SIZE / 2 });
+  }
+  placePowerup(wx, wy) {
+    const col = Math.floor(wx / BLOCK_SIZE), row = Math.floor(wy / BLOCK_SIZE);
+    if (this.placedPowerups.some(p => p.col === col && p.row === row)) return;
+    this.placedPowerups.push({ col, row, wx: col * BLOCK_SIZE + BLOCK_SIZE / 2, wy: row * BLOCK_SIZE + BLOCK_SIZE / 2, powerType: 'HEALTH' });
+  }
+  hitTestEmeralds(wx, wy) {
+    const R = 16;
+    for (let i = 0; i < this.placedEmeralds.length; i++) {
+      const e = this.placedEmeralds[i];
+      if (Math.abs(wx - e.wx) < R && Math.abs(wy - e.wy) < R) return i;
+    }
+    return -1;
+  }
+  hitTestPowerups(wx, wy) {
+    const R = 16;
+    for (let i = 0; i < this.placedPowerups.length; i++) {
+      const p = this.placedPowerups[i];
+      if (Math.abs(wx - p.wx) < R && Math.abs(wy - p.wy) < R) return i;
+    }
+    return -1;
+  }
+  cyclePowerupType(idx) {
+    if (idx < 0 || idx >= this.placedPowerups.length) return;
+    const types = SB_POWERUP_TYPES.map(t => t.type);
+    const cur   = types.indexOf(this.placedPowerups[idx].powerType);
+    this.placedPowerups[idx].powerType = types[(cur + 1) % types.length];
+  }
+  removeEmerald(idx) { if (idx >= 0 && idx < this.placedEmeralds.length) this.placedEmeralds.splice(idx, 1); this.popup = null; }
+  removePowerup(idx) { if (idx >= 0 && idx < this.placedPowerups.length) this.placedPowerups.splice(idx, 1); this.popup = null; }
+  openEmeraldPopup(idx) { this.popup = { kind: 'emerald', emeraldIdx: idx }; }
+  openPowerupPopup(idx) { this.popup = { kind: 'powerup', powerupIdx: idx }; }
 
   // ── Placed item drops (weapons / tools) ─────────────────────
 
@@ -617,7 +694,19 @@ class SandboxManager {
           const item = items[i];
           this.selectedDust     = false;
           this.selectedGateType = null;
-          if (item.kind === 'tool') {
+          this.selectedEmerald  = false;
+          this.selectedPowerup  = false;
+          if (item.kind === 'emerald') {
+            this.selectedEmerald = true;
+            this.selectedEggKey  = null;
+            this.selectedToolKey = null;
+            this.selectedBlockItemType = null;
+          } else if (item.kind === 'powerup') {
+            this.selectedPowerup = true;
+            this.selectedEggKey  = null;
+            this.selectedToolKey = null;
+            this.selectedBlockItemType = null;
+          } else if (item.kind === 'tool') {
             this.selectedToolKey = item.key;
             this.selectedEggKey  = null;
           } else if (item.kind === 'block') {
@@ -645,6 +734,8 @@ class SandboxManager {
           this.selectedBlock   = items[i];
           this.selectedEggKey  = null;
           this.selectedToolKey = null;
+          this.selectedEmerald = false;
+          this.selectedPowerup = false;
         }
         // Auto-assign current selection to the active hotbar slot
         this.sbHotbar[this.sbHotbarSel] = this._currentSelectionEntry();
@@ -693,22 +784,50 @@ class SandboxManager {
       return true;
     }
 
-    // Egg popup
+    // Emerald popup (popH = 120, matches _drawPopup) — Phase 3A.2
+    if (this.popup.kind === 'emerald') {
+      if (mx >= px + pw - 26 && mx <= px + pw - 6 && my >= py + 6 && my <= py + 26) { this.closePopup(); return true; }
+      if (mx < px || mx > px + pw || my < py || my > py + 120) { this.closePopup(); return false; }
+      if (mx >= px + 14 && mx <= px + pw - 14 && my >= py + 76 && my <= py + 106) { this.removeEmerald(this.popup.emeraldIdx); return true; }
+      return true;
+    }
+
+    // Power-up popup (popH = 168, matches _drawPopup) — Phase 3A.2
+    if (this.popup.kind === 'powerup') {
+      if (mx >= px + pw - 26 && mx <= px + pw - 6 && my >= py + 6 && my <= py + 26) { this.closePopup(); return true; }
+      if (mx < px || mx > px + pw || my < py || my > py + 168) { this.closePopup(); return false; }
+      if (mx >= px + 14 && mx <= px + pw - 14 && my >= py + 88  && my <= py + 118) { this.cyclePowerupType(this.popup.powerupIdx); return true; }
+      if (mx >= px + 14 && mx <= px + pw - 14 && my >= py + 124 && my <= py + 154) { this.removePowerup(this.popup.powerupIdx); return true; }
+      return true;
+    }
+
+    // Egg popup (eggH = 244, matches _drawPopup)
+    const egg = this.placedEggs[this.popup.eggIdx];
     // X close button
     if (mx >= px + pw - 26 && mx <= px + pw - 6 && my >= py + 6 && my <= py + 26) {
       this.closePopup(); return true;
     }
-    if (mx < px || mx > px + pw || my < py || my > py + 170) {
+    if (mx < px || mx > px + pw || my < py || my > py + 244) {
       this.closePopup();
       return false;
     }
     // Cycle button
-    if (mx >= px + 14 && mx <= px + pw - 14 && my >= py + 84 && my <= py + 116) {
+    if (mx >= px + 14 && mx <= px + pw - 14 && my >= py + 84 && my <= py + 112) {
       this.cycleEggType(this.popup.eggIdx);
       return true;
     }
+    // Spawn-rate steppers (mobs / 10s, 1–10)
+    if (egg && my >= py + 120 && my <= py + 144) {
+      if (mx >= px + 14 && mx <= px + 42)            { egg.spawnFrequency = Math.max(1,  (egg.spawnFrequency ?? 2) - 1); return true; }
+      if (mx >= px + pw - 42 && mx <= px + pw - 14)  { egg.spawnFrequency = Math.min(10, (egg.spawnFrequency ?? 2) + 1); return true; }
+    }
+    // Max-active steppers (1–10)
+    if (egg && my >= py + 160 && my <= py + 184) {
+      if (mx >= px + 14 && mx <= px + 42)            { egg.maxActiveMobs = Math.max(1,  (egg.maxActiveMobs ?? 3) - 1); return true; }
+      if (mx >= px + pw - 42 && mx <= px + pw - 14)  { egg.maxActiveMobs = Math.min(10, (egg.maxActiveMobs ?? 3) + 1); return true; }
+    }
     // Remove button
-    if (mx >= px + 14 && mx <= px + pw - 14 && my >= py + 124 && my <= py + 156) {
+    if (mx >= px + 14 && mx <= px + pw - 14 && my >= py + 196 && my <= py + 226) {
       this.removeEgg(this.popup.eggIdx);
       return true;
     }
@@ -741,6 +860,8 @@ class SandboxManager {
   draw(ctx, camera, input, player, frameCount) {
     this._drawPlacedItems(ctx, camera, frameCount);
     this._drawPlacedEggs(ctx, camera, frameCount);
+    this._drawPlacedEmeralds(ctx, camera, frameCount);
+    this._drawPlacedPowerups(ctx, camera, frameCount);
     this._drawPortalLabels(ctx, camera);
     this._drawHUD(ctx, player, frameCount, input);
     if (this.paletteOpen)  this._drawPalette(ctx, input);
@@ -824,6 +945,26 @@ class SandboxManager {
       const def = SPAWN_EGG_DEFS.find(d => d.key === e.mobType) || SPAWN_EGG_DEFS[0];
       const sel = this.popup?.kind === 'egg' && this.popup.eggIdx === i;
       _drawEgg(ctx, sx, sy, def, frameCount, sel);
+    }
+  }
+
+  _drawPlacedEmeralds(ctx, camera, frameCount) {
+    for (let i = 0; i < this.placedEmeralds.length; i++) {
+      const e  = this.placedEmeralds[i];
+      const sx = e.wx - camera.x, sy = e.wy - camera.y;
+      if (sx < -40 || sx > CANVAS_W + 40 || sy < -40 || sy > CANVAS_H + 40) continue;
+      const sel = this.popup?.kind === 'emerald' && this.popup.emeraldIdx === i;
+      _drawEmeraldIcon(ctx, sx, sy, frameCount, sel);
+    }
+  }
+
+  _drawPlacedPowerups(ctx, camera, frameCount) {
+    for (let i = 0; i < this.placedPowerups.length; i++) {
+      const p  = this.placedPowerups[i];
+      const sx = p.wx - camera.x, sy = p.wy - camera.y;
+      if (sx < -40 || sx > CANVAS_W + 40 || sy < -40 || sy > CANVAS_H + 40) continue;
+      const sel = this.popup?.kind === 'powerup' && this.popup.powerupIdx === i;
+      _drawPowerupIcon(ctx, sx, sy, p.powerType, frameCount, sel);
     }
   }
 
@@ -1276,6 +1417,8 @@ class SandboxManager {
       if (isSpecialTab) {
         if (itm.kind === 'tool')       selected = this.isToolSelected      && this.selectedToolKey      === itm.key;
         else if (itm.kind === 'egg')   selected = this.isEggSelected       && this.selectedEggKey       === itm.key;
+        else if (itm.kind === 'emerald') selected = this.isEmeraldSelected;
+        else if (itm.kind === 'powerup') selected = this.isPowerupSelected;
         else if (itm.kind === 'dust')  selected = this.isDustSelected;
         else if (itm.kind === 'gate')  selected = this.isGateSelected      && this.selectedGateType     === itm.gateType;
         else if (itm.kind === 'blockItem') selected = this.isBlockItemSelected && this.selectedBlockItemType === itm.blockType;
@@ -1391,6 +1534,22 @@ class SandboxManager {
           ctx.font         = '7px Courier New';
           ctx.textBaseline = 'bottom';
           ctx.fillText(def.label, cxc, gy - 1);
+        }
+      } else if (isSpecialTab && itm.kind === 'emerald') {
+        _drawEmeraldIcon(ctx, cxc, cyc - 2, 0, false);
+        if (hov) {
+          ctx.fillStyle = itm.color; ctx.font = '7px Courier New';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+          ctx.fillText(itm.name, cxc, gy - 1);
+        }
+      } else if (isSpecialTab && itm.kind === 'powerup') {
+        _drawPowerupIcon(ctx, cxc, cyc - 2, 'HEALTH', 0, false);
+        ctx.fillStyle = selected ? '#fff' : '#aaa'; ctx.font = '7px Courier New';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        ctx.fillText('PWR', cxc, gy + slotSz - 4);
+        if (hov) {
+          ctx.fillStyle = itm.color; ctx.font = '7px Courier New'; ctx.textBaseline = 'bottom';
+          ctx.fillText(itm.name, cxc, gy - 1);
         }
       } else {
         // Block (either special tab block kind or regular tab block)
@@ -1541,17 +1700,58 @@ class SandboxManager {
       return;
     }
 
+    // ── Emerald popup (Phase 3A.2) — remove only ──────────────
+    if (this.popup.kind === 'emerald') {
+      const em = this.placedEmeralds[this.popup.emeraldIdx];
+      if (!em) { this.popup = null; ctx.restore(); return; }
+      const popH = 120;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      ctx.fillStyle = '#13131f'; _roundRect(ctx, px, py, pw, popH, 8); ctx.fill();
+      ctx.strokeStyle = '#2ecc71'; ctx.lineWidth = 2; _roundRect(ctx, px, py, pw, popH, 8); ctx.stroke();
+      ctx.fillStyle = '#FFD700'; ctx.font = 'bold 12px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('EMERALD', CANVAS_W / 2, py + 18);
+      _drawEmeraldIcon(ctx, CANVAS_W / 2, py + 48, 0, false);
+      _btn('✕  Remove', px + 14, py + 76, pw - 28, 30, '#FF6644', '#553333');
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.restore();
+      return;
+    }
+
+    // ── Power-up popup (Phase 3A.2) — change type + remove ────
+    if (this.popup.kind === 'powerup') {
+      const pu = this.placedPowerups[this.popup.powerupIdx];
+      if (!pu) { this.popup = null; ctx.restore(); return; }
+      const def = _powerupDef(pu.powerType);
+      const popH = 168;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      ctx.fillStyle = '#13131f'; _roundRect(ctx, px, py, pw, popH, 8); ctx.fill();
+      ctx.strokeStyle = def.color; ctx.lineWidth = 2; _roundRect(ctx, px, py, pw, popH, 8); ctx.stroke();
+      ctx.fillStyle = '#FFD700'; ctx.font = 'bold 12px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('POWER-UP', CANVAS_W / 2, py + 18);
+      _drawPowerupIcon(ctx, CANVAS_W / 2, py + 48, pu.powerType, 0, false);
+      ctx.fillStyle = def.color; ctx.font = 'bold 11px Courier New';
+      ctx.fillText(def.label, CANVAS_W / 2, py + 74);
+      _btn('⟳  Change Type', px + 14, py + 88,  pw - 28, 30, '#7ec8e3', '#445566');
+      _btn('✕  Remove',      px + 14, py + 124, pw - 28, 30, '#FF6644', '#553333');
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.restore();
+      return;
+    }
+
     // ── Egg popup ─────────────────────────────────────────────
     const egg = this.placedEggs[this.popup.eggIdx];
     if (!egg) { this.popup = null; ctx.restore(); return; }
     const def = SPAWN_EGG_DEFS.find(d => d.key === egg.mobType) || SPAWN_EGG_DEFS[0];
+    const eggH = 244; // taller than the default ph to fit the arena spawner steppers
 
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     ctx.fillStyle = '#13131f';
-    _roundRect(ctx, px, py, pw, ph, 8); ctx.fill();
+    _roundRect(ctx, px, py, pw, eggH, 8); ctx.fill();
     ctx.strokeStyle = def.color; ctx.lineWidth = 2;
-    _roundRect(ctx, px, py, pw, ph, 8); ctx.stroke();
+    _roundRect(ctx, px, py, pw, eggH, 8); ctx.stroke();
 
     // X button
     { const xbx = px + pw - 26, xby = py + 6;
@@ -1576,12 +1776,30 @@ class SandboxManager {
     ctx.font      = 'bold 11px Courier New';
     ctx.fillText(def.label, CANVAS_W / 2, py + 74);
 
-    _btn('⟳  Change Mob Type', px + 14, py + 84,  pw - 28, 32, '#7ec8e3', '#445566');
-    _btn('✕  Remove',          px + 14, py + 124, pw - 28, 32, '#FF6644', '#553333');
+    _btn('⟳  Change Mob Type', px + 14, py + 84, pw - 28, 28, '#7ec8e3', '#445566');
+
+    // Arena spawner steppers (Phase 3A.2): mobs per 10s + active cap.
+    const freq = egg.spawnFrequency ?? 2;
+    const maxA = egg.maxActiveMobs  ?? 3;
+    const _row = (label, valueText, by) => {
+      ctx.fillStyle = '#9fb0c0'; ctx.font = '9px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText(label, CANVAS_W / 2, by - 3);
+      _btn('−', px + 14,      by, 28, 24, '#7ec8e3', '#445566');
+      _btn('+', px + pw - 42, by, 28, 24, '#7ec8e3', '#445566');
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 12px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(valueText, CANVAS_W / 2, by + 12);
+    };
+    _row('Spawn rate', `${freq} / 10s`, py + 120);
+    _row('Max active', `${maxA}`,        py + 160);
+
+    _btn('✕  Remove', px + 14, py + 196, pw - 28, 30, '#FF6644', '#553333');
 
     ctx.fillStyle    = 'rgba(100,100,120,0.5)';
     ctx.font         = '8px Courier New';
-    ctx.fillText('Click outside to close', CANVAS_W / 2, py + ph - 6);
+    ctx.textAlign    = 'center';
+    ctx.fillText('Click outside to close', CANVAS_W / 2, py + eggH - 6);
 
     ctx.textAlign    = 'left';
     ctx.textBaseline = 'alphabetic';
@@ -1612,5 +1830,42 @@ function _drawEgg(ctx, sx, sy, def, frameCount, highlighted) {
   ctx.fillText(def.label.split(' ')[0].substring(0, 7), sx, sy + 20 + bob);
   ctx.textAlign    = 'left';
   ctx.textBaseline = 'alphabetic';
+  ctx.restore();
+}
+
+// ── Shared arena-collectible sprites (Phase 3A.2) ─────────────────
+// Defined at module scope so the runtime EMERALD_SYSTEM / POWERUP_SYSTEM
+// (separate files) reuse the exact same look the editor shows.
+function _drawEmeraldIcon(ctx, sx, sy, frameCount, highlighted) {
+  ctx.save();
+  const y = sy + Math.sin((frameCount || 0) * 0.05) * 3;
+  if (highlighted) { ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 3; ctx.strokeRect(sx - 13, y - 15, 26, 30); }
+  ctx.fillStyle = '#2ecc71';
+  ctx.beginPath();
+  ctx.moveTo(sx, y - 12); ctx.lineTo(sx + 9, y); ctx.lineTo(sx, y + 12); ctx.lineTo(sx - 9, y); ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#196f3d'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.beginPath(); ctx.moveTo(sx, y - 12); ctx.lineTo(sx + 9, y); ctx.lineTo(sx, y); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function _powerupDef(type) {
+  return (typeof SB_POWERUP_TYPES !== 'undefined'
+    ? SB_POWERUP_TYPES.find(t => t.type === type)
+    : null) || { type: 'HEALTH', label: 'Health', color: '#e74c3c', symbol: '✚' };
+}
+
+function _drawPowerupIcon(ctx, sx, sy, type, frameCount, highlighted) {
+  ctx.save();
+  const y = sy + Math.sin((frameCount || 0) * 0.05) * 3;
+  const def = _powerupDef(type);
+  if (highlighted) { ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(sx, y, 15, 0, Math.PI * 2); ctx.stroke(); }
+  ctx.fillStyle = def.color;
+  ctx.beginPath(); ctx.arc(sx, y, 11, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 11px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(def.symbol, sx, y + 1);
   ctx.restore();
 }

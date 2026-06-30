@@ -60,6 +60,8 @@ const SANDBOX = {
       this.createWorld();
     });
     document.getElementById('cancel-world-create-btn')?.addEventListener('click', () => this.hideCreateWorldModal());
+    // Arena worlds have fixed dimensions — lock the width/height inputs when chosen.
+    document.getElementById('game-mode-default-input')?.addEventListener('change', (e) => this._applyModeDimLock(e.target.value));
 
     // Import games modal
     document.getElementById('import-selected-btn')?.addEventListener('click', () => this.importSelectedGames());
@@ -81,6 +83,67 @@ const SANDBOX = {
     document.getElementById('sb-delete-btn')?.addEventListener('click', () => {
       if (confirm('Delete this world? This cannot be undone.')) this.deleteWorld(this.selectedWorldId);
     });
+    document.getElementById('sb-test-arena-btn')?.addEventListener('click', () => this.launchArenaTest());
+
+    // Arena Settings modal (Phase 3A.2)
+    document.getElementById('sb-arena-settings-btn')?.addEventListener('click', () => this.openArenaSettings());
+    document.getElementById('as-cancel-btn')?.addEventListener('click', () => this.hideArenaSettings());
+    document.getElementById('as-apply-btn')?.addEventListener('click', () => this.applyArenaSettings());
+    document.getElementById('as-health')?.addEventListener('input', (e) => {
+      document.getElementById('as-health-val').textContent = String(Math.round(+e.target.value / 2));
+    });
+    document.getElementById('as-preset-zoom')?.addEventListener('input', (e) => {
+      document.getElementById('as-zoom-val').textContent = `${(+e.target.value).toFixed(2)}×`;
+    });
+    document.getElementById('as-redstone')?.addEventListener('input', (e) => {
+      document.getElementById('as-redstone-val').textContent = `${(+e.target.value).toFixed(2)}×`;
+    });
+    document.getElementById('as-zoom-mode')?.addEventListener('change', (e) => this._syncPresetZoomVisibility(e.target.value));
+  },
+
+  // ── Arena Settings modal (Phase 3A.2) ──────────────────────────
+  // Reads/writes window.game._worldAdvSettings; values persist on the next Save
+  // (already serialized via GAME_STATE.serialize → worldAdvSettings).
+  openArenaSettings() {
+    const g = window.game;
+    if (!g || !g._worldAdvSettings) { alert('Open a world first.'); return; }
+    const s = g._worldAdvSettings;
+    const health = Math.max(2, Math.min(40, s.arenaPlayerMaxHealth ?? 20));
+    const zoomMode = s.arenaZoomMode || 'NONE';
+    const presetZoom = Math.max(0.3, Math.min(1.5, s.arenaPresetZoom ?? 1.0));
+    const redstone = Math.max(0.5, Math.min(2.0, s.redstoneSpeed ?? 1.0));
+
+    document.getElementById('as-health').value = String(health);
+    document.getElementById('as-health-val').textContent = String(Math.round(health / 2));
+    document.getElementById('as-zoom-mode').value = zoomMode;
+    document.getElementById('as-preset-zoom').value = String(presetZoom);
+    document.getElementById('as-zoom-val').textContent = `${presetZoom.toFixed(2)}×`;
+    document.getElementById('as-redstone').value = String(redstone);
+    document.getElementById('as-redstone-val').textContent = `${redstone.toFixed(2)}×`;
+    this._syncPresetZoomVisibility(zoomMode);
+
+    document.getElementById('arena-settings-modal').style.display = 'flex';
+  },
+
+  hideArenaSettings() {
+    document.getElementById('arena-settings-modal').style.display = 'none';
+  },
+
+  applyArenaSettings() {
+    const g = window.game;
+    if (!g || !g._worldAdvSettings) { this.hideArenaSettings(); return; }
+    const s = g._worldAdvSettings;
+    s.arenaPlayerMaxHealth = Math.max(2, Math.min(40, parseInt(document.getElementById('as-health').value, 10) || 20));
+    s.arenaZoomMode        = document.getElementById('as-zoom-mode').value || 'NONE';
+    s.arenaPresetZoom      = Math.max(0.3, Math.min(1.5, parseFloat(document.getElementById('as-preset-zoom').value) || 1.0));
+    s.redstoneSpeed        = Math.max(0.5, Math.min(2.0, parseFloat(document.getElementById('as-redstone').value) || 1.0));
+    this.hideArenaSettings();
+    this._setSaveIndicator('unsaved');
+  },
+
+  _syncPresetZoomVisibility(mode) {
+    const grp = document.getElementById('as-preset-zoom-group');
+    if (grp) grp.style.display = (mode === 'PRESET') ? 'block' : 'none';
   },
 
   // ── Load + render worlds ───────────────────────────────────────
@@ -122,7 +185,7 @@ const SANDBOX = {
         <div class="world-card-actions">
           <label class="mode-select-label">Mode:
             <select class="mode-select" data-world-id="${w.id}">
-              ${['NRM', 'PLT', 'RUN'].map(m =>
+              ${['NRM', 'PLT', 'RUN', 'ARN'].map(m =>
                 `<option value="${m}"${m === mode ? ' selected' : ''}>${this.getModeLabel(m)}</option>`).join('')}
             </select>
           </label>
@@ -176,6 +239,7 @@ const SANDBOX = {
   // ── Create world ───────────────────────────────────────────────
   showCreateWorldModal() {
     document.getElementById('create-world-modal').style.display = 'flex';
+    this._applyModeDimLock(document.getElementById('game-mode-default-input')?.value || 'NRM');
   },
   hideCreateWorldModal() {
     document.getElementById('create-world-modal').style.display = 'none';
@@ -184,6 +248,7 @@ const SANDBOX = {
     document.getElementById('world-width-input').value = '650';
     document.getElementById('world-height-input').value = '60';
     document.getElementById('game-mode-default-input').value = 'NRM';
+    this._applyModeDimLock('NRM'); // re-enable dimension inputs
     const g = document.getElementById('gravity-level-input'); if (g) g.value = '0.66';
     const j = document.getElementById('jump-height-input');   if (j) j.value = '3.5';
     const a = document.getElementById('air-jump-input');      if (a) a.checked = false;
@@ -206,14 +271,20 @@ const SANDBOX = {
     };
 
     if (!name) { alert('World name required'); return; }
-    if (!(worldWidth >= 100 && worldWidth <= 2000)) { alert('Width must be 100-2000'); return; }
-    if (!(worldHeight >= 30 && worldHeight <= 500)) { alert('Height must be 30-500'); return; }
+    // Arena worlds are a fixed 25×15 (server also enforces); skip the range check.
+    const arena = gameModeDefault === 'ARN';
+    const sendWidth  = arena ? 25 : worldWidth;
+    const sendHeight = arena ? 15 : worldHeight;
+    if (!arena) {
+      if (!(worldWidth >= 25 && worldWidth <= 2000)) { alert('Width must be 25-2000'); return; }
+      if (!(worldHeight >= 30 && worldHeight <= 500)) { alert('Height must be 30-500'); return; }
+    }
 
     try {
       const res = await AUTH.authedFetch('/api/worlds/sandbox/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ worldName: name, description, worldWidth, worldHeight, gameModeDefault, config }),
+        body: JSON.stringify({ worldName: name, description, worldWidth: sendWidth, worldHeight: sendHeight, gameModeDefault, config }),
       });
       const data = await res.json();
       if (!res.ok) { alert(`Error: ${data.error}`); return; }
@@ -315,7 +386,20 @@ const SANDBOX = {
   },
 
   getModeLabel(mode) {
-    return { NRM: 'Normal', PLT: 'Platformer', RUN: 'Speed Runner' }[mode] || mode;
+    return { NRM: 'Normal', PLT: 'Platformer', RUN: 'Speed Runner', ARN: 'Arena' }[mode] || mode;
+  },
+
+  // Arena worlds are a fixed 25×15; lock the dimension inputs when ARN is selected.
+  _applyModeDimLock(mode) {
+    const w = document.getElementById('world-width-input');
+    const h = document.getElementById('world-height-input');
+    const note = document.getElementById('game-mode-default-note');
+    const arena = mode === 'ARN';
+    if (w) { if (arena) w.value = '25'; w.disabled = arena; }
+    if (h) { if (arena) h.value = '15'; h.disabled = arena; }
+    if (note) note.textContent = arena
+      ? 'Arena is a fixed 25×15 battle map — dimensions are locked.'
+      : 'What mode should this world open in by default?';
   },
 
   // ── Export the open world as a downloadable JSON file ──────────
@@ -420,9 +504,16 @@ const SANDBOX = {
       // empty level from their stored dimensions.
       const data = world.world_data || {};
       const hasGrid = Array.isArray(data.grid) && data.grid.length > 0;
+      const isArena = data.gameModeDefault === 'ARN';
+      // ⚙ Arena Settings button is only meaningful for arena worlds.
+      const asBtn = document.getElementById('sb-arena-settings-btn');
+      if (asBtn) asBtn.style.display = isArena ? '' : 'none';
       const options = hasGrid
         ? { templateData: data }
-        : { worldWidth: data.worldWidth || 650, worldHeight: data.worldHeight || 60 };
+        // Fresh ARN world: open the editor on the Deathmatch starter layout (walls + cover).
+        : isArena
+          ? { worldWidth: 25, worldHeight: 15, arenaStarter: true }
+          : { worldWidth: data.worldWidth || 650, worldHeight: data.worldHeight || 60 };
 
       window.game = new Game('sandbox', options, () => this._onEditorExit());
 
@@ -508,6 +599,33 @@ const SANDBOX = {
       console.error('Delete error:', error);
       alert('Failed to delete world');
     }
+  },
+
+  // ── Phase 3A.1: launch the Arena prototype from the editor ──────
+  // Tears down the editor game and runs the hardcoded Deathmatch arena.
+  // On exit (Esc on the end screen) we re-open the editor for the same world.
+  launchArenaTest() {
+    if (!window.game) { alert('Open a world first.'); return; }
+    const wid = this.selectedWorldId;
+    // Capture the CURRENT edited layout so the arena plays what you designed.
+    const worldData = (typeof GAME_STATE !== 'undefined') ? GAME_STATE.serialize(window.game) : null;
+
+    const start = (mode) => {
+      if (window.menu && typeof window.menu._stop === 'function') window.menu._stop();
+      if (typeof window.game.destroy === 'function') window.game.destroy();
+      document.getElementById('sandbox-editor-hud').style.display = 'none';
+      const options = worldData ? { templateData: worldData } : {};
+      if (mode) options.arenaGameMode = mode;
+      window.game = new Game('arena', options, () => {
+        window.game = null;
+        if (wid) this.editWorld(wid);
+        else this._returnToBrowser();
+      });
+    };
+
+    // Pick a game mode first (Phase 3A.2), then launch. Falls back to classic.
+    if (typeof ARENA_SELECT !== 'undefined' && ARENA_SELECT.chooseMode) ARENA_SELECT.chooseMode(start);
+    else start(null);
   },
 
   // ── Editor teardown ────────────────────────────────────────────

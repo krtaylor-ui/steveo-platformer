@@ -26,9 +26,11 @@ const WORLD_H = 60;
 // World configuration (width/height/default game mode) lives inside the
 // world_data JSONB rather than in dedicated columns — same convention the
 // editor already reads (data.worldWidth/worldHeight), so no schema migration.
-const GAME_MODES = ['NRM', 'PLT', 'RUN'];
-const WIDTH_MIN = 100, WIDTH_MAX = 2000;
+const GAME_MODES = ['NRM', 'PLT', 'RUN', 'ARN'];
+const WIDTH_MIN = 25, WIDTH_MAX = 2000;
 const HEIGHT_MIN = 30, HEIGHT_MAX = 500;
+// Arena worlds have fixed, non-editable dimensions (server-enforced).
+const ARENA_W = 25, ARENA_H = 15;
 
 // gameModeDefault (NRM/PLT/RUN) is the single source of truth for a world's
 // game mode. The legacy `mode` column (NORMAL/PLATFORMER/SPEEDRUNNER) is kept
@@ -37,7 +39,7 @@ const HEIGHT_MIN = 30, HEIGHT_MAX = 500;
 const MODE_LONG = { NRM: 'NORMAL', PLT: 'PLATFORMER', RUN: 'SPEEDRUNNER' };
 const MODE_SHORT = { NORMAL: 'NRM', PLATFORMER: 'PLT', SPEEDRUNNER: 'RUN', SANDBOX: 'NRM' };
 // Sandbox list filter values (lowercase) → gameModeDefault code.
-const FILTER_TO_CODE = { normal: 'NRM', platformer: 'PLT', speedrunner: 'RUN' };
+const FILTER_TO_CODE = { normal: 'NRM', platformer: 'PLT', speedrunner: 'RUN', arena: 'ARN' };
 const toCode = (m) => MODE_SHORT[String(m || '').toUpperCase()] || 'NRM';
 
 // Normalize the client's movement config into the worldAdvSettings fields the
@@ -165,14 +167,22 @@ module.exports = function setupWorldsRoutes(app) {
       if (!worldName || worldName.trim().length === 0) {
         return res.status(400).json({ error: 'World name required' });
       }
-      if (worldWidth < WIDTH_MIN || worldWidth > WIDTH_MAX) {
-        return res.status(400).json({ error: `Width must be between ${WIDTH_MIN}-${WIDTH_MAX}` });
-      }
-      if (worldHeight < HEIGHT_MIN || worldHeight > HEIGHT_MAX) {
-        return res.status(400).json({ error: `Height must be between ${HEIGHT_MIN}-${HEIGHT_MAX}` });
-      }
       if (!GAME_MODES.includes(gameModeDefault)) {
         return res.status(400).json({ error: 'Invalid game mode default' });
+      }
+
+      // Arena worlds are locked to fixed dimensions; everything else honors the
+      // player's width/height within the normal range.
+      const isArena = gameModeDefault === 'ARN';
+      const effWidth  = isArena ? ARENA_W : worldWidth;
+      const effHeight = isArena ? ARENA_H : worldHeight;
+      if (!isArena) {
+        if (worldWidth < WIDTH_MIN || worldWidth > WIDTH_MAX) {
+          return res.status(400).json({ error: `Width must be between ${WIDTH_MIN}-${WIDTH_MAX}` });
+        }
+        if (worldHeight < HEIGHT_MIN || worldHeight > HEIGHT_MAX) {
+          return res.status(400).json({ error: `Height must be between ${HEIGHT_MIN}-${HEIGHT_MAX}` });
+        }
       }
 
       const createdBy = req.user.user_metadata?.username || 'Player';
@@ -183,8 +193,11 @@ module.exports = function setupWorldsRoutes(app) {
           world_name: worldName.trim(),
           creator_id: req.user.id,
           creator_name: createdBy,
-          mode: MODE_LONG[gameModeDefault], // derived from gameModeDefault
-          world_data: emptyWorldData({ width: worldWidth, height: worldHeight, gameModeDefault, createdBy, config }),
+          // Legacy `mode` column only feeds the published catalog (/api/worlds?mode=),
+          // which arena doesn't use; ARN has no long-name so it falls back to a
+          // known-valid value. Arena-ness lives in world_data.gameModeDefault.
+          mode: MODE_LONG[gameModeDefault] || 'NORMAL',
+          world_data: emptyWorldData({ width: effWidth, height: effHeight, gameModeDefault, createdBy, config }),
           description: description.trim(),
           is_published: false,
           editors: [],
@@ -285,7 +298,7 @@ module.exports = function setupWorldsRoutes(app) {
           world_name: worldName,
           creator_id: req.user.id,
           creator_name: editedBy,
-          mode: MODE_LONG[finalMode], // derived from gameModeDefault
+          mode: MODE_LONG[finalMode] || 'NORMAL', // derived from gameModeDefault
           world_data: {
             ...rawWorldData,
             worldWidth,
@@ -403,7 +416,7 @@ module.exports = function setupWorldsRoutes(app) {
       // Only update fields that were actually supplied.
       const patch = {
         world_data: mergedData,
-        mode: MODE_LONG[finalMode], // keep the derived column in sync
+        mode: MODE_LONG[finalMode] || 'NORMAL', // keep the derived column in sync
         updated_at: new Date().toISOString(),
       };
       if (worldName !== undefined) patch.world_name = worldName;
@@ -448,7 +461,7 @@ module.exports = function setupWorldsRoutes(app) {
 
       const { data: world, error } = await supabaseAdmin
         .from('worlds')
-        .update({ world_data, mode: MODE_LONG[gameModeDefault], updated_at: new Date().toISOString() })
+        .update({ world_data, mode: MODE_LONG[gameModeDefault] || 'NORMAL', updated_at: new Date().toISOString() })
         .eq('id', req.params.worldId)
         .eq('creator_id', req.user.id)
         .select()

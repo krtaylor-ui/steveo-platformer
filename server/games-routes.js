@@ -34,7 +34,9 @@ module.exports = function setupGamesRoutes(app) {
       // their own sandbox build before (or without) publishing it. Filtering is
       // on the `mode` column, which is kept in sync with gameModeDefault for
       // sandbox worlds and is also set on the seeded system worlds.
-      const cols = 'id, world_name, creator_name, mode, creator_id, created_at';
+      // Pull gameModeDefault as a cheap JSON sub-field so we can exclude Arena
+      // worlds (they carry legacy mode='NORMAL' but are not a Normal-mode game).
+      const cols = 'id, world_name, creator_name, mode, creator_id, created_at, gameModeDefault:world_data->>gameModeDefault';
 
       const [{ data: published, error: pErr }, { data: own, error: oErr }] = await Promise.all([
         supabaseAdmin.from('worlds').select(cols)
@@ -58,6 +60,7 @@ module.exports = function setupGamesRoutes(app) {
       const worlds = [];
       for (const w of [...sysDefaults, ...(own || []), ...community]) {
         if (seen.has(w.id)) continue;
+        if (w.gameModeDefault === 'ARN') continue; // Arena worlds only play via the Arena picker
         seen.add(w.id);
         worlds.push({
           id: w.id,

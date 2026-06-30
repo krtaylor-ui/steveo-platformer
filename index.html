@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Steveo Platformer</title>
-  <link rel="stylesheet" href="style.css?v=17h3">
+  <link rel="stylesheet" href="style.css?v=17i4">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
@@ -246,6 +246,7 @@
             <option value="normal">Normal</option>
             <option value="platformer">Platformer</option>
             <option value="speedrunner">Speed Runner</option>
+            <option value="arena">Arena</option>
           </select>
         </div>
         <div class="sort-group">
@@ -271,6 +272,18 @@
     </div>
   </div>
 
+  <!-- ── Arena Select Screen (main-menu Arena mode) ────────── -->
+  <div id="arena-select-screen" style="display: none;">
+    <div class="sandbox-container">
+      <div class="sandbox-header">
+        <button id="arena-back-btn" class="btn-back">← Back to Dashboard</button>
+        <h2>⚔️ Arena</h2>
+        <button id="arena-leaderboards-btn" class="btn btn-secondary">🏆 Leaderboards</button>
+      </div>
+      <div id="arena-world-list" class="world-list"></div>
+    </div>
+  </div>
+
   <!-- ── Create World Modal ────────────────────────────────── -->
   <div id="create-world-modal" style="display: none;">
     <div class="modal-content">
@@ -287,8 +300,8 @@
         <div class="form-row">
           <div class="form-group">
             <label>Width (blocks):</label>
-            <input type="number" id="world-width-input" value="650" min="100" max="2000" required>
-            <small>100-2000 blocks</small>
+            <input type="number" id="world-width-input" value="650" min="25" max="2000" required>
+            <small>25-2000 blocks</small>
           </div>
           <div class="form-group">
             <label>Height (blocks):</label>
@@ -302,8 +315,9 @@
             <option value="NRM">Normal</option>
             <option value="PLT">Platformer</option>
             <option value="RUN">Speed Runner</option>
+            <option value="ARN">Arena (Deathmatch)</option>
           </select>
-          <small>What mode should this world open in by default?</small>
+          <small id="game-mode-default-note">What mode should this world open in by default?</small>
         </div>
 
         <div class="form-row">
@@ -430,12 +444,23 @@
               <p>Time trials and racing</p>
             </div>
 
-            <div class="game-mode-card" id="sandbox-mode-btn">
-              <div class="mode-icon">🛠️</div>
-              <h3>Sandbox</h3>
-              <p>Build and create worlds</p>
+            <div class="game-mode-card" id="arena-mode-btn">
+              <div class="mode-icon">⚔️</div>
+              <h3>Arena</h3>
+              <p>Fast-paced bow battles</p>
             </div>
 
+          </div>
+        </section>
+
+        <section class="sandbox-feature-section">
+          <div class="sandbox-feature-card" id="sandbox-mode-btn">
+            <div class="sandbox-feature-icon">🛠️</div>
+            <div class="sandbox-feature-text">
+              <h3>Sandbox</h3>
+              <p>Build and create your own worlds — then play them in any mode.</p>
+            </div>
+            <div class="sandbox-feature-cta">Open Sandbox →</div>
           </div>
         </section>
 
@@ -606,11 +631,67 @@
       <span id="sb-save-indicator" class="save-indicator">Unsaved changes</span>
     </div>
     <div class="sb-editor-right">
+      <button id="sb-test-arena-btn" class="play-hud-btn">⚔ Test in Arena</button>
+      <button id="sb-arena-settings-btn" class="play-hud-btn" style="display: none;">⚙ Arena Settings</button>
       <button id="sb-save-btn" class="play-hud-btn">Save</button>
       <button id="sb-publish-btn" class="play-hud-btn">Publish</button>
       <button id="sb-export-btn" class="play-hud-btn">Export</button>
       <button id="sb-copy-btn" class="play-hud-btn">Copy</button>
       <button id="sb-delete-btn" class="play-hud-btn play-hud-btn-exit">Delete</button>
+    </div>
+  </div>
+
+  <!-- ── Arena Settings Modal (Phase 3A.2) ─────────────────── -->
+  <div id="arena-settings-modal" style="display: none;">
+    <div class="modal-content">
+      <h3>⚙ Arena Settings</h3>
+      <div class="form-group">
+        <label>Player Health: <span id="as-health-val">10</span> ❤</label>
+        <input type="range" id="as-health" min="2" max="40" step="2" value="20">
+      </div>
+      <div class="form-group">
+        <label>Zoom Mode:</label>
+        <select id="as-zoom-mode">
+          <option value="NONE">None</option>
+          <option value="PRESET">Preset</option>
+          <option value="DYNAMIC">Dynamic (co-op)</option>
+        </select>
+      </div>
+      <div class="form-group" id="as-preset-zoom-group">
+        <label>Preset Zoom: <span id="as-zoom-val">1.00×</span></label>
+        <input type="range" id="as-preset-zoom" min="0.3" max="1.5" step="0.05" value="1.0">
+      </div>
+      <div class="form-group">
+        <label>Redstone Speed: <span id="as-redstone-val">1.00×</span></label>
+        <input type="range" id="as-redstone" min="0.5" max="2.0" step="0.1" value="1.0">
+      </div>
+      <div class="form-row">
+        <button id="as-cancel-btn" class="btn btn-secondary">Cancel</button>
+        <button id="as-apply-btn" class="btn btn-primary">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Arena Mode Selector Modal (Phase 3A.2) ────────────── -->
+  <div id="arena-mode-select-modal" style="display: none;">
+    <div class="modal-content">
+      <h3>Choose Game Mode</h3>
+      <div id="arena-mode-list"></div>
+      <div class="form-row">
+        <button id="arena-mode-cancel-btn" class="btn btn-secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Arena Leaderboard Modal (Phase 3A.2) ──────────────── -->
+  <div id="arena-leaderboard-modal" style="display: none;">
+    <div class="modal-content">
+      <h3>🏆 Arena Leaderboards</h3>
+      <div id="lb-tabs" class="lb-tabs"></div>
+      <div id="lb-list" class="lb-list"></div>
+      <div class="form-row">
+        <button id="lb-close-btn" class="btn btn-secondary">Close</button>
+      </div>
     </div>
   </div>
 
@@ -662,42 +743,49 @@
     2P: <kbd>IJKL</kbd>+<kbd>U</kbd>
   </div>
 
-  <script src="js/auth.js?v=17h3"></script>
-  <script src="js/dashboard.js?v=17h3"></script>
-  <script src="js/game-selection.js?v=17h3"></script>
-  <script src="js/constants.js?v=17h3"></script>
-  <script src="js/blocks.js?v=17h3"></script>
-  <script src="js/controller-config.js?v=17h3"></script>
-  <script src="js/controller-input.js?v=17h3"></script>
-  <script src="js/input.js?v=17h3"></script>
-  <script src="js/camera.js?v=17h3"></script>
-  <script src="js/mobs.js?v=17h3"></script>
-  <script src="js/crafting.js?v=17h3"></script>
-  <script src="js/player.js?v=17h3"></script>
-  <script src="js/level.js?v=17h3"></script>
-  <script src="js/redstone.js?v=17h3"></script>
-  <script src="js/world.js?v=17h3"></script>
-  <script src="js/sandbox.js?v=17h3"></script>
-  <script src="js/save-migrations.js?v=17h3"></script>
-  <script src="js/saves.js?v=17h3"></script>
-  <script src="js/speedrunner-mode.js?v=17h3"></script>
-  <script src="js/game.js?v=17h3"></script>
-  <script src="js/menu.js?v=17h3"></script>
+  <script src="js/auth.js?v=17i4"></script>
+  <script src="js/dashboard.js?v=17i4"></script>
+  <script src="js/game-selection.js?v=17i4"></script>
+  <script src="js/constants.js?v=17i4"></script>
+  <script src="js/blocks.js?v=17i4"></script>
+  <script src="js/controller-config.js?v=17i4"></script>
+  <script src="js/controller-input.js?v=17i4"></script>
+  <script src="js/input.js?v=17i4"></script>
+  <script src="js/camera.js?v=17i4"></script>
+  <script src="js/mobs.js?v=17i4"></script>
+  <script src="js/crafting.js?v=17i4"></script>
+  <script src="js/player.js?v=17i4"></script>
+  <script src="js/level.js?v=17i4"></script>
+  <script src="js/redstone.js?v=17i4"></script>
+  <script src="js/world.js?v=17i4"></script>
+  <script src="js/sandbox.js?v=17i4"></script>
+  <script src="js/save-migrations.js?v=17i4"></script>
+  <script src="js/saves.js?v=17i4"></script>
+  <script src="js/speedrunner-mode.js?v=17i4"></script>
+  <script src="js/arena-maps.js?v=17i4"></script>
+  <!-- Phase 3A.2 arena systems — must load before game.js (it references them) -->
+  <script src="js/emerald-system.js?v=17i4"></script>
+  <script src="js/powerup-system.js?v=17i4"></script>
+  <script src="js/arena-modes.js?v=17i4"></script>
+  <script src="js/leaderboard-system.js?v=17i4"></script>
+  <script src="js/game.js?v=17i4"></script>
+  <script src="js/menu.js?v=17i4"></script>
   <!-- Phase 16: Multiplayer (socket.io loaded from CDN; falls back gracefully if unavailable) -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js" crossorigin="anonymous"></script>
-  <script src="js/multiplayer.js?v=17h3"></script>
+  <script src="js/multiplayer.js?v=17i4"></script>
   <!-- Phase 16-A: Online lobby UI -->
-  <script src="js/online-ui.js?v=17h3"></script>
+  <script src="js/online-ui.js?v=17i4"></script>
   <!-- Phase 1D: Game play + auto-save -->
-  <script src="js/music.js?v=17h3"></script>
-  <script src="js/game-timer.js?v=17h3"></script>
-  <script src="js/game-state.js?v=17h3"></script>
-  <script src="js/auto-save.js?v=17h3"></script>
-  <script src="js/game-play.js?v=17h3"></script>
+  <script src="js/music.js?v=17i4"></script>
+  <script src="js/game-timer.js?v=17i4"></script>
+  <script src="js/game-state.js?v=17i4"></script>
+  <script src="js/auto-save.js?v=17i4"></script>
+  <script src="js/game-play.js?v=17i4"></script>
   <!-- Phase 1E: Sandbox world browser + editor -->
-  <script src="js/sandbox-ui.js?v=17h3"></script>
+  <script src="js/sandbox-ui.js?v=17i4"></script>
 
-  <script src="js/online-play.js?v=17h3"></script>
+  <script src="js/online-play.js?v=17i4"></script>
+  <script src="js/arena-select.js?v=17i4"></script>
 
   <script>
     // ── Responsive canvas scaling ────────────────────────────────

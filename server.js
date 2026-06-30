@@ -205,6 +205,10 @@ setupGamesRoutes(app);
 const setupWorldsRoutes = require('./server/worlds-routes');
 setupWorldsRoutes(app);
 
+// Phase 3A.2: arena per-mode leaderboards
+const setupArenaLeaderboardRoutes = require('./server/arena-leaderboard-routes');
+setupArenaLeaderboardRoutes(app);
+
 // Phase 2: online multiplayer — friends + game sessions
 const setupFriendsRoutes = require('./server/friends-routes');
 setupFriendsRoutes(app);
