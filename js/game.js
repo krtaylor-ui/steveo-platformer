@@ -54,6 +54,7 @@ class Game {
     this._testMode       = !!(options && options.testMode); // Universal Test World — no persistence
     this._zoomOverride   = null; // Z-key manual zoom (sandbox/God): null = prescribed default
     this._zoomOverrideIdx = -1;  // -1 = default; 0..3 = 100/200/300/400%
+    this._deathParts     = [];   // body-part scatter on death (all modes; Phase 3A.3)
     this._running        = true;
 
     // Must be initialized before _buildLevel() which reads twoPlayerMode (Phase 12)
@@ -792,6 +793,64 @@ class Game {
   // Bottom-left EXIT button used in Universal Test World (Phase 3A.3).
   _testExitRect() { return { x: 10, y: CANVAS_H - 32, w: 116, h: 24 }; }
 
+  // ── Death body-part scatter (all modes) — recreated from the Speed-Runner
+  // death animation: the player breaks into rotating, tumbling rectangles that
+  // fly apart, fall under gravity, then fade. Phase 3A.3.
+  _spawnDeathParts(player) {
+    if (!player) return;
+    const px = player.x, py = player.y, now = Date.now();
+    const partDefs = [
+      { cx: px+10, cy: py+ 8, w:16, h:16, color:'#F4C78A' }, // head skin
+      { cx: px+10, cy: py+ 2, w:16, h: 6, color:'#7D4E1A' }, // hair
+      { cx: px+10, cy: py+26, w:12, h:16, color:'#4A8FD4' }, // torso
+      { cx: px+10, cy: py+32, w:12, h: 4, color:'#2C5F8A' }, // belt
+      { cx: px+ 5, cy: py+24, w: 6, h:16, color:'#4A8FD4' }, // left arm
+      { cx: px+17, cy: py+24, w: 6, h:16, color:'#4A8FD4' }, // right arm
+      { cx: px+ 6, cy: py+41, w: 8, h:14, color:'#2C5F8A' }, // left leg
+      { cx: px+14, cy: py+41, w: 8, h:14, color:'#2C5F8A' }, // right leg
+      { cx: px+ 6, cy: py+50, w: 8, h: 4, color:'#3D1C02' }, // left shoe
+      { cx: px+14, cy: py+50, w: 8, h: 4, color:'#3D1C02' }, // right shoe
+    ];
+    for (const d of partDefs) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 2.5 + Math.random() * 5;
+      this._deathParts.push({
+        x: d.cx, y: d.cy,
+        vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 5, // bias upward
+        rot: (Math.random() - 0.5) * 0.4, rotV: (Math.random() - 0.5) * 0.22,
+        w: d.w, h: d.h, color: d.color, alpha: 1.0, born: now,
+      });
+    }
+    if (this._deathParts.length > 120) this._deathParts.splice(0, this._deathParts.length - 120);
+  }
+
+  _updateDeathParts() {
+    if (!this._deathParts.length) return;
+    const now = Date.now();
+    for (const part of this._deathParts) {
+      part.x += part.vx; part.y += part.vy;
+      part.vy += 0.35;  // gravity
+      part.vx *= 0.98;  // air drag
+      part.rot += part.rotV;
+      if (now - part.born > 600) part.alpha = Math.max(0, part.alpha - 0.04); // fade after ~0.6s
+    }
+    this._deathParts = this._deathParts.filter(p => p.alpha > 0);
+  }
+
+  _drawDeathParts(ctx) {
+    for (const part of this._deathParts) {
+      if (part.alpha <= 0) continue;
+      const sx = Math.floor(part.x - this.camera.x), sy = Math.floor(part.y - this.camera.y);
+      ctx.save();
+      ctx.globalAlpha = part.alpha;
+      ctx.translate(sx, sy); ctx.rotate(part.rot);
+      ctx.fillStyle = part.color;
+      ctx.fillRect(-part.w / 2, -part.h / 2, part.w, part.h);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // ── Phase 3A.3: unified view zoom (all modes) ───────────────
   // Resolution order: Speed-Runner's own speed-zoom → manual Z override
   // (sandbox/God) → arena prescribed zoom → universal worldZoom default.
@@ -1071,6 +1130,9 @@ class Game {
         return;
       }
     }
+
+    // Animate death body-part scatter (all modes; runs even on the death/end screen).
+    this._updateDeathParts();
 
     // ── ESC: pause / unpause (not on win screen) ───────────────
     const escNow  = this.input.isDown('Escape');
@@ -3660,11 +3722,9 @@ class Game {
     this._deathCause     = cause;
     this._deathTimestamp = Date.now();
 
-    // Death burst (all modes) — a visual pop where the player fell, and cancel any
-    // in-progress bow draw so the body can't fire on respawn (Phase 3A.3).
-    if (this.mobManager && typeof ExplosionEffect !== 'undefined') {
-      this.mobManager.explosions.push(new ExplosionEffect(this.player.cx, this.player.cy, 2.2 * BLOCK_SIZE));
-    }
+    // Death effect (all modes): scatter the player's body parts (the Speed-Runner
+    // death animation), and cancel any in-progress bow draw (Phase 3A.3).
+    this._spawnDeathParts(this.player);
     this.player.bowDrawing = false; this.player.drawProgress = 0;
 
     // Arena: unlimited respawns at the player's spawn after a short delay (no death modal/elimination)
@@ -3780,11 +3840,8 @@ class Game {
 
   _triggerP2Death(cause = 'Player 2 died') {
     if (this._p2RespawnTimer > 0) return;
-    // Death burst + cancel any P2 bow draw (Phase 3A.3).
-    if (this.player2 && this.mobManager && typeof ExplosionEffect !== 'undefined') {
-      this.mobManager.explosions.push(new ExplosionEffect(this.player2.cx, this.player2.cy, 2.2 * BLOCK_SIZE));
-    }
-    if (this.player2) { this.player2.bowDrawing = false; this.player2.drawProgress = 0; }
+    // Death effect (body-part scatter) + cancel any P2 bow draw (Phase 3A.3).
+    if (this.player2) { this._spawnDeathParts(this.player2); this.player2.bowDrawing = false; this.player2.drawProgress = 0; }
     // Arena: unlimited respawns, no elimination
     if (this.isArena) {
       this._p2RespawnTimer = this.arenaRespawnFrames;
@@ -4848,6 +4905,8 @@ class Game {
     if (this.gameMode === 'sandbox' && this.sandbox && this.sandbox.drawWorld) {
       this.sandbox.drawWorld(ctx, this.camera, this.frameCount);
     }
+    // Death body-part scatter (world-space, scales with zoom). SR draws its own.
+    if (this.gameMode !== 'speedrunner' && this._deathParts.length) this._drawDeathParts(ctx);
     ctx.restore(); // end world zoom (matches the unconditional save above)
     this._drawHUD(ctx, hoverRow, hoverCol);
     // Phase 16: Multiplayer HUD (player list + connection badge)
