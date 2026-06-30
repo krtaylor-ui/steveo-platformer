@@ -38,7 +38,7 @@ const XP_PER_ORB            = 0.5;  // each orb adds 0.5 levels
 // Mob behaviour
 const MOB_ATTACK_RATE       = 60;   // frames between melee hits
 const SKELETON_SHOOT_RATE   = 180;  // frames between arrows (3 s)
-const ARROW_SPEED           = 7.2;  // px per frame
+const ARROW_SPEED           = 13.0; // px per frame (skeleton arrows — Phase 3A.3 faster)
 const CREEPER_FUSE_FRAMES   = 300;  // 5 seconds
 const CREEPER_EXPLODE_RADIUS= 2;    // blocks
 
@@ -61,8 +61,8 @@ const END_PORTAL_ARRIVAL_ROW  = 55;   // row player arrives at (above bedrock fl
 // Bow
 const BOW_CHARGE_FRAMES  = 50;
 const BOW_GRAVITY        = 0.216;
-const BOW_MIN_SPEED      = 4.8;
-const BOW_MAX_SPEED      = 16.8;
+const BOW_MIN_SPEED      = 9.0;   // Phase 3A.3 — faster player arrows
+const BOW_MAX_SPEED      = 26.0;
 const PLAYER_ARROW_DAMAGE= 9;
 
 // Mob respawn

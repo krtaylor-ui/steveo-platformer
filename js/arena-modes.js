@@ -97,16 +97,36 @@ const ARENA_MODES = {
     for (let i = 0; i < def.z; i++) queue.push('Zombie');
     for (let i = 0; i < def.s; i++) queue.push('Skeleton');
     const markers = (game._arenaSpawnLines && game._arenaSpawnLines.length) ? game._arenaSpawnLines : null;
+    // Mobs speed up a little each wave, on top of the arena ×2 base.
+    const speed = (game.mobManager.arenaMobSpeedMult || 1) * (1 + Math.min(0.9, (ms.wave - 1) * 0.1));
     for (let i = 0; i < queue.length; i++) {
       let x, y;
-      if (markers) { const m = markers[i % markers.length]; x = m.x + ((i % 3) - 1) * 16; y = m.y; }
+      if (markers) { const m = markers[i % markers.length]; x = m.x; y = m.y; }
       else { x = ((i + 1) / (queue.length + 1)) * game.level.pixelWidth; y = BLOCK_SIZE * 2; }
-      const mob = game.mobManager._createMob(queue[i], x, y);
+      const pos = this._clearSpawn(game, x, y);   // avoid spawning inside walls
+      const mob = game.mobManager._createMob(queue[i], pos.x, pos.y);
       if (mob) {
         if (def.hp > 1) { mob.maxHp = Math.round(mob.maxHp * def.hp); mob.hp = mob.maxHp; }
+        mob.speedMult = speed;
         game.mobManager.mobs.push(mob);
       }
     }
+  },
+
+  // Nudge a spawn position to a clear (non-solid) 2-tall cell near (x,y) so wave
+  // mobs don't appear stuck inside walls. Scans up first, then down, in that column.
+  _clearSpawn(game, x, y) {
+    const L = game.level;
+    const col = Math.max(1, Math.min(L.width - 2, Math.floor(x / BLOCK_SIZE)));
+    const clear = (r) => r >= 1 && r < L.height && !L.isSolid(r, col) && !L.isSolid(r - 1, col);
+    let r = Math.max(1, Math.min(L.height - 2, Math.floor(y / BLOCK_SIZE)));
+    if (!clear(r)) {
+      let found = -1;
+      for (let rr = r; rr >= 1; rr--)        { if (clear(rr)) { found = rr; break; } }
+      if (found < 0) for (let rr = r + 1; rr < L.height; rr++) { if (clear(rr)) { found = rr; break; } }
+      if (found >= 0) r = found;
+    }
+    return { x: col * BLOCK_SIZE + BLOCK_SIZE / 2, y: r * BLOCK_SIZE + BLOCK_SIZE };
   },
 
   // Per-frame win-condition check; sets arenaState.phase='ended' when met.

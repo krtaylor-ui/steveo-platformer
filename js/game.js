@@ -730,6 +730,8 @@ class Game {
     const diff = (this.arenaConfig.mobDifficulty && this.arenaConfig.mobDifficulty !== 'WORLD')
       ? this.arenaConfig.mobDifficulty : (this._worldAdvSettings.arenaMobHealth || 'MEDIUM');
     this.mobManager.arenaMobHpMult = { EASY: 0.5, MEDIUM: 1.0, HARD: 1.5 }[diff] || 1.0;
+    // Arena mobs move 2× by default (survival waves scale this up further).
+    this.mobManager.arenaMobSpeedMult = 2.0;
 
     // Respawn delay from the world setting (seconds → frames).
     const respawnSec = (this._worldAdvSettings.arenaRespawnTime != null) ? this._worldAdvSettings.arenaRespawnTime : 2;
@@ -1753,12 +1755,15 @@ class Game {
       this.player.bowDrawing   = false;
       this.player.drawProgress = 0;
     }
-    if (this.player.weaponMode === 'bow') {
+    if (this._p1RespawnTimer === 0 && this.player.weaponMode === 'bow') {
       // Hold click/Space to charge; release to fire
       const hasArrows = this._worldAdvSettings.unlimitedArrows || this.player.countItem(BLOCK.ARROW) > 0;
       const aimDown = this.input.isAttack() || this.input.mouse.down;
       if (aimDown && hasArrows) {
         this.player.bowDrawing   = true;
+        // Track whether this draw is mouse-aimed (mouse held) vs keyboard (Space).
+        if (this.input.mouse.down) this.player.bowMouseAim = true;
+        else if (this.input.isAttack()) this.player.bowMouseAim = false;
         // Phase 3A.2 — FIRE_RATE power-up charges the bow faster (_fireRateMult).
         this.player.drawProgress = Math.min(1, this.player.drawProgress + (1 / BOW_CHARGE_FRAMES) * (this.player._fireRateMult || 1));
       } else if (aimDown && !hasArrows) {
@@ -1768,10 +1773,12 @@ class Game {
       } else if (this.player.bowDrawing) {
         const charge = this.player.drawProgress;
         const speed  = BOW_MIN_SPEED + (BOW_MAX_SPEED - BOW_MIN_SPEED) * charge;
-        // Keyboard players: snap-aim from movement keys. Controller/mouse: free aim.
-        const angle = this.input.p1GpSlot < 0
-          ? this._snapAimAngle(this.player, this.input.isJump(), this.input.isCrouch())
-          : Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
+        // Free-aim toward the cursor when aiming with the mouse (or a gamepad);
+        // pure-keyboard draws (Space, no mouse) snap-aim from the movement keys.
+        const freeAim = this.player.bowMouseAim || this.input.p1GpSlot >= 0;
+        const angle = freeAim
+          ? Math.atan2(world.y - this.player.cy, world.x - this.player.cx)
+          : this._snapAimAngle(this.player, this.input.isJump(), this.input.isCrouch());
         this.mobManager.addPlayerArrow(
           this.player.cx, this.player.cy,
           Math.cos(angle) * speed,
@@ -1784,7 +1791,7 @@ class Game {
         this.player.bowDrawing   = false;
         this.player.drawProgress = 0;
       }
-    } else if (this.player.weaponMode === 'sword') {
+    } else if (this._p1RespawnTimer === 0 && this.player.weaponMode === 'sword') {
       // ── Sword: click/Space attacks (works even when slot is empty) ──
       if ((this.input.isAttack() || this.input.mouse.clicked) && this.player.attackCooldown === 0) {
         this.mobManager.playerAttack(this.player);
@@ -1799,7 +1806,7 @@ class Game {
         this.player.swingTimer     = 15;
         this._playSound('sounds/attack-sword.mp3');
       }
-    } else if (this.player.weaponMode === 'pickaxe') {
+    } else if (this._p1RespawnTimer === 0 && this.player.weaponMode === 'pickaxe') {
       // ── Pickaxe: Space/click also attacks mobs; mouse-hold mines (below) ──
       if ((this.input.isAttack() || this.input.mouse.clicked) && this.player.attackCooldown === 0) {
         this.mobManager.playerAttack(this.player);
@@ -3653,6 +3660,13 @@ class Game {
     this._deathCause     = cause;
     this._deathTimestamp = Date.now();
 
+    // Death burst (all modes) — a visual pop where the player fell, and cancel any
+    // in-progress bow draw so the body can't fire on respawn (Phase 3A.3).
+    if (this.mobManager && typeof ExplosionEffect !== 'undefined') {
+      this.mobManager.explosions.push(new ExplosionEffect(this.player.cx, this.player.cy, 2.2 * BLOCK_SIZE));
+    }
+    this.player.bowDrawing = false; this.player.drawProgress = 0;
+
     // Arena: unlimited respawns at the player's spawn after a short delay (no death modal/elimination)
     if (this.isArena) {
       this._notify('Respawning…', '#FFD700', this.arenaRespawnFrames);
@@ -3766,6 +3780,11 @@ class Game {
 
   _triggerP2Death(cause = 'Player 2 died') {
     if (this._p2RespawnTimer > 0) return;
+    // Death burst + cancel any P2 bow draw (Phase 3A.3).
+    if (this.player2 && this.mobManager && typeof ExplosionEffect !== 'undefined') {
+      this.mobManager.explosions.push(new ExplosionEffect(this.player2.cx, this.player2.cy, 2.2 * BLOCK_SIZE));
+    }
+    if (this.player2) { this.player2.bowDrawing = false; this.player2.drawProgress = 0; }
     // Arena: unlimited respawns, no elimination
     if (this.isArena) {
       this._p2RespawnTimer = this.arenaRespawnFrames;

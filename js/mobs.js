@@ -32,9 +32,11 @@ function _mobPhysics(mob, level) {
     } else { mob.y = newY; }
   }
 
-  // Horizontal — with 1-block step-up
+  // Horizontal — with 1-block step-up. speedMult scales movement (arena: ×2, +per
+  // survival wave) without changing mob.vx (used for facing/animation). Phase 3A.3.
+  const sm = mob.speedMult || 1;
   if (mob.vx > 0) {
-    const newX    = mob.x + mob.vx;
+    const newX    = mob.x + mob.vx * sm;
     const bCol    = Math.floor((newX + mob.width) / BLOCK_SIZE);
     const bRowT   = Math.floor((mob.y + 2)              / BLOCK_SIZE);
     const bRowB   = Math.floor((mob.y + mob.height - 2) / BLOCK_SIZE);
@@ -48,7 +50,7 @@ function _mobPhysics(mob, level) {
       mob.vx = 0;
     } else { mob.x = newX; }
   } else if (mob.vx < 0) {
-    const newX    = mob.x + mob.vx;
+    const newX    = mob.x + mob.vx * sm;
     const bCol    = Math.floor(newX / BLOCK_SIZE);
     const bRowT   = Math.floor((mob.y + 2)              / BLOCK_SIZE);
     const bRowB   = Math.floor((mob.y + mob.height - 2) / BLOCK_SIZE);
@@ -1506,6 +1508,8 @@ class MobManager {
         mob.maxHp = Math.max(1, Math.round(mob.maxHp * this.arenaMobHpMult));
         mob.hp    = mob.maxHp;
       }
+      // Arena mob speed (Phase 3A.3): ×2 in arena; survival waves bump it further.
+      if (this.arenaMobSpeedMult) mob.speedMult = this.arenaMobSpeedMult;
     }
     return mob;
   }
