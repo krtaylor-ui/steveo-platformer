@@ -297,7 +297,37 @@
           <label>Description:</label>
           <textarea id="world-description-input" placeholder="Optional description" rows="2"></textarea>
         </div>
-        <div class="form-row">
+        <div class="form-group">
+          <label>Default Game Mode:</label>
+          <select id="game-mode-default-input" required>
+            <option value="NRM">Normal</option>
+            <option value="PLT">Platformer</option>
+            <option value="RUN">Speed Runner</option>
+            <option value="ARN">Arena</option>
+          </select>
+          <small id="game-mode-default-note">What mode should this world open in by default?</small>
+        </div>
+
+        <!-- Arena-only options (Phase 3A.3) -->
+        <div id="create-arena-options" style="display: none; border: 1px solid #445; border-radius: 8px; padding: 10px; margin-bottom: 10px;">
+          <div class="form-group">
+            <label>World View:</label>
+            <select id="arena-view-type-input">
+              <option value="single">Single Screen (fixed camera)</option>
+              <option value="scrolling">Scrolling (camera follows)</option>
+            </select>
+          </div>
+          <div class="form-group" id="arena-preset-group">
+            <label>Arena Size:</label>
+            <select id="arena-size-preset-input">
+              <option value="small">Small (25×15)</option>
+              <option value="medium">Medium (50×30)</option>
+              <option value="large">Large (75×45)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row" id="create-size-row">
           <div class="form-group">
             <label>Width (blocks):</label>
             <input type="number" id="world-width-input" value="650" min="25" max="2000" required>
@@ -309,49 +339,10 @@
             <small>30-500 blocks</small>
           </div>
         </div>
-        <div class="form-group">
-          <label>Default Game Mode:</label>
-          <select id="game-mode-default-input" required>
-            <option value="NRM">Normal</option>
-            <option value="PLT">Platformer</option>
-            <option value="RUN">Speed Runner</option>
-            <option value="ARN">Arena (Deathmatch)</option>
-          </select>
-          <small id="game-mode-default-note">What mode should this world open in by default?</small>
-        </div>
 
-        <div class="form-row">
-          <div class="form-group">
-            <label>Gravity:</label>
-            <select id="gravity-level-input">
-              <option value="0.4">Low (floaty)</option>
-              <option value="0.66" selected>Normal</option>
-              <option value="0.9">High (heavy)</option>
-            </select>
-            <small>How fast the player falls</small>
-          </div>
-          <div class="form-group">
-            <label>Jump Height:</label>
-            <select id="jump-height-input">
-              <option value="2">2 blocks</option>
-              <option value="2.5">2.5 blocks</option>
-              <option value="3">3 blocks</option>
-              <option value="3.5" selected>3.5 blocks (default)</option>
-              <option value="4">4 blocks</option>
-              <option value="4.5">4.5 blocks</option>
-              <option value="5">5 blocks</option>
-            </select>
-            <small>Jump apex, independent of gravity</small>
-          </div>
-        </div>
-        <div class="form-group">
-          <label><input type="checkbox" id="air-jump-input"> Enable Air Jump (double jump)</label>
-          <small>One extra jump while airborne</small>
-        </div>
-        <div class="form-group">
-          <label><input type="checkbox" id="sprint-input" checked> Enable Sprint (Shift)</label>
-          <small>Hold Shift to move 2× speed</small>
-        </div>
+        <p style="font-size: 0.8em; opacity: 0.7; margin: 4px 0 10px;">
+          Physics (gravity, jump, sprint) and Arena settings live in <strong>World Settings</strong> inside the editor.
+        </p>
 
         <div class="form-group">
           <button type="submit" class="btn btn-primary">Create</button>

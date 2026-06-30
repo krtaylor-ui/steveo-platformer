@@ -62,6 +62,7 @@ const SANDBOX = {
     document.getElementById('cancel-world-create-btn')?.addEventListener('click', () => this.hideCreateWorldModal());
     // Arena worlds have fixed dimensions — lock the width/height inputs when chosen.
     document.getElementById('game-mode-default-input')?.addEventListener('change', (e) => this._applyModeDimLock(e.target.value));
+    document.getElementById('arena-view-type-input')?.addEventListener('change', () => this._applyArenaViewVis());
 
     // Import games modal
     document.getElementById('import-selected-btn')?.addEventListener('click', () => this.importSelectedGames());
@@ -234,11 +235,8 @@ const SANDBOX = {
     document.getElementById('world-width-input').value = '650';
     document.getElementById('world-height-input').value = '60';
     document.getElementById('game-mode-default-input').value = 'NRM';
-    this._applyModeDimLock('NRM'); // re-enable dimension inputs
-    const g = document.getElementById('gravity-level-input'); if (g) g.value = '0.66';
-    const j = document.getElementById('jump-height-input');   if (j) j.value = '3.5';
-    const a = document.getElementById('air-jump-input');      if (a) a.checked = false;
-    const s = document.getElementById('sprint-input');        if (s) s.checked = true;
+    const av = document.getElementById('arena-view-type-input'); if (av) av.value = 'single';
+    this._applyModeDimLock('NRM'); // reset arena options + show size row
   },
 
   async createWorld() {
@@ -248,20 +246,26 @@ const SANDBOX = {
     const worldHeight = parseInt(document.getElementById('world-height-input').value, 10);
     const gameModeDefault = document.getElementById('game-mode-default-input').value;
 
-    // Per-world movement config (gravity, jump height, air jump, sprint).
-    const config = {
-      gravity:        parseFloat(document.getElementById('gravity-level-input')?.value || '0.66'),
-      jumpHeight:     parseFloat(document.getElementById('jump-height-input')?.value || '3.5'),
-      airJumpEnabled: !!document.getElementById('air-jump-input')?.checked,
-      sprintEnabled:  document.getElementById('sprint-input')?.checked !== false,
-    };
-
     if (!name) { alert('World name required'); return; }
-    // Arena worlds are a fixed 25×15 (server also enforces); skip the range check.
+
+    // Physics now live in World Settings → Physics (server applies defaults here).
+    // Arena (Phase 3A.3): Single-Screen = size preset; Scrolling = free size.
     const arena = gameModeDefault === 'ARN';
-    const sendWidth  = arena ? 25 : worldWidth;
-    const sendHeight = arena ? 15 : worldHeight;
-    if (!arena) {
+    let sendWidth, sendHeight, config = {};
+    if (arena) {
+      const view = document.getElementById('arena-view-type-input')?.value || 'single';
+      config = { arenaViewType: view };
+      if (view === 'single') {
+        const preset = document.getElementById('arena-size-preset-input')?.value || 'small';
+        const P = { small: [25, 15], medium: [50, 30], large: [75, 45] }[preset] || [25, 15];
+        sendWidth = P[0]; sendHeight = P[1];
+      } else {
+        sendWidth = worldWidth; sendHeight = worldHeight;
+        if (!(sendWidth >= 25 && sendWidth <= 2000)) { alert('Width must be 25-2000'); return; }
+        if (!(sendHeight >= 15 && sendHeight <= 500)) { alert('Height must be 15-500'); return; }
+      }
+    } else {
+      sendWidth = worldWidth; sendHeight = worldHeight;
       if (!(worldWidth >= 25 && worldWidth <= 2000)) { alert('Width must be 25-2000'); return; }
       if (!(worldHeight >= 30 && worldHeight <= 500)) { alert('Height must be 30-500'); return; }
     }
@@ -377,15 +381,31 @@ const SANDBOX = {
 
   // Arena worlds are a fixed 25×15; lock the dimension inputs when ARN is selected.
   _applyModeDimLock(mode) {
+    const arena = mode === 'ARN';
+    const opts  = document.getElementById('create-arena-options');
+    const note  = document.getElementById('game-mode-default-note');
+    if (opts) opts.style.display = arena ? 'block' : 'none';
+    if (note) note.textContent = arena
+      ? 'Arena: choose Single-Screen (size preset) or Scrolling (free size).'
+      : 'What mode should this world open in by default?';
+    // Re-enable the manual size inputs (a prior arena selection may have hidden them).
     const w = document.getElementById('world-width-input');
     const h = document.getElementById('world-height-input');
-    const note = document.getElementById('game-mode-default-note');
-    const arena = mode === 'ARN';
-    if (w) { if (arena) w.value = '25'; w.disabled = arena; }
-    if (h) { if (arena) h.value = '15'; h.disabled = arena; }
-    if (note) note.textContent = arena
-      ? 'Arena is a fixed 25×15 battle map — dimensions are locked.'
-      : 'What mode should this world open in by default?';
+    if (w) w.disabled = false;
+    if (h) h.disabled = false;
+    this._applyArenaViewVis();
+  },
+
+  // Single-screen arena uses a size preset (hide the manual size row); scrolling
+  // arena and all non-arena modes show the manual width/height inputs.
+  _applyArenaViewVis() {
+    const arena = document.getElementById('game-mode-default-input')?.value === 'ARN';
+    const view  = document.getElementById('arena-view-type-input')?.value || 'single';
+    const single = arena && view === 'single';
+    const presetGroup = document.getElementById('arena-preset-group');
+    const sizeRow = document.getElementById('create-size-row');
+    if (presetGroup) presetGroup.style.display = single ? 'block' : 'none';
+    if (sizeRow) sizeRow.style.display = single ? 'none' : 'flex';
   },
 
   // ── Export the open world as a downloadable JSON file ──────────

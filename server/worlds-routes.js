@@ -57,6 +57,12 @@ function normalizeMovementConfig(config = {}) {
 
 function emptyWorldData({ width = WORLD_W, height = WORLD_H, gameModeDefault = 'NRM', createdBy = 'Player', config = {} } = {}) {
   const movement = normalizeMovementConfig(config);
+  // Arena worlds (Phase 3A.3): seed the chosen view type so the camera behaves
+  // correctly from the first play; everything else uses the Arena settings tab's
+  // flat-key defaults (applied client-side).
+  if (gameModeDefault === 'ARN') {
+    movement.arenaViewType = (config.arenaViewType === 'scrolling') ? 'scrolling' : 'single';
+  }
   return {
     saveVersion: 2,
     isEmptySandbox: true,
@@ -171,18 +177,19 @@ module.exports = function setupWorldsRoutes(app) {
         return res.status(400).json({ error: 'Invalid game mode default' });
       }
 
-      // Arena worlds are locked to fixed dimensions; everything else honors the
-      // player's width/height within the normal range.
+      // Arena worlds (Phase 3A.3): single-screen presets or scrolling free-size.
+      // Validate within a generous range (height floor 15 to allow the Small
+      // 25×15 preset). Non-arena modes honor the normal range.
       const isArena = gameModeDefault === 'ARN';
-      const effWidth  = isArena ? ARENA_W : worldWidth;
-      const effHeight = isArena ? ARENA_H : worldHeight;
-      if (!isArena) {
-        if (worldWidth < WIDTH_MIN || worldWidth > WIDTH_MAX) {
-          return res.status(400).json({ error: `Width must be between ${WIDTH_MIN}-${WIDTH_MAX}` });
-        }
-        if (worldHeight < HEIGHT_MIN || worldHeight > HEIGHT_MAX) {
-          return res.status(400).json({ error: `Height must be between ${HEIGHT_MIN}-${HEIGHT_MAX}` });
-        }
+      const effWidth  = worldWidth;
+      const effHeight = worldHeight;
+      const wMin = isArena ? 25 : WIDTH_MIN;
+      const hMin = isArena ? 15 : HEIGHT_MIN;
+      if (worldWidth < wMin || worldWidth > WIDTH_MAX) {
+        return res.status(400).json({ error: `Width must be between ${wMin}-${WIDTH_MAX}` });
+      }
+      if (worldHeight < hMin || worldHeight > HEIGHT_MAX) {
+        return res.status(400).json({ error: `Height must be between ${hMin}-${HEIGHT_MAX}` });
       }
 
       const createdBy = req.user.user_metadata?.username || 'Player';
