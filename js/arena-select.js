@@ -102,19 +102,24 @@ const ARENA_SELECT = {
     if (!modal || !list || typeof ARENA_MODES === 'undefined') { onPick(null); return; }
 
     const modes = [
-      { key: null, label: 'Deathmatch (classic)', desc: 'Defeat the default bots.' },
-      ...Object.keys(ARENA_MODES.DEFS).map(k => ({ key: k, label: ARENA_MODES.DEFS[k].label, desc: ARENA_MODES.DEFS[k].desc })),
+      { key: null, label: 'Quick Battle (vs bots)', desc: 'Defeat the default bots.' },
+      // Playable game types, then greyed coming-soon (PvP) types (Phase 3A.3).
+      ...Object.keys(ARENA_MODES.DEFS).map(k => ({
+        key: k, label: ARENA_MODES.DEFS[k].label, desc: ARENA_MODES.DEFS[k].desc,
+        disabled: !!ARENA_MODES.DEFS[k].comingSoon,
+      })),
     ];
     list.innerHTML = modes.map(m =>
-      `<button class="btn btn-primary arena-mode-opt" data-mode="${m.key || ''}"
-               style="display:block;width:100%;margin:6px 0;text-align:left;">
+      `<button class="btn ${m.disabled ? 'btn-secondary' : 'btn-primary'} arena-mode-opt" data-mode="${m.key || ''}"
+               ${m.disabled ? 'disabled' : ''}
+               style="display:block;width:100%;margin:6px 0;text-align:left;${m.disabled ? 'opacity:0.5;cursor:not-allowed;' : ''}">
          <strong>${this._esc(m.label)}</strong><br>
          <span style="font-size:0.8em;opacity:0.8;">${this._esc(m.desc)}</span>
        </button>`).join('');
 
     const close = () => { modal.style.display = 'none'; };
     list.querySelectorAll('.arena-mode-opt').forEach(btn =>
-      btn.addEventListener('click', () => { close(); onPick(btn.dataset.mode || null); }));
+      btn.addEventListener('click', () => { if (btn.disabled) return; close(); onPick(btn.dataset.mode || null); }));
     document.getElementById('arena-mode-cancel-btn').onclick = close;
     modal.style.display = 'flex';
   },
