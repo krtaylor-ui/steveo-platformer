@@ -144,9 +144,12 @@ const GAME_STATE = {
       // (spawnFrequency, maxActiveMobs). Previously hardcoded [], so editor
       // spawners never persisted or reached arena play.
       spawnEggs: game.sandbox ? game.sandbox.placedEggs.map(e => ({ ...e })) : [],
-      // Arena collectibles (Phase 3A.2)
+      // Arena collectibles (Phase 3A.2) — emeralds carry `group` (Phase 3A.3) via spread
       emeralds: game.sandbox ? game.sandbox.placedEmeralds.map(e => ({ ...e })) : [],
       powerups: game.sandbox ? game.sandbox.placedPowerups.map(p => ({ ...p })) : [],
+      // Arena objectives (Phase 3A.3)
+      spawnLines: game.sandbox ? game.sandbox.placedSpawnLines.map(s => ({ ...s })) : [],
+      placedHill: game.sandbox ? (game.sandbox.placedHill ? { ...game.sandbox.placedHill } : null) : null,
       placedItems,
       portalLinks,
       sandboxLevers,

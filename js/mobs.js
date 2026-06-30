@@ -1501,6 +1501,11 @@ class MobManager {
         mob.hp    = Math.ceil(mob.hp    * 1.5);
         mob.maxHp = Math.ceil(mob.maxHp * 1.5);
       }
+      // Arena mob-difficulty preset (Phase 3A.3): scale HP for every arena-created mob.
+      if (this.arenaMobHpMult && this.arenaMobHpMult !== 1) {
+        mob.maxHp = Math.max(1, Math.round(mob.maxHp * this.arenaMobHpMult));
+        mob.hp    = mob.maxHp;
+      }
     }
     return mob;
   }

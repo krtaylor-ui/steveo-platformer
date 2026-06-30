@@ -96,6 +96,11 @@ class Game {
       arenaZoomMode:             'NONE',    // 'NONE' | 'PRESET' | 'DYNAMIC'
       arenaPresetZoom:           1.0,       // 0.3–1.5 (PRESET mode)
       redstoneSpeed:             1.0,       // 0.5–2.0 cadence multiplier (coarse)
+      // Phase 3A.3 — arena world config (flat keys, consistent with the above)
+      arenaViewType:             'single',  // 'single' (fixed camera) | 'scrolling' (camera follows)
+      arenaMobHealth:            'MEDIUM',  // 'EASY' | 'MEDIUM' | 'HARD' — default mob-HP preset
+      arenaRespawnTime:          2,         // seconds (0–10) — arena respawn delay
+      arenaEnabledTypes:         ['MOB_HUNTER', 'COLLECT_EMERALDS', 'KING_OF_HILL', 'SURVIVAL_WAVES'],
     };
     // Track the user's explicit pre-launch 2P choice so it can survive world-load overwrite
     this._launchTwoPlayerMode = options.twoPlayerMode;
@@ -663,13 +668,42 @@ class Game {
       if (this.arenaState.scores[owner] != null) this.arenaState.scores[owner]++;
     };
 
-    // Fixed camera: neutralize all follow calls + frame the whole arena centered.
-    this.camera.follow = () => {};
-    this.camera.followMidpoint = () => {};
-    this.camera.x = Math.max(0, Math.min(this.level.pixelWidth  - CANVAS_W, (this.level.pixelWidth  - CANVAS_W) / 2));
-    this.camera.y = Math.max(0, Math.min(this.level.pixelHeight - CANVAS_H, (this.level.pixelHeight - CANVAS_H) / 2));
+    // Camera (Phase 3A.3): single-screen = fixed, centered (neutralize follow);
+    // scrolling = let the normal follow/followMidpoint run each frame.
+    const viewType = this._worldAdvSettings.arenaViewType || 'single';
+    this._arenaScrolling = (viewType === 'scrolling');
+    if (!this._arenaScrolling) {
+      this.camera.follow = () => {};
+      this.camera.followMidpoint = () => {};
+      this.camera.x = Math.max(0, Math.min(this.level.pixelWidth  - CANVAS_W, (this.level.pixelWidth  - CANVAS_W) / 2));
+      this.camera.y = Math.max(0, Math.min(this.level.pixelHeight - CANVAS_H, (this.level.pixelHeight - CANVAS_H) / 2));
+    }
 
-    // Phase 3A.2 — collectibles + power-ups + game mode.
+    // Hill (Phase 3A.3): the designed 4-wide platform if placed, else null
+    // (arena-modes falls back to the arena-centre radius).
+    const hill = this._arenaTemplateData && this._arenaTemplateData.placedHill;
+    this._arenaHill = (hill && typeof hill.col === 'number' && typeof hill.row === 'number')
+      ? { x: hill.col * BLOCK_SIZE, y: hill.row * BLOCK_SIZE, w: 4 * BLOCK_SIZE, h: BLOCK_SIZE }
+      : null;
+
+    // Survival-wave spawn markers (pixels), grouped by line (Phase 3A.3).
+    const lines = (this._arenaTemplateData && Array.isArray(this._arenaTemplateData.spawnLines))
+      ? this._arenaTemplateData.spawnLines : [];
+    this._arenaSpawnLines = lines
+      .filter(s => s && typeof s.col === 'number' && typeof s.row === 'number')
+      .map(s => ({ x: s.col * BLOCK_SIZE + BLOCK_SIZE / 2, y: s.row * BLOCK_SIZE + BLOCK_SIZE / 2, line: s.line || 1 }));
+
+    // Mob-HP preset → multiplier applied to every arena-created mob (pre-launch
+    // mobDifficulty overrides the world default). EASY=½, MEDIUM=1, HARD=1½.
+    const diff = (this.arenaConfig.mobDifficulty && this.arenaConfig.mobDifficulty !== 'WORLD')
+      ? this.arenaConfig.mobDifficulty : (this._worldAdvSettings.arenaMobHealth || 'MEDIUM');
+    this.mobManager.arenaMobHpMult = { EASY: 0.5, MEDIUM: 1.0, HARD: 1.5 }[diff] || 1.0;
+
+    // Respawn delay from the world setting (seconds → frames).
+    const respawnSec = (this._worldAdvSettings.arenaRespawnTime != null) ? this._worldAdvSettings.arenaRespawnTime : 2;
+    this.arenaRespawnFrames = Math.max(1, Math.round(respawnSec * 60));
+
+    // Phase 3A.2/3A.3 — collectibles + power-ups + game mode.
     if (typeof EMERALD_SYSTEM !== 'undefined') EMERALD_SYSTEM.init(this);
     if (typeof POWERUP_SYSTEM !== 'undefined') POWERUP_SYSTEM.init(this);
     if (typeof ARENA_MODES !== 'undefined' && this.arenaConfig.arenaGameMode && ARENA_MODES.initMode) {
@@ -775,6 +809,11 @@ class Game {
   _drawArenaWorldOverlay(ctx) {
     if (typeof EMERALD_SYSTEM !== 'undefined' && EMERALD_SYSTEM.draw) EMERALD_SYSTEM.draw(ctx, this.camera, this.frameCount);
     if (typeof POWERUP_SYSTEM !== 'undefined' && POWERUP_SYSTEM.draw) POWERUP_SYSTEM.draw(ctx, this.camera, this.frameCount);
+    // King-of-the-Hill platform — tinted green while held, gold otherwise (Phase 3A.3).
+    if (this._arenaHill && this._arenaMode && this._arenaMode.key === 'KING_OF_HILL' && typeof _drawHillPlatform === 'function') {
+      const held = (typeof ARENA_MODES !== 'undefined') && ARENA_MODES._holding(this);
+      _drawHillPlatform(ctx, this._arenaHill.x - this.camera.x, this._arenaHill.y - this.camera.y, held ? '#42e06a' : '#f1c40f');
+    }
   }
 
   // Redstone propagation step in frames (coarse per-world cadence; Phase 3A.2).
@@ -1916,6 +1955,7 @@ class Game {
         const itemIdx = this.sandbox.hitTestItems(world.x, world.y);
         const emIdx   = this.sandbox.hitTestEmeralds(world.x, world.y);
         const puIdx   = this.sandbox.hitTestPowerups(world.x, world.y);
+        const slIdx   = this.sandbox.hitTestSpawnLines(world.x, world.y);
         if (eggIdx >= 0) {
           this.sandbox.openPopup(eggIdx);
         } else if (itemIdx >= 0) {
@@ -1924,6 +1964,10 @@ class Game {
           this.sandbox.openEmeraldPopup(emIdx);
         } else if (puIdx >= 0) {
           this.sandbox.openPowerupPopup(puIdx);
+        } else if (slIdx >= 0) {
+          this.sandbox.openSpawnLinePopup(slIdx);
+        } else if (this.sandbox.hitTestHill(world.x, world.y)) {
+          this.sandbox.openHillPopup();
         } else if (target === BLOCK.AIR) {
           // Empty space → place selected item type
           if (this.sandbox.isDustSelected) {
@@ -1936,6 +1980,10 @@ class Game {
             this.sandbox.placeEmerald(world.x, world.y);
           } else if (this.sandbox.isPowerupSelected) {
             this.sandbox.placePowerup(world.x, world.y);
+          } else if (this.sandbox.isHillSelected) {
+            this.sandbox.placeHill(world.x, world.y);
+          } else if (this.sandbox.isSpawnLineSelected) {
+            this.sandbox.placeSpawnLine(world.x, world.y);
           } else if (this.sandbox.isToolSelected || this.sandbox.isBlockItemSelected) {
             this.sandbox.placeItem(world.x, world.y);
           } else if (this.sandbox.isMultiBlock) {
@@ -12554,14 +12602,19 @@ class Game {
         }));
     }
 
-    // Restore arena collectibles (Phase 3A.2)
+    // Restore arena collectibles (Phase 3A.2) + objectives (Phase 3A.3)
     if (this.sandbox) {
       this.sandbox.placedEmeralds = (Array.isArray(data.emeralds) ? data.emeralds : [])
         .filter(e => e && typeof e.col === 'number' && typeof e.row === 'number')
-        .map(e => ({ col: e.col, row: e.row, wx: e.col * BLOCK_SIZE + BLOCK_SIZE / 2, wy: e.row * BLOCK_SIZE + BLOCK_SIZE / 2 }));
+        .map(e => ({ col: e.col, row: e.row, wx: e.col * BLOCK_SIZE + BLOCK_SIZE / 2, wy: e.row * BLOCK_SIZE + BLOCK_SIZE / 2, group: (e.group >= 1 && e.group <= 3) ? e.group : 1 }));
       this.sandbox.placedPowerups = (Array.isArray(data.powerups) ? data.powerups : [])
         .filter(p => p && typeof p.col === 'number' && typeof p.row === 'number')
         .map(p => ({ col: p.col, row: p.row, wx: p.col * BLOCK_SIZE + BLOCK_SIZE / 2, wy: p.row * BLOCK_SIZE + BLOCK_SIZE / 2, powerType: p.powerType || 'HEALTH' }));
+      this.sandbox.placedSpawnLines = (Array.isArray(data.spawnLines) ? data.spawnLines : [])
+        .filter(s => s && typeof s.col === 'number' && typeof s.row === 'number')
+        .map(s => ({ col: s.col, row: s.row, wx: s.col * BLOCK_SIZE + BLOCK_SIZE / 2, wy: s.row * BLOCK_SIZE + BLOCK_SIZE / 2, line: (s.line >= 1 && s.line <= 4) ? s.line : 1 }));
+      this.sandbox.placedHill = (data.placedHill && typeof data.placedHill.col === 'number' && typeof data.placedHill.row === 'number')
+        ? { col: data.placedHill.col, row: data.placedHill.row } : null;
     }
 
     // Restore sandbox portal registry + links

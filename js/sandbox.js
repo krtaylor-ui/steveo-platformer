@@ -85,6 +85,9 @@ const OTHER_PALETTE_ITEMS = [
   // ── Arena collectibles (Phase 3A.2) ──────────────────────────
   { kind: 'emerald', name: 'Emerald',  color: '#2ecc71' },
   { kind: 'powerup', name: 'Power-Up', color: '#e67e22' },
+  // ── Arena objectives (Phase 3A.3) ────────────────────────────
+  { kind: 'hill',      name: 'Hill (KotH)',  color: '#f1c40f' },
+  { kind: 'spawnline', name: 'Spawn Line',   color: '#9b59b6' },
   // ── Spawn Eggs ───────────────────────────────────────────────
   ...SPAWN_EGG_DEFS.map(d => ({ kind: 'egg', ...d })),
 ];
@@ -219,6 +222,10 @@ class SandboxManager {
     this.selectedBlockItemCount = 20;   // default stack size for block items
     this.selectedEmerald       = false; // true → placing emeralds (Phase 3A.2)
     this.selectedPowerup       = false; // true → placing power-ups (Phase 3A.2)
+    this.selectedHill          = false; // true → placing the King-of-the-Hill platform (Phase 3A.3)
+    this.selectedSpawnLine     = false; // true → placing survival-wave spawn markers (Phase 3A.3)
+    this.lastEmeraldGroup      = 1;     // 1–3, drives new-emerald group
+    this.lastSpawnLineNum      = 1;     // 1–4, drives new spawn-marker line
     this.brushSize             = 1;     // 1 | 2 | 4
 
     // Quick-access hotbar (8 block slots)
@@ -237,8 +244,11 @@ class SandboxManager {
     this.placedItems = [];
 
     // Arena collectibles (Phase 3A.2)
-    this.placedEmeralds = []; // [{col,row,wx,wy}]
+    this.placedEmeralds = []; // [{col,row,wx,wy,group}]
     this.placedPowerups = []; // [{col,row,wx,wy,powerType}]
+    // Arena objectives (Phase 3A.3)
+    this.placedSpawnLines = []; // [{col,row,wx,wy,line}] survival-wave spawn markers
+    this.placedHill       = null; // {col,row} King-of-the-Hill platform anchor (4 wide × 1 tall)
 
     // Config popup for a placed egg / item drop
     this.popup = null; // { kind:'egg'|'item', eggIdx|itemIdx } or null
@@ -256,6 +266,8 @@ class SandboxManager {
   get isBlockItemSelected() { return this.selectedBlockItemType !== null; }
   get isEmeraldSelected()   { return this.selectedEmerald; }
   get isPowerupSelected()   { return this.selectedPowerup; }
+  get isHillSelected()      { return this.selectedHill; }
+  get isSpawnLineSelected() { return this.selectedSpawnLine; }
 
   // Returns a hotbar entry object representing the current selection.
   _currentSelectionEntry() {
@@ -264,6 +276,8 @@ class SandboxManager {
     if (this.isEggSelected)       return { kind: 'egg',       value: this.selectedEggKey  };
     if (this.isEmeraldSelected)   return { kind: 'emerald',   value: 'emerald' };
     if (this.isPowerupSelected)   return { kind: 'powerup',   value: 'powerup' };
+    if (this.isHillSelected)      return { kind: 'hill',      value: 'hill' };
+    if (this.isSpawnLineSelected) return { kind: 'spawnline', value: 'spawnline' };
     if (this.isDustSelected)      return { kind: 'dust',      value: 'dust' };
     if (this.isGateSelected)      return { kind: 'gate',      value: this.selectedGateType };
     return { kind: 'block', value: this.selectedBlock };
@@ -277,6 +291,8 @@ class SandboxManager {
     this.selectedBlockItemType = null;
     this.selectedEmerald       = false;
     this.selectedPowerup       = false;
+    this.selectedHill          = false;
+    this.selectedSpawnLine     = false;
     if (entry.kind === 'emerald') {
       this.selectedEmerald = true;
       this.selectedEggKey  = null;
@@ -287,6 +303,18 @@ class SandboxManager {
       this.selectedPowerup = true;
       this.selectedEggKey  = null;
       this.selectedToolKey = null;
+      return;
+    }
+    if (entry.kind === 'hill') {
+      this.selectedHill    = true;
+      this.selectedEggKey  = null;
+      this.selectedToolKey = null;
+      return;
+    }
+    if (entry.kind === 'spawnline') {
+      this.selectedSpawnLine = true;
+      this.selectedEggKey    = null;
+      this.selectedToolKey   = null;
       return;
     }
     if (entry.kind === 'block') {
@@ -481,6 +509,43 @@ class SandboxManager {
   }
   removeEmerald(idx) { if (idx >= 0 && idx < this.placedEmeralds.length) this.placedEmeralds.splice(idx, 1); this.popup = null; }
   removePowerup(idx) { if (idx >= 0 && idx < this.placedPowerups.length) this.placedPowerups.splice(idx, 1); this.popup = null; }
+
+  // ── Hill (King of the Hill) — single 4-wide platform anchor (Phase 3A.3) ──
+  placeHill(wx, wy) {
+    const col = Math.floor(wx / BLOCK_SIZE), row = Math.floor(wy / BLOCK_SIZE);
+    this.placedHill = { col, row }; // only one allowed — replaces any existing
+  }
+  // True if (wx,wy) hits the placed 4-wide hill platform.
+  hitTestHill(wx, wy) {
+    if (!this.placedHill) return false;
+    const col = Math.floor(wx / BLOCK_SIZE), row = Math.floor(wy / BLOCK_SIZE);
+    return row === this.placedHill.row && col >= this.placedHill.col && col <= this.placedHill.col + 3;
+  }
+  removeHill() { this.placedHill = null; this.popup = null; }
+  openHillPopup() { this.popup = { kind: 'hill' }; }
+
+  // ── Spawn Lines — survival-wave spawn markers, tagged by line 1–4 (Phase 3A.3) ──
+  placeSpawnLine(wx, wy) {
+    const col = Math.floor(wx / BLOCK_SIZE), row = Math.floor(wy / BLOCK_SIZE);
+    if (this.placedSpawnLines.some(s => s.col === col && s.row === row)) return;
+    this.placedSpawnLines.push({ col, row, wx: col * BLOCK_SIZE + BLOCK_SIZE / 2, wy: row * BLOCK_SIZE + BLOCK_SIZE / 2, line: this.lastSpawnLineNum || 1 });
+  }
+  hitTestSpawnLines(wx, wy) {
+    const R = 16;
+    for (let i = 0; i < this.placedSpawnLines.length; i++) {
+      const s = this.placedSpawnLines[i];
+      if (Math.abs(wx - s.wx) < R && Math.abs(wy - s.wy) < R) return i;
+    }
+    return -1;
+  }
+  cycleSpawnLineNum(idx) {
+    if (idx < 0 || idx >= this.placedSpawnLines.length) return;
+    const n = ((this.placedSpawnLines[idx].line || 1) % 4) + 1; // 1→2→3→4→1
+    this.placedSpawnLines[idx].line = n;
+    this.lastSpawnLineNum = n;
+  }
+  removeSpawnLine(idx) { if (idx >= 0 && idx < this.placedSpawnLines.length) this.placedSpawnLines.splice(idx, 1); this.popup = null; }
+  openSpawnLinePopup(idx) { this.popup = { kind: 'spawnline', spawnLineIdx: idx }; }
   openEmeraldPopup(idx) { this.popup = { kind: 'emerald', emeraldIdx: idx }; }
   openPowerupPopup(idx) { this.popup = { kind: 'powerup', powerupIdx: idx }; }
 
@@ -704,6 +769,8 @@ class SandboxManager {
           this.selectedGateType = null;
           this.selectedEmerald  = false;
           this.selectedPowerup  = false;
+          this.selectedHill     = false;
+          this.selectedSpawnLine = false;
           if (item.kind === 'emerald') {
             this.selectedEmerald = true;
             this.selectedEggKey  = null;
@@ -713,6 +780,16 @@ class SandboxManager {
             this.selectedPowerup = true;
             this.selectedEggKey  = null;
             this.selectedToolKey = null;
+            this.selectedBlockItemType = null;
+          } else if (item.kind === 'hill') {
+            this.selectedHill    = true;
+            this.selectedEggKey  = null;
+            this.selectedToolKey = null;
+            this.selectedBlockItemType = null;
+          } else if (item.kind === 'spawnline') {
+            this.selectedSpawnLine = true;
+            this.selectedEggKey    = null;
+            this.selectedToolKey   = null;
             this.selectedBlockItemType = null;
           } else if (item.kind === 'tool') {
             this.selectedToolKey = item.key;
@@ -744,6 +821,8 @@ class SandboxManager {
           this.selectedToolKey = null;
           this.selectedEmerald = false;
           this.selectedPowerup = false;
+          this.selectedHill    = false;
+          this.selectedSpawnLine = false;
         }
         // Auto-assign current selection to the active hotbar slot
         this.sbHotbar[this.sbHotbarSel] = this._currentSelectionEntry();
@@ -810,6 +889,23 @@ class SandboxManager {
       return true;
     }
 
+    // Hill popup (popH = 120) — Phase 3A.3 (remove only; size/shape locked)
+    if (this.popup.kind === 'hill') {
+      if (mx >= px + pw - 26 && mx <= px + pw - 6 && my >= py + 6 && my <= py + 26) { this.closePopup(); return true; }
+      if (mx < px || mx > px + pw || my < py || my > py + 120) { this.closePopup(); return false; }
+      if (mx >= px + 14 && mx <= px + pw - 14 && my >= py + 76 && my <= py + 106) { this.removeHill(); return true; }
+      return true;
+    }
+
+    // Spawn-line popup (popH = 168) — Phase 3A.3 (cycle line 1–4 + remove)
+    if (this.popup.kind === 'spawnline') {
+      if (mx >= px + pw - 26 && mx <= px + pw - 6 && my >= py + 6 && my <= py + 26) { this.closePopup(); return true; }
+      if (mx < px || mx > px + pw || my < py || my > py + 168) { this.closePopup(); return false; }
+      if (mx >= px + 14 && mx <= px + pw - 14 && my >= py + 88  && my <= py + 118) { this.cycleSpawnLineNum(this.popup.spawnLineIdx); return true; }
+      if (mx >= px + 14 && mx <= px + pw - 14 && my >= py + 124 && my <= py + 154) { this.removeSpawnLine(this.popup.spawnLineIdx); return true; }
+      return true;
+    }
+
     // Egg popup (eggH = 244, matches _drawPopup)
     const egg = this.placedEggs[this.popup.eggIdx];
     // X close button
@@ -871,6 +967,8 @@ class SandboxManager {
     this._drawPlacedEggs(ctx, camera, frameCount);
     this._drawPlacedEmeralds(ctx, camera, frameCount);
     this._drawPlacedPowerups(ctx, camera, frameCount);
+    this._drawPlacedHill(ctx, camera);
+    this._drawPlacedSpawnLines(ctx, camera, frameCount);
     this._drawPortalLabels(ctx, camera);
     this._drawHUD(ctx, player, frameCount, input);
     if (this.paletteOpen)  this._drawPalette(ctx, input);
@@ -982,6 +1080,21 @@ class SandboxManager {
       if (sx < -40 || sx > CANVAS_W + 40 || sy < -40 || sy > CANVAS_H + 40) continue;
       const sel = this.popup?.kind === 'powerup' && this.popup.powerupIdx === i;
       _drawPowerupIcon(ctx, sx, sy, p.powerType, frameCount, sel);
+    }
+  }
+
+  _drawPlacedHill(ctx, camera) {
+    if (!this.placedHill) return;
+    const sx = this.placedHill.col * BLOCK_SIZE - camera.x;
+    const sy = this.placedHill.row * BLOCK_SIZE - camera.y;
+    _drawHillPlatform(ctx, sx, sy, '#f1c40f');
+  }
+
+  _drawPlacedSpawnLines(ctx, camera, frameCount) {
+    for (const s of this.placedSpawnLines) {
+      const sx = s.wx - camera.x, sy = s.wy - camera.y;
+      if (sx < -40 || sx > CANVAS_W + 40 || sy < -40 || sy > CANVAS_H + 40) continue;
+      _drawSpawnLineMarker(ctx, sx, sy, s.line || 1, frameCount);
     }
   }
 
@@ -1760,6 +1873,43 @@ class SandboxManager {
       return;
     }
 
+    // ── Hill popup (Phase 3A.3) — remove only (4×1 locked) ────
+    if (this.popup.kind === 'hill') {
+      const popH = 120;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      ctx.fillStyle = '#13131f'; _roundRect(ctx, px, py, pw, popH, 8); ctx.fill();
+      ctx.strokeStyle = '#f1c40f'; ctx.lineWidth = 2; _roundRect(ctx, px, py, pw, popH, 8); ctx.stroke();
+      ctx.fillStyle = '#FFD700'; ctx.font = 'bold 12px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('HILL (King of the Hill)', CANVAS_W / 2, py + 22);
+      ctx.fillStyle = '#cfcf9f'; ctx.font = '10px Courier New';
+      ctx.fillText('4 blocks wide — locked size', CANVAS_W / 2, py + 46);
+      _btn('✕  Remove', px + 14, py + 76, pw - 28, 30, '#FF6644', '#553333');
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.restore();
+      return;
+    }
+
+    // ── Spawn-line popup (Phase 3A.3) — cycle line + remove ───
+    if (this.popup.kind === 'spawnline') {
+      const sl = this.placedSpawnLines[this.popup.spawnLineIdx];
+      if (!sl) { this.popup = null; ctx.restore(); return; }
+      const popH = 168;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      ctx.fillStyle = '#13131f'; _roundRect(ctx, px, py, pw, popH, 8); ctx.fill();
+      ctx.strokeStyle = '#9b59b6'; ctx.lineWidth = 2; _roundRect(ctx, px, py, pw, popH, 8); ctx.stroke();
+      ctx.fillStyle = '#FFD700'; ctx.font = 'bold 12px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('SPAWN LINE', CANVAS_W / 2, py + 22);
+      ctx.fillStyle = '#c9a0e8'; ctx.font = 'bold 11px Courier New';
+      ctx.fillText(`Line ${sl.line || 1}  (Survival Waves)`, CANVAS_W / 2, py + 66);
+      _btn('⟳  Change Line', px + 14, py + 88,  pw - 28, 30, '#7ec8e3', '#445566');
+      _btn('✕  Remove',      px + 14, py + 124, pw - 28, 30, '#FF6644', '#553333');
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.restore();
+      return;
+    }
+
     // ── Egg popup ─────────────────────────────────────────────
     const egg = this.placedEggs[this.popup.eggIdx];
     if (!egg) { this.popup = null; ctx.restore(); return; }
@@ -1874,6 +2024,43 @@ function _powerupDef(type) {
   return (typeof SB_POWERUP_TYPES !== 'undefined'
     ? SB_POWERUP_TYPES.find(t => t.type === type)
     : null) || { type: 'HEALTH', label: 'Health', color: '#e74c3c', symbol: '✚' };
+}
+
+// Hill platform: 4 blocks wide × 1 tall, anchored at top-left (sx,sy) in screen px.
+// `color` tints it (designer gold; in-game it can take the controller's colour). Phase 3A.3.
+function _drawHillPlatform(ctx, sx, sy, color) {
+  ctx.save();
+  const w = 4 * BLOCK_SIZE, h = BLOCK_SIZE;
+  ctx.fillStyle = color || '#f1c40f';
+  ctx.globalAlpha = 0.85;
+  ctx.fillRect(sx, sy, w, h);
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = '#fff7c0'; ctx.lineWidth = 2; ctx.strokeRect(sx + 1, sy + 1, w - 2, h - 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.font = 'bold 11px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('★ HILL', sx + w / 2, sy + h / 2);
+  ctx.restore();
+}
+
+// Survival-wave spawn marker: a swirling portal-ish disc tagged with its line number. Phase 3A.3.
+function _drawSpawnLineMarker(ctx, sx, sy, lineNum, frameCount) {
+  ctx.save();
+  const t = (frameCount || 0) * 0.08;
+  ctx.translate(sx, sy);
+  ctx.fillStyle = 'rgba(155,89,182,0.85)';
+  ctx.beginPath(); ctx.arc(0, 0, 13, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#d2a8e8'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let a = 0; a < Math.PI * 2; a += 0.5) {
+    const r = 6 + 4 * Math.sin(a * 2 + t);
+    const x = Math.cos(a + t) * r, y = Math.sin(a + t) * r;
+    a === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.closePath(); ctx.stroke();
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 11px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(String(lineNum || 1), 0, 0);
+  ctx.restore();
 }
 
 function _drawPowerupIcon(ctx, sx, sy, type, frameCount, highlighted) {

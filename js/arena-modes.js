@@ -33,19 +33,53 @@ const ARENA_MODES = {
   HILL_RADIUS_BLOCKS: 4,
 
   initMode(modeKey, game) {
-    game._arenaMode = { key: modeKey, holdFrames: 0 };
+    const ms = { key: modeKey, holdFrames: 0 };
+    if (modeKey === 'SURVIVAL_WAVES') {
+      ms.wave = 0;
+      ms.waveBaseCount = Math.max(3, Math.min(10, (game.arenaConfig && game.arenaConfig.initialMobCount) || 5));
+      ms.betweenTimer = 90; // short delay before wave 1 (lets the countdown clear)
+    }
+    game._arenaMode = ms;
   },
 
-  // True while any player stands within the hill radius of the arena center.
+  // True while any player controls the hill. Uses the designed 4-wide platform
+  // (game._arenaHill) if placed — player must stand on top of it — else the
+  // arena-centre radius (back-compat for hill-less worlds).
   _holding(game) {
-    const cx = game.level.pixelWidth / 2, cy = game.level.pixelHeight / 2;
-    const r  = this.HILL_RADIUS_BLOCKS * BLOCK_SIZE;
+    const hill = game._arenaHill;
     const within = (p) => {
       if (!p) return false;
-      const pcx = p.x + (p.width || PLAYER_W) / 2, pcy = p.y + (p.height || PLAYER_H) / 2;
-      return Math.hypot(pcx - cx, pcy - cy) <= r;
+      const pcx = p.x + (p.width || PLAYER_W) / 2;
+      if (hill) {
+        const feetY = p.y + (p.height || PLAYER_H);
+        return pcx >= hill.x && pcx <= hill.x + hill.w && feetY >= hill.y - 10 && feetY <= hill.y + hill.h + 14;
+      }
+      const cx = game.level.pixelWidth / 2, cy = game.level.pixelHeight / 2;
+      const pcy = p.y + (p.height || PLAYER_H) / 2;
+      return Math.hypot(pcx - cx, pcy - cy) <= this.HILL_RADIUS_BLOCKS * BLOCK_SIZE;
     };
     return within(game.player) || within(game.player2);
+  },
+
+  // Spawn one escalating survival wave from the designed spawn-lines (or, if none,
+  // spread across the arena top). Wave N has waveBaseCount + 2·(N-1) mobs, each with
+  // +(N-1) bonus HP on top of the difficulty preset.
+  _spawnSurvivalWave(game, ms) {
+    ms.wave++;
+    const count   = ms.waveBaseCount + (ms.wave - 1) * 2;
+    const markers = (game._arenaSpawnLines && game._arenaSpawnLines.length) ? game._arenaSpawnLines : null;
+    const types   = ['Zombie', 'Skeleton'];
+    for (let i = 0; i < count; i++) {
+      let x, y;
+      if (markers) { const m = markers[i % markers.length]; x = m.x + ((i % 3) - 1) * 16; y = m.y; }
+      else { x = ((i + 1) / (count + 1)) * game.level.pixelWidth; y = BLOCK_SIZE * 2; }
+      const mob = game.mobManager._createMob(types[i % types.length], x, y);
+      if (mob) {
+        const bonus = ms.wave - 1;
+        if (bonus > 0) { mob.maxHp += bonus; mob.hp = mob.maxHp; }
+        game.mobManager.mobs.push(mob);
+      }
+    }
   },
 
   // Per-frame win-condition check; sets arenaState.phase='ended' when met.
@@ -65,7 +99,13 @@ const ARENA_MODES = {
         // End once no player is alive (solo: P1 dead; co-op: both dead).
         const p1Dead = !game.player || game.player.hp <= 0;
         const p2Dead = !game.player2 || game.player2.hp <= 0;
-        if (p1Dead && p2Dead) a.phase = 'ended';
+        if (p1Dead && p2Dead) { a.phase = 'ended'; break; }
+        // Wave management: spawn the next escalating wave once the arena is clear.
+        const aliveMobs = game.mobManager.mobs.filter(mb => mb.alive).length;
+        if (aliveMobs === 0) {
+          if (ms.betweenTimer > 0) ms.betweenTimer--;
+          else { this._spawnSurvivalWave(game, ms); ms.betweenTimer = 120; }
+        }
         break;
       }
       case 'MOB_HUNTER':
@@ -84,8 +124,10 @@ const ARENA_MODES = {
         return (typeof EMERALD_SYSTEM !== 'undefined') ? EMERALD_SYSTEM.collected : 0;
       case 'KING_OF_HILL':
         return Math.round(ms.holdFrames / 60);
+      case 'SURVIVAL_WAVES':
+        return kills + (ms.wave || 0) * 5; // +5 per wave reached, +1 per kill
       default:
-        return kills; // MOB_HUNTER, SURVIVAL_WAVES
+        return kills; // MOB_HUNTER
     }
   },
 
@@ -98,7 +140,7 @@ const ARENA_MODES = {
       case 'KING_OF_HILL':
         return `Hold: ${Math.round(ms.holdFrames / 60)}s / ${Math.round(this.HOLD_TARGET_FRAMES / 60)}s`;
       case 'SURVIVAL_WAVES':
-        return `Survive!  Kills: ${game.arenaState.scores.p1 || 0}`;
+        return `Wave ${ms.wave || 1}   Kills: ${game.arenaState.scores.p1 || 0}`;
       default:
         return `Kills: ${game.arenaState.scores.p1 || 0}`;
     }
