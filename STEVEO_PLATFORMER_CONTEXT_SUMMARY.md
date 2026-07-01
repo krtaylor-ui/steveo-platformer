@@ -49,3 +49,31 @@ See `DECISIONS_LOG.md` for every decision/assumption and `MIGRATIONS.md` for req
 ## Required before deploy
 Run `server/sql/community.sql` and `server/sql/stats.sql` in the Supabase SQL editor (additive, safe).
 Without them the new `/api/community/*` and `/api/stats/*` endpoints 500 but the rest of the game is fine.
+
+## Phase 3 — v3 Master Brief run (2026-07-01)
+Built on top of the v1/v2 commits. New work (all committed on `worktree-phase-3b-pvp`):
+1. **Bug-fix pass (§2):** theme toggle de-duplicated from the mute control (root cause
+   of "two mute buttons" + the theme switch not appearing); Online/Community button
+   sizing; arena cards render as cards again (`.sandbox-container` width fix); pause
+   freezes the match timer; P2-P4 death sound; Deathmatch excludes mob kills; "Disable
+   Mobs" pre-launch toggle; spawn-point hotbar icon. Pickaxe-hotbar removal DEFERRED
+   (invasive core input redesign; needs browser testing).
+2. **KOTH (§3):** runs the full match timer (no early hold-target end); Sticky keeps the
+   owner's hill colour while contested, Sole reverts to yellow.
+3. **4-player HUD (§4):** P3 lower-left + P4 lower-right get compact health bar + hotbar.
+4. **Theme (§5):** now a full game-wide switch — the inline `<head>` style + splash +
+   dashboard font were tokenized (they hardcoded retro before). Client-side persistence.
+5. **CTF (§6):** base zones (3×2), both-flags-out scoring fixed, one-flag-at-a-time,
+   own-flag carry-recovery, drop-on-defeat, configurable return timer, no-combat-while-
+   carrying, team shirt colours, per-player→team scoring. New `js/ctf-system.js` logic.
+   Bases auto-anchor to team spawns (dedicated sandbox Base placeable deferred).
+6. **Defend the Tower (§7):** new `js/tower-system.js` + `DEFEND_TOWER` mode. One Tower/
+   player at spawn, HP 3/6/9/12, 3 damage bands, Heal Tower pickups, arrow+melee damage,
+   sole win = first Tower destroyed. Editor placeables (Tower/Heal/CTF Base) deferred;
+   modes auto-anchor to spawns and are fully playable.
+7. **Remaining features (§8):** audited — Publishing/Community/Leaderboards/Achievements
+   from the earlier run are intact and already follow the theme tokens; still need the
+   two SQL migrations (MIGRATIONS.md) for the /api/community + /api/stats endpoints.
+
+New file: `js/tower-system.js`. Cache-buster bumped `17k2-3b` → `17k3-v3`.
+Headless: 52/52 v3 logic assertions pass. Not browser-tested (no browser/Supabase here).

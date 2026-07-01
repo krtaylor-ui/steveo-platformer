@@ -13,7 +13,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=17k2-3b">
+  <link rel="stylesheet" href="style.css?v=17k3-v3">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
@@ -95,26 +95,27 @@
     }
     #start-screen h2 {
       font-size: 1.6rem;
-      color: #7ec8e3;
-      letter-spacing: 4px;
-      text-shadow: 1px 1px 0 #004466, 2px 2px 0 #002233;
-      text-transform: uppercase;
+      color: var(--accent, #7c8cff);
+      letter-spacing: var(--title-spacing, 0.5px);
+      text-shadow: var(--title-shadow, none);
+      text-transform: var(--title-transform, none);
+      font-family: var(--font, system-ui, sans-serif);
     }
     #start-button {
       padding: 18px 64px;
       font-size: 1.3rem;
       font-weight: bold;
-      font-family: 'Courier New', monospace;
+      font-family: var(--font, system-ui, sans-serif);
       background: #1a1a2e;
-      color: #7ec8e3;
-      border: 2px solid #7ec8e3;
+      color: var(--accent, #7c8cff);
+      border: 2px solid var(--accent, #7c8cff);
+      border-radius: var(--ui-radius, 8px);
       cursor: pointer;
       letter-spacing: 2px;
       transition: background 0.2s, color 0.2s, border-color 0.2s;
-      text-transform: uppercase;
     }
     #start-button:hover {
-      background: #7ec8e3;
+      background: var(--accent, #7c8cff);
       color: #000;
     }
     #start-button:active { transform: scale(0.97); }
@@ -895,56 +896,56 @@
     2P: <kbd>IJKL</kbd>+<kbd>U</kbd>
   </div>
 
-  <script src="js/theme.js?v=17k2-3b"></script>
-  <script src="js/auth.js?v=17k2-3b"></script>
-  <script src="js/dashboard.js?v=17k2-3b"></script>
-  <script src="js/game-selection.js?v=17k2-3b"></script>
-  <script src="js/constants.js?v=17k2-3b"></script>
-  <script src="js/blocks.js?v=17k2-3b"></script>
-  <script src="js/controller-config.js?v=17k2-3b"></script>
-  <script src="js/controller-input.js?v=17k2-3b"></script>
-  <script src="js/input.js?v=17k2-3b"></script>
-  <script src="js/camera.js?v=17k2-3b"></script>
-  <script src="js/mobs.js?v=17k2-3b"></script>
-  <script src="js/crafting.js?v=17k2-3b"></script>
-  <script src="js/player.js?v=17k2-3b"></script>
-  <script src="js/level.js?v=17k2-3b"></script>
-  <script src="js/redstone.js?v=17k2-3b"></script>
-  <script src="js/world.js?v=17k2-3b"></script>
-  <script src="js/sandbox.js?v=17k2-3b"></script>
-  <script src="js/save-migrations.js?v=17k2-3b"></script>
-  <script src="js/saves.js?v=17k2-3b"></script>
-  <script src="js/speedrunner-mode.js?v=17k2-3b"></script>
-  <script src="js/arena-maps.js?v=17k2-3b"></script>
+  <script src="js/theme.js?v=17k3-v3"></script>
+  <script src="js/auth.js?v=17k3-v3"></script>
+  <script src="js/dashboard.js?v=17k3-v3"></script>
+  <script src="js/game-selection.js?v=17k3-v3"></script>
+  <script src="js/constants.js?v=17k3-v3"></script>
+  <script src="js/blocks.js?v=17k3-v3"></script>
+  <script src="js/controller-config.js?v=17k3-v3"></script>
+  <script src="js/controller-input.js?v=17k3-v3"></script>
+  <script src="js/input.js?v=17k3-v3"></script>
+  <script src="js/camera.js?v=17k3-v3"></script>
+  <script src="js/mobs.js?v=17k3-v3"></script>
+  <script src="js/crafting.js?v=17k3-v3"></script>
+  <script src="js/player.js?v=17k3-v3"></script>
+  <script src="js/level.js?v=17k3-v3"></script>
+  <script src="js/redstone.js?v=17k3-v3"></script>
+  <script src="js/world.js?v=17k3-v3"></script>
+  <script src="js/sandbox.js?v=17k3-v3"></script>
+  <script src="js/save-migrations.js?v=17k3-v3"></script>
+  <script src="js/saves.js?v=17k3-v3"></script>
+  <script src="js/speedrunner-mode.js?v=17k3-v3"></script>
+  <script src="js/arena-maps.js?v=17k3-v3"></script>
   <!-- Phase 3A.2 arena systems — must load before game.js (it references them) -->
-  <script src="js/emerald-system.js?v=17k2-3b"></script>
-  <script src="js/powerup-system.js?v=17k2-3b"></script>
-  <script src="js/ctf-system.js?v=17k2-3b"></script>
-  <script src="js/tower-system.js?v=17k2-3b"></script>
-  <script src="js/arena-modes.js?v=17k2-3b"></script>
-  <script src="js/leaderboard-system.js?v=17k2-3b"></script>
-  <script src="js/game.js?v=17k2-3b"></script>
-  <script src="js/menu.js?v=17k2-3b"></script>
+  <script src="js/emerald-system.js?v=17k3-v3"></script>
+  <script src="js/powerup-system.js?v=17k3-v3"></script>
+  <script src="js/ctf-system.js?v=17k3-v3"></script>
+  <script src="js/tower-system.js?v=17k3-v3"></script>
+  <script src="js/arena-modes.js?v=17k3-v3"></script>
+  <script src="js/leaderboard-system.js?v=17k3-v3"></script>
+  <script src="js/game.js?v=17k3-v3"></script>
+  <script src="js/menu.js?v=17k3-v3"></script>
   <!-- Phase 16: Multiplayer (socket.io loaded from CDN; falls back gracefully if unavailable) -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js" crossorigin="anonymous"></script>
-  <script src="js/multiplayer.js?v=17k2-3b"></script>
+  <script src="js/multiplayer.js?v=17k3-v3"></script>
   <!-- Phase 16-A: Online lobby UI -->
-  <script src="js/online-ui.js?v=17k2-3b"></script>
+  <script src="js/online-ui.js?v=17k3-v3"></script>
   <!-- Phase 1D: Game play + auto-save -->
-  <script src="js/music.js?v=17k2-3b"></script>
-  <script src="js/game-timer.js?v=17k2-3b"></script>
-  <script src="js/game-state.js?v=17k2-3b"></script>
-  <script src="js/auto-save.js?v=17k2-3b"></script>
-  <script src="js/game-play.js?v=17k2-3b"></script>
+  <script src="js/music.js?v=17k3-v3"></script>
+  <script src="js/game-timer.js?v=17k3-v3"></script>
+  <script src="js/game-state.js?v=17k3-v3"></script>
+  <script src="js/auto-save.js?v=17k3-v3"></script>
+  <script src="js/game-play.js?v=17k3-v3"></script>
   <!-- Phase 1E: Sandbox world browser + editor -->
-  <script src="js/sandbox-ui.js?v=17k2-3b"></script>
+  <script src="js/sandbox-ui.js?v=17k3-v3"></script>
 
-  <script src="js/online-play.js?v=17k2-3b"></script>
-  <script src="js/community-ui.js?v=17k2-3b"></script>
-  <script src="js/arena-select.js?v=17k2-3b"></script>
+  <script src="js/online-play.js?v=17k3-v3"></script>
+  <script src="js/community-ui.js?v=17k3-v3"></script>
+  <script src="js/arena-select.js?v=17k3-v3"></script>
   <!-- Phase 3A.3 arena UI (invoked on user action; order after the above) -->
-  <script src="js/arena-prelaunch.js?v=17k2-3b"></script>
-  <script src="js/test-world.js?v=17k2-3b"></script>
+  <script src="js/arena-prelaunch.js?v=17k3-v3"></script>
+  <script src="js/test-world.js?v=17k3-v3"></script>
 
   <script>
     // ── Responsive canvas scaling ────────────────────────────────

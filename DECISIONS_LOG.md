@@ -126,3 +126,87 @@ MIGRATIONS.md). All backend follows the existing verifyToken + supabaseAdmin + s
 - **Deferred (documented gaps):** genre/difficulty have no editor UI yet (publish route accepts them; browse
   filters work once set); server-backed per-level speedrun ghost leaderboard (still localStorage);
   browser + Supabase end-to-end verification of the new endpoints/UI (couldn't run DB/browser in this env).
+
+---
+
+# Phase 3 — v3 Master Brief Run (2026-07-01)
+
+Builds on the v1/v2 work already committed. v3 added a bug-fix pass, KOTH scoring
+rework, 4-player HUD, full theme switch, expanded CTF, and Defend the Tower.
+
+## §2 Quick bug-fix pass
+- **"Two mute buttons" + theme switch not showing (root cause, ties §5):** the
+  theme toggle wore the `.btn-mute` class, so `MUSIC_CONTROL` (querySelectorAll
+  '.btn-mute') attached a mute handler to it AND overwrote its 🌙 icon with the
+  speaker glyph — clicking mute toggled both buttons' state (user-confirmed).
+  Fix: removed `.btn-mute` from the theme toggle + gave it distinct styling. This
+  is why the brief's "remove the left mute button" is interpreted as "de-duplicate
+  the control that only looked like a mute button" — the theme switch is kept
+  (it's needed for §5), just made visually distinct. Logged as an intentional
+  reading of §2.1 vs. a literal delete.
+- Online/Community buttons: equal `min-width` + 32px gap.
+- **Arena cards as rows (root cause):** `.sandbox-container` lacked `width:100%`,
+  so under `body{align-items:center}` it shrank to content width and the
+  `auto-fill` grid collapsed to one column. Added `width:100%`+`box-sizing`.
+- Pause freezes the arena timer (shift `gameStartTime` by paused duration).
+- P2-P4 death sound (`_triggerSecondaryDeath` was silent).
+- Deathmatch: mob kills excluded from score (player eliminations only).
+- Disable Mobs pre-launch toggle for non-mob modes.
+- Spawn-point icon now renders in the sandbox hotbar (missing `kind` branch).
+- **§2.9 pickaxe hotbar removal — DEFERRED:** `weaponMode` is a getter hard-wired
+  to `selectedSlot` (0=pickaxe) that also drives gamepad dpad bindings, number-key
+  selection, arm rendering, and both hotbar renderers. Removing the slot means
+  redesigning the universal mining/combat input path — high regression risk that
+  cannot be validated without an interactive browser. Deferred to an interactive
+  session per the brief's "log a blocker and move on" guidance.
+- **§2.8 player-then-team scoring:** implemented in CTF (per-player `ctfCaptures`,
+  team total = sum). Deathmatch/KOTH are FFA (no team rollup needed).
+
+## §3 KOTH
+- Removed the early hold-target win-check — KOTH now runs the FULL match timer;
+  winner = top holder. Hill colour: dropped the white "contested" tint; Sticky
+  keeps the owner's colour while contested (owner persists), Sole reverts to
+  yellow. HUD shows CONTESTED only for non-Sticky modes.
+
+## §4 4-player HUD
+- P1 top-left, P2 top-right (unchanged rich HUD). P3 lower-left + P4 lower-right
+  get a new compact health bar + hotbar (`_drawLowerPlayerHUD`), placed directly
+  below the P1/P2 hotbars. `_drawCompactHotbar` gained an optional Y arg.
+
+## §5 Theme = full game-wide switch
+- Root cause the switch "did nothing": the inline `<head>` `<style>` hardcoded
+  the retro identity always. Tokenized body bg/font + all headings (inline style,
+  #start-screen splash) + dashboard font. style.css was otherwise already fully
+  tokenized. Persistence stays client-side localStorage (per resolved decision).
+
+## §6 CTF (expanded)
+- Base zones (3×2, non-solid glow). Capture = carrier reaches own base zone, with
+  NO "own flag home" requirement (fixes both-flags-out lockout). One flag at a
+  time. Own dropped flag is carried home by a teammate to return it. Carrier
+  defeat drops the flag (hooked into both death handlers) so a respawn never
+  keeps it. Flag-return timer is pre-launch configurable (`flagReturnSeconds`).
+  No combat (attack + shield) while carrying. Team shirt colours. Per-player →
+  team scoring.
+- **Bases auto-anchor to team spawns / map quarters.** The dedicated sandbox
+  **Base placeable** is DEFERRED (consistent with the v1/v2 deferral of the flag
+  editor tool): CTF is fully playable and designer-controllable via player-spawn
+  placement; adding the placeable follows the spawn-point pattern and is best done
+  interactively.
+
+## §7 Defend the Tower (new mode)
+- One Tower (4 tall) per player, auto-placed at each spawn. HP 3/6/9/12 (pre-launch);
+  3 damage bands over thirds; heal-per-band math verified for all four settings +
+  the brief's HP=9 example. Heal Tower pickups (respawn 20s). Damage from
+  owner-tagged arrows + adjacent melee; all weapons equal; can't damage own tower;
+  shield-crouch still blocks. Sole win = first Tower destroyed; destroyer wins.
+- **Tower / Heal Tower editor placeables DEFERRED** (same rationale as the CTF Base
+  placeable): towers auto-anchor to spawns and the mode is fully playable.
+
+## Verification
+- Headless logic tests: 52/52 (Tower banding/heal all HP settings + worked example,
+  tower damage/win, CTF base-zone/one-at-a-time/both-flags-out/per-player→team/
+  drop-on-defeat). All touched JS passes `node -c`.
+- **Not browser-tested** (no browser in this env): 4-player HUD rendering, theme
+  switch visuals, CTF/Tower in-match feel, Community/stats endpoints (need the two
+  SQL migrations from MIGRATIONS.md run first).
+- Cache-buster bumped `17k2-3b` → `17k3-v3` so the browser reloads changed assets.
