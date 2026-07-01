@@ -1342,7 +1342,7 @@ class Game {
       // A game mode (Phase 3A.2) owns the win condition when one is set;
       // otherwise fall back to the Phase 3A.1 Deathmatch rule.
       const dur = this.arenaConfig.gameDuration;
-      const timeUp = dur > 0 && Date.now() - a.gameStartTime >= dur;
+      const timeUp = dur > 0 && this._arenaElapsedMs() >= dur;
       if (typeof ARENA_MODES !== 'undefined' && this.arenaConfig.arenaGameMode && ARENA_MODES.update) {
         ARENA_MODES.update(this); // flips a.phase to 'ended' via its win condition
         if (a.phase === 'ended' || timeUp) { // timeUp ends timer-bound modes (e.g. Fight Mobs)
@@ -4081,20 +4081,33 @@ class Game {
   // Owner id ('p1'..'p4') for a slot index — matches arena score keys.
   static ownerId(i) { return 'p' + (i + 1); }
 
-  // Freeze / resume the arena match timer across pause. The timer is derived
-  // from Date.now() - gameStartTime, so we shift gameStartTime forward by the
-  // paused duration on resume (Bug-fix pass §2.4 — pause must stop the timer).
+  // Freeze / resume the arena match timer across pause (Bug-fix pass §2.4).
+  // We accumulate total paused time (pausedTotal) and, while currently paused,
+  // also subtract the live pause segment (pausedAt) — so both the HUD readout
+  // AND the timeUp win-check freeze during the pause, not just correct on resume.
   _onArenaPauseChange(paused) {
     if (!this.isArena) return;
     const a = this.arenaState;
     if (paused) {
-      a.pausedAt = Date.now();
+      if (!a.pausedAt) a.pausedAt = Date.now();
     } else if (a.pausedAt) {
-      const delta = Date.now() - a.pausedAt;
-      if (a.gameStartTime)  a.gameStartTime  += delta;
-      if (a.countdownStart) a.countdownStart += delta;
+      const seg = Date.now() - a.pausedAt;
+      // Running-phase pauses accumulate into pausedTotal; a pause during the
+      // pre-match countdown (gameStartTime not set yet) only shifts countdownStart.
+      if (a.gameStartTime) a.pausedTotal = (a.pausedTotal || 0) + seg;
+      else if (a.countdownStart) a.countdownStart += seg;
       a.pausedAt = null;
     }
+  }
+
+  // Elapsed match time (ms) with paused time removed. Used by the HUD timer and
+  // the timeUp win-check so the timer visibly stops while the game is paused.
+  _arenaElapsedMs() {
+    const a = this.arenaState;
+    if (!a || !a.gameStartTime) return 0;
+    const end = a.endTime || Date.now();
+    const livePause = a.pausedAt ? (Date.now() - a.pausedAt) : 0;
+    return Math.max(0, end - a.gameStartTime - (a.pausedTotal || 0) - livePause);
   }
 
   // Position the camera: centroid-follow for 2+ players, single-follow for 1.
@@ -10439,7 +10452,7 @@ class Game {
     ctx.textAlign = 'center';
 
     // Timer (counts down to the limit, or up if unlimited)
-    let t = this.arenaState.gameStartTime ? (this.arenaState.endTime || Date.now()) - this.arenaState.gameStartTime : 0;
+    let t = this._arenaElapsedMs();
     const dur = this.arenaConfig.gameDuration;
     const shown = dur > 0 ? Math.max(0, dur - t) : t;
     const sec = Math.floor(shown / 1000), mm = Math.floor(sec / 60), ss = sec % 60;
