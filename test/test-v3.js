@@ -67,6 +67,7 @@ function mkGame() {
     _arenaMode: { key: 'CAPTURE_FLAG' }, arenaConfig: { flagReturnSeconds: 15 },
     level: { pixelWidth: 1000, pixelHeight: 400, spawnY: 120 },
     _players: [p1, p2], activePlayers() { return this._players; },
+    players: [p1, p2], _respawnTimers: [0, 0, 0, 0],
   };
 }
 const gm = mkGame();
@@ -108,6 +109,30 @@ if (f0.carriedBy === gm._players[1]) {
   CTF.onPlayerDefeated(gm, gm._players[1]);
   ok(f0.carriedBy === null && f0.dropped, 'defeated carrier drops the flag');
 } else { pass++; }
+
+// Respawn bug: an arena death restores hp to maxHp instantly, so a *respawning*
+// carrier must be treated as downed — drops the flag, can't re-grab/capture until
+// the respawn timer clears.
+console.log('CTF respawn bug:');
+const gr = mkGame(); CTF.init(gr);
+const carrier = gr._players[0];
+gr._players[1].x = -9999; gr._players[1].y = -9999; // park P2 so it can't touch flags
+const eF = CTF.flags[1];
+carrier.x = eF.x - 5; carrier.y = eF.y - 5; CTF.update(gr);
+ok(eF.carriedBy === carrier, 'carrier grabbed the enemy flag');
+gr._respawnTimers[0] = 120; carrier.hp = carrier.maxHp; // arena death: hp restored, respawning
+CTF.update(gr);
+ok(eF.carriedBy !== carrier && eF.dropped, 'respawning carrier drops the flag (hp restored)');
+// place the dropped flag on the respawning carrier, inside their own base:
+const b0 = CTF.bases[0];
+carrier.x = b0.x; carrier.y = b0.y; eF.x = b0.x; eF.y = b0.y; eF.carriedBy = null; eF.dropped = true;
+const capBefore = CTF.captures[0];
+CTF.update(gr);
+ok(eF.carriedBy === null, 'respawning player cannot re-grab the flag');
+ok(CTF.captures[0] === capBefore, 'respawning player cannot capture');
+// once respawned, they can grab again (then capture on a following frame)
+gr._respawnTimers[0] = 0; CTF.update(gr);
+ok(eF.carriedBy === carrier || CTF.captures[0] > capBefore, 'after respawn the player can act again');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

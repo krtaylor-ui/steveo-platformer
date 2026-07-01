@@ -89,6 +89,18 @@ const CTF_SYSTEM = {
   carriedFlagOf(p) { return this.flags ? this.flags.find(f => f.carriedBy === p) || null : null; },
   isCarrying(p) { return !!this.carriedFlagOf(p); },
 
+  // Downed = dead OR mid-respawn. In arena, death restores hp to maxHp instantly
+  // (respawn model), so an hp>0 check alone lets a respawning player re-grab the
+  // flag they just dropped and score on teleport — the reported bug. A downed
+  // player cannot carry, grab, or capture; any flag they hold is dropped.
+  _downed(game, p) {
+    if (!p || p.hp <= 0) return true;
+    const rt = game && game._respawnTimers;
+    if (!rt || !game.players) return false;
+    const slot = game.players.indexOf(p);
+    return slot >= 0 && rt[slot] > 0;
+  },
+
   // Drop any flag carried by p at p's position + start the return timer. Called
   // from the death handlers so a defeated carrier never respawns holding it (§6).
   onPlayerDefeated(game, p) {
@@ -131,7 +143,7 @@ const CTF_SYSTEM = {
     for (const f of this.flags) {
       if (f.carriedBy) {
         const c = f.carriedBy;
-        if (!c || c.hp <= 0) {
+        if (this._downed(game, c)) {
           if (c) { f.x = c.x + (c.width || PW) / 2; f.y = c.y + (c.height || PH) / 2; }
           f.carriedBy = null; f.dropped = true; f.returnTimer = this._returnFrames;
         } else {
@@ -147,7 +159,7 @@ const CTF_SYSTEM = {
     //    both flags can be out and a team can still score).
     for (const f of this.flags) {
       const c = f.carriedBy;
-      if (!c || c.hp <= 0 || c.teamId == null) continue;
+      if (!c || this._downed(game, c) || c.teamId == null) continue;
       if (this._inOwnBase(c)) {
         if (f.team !== c.teamId) { this._score(game, c); this._returnFlag(f); }   // enemy flag captured
         else { this._returnFlag(f); if (game._notify) game._notify(`${CTF_TEAM_NAMES[c.teamId]} flag returned`, CTF_TEAM_COLORS[c.teamId], 90); }
@@ -156,7 +168,7 @@ const CTF_SYSTEM = {
 
     // 3) Pickups. A player carries at most one flag (§6): skip if already carrying.
     for (const p of game.activePlayers()) {
-      if (!p || p.hp <= 0 || p.teamId == null) continue;
+      if (this._downed(game, p) || p.teamId == null) continue;
       if (this.isCarrying(p)) continue;
       const pcx = p.x + (p.width || PW) / 2, pcy = p.y + (p.height || PH) / 2;
       for (const f of this.flags) {
