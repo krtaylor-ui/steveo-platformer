@@ -2,7 +2,10 @@
 // constants.js — Game-wide tunable constants
 // ============================================================
 
-const GAME_VERSION = 'Phase 17-G  v4.4';
+// Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
+// COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
+// exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
+const GAME_VERSION = 'v3 · build 1';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

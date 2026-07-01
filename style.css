@@ -1314,6 +1314,18 @@ html[data-theme="retro"] {
 .btn-mute:hover { opacity: 0.7; }
 .btn-mute.muted { opacity: 0.5; }
 
+/* Build-version badge (dashboard header) — subtle, so you can verify the build. */
+.app-version {
+  font-family: var(--font);
+  font-size: 0.72rem;
+  opacity: 0.75;
+  padding: 2px 8px;
+  border: 1px solid var(--border, #363a46);
+  border-radius: var(--ui-radius, 6px);
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+}
+
 /* Theme switch toggle — distinct from the music mute button so it does not
    read as a second mute control (and is not swept up by the mute handler). */
 .theme-toggle-btn {
