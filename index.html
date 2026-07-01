@@ -4,6 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Steveo Platformer</title>
+  <!-- Apply the saved theme before first paint (avoids a flash of the wrong theme). -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('steveo_theme') || 'modern';
+        if (t === 'retro') document.documentElement.setAttribute('data-theme', 'retro');
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="style.css?v=17k2-3b">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -405,6 +414,7 @@
       <div class="dashboard-header">
         <h1>⛏ Steveo Platformer</h1>
         <div class="user-info">
+          <button class="theme-toggle-btn btn-mute" title="Switch theme">🌙</button>
           <button id="music-mute-btn" class="btn-mute" title="Mute music">🔊</button>
           <span id="username-display">Welcome, Player!</span>
           <button id="logout-btn" class="btn btn-small">Logout</button>
@@ -818,6 +828,7 @@
     2P: <kbd>IJKL</kbd>+<kbd>U</kbd>
   </div>
 
+  <script src="js/theme.js?v=17k2-3b"></script>
   <script src="js/auth.js?v=17k2-3b"></script>
   <script src="js/dashboard.js?v=17k2-3b"></script>
   <script src="js/game-selection.js?v=17k2-3b"></script>

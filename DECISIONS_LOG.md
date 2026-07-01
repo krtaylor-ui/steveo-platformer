@@ -85,3 +85,17 @@ is committed (`91176fa`) and complete in code. CTF still `comingSoon`. Building 
   quarters). This makes CTF fully playable without a new editor placeable; an explicit flag tool can be
   added later using the same placeable pattern as Player Spawn Points if designers want custom bases.
   Per the brief's CTF spawn decision, teams use 2 spawn points per side (2v2 max).
+
+### Theme / Reskin system (Task 4) — DONE
+- CSS custom-property token layer at the top of style.css. `:root` = Modern (default: clean dark,
+  indigo accent, system sans-serif, no title-shadow); `html[data-theme="retro"]` = the original
+  8-bit neon-monospace look (Courier, cyan, dark, 3D title-shadow). Modern is the default per brief.
+- Tokenized the dominant identity properties (font, accent colour, page bg, title text-shadow) rather
+  than all 140 hardcoded colours — these carry the visual identity; semantic status colours (error red,
+  success green) stay fixed across themes by design. The dashboard was already Arial/gradient so it
+  changes least; the retro-styled surfaces (auth, in-game HUD DOM, modals, sandbox editor UI) reskin fully.
+- `js/theme.js` (`THEME`): get/apply/set/cycle + localStorage `steveo_theme`; live-swaps by toggling the
+  `data-theme` attribute (no reload). An inline `<head>` script applies the saved theme before first
+  paint (no flash). Toggle button (🌙/👾) in the dashboard header. Preset list is data-driven — adding a
+  third theme = one tokens block + one entry in `THEME.THEMES`.
+- Persistence: client-side localStorage (per the up-front answer).
