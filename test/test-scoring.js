@@ -5,7 +5,7 @@ const vm = require('vm');
 const path = require('path').join(__dirname, '..', 'js');
 const sandbox = { window: {}, BLOCK_SIZE: 32, PLAYER_W: 20, PLAYER_H: 52, PLAYER_ARROW_DAMAGE: 1, Math, console };
 vm.createContext(sandbox);
-for (const f of ['ctf-system.js', 'tower-system.js', 'arena-modes.js']) {
+for (const f of ['ctf-system.js', 'tower-system.js', 'arena-rules.js', 'arena-modes.js']) {
   vm.runInContext(fs.readFileSync(`${path}/${f}`, 'utf8'), sandbox, { filename: f });
 }
 const AM = sandbox.window.ARENA_MODES;
@@ -42,8 +42,8 @@ ok(AM.playerScore(g, 'p1') === 4, `Mob Hunter = mobKills (got ${AM.playerScore(g
 g = mkGame('COLLECT_EMERALDS', [P('p1')]); g.arenaState.stats.p1.emeralds = 7;
 ok(AM.playerScore(g, 'p1') === 7, `Emeralds = emeralds`);
 
-g = mkGame('KING_OF_HILL', [P('p1')]); g._arenaMode.hold.p1 = 180;
-ok(AM.playerScore(g, 'p1') === 3, `KOTH = seconds held (180f=3s, got ${AM.playerScore(g, 'p1')})`);
+g = mkGame('KING_OF_HILL', [P('p1')]); g._arenaMode.hold.p1 = 180; g.arenaState.stats.p1.hillSeconds = 3;
+ok(AM.playerScore(g, 'p1') === 3, `KOTH = seconds held (hillSeconds=3, got ${AM.playerScore(g, 'p1')})`);
 
 g = mkGame('SURVIVAL_WAVES', [P('p1'), P('p2')]); g._arenaMode.wavesCleared = 4;
 ok(AM.playerScore(g, 'p1') === 4 && AM.playerScore(g, 'p2') === 4, `Survival = waves defeated (shared)`);
@@ -64,8 +64,8 @@ ok(AM.teamScore(g, 1) === 1, `MobHunter team1 summed = 1`);
 // Shared (CTF): team captures NOT summed per-player-score
 g = mkGame('CAPTURE_FLAG', [P('p1', 0), P('p2', 1), P('p3', 0), P('p4', 1)]);
 g.arenaState.stats.p1.flagCaptures = 2; g.arenaState.stats.p3.flagCaptures = 1; g.arenaState.stats.p2.flagCaptures = 1;
-ok(AM.playerScore(g, 'p1') === 3, `CTF player score = team captures (2+1=3, got ${AM.playerScore(g, 'p1')})`);
-ok(AM.teamScore(g, 0) === 3, `CTF team0 shared = 3 (not summed to 6)`);
+ok(AM.playerScore(g, 'p1') === 2, `CTF player score = OWN captures (engine model, got ${AM.playerScore(g, 'p1')})`);
+ok(AM.teamScore(g, 0) === 3, `CTF team0 = sum of members (2+1=3)`);
 ok(AM.teamScore(g, 1) === 1, `CTF team1 shared = 1`);
 
 // Shared (Survival): both players show waves, team = waves (not doubled)

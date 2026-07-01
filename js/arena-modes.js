@@ -190,38 +190,37 @@ const ARENA_MODES = {
     return n;
   },
 
-  // Per-player SCORE for the current mode (derived from stats + mode state):
-  //   Quick Battle (no mode) = kills + mobKills + emeralds
-  //   Mob Hunter = mobKills · Collect Emeralds = emeralds · KOTH = seconds held
-  //   Survival Waves = waves defeated (shared) · Deathmatch = kills
-  //   Capture the Flag = your team's captures (shared) · Defend the Tower = none
-  playerScore(game, id) {
-    const st = this.statOf(game, id);
-    const ms = game._arenaMode;
-    switch (ms && ms.key) {
-      case 'MOB_HUNTER':       return st.mobKills || 0;
-      case 'COLLECT_EMERALDS': return st.emeralds || 0;
-      case 'KING_OF_HILL':     return Math.round(((ms.hold && ms.hold[id]) || 0) / 60);
-      case 'SURVIVAL_WAVES':   return this._wavesDefeated(game);
-      case 'DEATHMATCH':       return st.kills || 0;
-      case 'CAPTURE_FLAG': {
-        const p = game.activePlayers().find(pp => pp && (pp._ownerId === id));
-        return p && p.teamId != null ? this._teamCaptures(game, p.teamId) : 0;
-      }
-      case 'DEFEND_TOWER':     return 0; // health-based; no points
-      default:                 return (st.kills || 0) + (st.mobKills || 0) + (st.emeralds || 0); // Quick Battle
+  // The live ruleset for this match (from arena-rules.js), cached per mode. This
+  // is what makes the modes run through the declarative rules engine: scoring and
+  // (Deathmatch/CTF/Tower) win-detection delegate to it. Element side-effects
+  // (hill accrual, wave spawning) still live in this file's update() for now.
+  _rulesetFor(game) {
+    if (typeof ARENA_RULES === 'undefined') return null;
+    const key = game._arenaMode ? game._arenaMode.key : null;
+    const cacheKey = key || 'QUICK_BATTLE';
+    if (!game._ruleset || game._rulesetKey !== cacheKey) {
+      game._ruleset = ARENA_RULES.rulesetForMode(key, game.arenaConfig || {});
+      game._rulesetKey = cacheKey;
     }
+    return game._ruleset;
   },
 
-  // Team score aggregation: summed for Quick Battle / Mob Hunter / Emeralds /
-  // KOTH / Deathmatch; SHARED (the objective value, not summed) for Survival
-  // Waves / CTF / Defend the Tower.
+  // Per-player SCORE — delegates to the rules engine (weighted stats + shared
+  // match counters). Per-player individual points sum for a team; match-level
+  // counters (waves) are shared. Quick Battle = kills+mobKills+emeralds, etc.
+  playerScore(game, id) {
+    const rs = this._rulesetFor(game);
+    if (rs) return ARENA_RULES.playerScore(rs, game, id);
+    const st = this.statOf(game, id); // fallback if the engine isn't loaded
+    return (st.kills || 0) + (st.mobKills || 0) + (st.emeralds || 0);
+  },
+
+  // Team score — delegates to the rules engine (sum of members' individual
+  // points + the shared component once).
   teamScore(game, teamId) {
-    const key = game._arenaMode && game._arenaMode.key;
+    const rs = this._rulesetFor(game);
+    if (rs) return ARENA_RULES.teamScore(rs, game, teamId);
     const members = game.activePlayers().filter(p => p && p.teamId === teamId);
-    if (!members.length) return 0;
-    const shared = key === 'SURVIVAL_WAVES' || key === 'CAPTURE_FLAG' || key === 'DEFEND_TOWER';
-    if (shared) return this.playerScore(game, members[0]._ownerId);
     return members.reduce((s, p) => s + this.playerScore(game, p._ownerId), 0);
   },
 
@@ -268,6 +267,19 @@ const ARENA_MODES = {
           if (onIds.length === 1) ms.ownerId = onIds[0];
           if (ms.ownerId) ms.hold[ms.ownerId]++;
         }
+        // Live stats: total seconds held (per player) + longest consecutive
+        // hold streak (resets when the owner loses/changes) — for scoring + the
+        // "consecutive seconds of hill control" win condition (rules engine).
+        {
+          const stats = game.arenaState.stats;
+          for (const id of this._ownerIds(game)) if (stats[id]) stats[id].hillSeconds = Math.floor((ms.hold[id] || 0) / 60);
+          if (ms.ownerId) {
+            ms._streakFrames = (ms._streakOwner === ms.ownerId) ? (ms._streakFrames || 0) + 1 : 1;
+            ms._streakOwner = ms.ownerId;
+            const s = stats[ms.ownerId];
+            if (s) s.hillStreak = Math.max(s.hillStreak || 0, Math.floor(ms._streakFrames / 60));
+          } else { ms._streakOwner = null; ms._streakFrames = 0; }
+        }
         // v3: KOTH runs the FULL match timer — winner is the top holder (see
         // winnerText/_kothLeader). No early end at a hold target (that capped
         // matches prematurely); the arena timer (timeUp) ends the match.
@@ -289,26 +301,23 @@ const ARENA_MODES = {
         }
         break;
       }
-      case 'DEATHMATCH': {
-        // First to killTarget eliminations wins; otherwise the timer ends it and
-        // the leader (most eliminations) takes it (handled by score()/end screen).
-        if (this._leader(game).score >= ms.killTarget) a.phase = 'ended';
+      case 'DEATHMATCH':    // First to killTarget eliminations
+      case 'CAPTURE_FLAG':  // First team to captureTarget captures
+      case 'DEFEND_TOWER':  // A Tower destroyed (event, via towersDestroyed stat)
+        // Win-detection delegates to the rules engine (arena-rules.js). Element
+        // side-effects (flag/tower updates) still run in their own systems.
+        if (this._engineEnd(game)) a.phase = 'ended';
         break;
-      }
-      case 'CAPTURE_FLAG': {
-        // First team to captureTarget captures wins (flag logic runs in CTF_SYSTEM).
-        if (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.maxCaptures() >= ms.captureTarget) a.phase = 'ended';
-        break;
-      }
-      case 'DEFEND_TOWER': {
-        // Sole win condition: any Tower destroyed ends the match (TOWER_SYSTEM).
-        if (typeof TOWER_SYSTEM !== 'undefined' && TOWER_SYSTEM.isOver()) a.phase = 'ended';
-        break;
-      }
       case 'MOB_HUNTER':
       default:
         break; // timer-bound; the caller ends on timeUp
     }
+  },
+
+  // Rules-engine end check (excludes the arena timer, which game.js applies).
+  _engineEnd(game) {
+    const rs = this._rulesetFor(game);
+    return rs ? ARENA_RULES.isEnded(rs, game, false) : false;
   },
 
   // Final score for the end screen + leaderboard. Higher = better for all modes

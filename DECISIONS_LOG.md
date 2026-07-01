@@ -275,3 +275,33 @@ towersDestroyed) in game.js; (2) make Defend the Tower event-driven + multi-towe
 (a destroyed tower ends the match only if a win condition references it);
 (3) swap game types to run through the engine (delete the switch arms once parity
 is green live); (4) the "Custom Rules" mode + authoring UI.
+
+---
+
+# Arena Rules Engine — Pass 2: live game runs through the engine (2026-07-01)
+
+The game types now USE the rules engine (no longer parallel logic):
+- `ARENA_MODES.playerScore` / `teamScore` delegate to `ARENA_RULES` via a cached
+  `rulesetForMode(modeKey, cfg)` (pre-launch killTarget/captureTarget inject the
+  win targets). `score` / `getHUDText` / `winnerText` / `_leader` build on those,
+  so they became engine-backed automatically.
+- Win-detection for Deathmatch / CTF / Defend the Tower delegates to
+  `ARENA_RULES.isEnded` (behavior-preserving; verified by the parity suite).
+  KOTH / Survival / Emeralds keep their update() bodies (they carry element
+  side-effects — hill accrual, wave spawning — which stay put for now).
+- New stats are live-tracked: `hillSeconds` + consecutive `hillStreak` (KOTH
+  update), `towersDestroyed` (on a tower kill), `deaths` (both death handlers).
+  `arenaState.stats` now seeds from `ARENA_RULES.blankStat()` (all 9 keys).
+- End screen shows the enriched stats (adds Deaths always; HillS for KOTH).
+
+BEHAVIOR CHANGE (intentional, per the rules-engine model): **CTF per-player
+score is now each player's OWN captures**, and the TEAM score is the sum — where
+before every teammate displayed the team total. The CTF HUD (Red X — Y Blue) and
+winner still use team totals, so this only affects the per-player stat readout
+(which is now more informative). Flag/Tower/KOTH element mechanics unchanged.
+
+Still to do: (1) Defend the Tower multi-tower + placeables (destroying one ends
+the match only if a win condition references it — the engine already models this,
+tower-system still auto-places one per player); (2) generalize KOTH/Survival
+side-effects into element systems so update() is fully engine-driven; (3) the
+"Custom Rules" mode + authoring UI. Suite: `node test/run.js` → 109/109.

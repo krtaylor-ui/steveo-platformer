@@ -66,11 +66,12 @@ const TOWER_SYSTEM = {
     if (!t || t.hp <= 0) return;
     const dealt = Math.min(amount, t.hp);
     t.hp = Math.max(0, t.hp - amount);
-    // Individual stat: points of damage dealt to enemy towers.
+    // Individual stats: damage dealt, and a destroyed-tower count on the kill.
     const st = attackerId && game.arenaState.stats && game.arenaState.stats[attackerId];
     if (st) st.towerDamage = (st.towerDamage || 0) + dealt;
     if (t.hp <= 0) {
-      this._winner = attackerId || null;   // sole win condition — destroyer wins
+      if (st) st.towersDestroyed = (st.towersDestroyed || 0) + 1;
+      this._winner = attackerId || null;   // destroyer (win handled by the rules engine)
       if (game._notify) game._notify(`${(attackerId || '?').toUpperCase()} destroyed a Tower!`, '#ff5a5a', 220);
     }
   },

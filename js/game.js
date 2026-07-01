@@ -217,12 +217,14 @@ class Game {
       this.arenaState  = { phase: 'countdown', countdownStart: null, gameStartTime: null, endTime: null,
         // Per-player individual stats — always tracked; the per-mode SCORE is
         // derived from these by ARENA_MODES.playerScore (see arena-modes.js).
-        stats: {
-          p1: { kills: 0, mobKills: 0, emeralds: 0, flagCaptures: 0, towerDamage: 0 },
-          p2: { kills: 0, mobKills: 0, emeralds: 0, flagCaptures: 0, towerDamage: 0 },
-          p3: { kills: 0, mobKills: 0, emeralds: 0, flagCaptures: 0, towerDamage: 0 },
-          p4: { kills: 0, mobKills: 0, emeralds: 0, flagCaptures: 0, towerDamage: 0 },
-        },
+        stats: (typeof ARENA_RULES !== 'undefined')
+          ? { p1: ARENA_RULES.blankStat(), p2: ARENA_RULES.blankStat(), p3: ARENA_RULES.blankStat(), p4: ARENA_RULES.blankStat() }
+          : {
+              p1: { kills: 0, deaths: 0, mobKills: 0, emeralds: 0, hillSeconds: 0, hillStreak: 0, flagCaptures: 0, towerDamage: 0, towersDestroyed: 0 },
+              p2: { kills: 0, deaths: 0, mobKills: 0, emeralds: 0, hillSeconds: 0, hillStreak: 0, flagCaptures: 0, towerDamage: 0, towersDestroyed: 0 },
+              p3: { kills: 0, deaths: 0, mobKills: 0, emeralds: 0, hillSeconds: 0, hillStreak: 0, flagCaptures: 0, towerDamage: 0, towersDestroyed: 0 },
+              p4: { kills: 0, deaths: 0, mobKills: 0, emeralds: 0, hillSeconds: 0, hillStreak: 0, flagCaptures: 0, towerDamage: 0, towersDestroyed: 0 },
+            },
         // Reserved for Phase 3C teams (no logic yet).
         teamsEnabled: false, teamScores: { A: 0, B: 0 } };
       this._arenaSpawns = { p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, p3: { x: 0, y: 0 }, p4: { x: 0, y: 0 } };
@@ -3910,6 +3912,7 @@ class Game {
     this.player.bowDrawing = false; this.player.drawProgress = 0;
     // CTF: a defeated flag carrier drops the flag here (never keeps it on respawn).
     if (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.active) CTF_SYSTEM.onPlayerDefeated(this, this.player);
+    if (this.isArena && this.arenaState.stats.p1) this.arenaState.stats.p1.deaths++;
 
     // Arena: unlimited respawns at the player's spawn after a short delay (no death modal/elimination)
     if (this.isArena) {
@@ -4037,6 +4040,7 @@ class Game {
     this._playSound('sounds/player-death.mp3');
     // CTF: drop any carried flag here so the respawned player never keeps it (§6).
     if (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.active) CTF_SYSTEM.onPlayerDefeated(this, p);
+    if (this.isArena) { const s = this.arenaState.stats[p._ownerId || Game.ownerId(i)]; if (s) s.deaths++; }
     // Arena: unlimited respawns, no elimination.
     if (this.isArena) {
       this._respawnTimers[i] = this.arenaRespawnFrames;
@@ -10578,13 +10582,15 @@ class Game {
       { h: 'Player', get: (id) => id.toUpperCase() },
       { h: 'Score',  get: (id) => AM ? AM.playerScore(this, id) : 0 },
       { h: 'Kills',  get: (id) => this.arenaState.stats[id]?.kills || 0 },
+      { h: 'Deaths', get: (id) => this.arenaState.stats[id]?.deaths || 0 },
       { h: 'Mobs',   get: (id) => this.arenaState.stats[id]?.mobKills || 0 },
       { h: 'Gems',   get: (id) => this.arenaState.stats[id]?.emeralds || 0 },
     ];
+    if (mode === 'KING_OF_HILL') cols.push({ h: 'HillS', get: (id) => this.arenaState.stats[id]?.hillSeconds || 0 });
     if (mode === 'CAPTURE_FLAG') cols.push({ h: 'Flags', get: (id) => this.arenaState.stats[id]?.flagCaptures || 0 });
     if (mode === 'DEFEND_TOWER') cols.push({ h: 'TwrDmg', get: (id) => this.arenaState.stats[id]?.towerDamage || 0 });
 
-    const colW = 78;
+    const colW = 72;
     const startX = cx - (cols.length - 1) * colW / 2;
     ctx.textAlign = 'center';
     ctx.font = 'bold 13px Courier New'; ctx.fillStyle = '#88CCFF';

@@ -227,6 +227,18 @@ const ARENA_RULES = {
 
   // Which element systems should be active for this ruleset (drives setup).
   activeElements(rs) { return Object.keys(rs.elements).filter(k => rs.elements[k]); },
+
+  // Build the live ruleset for a mode key + pre-launch config: start from the
+  // matching preset (null/unknown → Quick Battle) and inject config-driven win
+  // targets (killTarget, captureTarget). Other pre-launch values (towerHp,
+  // survivalWaveCount, kothScoring) live on the element systems / _arenaMode.
+  rulesetForMode(modeKey, cfg) {
+    cfg = cfg || {};
+    const rs = this.normalize(this.PRESETS[modeKey] || this.PRESETS.QUICK_BATTLE);
+    if (modeKey === 'DEATHMATCH' && cfg.killTarget) rs.win.conditions = [{ type: 'playerKills', target: cfg.killTarget }];
+    if (modeKey === 'CAPTURE_FLAG' && cfg.captureTarget) rs.win.conditions = [{ type: 'flagsCaptured', target: cfg.captureTarget }];
+    return rs;
+  },
 };
 
 if (typeof window !== 'undefined') { window.ARENA_RULES = ARENA_RULES; window.ARENA_STAT_KEYS = ARENA_STAT_KEYS; }
