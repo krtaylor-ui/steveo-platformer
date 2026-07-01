@@ -29,6 +29,7 @@ const ARENA_PRELAUNCH = {
     this._toggle('pl-mob-difficulty-group', modeKey === 'MOB_HUNTER' || modeKey === 'COLLECT_EMERALDS');
     this._toggle('pl-waves-group',          modeKey === 'SURVIVAL_WAVES');
     this._toggle('pl-killtarget-group',     modeKey === 'DEATHMATCH');
+    this._toggle('pl-koth-scoring-group',   modeKey === 'KING_OF_HILL');
 
     // Friendly Fire — forced on + locked for Deathmatch; optional elsewhere.
     const ff = document.getElementById('pl-friendly-fire');
@@ -36,7 +37,9 @@ const ARENA_PRELAUNCH = {
     if (ff) {
       if (modeKey === 'DEATHMATCH') { ff.checked = true; ff.disabled = true;
         if (ffNote) ffNote.textContent = 'Always on for Deathmatch.'; }
-      else { ff.disabled = false;
+      else if (modeKey === 'KING_OF_HILL') { ff.disabled = false; ff.checked = true;
+        if (ffNote) ffNote.textContent = 'On by default — fight for the hill. Uncheck for a no-combat race.'; }
+      else { ff.disabled = false; ff.checked = false;
         if (ffNote) ffNote.textContent = 'Players can damage each other.'; }
     }
 
@@ -78,6 +81,8 @@ const ARENA_PRELAUNCH = {
       cfg.mobDifficulty = val('pl-mob-difficulty', 'MEDIUM');
     } else if (this._mode === 'SURVIVAL_WAVES') {
       cfg.survivalWaveCount = num('pl-waves', 5);
+    } else if (this._mode === 'KING_OF_HILL') {
+      cfg.kothScoring = val('pl-koth-scoring', 'STICKY');
     } else if (this._mode === 'DEATHMATCH') {
       cfg.killTarget = num('pl-killtarget', 10);
       cfg.friendlyFire = true; // Deathmatch always PvP

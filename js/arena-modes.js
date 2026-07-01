@@ -61,8 +61,15 @@ const ARENA_MODES = {
   initMode(modeKey, game) {
     const ms = { key: modeKey, holdFrames: 0 };
     if (modeKey === 'KING_OF_HILL') {
-      ms.ownerId = null;  // null | 'p1' | 'p2' — sticky hill ownership
-      ms.holdP1 = 0; ms.holdP2 = 0; // frames each player has owned the hill
+      ms.ownerId = null;  // null | 'p1'..'p4' — current hill owner (display + accrual)
+      ms.hold = { p1: 0, p2: 0, p3: 0, p4: 0 }; // frames each player has accrued
+      ms.contested = false; // 2+ players standing on the hill this frame
+      // Scoring rule (Phase 3, N-player PvP). Chosen in pre-launch:
+      //   STICKY (default) — sole toucher takes ownership; keeps it (accrues) until a
+      //                      different sole toucher steals it; 2+ or 0 touching = no change.
+      //   SOLE            — only a lone occupant scores; contested = nobody scores.
+      //   ALL             — every occupant scores simultaneously.
+      ms.scoring = ((game.arenaConfig && game.arenaConfig.kothScoring) || 'STICKY').toUpperCase();
     }
     if (modeKey === 'SURVIVAL_WAVES') {
       ms.wave = 0;
@@ -94,8 +101,22 @@ const ARENA_MODES = {
     return Math.hypot(pcx - cx, pcy - cy) <= this.HILL_RADIUS_BLOCKS * BLOCK_SIZE;
   },
 
-  // Current sticky owner of the hill ('p1' | 'p2' | null) — used for the hill colour.
+  // Current owner of the hill ('p1'..'p4' | null) — used for the hill colour.
   hillOwner(game) { return (game._arenaMode && game._arenaMode.ownerId) || null; },
+  // True when 2+ players are contesting the hill right now (for HUD/colour).
+  hillContested(game) { return !!(game._arenaMode && game._arenaMode.contested); },
+  // Max hold frames across all players (KotH progress toward the target).
+  _kothMax(game) {
+    const h = (game._arenaMode && game._arenaMode.hold) || {};
+    return Math.max(h.p1 || 0, h.p2 || 0, h.p3 || 0, h.p4 || 0);
+  },
+  // Leading holder ('p1'..'p4') by accrued frames (KotH winner).
+  _kothLeader(game) {
+    const h = (game._arenaMode && game._arenaMode.hold) || {};
+    let id = 'p1', best = -1;
+    for (const k of this._ownerIds(game)) { if ((h[k] || 0) > best) { best = h[k] || 0; id = k; } }
+    return id;
+  },
 
   // Spawn one survival wave from its config def (zombies + skeletons, HP ×hp),
   // distributed across the designed spawn-lines (or spread across the top if none).
@@ -138,8 +159,11 @@ const ARENA_MODES = {
     return { x: col * BLOCK_SIZE + BLOCK_SIZE / 2, y: r * BLOCK_SIZE + BLOCK_SIZE };
   },
 
-  // Owner ids ('p1'..) for the players present this match (Phase 3B).
+  // Owner ids ('p1'..'p4') for the players present this match (Phase 3B/3).
+  // Prefer the live players[] roster (accurate for 1-4 players); fall back to legacy.
   _ownerIds(game) {
+    const live = (typeof game.activePlayers === 'function') ? game.activePlayers() : null;
+    if (live && live.length) return live.map((p, i) => p._ownerId || ('p' + (i + 1)));
     const n = (typeof game._numPlayers === 'function') ? game._numPlayers() : (game.player2 ? 2 : 1);
     return Array.from({ length: n }, (_, i) => 'p' + (i + 1));
   },
@@ -163,21 +187,30 @@ const ARENA_MODES = {
         if (typeof EMERALD_SYSTEM !== 'undefined' && EMERALD_SYSTEM.allRoundsComplete()) a.phase = 'ended';
         break;
       case 'KING_OF_HILL': {
-        const p1On = this._onHill(game, game.player);
-        const p2On = game.player2 ? this._onHill(game, game.player2) : false;
-        // Sticky ownership: the owner keeps the hill until a DIFFERENT player touches
-        // it while the owner is NOT touching. An unowned hill goes to the first toucher.
-        if (ms.ownerId === 'p1')      { if (!p1On && p2On) ms.ownerId = 'p2'; }
-        else if (ms.ownerId === 'p2') { if (!p2On && p1On) ms.ownerId = 'p1'; }
-        else                          { if (p1On) ms.ownerId = 'p1'; else if (p2On) ms.ownerId = 'p2'; }
-        // Multiplayer: the owner accrues continuously while they own it (sticky).
-        // Single-player: accrue only while actually standing on the hill.
-        const isMP = !!game.player2;
-        const ownerOn = (ms.ownerId === 'p1' && p1On) || (ms.ownerId === 'p2' && p2On);
-        if (ms.ownerId && (isMP || ownerOn)) {
-          if (ms.ownerId === 'p1') ms.holdP1++; else ms.holdP2++;
+        const live = game.activePlayers();
+        // Owner ids ('p1'..'p4') of every player standing on the hill this frame.
+        const onIds = [];
+        for (const p of live) { if (this._onHill(game, p)) onIds.push(p._ownerId || 'p1'); }
+        ms.contested = onIds.length >= 2;
+        const solo = live.length <= 1;
+        if (solo) {
+          // Single player: accrue only while actually standing on the hill (tuned feel).
+          if (onIds.length === 1) { ms.ownerId = onIds[0]; ms.hold[ms.ownerId]++; }
+        } else if (ms.scoring === 'ALL') {
+          // Every occupant scores; display owner tracks a lone leader.
+          for (const id of onIds) ms.hold[id]++;
+          if (onIds.length === 1) ms.ownerId = onIds[0];
+        } else if (ms.scoring === 'SOLE') {
+          // Only a lone occupant scores; contested → nobody scores or owns.
+          if (onIds.length === 1) { ms.ownerId = onIds[0]; ms.hold[ms.ownerId]++; }
+          else if (onIds.length >= 2) ms.ownerId = null;
+        } else {
+          // STICKY (default): a sole toucher takes/keeps ownership; 2+ or 0 = no change.
+          // The owner accrues continuously — they can hunt others without losing the hill.
+          if (onIds.length === 1) ms.ownerId = onIds[0];
+          if (ms.ownerId) ms.hold[ms.ownerId]++;
         }
-        if (Math.max(ms.holdP1, ms.holdP2) >= this.HOLD_TARGET_FRAMES) a.phase = 'ended';
+        if (this._kothMax(game) >= this.HOLD_TARGET_FRAMES) a.phase = 'ended';
         break;
       }
       case 'SURVIVAL_WAVES': {
@@ -215,7 +248,7 @@ const ARENA_MODES = {
       case 'COLLECT_EMERALDS':
         return (typeof EMERALD_SYSTEM !== 'undefined') ? EMERALD_SYSTEM.collected : 0;
       case 'KING_OF_HILL':
-        return Math.round(Math.max(ms.holdP1 || 0, ms.holdP2 || 0) / 60);
+        return Math.round(this._kothMax(game) / 60);
       case 'SURVIVAL_WAVES':
         return kills + (ms.wave || 0) * 50 + (ms.cleared ? 100 : 0); // +50/wave, +1/kill, +100 clear-all
       case 'DEATHMATCH':
@@ -232,9 +265,14 @@ const ARENA_MODES = {
       case 'COLLECT_EMERALDS':
         return (typeof EMERALD_SYSTEM !== 'undefined') ? EMERALD_SYSTEM.hudText() : '';
       case 'KING_OF_HILL': {
-        const owner = ms.ownerId ? ms.ownerId.toUpperCase() : '—';
-        const t = Math.round(Math.max(ms.holdP1 || 0, ms.holdP2 || 0) / 60);
-        return `Hill: ${owner}   ${t}s / ${Math.round(this.HOLD_TARGET_FRAMES / 60)}s`;
+        const owner = ms.contested ? 'CONTESTED' : (ms.ownerId ? ms.ownerId.toUpperCase() : '—');
+        const target = Math.round(this.HOLD_TARGET_FRAMES / 60);
+        const live = game.activePlayers();
+        if (live.length >= 2) {
+          const parts = live.map(p => { const id = p._ownerId || 'p1'; return `${id.toUpperCase()}:${Math.round((ms.hold[id] || 0) / 60)}s`; });
+          return `Hill: ${owner}   ${parts.join('  ')} / ${target}s`;
+        }
+        return `Hill: ${owner}   ${Math.round(this._kothMax(game) / 60)}s / ${target}s`;
       }
       case 'SURVIVAL_WAVES':
         return `Wave ${Math.max(1, ms.wave)}/${ms.totalWaves || '?'}   Kills: ${game.arenaState.scores.p1 || 0}`;
@@ -252,6 +290,8 @@ const ARENA_MODES = {
   winnerText(game) {
     const ms = game._arenaMode;
     if (ms && ms.key === 'DEATHMATCH') return this._leader(game).id.toUpperCase() + ' wins!';
+    // KotH is a contest between 2+ players → name the top holder.
+    if (ms && ms.key === 'KING_OF_HILL' && game.activePlayers().length >= 2) return this._kothLeader(game).toUpperCase() + ' wins the hill!';
     return null;
   },
 

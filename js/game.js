@@ -1055,9 +1055,11 @@ class Game {
     if (typeof POWERUP_SYSTEM !== 'undefined' && POWERUP_SYSTEM.draw) POWERUP_SYSTEM.draw(ctx, this.camera, this.frameCount);
     // King-of-the-Hill platform — tinted green while held, gold otherwise (Phase 3A.3).
     if (this._arenaHill && this._arenaMode && this._arenaMode.key === 'KING_OF_HILL' && typeof _drawHillPlatform === 'function') {
-      // Hill tinted by its sticky owner: P1 blue, P2 red, unclaimed gold.
+      // Hill tinted by its owner: P1 blue, P2 red, P3 green, P4 yellow; contested = white; unclaimed gold.
       const owner = (typeof ARENA_MODES !== 'undefined' && ARENA_MODES.hillOwner) ? ARENA_MODES.hillOwner(this) : null;
-      const color = owner === 'p1' ? '#42a0ff' : owner === 'p2' ? '#ff5a5a' : '#f1c40f';
+      const contested = (typeof ARENA_MODES !== 'undefined' && ARENA_MODES.hillContested) ? ARENA_MODES.hillContested(this) : false;
+      const ownerColors = { p1: '#42a0ff', p2: '#ff5a5a', p3: '#5aff7a', p4: '#f5d142' };
+      const color = contested ? '#ffffff' : (ownerColors[owner] || '#f1c40f');
       _drawHillPlatform(ctx, this._arenaHill.x - this.camera.x, this._arenaHill.y - this.camera.y, color,
         this._arenaHill.w / BLOCK_SIZE, this._arenaHill.h / BLOCK_SIZE);
     }

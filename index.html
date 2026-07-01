@@ -725,6 +725,15 @@
         <input type="range" id="pl-killtarget" min="1" max="30" value="10">
         <small>First player to reach this many eliminations wins the match.</small>
       </div>
+      <div class="form-group pl-type" id="pl-koth-scoring-group" style="display:none;">
+        <label>Hill Scoring:</label>
+        <select id="pl-koth-scoring">
+          <option value="STICKY" selected>Sticky ownership (hold &amp; hunt)</option>
+          <option value="SOLE">Sole occupant only</option>
+          <option value="ALL">All occupants score</option>
+        </select>
+        <small>Sticky: a lone toucher takes the hill and keeps scoring until another lone toucher steals it — fight to defend it. Enable Friendly Fire for PvP.</small>
+      </div>
       <!-- Friendly Fire — gates player-vs-player damage (Phase 3B). Forced on for Deathmatch. -->
       <div class="form-group" id="pl-friendlyfire-group">
         <label><input type="checkbox" id="pl-friendly-fire"> Friendly Fire (PvP)</label>

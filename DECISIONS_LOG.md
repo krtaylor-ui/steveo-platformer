@@ -56,3 +56,14 @@ is committed (`91176fa`) and complete in code. CTF still `comingSoon`. Building 
   `spawnX/spawnY` for the player start — spawn point #1 is placed/persisted but does not yet
   override those single-player start positions (low-risk deferral; arena is the primary need for
   KOTH/CTF). Editor shows/persists the points in all modes.
+
+### KOTH 4-player PvP (Task 2) — DONE
+- KOTH state generalized from `holdP1/holdP2` to a `hold{p1..p4}` map; ownership + accrual now
+  work for 1–4 players. Verified with a 23-assertion headless test against the real arena-modes.js.
+- Scoring rule selectable in pre-launch (`cfg.kothScoring`): STICKY (default) / SOLE / ALL — exactly
+  as the user described. Single-player keeps the tuned "accrue only while standing" behaviour.
+- Friendly Fire defaults ON (unlocked) for KOTH so it plays as a PvP contest; kills flow through the
+  existing 3B attribution (counts toward stats). Uncheck FF for a no-combat race.
+- HUD shows CONTESTED + per-player times; hill tint extended to P3 green / P4 yellow / contested white.
+- Bugfix: `_ownerIds` now derives from `activePlayers()` instead of the legacy `player2?2:1`
+  heuristic — corrects Deathmatch leader/HUD for 3–4 players too.
