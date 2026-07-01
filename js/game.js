@@ -747,7 +747,11 @@ class Game {
     //    spawns escalating waves from the designed spawn-lines.
     //  • else if spawn eggs present → per-spawner frequency/cap on-screen spawning.
     //  • else → default Skeleton bots (Quick Play / built-in map / back-compat).
-    if (this.arenaConfig.arenaGameMode === 'SURVIVAL_WAVES') {
+    if (this.arenaConfig.disableMobs) {
+      // Bug-fix pass §2.7: "Disable Mobs" — no bots spawn in this match.
+      this.mobManager.spawnPoints = [];
+      this.mobManager.arenaMode = false;
+    } else if (this.arenaConfig.arenaGameMode === 'SURVIVAL_WAVES') {
       this.mobManager.spawnPoints = [];
       this.mobManager.arenaMode = false;
     } else if (this.mobManager.spawnPoints.length > 0) {
@@ -765,7 +769,11 @@ class Game {
     }
 
     // Kill attribution → arena scores.
+    // Bug-fix pass §2.6: mob kills must NOT contribute to Deathmatch score
+    // (Deathmatch is scored on player eliminations only, via onPlayerKill).
+    // Mob-centric modes (Mob Hunter, Survival, Collect, etc.) still score them.
     this.mobManager.onKill = (owner) => {
+      if (this.arenaConfig?.arenaGameMode === 'DEATHMATCH') return;
       if (this.arenaState.scores[owner] != null) this.arenaState.scores[owner]++;
     };
 
@@ -1260,8 +1268,8 @@ class Game {
         // Online: never pause — toggle the non-pausing online overlay menu
         if (this._worldSettingsOpen) this._worldSettingsOpen = false;
         else this._onlineMenuOpen = !this._onlineMenuOpen;
-      } else if (this.state === 'playing')     this.state = 'paused';
-      else if   (this.state === 'paused')      this.state = 'playing';
+      } else if (this.state === 'playing')     { this.state = 'paused';  this._onArenaPauseChange(true); }
+      else if   (this.state === 'paused')      { this.state = 'playing'; this._onArenaPauseChange(false); }
       else if   (this.state === 'confirmExit') this.state = 'paused';
     }
     this._escWas = escNow;
@@ -3999,6 +4007,8 @@ class Game {
     if (!p) return;
     // Death effect (body-part scatter) + cancel any bow draw (Phase 3A.3).
     this._spawnDeathParts(p); p.bowDrawing = false; p.drawProgress = 0;
+    // Death sound for P2-P4 too (Bug-fix pass §2.5 — only P1 played it before).
+    this._playSound('sounds/player-death.mp3');
     // Arena: unlimited respawns, no elimination.
     if (this.isArena) {
       this._respawnTimers[i] = this.arenaRespawnFrames;
@@ -4057,6 +4067,22 @@ class Game {
 
   // Owner id ('p1'..'p4') for a slot index — matches arena score keys.
   static ownerId(i) { return 'p' + (i + 1); }
+
+  // Freeze / resume the arena match timer across pause. The timer is derived
+  // from Date.now() - gameStartTime, so we shift gameStartTime forward by the
+  // paused duration on resume (Bug-fix pass §2.4 — pause must stop the timer).
+  _onArenaPauseChange(paused) {
+    if (!this.isArena) return;
+    const a = this.arenaState;
+    if (paused) {
+      a.pausedAt = Date.now();
+    } else if (a.pausedAt) {
+      const delta = Date.now() - a.pausedAt;
+      if (a.gameStartTime)  a.gameStartTime  += delta;
+      if (a.countdownStart) a.countdownStart += delta;
+      a.pausedAt = null;
+    }
+  }
 
   // Position the camera: centroid-follow for 2+ players, single-follow for 1.
   _followCamera() {

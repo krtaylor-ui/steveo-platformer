@@ -414,7 +414,7 @@
       <div class="dashboard-header">
         <h1>⛏ Steveo Platformer</h1>
         <div class="user-info">
-          <button class="theme-toggle-btn btn-mute" title="Switch theme">🌙</button>
+          <button class="theme-toggle-btn" title="Switch theme">🌙</button>
           <button id="music-mute-btn" class="btn-mute" title="Mute music">🔊</button>
           <span id="username-display">Welcome, Player!</span>
           <button id="logout-btn" class="btn btn-small">Logout</button>
@@ -493,7 +493,7 @@
       <div class="community-header">
         <button id="community-back-btn" class="btn btn-small">← Dashboard</button>
         <h2>🌐 Community Worlds</h2>
-        <button class="theme-toggle-btn btn-mute" title="Switch theme">🌙</button>
+        <button class="theme-toggle-btn" title="Switch theme">🌙</button>
       </div>
       <div class="community-tabs">
         <button class="community-tab active" data-ctab="browse">Browse</button>
@@ -760,6 +760,10 @@
         <label><input type="checkbox" id="pl-disable-drops" checked> Disable Mob Drops</label>
         <small>Mobs drop no items when defeated (on by default).</small>
       </div>
+      <div class="form-group" id="pl-disable-mobs-group" style="display:none;">
+        <label><input type="checkbox" id="pl-disable-mobs"> Disable Mobs</label>
+        <small>No mobs spawn — useful when the objective isn't killing mobs.</small>
+      </div>
       <!-- Per-game-type -->
       <div class="form-group pl-type" id="pl-emerald-rounds-group" style="display:none;">
         <label>Emerald Rounds: <span id="pl-rounds-val">3</span></label>
@@ -788,6 +792,21 @@
         <label>Captures to Win: <span id="pl-capture-target-val">3</span></label>
         <input type="range" id="pl-capture-target" min="1" max="10" value="3">
         <small>Teams: P1&amp;P3 (Red) vs P2&amp;P4 (Blue). Grab the enemy flag, carry it to your base. Needs 2+ players.</small>
+      </div>
+      <div class="form-group pl-type" id="pl-flag-return-group" style="display:none;">
+        <label>Dropped Flag Returns After: <span id="pl-flag-return-val">15</span>s</label>
+        <input type="range" id="pl-flag-return" min="5" max="30" value="15">
+        <small>A dropped flag resets to its base if not recovered within this time.</small>
+      </div>
+      <div class="form-group pl-type" id="pl-tower-hp-group" style="display:none;">
+        <label>Tower HP:</label>
+        <select id="pl-tower-hp">
+          <option value="3">3 (fragile)</option>
+          <option value="6">6</option>
+          <option value="9" selected>9</option>
+          <option value="12">12 (tough)</option>
+        </select>
+        <small>Destroy the enemy Tower to win. Higher HP = longer matches.</small>
       </div>
       <div class="form-group pl-type" id="pl-koth-scoring-group" style="display:none;">
         <label>Hill Scoring:</label>

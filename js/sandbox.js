@@ -1523,6 +1523,10 @@ class SandboxManager {
           const ecx = sx + SB_SLOT_SIZE / 2, ecy = sy + SB_SLOT_SIZE / 2 - 3;
           _drawSpawnLineMarker(ctx, ecx, ecy, 1, 0);
           this._sbSlotLabel(ctx, 'SPAWN', '#9b59b6', sx, sy);
+        } else if (entry.kind === 'spawnpoint') {
+          const ecx = sx + SB_SLOT_SIZE / 2, ecy = sy + SB_SLOT_SIZE / 2 - 2;
+          _drawSpawnPointMarker(ctx, ecx, ecy, entry.slot || 1, 0);
+          this._sbSlotLabel(ctx, 'P-SPWN', '#4aa3ff', sx, sy);
         }
       }
 

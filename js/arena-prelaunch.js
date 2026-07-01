@@ -31,6 +31,12 @@ const ARENA_PRELAUNCH = {
     this._toggle('pl-killtarget-group',     modeKey === 'DEATHMATCH');
     this._toggle('pl-koth-scoring-group',   modeKey === 'KING_OF_HILL');
     this._toggle('pl-capture-target-group', modeKey === 'CAPTURE_FLAG');
+    this._toggle('pl-flag-return-group',    modeKey === 'CAPTURE_FLAG');
+    this._toggle('pl-tower-hp-group',       modeKey === 'DEFEND_TOWER');
+    // "Disable Mobs" — offered only for modes where killing mobs isn't the point
+    // (Bug-fix pass §2.7). Hidden for Mob Hunter / Survival Waves (mobs ARE the point).
+    const mobsOptional = ['COLLECT_EMERALDS', 'KING_OF_HILL', 'DEATHMATCH', 'CAPTURE_FLAG', 'DEFEND_TOWER'].includes(modeKey);
+    this._toggle('pl-disable-mobs-group', mobsOptional);
 
     // Friendly Fire — forced on + locked for Deathmatch; optional elsewhere.
     const ff = document.getElementById('pl-friendly-fire');
@@ -63,6 +69,8 @@ const ARENA_PRELAUNCH = {
     kt?.addEventListener('input', (e) => { const v = document.getElementById('pl-killtarget-val'); if (v) v.textContent = e.target.value; });
     const ct = document.getElementById('pl-capture-target');
     ct?.addEventListener('input', (e) => { const v = document.getElementById('pl-capture-target-val'); if (v) v.textContent = e.target.value; });
+    const fr = document.getElementById('pl-flag-return');
+    fr?.addEventListener('input', (e) => { const v = document.getElementById('pl-flag-return-val'); if (v) v.textContent = e.target.value; });
     document.getElementById('pl-cancel-btn')?.addEventListener('click', () => this.hide());
     document.getElementById('pl-start-btn')?.addEventListener('click', () => this._start());
   },
@@ -77,6 +85,7 @@ const ARENA_PRELAUNCH = {
       playerCount:   Math.max(1, Math.min(4, num('pl-player-count', 1))), // Phase 3B: 1-4 local
       playerHealthHp: num('pl-player-health', 6),
       disableMobDrops: chk('pl-disable-drops'), // all modes; default off
+      disableMobs:   chk('pl-disable-mobs'),    // suppress bot spawns (non-mob modes)
       friendlyFire:  chk('pl-friendly-fire'),   // Phase 3B PvP gate
     };
     if (this._mode === 'COLLECT_EMERALDS') {
@@ -93,7 +102,11 @@ const ARENA_PRELAUNCH = {
       cfg.friendlyFire = true; // Deathmatch always PvP
     } else if (this._mode === 'CAPTURE_FLAG') {
       cfg.captureTarget = num('pl-capture-target', 3);
+      cfg.flagReturnSeconds = num('pl-flag-return', 15); // dropped-flag reset timer (§6)
       cfg.friendlyFire = true; // CTF is PvP (team-aware; teammates never damage each other)
+    } else if (this._mode === 'DEFEND_TOWER') {
+      cfg.towerHp = num('pl-tower-hp', 9); // 3/6/9/12 (§7)
+      cfg.friendlyFire = true; // Tower combat is PvP (team-aware when 2v2)
     }
 
     const cb = this._onStart;

@@ -411,12 +411,22 @@ html[data-theme="retro"] {
 .online-play-section {
   display: flex;
   justify-content: center;
+  gap: 32px;
   padding-bottom: 40px;
 }
 
 .online-play-button {
   text-align: center;
   color: white;
+}
+
+/* Equal-size Online Play / Community buttons (text lengths differ). */
+.online-play-button .btn-large {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 260px;
+  box-sizing: border-box;
 }
 
 .online-play-button p {
@@ -909,10 +919,12 @@ html[data-theme="retro"] {
 }
 
 .sandbox-container {
+  width: 100%;
   max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
   min-height: 100vh;
+  box-sizing: border-box;
 }
 
 .sandbox-header {
@@ -1297,6 +1309,22 @@ html[data-theme="retro"] {
 }
 .btn-mute:hover { opacity: 0.7; }
 .btn-mute.muted { opacity: 0.5; }
+
+/* Theme switch toggle — distinct from the music mute button so it does not
+   read as a second mute control (and is not swept up by the mute handler). */
+.theme-toggle-btn {
+  background: var(--accent, #667eea);
+  border: none;
+  color: #fff;
+  font-size: 1.1rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: var(--ui-radius, 6px);
+  transition: filter 0.2s, transform 0.1s;
+}
+.theme-toggle-btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+.theme-toggle-btn:active { transform: translateY(0); }
 
 /* Game config startup splash */
 #game-config-startup {
