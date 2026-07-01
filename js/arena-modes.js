@@ -78,6 +78,8 @@ const ARENA_MODES = {
       ms.totalWaves = Math.max(1, Math.min(15, (game.arenaConfig && game.arenaConfig.survivalWaveCount) || this.SURVIVAL_DEFAULT.length));
       ms.betweenTimer = 90; // short delay before wave 1 (lets the countdown clear)
       ms.cleared = false;    // true once all waves are survived (win)
+      ms.wavesCleared = 0;   // waves fully defeated (= Survival score, shared)
+      ms.waveActive = false; // a wave is currently spawned + not yet cleared
     }
     if (modeKey === 'DEATHMATCH') {
       // First to killTarget eliminations wins (or most kills when the timer ends).
@@ -128,6 +130,7 @@ const ARENA_MODES = {
   // distributed across the designed spawn-lines (or spread across the top if none).
   _spawnSurvivalWave(game, ms) {
     ms.wave++;
+    ms.waveActive = true; // marks this wave live until it's fully defeated
     const def = this._survivalWaveDef(game, ms.wave);
     const queue = [];
     for (let i = 0; i < def.z; i++) queue.push('Zombie');
@@ -173,12 +176,61 @@ const ARENA_MODES = {
     const n = (typeof game._numPlayers === 'function') ? game._numPlayers() : (game.player2 ? 2 : 1);
     return Array.from({ length: n }, (_, i) => 'p' + (i + 1));
   },
-  // Highest / who-leads among per-player deathmatch scores.
+  // Individual stats for a player id (always tracked; see game.js arenaState.stats):
+  //   { kills, mobKills, emeralds, flagCaptures, towerDamage }
+  statOf(game, id) { return (game.arenaState.stats && game.arenaState.stats[id]) || {}; },
+
+  // Number of survival waves fully defeated so far (shared objective).
+  _wavesDefeated(game) { const ms = game._arenaMode; return (ms && ms.wavesCleared) || 0; },
+
+  // A team's CTF captures = sum of its members' flagCaptures (the team objective).
+  _teamCaptures(game, teamId) {
+    let n = 0;
+    for (const p of game.activePlayers()) if (p && p.teamId === teamId) n += (this.statOf(game, p._ownerId).flagCaptures || 0);
+    return n;
+  },
+
+  // Per-player SCORE for the current mode (derived from stats + mode state):
+  //   Quick Battle (no mode) = kills + mobKills + emeralds
+  //   Mob Hunter = mobKills · Collect Emeralds = emeralds · KOTH = seconds held
+  //   Survival Waves = waves defeated (shared) · Deathmatch = kills
+  //   Capture the Flag = your team's captures (shared) · Defend the Tower = none
+  playerScore(game, id) {
+    const st = this.statOf(game, id);
+    const ms = game._arenaMode;
+    switch (ms && ms.key) {
+      case 'MOB_HUNTER':       return st.mobKills || 0;
+      case 'COLLECT_EMERALDS': return st.emeralds || 0;
+      case 'KING_OF_HILL':     return Math.round(((ms.hold && ms.hold[id]) || 0) / 60);
+      case 'SURVIVAL_WAVES':   return this._wavesDefeated(game);
+      case 'DEATHMATCH':       return st.kills || 0;
+      case 'CAPTURE_FLAG': {
+        const p = game.activePlayers().find(pp => pp && (pp._ownerId === id));
+        return p && p.teamId != null ? this._teamCaptures(game, p.teamId) : 0;
+      }
+      case 'DEFEND_TOWER':     return 0; // health-based; no points
+      default:                 return (st.kills || 0) + (st.mobKills || 0) + (st.emeralds || 0); // Quick Battle
+    }
+  },
+
+  // Team score aggregation: summed for Quick Battle / Mob Hunter / Emeralds /
+  // KOTH / Deathmatch; SHARED (the objective value, not summed) for Survival
+  // Waves / CTF / Defend the Tower.
+  teamScore(game, teamId) {
+    const key = game._arenaMode && game._arenaMode.key;
+    const members = game.activePlayers().filter(p => p && p.teamId === teamId);
+    if (!members.length) return 0;
+    const shared = key === 'SURVIVAL_WAVES' || key === 'CAPTURE_FLAG' || key === 'DEFEND_TOWER';
+    if (shared) return this.playerScore(game, members[0]._ownerId);
+    return members.reduce((s, p) => s + this.playerScore(game, p._ownerId), 0);
+  },
+
+  // Highest / who-leads among per-player scores (Deathmatch win + end screen).
   _leader(game) {
-    const s = game.arenaState.scores;
     let bestId = 'p1', best = -1;
     for (const id of this._ownerIds(game)) {
-      if ((s[id] || 0) > best) { best = s[id] || 0; bestId = id; }
+      const sc = this.playerScore(game, id);
+      if (sc > best) { best = sc; bestId = id; }
     }
     return { id: bestId, score: best };
   },
@@ -229,6 +281,8 @@ const ARENA_MODES = {
         // Once the arena is clear: win if all waves done, else spawn the next.
         const aliveMobs = game.mobManager.mobs.filter(mb => mb.alive).length;
         if (aliveMobs === 0) {
+          // A spawned wave just got fully defeated → count it (Survival score).
+          if (ms.waveActive) { ms.wavesCleared = (ms.wavesCleared || 0) + 1; ms.waveActive = false; }
           if (ms.wave >= ms.totalWaves) { ms.cleared = true; a.phase = 'ended'; break; }
           if (ms.betweenTimer > 0) ms.betweenTimer--;
           else { this._spawnSurvivalWave(game, ms); ms.betweenTimer = 120; }
@@ -260,28 +314,23 @@ const ARENA_MODES = {
   // Final score for the end screen + leaderboard. Higher = better for all modes
   // (Time Attack scores by seconds remaining so faster clears rank higher).
   score(game) {
-    const ms = game._arenaMode; if (!ms) return 0;
-    const kills = (game.arenaState.scores.p1 || 0) + (game.arenaState.scores.p2 || 0);
-    switch (ms.key) {
+    const ms = game._arenaMode;
+    switch (ms && ms.key) {
       case 'COLLECT_EMERALDS':
-        return (typeof EMERALD_SYSTEM !== 'undefined') ? EMERALD_SYSTEM.collected : 0;
+        return (typeof EMERALD_SYSTEM !== 'undefined') ? EMERALD_SYSTEM.collected : this._leader(game).score;
       case 'KING_OF_HILL':
-        return Math.round(this._kothMax(game) / 60);
+        return Math.round(this._kothMax(game) / 60);           // best seconds held
       case 'SURVIVAL_WAVES':
-        return kills + (ms.wave || 0) * 50 + (ms.cleared ? 100 : 0); // +50/wave, +1/kill, +100 clear-all
+        return this._wavesDefeated(game);                       // waves fully defeated
       case 'DEATHMATCH':
-        return this._leader(game).score; // winner's elimination count
-      case 'CAPTURE_FLAG': {
-        const ts = game.arenaState.teamScores || [0, 0];
-        return Math.max(ts[0] || 0, ts[1] || 0) * (typeof CTF_SYSTEM !== 'undefined' ? CTF_SYSTEM.CAPTURE_POINTS : 50);
-      }
-      case 'DEFEND_TOWER': {
-        if (typeof TOWER_SYSTEM === 'undefined' || !TOWER_SYSTEM.towers) return 0;
-        const best = TOWER_SYSTEM.towers.reduce((m, t) => Math.max(m, t.hp), 0);
-        return best * 10 + (TOWER_SYSTEM.winner() ? 100 : 0); // surviving structure + win bonus
-      }
+        return this._leader(game).score;                        // top eliminations
+      case 'CAPTURE_FLAG':
+        return Math.max(this._teamCaptures(game, 0), this._teamCaptures(game, 1));
+      case 'DEFEND_TOWER':
+        return (typeof TOWER_SYSTEM !== 'undefined' && TOWER_SYSTEM.towers)
+          ? TOWER_SYSTEM.towers.reduce((m, t) => Math.max(m, t.hp), 0) : 0; // most tower HP left
       default:
-        return kills; // MOB_HUNTER
+        return this._leader(game).score; // Quick Battle (k+m+e) / Mob Hunter (mobKills)
     }
   },
 
@@ -303,21 +352,22 @@ const ARENA_MODES = {
         return `Hill: ${owner}   ${Math.round(this._kothMax(game) / 60)}s held`;
       }
       case 'SURVIVAL_WAVES':
-        return `Wave ${Math.max(1, ms.wave)}/${ms.totalWaves || '?'}   Kills: ${game.arenaState.scores.p1 || 0}`;
+        return `Wave ${Math.max(1, ms.wave)}/${ms.totalWaves || '?'}   Defeated: ${this._wavesDefeated(game)}`;
       case 'DEATHMATCH': {
-        const s = game.arenaState.scores;
-        const parts = this._ownerIds(game).map(id => `${id.toUpperCase()}:${s[id] || 0}`);
+        const parts = this._ownerIds(game).map(id => `${id.toUpperCase()}:${this.playerScore(game, id)}`);
         return `${parts.join('  ')}   (to ${ms.killTarget})`;
       }
       case 'CAPTURE_FLAG': {
-        const ts = game.arenaState.teamScores || [0, 0];
         const names = (typeof CTF_TEAM_NAMES !== 'undefined') ? CTF_TEAM_NAMES : ['Red', 'Blue'];
-        return `${names[0]} ${ts[0] || 0} — ${ts[1] || 0} ${names[1]}   (to ${ms.captureTarget})`;
+        return `${names[0]} ${this._teamCaptures(game, 0)} — ${this._teamCaptures(game, 1)} ${names[1]}   (to ${ms.captureTarget})`;
       }
       case 'DEFEND_TOWER':
         return (typeof TOWER_SYSTEM !== 'undefined') ? TOWER_SYSTEM.hudText() : '';
-      default:
-        return `Kills: ${game.arenaState.scores.p1 || 0}`;
+      default: {
+        // Quick Battle / Mob Hunter — per-player score.
+        const parts = this._ownerIds(game).map(id => `${id.toUpperCase()}:${this.playerScore(game, id)}`);
+        return parts.length > 1 ? parts.join('  ') : `Score: ${this.playerScore(game, 'p1')}`;
+      }
     }
   },
 
@@ -327,17 +377,23 @@ const ARENA_MODES = {
     if (ms && ms.key === 'DEATHMATCH') return this._leader(game).id.toUpperCase() + ' wins!';
     // KotH is a contest between 2+ players → name the top holder.
     if (ms && ms.key === 'KING_OF_HILL' && game.activePlayers().length >= 2) return this._kothLeader(game).toUpperCase() + ' wins the hill!';
-    // Defend the Tower → the player who destroyed a Tower wins.
+    // Defend the Tower → destroyer wins; on timeout, most tower HP left wins.
     if (ms && ms.key === 'DEFEND_TOWER') {
-      const w = (typeof TOWER_SYSTEM !== 'undefined') ? TOWER_SYSTEM.winner() : null;
-      return w ? `${w.toUpperCase()} wins — Tower destroyed!` : null;
+      if (typeof TOWER_SYSTEM === 'undefined') return null;
+      const w = TOWER_SYSTEM.winner();
+      if (w) return `${w.toUpperCase()} wins — Tower destroyed!`;
+      const ts = TOWER_SYSTEM.towers || [];
+      if (!ts.length) return null;
+      const top = ts.reduce((a, b) => (b.hp > a.hp ? b : a));
+      const tie = ts.filter(t => t.hp === top.hp).length > 1;
+      return tie ? "It's a tie!" : `${top.ownerId.toUpperCase()} wins — Tower stood tallest!`;
     }
     // CTF → name the winning team by capture count.
     if (ms && ms.key === 'CAPTURE_FLAG') {
-      const ts = game.arenaState.teamScores || [0, 0];
+      const t0 = this._teamCaptures(game, 0), t1 = this._teamCaptures(game, 1);
       const names = (typeof CTF_TEAM_NAMES !== 'undefined') ? CTF_TEAM_NAMES : ['Red', 'Blue'];
-      if ((ts[0] || 0) === (ts[1] || 0)) return "It's a tie!";
-      return `${(ts[1] || 0) > (ts[0] || 0) ? names[1] : names[0]} team wins!`;
+      if (t0 === t1) return "It's a tie!";
+      return `${t1 > t0 ? names[1] : names[0]} team wins!`;
     }
     return null;
   },

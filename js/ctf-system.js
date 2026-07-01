@@ -104,12 +104,18 @@ const CTF_SYSTEM = {
   },
 
   // Per-player capture → team total = sum of members' captures (§2.8 / §6).
+  // flagCaptures in arenaState.stats is the source of truth; team totals derive
+  // from it (arena-modes.playerScore/teamScore read it for the shared team score).
   _score(game, carrier) {
     const team = carrier.teamId;
+    const st = game.arenaState.stats && game.arenaState.stats[carrier._ownerId];
+    if (st) st.flagCaptures = (st.flagCaptures || 0) + 1;
     carrier.ctfCaptures = (carrier.ctfCaptures || 0) + 1;
-    if (carrier._ownerId && game.arenaState.scores[carrier._ownerId] != null) game.arenaState.scores[carrier._ownerId]++;
     const totals = [0, 0];
-    for (const p of game.activePlayers()) if (p && p.teamId != null) totals[p.teamId] += (p.ctfCaptures || 0);
+    for (const p of game.activePlayers()) {
+      const ps = game.arenaState.stats && game.arenaState.stats[p && p._ownerId];
+      if (p && p.teamId != null && ps) totals[p.teamId] += (ps.flagCaptures || 0);
+    }
     this.captures = totals;
     game.arenaState.teamScores = totals.slice();
     if (game._notify) game._notify(`${CTF_TEAM_NAMES[team]} team captures the flag! (${totals[team]})`, CTF_TEAM_COLORS[team], 150);

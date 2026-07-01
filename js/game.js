@@ -215,8 +215,14 @@ class Game {
       );
       this.arenaRespawnFrames = Math.max(1, Math.round(this.arenaConfig.respawnDelay / (1000 / 60)));
       this.arenaState  = { phase: 'countdown', countdownStart: null, gameStartTime: null, endTime: null,
-        // Phase 3B — scores keyed p1..p4 (present players filled in _setupArena).
-        scores: { p1: 0, p2: 0, p3: 0, p4: 0 },
+        // Per-player individual stats — always tracked; the per-mode SCORE is
+        // derived from these by ARENA_MODES.playerScore (see arena-modes.js).
+        stats: {
+          p1: { kills: 0, mobKills: 0, emeralds: 0, flagCaptures: 0, towerDamage: 0 },
+          p2: { kills: 0, mobKills: 0, emeralds: 0, flagCaptures: 0, towerDamage: 0 },
+          p3: { kills: 0, mobKills: 0, emeralds: 0, flagCaptures: 0, towerDamage: 0 },
+          p4: { kills: 0, mobKills: 0, emeralds: 0, flagCaptures: 0, towerDamage: 0 },
+        },
         // Reserved for Phase 3C teams (no logic yet).
         teamsEnabled: false, teamScores: { A: 0, B: 0 } };
       this._arenaSpawns = { p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, p3: { x: 0, y: 0 }, p4: { x: 0, y: 0 } };
@@ -768,13 +774,11 @@ class Game {
       }
     }
 
-    // Kill attribution → arena scores.
-    // Bug-fix pass §2.6: mob kills must NOT contribute to Deathmatch score
-    // (Deathmatch is scored on player eliminations only, via onPlayerKill).
-    // Mob-centric modes (Mob Hunter, Survival, Collect, etc.) still score them.
+    // Kill attribution → per-player individual stats. Mob kills are always
+    // tracked as a stat; whether they contribute to a mode's SCORE is decided by
+    // ARENA_MODES.playerScore (e.g. Deathmatch score = player kills only).
     this.mobManager.onKill = (owner) => {
-      if (this.arenaConfig?.arenaGameMode === 'DEATHMATCH') return;
-      if (this.arenaState.scores[owner] != null) this.arenaState.scores[owner]++;
+      const st = this.arenaState.stats[owner]; if (st) st.mobKills++;
     };
 
     // Phase 3B PvP spike — friendly-fire gates player→player arrow damage.
@@ -785,7 +789,7 @@ class Game {
        || this.arenaConfig.arenaGameMode === 'CAPTURE_FLAG'));
     this.mobManager.pvpEnabled = this._pvpEnabled;
     this.mobManager.onPlayerKill = (killer /*, victimId */) => {
-      if (this.arenaState.scores[killer] != null) this.arenaState.scores[killer]++;
+      const st = this.arenaState.stats[killer]; if (st) st.kills++;
     };
 
     // Camera (Phase 3A.3): single-screen = fixed, centered (neutralize follow);
@@ -844,12 +848,12 @@ class Game {
     const award = (p, who) => {
       if (!p) return;
       if (typeof EMERALD_SYSTEM !== 'undefined') {
-        EMERALD_SYSTEM.checkPickup(p, () => { if (this.arenaState.scores[who] != null) this.arenaState.scores[who]++; });
+        EMERALD_SYSTEM.checkPickup(p, () => { const st = this.arenaState.stats[who]; if (st) st.emeralds++; });
       }
       if (typeof POWERUP_SYSTEM !== 'undefined') POWERUP_SYSTEM.checkPickup(p);
     };
     // Award all active players (Phase 3: P3/P4 previously missed emerald pickups).
-    this.activePlayers().forEach((p, i) => award(p, 'p' + (i + 1)));
+    this.activePlayers().forEach((p) => award(p, p._ownerId || 'p1'));
     if (typeof POWERUP_SYSTEM !== 'undefined') POWERUP_SYSTEM.update(this);
     if (typeof CTF_SYSTEM !== 'undefined') CTF_SYSTEM.update(this);
     if (typeof TOWER_SYSTEM !== 'undefined') TOWER_SYSTEM.update(this);
@@ -10471,14 +10475,18 @@ class Game {
     ctx.fillStyle = '#FFD700';
     ctx.fillText(`${mm}:${String(ss).padStart(2, '0')}`, CANVAS_W / 2, 14);
 
-    // Kills + bots remaining
-    const k1 = this.arenaState.scores.p1 || 0;
+    // Per-player score (derived per mode) + bots remaining.
     const bots = this.mobManager.mobs.filter(m => m.alive).length;
     ctx.font = 'bold 13px Courier New';
     ctx.fillStyle = '#FFFFFF';
-    const line = this.player2
-      ? `P1: ${k1}    P2: ${this.arenaState.scores.p2 || 0}    Bots: ${bots}`
-      : `Kills: ${k1}    Bots: ${bots}`;
+    let line;
+    if (typeof ARENA_MODES !== 'undefined' && ARENA_MODES.playerScore) {
+      const ids = this.activePlayers().map(p => p._ownerId || 'p1');
+      const parts = ids.map(id => `${id.toUpperCase()}: ${ARENA_MODES.playerScore(this, id)}`);
+      line = (ids.length > 1 ? parts.join('   ') : `Score: ${ARENA_MODES.playerScore(this, 'p1')}`) + `    Bots: ${bots}`;
+    } else {
+      line = `Score: ${this.arenaState.stats.p1.kills}    Bots: ${bots}`;
+    }
     ctx.fillText(line, CANVAS_W / 2, 32);
 
     // Game-mode objective line (Phase 3A.2).
@@ -10529,50 +10537,63 @@ class Game {
     this._submitArenaResultOnce(); // leaderboard submit (once), mode runs only
 
     ctx.save();
-    ctx.fillStyle = 'rgba(0,0,0,0.82)';
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    const cx = CANVAS_W / 2, cy = CANVAS_H / 2;
     ctx.fillStyle = '#FFD700';
-    ctx.font = 'bold 48px Arial';
-    ctx.fillText('Game Over!', CANVAS_W / 2, CANVAS_H / 2 - 70);
+    ctx.font = 'bold 40px Arial';
+    ctx.fillText('Game Over!', cx, cy - 118);
 
+    const AM = (typeof ARENA_MODES !== 'undefined') ? ARENA_MODES : null;
     const mode = this.arenaConfig.arenaGameMode;
-    const k1 = this.arenaState.scores.p1 || 0;
-    ctx.fillStyle = '#FFFFFF';
-    if (mode && typeof ARENA_MODES !== 'undefined') {
-      ctx.font = 'bold 26px Arial';
-      ctx.fillText(ARENA_MODES.label(mode), CANVAS_W / 2, CANVAS_H / 2 - 20);
-      // Deathmatch: name the winning player + show every player's eliminations.
-      const winTxt = ARENA_MODES.winnerText ? ARENA_MODES.winnerText(this) : null;
-      if (winTxt) {
-        ctx.fillStyle = '#FFD700'; ctx.font = 'bold 24px Arial';
-        ctx.fillText(winTxt, CANVAS_W / 2, CANVAS_H / 2 + 12);
-        ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 16px Arial';
-        const s = this.arenaState.scores;
-        const line = this.activePlayers().map((p, i) => `P${i + 1}: ${s['p' + (i + 1)] || 0}`).join('    ');
-        ctx.fillText(line, CANVAS_W / 2, CANVAS_H / 2 + 40);
-      } else {
-        ctx.font = 'bold 22px Arial';
-        ctx.fillText(`Score: ${ARENA_MODES.score(this)}`, CANVAS_W / 2, CANVAS_H / 2 + 16);
-      }
-    } else if (this.player2) {
-      const k2 = this.arenaState.scores.p2 || 0;
-      const winner = k1 === k2 ? "It's a tie!" : (k1 > k2 ? 'Player 1 wins!' : 'Player 2 wins!');
-      ctx.font = 'bold 28px Arial';
-      ctx.fillText(winner, CANVAS_W / 2, CANVAS_H / 2 - 18);
-      ctx.font = 'bold 20px Arial';
-      ctx.fillText(`P1: ${k1} kills     P2: ${k2} kills`, CANVAS_W / 2, CANVAS_H / 2 + 22);
-    } else {
-      ctx.font = 'bold 26px Arial';
-      ctx.fillText(`You defeated ${k1} bot${k1 === 1 ? '' : 's'}!`, CANVAS_W / 2, CANVAS_H / 2 - 14);
-    }
-    ctx.fillStyle = '#AAAAAA';
-    ctx.font = 'bold 18px Arial';
-    ctx.fillText('Press ESC to exit', CANVAS_W / 2, CANVAS_H / 2 + 72);
+    ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 22px Arial';
+    ctx.fillText(AM ? AM.label(mode) : 'Quick Battle', cx, cy - 80);
+
+    // Winner / headline score.
+    let winTxt = (AM && AM.winnerText) ? AM.winnerText(this) : null;
+    if (!winTxt) winTxt = `Score: ${AM ? AM.score(this) : 0}`;
+    ctx.fillStyle = '#FFD700'; ctx.font = 'bold 24px Arial';
+    ctx.fillText(winTxt, cx, cy - 48);
+
+    // Per-player individual stats breakdown.
+    this._drawArenaStatsTable(ctx, cx, cy - 16);
+
+    ctx.fillStyle = '#AAAAAA'; ctx.font = 'bold 18px Arial';
+    ctx.fillText('Press ESC to exit', cx, cy + 132);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
     ctx.restore();
+  }
+
+  // Per-player individual stats table for the arena end screen. Columns adapt to
+  // the mode (Score always; Flags only for CTF; TwrDmg only for Defend the Tower).
+  _drawArenaStatsTable(ctx, cx, y) {
+    const ids = this.activePlayers().map(p => p._ownerId || 'p1');
+    if (!ids.length) return;
+    const AM = (typeof ARENA_MODES !== 'undefined') ? ARENA_MODES : null;
+    const mode = this.arenaConfig.arenaGameMode;
+    const cols = [
+      { h: 'Player', get: (id) => id.toUpperCase() },
+      { h: 'Score',  get: (id) => AM ? AM.playerScore(this, id) : 0 },
+      { h: 'Kills',  get: (id) => this.arenaState.stats[id]?.kills || 0 },
+      { h: 'Mobs',   get: (id) => this.arenaState.stats[id]?.mobKills || 0 },
+      { h: 'Gems',   get: (id) => this.arenaState.stats[id]?.emeralds || 0 },
+    ];
+    if (mode === 'CAPTURE_FLAG') cols.push({ h: 'Flags', get: (id) => this.arenaState.stats[id]?.flagCaptures || 0 });
+    if (mode === 'DEFEND_TOWER') cols.push({ h: 'TwrDmg', get: (id) => this.arenaState.stats[id]?.towerDamage || 0 });
+
+    const colW = 78;
+    const startX = cx - (cols.length - 1) * colW / 2;
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 13px Courier New'; ctx.fillStyle = '#88CCFF';
+    cols.forEach((c, i) => ctx.fillText(c.h, startX + i * colW, y));
+    ctx.font = '13px Courier New'; ctx.fillStyle = '#FFFFFF';
+    ids.forEach((id, r) => {
+      const ry = y + 22 + r * 20;
+      cols.forEach((c, i) => ctx.fillText(String(c.get(id)), startX + i * colW, ry));
+    });
   }
 
   // Submit the arena result to the leaderboard exactly once (mode runs only).
@@ -10583,7 +10604,7 @@ class Game {
 
     const mode = this.arenaConfig.arenaGameMode;
     if (!mode || typeof LEADERBOARD_SYSTEM === 'undefined' || !LEADERBOARD_SYSTEM.submit) return;
-    const score = (typeof ARENA_MODES !== 'undefined') ? ARENA_MODES.score(this) : (this.arenaState.scores.p1 || 0);
+    const score = (typeof ARENA_MODES !== 'undefined') ? ARENA_MODES.score(this) : (this.arenaState.stats.p1.kills || 0);
     const durMs  = (this.arenaState.gameStartTime && this.arenaState.endTime)
       ? this.arenaState.endTime - this.arenaState.gameStartTime : 0;
     LEADERBOARD_SYSTEM.submit(mode, score, Math.round(durMs / 1000));
@@ -10607,7 +10628,7 @@ class Game {
     }
     const body = {
       won: !!won,
-      kills: this.arenaState.scores.p1 || 0,
+      kills: this.arenaState.stats.p1.kills || 0,
       captures,
       playTimeMs: Math.max(0, Math.round(durMs)),
     };

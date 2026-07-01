@@ -210,3 +210,35 @@ rework, 4-player HUD, full theme switch, expanded CTF, and Defend the Tower.
   switch visuals, CTF/Tower in-match feel, Community/stats endpoints (need the two
   SQL migrations from MIGRATIONS.md run first).
 - Cache-buster bumped `17k2-3b` → `17k3-v3` so the browser reloads changed assets.
+
+---
+
+# Arena Scoring Overhaul (2026-07-01)
+
+Reworked scoring into a unified model. `arenaState.stats{p1..p4}` holds per-player
+individual stats — `{ kills, mobKills, emeralds, flagCaptures, towerDamage }` —
+always tracked regardless of mode. The per-mode SCORE is *derived* from these by
+`ARENA_MODES.playerScore()` (no more direct `arenaState.scores` counter; that
+field is removed). Kill/emerald/flag/tower-damage hooks now write stats.
+
+Per-player score by mode:
+- **Quick Battle** (the null-mode "vs bots" quick launch): kills + mobKills + emeralds
+- **Mob Hunter**: mobKills · **Collect Emeralds**: emeralds
+- **King of the Hill**: seconds held · **Deathmatch**: player kills (mob kills excluded)
+- **Survival Waves**: waves fully defeated (shared; new `wavesCleared` counter)
+- **Capture the Flag**: your team's total captures (shared)
+- **Defend the Tower**: no points (health-based)
+
+Team score (`ARENA_MODES.teamScore`): SUMMED for Quick Battle / Mob Hunter /
+Emeralds / KOTH / Deathmatch; SHARED (the objective value, not summed) for
+Survival Waves / CTF / Defend the Tower.
+
+Defend the Tower winner: destroyer wins immediately; on timeout, the owner of the
+tower with the most HP left wins (tie if equal).
+
+End screen now shows a per-player individual-stats table (Score/Kills/Mobs/Gems,
+plus Flags for CTF and TwrDmg for Defend the Tower). "Diamond" = the existing
+emerald gem (no separate collectible added — confirmed with Kevin).
+
+Headless: test-scoring.js 18/18 (per-mode score, summed-vs-shared team score,
+CTF/Tower stat writes); test-v3.js 52/52; test-pause.js 7/7.
