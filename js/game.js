@@ -110,8 +110,35 @@ class Game {
       arenaRespawnTime:          2,         // seconds (0–10) — arena respawn delay
       arenaEnabledTypes:         ['MOB_HUNTER', 'COLLECT_EMERALDS', 'KING_OF_HILL', 'SURVIVAL_WAVES'],
     };
+    // Phase 3B — player-model refactor. `players[]` is the backing store for
+    // 1-4 local players. `player`/`player2` are live accessors over slots 0/1
+    // so the ~200 existing call sites keep working unchanged during the
+    // incremental migration; new N-player logic uses players[]/getPlayer()/
+    // activePlayers(). Slots may hold null (a dead/absent player) — always
+    // iterate via activePlayers() (filters null) rather than players directly.
+    this.players = [];
+    Object.defineProperty(this, 'player', {
+      get() { return this.players[0] || null; },
+      set(v) { this.players[0] = v || null; },
+      configurable: true,
+    });
+    Object.defineProperty(this, 'player2', {
+      get() { return this.players[1] || null; },
+      set(v) { this.players[1] = v || null; },
+      configurable: true,
+    });
+
     // Track the user's explicit pre-launch 2P choice so it can survive world-load overwrite
     this._launchTwoPlayerMode = options.twoPlayerMode;
+    // Phase 3B — per-player respawn timers (slots 0..3). _p1/_p2RespawnTimer are
+    // accessors over slots 0/1 so existing call sites keep working.
+    this._respawnTimers = [0, 0, 0, 0];
+    Object.defineProperty(this, '_p1RespawnTimer', {
+      get() { return this._respawnTimers[0]; }, set(v) { this._respawnTimers[0] = v; }, configurable: true,
+    });
+    Object.defineProperty(this, '_p2RespawnTimer', {
+      get() { return this._respawnTimers[1]; }, set(v) { this._respawnTimers[1] = v; }, configurable: true,
+    });
     this.player2         = null;
     this._p2SpawnX       = 0;
     this._p2SpawnY       = 0;
@@ -187,10 +214,12 @@ class Game {
         options.arenaConfig || {}
       );
       this.arenaRespawnFrames = Math.max(1, Math.round(this.arenaConfig.respawnDelay / (1000 / 60)));
-      this.arenaState  = { phase: 'countdown', countdownStart: null, gameStartTime: null, endTime: null, scores: { p1: 0, p2: 0 },
+      this.arenaState  = { phase: 'countdown', countdownStart: null, gameStartTime: null, endTime: null,
+        // Phase 3B — scores keyed p1..p4 (present players filled in _setupArena).
+        scores: { p1: 0, p2: 0, p3: 0, p4: 0 },
         // Reserved for Phase 3C teams (no logic yet).
         teamsEnabled: false, teamScores: { A: 0, B: 0 } };
-      this._arenaSpawns = { p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 } };
+      this._arenaSpawns = { p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, p3: { x: 0, y: 0 }, p4: { x: 0, y: 0 } };
       // A user-designed arena (played from the picker / editor Test) arrives as a saved grid.
       this._arenaTemplateData = options.templateData || options.worldData || null;
     }
@@ -646,39 +675,56 @@ class Game {
     // already ran its player2 check — so create it here. The arming block below
     // then gives it the bow + arena HP. (Fixes P2 spawning bow-less: it could
     // select the bow slot but had no bow to render or fire.)
-    if (this._worldAdvSettings.twoPlayerMode && !this.player2) {
-      this.player2 = new Player(this._p2SpawnX, this._p2SpawnY);
-      this.player2.godMode = false;
-      this._p2RespawnTimer = 0;
+    // Phase 3B — arena supports 1-4 local players. playerCount arrives from the
+    // pre-launch modal (arenaConfig); fall back to the legacy 2P flag.
+    this._worldAdvSettings.playerCount = Math.max(1, Math.min(4,
+      (this.arenaConfig.playerCount | 0) || (this._worldAdvSettings.twoPlayerMode ? 2 : 1)));
+    const nP = this._numPlayers();
+    if (nP >= 2) this._worldAdvSettings.twoPlayerMode = true; // keep legacy readers coherent
+
+    // Player spawn positions (pixels). Built-in map carries explicit spawns;
+    // otherwise the level default (P1) + evenly-spaced columns for P2-P4.
+    const spawnKeys = ['p1', 'p2', 'p3', 'p4'];
+    for (let i = 0; i < 4; i++) {
+      const ms = m && m.playerSpawns && m.playerSpawns[i];
+      if (ms) {
+        this._arenaSpawns[spawnKeys[i]] = { x: ms.col * BLOCK_SIZE, y: ms.row * BLOCK_SIZE };
+      } else if (i === 0) {
+        this._arenaSpawns.p1 = { x: this.level.spawnX, y: this.level.spawnY };
+      } else {
+        // Spread remaining players across the map width at the spawn row.
+        const frac = i / 4; // 0.25 / 0.5 / 0.75 of the way across
+        this._arenaSpawns[spawnKeys[i]] = { x: Math.floor((W - 3) * frac) * BLOCK_SIZE, y: this.level.spawnY };
+      }
     }
+
     // Apply per-world arena config (Phase 3A.2). Pre-launch playerHealthHp
     // (Phase 3A.3) overrides the world default when present.
     const hpSrc = this.arenaConfig.playerHealthHp || this._worldAdvSettings.arenaPlayerMaxHealth || 20;
     const maxHp = Math.max(2, Math.min(40, hpSrc));
-    this.player.maxHp = maxHp;
-    if (this.player2) this.player2.maxHp = maxHp;
     this.redstoneSpeed = Math.max(0.5, Math.min(2.0, this._worldAdvSettings.redstoneSpeed || 1.0));
 
-    // Player spawn positions (pixels). Built-in map carries explicit spawns;
-    // saved grids use the level's default spawn (P1) + a right-side column (P2).
-    if (m && m.playerSpawns?.length) {
-      const s0 = m.playerSpawns[0];
-      const s1 = m.playerSpawns[1] || s0;
-      this._arenaSpawns.p1 = { x: s0.col * BLOCK_SIZE, y: s0.row * BLOCK_SIZE };
-      this._arenaSpawns.p2 = { x: s1.col * BLOCK_SIZE, y: s1.row * BLOCK_SIZE };
-    } else {
-      this._arenaSpawns.p1 = { x: this.level.spawnX, y: this.level.spawnY };
-      this._arenaSpawns.p2 = { x: (W - 3) * BLOCK_SIZE, y: this.level.spawnY };
+    // Create players[1..nP-1] if not already present (P1 built by _buildLevel).
+    for (let i = 1; i < nP; i++) {
+      if (!this.players[i]) {
+        const sp = this._arenaSpawns[spawnKeys[i]];
+        this.players[i] = new Player(sp.x, sp.y);
+        this.players[i].godMode = false;
+        this.players[i].selectedSlot = 1;
+        this._respawnTimers[i] = 0;
+      }
     }
 
-    // Arm players with the bow + unlimited arrows so combat works immediately.
+    // Arm all players with the bow + unlimited arrows so combat works immediately.
     this._worldAdvSettings.unlimitedArrows = true;
-    this._armArenaPlayer(this.player, this._arenaSpawns.p1);
-    if (this.player2) this._armArenaPlayer(this.player2, this._arenaSpawns.p2);
-
-    // Reserved team fields (Phase 3C — no logic yet; see [[phase3-arena-redesign]]).
-    for (const p of [this.player, this.player2]) {
-      if (p) { p.teamId = p.teamId ?? null; p.teamColor = p.teamColor ?? null; }
+    for (let i = 0; i < nP; i++) {
+      const p = this.players[i];
+      if (!p) continue;
+      p.maxHp = maxHp;
+      p._ownerId = Game.ownerId(i);  // PvP owner tag ('p1'..'p4')
+      this._armArenaPlayer(p, this._arenaSpawns[spawnKeys[i]]);
+      // Reserved team fields (Phase 3C — no logic yet; see [[phase3-arena-redesign]]).
+      p.teamId = p.teamId ?? null; p.teamColor = p.teamColor ?? null;
     }
 
     // Disable mob drops when requested (pre-launch toggle, all modes; default off).
@@ -711,6 +757,16 @@ class Game {
       if (this.arenaState.scores[owner] != null) this.arenaState.scores[owner]++;
     };
 
+    // Phase 3B PvP spike — friendly-fire gates player→player arrow damage.
+    // Defaults OFF (co-op unaffected); WI6 will expose the toggle in pre-launch.
+    // Deathmatch requires PvP; otherwise the Friendly-Fire toggle gates it.
+    this._pvpEnabled = !!(this.arenaConfig &&
+      (this.arenaConfig.friendlyFire || this.arenaConfig.arenaGameMode === 'DEATHMATCH'));
+    this.mobManager.pvpEnabled = this._pvpEnabled;
+    this.mobManager.onPlayerKill = (killer /*, victimId */) => {
+      if (this.arenaState.scores[killer] != null) this.arenaState.scores[killer]++;
+    };
+
     // Camera (Phase 3A.3): single-screen = fixed, centered (neutralize follow);
     // scrolling = let the normal follow/followMidpoint run each frame.
     const viewType = this._worldAdvSettings.arenaViewType || 'single';
@@ -718,6 +774,7 @@ class Game {
     if (!this._arenaScrolling) {
       this.camera.follow = () => {};
       this.camera.followMidpoint = () => {};
+      this.camera.followPlayers = () => {};  // Phase 3B: neutralize N-player follow too
       this.camera.x = Math.max(0, Math.min(this.level.pixelWidth  - CANVAS_W, (this.level.pixelWidth  - CANVAS_W) / 2));
       this.camera.y = Math.max(0, Math.min(this.level.pixelHeight - CANVAS_H, (this.level.pixelHeight - CANVAS_H) / 2));
     }
@@ -925,8 +982,8 @@ class Game {
       return z;
     }
     if (mode === 'DYNAMIC') {
-      if (this.player2) {
-        // Two players: frame between both (+padding), zooming to fit.
+      if (this.activePlayers().length >= 2) {
+        // Multiple players: frame the bounding box of all (+padding), zoom to fit.
         const t = this._computeDynamicZoom();
         this._arenaDynZoom = (this._arenaDynZoom == null)
           ? t.z
@@ -946,12 +1003,16 @@ class Game {
     return 1.0; // NONE → keep the fixed centering from _setupArena
   }
 
-  // Zoom + focus that frames both players (+padding) within the canvas.
+  // Zoom + focus that frames all live players (+padding) within the canvas.
+  // Generalized to 1-4 players (Phase 3B); the bounding box spans activePlayers().
   _computeDynamicZoom() {
-    const p1 = this.player, p2 = this.player2;
+    const live = this.activePlayers();
     const pad = 3 * BLOCK_SIZE;
-    const minX = Math.min(p1.x, p2.x), maxX = Math.max(p1.x + p1.width,  p2.x + p2.width);
-    const minY = Math.min(p1.y, p2.y), maxY = Math.max(p1.y + p1.height, p2.y + p2.height);
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of live) {
+      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x + p.width);
+      minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y + p.height);
+    }
     const zW = CANVAS_W / ((maxX - minX) + pad * 2);
     const zH = CANVAS_H / ((maxY - minY) + pad * 2);
     const z  = Math.max(0.3, Math.min(1.5, Math.min(zW, zH)));
@@ -1327,8 +1388,7 @@ class Game {
         this._portalTransition = null;
         this.portalCooldown    = 120;
       }
-      if (this.player2) this.camera.followMidpoint(this.player, this.player2);
-      else              this.camera.follow(this.player);
+      this._followCamera();
       return;
     }
 
@@ -1345,8 +1405,7 @@ class Game {
         wf.alpha = Math.max(0, wf.alpha - 1 / 60);
         if (wf.alpha <= 0) { this._witherFade = null; this.portalCooldown = 60; }
       }
-      if (this.player2) this.camera.followMidpoint(this.player, this.player2);
-      else              this.camera.follow(this.player);
+      this._followCamera();
       if (this._witherBoss) {
         this.camera.x = Math.max(WITHER_ARENA_MIN_COL * BLOCK_SIZE,
                          Math.min(WITHER_ARENA_MAX_COL * BLOCK_SIZE - CANVAS_W, this.camera.x));
@@ -1358,8 +1417,7 @@ class Game {
     // ── Music Player UI: update when open (all modes) ─────────────────────────
     if (this._musicPlayerUI) {
       this._updateMusicPlayerUI();
-      if (this.player2) this.camera.followMidpoint(this.player, this.player2);
-      else              this.camera.follow(this.player);
+      this._followCamera();
       return;
     }
 
@@ -1372,16 +1430,14 @@ class Game {
     // ── World Settings panel (sandbox): block gameplay while open ──
     if (this._worldSettingsOpen) {
       this._updateWorldSettings();
-      if (this.player2) this.camera.followMidpoint(this.player, this.player2);
-      else              this.camera.follow(this.player);
+      this._followCamera();
       return;
     }
 
     // ── Online in-game menu overlay: block gameplay input while open ──
     if (this._onlineGameId && this._onlineMenuOpen) {
       this._updateOnlineMenu();
-      if (this.player2) this.camera.followMidpoint(this.player, this.player2);
-      else              this.camera.follow(this.player);
+      this._followCamera();
       return;
     }
 
@@ -1401,8 +1457,7 @@ class Game {
           this.input.p1JustDown('jump') || this.input.p1JustDown('menu')) {
         this._dragonVictoryScreen = false;
       }
-      if (this.player2) this.camera.followMidpoint(this.player, this.player2);
-      else              this.camera.follow(this.player);
+      this._followCamera();
       return;
     }
 
@@ -1694,15 +1749,17 @@ class Game {
       // Context action is computed later at _computeContextAction(); palette is the fallback.
     }
 
-    // ── Player 2 gamepad hotbar (Phase 12) ────────────────
-    if (this.player2 && this._p2RespawnTimer === 0) {
-      if (this.input.p2JustDown('dpad0')) this.player2.selectedSlot = 0;
-      if (this.input.p2JustDown('dpad1')) this.player2.selectedSlot = 1;
-      if (this.input.p2JustDown('dpad2')) this.player2.selectedSlot = 2;
-      if (this.input.p2JustDown('dpad3')) this.player2.selectedSlot = 3;
-      if (this.input.p2JustDown('prevSlot')) this.player2.selectedSlot = (this.player2.selectedSlot - 1 + 9) % 9;
-      if (this.input.p2JustDown('context'))  this.player2.selectedSlot = (this.player2.selectedSlot + 1) % 9;
-      // P2 Y button handled after _computeContextAction below
+    // ── Secondary-player gamepad hotbar (Phase 12/3B) ─────
+    for (let i = 1; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p || this._respawnTimers[i] > 0) continue;
+      if (this.input.pJustDown(i, 'dpad0')) p.selectedSlot = 0;
+      if (this.input.pJustDown(i, 'dpad1')) p.selectedSlot = 1;
+      if (this.input.pJustDown(i, 'dpad2')) p.selectedSlot = 2;
+      if (this.input.pJustDown(i, 'dpad3')) p.selectedSlot = 3;
+      if (this.input.pJustDown(i, 'prevSlot')) p.selectedSlot = (p.selectedSlot - 1 + 9) % 9;
+      if (this.input.pJustDown(i, 'context'))  p.selectedSlot = (p.selectedSlot + 1) % 9;
+      // Secondary Y button handled after _computeContextAction below
     }
 
     // ── Player movement / weapon toggle ────────────────────
@@ -1710,19 +1767,20 @@ class Game {
     this.input.controllerSensitivity    = this._worldAdvSettings.controllerSensitivity    ?? 1.0;
     this.input.controllerAimSensitivity = this._worldAdvSettings.controllerAimSensitivity ?? 1.0;
     this.input.controllerDeadzone       = this._worldAdvSettings.controllerDeadzone       ?? GP_DEADZONE_STICK;
-    // Sync player input slots from ControllerConfig each frame
+    // Sync player input slots from ControllerConfig each frame (P1-P4)
     if (typeof ControllerConfig !== 'undefined') {
       this.input.p1GpSlot = ControllerConfig.getAssignment(1);
       this.input.p2GpSlot = ControllerConfig.getAssignment(2);
+      this.input.p3GpSlot = ControllerConfig.getAssignment(3);
+      this.input.p4GpSlot = ControllerConfig.getAssignment(4);
     }
     // Single-player: both keyboard and any connected gamepad drive P1 simultaneously.
-    // Disabled in 2-player co-op and online games to maintain per-player input isolation.
-    this.input.dualInput = !this.player2 && !this._onlineGameId;
-    // Sync XP speed boost flag to player (and P2 if active)
-    this.player.xpSpeedDisabled = !!this._worldAdvSettings.disableXpSpeedBoost;
-    if (this.player2) this.player2.xpSpeedDisabled = !!this._worldAdvSettings.disableXpSpeedBoost;
+    // Disabled in co-op/arena multiplayer and online games for per-player isolation.
+    this.input.dualInput = this.activePlayers().length <= 1 && !this._onlineGameId;
+    // Sync XP speed boost flag to all local players
+    for (const p of this.activePlayers()) p.xpSpeedDisabled = !!this._worldAdvSettings.disableXpSpeedBoost;
 
-    // ── P1 respawn timer (2P co-op) ────────────────────────
+    // ── P1 respawn timer (2P co-op / arena) ────────────────
     if (this._p1RespawnTimer > 0) {
       this._p1RespawnTimer--;
       if (this._p1RespawnTimer === 0) {
@@ -1739,31 +1797,43 @@ class Game {
     // Phase 17: Speed Runner post-update (boost multipliers, collision, ghost)
     if (this.gameMode === 'speedrunner') this._updateSpeedRunner();
 
-    // ── Player 2 update (Phase 12) ─────────────────────────
-    if (this.player2) {
-      if (this._p2RespawnTimer > 0) {
-        this._p2RespawnTimer--;
-        if (this._p2RespawnTimer === 0) {
-          const rx = this.isArena ? this._arenaSpawns.p2.x : this.player.x - BLOCK_SIZE;
-          const ry = this.isArena ? this._arenaSpawns.p2.y : this.player.y;
-          this.player2.respawnAt(rx, ry);
-          this._notify(this.isArena ? 'P2 respawned!' : 'Player 2 rejoins!', '#88AAFF', 120);
+    // ── Secondary players (P2-P4) update ───────────────────
+    // P1 is the full-featured keyboard/mouse player; P2-P4 are gamepad
+    // combatants (Phase 3B — arena; co-op keeps only P2). Movement/jump/
+    // attack via generic per-index input; combat handled in the weapon block.
+    const spawnKeys = ['p1', 'p2', 'p3', 'p4'];
+    for (let i = 1; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p) continue;
+      if (this._respawnTimers[i] > 0) {
+        this._respawnTimers[i]--;
+        if (this._respawnTimers[i] === 0) {
+          const sp = this._arenaSpawns[spawnKeys[i]] || { x: this.player.x - BLOCK_SIZE, y: this.player.y };
+          const rx = this.isArena ? sp.x : this.player.x - BLOCK_SIZE;
+          const ry = this.isArena ? sp.y : this.player.y;
+          p.respawnAt(rx, ry);
+          this._notify(this.isArena ? `P${i + 1} respawned!` : `Player ${i + 1} rejoins!`, '#88AAFF', 120);
         }
-      } else {
-        const p2input = {
-          isLeft:   () => this.input.isP2Left(),
-          isRight:  () => this.input.isP2Right(),
-          isJump:   () => this.input.isP2Jump(),
-          isCrouch: () => this.input.isP2Crouch(),
-          isRun:    () => false,
-          isAttack: () => this.input.isP2Attack(),
-          moveX:    () => this.input.moveX2(),
-        };
-        this._applyMovementConfig(this.player2);
-        this.player2.update(p2input, this.level);
-        this._resolvePlayerCollision(this.player, this.player2);
+        continue;
       }
+      const idx = i;
+      const pInput = {
+        isLeft:   () => this.input.pLeft(idx),
+        isRight:  () => this.input.pRight(idx),
+        isJump:   () => this.input.pJump(idx),
+        isCrouch: () => this.input.pCrouch(idx),
+        isRun:    () => false,
+        isAttack: () => this.input.pAttack(idx),
+        moveX:    () => this.input.pMoveX(idx),
+      };
+      this._applyMovementConfig(p);
+      p.update(pInput, this.level);
     }
+    // Resolve pairwise collisions among all live players so they don't overlap.
+    { const live = this.activePlayers();
+      for (let a = 0; a < live.length; a++)
+        for (let b = a + 1; b < live.length; b++)
+          this._resolvePlayerCollision(live[a], live[b]); }
 
     // ── Soul sand slowing ──────────────────────────────────
     const pFeetRow = Math.floor((this.player.y + this.player.height) / BLOCK_SIZE);
@@ -1796,30 +1866,32 @@ class Game {
       }
     }
 
-    // ── Player 2 physics hazards (Phase 12) ───────────────
-    if (this.player2 && this._p2RespawnTimer === 0) {
-      const p2FeetRow = Math.floor((this.player2.y + this.player2.height) / BLOCK_SIZE);
-      const p2FeetCol = Math.floor(this.player2.cx / BLOCK_SIZE);
-      const p2MidRow  = Math.floor(this.player2.cy / BLOCK_SIZE);
-      const p2MidCol  = Math.floor(this.player2.cx / BLOCK_SIZE);
+    // ── Secondary-player physics hazards (Phase 12/3B) ────
+    for (let i = 1; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p || this._respawnTimers[i] > 0) continue;
+      const feetRow = Math.floor((p.y + p.height) / BLOCK_SIZE);
+      const feetCol = Math.floor(p.cx / BLOCK_SIZE);
+      const midRow  = Math.floor(p.cy / BLOCK_SIZE);
+      const midCol  = Math.floor(p.cx / BLOCK_SIZE);
       // Soul sand
-      if (this.level.get(p2FeetRow, p2FeetCol) === BLOCK.SOUL_SAND ||
-          this.level.get(p2FeetRow - 1, p2FeetCol) === BLOCK.SOUL_SAND) {
-        this.player2.vx *= 0.6;
+      if (this.level.get(feetRow, feetCol) === BLOCK.SOUL_SAND ||
+          this.level.get(feetRow - 1, feetCol) === BLOCK.SOUL_SAND) {
+        p.vx *= 0.6;
       }
       // Lava
-      if (this.level.get(p2MidRow, p2MidCol) === BLOCK.LAVA && !this.player2.godMode && this.player2.hp > 0) {
-        this.player2.hp = 0;
-        this._triggerP2Death('Burned by lava');
+      if (this.level.get(midRow, midCol) === BLOCK.LAVA && !p.godMode && p.hp > 0) {
+        p.hp = 0;
+        this._triggerSecondaryDeath(i, 'Burned by lava');
       }
       // Void
-      if (!this.player2.godMode && this.player2.hp > 0) {
-        if (p2MidCol >= BIOME_END_START && p2FeetRow > END_FLOOR_ROW + 1) {
-          this.player2.hp = 0;
-          this._triggerP2Death('Fell into the void');
-        } else if (p2MidCol >= 480 && p2MidCol <= 499 && p2FeetRow > 35) {
-          this.player2.hp = 0;
-          this._triggerP2Death('Fell into the void');
+      if (!p.godMode && p.hp > 0) {
+        if (midCol >= BIOME_END_START && feetRow > END_FLOOR_ROW + 1) {
+          p.hp = 0;
+          this._triggerSecondaryDeath(i, 'Fell into the void');
+        } else if (midCol >= 480 && midCol <= 499 && feetRow > 35) {
+          p.hp = 0;
+          this._triggerSecondaryDeath(i, 'Fell into the void');
         }
       }
     }
@@ -1911,54 +1983,56 @@ class Game {
       }
     }
 
-    // ── Player 2 weapon (bow or melee) ────────────────────
-    if (this.player2 && this._p2RespawnTimer === 0) {
-      const p2AttHeld = this.input.isP2Attack();
-      if (this.player2.bow) {
-        // ── P2 Bow ──
-        // Free-aim with the P2 right stick (atan2 of the stick vector) when it's
-        // deflected; hold the last angle while it's centred so aim stays put during
-        // a draw. Keyboard P2 falls back to snap-aim (facing / up / down). The angle
-        // is stored on the player so the on-screen reticle + the fired arrow match.
-        const p2gp   = this.input._p2gp();
-        const aimMag = Math.hypot(p2gp.aimX, p2gp.aimY);
-        if (this.input.p2GpSlot >= 0) {
-          if (aimMag > 0.15) this.player2._aimAngle = Math.atan2(p2gp.aimY, p2gp.aimX);
-          else if (this.player2._aimAngle == null) this.player2._aimAngle = this.player2.facing > 0 ? 0 : Math.PI;
+    // ── Secondary-player weapon (bow or melee) — P2-P4 (Phase 12/3B) ──
+    for (let i = 1; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p || this._respawnTimers[i] > 0) continue;
+      const owner   = Game.ownerId(i);
+      const attHeld = this.input.pAttack(i);
+      if (p.bow) {
+        // Free-aim with the right stick (atan2 of the stick vector) when it's
+        // deflected; hold the last angle while it's centred so aim stays put
+        // during a draw. Keyboard P2 falls back to snap-aim. Angle is stored on
+        // the player so the on-screen reticle + the fired arrow match.
+        const gp     = this.input.pGp(i);
+        const aimMag = Math.hypot(gp.aimX, gp.aimY);
+        if (this.input.pGpSlot(i) >= 0) {
+          if (aimMag > 0.15) p._aimAngle = Math.atan2(gp.aimY, gp.aimX);
+          else if (p._aimAngle == null) p._aimAngle = p.facing > 0 ? 0 : Math.PI;
         } else {
-          this.player2._aimAngle = this._snapAimAngle(this.player2, this.input.isP2Jump(), this.input.isP2Crouch());
+          p._aimAngle = this._snapAimAngle(p, this.input.pJump(i), this.input.pCrouch(i));
         }
-        const hasArrows = this._worldAdvSettings.unlimitedArrows || this.player2.countItem(BLOCK.ARROW) > 0;
-        if (p2AttHeld && hasArrows) {
-          this.player2.bowDrawing   = true;
-          this.player2.drawProgress = Math.min(1, this.player2.drawProgress + (1 / BOW_CHARGE_FRAMES) * (this.player2._fireRateMult || 1));
-        } else if (p2AttHeld && !hasArrows) {
-          this.player2.bowDrawing   = false;
-          this.player2.drawProgress = 0;
-        } else if (this.player2.bowDrawing) {
-          const charge = this.player2.drawProgress;
+        const hasArrows = this._worldAdvSettings.unlimitedArrows || p.countItem(BLOCK.ARROW) > 0;
+        if (attHeld && hasArrows) {
+          p.bowDrawing   = true;
+          p.drawProgress = Math.min(1, p.drawProgress + (1 / BOW_CHARGE_FRAMES) * (p._fireRateMult || 1));
+        } else if (attHeld && !hasArrows) {
+          p.bowDrawing   = false;
+          p.drawProgress = 0;
+        } else if (p.bowDrawing) {
+          const charge = p.drawProgress;
           const speed  = BOW_MIN_SPEED + (BOW_MAX_SPEED - BOW_MIN_SPEED) * charge;
-          const angle  = this.player2._aimAngle;
+          const angle  = p._aimAngle;
           this.mobManager.addPlayerArrow(
-            this.player2.cx, this.player2.cy,
+            p.cx, p.cy,
             Math.cos(angle) * speed, Math.sin(angle) * speed,
             PLAYER_ARROW_DAMAGE,
-            'p2'
+            owner
           );
           this._playSound('sounds/bow-fire.mp3');
-          if (!this._worldAdvSettings.unlimitedArrows) this._consumeArrowP2();
-          this.player2.bowDrawing   = false;
-          this.player2.drawProgress = 0;
+          if (!this._worldAdvSettings.unlimitedArrows) this._consumeArrowForPlayer(p);
+          p.bowDrawing   = false;
+          p.drawProgress = 0;
         } else {
-          this.player2.bowDrawing   = false;
-          this.player2.drawProgress = 0;
+          p.bowDrawing   = false;
+          p.drawProgress = 0;
         }
       } else {
-        // ── P2 Melee ──
-        if (p2AttHeld && this.player2.attackCooldown === 0) {
-          this.mobManager.playerAttack(this.player2, 'p2');
-          this.player2.attackCooldown = ATTACK_COOLDOWN;
-          this.player2.swingTimer     = 15;
+        // ── Melee ──
+        if (attHeld && p.attackCooldown === 0) {
+          this.mobManager.playerAttack(p, owner);
+          p.attackCooldown = ATTACK_COOLDOWN;
+          p.swingTimer     = 15;
           this._playSound('sounds/attack-sword.mp3');
         }
       }
@@ -2010,8 +2084,11 @@ class Game {
         this.sandbox.togglePalette();
       }
     }
-    if (this.player2 && this._p2RespawnTimer === 0 && this.input.p2JustDown('place')) {
-      this._executeContextAction(this.player2);
+    for (let i = 1; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (p && this._respawnTimers[i] === 0 && this.input.pJustDown(i, 'place')) {
+        this._executeContextAction(p);
+      }
     }
     // God mode cheat: hold all 4 face buttons + press Up
     {
@@ -2508,7 +2585,7 @@ class Game {
       }
       const hpBefore = this.player.hp;
       if (!_onlineNonHost) {
-        this.mobManager.update(this.player, this.level, this.player2 || null);
+        this.mobManager.update(this.player, this.level, this.player2 || null, this.players.slice(2).filter(Boolean));
       } else {
         // Joiners skip mob AI but still need item physics so drops settle and stay visible.
         this.mobManager.droppedItems = this.mobManager.droppedItems.filter(item => {
@@ -2560,58 +2637,57 @@ class Game {
         this._checkDeath();
       }
 
-      // ── Player 2 mob damage pass (Phase 12) ───────────────
-      if (this.player2 && this._p2RespawnTimer === 0) {
-        const p2HpBefore = this.player2.hp;
+      // ── Secondary-player mob damage pass (Phase 12/3B) — P2-P4 ──
+      for (let pi = 1; pi < this.players.length; pi++) {
+        const sp = this.players[pi];
+        if (!sp || this._respawnTimers[pi] > 0) continue;
+        const spHpBefore = sp.hp;
         for (const mob of this.mobManager.mobs) {
           if (!mob.alive || mob.iFrames > 0) continue;
           // Contact damage
           if (mob.attackTimer !== undefined) {
-            if (mob.attackTimer === 0 && mob._touchesPlayer(this.player2)) {
-              this.player2.takeDamage(mob.meleeDamage, Math.sign(this.player2.cx - mob.cx));
+            if (mob.attackTimer === 0 && mob._touchesPlayer(sp)) {
+              sp.takeDamage(mob.meleeDamage, Math.sign(sp.cx - mob.cx));
               mob.attackTimer = MOB_ATTACK_RATE;
             }
           } else {
             // Mobs without attackTimer (CaveSpider) — use iFrames gate only
-            if (this.player2.iFrames === 0 && mob._touchesPlayer(this.player2)) {
-              this.player2.takeDamage(mob.meleeDamage, Math.sign(this.player2.cx - mob.cx));
+            if (sp.iFrames === 0 && mob._touchesPlayer(sp)) {
+              sp.takeDamage(mob.meleeDamage, Math.sign(sp.cx - mob.cx));
             }
           }
         }
-        // Arrow damage to P2
+        // Enemy arrow damage
         for (const arr of this.mobManager.arrows) {
           if (!arr.active) continue;
           const ax = arr.x, ay = arr.y;
-          if (ax >= this.player2.x && ax <= this.player2.x + this.player2.width &&
-              ay >= this.player2.y && ay <= this.player2.y + this.player2.height) {
-            this.player2.takeDamage(2, Math.sign(arr.vx));
+          if (ax >= sp.x && ax <= sp.x + sp.width &&
+              ay >= sp.y && ay <= sp.y + sp.height) {
+            sp.takeDamage(2, Math.sign(arr.vx));
             arr.active = false;
           }
         }
-        const p2DmgTaken = p2HpBefore - this.player2.hp;
-        if (p2DmgTaken > 0) {
-          this.mobManager.addPlayerDamageNum(this.player2, p2DmgTaken);
+        const spDmgTaken = spHpBefore - sp.hp;
+        if (spDmgTaken > 0) {
+          this.mobManager.addPlayerDamageNum(sp, spDmgTaken);
           this._playSound('sounds/player-damaged.mp3');
         }
-        // Death check runs EVERY frame, not only when this block dealt damage:
-        // mob-melee (mob.update on its nearest target) and enemy-arrow damage are
-        // applied inside mobManager.update() above — before p2HpBefore is captured
-        // here — so gating on p2DmgTaken left P2 stuck alive at 0 HP. That also
-        // dropped P2 from _nearestPlayer(), so mobs stopped tracking it.
-        if (this.player2.hp <= 0 && !this.player2.godMode) this._triggerP2Death('Defeated');
-        // P2 item collection
-        const p2Collected = this.mobManager.collectDropsNear(this.player2);
-        for (const { itemKey, amount } of p2Collected) {
+        // Death check runs EVERY frame (mob-melee + enemy-arrow + PvP damage are
+        // applied inside mobManager.update() before spHpBefore is captured here).
+        if (sp.hp <= 0 && !sp.godMode) this._triggerSecondaryDeath(pi, 'Defeated');
+        // Item collection
+        const spCollected = this.mobManager.collectDropsNear(sp);
+        for (const { itemKey, amount } of spCollected) {
           if (typeof itemKey === 'string') {
             if (this.gameMode === 'platformer' && (ARMOR_DATA[itemKey] || TOOL_DATA[itemKey])) {
-              const dx = this.player2.x + this.player2.width / 2;
-              const dy = this.player2.y;
-              if (!this._platEquipItem(this.player2, itemKey, dx, dy)) {
+              const dx = sp.x + sp.width / 2;
+              const dy = sp.y;
+              if (!this._platEquipItem(sp, itemKey, dx, dy)) {
                 this.mobManager.dropItems([{ x: dx, y: dy, itemKey, amount: 1, pickupDelay: 90 }]);
               }
             }
           } else {
-            for (let i = 0; i < amount; i++) this.player2.addBlock(itemKey);
+            for (let k = 0; k < amount; k++) sp.addBlock(itemKey);
           }
         }
       }
@@ -2930,7 +3006,7 @@ class Game {
     this._updateWither();
 
     // ── Camera ─────────────────────────────────────────────
-    if (this.player2) this.camera.followMidpoint(this.player, this.player2);
+    if (this.activePlayers().length >= 2) this.camera.followPlayers(this.activePlayers());
     else if (this.gameMode === 'speedrunner' && this._sr) this._srFollowCamera();
     else              this.camera.follow(this.player);
 
@@ -3884,26 +3960,33 @@ class Game {
     this._applyTwoPlayerMode(this._worldAdvSettings.twoPlayerMode, true);
   }
 
-  _triggerP2Death(cause = 'Player 2 died') {
-    if (this._p2RespawnTimer > 0) return;
-    // Death effect (body-part scatter) + cancel any P2 bow draw (Phase 3A.3).
-    if (this.player2) { this._spawnDeathParts(this.player2); this.player2.bowDrawing = false; this.player2.drawProgress = 0; }
-    // Arena: unlimited respawns, no elimination
+  // Back-compat wrapper — P2 death routes through the generic handler.
+  _triggerP2Death(cause = 'Player 2 died') { this._triggerSecondaryDeath(1, cause); }
+
+  // Death for a secondary player (slot i ≥ 1). Arena = unlimited respawns;
+  // non-arena co-op keeps the lives / drop-to-solo semantics (P2 only).
+  _triggerSecondaryDeath(i, cause = 'Player died') {
+    if (this._respawnTimers[i] > 0) return;
+    const p = this.players[i];
+    if (!p) return;
+    // Death effect (body-part scatter) + cancel any bow draw (Phase 3A.3).
+    this._spawnDeathParts(p); p.bowDrawing = false; p.drawProgress = 0;
+    // Arena: unlimited respawns, no elimination.
     if (this.isArena) {
-      this._p2RespawnTimer = this.arenaRespawnFrames;
-      this.player2.hp = this.player2.maxHp;
+      this._respawnTimers[i] = this.arenaRespawnFrames;
+      p.hp = p.maxHp;
       return;
     }
-    this.player2.lives = Math.max(0, (this.player2.lives ?? 3) - 1);
-    this._notify(`P2: ${cause}`, '#FF8888', 150);
-    if (this.player2.lives <= 0) {
-      // P2 out of lives — remove player2 from co-op, solo continues
-      this._notify('P2 Game Over — P1 continues solo!', '#FF4444', 240);
-      this.player2 = null;
-      this._p2RespawnTimer = 0;
+    // Non-arena co-op (P2 only): lives → drop to solo when exhausted.
+    p.lives = Math.max(0, (p.lives ?? 3) - 1);
+    this._notify(`P${i + 1}: ${cause}`, '#FF8888', 150);
+    if (p.lives <= 0) {
+      this._notify(`P${i + 1} Game Over — P1 continues solo!`, '#FF4444', 240);
+      this.players[i] = null;
+      this._respawnTimers[i] = 0;
       return;
     }
-    this._p2RespawnTimer = 180; // 3 s at 60 fps
+    this._respawnTimers[i] = 180; // 3 s at 60 fps
   }
 
   // Push per-world movement settings (gravity, jump height, air jump, sprint)
@@ -3935,6 +4018,34 @@ class Game {
     p2.x += dir * push;
   }
 
+  // ── Phase 3B player-model accessors ──────────────────────────
+  // Slot index → player (or null). Slots: 0=P1, 1=P2, 2=P3, 3=P4.
+  getPlayer(i) { return this.players[i] || null; }
+
+  // All present players (skips empty/absent slots), in slot order. Use this to
+  // iterate for input/camera/rendering/scoring instead of touching players[]
+  // directly (which may contain nulls for absent slots).
+  activePlayers() { return this.players.filter(Boolean); }
+
+  // Owner id ('p1'..'p4') for a slot index — matches arena score keys.
+  static ownerId(i) { return 'p' + (i + 1); }
+
+  // Position the camera: centroid-follow for 2+ players, single-follow for 1.
+  _followCamera() {
+    const live = this.activePlayers();
+    if (live.length >= 2) this.camera.followPlayers(live);
+    else                  this.camera.follow(this.player);
+  }
+
+  // Local-player count (1-4). Arena honors playerCount; other modes stay 1-2
+  // via the legacy twoPlayerMode flag. Clamped defensively.
+  _numPlayers() {
+    const aws = this._worldAdvSettings;
+    let n = this.isArena ? (aws.playerCount || (aws.twoPlayerMode ? 2 : 1))
+                         : (aws.twoPlayerMode ? 2 : 1);
+    return Math.max(1, Math.min(4, n | 0));
+  }
+
   _applyTwoPlayerMode(enabled, silent = false) {
     this._worldAdvSettings.twoPlayerMode = enabled;
     if (enabled && !this.player2) {
@@ -3958,8 +4069,8 @@ class Game {
     }
   }
 
-  _drawP2HUD(ctx) {
-    const p2 = this.player2;
+  // Secondary-player HUD (P2-P4), stacked at top-right via yOff (Phase 12/3B).
+  _drawSecondaryHUD(ctx, p2, pIdx = 1, yOff = 0) {
     if (!p2) return;
     ctx.save();
 
@@ -3967,7 +4078,7 @@ class Game {
     const bw = 180, bh = 14;
     const barR = CANVAS_W - 10;   // right edge of bar
     const bx2  = barR - bw;        // left edge of bar = 610
-    const by2  = 10;
+    const by2  = 10 + yOff;
 
     // Background pill (extends left for label area, mirrors P1's rightward extension)
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
@@ -4004,10 +4115,10 @@ class Game {
     ctx.font = 'bold 10px Courier New';
     ctx.fillText(`${p2.hp}/${p2.maxHp}`, bx2 - 18, by2 + 11);
 
-    // "P2" label just left of HP text
+    // Player label just left of HP text
     ctx.fillStyle = '#88AAFF';
     ctx.font = 'bold 9px Courier New';
-    ctx.fillText('P2', bx2 - 52, by2 + 11);
+    ctx.fillText('P' + (pIdx + 1), bx2 - 52, by2 + 11);
 
     // 2P lives: small head icons to the LEFT of P2 HP bar (left of label area)
     {
@@ -4032,7 +4143,7 @@ class Game {
     }
 
     // ── XP bar (right-aligned below HP bar) ─────────────────
-    const xpW = 120, xpX2 = CANVAS_W - 10 - xpW, xpY2 = 30;
+    const xpW = 120, xpX2 = CANVAS_W - 10 - xpW, xpY2 = 30 + yOff;
     const xpFrac  = p2.xp / p2.maxXp;
     const xpMaxed = p2.xp >= p2.maxXp;
 
@@ -4063,7 +4174,7 @@ class Game {
     }
 
     // Respawn overlay covering both bars
-    if (this._p2RespawnTimer > 0) {
+    if (this._respawnTimers[pIdx] > 0) {
       ctx.fillStyle = 'rgba(0,0,0,0.65)';
       _roundRect(ctx, bx2 - 46, by2 - 2, bw + 48, bh + 4, 4); ctx.fill();
       ctx.fillStyle = 'rgba(0,0,0,0.65)';
@@ -4071,11 +4182,11 @@ class Game {
       ctx.fillStyle = '#FF8888';
       ctx.font = 'bold 10px Courier New';
       ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-      ctx.fillText(`Respawn ${Math.ceil(this._p2RespawnTimer / 60)}s`, CANVAS_W - 10, by2 + bh / 2);
+      ctx.fillText(`Respawn ${Math.ceil(this._respawnTimers[pIdx] / 60)}s`, CANVAS_W - 10, by2 + bh / 2);
     }
 
-    // ── Compact 9-slot hotbar (right-aligned under XP bar) ──
-    this._drawCompactHotbar(ctx, p2, true);
+    // ── Compact 9-slot hotbar (right-aligned under XP bar) — P2 only ──
+    if (pIdx === 1) this._drawCompactHotbar(ctx, p2, true);
 
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.restore();
@@ -4895,25 +5006,29 @@ class Game {
       ctx.restore();
     }
 
-    // Player 2 bow aim reticle — the P2 right stick moves this target. Drawn in
-    // world space (anchored a fixed distance from P2 along its aim angle) so it
-    // tracks the camera + zoom exactly like other world objects.
-    if (this.player2 && this.player2.bow && this.player2._aimAngle != null && !this.inventoryOpen) {
-      const R  = 64;
-      const rx = this.player2.cx + Math.cos(this.player2._aimAngle) * R - this.camera.x;
-      const ry = this.player2.cy + Math.sin(this.player2._aimAngle) * R - this.camera.y;
-      const r  = 8;
-      ctx.save();
-      ctx.strokeStyle = this.player2.bowDrawing ? 'rgba(120,180,255,0.95)' : 'rgba(120,180,255,0.6)';
-      ctx.lineWidth   = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(rx - r, ry); ctx.lineTo(rx - 3, ry);
-      ctx.moveTo(rx + 3, ry); ctx.lineTo(rx + r, ry);
-      ctx.moveTo(rx, ry - r); ctx.lineTo(rx, ry - 3);
-      ctx.moveTo(rx, ry + 3); ctx.lineTo(rx, ry + r);
-      ctx.stroke();
-      ctx.beginPath(); ctx.arc(rx, ry, 3, 0, Math.PI * 2); ctx.stroke();
-      ctx.restore();
+    // Secondary-player (P2-P4) bow aim reticles — the right stick moves each
+    // target. Drawn in world space (anchored a fixed distance along the aim
+    // angle) so they track the camera + zoom like other world objects.
+    if (!this.inventoryOpen) {
+      for (let i = 1; i < this.players.length; i++) {
+        const sp = this.players[i];
+        if (!sp || !sp.bow || sp._aimAngle == null || this._respawnTimers[i] > 0) continue;
+        const R  = 64;
+        const rx = sp.cx + Math.cos(sp._aimAngle) * R - this.camera.x;
+        const ry = sp.cy + Math.sin(sp._aimAngle) * R - this.camera.y;
+        const r  = 8;
+        ctx.save();
+        ctx.strokeStyle = sp.bowDrawing ? 'rgba(120,180,255,0.95)' : 'rgba(120,180,255,0.6)';
+        ctx.lineWidth   = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(rx - r, ry); ctx.lineTo(rx - 3, ry);
+        ctx.moveTo(rx + 3, ry); ctx.lineTo(rx + r, ry);
+        ctx.moveTo(rx, ry - r); ctx.lineTo(rx, ry - 3);
+        ctx.moveTo(rx, ry + 3); ctx.lineTo(rx, ry + r);
+        ctx.stroke();
+        ctx.beginPath(); ctx.arc(rx, ry, 3, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
     }
 
     // Draw collectible placed items (platformer + normal mode)
@@ -4948,25 +5063,35 @@ class Game {
     // Phase 16: Draw other multiplayer players (behind P2 labels)
     if (window.multiplayerManager?.isConnected)
       window.multiplayerManager.drawOtherPlayers(ctx, this.camera);
-    // Draw P2 + player labels when 2-player mode active (Phase 12)
-    if (this.player2) {
-      if (this._p2RespawnTimer === 0) {
-        this.player2.draw(ctx, this.camera);
+    // Draw secondary players (P2-P4) + per-player labels when multiplayer active
+    // (Phase 12/3B). Per-player name-tag colors distinguish up to 4 players.
+    if (this.activePlayers().length >= 2) {
+      const LABEL_COLORS = ['#88AAFF', '#FF8888', '#88DD88', '#FFCC55']; // P1-P4
+      let respawnStackY = CANVAS_H / 2 + 40;
+      for (let i = 1; i < this.players.length; i++) {
+        const sp = this.players[i];
+        if (sp && this._respawnTimers[i] === 0) sp.draw(ctx, this.camera);
       }
-      // P1 label
-      const p1s = this.camera.toScreen(this.player.x + this.player.width / 2, this.player.y - 6);
       ctx.save();
       ctx.font = 'bold 9px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-      ctx.fillStyle = '#88AAFF'; ctx.fillText('P1', p1s.x, p1s.y);
-      // P2 label
-      if (this._p2RespawnTimer === 0) {
-        const p2s = this.camera.toScreen(this.player2.x + this.player2.width / 2, this.player2.y - 6);
-        ctx.fillStyle = '#FF8888'; ctx.fillText('P2', p2s.x, p2s.y);
-      } else {
-        // Respawn countdown
-        const sec = Math.ceil(this._p2RespawnTimer / 60);
-        ctx.font = 'bold 11px Courier New'; ctx.fillStyle = '#FF8888'; ctx.textAlign = 'center';
-        ctx.fillText(`P2 respawn: ${sec}s`, CANVAS_W / 2, CANVAS_H / 2 + 40);
+      // P1 label
+      const p1s = this.camera.toScreen(this.player.x + this.player.width / 2, this.player.y - 6);
+      ctx.fillStyle = LABEL_COLORS[0]; ctx.fillText('P1', p1s.x, p1s.y);
+      // Secondary labels / respawn countdowns
+      for (let i = 1; i < this.players.length; i++) {
+        const sp = this.players[i];
+        if (!sp) continue;
+        ctx.textAlign = 'center';
+        if (this._respawnTimers[i] === 0) {
+          ctx.font = 'bold 9px Courier New';
+          const s = this.camera.toScreen(sp.x + sp.width / 2, sp.y - 6);
+          ctx.fillStyle = LABEL_COLORS[i] || '#FFFFFF'; ctx.fillText('P' + (i + 1), s.x, s.y);
+        } else {
+          const sec = Math.ceil(this._respawnTimers[i] / 60);
+          ctx.font = 'bold 11px Courier New'; ctx.fillStyle = LABEL_COLORS[i] || '#FFFFFF';
+          ctx.fillText(`P${i + 1} respawn: ${sec}s`, CANVAS_W / 2, respawnStackY);
+          respawnStackY += 18;
+        }
       }
       ctx.restore();
     }
@@ -7310,6 +7435,21 @@ class Game {
   _consumeArrow() {
     // Remove 1 arrow from hotbar first, then inventory
     for (const slots of [this.player.hotbar, this.player.inventory]) {
+      for (let i = 0; i < slots.length; i++) {
+        const s = slots[i];
+        if (s && s.type === BLOCK.ARROW && s.count > 0) {
+          s.count--;
+          if (s.count === 0) slots[i] = null;
+          return;
+        }
+      }
+    }
+  }
+
+  // Consume one arrow from any player's hotbar/inventory (Phase 3B).
+  _consumeArrowForPlayer(p) {
+    if (!p) return;
+    for (const slots of [p.hotbar, p.inventory]) {
       for (let i = 0; i < slots.length; i++) {
         const s = slots[i];
         if (s && s.type === BLOCK.ARROW && s.count > 0) {
@@ -10143,7 +10283,13 @@ class Game {
     this._drawHelpButton(ctx);
     this._drawControllerStatus(ctx);
     this._drawContextPrompt(ctx);
-    if (this.player2) this._drawP2HUD(ctx);
+    { let yOff = 0;
+      for (let i = 1; i < this.players.length; i++) {
+        const p = this.players[i];
+        if (!p) continue;
+        this._drawSecondaryHUD(ctx, p, i, yOff);
+        yOff += 52;
+      } }
     if (this.isArena) this._drawArenaHUD(ctx);
     ctx.restore();
   }
@@ -10235,8 +10381,19 @@ class Game {
     if (mode && typeof ARENA_MODES !== 'undefined') {
       ctx.font = 'bold 26px Arial';
       ctx.fillText(ARENA_MODES.label(mode), CANVAS_W / 2, CANVAS_H / 2 - 20);
-      ctx.font = 'bold 22px Arial';
-      ctx.fillText(`Score: ${ARENA_MODES.score(this)}`, CANVAS_W / 2, CANVAS_H / 2 + 16);
+      // Deathmatch: name the winning player + show every player's eliminations.
+      const winTxt = ARENA_MODES.winnerText ? ARENA_MODES.winnerText(this) : null;
+      if (winTxt) {
+        ctx.fillStyle = '#FFD700'; ctx.font = 'bold 24px Arial';
+        ctx.fillText(winTxt, CANVAS_W / 2, CANVAS_H / 2 + 12);
+        ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 16px Arial';
+        const s = this.arenaState.scores;
+        const line = this.activePlayers().map((p, i) => `P${i + 1}: ${s['p' + (i + 1)] || 0}`).join('    ');
+        ctx.fillText(line, CANVAS_W / 2, CANVAS_H / 2 + 40);
+      } else {
+        ctx.font = 'bold 22px Arial';
+        ctx.fillText(`Score: ${ARENA_MODES.score(this)}`, CANVAS_W / 2, CANVAS_H / 2 + 16);
+      }
     } else if (this.player2) {
       const k2 = this.arenaState.scores.p2 || 0;
       const winner = k1 === k2 ? "It's a tie!" : (k1 > k2 ? 'Player 1 wins!' : 'Player 2 wins!');

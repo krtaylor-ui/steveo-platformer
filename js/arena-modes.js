@@ -20,8 +20,9 @@ const ARENA_MODES = {
     COLLECT_EMERALDS: { label: 'Collect Emeralds', desc: 'Grab every emerald in the arena.' },
     KING_OF_HILL:     { label: 'King of the Hill', desc: 'Hold the hill to win.' },
     SURVIVAL_WAVES:   { label: 'Survival Waves',  desc: 'Escalating waves — survive as long as you can.' },
-    // Reserved — implemented in later phases (need PvP / teams). Shown greyed in pickers.
-    DEATHMATCH:       { label: 'Deathmatch',       desc: 'Most player eliminations wins. (Coming soon)', comingSoon: true },
+    // Phase 3B — PvP deathmatch (local 1-4 players; friendly fire forced on).
+    DEATHMATCH:       { label: 'Deathmatch',       desc: 'Most player eliminations wins.' },
+    // Reserved — needs teams (Phase 3C). Shown greyed in pickers.
     CAPTURE_FLAG:     { label: 'Capture the Flag', desc: 'Capture the enemy flag. (Coming soon)',        comingSoon: true },
   },
 
@@ -68,6 +69,10 @@ const ARENA_MODES = {
       ms.totalWaves = Math.max(1, Math.min(15, (game.arenaConfig && game.arenaConfig.survivalWaveCount) || this.SURVIVAL_DEFAULT.length));
       ms.betweenTimer = 90; // short delay before wave 1 (lets the countdown clear)
       ms.cleared = false;    // true once all waves are survived (win)
+    }
+    if (modeKey === 'DEATHMATCH') {
+      // First to killTarget eliminations wins (or most kills when the timer ends).
+      ms.killTarget = Math.max(1, Math.min(50, (game.arenaConfig && game.arenaConfig.killTarget) || 10));
     }
     game._arenaMode = ms;
   },
@@ -133,6 +138,21 @@ const ARENA_MODES = {
     return { x: col * BLOCK_SIZE + BLOCK_SIZE / 2, y: r * BLOCK_SIZE + BLOCK_SIZE };
   },
 
+  // Owner ids ('p1'..) for the players present this match (Phase 3B).
+  _ownerIds(game) {
+    const n = (typeof game._numPlayers === 'function') ? game._numPlayers() : (game.player2 ? 2 : 1);
+    return Array.from({ length: n }, (_, i) => 'p' + (i + 1));
+  },
+  // Highest / who-leads among per-player deathmatch scores.
+  _leader(game) {
+    const s = game.arenaState.scores;
+    let bestId = 'p1', best = -1;
+    for (const id of this._ownerIds(game)) {
+      if ((s[id] || 0) > best) { best = s[id] || 0; bestId = id; }
+    }
+    return { id: bestId, score: best };
+  },
+
   // Per-frame win-condition check; sets arenaState.phase='ended' when met.
   update(game) {
     const ms = game._arenaMode;
@@ -174,6 +194,12 @@ const ARENA_MODES = {
         }
         break;
       }
+      case 'DEATHMATCH': {
+        // First to killTarget eliminations wins; otherwise the timer ends it and
+        // the leader (most eliminations) takes it (handled by score()/end screen).
+        if (this._leader(game).score >= ms.killTarget) a.phase = 'ended';
+        break;
+      }
       case 'MOB_HUNTER':
       default:
         break; // timer-bound; the caller ends on timeUp
@@ -192,6 +218,8 @@ const ARENA_MODES = {
         return Math.round(Math.max(ms.holdP1 || 0, ms.holdP2 || 0) / 60);
       case 'SURVIVAL_WAVES':
         return kills + (ms.wave || 0) * 50 + (ms.cleared ? 100 : 0); // +50/wave, +1/kill, +100 clear-all
+      case 'DEATHMATCH':
+        return this._leader(game).score; // winner's elimination count
       default:
         return kills; // MOB_HUNTER
     }
@@ -210,9 +238,21 @@ const ARENA_MODES = {
       }
       case 'SURVIVAL_WAVES':
         return `Wave ${Math.max(1, ms.wave)}/${ms.totalWaves || '?'}   Kills: ${game.arenaState.scores.p1 || 0}`;
+      case 'DEATHMATCH': {
+        const s = game.arenaState.scores;
+        const parts = this._ownerIds(game).map(id => `${id.toUpperCase()}:${s[id] || 0}`);
+        return `${parts.join('  ')}   (to ${ms.killTarget})`;
+      }
       default:
         return `Kills: ${game.arenaState.scores.p1 || 0}`;
     }
+  },
+
+  // Winner label for the end screen (Deathmatch → which player). Others: generic.
+  winnerText(game) {
+    const ms = game._arenaMode;
+    if (ms && ms.key === 'DEATHMATCH') return this._leader(game).id.toUpperCase() + ' wins!';
+    return null;
   },
 
   label(key) { return this.DEFS[key] ? this.DEFS[key].label : (key || 'Deathmatch'); },

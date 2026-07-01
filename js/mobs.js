@@ -622,7 +622,8 @@ class Arrow {
     this.age          = 0;
   }
 
-  update(player, level, player2 = null) {
+  // players: array of live players (P1-P4) or a single player (normalized).
+  update(players, level) {
     if (!this.alive) return;
     this.age++;
     if (this.age > 280) { this.alive = false; return; }
@@ -638,9 +639,10 @@ class Arrow {
 
     if (this.isPlayerArrow) return; // deflected/player arrows don't hurt player
 
-    // Player collision — damage the first live player the arrow overlaps (P1 or,
-    // in 2-player co-op/arena, P2). The arrow stops (or deflects) on either hit.
-    for (const p of (player2 ? [player, player2] : [player])) {
+    // Player collision — damage the first live player the arrow overlaps (any of
+    // P1-P4). The arrow stops (or deflects) on either hit.
+    const arr = Array.isArray(players) ? players : (players ? [players] : []);
+    for (const p of arr) {
       if (!p || p.hp <= 0) continue;
       if (this.x > p.x && this.x < p.x + p.width &&
           this.y > p.y && this.y < p.y + p.height) {
@@ -1544,24 +1546,36 @@ class MobManager {
     this.playerArrows.push(a);
   }
 
-  // Returns the player (p1 or p2) closest to (cx, cy).
-  // If p2 is null or dead (hp <= 0 with no iframes), returns p1 unconditionally.
+  // Owner-tagged list of live local players for PvP hit detection (Phase 3B).
+  // Each player carries `_ownerId` ('p1'..'p4', set by the game when arming);
+  // fall back to positional ids for safety. Online PvP is deferred (3D).
+  _pvpPlayerList(allPlayers) {
+    return (allPlayers || []).map((p, k) => [p._ownerId || ('p' + (k + 1)), p]);
+  }
+
+  // Returns the closest live player to (cx, cy) among all local players (P1-P4)
+  // + online players. Falls back to the passed p1/p2 if the target list isn't
+  // set yet. Dead players (hp <= 0) are skipped unless none are alive.
   _nearestPlayer(cx, cy, p1, p2) {
-    let best = p1, bestD = Math.hypot(p1.cx - cx, p1.cy - cy);
-    if (p2 && p2.hp > 0) {
-      const d = Math.hypot(p2.cx - cx, p2.cy - cy);
-      if (d < bestD) { best = p2; bestD = d; }
-    }
-    for (const op of this.onlinePlayers) {
-      const d = Math.hypot(op.cx - cx, op.cy - cy);
-      if (d < bestD) { best = op; bestD = d; }
+    const locals = (this._targetPlayers && this._targetPlayers.length)
+      ? this._targetPlayers
+      : [p1, p2].filter(p => p);
+    let best = p1 || locals[0], bestD = Infinity;
+    for (const p of [...locals, ...this.onlinePlayers]) {
+      if (!p || p.hp <= 0) continue;
+      const d = Math.hypot(p.cx - cx, p.cy - cy);
+      if (d < bestD) { best = p; bestD = d; }
     }
     return best;
   }
 
-  // Called from game._update; returns amount of damage dealt to player this frame
-  update(player, level, player2 = null) {
+  // Called from game._update; returns amount of damage dealt to player this frame.
+  // Phase 3B — extraPlayers carries P3/P4 so targeting/arrows/PvP see all players.
+  update(player, level, player2 = null, extraPlayers = null) {
     const hpBefore = player.hp;
+    // All live local players this frame (used for targeting + enemy arrows + PvP).
+    const allPlayers = [player, player2, ...(extraPlayers || [])].filter(p => p);
+    this._targetPlayers = allPlayers;
 
     // Spawn point respawn
     this._updateSpawnPoints(player, level);
@@ -1595,7 +1609,7 @@ class MobManager {
     }
 
     // Skeleton/enemy arrows
-    this.arrows = this.arrows.filter(a => { a.update(player, level, player2); return a.alive; });
+    this.arrows = this.arrows.filter(a => { a.update(allPlayers, level); return a.alive; });
 
     // Deflected enemy arrows — check mob collisions
     for (const a of this.arrows) {
@@ -1614,7 +1628,11 @@ class MobManager {
       }
     }
 
-    // Player arrows — check mob collisions
+    // Player arrows — check mob collisions, then (PvP only) player collisions.
+    // Phase 3B: when this.pvpEnabled, a player arrow that misses every mob can
+    // damage any OTHER player (owner-tagged 'p1'/'p2'/...). OFF by default so
+    // co-op is unaffected. Tagged list built once; carries forward to N players.
+    const pvpTargets = this.pvpEnabled ? this._pvpPlayerList(allPlayers) : null;
     for (const pa of this.playerArrows) {
       pa.update(player, level);
       if (!pa.alive) continue;
@@ -1629,6 +1647,26 @@ class MobManager {
           if (!mob.alive) this.onKill?.(pa.owner || 'p1', mob); // arena scoring
           pa.alive = false;
           break;
+        }
+      }
+      // PvP: an un-consumed player arrow can strike a player other than its owner.
+      if (pa.alive && pvpTargets) {
+        for (const [id, p] of pvpTargets) {
+          if (!p || p.hp <= 0 || id === pa.owner) continue;
+          if (pa.x > p.x && pa.x < p.x + p.width &&
+              pa.y > p.y && pa.y < p.y + p.height) {
+            if (p.crouching && p.hasShield) {
+              pa.vx = -pa.vx;   // shield deflect — arrow now belongs to nobody
+              pa.owner = null;  // so it can even strike the original shooter
+            } else {
+              const before = p.hp;
+              p.takeDamage(pa.damage, Math.sign(pa.vx));
+              this.damageNums.push(new DamageNumber(p.cx, p.y - 8, pa.damage, '#FF3333'));
+              if (before > 0 && p.hp <= 0 && pa.owner) this.onPlayerKill?.(pa.owner, id);
+              pa.alive = false;
+            }
+            break;
+          }
         }
       }
     }
