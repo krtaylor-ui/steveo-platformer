@@ -420,12 +420,16 @@ html[data-theme="retro"] {
   color: white;
 }
 
-/* Equal-size Online Play / Community buttons (text lengths differ). */
+/* Equal-size Online Play / Community buttons (text lengths + the 🌐 emoji make
+   their content-box heights differ; pin height + line-height so both match). */
 .online-play-button .btn-large {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-width: 260px;
+  height: 62px;
+  padding: 0 50px;
+  line-height: 1;
   box-sizing: border-box;
 }
 
