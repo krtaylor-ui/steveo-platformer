@@ -1273,11 +1273,22 @@ class Game {
         // Online: never pause — toggle the non-pausing online overlay menu
         if (this._worldSettingsOpen) this._worldSettingsOpen = false;
         else this._onlineMenuOpen = !this._onlineMenuOpen;
-      } else if (this.state === 'playing')     { this.state = 'paused';  this._onArenaPauseChange(true); }
-      else if   (this.state === 'paused')      { this.state = 'playing'; this._onArenaPauseChange(false); }
+      } else if (this.state === 'playing')     this.state = 'paused';
+      else if   (this.state === 'paused')      this.state = 'playing';
       else if   (this.state === 'confirmExit') this.state = 'paused';
     }
     this._escWas = escNow;
+
+    // Freeze/resume the arena match timer whenever the game is paused — detected
+    // centrally each frame so EVERY resume path is covered (ESC toggle AND the
+    // pause-menu Resume/save/settings buttons, which set state directly).
+    if (this.isArena) {
+      const pausedNow = (this.state === 'paused' || this.state === 'confirmExit');
+      if (pausedNow !== this._arenaWasPaused) {
+        this._onArenaPauseChange(pausedNow);
+        this._arenaWasPaused = pausedNow;
+      }
+    }
 
     // ── Pause / confirm-exit: handle pause menu only ───────────
     if (this.state === 'paused' || this.state === 'confirmExit') {
