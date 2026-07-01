@@ -644,7 +644,7 @@ class Player {
     // ── Colors ──────────────────────────────────────────────
     const SKIN    = '#F4C78A';
     const HAIR    = '#7D4E1A';
-    const SHIRT   = '#4A8FD4';
+    const SHIRT   = this.shirtColor || '#4A8FD4'; // CTF team shirt colour (§6)
     const PANTS   = '#2C5F8A';
     const SHOE    = '#3D1C02';
     const SHADOW  = 'rgba(0,0,0,0.4)';
@@ -750,7 +750,7 @@ class Player {
   _drawCrouch(ctx, sx, sy) {
     const SKIN  = '#F4C78A';
     const HAIR  = '#7D4E1A';
-    const SHIRT = '#4A8FD4';
+    const SHIRT = this.shirtColor || '#4A8FD4'; // CTF team shirt colour (§6)
     const PANTS = '#2C5F8A';
     const SHOE  = '#3D1C02';
 

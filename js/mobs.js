@@ -646,7 +646,7 @@ class Arrow {
       if (!p || p.hp <= 0) continue;
       if (this.x > p.x && this.x < p.x + p.width &&
           this.y > p.y && this.y < p.y + p.height) {
-        if (p.crouching && p.hasShield) {
+        if (p.crouching && p.hasShield && !(typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.isCarrying(p))) {
           // Shield deflects — reverse direction, now acts as player arrow
           this.vx = -this.vx;
           this.isPlayerArrow = true;
@@ -999,7 +999,7 @@ class BlazeShot {
     if (!this.deflected &&
         this.x > player.x && this.x < player.x + player.width &&
         this.y > player.y && this.y < player.y + player.height) {
-      if (player.crouching && player.hasShield) {
+      if (player.crouching && player.hasShield && !(typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.isCarrying(player))) {
         // Shield deflects — bounce back
         this.vx       = -this.vx;
         this.vy       = -this.vy * 0.5;
@@ -1661,7 +1661,7 @@ class MobManager {
           if (p.teamId != null && teamOf[pa.owner] != null && p.teamId === teamOf[pa.owner]) continue;
           if (pa.x > p.x && pa.x < p.x + p.width &&
               pa.y > p.y && pa.y < p.y + p.height) {
-            if (p.crouching && p.hasShield) {
+            if (p.crouching && p.hasShield && !(typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.isCarrying(p))) {
               pa.vx = -pa.vx;   // shield deflect — arrow now belongs to nobody
               pa.owner = null;  // so it can even strike the original shooter
             } else {

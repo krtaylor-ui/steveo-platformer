@@ -1939,12 +1939,14 @@ class Game {
     const target   = this.level.get(hoverRow, hoverCol);
 
     // ── Weapon actions: bow / sword / pickaxe ─────────────
-    // Cancel bow draw if player switched off bow slot
-    if (this.player.weaponMode !== 'bow' && this.player.bowDrawing) {
+    // CTF: carrying a flag disables all combat (no attack / no shield) (§6).
+    const p1CarryingFlag = (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.isCarrying(this.player));
+    // Cancel bow draw if player switched off bow slot (or is carrying a flag)
+    if ((this.player.weaponMode !== 'bow' || p1CarryingFlag) && this.player.bowDrawing) {
       this.player.bowDrawing   = false;
       this.player.drawProgress = 0;
     }
-    if (this._p1RespawnTimer === 0 && this.player.weaponMode === 'bow') {
+    if (this._p1RespawnTimer === 0 && !p1CarryingFlag && this.player.weaponMode === 'bow') {
       // Hold click/Space to charge; release to fire
       const hasArrows = this._worldAdvSettings.unlimitedArrows || this.player.countItem(BLOCK.ARROW) > 0;
       const aimDown = this.input.isAttack() || this.input.mouse.down;
@@ -1980,7 +1982,7 @@ class Game {
         this.player.bowDrawing   = false;
         this.player.drawProgress = 0;
       }
-    } else if (this._p1RespawnTimer === 0 && this.player.weaponMode === 'sword') {
+    } else if (this._p1RespawnTimer === 0 && !p1CarryingFlag && this.player.weaponMode === 'sword') {
       // ── Sword: click/Space attacks (works even when slot is empty) ──
       if ((this.input.isAttack() || this.input.mouse.clicked) && this.player.attackCooldown === 0) {
         this.mobManager.playerAttack(this.player);
@@ -1995,7 +1997,7 @@ class Game {
         this.player.swingTimer     = 15;
         this._playSound('sounds/attack-sword.mp3');
       }
-    } else if (this._p1RespawnTimer === 0 && this.player.weaponMode === 'pickaxe') {
+    } else if (this._p1RespawnTimer === 0 && !p1CarryingFlag && this.player.weaponMode === 'pickaxe') {
       // ── Pickaxe: Space/click also attacks mobs; mouse-hold mines (below) ──
       if ((this.input.isAttack() || this.input.mouse.clicked) && this.player.attackCooldown === 0) {
         this.mobManager.playerAttack(this.player);
@@ -2015,6 +2017,8 @@ class Game {
     for (let i = 1; i < this.players.length; i++) {
       const p = this.players[i];
       if (!p || this._respawnTimers[i] > 0) continue;
+      // CTF: carrying a flag disables combat (no attack / no shield) (§6).
+      if (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.isCarrying(p)) { p.bowDrawing = false; p.drawProgress = 0; continue; }
       const owner   = Game.ownerId(i);
       const attHeld = this.input.pAttack(i);
       if (p.bow) {
@@ -3885,6 +3889,8 @@ class Game {
     // death animation), and cancel any in-progress bow draw (Phase 3A.3).
     this._spawnDeathParts(this.player);
     this.player.bowDrawing = false; this.player.drawProgress = 0;
+    // CTF: a defeated flag carrier drops the flag here (never keeps it on respawn).
+    if (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.active) CTF_SYSTEM.onPlayerDefeated(this, this.player);
 
     // Arena: unlimited respawns at the player's spawn after a short delay (no death modal/elimination)
     if (this.isArena) {
@@ -4010,6 +4016,8 @@ class Game {
     this._spawnDeathParts(p); p.bowDrawing = false; p.drawProgress = 0;
     // Death sound for P2-P4 too (Bug-fix pass §2.5 — only P1 played it before).
     this._playSound('sounds/player-death.mp3');
+    // CTF: drop any carried flag here so the respawned player never keeps it (§6).
+    if (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.active) CTF_SYSTEM.onPlayerDefeated(this, p);
     // Arena: unlimited respawns, no elimination.
     if (this.isArena) {
       this._respawnTimers[i] = this.arenaRespawnFrames;
@@ -8061,7 +8069,7 @@ class Game {
       if (this.level.isSolid(fr, fc)) return false;
       if (fb.x > p.x && fb.x < p.x + p.width &&
           fb.y > p.y && fb.y < p.y + p.height) {
-        if (p.hasShield && p.crouching) {
+        if (p.hasShield && p.crouching && !(typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.isCarrying(p))) {
           this._notify('Shield blocks fire!', '#44AAFF', 90);
         } else {
           if (p.takeDamage(20)) {

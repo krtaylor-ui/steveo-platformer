@@ -18,50 +18,101 @@ const CTF_TEAM_COLORS = ['#e74c3c', '#3498db']; // Team 1 red, Team 2 blue
 const CTF_TEAM_NAMES  = ['Red', 'Blue'];
 
 const CTF_SYSTEM = {
-  FLAG_AUTO_RETURN_FRAMES: 900, // 15s @60fps (brief: FLAG_AUTO_RETURN = 15s)
+  FLAG_AUTO_RETURN_FRAMES: 900, // 15s @60fps default (pre-launch configurable, §6)
   CAPTURE_POINTS: 50,           // brief: 50 pts / flag cap
   TOUCH_RADIUS: 30,             // px — how close to interact with a flag
+  BASE_W_BLOCKS: 3,             // base zone: 3 wide × 2 high (non-solid glow)
+  BASE_H_BLOCKS: 2,
 
   active: false,
   flags: null,     // [{ team, x, y, homeX, homeY, carriedBy, dropped, returnTimer }]
-  captures: null,  // [t0, t1]
+  bases: null,     // [{ team, x, y, w, h }] — centre (x,y) + zone size in px
+  captures: null,  // [t0, t1] — aggregate = sum of each team's per-player captures
+  _returnFrames: 900,
 
   // Assign a team (0/1) + colour to each player, alternating so 2P = 1v1 and
-  // 4P = P1&P3 vs P2&P4 (balanced). Returns nothing; mutates players.
+  // 4P = P1&P3 vs P2&P4 (balanced). Teammates share a shirt colour (§6).
   assignTeams(game) {
     const players = game.activePlayers();
-    players.forEach((p, i) => { p.teamId = i % 2; p.teamColor = CTF_TEAM_COLORS[i % 2]; });
+    players.forEach((p, i) => {
+      p.teamId = i % 2;
+      p.teamColor = CTF_TEAM_COLORS[i % 2];
+      p.ctfCaptures = 0;
+      // Team shirt colour — all players on a team wear the same shirt (§6).
+      p.shirtColor = p.teamColor;
+    });
   },
 
   init(game) {
-    this.active = false; this.flags = null; this.captures = [0, 0];
+    this.active = false; this.flags = null; this.bases = null; this.captures = [0, 0];
     if (!game._arenaMode || game._arenaMode.key !== 'CAPTURE_FLAG') return;
     this.assignTeams(game);
     game.arenaState.teamScores = [0, 0];
 
-    // Flag home = first spawning player's start on each team, else map quarters.
     const bs = (typeof BLOCK_SIZE !== 'undefined') ? BLOCK_SIZE : 32;
     const W = game.level.pixelWidth, H = game.level.pixelHeight;
-    const bases = [null, null];
-    game.activePlayers().forEach((p, i) => { const t = i % 2; if (!bases[t]) bases[t] = { x: p.x, y: p.y }; });
-    const floorY = (game.level.spawnY != null) ? game.level.spawnY : H / 2;
-    if (!bases[0]) bases[0] = { x: bs * 3, y: floorY };
-    if (!bases[1]) bases[1] = { x: W - bs * 3, y: floorY };
+    const bw = this.BASE_W_BLOCKS * bs, bh = this.BASE_H_BLOCKS * bs;
 
-    this.flags = bases.map((b, t) => ({
-      team: t, x: b.x, y: b.y, homeX: b.x, homeY: b.y,
+    // Base centre per team: prefer designer-placed CTF Bases (game._ctfBases),
+    // then the first team spawn, then map quarters. Flag home = base centre.
+    const centres = [null, null];
+    const placed = Array.isArray(game._ctfBases) ? game._ctfBases : [];
+    for (const b of placed) { const t = b.team | 0; if (t === 0 || t === 1) if (!centres[t]) centres[t] = { x: b.x, y: b.y }; }
+    game.activePlayers().forEach((p, i) => { const t = i % 2; if (!centres[t]) centres[t] = { x: p.x + (p.width || 0) / 2, y: p.y + (p.height || 0) / 2 }; });
+    const floorY = (game.level.spawnY != null) ? game.level.spawnY : H / 2;
+    if (!centres[0]) centres[0] = { x: bs * 3, y: floorY };
+    if (!centres[1]) centres[1] = { x: W - bs * 3, y: floorY };
+
+    this.bases = centres.map((c, t) => ({ team: t, x: c.x, y: c.y, w: bw, h: bh }));
+    this.flags = centres.map((c, t) => ({
+      team: t, x: c.x, y: c.y, homeX: c.x, homeY: c.y,
       carriedBy: null, dropped: false, returnTimer: 0,
     }));
+    this._returnFrames = Math.max(60, Math.round(((game.arenaConfig && game.arenaConfig.flagReturnSeconds) || 15) * 60));
     this.active = true;
   },
 
   _home(f) { return !f.carriedBy && !f.dropped; },
   _returnFlag(f) { f.x = f.homeX; f.y = f.homeY; f.carriedBy = null; f.dropped = false; f.returnTimer = 0; },
 
-  _score(game, team) {
-    this.captures[team]++;
-    game.arenaState.teamScores = this.captures.slice();
-    if (game._notify) game._notify(`${CTF_TEAM_NAMES[team]} team captures the flag! (${this.captures[team]})`, CTF_TEAM_COLORS[team], 150);
+  // Is player p standing within its own team's base zone (3×2, non-solid)?
+  _inOwnBase(p) {
+    if (!this.bases || p.teamId == null) return false;
+    const b = this.bases[p.teamId]; if (!b) return false;
+    const PW = (typeof PLAYER_W !== 'undefined') ? PLAYER_W : 20;
+    const PH = (typeof PLAYER_H !== 'undefined') ? PLAYER_H : 52;
+    const pcx = p.x + (p.width || PW) / 2, pcy = p.y + (p.height || PH) / 2;
+    return pcx >= b.x - b.w / 2 && pcx <= b.x + b.w / 2 && pcy >= b.y - b.h / 2 && pcy <= b.y + b.h / 2;
+  },
+
+  // The flag currently carried by p (or null) — enforces one-flag-at-a-time (§6).
+  carriedFlagOf(p) { return this.flags ? this.flags.find(f => f.carriedBy === p) || null : null; },
+  isCarrying(p) { return !!this.carriedFlagOf(p); },
+
+  // Drop any flag carried by p at p's position + start the return timer. Called
+  // from the death handlers so a defeated carrier never respawns holding it (§6).
+  onPlayerDefeated(game, p) {
+    if (!this.active || !this.flags || !p) return;
+    const PW = (typeof PLAYER_W !== 'undefined') ? PLAYER_W : 20;
+    const PH = (typeof PLAYER_H !== 'undefined') ? PLAYER_H : 52;
+    for (const f of this.flags) {
+      if (f.carriedBy === p) {
+        f.x = p.x + (p.width || PW) / 2; f.y = p.y + (p.height || PH) / 2;
+        f.carriedBy = null; f.dropped = true; f.returnTimer = this._returnFrames;
+      }
+    }
+  },
+
+  // Per-player capture → team total = sum of members' captures (§2.8 / §6).
+  _score(game, carrier) {
+    const team = carrier.teamId;
+    carrier.ctfCaptures = (carrier.ctfCaptures || 0) + 1;
+    if (carrier._ownerId && game.arenaState.scores[carrier._ownerId] != null) game.arenaState.scores[carrier._ownerId]++;
+    const totals = [0, 0];
+    for (const p of game.activePlayers()) if (p && p.teamId != null) totals[p.teamId] += (p.ctfCaptures || 0);
+    this.captures = totals;
+    game.arenaState.teamScores = totals.slice();
+    if (game._notify) game._notify(`${CTF_TEAM_NAMES[team]} team captures the flag! (${totals[team]})`, CTF_TEAM_COLORS[team], 150);
   },
 
   update(game) {
@@ -69,13 +120,14 @@ const CTF_SYSTEM = {
     const PW = (typeof PLAYER_W !== 'undefined') ? PLAYER_W : 20;
     const PH = (typeof PLAYER_H !== 'undefined') ? PLAYER_H : 52;
 
-    // 1) Carried flags follow their carrier; drop on carrier death.
+    // 1) Carried flags follow their carrier; drop on carrier death (backup to the
+    //    death-handler hook). Dropped flags auto-return after the configured time.
     for (const f of this.flags) {
       if (f.carriedBy) {
         const c = f.carriedBy;
         if (!c || c.hp <= 0) {
           if (c) { f.x = c.x + (c.width || PW) / 2; f.y = c.y + (c.height || PH) / 2; }
-          f.carriedBy = null; f.dropped = true; f.returnTimer = this.FLAG_AUTO_RETURN_FRAMES;
+          f.carriedBy = null; f.dropped = true; f.returnTimer = this._returnFrames;
         } else {
           f.x = c.x + (c.width || PW) / 2; f.y = c.y - 6;
         }
@@ -84,25 +136,38 @@ const CTF_SYSTEM = {
       }
     }
 
-    // 2) Player ↔ flag interactions.
+    // 2) Carrier reached their own base zone → score (enemy flag) or return
+    //    (own recovered flag). No "own flag must be home" requirement (§6 fix:
+    //    both flags can be out and a team can still score).
+    for (const f of this.flags) {
+      const c = f.carriedBy;
+      if (!c || c.hp <= 0 || c.teamId == null) continue;
+      if (this._inOwnBase(c)) {
+        if (f.team !== c.teamId) { this._score(game, c); this._returnFlag(f); }   // enemy flag captured
+        else { this._returnFlag(f); if (game._notify) game._notify(`${CTF_TEAM_NAMES[c.teamId]} flag returned`, CTF_TEAM_COLORS[c.teamId], 90); }
+      }
+    }
+
+    // 3) Pickups. A player carries at most one flag (§6): skip if already carrying.
     for (const p of game.activePlayers()) {
       if (!p || p.hp <= 0 || p.teamId == null) continue;
+      if (this.isCarrying(p)) continue;
       const pcx = p.x + (p.width || PW) / 2, pcy = p.y + (p.height || PH) / 2;
       for (const f of this.flags) {
+        if (f.carriedBy) continue;
         if (Math.hypot(pcx - f.x, pcy - f.y) > this.TOUCH_RADIUS) continue;
         if (f.team === p.teamId) {
-          // Own flag: recover it if dropped; if it's home, complete a capture.
-          if (f.dropped) { this._returnFlag(f); if (game._notify) game._notify(`${CTF_TEAM_NAMES[p.teamId]} flag returned`, f === this.flags[p.teamId] ? CTF_TEAM_COLORS[p.teamId] : '#fff', 90); }
-          else if (this._home(f)) {
-            const enemyFlag = this.flags.find(ff => ff.team !== p.teamId && ff.carriedBy === p);
-            if (enemyFlag) { this._score(game, p.teamId); this._returnFlag(enemyFlag); }
-          }
-        } else {
-          // Enemy flag: grab it if it's available (at home or dropped) and unheld.
-          if (!f.carriedBy && (this._home(f) || f.dropped)) {
+          // Own flag: only grabbable when DROPPED — carry it home to return it.
+          if (f.dropped) {
             f.carriedBy = p; f.dropped = false; f.returnTimer = 0;
-            if (game._notify) game._notify(`P${game.activePlayers().indexOf(p) + 1} grabbed the ${CTF_TEAM_NAMES[f.team]} flag!`, CTF_TEAM_COLORS[p.teamId], 120);
+            if (game._notify) game._notify(`P${game.activePlayers().indexOf(p) + 1} is recovering the ${CTF_TEAM_NAMES[f.team]} flag`, CTF_TEAM_COLORS[p.teamId], 100);
+            break;
           }
+        } else if (this._home(f) || f.dropped) {
+          // Enemy flag: grab from home or where it was dropped.
+          f.carriedBy = p; f.dropped = false; f.returnTimer = 0;
+          if (game._notify) game._notify(`P${game.activePlayers().indexOf(p) + 1} grabbed the ${CTF_TEAM_NAMES[f.team]} flag!`, CTF_TEAM_COLORS[p.teamId], 120);
+          break;
         }
       }
     }
@@ -114,18 +179,22 @@ const CTF_SYSTEM = {
 
   draw(ctx, camera, frameCount) {
     if (!this.active || !this.flags) return;
+    // Base zones (light glow, non-solid) — where a team captures / its flag rests.
+    if (this.bases) {
+      for (const b of this.bases) {
+        const bx = b.x - b.w / 2 - camera.x, by = b.y - b.h / 2 - camera.y;
+        ctx.save();
+        const col = CTF_TEAM_COLORS[b.team];
+        ctx.fillStyle = col + '22';
+        ctx.fillRect(bx, by, b.w, b.h);
+        ctx.strokeStyle = col + '99'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
+        ctx.strokeRect(bx, by, b.w, b.h);
+        ctx.restore();
+      }
+    }
     for (const f of this.flags) {
       const sx = f.x - camera.x, sy = f.y - camera.y;
       _drawCtfFlag(ctx, sx, sy, CTF_TEAM_COLORS[f.team], !!f.carriedBy, f.dropped, frameCount);
-      // Home-base ring (faint) so players see where to return/capture.
-      if (!this._home(f)) {
-        const hx = f.homeX - camera.x, hy = f.homeY - camera.y;
-        ctx.save();
-        ctx.strokeStyle = CTF_TEAM_COLORS[f.team] + '66'; ctx.lineWidth = 2;
-        ctx.setLineDash([4, 4]);
-        ctx.beginPath(); ctx.arc(hx, hy, 16, 0, Math.PI * 2); ctx.stroke();
-        ctx.restore();
-      }
     }
   },
 };
