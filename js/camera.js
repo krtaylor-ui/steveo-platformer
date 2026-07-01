@@ -26,14 +26,43 @@ class Camera {
 
   // Follow midpoint between two players (Phase 12 — 2-player co-op)
   followMidpoint(p1, p2) {
-    const midX   = (p1.x + p2.x) / 2 + PLAYER_W / 2;
-    const midY   = (p1.y + p2.y) / 2 + PLAYER_H / 4;
+    this.followPlayers([p1, p2]);
+  }
+
+  // Follow the centroid of 1-4 players (Phase 3B). Centres the camera on the
+  // bounding-box midpoint of all live players. Dynamic zoom-to-fit (so all
+  // players stay framed as they spread apart) is computed separately by
+  // Game._computeMultiPlayerZoom() and applied via the render scale transform;
+  // here we only position, using the same lerp as the 2P path.
+  followPlayers(players) {
+    const live = (players || []).filter(p => p);
+    if (live.length === 0) return;
+    if (live.length === 1) { this.follow(live[0]); return; }
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of live) {
+      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x + (p.width || PLAYER_W));
+      minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y + (p.height || PLAYER_H));
+    }
+    const midX = (minX + maxX) / 2;
+    const midY = (minY + maxY) / 2;
     const targetX = midX - CANVAS_W / 2;
-    const targetY = midY - CANVAS_H * 0.55;
+    const targetY = midY - CANVAS_H * 0.55 + CANVAS_H * 0.05; // slight down-bias vs single-follow
     this.x += (targetX - this.x) * 0.10;
     this.y += (targetY - this.y) * 0.10;
     this.x = Math.max(0, Math.min(this._levelW - CANVAS_W,  this.x));
     this.y = Math.max(0, Math.min(this._levelH - CANVAS_H,  this.y));
+  }
+
+  // Bounding-box span (world px) of the given players — used for zoom-to-fit.
+  static playersSpan(players) {
+    const live = (players || []).filter(p => p);
+    if (live.length < 2) return { w: 0, h: 0 };
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of live) {
+      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x + (p.width || PLAYER_W));
+      minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y + (p.height || PLAYER_H));
+    }
+    return { w: maxX - minX, h: maxY - minY };
   }
 
   // Convert world coords → screen coords.

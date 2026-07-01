@@ -31,6 +31,10 @@ class InputManager {
     // -1 = KB1 (WASD), -2 = KB2 (Arrows), 0-3 = gamepad slot
     this.p1GpSlot = -1;  // P1 default: keyboard 1
     this.p2GpSlot = 1;   // P2 default: gamepad 1
+    // Phase 3B — P3/P4 are gamepad-only (one keyboard player max). Slots set
+    // each frame from ControllerConfig(3)/(4); defaults 2/3.
+    this.p3GpSlot = 2;
+    this.p4GpSlot = 3;
 
     // When true (single-player), P1 actions accept both keyboard AND any connected gamepad.
     // Set each frame by game.js.
@@ -303,6 +307,38 @@ class InputManager {
   }
   isP2UseLever() { return this.p2GpSlot < 0 && this.isJustDown('Delete'); }
   isP2Inventory(){ return this.p2GpSlot < 0 && this.isJustDown('KeyI'); }
+
+  // ── Generic per-player input (Phase 3B) ──────────────────
+  // Player index i: 0=P1, 1=P2, 2=P3, 3=P4. P1/P2 delegate to the existing
+  // (tested) slot-aware methods; P3/P4 are gamepad-only (one keyboard max).
+  _pSlot(i) { return [this.p1GpSlot, this.p2GpSlot, this.p3GpSlot, this.p4GpSlot][i]; }
+  _slotGp(slot) { return slot >= 0 ? (this.gamepads[slot] ?? this._emptyGamepad(0)) : this._emptyGamepad(0); }
+
+  pLeft(i)   { return i === 0 ? this.isLeft()   : i === 1 ? this.isP2Left()   : this._slotGp(this._pSlot(i)).moveX < 0; }
+  pRight(i)  { return i === 0 ? this.isRight()  : i === 1 ? this.isP2Right()  : this._slotGp(this._pSlot(i)).moveX > 0; }
+  pJump(i)   { return i === 0 ? this.isJump()   : i === 1 ? this.isP2Jump()   : this._slotGp(this._pSlot(i)).jump; }
+  pCrouch(i) { return i === 0 ? this.isCrouch() : i === 1 ? this.isP2Crouch() : this._slotGp(this._pSlot(i)).crouch; }
+  pAttack(i) {
+    if (i === 0) return this.isAttack();
+    if (i === 1) return this.isP2Attack();
+    const gp = this._slotGp(this._pSlot(i));
+    return gp.attack || gp.triggerR > 0.5;
+  }
+  pMoveX(i)  {
+    if (i === 0) return this.moveX();
+    if (i === 1) return this.moveX2();
+    return this._slotGp(this._pSlot(i)).moveX * (this.controllerSensitivity ?? 1.0);
+  }
+  // Right-stick gamepad object for a player (aim). P1/P2 keep their helpers.
+  pGp(i)     { return i === 0 ? this._p1gp() : i === 1 ? this._p2gp() : this._slotGp(this._pSlot(i)); }
+  pGpSlot(i) { return this._pSlot(i); }
+  // One-shot just-pressed for a player. P1 honors dual-input; others slot-based.
+  pJustDown(i, btn) {
+    if (i === 0) return this.p1JustDown(btn);
+    if (i === 1) return this.p2JustDown(btn);
+    const s = this._pSlot(i);
+    return s >= 0 ? this.gpJustDown(s, btn) : false;
+  }
 
   // Returns 0–8 if a number key 1–9 was just held, else -1
   hotbarKey() {

@@ -28,6 +28,17 @@ const ARENA_PRELAUNCH = {
     this._toggle('pl-emerald-rounds-group', modeKey === 'COLLECT_EMERALDS');
     this._toggle('pl-mob-difficulty-group', modeKey === 'MOB_HUNTER' || modeKey === 'COLLECT_EMERALDS');
     this._toggle('pl-waves-group',          modeKey === 'SURVIVAL_WAVES');
+    this._toggle('pl-killtarget-group',     modeKey === 'DEATHMATCH');
+
+    // Friendly Fire — forced on + locked for Deathmatch; optional elsewhere.
+    const ff = document.getElementById('pl-friendly-fire');
+    const ffNote = document.getElementById('pl-friendly-fire-note');
+    if (ff) {
+      if (modeKey === 'DEATHMATCH') { ff.checked = true; ff.disabled = true;
+        if (ffNote) ffNote.textContent = 'Always on for Deathmatch.'; }
+      else { ff.disabled = false;
+        if (ffNote) ffNote.textContent = 'Players can damage each other.'; }
+    }
 
     this._wire();
     modal.style.display = 'flex';
@@ -42,6 +53,8 @@ const ARENA_PRELAUNCH = {
     rounds?.addEventListener('input', (e) => { const v = document.getElementById('pl-rounds-val'); if (v) v.textContent = e.target.value; });
     const waves = document.getElementById('pl-waves');
     waves?.addEventListener('input', (e) => { const v = document.getElementById('pl-waves-val'); if (v) v.textContent = e.target.value; });
+    const kt = document.getElementById('pl-killtarget');
+    kt?.addEventListener('input', (e) => { const v = document.getElementById('pl-killtarget-val'); if (v) v.textContent = e.target.value; });
     document.getElementById('pl-cancel-btn')?.addEventListener('click', () => this.hide());
     document.getElementById('pl-start-btn')?.addEventListener('click', () => this._start());
   },
@@ -53,8 +66,10 @@ const ARENA_PRELAUNCH = {
     const chk = (id) => { const el = document.getElementById(id); return !!(el && el.checked); };
     const cfg = {
       gameDuration:  num('pl-match-length', 300) * 1000,
+      playerCount:   Math.max(1, Math.min(4, num('pl-player-count', 1))), // Phase 3B: 1-4 local
       playerHealthHp: num('pl-player-health', 6),
       disableMobDrops: chk('pl-disable-drops'), // all modes; default off
+      friendlyFire:  chk('pl-friendly-fire'),   // Phase 3B PvP gate
     };
     if (this._mode === 'COLLECT_EMERALDS') {
       cfg.emeraldRounds = num('pl-emerald-rounds', 3);
@@ -63,6 +78,9 @@ const ARENA_PRELAUNCH = {
       cfg.mobDifficulty = val('pl-mob-difficulty', 'MEDIUM');
     } else if (this._mode === 'SURVIVAL_WAVES') {
       cfg.survivalWaveCount = num('pl-waves', 5);
+    } else if (this._mode === 'DEATHMATCH') {
+      cfg.killTarget = num('pl-killtarget', 10);
+      cfg.friendlyFire = true; // Deathmatch always PvP
     }
 
     const cb = this._onStart;
