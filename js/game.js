@@ -685,10 +685,22 @@ class Game {
     // Player spawn positions (pixels). Built-in map carries explicit spawns;
     // otherwise the level default (P1) + evenly-spaced columns for P2-P4.
     const spawnKeys = ['p1', 'p2', 'p3', 'p4'];
+    // Editor-placed player spawn points (Phase 3), sorted by designer slot 1..4.
+    // These take priority over the auto-spread fallback so designers control starts.
+    const placedSpawns = (this._arenaTemplateData && Array.isArray(this._arenaTemplateData.playerSpawns))
+      ? this._arenaTemplateData.playerSpawns
+          .filter(s => s && typeof s.col === 'number' && typeof s.row === 'number')
+          .slice()
+          .sort((a, b) => (a.slot || 1) - (b.slot || 1))
+      : [];
     for (let i = 0; i < 4; i++) {
       const ms = m && m.playerSpawns && m.playerSpawns[i];
+      // Prefer the placed point tagged for this player number; else the i-th by slot order.
+      const placed = placedSpawns.find(s => (s.slot || 1) === i + 1) || placedSpawns[i];
       if (ms) {
         this._arenaSpawns[spawnKeys[i]] = { x: ms.col * BLOCK_SIZE, y: ms.row * BLOCK_SIZE };
+      } else if (placed) {
+        this._arenaSpawns[spawnKeys[i]] = { x: placed.col * BLOCK_SIZE, y: placed.row * BLOCK_SIZE };
       } else if (i === 0) {
         this._arenaSpawns.p1 = { x: this.level.spawnX, y: this.level.spawnY };
       } else {
@@ -2262,6 +2274,7 @@ class Game {
         const emIdx   = this.sandbox.hitTestEmeralds(world.x, world.y);
         const puIdx   = this.sandbox.hitTestPowerups(world.x, world.y);
         const slIdx   = this.sandbox.hitTestSpawnLines(world.x, world.y);
+        const spIdx   = this.sandbox.hitTestSpawnPoints(world.x, world.y);
         if (eggIdx >= 0) {
           this.sandbox.openPopup(eggIdx);
         } else if (itemIdx >= 0) {
@@ -2272,6 +2285,8 @@ class Game {
           this.sandbox.openPowerupPopup(puIdx);
         } else if (slIdx >= 0) {
           this.sandbox.openSpawnLinePopup(slIdx);
+        } else if (spIdx >= 0) {
+          this.sandbox.openSpawnPointPopup(spIdx);
         } else if (this.sandbox.hitTestHill(world.x, world.y)) {
           this.sandbox.openHillPopup();
         } else if (target === BLOCK.AIR) {
@@ -2290,6 +2305,12 @@ class Game {
             this.sandbox.placeHill(world.x, world.y);
           } else if (this.sandbox.isSpawnLineSelected) {
             this.sandbox.placeSpawnLine(world.x, world.y);
+          } else if (this.sandbox.isSpawnPointSelected) {
+            if (this.sandbox.placedSpawnPoints.length >= 4) {
+              this._notify('Max 4 player spawn points (one per player)', '#CC8844', 120);
+            } else {
+              this.sandbox.placeSpawnPoint(world.x, world.y);
+            }
           } else if (this.sandbox.isToolSelected || this.sandbox.isBlockItemSelected) {
             this.sandbox.placeItem(world.x, world.y);
           } else if (this.sandbox.isMultiBlock) {
@@ -8676,6 +8697,20 @@ class Game {
     }
   }
 
+  // Seed 2 default player spawn points (Phase 3 auto-migration) near the level's
+  // start position. They are ordinary placed objects — fully movable + deletable.
+  _seedDefaultSpawnPoints() {
+    if (!this.sandbox || !this.level) return;
+    const bs = BLOCK_SIZE;
+    const W = this.level.width, H = this.level.height;
+    const baseCol = Math.max(1, Math.min(W - 2, Math.round((this.level.spawnX || bs * 3) / bs)));
+    const baseRow = Math.max(1, Math.min(H - 2, Math.round((this.level.spawnY || bs * 3) / bs)));
+    const cols = [baseCol, Math.max(1, Math.min(W - 2, baseCol + 4))];
+    this.sandbox.placedSpawnPoints = cols.map((col, i) => ({
+      col, row: baseRow, wx: col * bs + bs / 2, wy: baseRow * bs + bs / 2, slot: i + 1,
+    }));
+  }
+
   // Warnings for the Arena settings tab: an enabled game type missing its
   // required design element (uses the editor's placed objects). Phase 3A.3.
   _arenaSettingsWarnings(enabled) {
@@ -8685,6 +8720,13 @@ class Game {
     if (enabled.includes('KING_OF_HILL') && !sb.placedHill) w.push('King of the Hill: no Hill placed');
     if (enabled.includes('COLLECT_EMERALDS') && (!sb.placedEmeralds || sb.placedEmeralds.length === 0)) w.push('Collect Emeralds: no emeralds placed');
     if (enabled.includes('SURVIVAL_WAVES') && (!sb.placedSpawnLines || sb.placedSpawnLines.length === 0)) w.push('Survival Waves: no Spawn Lines placed');
+    // Player spawn points (Phase 3) — how many players this world can currently host.
+    const spawnN = typeof sb.supportedPlayerCount === 'function' ? sb.supportedPlayerCount() : (sb.placedSpawnPoints ? sb.placedSpawnPoints.length : 0);
+    if (enabled.length > 0) {
+      if (spawnN === 0) w.push('No Player Spawns placed — add up to 4 (arena falls back to auto-start positions)');
+      else if (spawnN < 4) w.push(`Player Spawns: supports up to ${spawnN} player${spawnN === 1 ? '' : 's'} (add more for 3–4P)`);
+      else w.push('Player Spawns: supports up to 4 players');
+    }
     return w;
   }
 
@@ -13202,6 +13244,14 @@ class Game {
         ? { col: data.placedHill.col, row: data.placedHill.row,
             w: Math.max(1, Math.min(20, data.placedHill.w || 4)), h: Math.max(1, Math.min(20, data.placedHill.h || 1)) }
         : null;
+      // Player spawn points (Phase 3). Key `playerSpawns` (distinct from mob spawnPoints).
+      this.sandbox.placedSpawnPoints = (Array.isArray(data.playerSpawns) ? data.playerSpawns : [])
+        .filter(s => s && typeof s.col === 'number' && typeof s.row === 'number')
+        .slice(0, 4)
+        .map(s => ({ col: s.col, row: s.row, wx: s.col * BLOCK_SIZE + BLOCK_SIZE / 2, wy: s.row * BLOCK_SIZE + BLOCK_SIZE / 2, slot: (s.slot >= 1 && s.slot <= 4) ? s.slot : 1 }));
+      // Auto-migration: worlds authored before spawn points existed get 2 seeded
+      // (movable + deletable) so arena play works out of the box for 2 players.
+      if (this.sandbox.placedSpawnPoints.length === 0) this._seedDefaultSpawnPoints();
     }
 
     // Restore sandbox portal registry + links

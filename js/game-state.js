@@ -150,6 +150,8 @@ const GAME_STATE = {
       // Arena objectives (Phase 3A.3)
       spawnLines: game.sandbox ? game.sandbox.placedSpawnLines.map(s => ({ ...s })) : [],
       placedHill: game.sandbox ? (game.sandbox.placedHill ? { ...game.sandbox.placedHill } : null) : null,
+      // Player spawn points (Phase 3) — where each player starts, tagged by slot 1–4.
+      playerSpawns: game.sandbox ? game.sandbox.placedSpawnPoints.map(s => ({ ...s })) : [],
       placedItems,
       portalLinks,
       sandboxLevers,

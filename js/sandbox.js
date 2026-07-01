@@ -88,6 +88,8 @@ const OTHER_PALETTE_ITEMS = [
   // ── Arena objectives (Phase 3A.3) ────────────────────────────
   { kind: 'hill',      name: 'Hill (KotH)',  color: '#f1c40f' },
   { kind: 'spawnline', name: 'Spawn Line',   color: '#9b59b6' },
+  // Player spawn points (Phase 3 — distinct from Survival "Spawn Line" mob markers).
+  { kind: 'spawnpoint', name: 'Player Spawn', color: '#4aa3ff' },
   // ── Spawn Eggs ───────────────────────────────────────────────
   ...SPAWN_EGG_DEFS.map(d => ({ kind: 'egg', ...d })),
 ];
@@ -251,6 +253,10 @@ class SandboxManager {
     this.placedHill       = null; // {col,row,w,h} King-of-the-Hill control zone (default 4×1)
     this.lastHillW        = 4;     // default/last hill width  (1–20 blocks)
     this.lastHillH        = 1;     // default/last hill height (1–20 blocks)
+    // Player spawn points (Phase 3) — [{col,row,wx,wy,slot}]; slot 1–4 assigns which
+    // player starts here (arena). Story/Sandbox/etc. use slot 1 only. Movable + deletable.
+    this.placedSpawnPoints = [];
+    this.lastSpawnPointSlot = 1;
 
     // Config popup for a placed egg / item drop
     this.popup = null; // { kind:'egg'|'item', eggIdx|itemIdx } or null
@@ -270,6 +276,7 @@ class SandboxManager {
   get isPowerupSelected()   { return this.selectedPowerup; }
   get isHillSelected()      { return this.selectedHill; }
   get isSpawnLineSelected() { return this.selectedSpawnLine; }
+  get isSpawnPointSelected() { return this.selectedSpawnPoint; }
 
   // Returns a hotbar entry object representing the current selection.
   _currentSelectionEntry() {
@@ -280,6 +287,7 @@ class SandboxManager {
     if (this.isPowerupSelected)   return { kind: 'powerup',   value: 'powerup' };
     if (this.isHillSelected)      return { kind: 'hill',      value: 'hill' };
     if (this.isSpawnLineSelected) return { kind: 'spawnline', value: 'spawnline' };
+    if (this.isSpawnPointSelected) return { kind: 'spawnpoint', value: 'spawnpoint' };
     if (this.isDustSelected)      return { kind: 'dust',      value: 'dust' };
     if (this.isGateSelected)      return { kind: 'gate',      value: this.selectedGateType };
     return { kind: 'block', value: this.selectedBlock };
@@ -295,6 +303,7 @@ class SandboxManager {
     this.selectedPowerup       = false;
     this.selectedHill          = false;
     this.selectedSpawnLine     = false;
+    this.selectedSpawnPoint    = false;
     if (entry.kind === 'emerald') {
       this.selectedEmerald = true;
       this.selectedEggKey  = null;
@@ -317,6 +326,12 @@ class SandboxManager {
       this.selectedSpawnLine = true;
       this.selectedEggKey    = null;
       this.selectedToolKey   = null;
+      return;
+    }
+    if (entry.kind === 'spawnpoint') {
+      this.selectedSpawnPoint = true;
+      this.selectedEggKey     = null;
+      this.selectedToolKey    = null;
       return;
     }
     if (entry.kind === 'block') {
@@ -556,6 +571,39 @@ class SandboxManager {
   }
   removeSpawnLine(idx) { if (idx >= 0 && idx < this.placedSpawnLines.length) this.placedSpawnLines.splice(idx, 1); this.popup = null; }
   openSpawnLinePopup(idx) { this.popup = { kind: 'spawnline', spawnLineIdx: idx }; }
+
+  // ── Player Spawn Points — where players start, tagged by slot 1–4 (Phase 3) ──
+  // Distinct from Survival "Spawn Lines" (which spawn mobs). Arena assigns each
+  // connected player to a distinct slot; Story/Sandbox/etc. use slot 1 only.
+  placeSpawnPoint(wx, wy) {
+    const col = Math.floor(wx / BLOCK_SIZE), row = Math.floor(wy / BLOCK_SIZE);
+    if (this.placedSpawnPoints.some(s => s.col === col && s.row === row)) return;
+    if (this.placedSpawnPoints.length >= 4) return; // cap at 4 (MAX_PLAYERS)
+    // Default the new point to the lowest slot number not yet used (1..4).
+    const used = new Set(this.placedSpawnPoints.map(s => s.slot));
+    let slot = 1; while (slot <= 4 && used.has(slot)) slot++;
+    if (slot > 4) slot = this.lastSpawnPointSlot || 1;
+    this.placedSpawnPoints.push({ col, row, wx: col * BLOCK_SIZE + BLOCK_SIZE / 2, wy: row * BLOCK_SIZE + BLOCK_SIZE / 2, slot });
+    this.lastSpawnPointSlot = slot;
+  }
+  hitTestSpawnPoints(wx, wy) {
+    const R = 16;
+    for (let i = 0; i < this.placedSpawnPoints.length; i++) {
+      const s = this.placedSpawnPoints[i];
+      if (Math.abs(wx - s.wx) < R && Math.abs(wy - s.wy) < R) return i;
+    }
+    return -1;
+  }
+  cycleSpawnPointSlot(idx) {
+    if (idx < 0 || idx >= this.placedSpawnPoints.length) return;
+    const n = ((this.placedSpawnPoints[idx].slot || 1) % 4) + 1; // 1→2→3→4→1
+    this.placedSpawnPoints[idx].slot = n;
+    this.lastSpawnPointSlot = n;
+  }
+  removeSpawnPoint(idx) { if (idx >= 0 && idx < this.placedSpawnPoints.length) this.placedSpawnPoints.splice(idx, 1); this.popup = null; }
+  openSpawnPointPopup(idx) { this.popup = { kind: 'spawnpoint', spawnPointIdx: idx }; }
+  // Number of distinct players this world can currently host (placed spawn points, capped 4).
+  supportedPlayerCount() { return Math.min(4, this.placedSpawnPoints.length); }
   openEmeraldPopup(idx) { this.popup = { kind: 'emerald', emeraldIdx: idx }; }
   openPowerupPopup(idx) { this.popup = { kind: 'powerup', powerupIdx: idx }; }
 
@@ -784,6 +832,7 @@ class SandboxManager {
           this.selectedPowerup  = false;
           this.selectedHill     = false;
           this.selectedSpawnLine = false;
+          this.selectedSpawnPoint = false;
           if (item.kind === 'emerald') {
             this.selectedEmerald = true;
             this.selectedEggKey  = null;
@@ -801,6 +850,11 @@ class SandboxManager {
             this.selectedBlockItemType = null;
           } else if (item.kind === 'spawnline') {
             this.selectedSpawnLine = true;
+            this.selectedEggKey    = null;
+            this.selectedToolKey   = null;
+            this.selectedBlockItemType = null;
+          } else if (item.kind === 'spawnpoint') {
+            this.selectedSpawnPoint = true;
             this.selectedEggKey    = null;
             this.selectedToolKey   = null;
             this.selectedBlockItemType = null;
@@ -836,6 +890,7 @@ class SandboxManager {
           this.selectedPowerup = false;
           this.selectedHill    = false;
           this.selectedSpawnLine = false;
+          this.selectedSpawnPoint = false;
         }
         // Auto-assign current selection to the active hotbar slot
         this.sbHotbar[this.sbHotbarSel] = this._currentSelectionEntry();
@@ -929,6 +984,15 @@ class SandboxManager {
       return true;
     }
 
+    // Player spawn-point popup (popH = 168) — Phase 3 (cycle slot 1–4 + remove)
+    if (this.popup.kind === 'spawnpoint') {
+      if (mx >= px + pw - 26 && mx <= px + pw - 6 && my >= py + 6 && my <= py + 26) { this.closePopup(); return true; }
+      if (mx < px || mx > px + pw || my < py || my > py + 168) { this.closePopup(); return false; }
+      if (mx >= px + 14 && mx <= px + pw - 14 && my >= py + 88  && my <= py + 118) { this.cycleSpawnPointSlot(this.popup.spawnPointIdx); return true; }
+      if (mx >= px + 14 && mx <= px + pw - 14 && my >= py + 124 && my <= py + 154) { this.removeSpawnPoint(this.popup.spawnPointIdx); return true; }
+      return true;
+    }
+
     // Egg popup (eggH = 244, matches _drawPopup)
     const egg = this.placedEggs[this.popup.eggIdx];
     // X close button
@@ -994,6 +1058,7 @@ class SandboxManager {
     this._drawPlacedPowerups(ctx, camera, frameCount);
     this._drawPlacedHill(ctx, camera);
     this._drawPlacedSpawnLines(ctx, camera, frameCount);
+    this._drawPlacedSpawnPoints(ctx, camera, frameCount);
     this._drawPortalLabels(ctx, camera);
   }
 
@@ -1130,6 +1195,14 @@ class SandboxManager {
       const sx = s.wx - camera.x, sy = s.wy - camera.y;
       if (sx < camera.viewMinX() - 40 || sx > camera.viewMaxX() + 40 || sy < camera.viewMinY() - 40 || sy > camera.viewMaxY() + 40) continue;
       _drawSpawnLineMarker(ctx, sx, sy, s.line || 1, frameCount);
+    }
+  }
+
+  _drawPlacedSpawnPoints(ctx, camera, frameCount) {
+    for (const s of this.placedSpawnPoints) {
+      const sx = s.wx - camera.x, sy = s.wy - camera.y;
+      if (sx < camera.viewMinX() - 40 || sx > camera.viewMaxX() + 40 || sy < camera.viewMinY() - 40 || sy > camera.viewMaxY() + 40) continue;
+      _drawSpawnPointMarker(ctx, sx, sy, s.slot || 1, frameCount);
     }
   }
 
@@ -1608,12 +1681,14 @@ class SandboxManager {
         else if (itm.kind === 'powerup') selected = this.isPowerupSelected;
         else if (itm.kind === 'hill')      selected = this.isHillSelected;
         else if (itm.kind === 'spawnline') selected = this.isSpawnLineSelected;
+        else if (itm.kind === 'spawnpoint') selected = this.isSpawnPointSelected;
         else if (itm.kind === 'dust')  selected = this.isDustSelected;
         else if (itm.kind === 'gate')  selected = this.isGateSelected      && this.selectedGateType     === itm.gateType;
         else if (itm.kind === 'blockItem') selected = this.isBlockItemSelected && this.selectedBlockItemType === itm.blockType;
         else selected = !this.isEggSelected && !this.isToolSelected && !this.isDustSelected &&
                         !this.isGateSelected && !this.isBlockItemSelected && !this.isEmeraldSelected &&
                         !this.isPowerupSelected && !this.isHillSelected && !this.isSpawnLineSelected &&
+                        !this.isSpawnPointSelected &&
                         this.selectedBlock === itm.blockType;
       } else {
         selected = !this.isEggSelected && !this.isToolSelected && !this.isDustSelected &&
@@ -1753,6 +1828,11 @@ class SandboxManager {
         _drawSpawnLineMarker(ctx, cxc, cyc - 2, 1, 0);
         ctx.fillStyle = selected ? '#fff' : '#aaa'; ctx.font = '7px Courier New';
         ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText('SPWN', cxc, gy + slotSz - 4);
+        if (hov) { ctx.fillStyle = itm.color; ctx.fillText(itm.name, cxc, gy - 1); }
+      } else if (isSpecialTab && itm.kind === 'spawnpoint') {
+        _drawSpawnPointMarker(ctx, cxc, cyc - 2, 1, 0);
+        ctx.fillStyle = selected ? '#fff' : '#aaa'; ctx.font = '7px Courier New';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText('P-SPWN', cxc, gy + slotSz - 4);
         if (hov) { ctx.fillStyle = itm.color; ctx.fillText(itm.name, cxc, gy - 1); }
       } else {
         // Block (either special tab block kind or regular tab block)
@@ -1996,6 +2076,26 @@ class SandboxManager {
       return;
     }
 
+    // ── Player spawn-point popup (Phase 3) — cycle slot + remove ───
+    if (this.popup.kind === 'spawnpoint') {
+      const sp = this.placedSpawnPoints[this.popup.spawnPointIdx];
+      if (!sp) { this.popup = null; ctx.restore(); return; }
+      const popH = 168;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      ctx.fillStyle = '#13131f'; _roundRect(ctx, px, py, pw, popH, 8); ctx.fill();
+      ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; _roundRect(ctx, px, py, pw, popH, 8); ctx.stroke();
+      ctx.fillStyle = '#FFD700'; ctx.font = 'bold 12px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('PLAYER SPAWN', CANVAS_W / 2, py + 22);
+      ctx.fillStyle = '#a9d3ff'; ctx.font = 'bold 11px Courier New';
+      ctx.fillText(`Player ${sp.slot || 1}  (Arena: this player starts here)`, CANVAS_W / 2, py + 66);
+      _btn('⟳  Change Player #', px + 14, py + 88,  pw - 28, 30, '#7ec8e3', '#445566');
+      _btn('✕  Remove',         px + 14, py + 124, pw - 28, 30, '#FF6644', '#553333');
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.restore();
+      return;
+    }
+
     // ── Egg popup ─────────────────────────────────────────────
     const egg = this.placedEggs[this.popup.eggIdx];
     if (!egg) { this.popup = null; ctx.restore(); return; }
@@ -2146,6 +2246,34 @@ function _drawSpawnLineMarker(ctx, sx, sy, lineNum, frameCount) {
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 11px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText(String(lineNum || 1), 0, 0);
+  ctx.restore();
+}
+
+// Player spawn point marker: a blue banner/flag pin tagged with the player number. Phase 3.
+// Deliberately visually distinct from the purple Survival "Spawn Line" swirl.
+function _drawSpawnPointMarker(ctx, sx, sy, slot, frameCount) {
+  ctx.save();
+  ctx.translate(sx, sy);
+  const bob = Math.sin((frameCount || 0) * 0.06) * 1.5;
+  // Pin base
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath(); ctx.ellipse(0, 14, 7, 3, 0, 0, Math.PI * 2); ctx.fill();
+  // Pole
+  ctx.strokeStyle = '#2b3d55'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, 14); ctx.lineTo(0, -14 + bob); ctx.stroke();
+  // Flag/banner
+  ctx.fillStyle = '#4aa3ff';
+  ctx.beginPath();
+  ctx.moveTo(0, -14 + bob); ctx.lineTo(15, -10 + bob); ctx.lineTo(0, -4 + bob);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#bfe0ff'; ctx.lineWidth = 1; ctx.stroke();
+  // Player number badge at the base
+  ctx.fillStyle = '#0d1b2e';
+  ctx.beginPath(); ctx.arc(0, 4, 8, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 11px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('P' + (slot || 1), 0, 5);
   ctx.restore();
 }
 

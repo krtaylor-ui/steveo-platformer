@@ -47,7 +47,9 @@
       "Bash(find / -name \"PHASE_16E_CONTROLLER_SYSTEM.md\")",
       "Bash(awk 'NR>=700 && NR<=1980 && /return;/' /home/krtaylor/steveo_platformer/js/game.js)",
       "Bash(git *)",
-      "Bash(awk *)"
+      "Bash(awk *)",
+      "Bash(cp /home/krtaylor/steveo_platformer/saves/Arena_-_Med_ARN_2026-06-30.repaired.json /mnt/c/Users/krtay/Downloads/Arena_-_Med_ARN_REPAIRED.json)",
+      "Read(//mnt/c/Users/krtay/Downloads/**)"
     ]
   }
 }
