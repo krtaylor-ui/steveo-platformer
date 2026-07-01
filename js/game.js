@@ -834,6 +834,8 @@ class Game {
     }
     // Capture the Flag (Phase 3C) — assigns teams + flag bases when mode is CTF.
     if (typeof CTF_SYSTEM !== 'undefined') CTF_SYSTEM.init(this);
+    // Defend the Tower (Phase 3 v3) — one Tower per player at their spawn.
+    if (typeof TOWER_SYSTEM !== 'undefined') TOWER_SYSTEM.init(this);
   }
 
   // Per-running-frame: emerald + power-up pickups for each player, then tick
@@ -850,6 +852,7 @@ class Game {
     this.activePlayers().forEach((p, i) => award(p, 'p' + (i + 1)));
     if (typeof POWERUP_SYSTEM !== 'undefined') POWERUP_SYSTEM.update(this);
     if (typeof CTF_SYSTEM !== 'undefined') CTF_SYSTEM.update(this);
+    if (typeof TOWER_SYSTEM !== 'undefined') TOWER_SYSTEM.update(this);
   }
 
   // Evenly spread N bot columns across the interior (avoiding the side walls).
@@ -1066,6 +1069,7 @@ class Game {
     if (typeof EMERALD_SYSTEM !== 'undefined' && EMERALD_SYSTEM.draw) EMERALD_SYSTEM.draw(ctx, this.camera, this.frameCount);
     if (typeof POWERUP_SYSTEM !== 'undefined' && POWERUP_SYSTEM.draw) POWERUP_SYSTEM.draw(ctx, this.camera, this.frameCount);
     if (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.draw) CTF_SYSTEM.draw(ctx, this.camera, this.frameCount);
+    if (typeof TOWER_SYSTEM !== 'undefined' && TOWER_SYSTEM.draw) TOWER_SYSTEM.draw(ctx, this.camera, this.frameCount);
     // King-of-the-Hill platform — tinted green while held, gold otherwise (Phase 3A.3).
     if (this._arenaHill && this._arenaMode && this._arenaMode.key === 'KING_OF_HILL' && typeof _drawHillPlatform === 'function') {
       // Hill tinted by its owner: P1 blue, P2 red, P3 green, P4 yellow; unowned = yellow.

@@ -24,6 +24,8 @@ const ARENA_MODES = {
     DEATHMATCH:       { label: 'Deathmatch',       desc: 'Most player eliminations wins.' },
     // Phase 3C — teams + PvP. Grab the enemy flag, carry it to your base to score.
     CAPTURE_FLAG:     { label: 'Capture the Flag', desc: 'Grab the enemy flag and bring it home.' },
+    // Phase 3 v3 — destroy the enemy Tower while defending your own (PvP).
+    DEFEND_TOWER:     { label: 'Defend the Tower', desc: 'Destroy the enemy Tower — defend your own.' },
   },
 
   // Game types playable right now (excludes coming-soon/PvP types).
@@ -244,6 +246,11 @@ const ARENA_MODES = {
         if (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.maxCaptures() >= ms.captureTarget) a.phase = 'ended';
         break;
       }
+      case 'DEFEND_TOWER': {
+        // Sole win condition: any Tower destroyed ends the match (TOWER_SYSTEM).
+        if (typeof TOWER_SYSTEM !== 'undefined' && TOWER_SYSTEM.isOver()) a.phase = 'ended';
+        break;
+      }
       case 'MOB_HUNTER':
       default:
         break; // timer-bound; the caller ends on timeUp
@@ -267,6 +274,11 @@ const ARENA_MODES = {
       case 'CAPTURE_FLAG': {
         const ts = game.arenaState.teamScores || [0, 0];
         return Math.max(ts[0] || 0, ts[1] || 0) * (typeof CTF_SYSTEM !== 'undefined' ? CTF_SYSTEM.CAPTURE_POINTS : 50);
+      }
+      case 'DEFEND_TOWER': {
+        if (typeof TOWER_SYSTEM === 'undefined' || !TOWER_SYSTEM.towers) return 0;
+        const best = TOWER_SYSTEM.towers.reduce((m, t) => Math.max(m, t.hp), 0);
+        return best * 10 + (TOWER_SYSTEM.winner() ? 100 : 0); // surviving structure + win bonus
       }
       default:
         return kills; // MOB_HUNTER
@@ -302,6 +314,8 @@ const ARENA_MODES = {
         const names = (typeof CTF_TEAM_NAMES !== 'undefined') ? CTF_TEAM_NAMES : ['Red', 'Blue'];
         return `${names[0]} ${ts[0] || 0} — ${ts[1] || 0} ${names[1]}   (to ${ms.captureTarget})`;
       }
+      case 'DEFEND_TOWER':
+        return (typeof TOWER_SYSTEM !== 'undefined') ? TOWER_SYSTEM.hudText() : '';
       default:
         return `Kills: ${game.arenaState.scores.p1 || 0}`;
     }
@@ -313,6 +327,11 @@ const ARENA_MODES = {
     if (ms && ms.key === 'DEATHMATCH') return this._leader(game).id.toUpperCase() + ' wins!';
     // KotH is a contest between 2+ players → name the top holder.
     if (ms && ms.key === 'KING_OF_HILL' && game.activePlayers().length >= 2) return this._kothLeader(game).toUpperCase() + ' wins the hill!';
+    // Defend the Tower → the player who destroyed a Tower wins.
+    if (ms && ms.key === 'DEFEND_TOWER') {
+      const w = (typeof TOWER_SYSTEM !== 'undefined') ? TOWER_SYSTEM.winner() : null;
+      return w ? `${w.toUpperCase()} wins — Tower destroyed!` : null;
+    }
     // CTF → name the winning team by capture count.
     if (ms && ms.key === 'CAPTURE_FLAG') {
       const ts = game.arenaState.teamScores || [0, 0];
