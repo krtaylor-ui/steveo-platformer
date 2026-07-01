@@ -641,6 +641,16 @@ class Game {
         && this._arenaTemplateData.worldAdvSettings) {
       Object.assign(this._worldAdvSettings, this._arenaTemplateData.worldAdvSettings);
     }
+    // If the loaded arena world enables 2-player co-op, ensure P2 exists now.
+    // twoPlayerMode often arrives via the template merge above — AFTER _buildLevel
+    // already ran its player2 check — so create it here. The arming block below
+    // then gives it the bow + arena HP. (Fixes P2 spawning bow-less: it could
+    // select the bow slot but had no bow to render or fire.)
+    if (this._worldAdvSettings.twoPlayerMode && !this.player2) {
+      this.player2 = new Player(this._p2SpawnX, this._p2SpawnY);
+      this.player2.godMode = false;
+      this._p2RespawnTimer = 0;
+    }
     // Apply per-world arena config (Phase 3A.2). Pre-launch playerHealthHp
     // (Phase 3A.3) overrides the world default when present.
     const hpSrc = this.arenaConfig.playerHealthHp || this._worldAdvSettings.arenaPlayerMaxHealth || 20;
@@ -914,15 +924,24 @@ class Game {
       this.camera.x = cam.x; this.camera.y = cam.y;
       return z;
     }
-    // DYNAMIC is co-op only (needs a second local player to frame between).
-    if (mode === 'DYNAMIC' && this.player2) {
-      const t = this._computeDynamicZoom();
-      this._arenaDynZoom = (this._arenaDynZoom == null)
-        ? t.z
-        : this._arenaDynZoom + (t.z - this._arenaDynZoom) * 0.1; // smooth-lerp
-      const cam = this._clampArenaCam(t.fx, t.fy, this._arenaDynZoom);
+    if (mode === 'DYNAMIC') {
+      if (this.player2) {
+        // Two players: frame between both (+padding), zooming to fit.
+        const t = this._computeDynamicZoom();
+        this._arenaDynZoom = (this._arenaDynZoom == null)
+          ? t.z
+          : this._arenaDynZoom + (t.z - this._arenaDynZoom) * 0.1; // smooth-lerp
+        const cam = this._clampArenaCam(t.fx, t.fy, this._arenaDynZoom);
+        this.camera.x = cam.x; this.camera.y = cam.y;
+        return this._arenaDynZoom;
+      }
+      // Single player: just follow the one player at normal zoom (no midpoint
+      // zoom-out). Without this, DYNAMIC fell through to the level-center fixed
+      // camera and the lone player drifted off-centre.
+      this._arenaDynZoom = 1.0;
+      const cam = this._clampArenaCam(this.player.cx, this.player.cy, 1.0);
       this.camera.x = cam.x; this.camera.y = cam.y;
-      return this._arenaDynZoom;
+      return 1.0;
     }
     return 1.0; // NONE → keep the fixed centering from _setupArena
   }
@@ -1466,7 +1485,13 @@ class Game {
               this._notify('Cannot remove the last nether portal — the Nether would be unreachable!', '#FF4444', 300);
             } else {
               this.sandbox.unregisterPortal(p.anchorRow, p.anchorCol);
-              this._sandboxRemovePortal(p.anchorRow + 1, p.anchorCol + 1);
+              // Ruined portals are an obsidian frame (+ optional NETHER_PORTAL interior)
+              // tracked in _ruinedPortals/_portalObsidianCells — the block-BFS below
+              // only clears NETHER_PORTAL_FRAME/NETHER_PORTAL, so ruined ones need their
+              // own cleanup or the obsidian would be left behind.
+              if (p.ruined) this._removeRuinedPortal(p.anchorRow, p.anchorCol);
+              else          this._sandboxRemovePortal(p.anchorRow + 1, p.anchorCol + 1);
+              this._notify(p.ruined ? 'Ruined portal deleted' : 'Portal removed', '#AACCFF', 180);
             }
           }
           this.sandbox.closePortalPopup();
@@ -1891,6 +1916,18 @@ class Game {
       const p2AttHeld = this.input.isP2Attack();
       if (this.player2.bow) {
         // ── P2 Bow ──
+        // Free-aim with the P2 right stick (atan2 of the stick vector) when it's
+        // deflected; hold the last angle while it's centred so aim stays put during
+        // a draw. Keyboard P2 falls back to snap-aim (facing / up / down). The angle
+        // is stored on the player so the on-screen reticle + the fired arrow match.
+        const p2gp   = this.input._p2gp();
+        const aimMag = Math.hypot(p2gp.aimX, p2gp.aimY);
+        if (this.input.p2GpSlot >= 0) {
+          if (aimMag > 0.15) this.player2._aimAngle = Math.atan2(p2gp.aimY, p2gp.aimX);
+          else if (this.player2._aimAngle == null) this.player2._aimAngle = this.player2.facing > 0 ? 0 : Math.PI;
+        } else {
+          this.player2._aimAngle = this._snapAimAngle(this.player2, this.input.isP2Jump(), this.input.isP2Crouch());
+        }
         const hasArrows = this._worldAdvSettings.unlimitedArrows || this.player2.countItem(BLOCK.ARROW) > 0;
         if (p2AttHeld && hasArrows) {
           this.player2.bowDrawing   = true;
@@ -1901,7 +1938,7 @@ class Game {
         } else if (this.player2.bowDrawing) {
           const charge = this.player2.drawProgress;
           const speed  = BOW_MIN_SPEED + (BOW_MAX_SPEED - BOW_MIN_SPEED) * charge;
-          const angle  = this._snapAimAngle(this.player2, this.input.isP2Jump(), this.input.isP2Crouch());
+          const angle  = this.player2._aimAngle;
           this.mobManager.addPlayerArrow(
             this.player2.cx, this.player2.cy,
             Math.cos(angle) * speed, Math.sin(angle) * speed,
@@ -1919,7 +1956,7 @@ class Game {
       } else {
         // ── P2 Melee ──
         if (p2AttHeld && this.player2.attackCooldown === 0) {
-          this.mobManager.playerAttack(this.player2);
+          this.mobManager.playerAttack(this.player2, 'p2');
           this.player2.attackCooldown = ATTACK_COOLDOWN;
           this.player2.swingTimer     = 15;
           this._playSound('sounds/attack-sword.mp3');
@@ -2553,8 +2590,15 @@ class Game {
         }
         const p2DmgTaken = p2HpBefore - this.player2.hp;
         if (p2DmgTaken > 0) {
-          if (this.player2.hp <= 0) this._triggerP2Death('Defeated by a mob');
+          this.mobManager.addPlayerDamageNum(this.player2, p2DmgTaken);
+          this._playSound('sounds/player-damaged.mp3');
         }
+        // Death check runs EVERY frame, not only when this block dealt damage:
+        // mob-melee (mob.update on its nearest target) and enemy-arrow damage are
+        // applied inside mobManager.update() above — before p2HpBefore is captured
+        // here — so gating on p2DmgTaken left P2 stuck alive at 0 HP. That also
+        // dropped P2 from _nearestPlayer(), so mobs stopped tracking it.
+        if (this.player2.hp <= 0 && !this.player2.godMode) this._triggerP2Death('Defeated');
         // P2 item collection
         const p2Collected = this.mobManager.collectDropsNear(this.player2);
         for (const { itemKey, amount } of p2Collected) {
@@ -3901,6 +3945,12 @@ class Game {
       this.player2.godMode = (this.gameMode === 'sandbox');
       this.player2.selectedSlot = 1;
       this._p2RespawnTimer = 0;
+      // Arena: a mid-game 2P join must be armed exactly like the primary spawn
+      // path, else P2 gets no bow and can't fire (weaponMode falls back to 'item').
+      if (this.isArena) {
+        this.player2.maxHp = this.player.maxHp;
+        this._armArenaPlayer(this.player2, this._arenaSpawns?.p2 || { x: spawnX, y: spawnY });
+      }
       if (!silent) this._notify('2-Player Co-op ON  (IJKL / 2nd controller)', '#88AAFF', 180);
     } else if (!enabled && this.player2) {
       this.player2 = null;
@@ -4842,6 +4892,27 @@ class Game {
       ctx.strokeStyle = this.player.bowDrawing ? 'rgba(255,120,50,0.9)' : 'rgba(255,220,100,0.7)';
       ctx.lineWidth   = 1;
       ctx.beginPath(); ctx.arc(mx, my, 3, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+
+    // Player 2 bow aim reticle — the P2 right stick moves this target. Drawn in
+    // world space (anchored a fixed distance from P2 along its aim angle) so it
+    // tracks the camera + zoom exactly like other world objects.
+    if (this.player2 && this.player2.bow && this.player2._aimAngle != null && !this.inventoryOpen) {
+      const R  = 64;
+      const rx = this.player2.cx + Math.cos(this.player2._aimAngle) * R - this.camera.x;
+      const ry = this.player2.cy + Math.sin(this.player2._aimAngle) * R - this.camera.y;
+      const r  = 8;
+      ctx.save();
+      ctx.strokeStyle = this.player2.bowDrawing ? 'rgba(120,180,255,0.95)' : 'rgba(120,180,255,0.6)';
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(rx - r, ry); ctx.lineTo(rx - 3, ry);
+      ctx.moveTo(rx + 3, ry); ctx.lineTo(rx + r, ry);
+      ctx.moveTo(rx, ry - r); ctx.lineTo(rx, ry - 3);
+      ctx.moveTo(rx, ry + 3); ctx.lineTo(rx, ry + r);
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(rx, ry, 3, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
     }
 
@@ -8071,7 +8142,7 @@ class Game {
         if (mx >= slX && mx <= slX + slW && my >= L.FIRST_ROW + 4 && my <= L.FIRST_ROW + 28) {
           const v = Math.max(0, Math.min(1, (mx - slX) / slW));
           this._worldAdvSettings.musicVolume = Math.round(v * 20) / 20; // snap to 5% increments
-          if (this._musicSystem.bgAudio) this._musicSystem.bgAudio.volume = this._worldAdvSettings.musicVolume * MAX_AUDIO_VOLUME;
+          this._applyMusicVolume();
           this._wsAudioDragTarget = 'music';
         } else if (mx >= slX && mx <= slX + slW && my >= L.FIRST_ROW + 56 && my <= L.FIRST_ROW + 80) {
           const v = Math.max(0, Math.min(1, (mx - slX) / slW));
@@ -9851,6 +9922,24 @@ class Game {
     for (const [dr, dc] of Game.RP_FRAME_OFFSETS) {
       this._portalObsidianCells.add(`${anchorCol + dc},${anchorRow + dr}`);
     }
+  }
+
+  // Delete a ruined portal: clear its obsidian frame, any filled gap obsidian, and
+  // the interior (AIR, or NETHER_PORTAL if it was activated) from the grid, then drop
+  // it from the ruined-portal registries. (Its sandbox entry is removed separately by
+  // SandboxManager.unregisterPortal.) Only obsidian/portal blocks inside the 4×4 box
+  // are cleared, so unrelated blocks the player built next to it are left intact.
+  _removeRuinedPortal(anchorRow, anchorCol) {
+    const clear = (dr, dc) => {
+      const r = anchorRow + dr, c = anchorCol + dc;
+      const b = this.level.get(r, c);
+      if (b === BLOCK.OBSIDIAN || b === BLOCK.NETHER_PORTAL) this.level.set(r, c, BLOCK.AIR);
+      this._portalObsidianCells.delete(`${c},${r}`);
+    };
+    for (const [dr, dc] of Game.RP_FRAME_OFFSETS)    clear(dr, dc);
+    for (const [dr, dc] of Game.RP_GAP_OFFSETS)      clear(dr, dc);
+    for (const [dr, dc] of Game.RP_INTERIOR_OFFSETS) clear(dr, dc);
+    this._ruinedPortals.delete(`${anchorRow},${anchorCol}`);
   }
 
   _isRuinedPortalComplete(anchorRow, anchorCol) {
@@ -12306,7 +12395,7 @@ class Game {
             this._pauseVolDrag = 'music';
             const v = Math.max(0, Math.min(1, (mx - slX) / slW));
             this._worldAdvSettings.musicVolume = Math.round(v * 20) / 20;
-            if (this._musicSystem.bgAudio) this._musicSystem.bgAudio.volume = this._worldAdvSettings.musicVolume * MAX_AUDIO_VOLUME;
+            this._applyMusicVolume();
           } else if (this._pauseVolDrag === 'sfx' || (inS && !this._pauseVolDrag)) {
             this._pauseVolDrag = 'sfx';
             const v = Math.max(0, Math.min(1, (mx - slX) / slW));
@@ -14777,6 +14866,11 @@ class Game {
         this._advancePlaylist();
       }
     });
+    // Confirms audio is actually producing sound (not just src-set). The gesture
+    // fallback below keeps retrying until this fires, so a rejected/interrupted
+    // first play() can no longer leave the whole session silent.
+    this._musicSystem.everStarted = false;
+    bg.addEventListener('playing', () => { this._musicSystem.everStarted = true; });
     this._musicSystem.bgAudio = bg;
 
     // Seed collected discs with all defaultUnlocked entries
@@ -14785,7 +14879,7 @@ class Game {
     }
 
     // Crossfade from menu audio (which is already playing and has unlocked autoplay)
-    // into the game's intro. If menu audio isn't available, fall back to a direct play.
+    // into the game's playlist. If menu audio isn't available, start directly.
     const menuAudio = window._menuAudio;
     if (menuAudio && !menuAudio.paused) {
       const startVol = menuAudio.volume;
@@ -14801,16 +14895,29 @@ class Game {
         }
       }, 50);
     } else {
-      // Menu audio wasn't playing (e.g. autoplay hadn't unlocked yet) —
-      // fall back to event-listener approach
-      const startAudio = () => {
-        document.removeEventListener('keydown',   startAudio, true);
-        document.removeEventListener('mousedown', startAudio, true);
-        this._advancePlaylist();
-      };
-      document.addEventListener('keydown',   startAudio, true);
-      document.addEventListener('mousedown', startAudio, true);
+      // Menu audio wasn't playing — start straight away (reaching gameplay already
+      // required a user gesture, so autoplay is unlocked in the common case).
+      this._advancePlaylist();
     }
+
+    // Resilient fallback: keep (re)starting the playlist on ANY user gesture until
+    // the audio element actually fires 'playing'. Covers a blocked/interrupted
+    // first play() (async crossfade, mid-flight fade, transient-activation loss),
+    // which previously left in-game music silent for the whole session. The
+    // listeners self-remove once sound is confirmed. Boss/wither music opts out.
+    const kickMusic = () => {
+      const ms = this._musicSystem;
+      if (ms.everStarted) {
+        document.removeEventListener('keydown',   kickMusic, true);
+        document.removeEventListener('mousedown', kickMusic, true);
+        return;
+      }
+      if (ms.bossMusicActive || ms.witherMusicActive) return;
+      if (typeof MUSIC_CONTROL !== 'undefined' && MUSIC_CONTROL.isMuted()) return;
+      this._advancePlaylist();
+    };
+    document.addEventListener('keydown',   kickMusic, true);
+    document.addEventListener('mousedown', kickMusic, true);
   }
 
   _playIntroMusic() {
@@ -14850,14 +14957,44 @@ class Game {
     const bg = this._musicSystem.bgAudio;
     if (!bg) return;
     this._musicSystem.currentTrack = discKey;
-    this._fadeOutMusic(400, () => {
+    // Set src + call play() for the new track. Kept as its own fn so we can invoke
+    // it SYNCHRONOUSLY from a gesture-triggered start (see below) — deferring play()
+    // inside the _fadeOutMusic setInterval detached it from the user-activation
+    // window, so the autoplay policy rejected it and music stayed silent (this also
+    // broke the sandbox jukebox, which routes through here).
+    const startTrack = () => {
       bg.src    = disc.audioFile;
       bg.loop   = false;
       bg.volume = 0;
       const p = bg.play();
       if (p) p.catch(() => {});
       this._fadeInMusic(400);
-    });
+    };
+    // Only cross-fade when a track is actually audible right now; otherwise start
+    // immediately so play() stays within the triggering gesture.
+    if (!bg.paused && bg.currentTime > 0 && bg.volume > 0) {
+      this._fadeOutMusic(400, startTrack);
+    } else {
+      if (this._musicSystem.fadeInterval) { clearInterval(this._musicSystem.fadeInterval); this._musicSystem.fadeInterval = null; }
+      startTrack();
+    }
+  }
+
+  // Apply the current music volume to the live audio AND keep the global mute in
+  // sync. Any volume > 0 clears a lingering title-screen mute (MUSIC_CONTROL) so
+  // players can always recover audio from the in-game volume slider; volume 0
+  // mutes. This is the "master mute next to the volume controls" — the slider IS it.
+  _applyMusicVolume() {
+    const vol = this._worldAdvSettings.musicVolume ?? DEFAULT_MUSIC_VOLUME;
+    if (typeof MUSIC_CONTROL !== 'undefined') {
+      const wantMuted = vol <= 0;
+      if (MUSIC_CONTROL.isMuted() !== wantMuted) MUSIC_CONTROL.toggle(); // persists + applies to all live audio
+    }
+    const bg = this._musicSystem && this._musicSystem.bgAudio;
+    if (bg) {
+      bg.muted  = (typeof MUSIC_CONTROL !== 'undefined') ? MUSIC_CONTROL.isMuted() : false;
+      bg.volume = vol * MAX_AUDIO_VOLUME;
+    }
   }
 
   _preloadSounds() {
@@ -15396,6 +15533,23 @@ class Game {
             isConfigured:   !!mp.isConfigured,
             configuredSongs: Array.isArray(mp.configuredSongs) ? mp.configuredSongs : [],
           });
+        }
+      }
+    }
+    // Also scan the loaded grid and register any MUSIC_PLAYER block not already in
+    // the registry. Sandbox self-registers blocks on click, but normal/platformer
+    // only had the saved configs — a block placed but never configured wouldn't be
+    // in _musicPlayerBlocks, so _nearMusicPlayer() found nothing and the jukebox
+    // never opened. This makes every Music Player block interactable in all modes.
+    if (this.level && this.level.grid) {
+      for (let r = 0; r < this.level.height; r++) {
+        for (let c = 0; c < this.level.width; c++) {
+          if (this.level.grid[r][c] === BLOCK.MUSIC_PLAYER) {
+            const k = `${c},${r}`;
+            if (!this._musicPlayerBlocks.has(k)) {
+              this._musicPlayerBlocks.set(k, { col: c, row: r, isConfigured: false, configuredSongs: [] });
+            }
+          }
         }
       }
     }

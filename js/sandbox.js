@@ -703,16 +703,19 @@ class SandboxManager {
       if (mx >= bx && mx <= bx + btnSz && my >= by && my <= by + btnSz) {
         // Toggle: click selected → unlink; click other → link
         this.setPortalDest(portal.id, portal.destId === opposites[i].id ? null : opposites[i].id);
+        this.portalPopup.confirmDelete = false; // any other interaction cancels a pending delete
         return null;
       }
     }
 
-    // Remove button (disabled for ruined portals)
+    // Remove/delete button — two-click confirm (works for normal AND ruined portals).
     const removeY = py + ph - 52;
-    if (!portal.ruined && mx >= px + 12 && mx <= px + pw - 12 && my >= removeY && my <= removeY + 32) {
+    if (mx >= px + 12 && mx <= px + pw - 12 && my >= removeY && my <= removeY + 32) {
+      if (!this.portalPopup.confirmDelete) { this.portalPopup.confirmDelete = true; return null; }
       return 'remove';
     }
 
+    this.portalPopup.confirmDelete = false; // click elsewhere in the panel cancels the confirm
     return null; // inside panel but no action target
   }
 
@@ -1256,26 +1259,22 @@ class SandboxManager {
       ctx.fillText(op.label, bx + btnSz / 2, by + btnSz / 2);
     }
 
-    // Remove portal button (hidden for ruined portals \u2014 frame obsidian is protected)
-    const removeY = py + ph - 52;
-    if (portal.ruined) {
-      ctx.fillStyle = 'rgba(80,60,100,0.25)';
-      _roundRect(ctx, px + 12, removeY, pw - 24, 32, 5); ctx.fill();
-      ctx.strokeStyle = '#443355'; ctx.lineWidth = 1;
-      _roundRect(ctx, px + 12, removeY, pw - 24, 32, 5); ctx.stroke();
-      ctx.fillStyle = '#665577'; ctx.font = '10px Courier New';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('Complete & activate with Flint & Steel (U)', CANVAS_W / 2, removeY + 16);
-    } else {
-      const remHov  = mx >= px + 12 && mx <= px + pw - 12 && my >= removeY && my <= removeY + 32;
-      ctx.fillStyle   = remHov ? 'rgba(220,50,50,0.3)' : 'rgba(0,0,0,0.4)';
-      _roundRect(ctx, px + 12, removeY, pw - 24, 32, 5); ctx.fill();
-      ctx.strokeStyle = remHov ? '#FF4444' : '#553333'; ctx.lineWidth = 1.5;
-      _roundRect(ctx, px + 12, removeY, pw - 24, 32, 5); ctx.stroke();
-      ctx.fillStyle    = remHov ? '#fff' : '#cc6666';
-      ctx.font         = '11px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('\u2715  Remove Portal', CANVAS_W / 2, removeY + 16);
-    }
+    // Remove/delete portal button. Works for ruined portals too now (their obsidian
+    // frame is cleared by the game handler). Two-click confirm guards accidental deletes.
+    const removeY    = py + ph - 52;
+    const confirming = !!this.portalPopup.confirmDelete;
+    const remHov     = mx >= px + 12 && mx <= px + pw - 12 && my >= removeY && my <= removeY + 32;
+    ctx.fillStyle   = confirming ? 'rgba(230,140,30,0.35)' : (remHov ? 'rgba(220,50,50,0.3)' : 'rgba(0,0,0,0.4)');
+    _roundRect(ctx, px + 12, removeY, pw - 24, 32, 5); ctx.fill();
+    ctx.strokeStyle = confirming ? '#FFAA33' : (remHov ? '#FF4444' : '#553333'); ctx.lineWidth = 1.5;
+    _roundRect(ctx, px + 12, removeY, pw - 24, 32, 5); ctx.stroke();
+    ctx.fillStyle    = (confirming || remHov) ? '#fff' : '#cc6666';
+    ctx.font         = '11px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(
+      confirming ? '\u26a0  Click again to DELETE'
+                 : (portal.ruined ? '\u2715  Delete Ruined Portal' : '\u2715  Remove Portal'),
+      CANVAS_W / 2, removeY + 16
+    );
 
     // Footer
     ctx.fillStyle    = 'rgba(100,100,120,0.5)';

@@ -622,7 +622,7 @@ class Arrow {
     this.age          = 0;
   }
 
-  update(player, level) {
+  update(player, level, player2 = null) {
     if (!this.alive) return;
     this.age++;
     if (this.age > 280) { this.alive = false; return; }
@@ -638,16 +638,21 @@ class Arrow {
 
     if (this.isPlayerArrow) return; // deflected/player arrows don't hurt player
 
-    // Player collision
-    if (this.x > player.x && this.x < player.x + player.width &&
-        this.y > player.y && this.y < player.y + player.height) {
-      if (player.crouching && player.hasShield) {
-        // Shield deflects — reverse direction, now acts as player arrow
-        this.vx = -this.vx;
-        this.isPlayerArrow = true;
-      } else {
-        player.takeDamage(this.damage, Math.sign(this.vx));
-        this.alive = false;
+    // Player collision — damage the first live player the arrow overlaps (P1 or,
+    // in 2-player co-op/arena, P2). The arrow stops (or deflects) on either hit.
+    for (const p of (player2 ? [player, player2] : [player])) {
+      if (!p || p.hp <= 0) continue;
+      if (this.x > p.x && this.x < p.x + p.width &&
+          this.y > p.y && this.y < p.y + p.height) {
+        if (p.crouching && p.hasShield) {
+          // Shield deflects — reverse direction, now acts as player arrow
+          this.vx = -this.vx;
+          this.isPlayerArrow = true;
+        } else {
+          p.takeDamage(this.damage, Math.sign(this.vx));
+          this.alive = false;
+        }
+        return;
       }
     }
   }
@@ -1590,7 +1595,7 @@ class MobManager {
     }
 
     // Skeleton/enemy arrows
-    this.arrows = this.arrows.filter(a => { a.update(player, level); return a.alive; });
+    this.arrows = this.arrows.filter(a => { a.update(player, level, player2); return a.alive; });
 
     // Deflected enemy arrows — check mob collisions
     for (const a of this.arrows) {
@@ -1704,7 +1709,7 @@ class MobManager {
     return hits;
   }
 
-  playerAttack(player) {
+  playerAttack(player, owner = 'p1') {
     const damage = player.weaponDamage;
     let anyHit   = false;
 
@@ -1719,7 +1724,9 @@ class MobManager {
           new DamageNumber(mob.cx, mob.y - 8, damage, '#FFE040')
         );
         anyHit = true;
-        // Death handled in update() loop
+        // Arena kill attribution for melee blows (arrows are credited in update()).
+        // Death FX/drops still handled in the update() loop via _onMobDeath.
+        if (!mob.alive) this.onKill?.(owner, mob);
       }
     }
     return anyHit;
