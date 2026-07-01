@@ -4247,6 +4247,57 @@ class Game {
     ctx.restore();
   }
 
+  // 4-player layout (v3 §4): P3/P4 get a compact health bar + hotbar in the
+  // lower band — P3 directly below P1's hotbar (left), P4 below P2's (right).
+  // P1 (top-left) and P2 (top-right full HUD) are unchanged.
+  _drawLowerPlayerHUD(ctx, p, pIdx) {
+    if (!p) return;
+    ctx.save();
+    const SZ = 19, GAP = 1;
+    const bw = 9 * SZ + 8 * GAP;        // match hotbar width (179)
+    const bh = 14;
+    const rightAlign = (pIdx === 3);    // P4 → right, P3 → left
+    const bx = rightAlign ? (CANVAS_W - 10 - bw) : 10;
+    const healthY = 72;                 // just below the P1/P2 hotbars (bottom ≈66)
+    const hotbarY = healthY + bh + 3;   // 89
+
+    // Background pill + red track + coloured fill
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    _roundRect(ctx, bx - 2, healthY - 2, bw + 4, bh + 4, 4); ctx.fill();
+    ctx.fillStyle = '#550000';
+    ctx.fillRect(bx, healthY, bw, bh);
+    const hpPct = Math.max(0, p.hp / p.maxHp);
+    ctx.fillStyle = hpPct > 0.6 ? '#22BB22' : hpPct > 0.3 ? '#BBBB00' : '#CC2222';
+    ctx.fillRect(bx, healthY, Math.round(bw * hpPct), bh);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    for (let i = 1; i < p.maxHp / 2; i++) ctx.fillRect(bx + Math.round(bw * (i / (p.maxHp / 2))), healthY, 1, bh);
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1;
+    ctx.strokeRect(bx, healthY, bw, bh);
+
+    // Player label (P3 green / P4 yellow) + HP text
+    const col = pIdx === 2 ? '#5aff7a' : '#f5d142';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = col; ctx.font = 'bold 9px Courier New'; ctx.textAlign = 'left';
+    ctx.fillText('P' + (pIdx + 1), bx + 3, healthY + bh / 2);
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'right';
+    ctx.fillText(`${Math.max(0, p.hp)}/${p.maxHp}`, bx + bw - 3, healthY + bh / 2);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+
+    // Hotbar directly below the health bar
+    this._drawCompactHotbar(ctx, p, rightAlign, hotbarY);
+
+    // Respawn overlay
+    if (this._respawnTimers[pIdx] > 0) {
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      _roundRect(ctx, bx - 2, healthY - 2, bw + 4, bh + 4, 4); ctx.fill();
+      ctx.fillStyle = '#FF8888'; ctx.font = 'bold 9px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(`Respawn ${Math.ceil(this._respawnTimers[pIdx] / 60)}s`, bx + bw / 2, healthY + bh / 2);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    }
+    ctx.restore();
+  }
+
   _doRespawn() {
     // Respawn Anchor takes priority over bed if set
     if (this._activeRespawnAnchor) {
@@ -10359,13 +10410,12 @@ class Game {
     this._drawHelpButton(ctx);
     this._drawControllerStatus(ctx);
     this._drawContextPrompt(ctx);
-    { let yOff = 0;
-      for (let i = 1; i < this.players.length; i++) {
-        const p = this.players[i];
-        if (!p) continue;
-        this._drawSecondaryHUD(ctx, p, i, yOff);
-        yOff += 52;
-      } }
+    for (let i = 1; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p) continue;
+      if (i === 1) this._drawSecondaryHUD(ctx, p, i, 0); // P2 top-right (full HUD)
+      else         this._drawLowerPlayerHUD(ctx, p, i);  // P3 lower-left, P4 lower-right
+    }
     if (this.isArena) this._drawArenaHUD(ctx);
     ctx.restore();
   }
@@ -10628,11 +10678,11 @@ class Game {
 
   // Compact 9-slot hotbar used in 2P mode — width matches HP bar (180px).
   // rightAlign=false → P1 left side; rightAlign=true → P2 right side.
-  _drawCompactHotbar(ctx, player, rightAlign) {
+  _drawCompactHotbar(ctx, player, rightAlign, hbYOverride = null) {
     const SZ = 19, GAP = 1;
     const totalW = 9 * SZ + 8 * GAP;   // 179px ≈ HP bar width (180px)
     const hbX = rightAlign ? (CANVAS_W - 10 - totalW) : 10;
-    const hbY = 47;   // XP bar ends at y=43, +4px gap
+    const hbY = hbYOverride != null ? hbYOverride : 47;   // XP bar ends at y=43, +4px gap
     const accentCol = rightAlign ? '#88AAFF' : '#FFD700';
 
     for (let i = 0; i < 9; i++) {
