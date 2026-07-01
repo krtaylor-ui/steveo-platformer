@@ -1068,11 +1068,12 @@ class Game {
     if (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.draw) CTF_SYSTEM.draw(ctx, this.camera, this.frameCount);
     // King-of-the-Hill platform — tinted green while held, gold otherwise (Phase 3A.3).
     if (this._arenaHill && this._arenaMode && this._arenaMode.key === 'KING_OF_HILL' && typeof _drawHillPlatform === 'function') {
-      // Hill tinted by its owner: P1 blue, P2 red, P3 green, P4 yellow; contested = white; unclaimed gold.
+      // Hill tinted by its owner: P1 blue, P2 red, P3 green, P4 yellow; unowned = yellow.
+      // v3: no white "contested" tint — Sticky keeps the owner's colour while contested
+      // (owner persists in state); Sole clears the owner when contested → yellow.
       const owner = (typeof ARENA_MODES !== 'undefined' && ARENA_MODES.hillOwner) ? ARENA_MODES.hillOwner(this) : null;
-      const contested = (typeof ARENA_MODES !== 'undefined' && ARENA_MODES.hillContested) ? ARENA_MODES.hillContested(this) : false;
       const ownerColors = { p1: '#42a0ff', p2: '#ff5a5a', p3: '#5aff7a', p4: '#f5d142' };
-      const color = contested ? '#ffffff' : (ownerColors[owner] || '#f1c40f');
+      const color = ownerColors[owner] || '#f1c40f';
       _drawHillPlatform(ctx, this._arenaHill.x - this.camera.x, this._arenaHill.y - this.camera.y, color,
         this._arenaHill.w / BLOCK_SIZE, this._arenaHill.h / BLOCK_SIZE);
     }

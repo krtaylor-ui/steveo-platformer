@@ -214,7 +214,9 @@ const ARENA_MODES = {
           if (onIds.length === 1) ms.ownerId = onIds[0];
           if (ms.ownerId) ms.hold[ms.ownerId]++;
         }
-        if (this._kothMax(game) >= this.HOLD_TARGET_FRAMES) a.phase = 'ended';
+        // v3: KOTH runs the FULL match timer — winner is the top holder (see
+        // winnerText/_kothLeader). No early end at a hold target (that capped
+        // matches prematurely); the arena timer (timeUp) ends the match.
         break;
       }
       case 'SURVIVAL_WAVES': {
@@ -278,14 +280,15 @@ const ARENA_MODES = {
       case 'COLLECT_EMERALDS':
         return (typeof EMERALD_SYSTEM !== 'undefined') ? EMERALD_SYSTEM.hudText() : '';
       case 'KING_OF_HILL': {
-        const owner = ms.contested ? 'CONTESTED' : (ms.ownerId ? ms.ownerId.toUpperCase() : '—');
-        const target = Math.round(this.HOLD_TARGET_FRAMES / 60);
+        // Sticky keeps the owner even while contested; Sole/ALL show CONTESTED.
+        const showContested = ms.contested && ms.scoring !== 'STICKY';
+        const owner = showContested ? 'CONTESTED' : (ms.ownerId ? ms.ownerId.toUpperCase() : '—');
         const live = game.activePlayers();
         if (live.length >= 2) {
           const parts = live.map(p => { const id = p._ownerId || 'p1'; return `${id.toUpperCase()}:${Math.round((ms.hold[id] || 0) / 60)}s`; });
-          return `Hill: ${owner}   ${parts.join('  ')} / ${target}s`;
+          return `Hill: ${owner}   ${parts.join('  ')}`;
         }
-        return `Hill: ${owner}   ${Math.round(this._kothMax(game) / 60)}s / ${target}s`;
+        return `Hill: ${owner}   ${Math.round(this._kothMax(game) / 60)}s held`;
       }
       case 'SURVIVAL_WAVES':
         return `Wave ${Math.max(1, ms.wave)}/${ms.totalWaves || '?'}   Kills: ${game.arenaState.scores.p1 || 0}`;
