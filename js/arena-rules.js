@@ -1,0 +1,233 @@
+// ============================================================
+// arena-rules.js — Declarative arena rules engine (Phase 3 v3, first pass)
+// ------------------------------------------------------------
+// A game "mode" is expressed as a RULESET (pure data): which world ELEMENTS are
+// active, how points are SCORED (weights on tracked stats), and the WIN/END
+// conditions. This module is the evaluator over that data; it does NOT yet drive
+// the live match loop — it is validated by headless parity tests that reproduce
+// the current hardcoded modes (see test-rules.js). Wiring the live game to it,
+// and the "Custom Rules" authoring UI, are the next steps.
+//
+// Design decisions (agreed with Kevin):
+//  • TRACK EVERYTHING scoreable as a stat, even if a mode doesn't score it.
+//  • Three DISCRETE mob-spawn sources — bots (ambient; future AI players),
+//    waveSpawns (structural difficulty ramp), spawnEggs (designer-placed).
+//  • Teams are a PRE-LAUNCH setting, not a rule; the engine only aggregates.
+//  • Per-player stats SUM for a team; match-level counters (wavesDefeated) are
+//    SHARED (added once). This single split covers every summed/shared case.
+//  • Win logic (this pass): a flat list of conditions combined by ANY/ALL. The
+//    data model reserves room for ordered "stages" (sequencing) added later.
+// ============================================================
+
+// Comprehensive per-player stat keys — always tracked; scoring uses a subset.
+const ARENA_STAT_KEYS = [
+  'kills', 'deaths', 'mobKills', 'emeralds',
+  'hillSeconds', 'hillStreak',        // total held; longest unbroken streak
+  'flagCaptures', 'towerDamage', 'towersDestroyed',
+];
+// Match-level (shared) counters — added once to a team, not per player.
+const ARENA_SHARED_KEYS = ['wavesDefeated'];
+
+function _blankStat() { const s = {}; for (const k of ARENA_STAT_KEYS) s[k] = 0; return s; }
+
+const ARENA_RULES = {
+  STAT_KEYS: ARENA_STAT_KEYS,
+  SHARED_KEYS: ARENA_SHARED_KEYS,
+  blankStat: _blankStat,
+
+  // Default ruleset skeleton — the "Custom Rules" starting point.
+  DEFAULT: {
+    label: 'Custom Rules',
+    elements: { pvp: false, bots: false, waveSpawns: false, spawnEggs: false,
+                emeralds: false, hill: false, ctf: false, towers: false },
+    scoring: { perKill: 0, perMobKill: 0, perEmerald: 0, perHillSecond: 0,
+               perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 },
+    win: { combinator: 'any', conditions: [] },   // flat conditions (ANY/ALL)
+    endStructural: [],                              // structural enders (OR-ed)
+    winnerBy: 'topScore',                           // topScore | destroyer | topTowerHp
+    deathEndsMatch: false,                          // Survival: a death ends it
+    stages: null,                                   // reserved for sequencing
+  },
+
+  // ── The 7 current modes expressed as rule presets (parity targets) ──
+  PRESETS: {
+    QUICK_BATTLE: {
+      label: 'Quick Battle',
+      elements: { pvp: true, bots: true, spawnEggs: true, waveSpawns: false, emeralds: true, hill: false, ctf: false, towers: false },
+      scoring: { perKill: 1, perMobKill: 1, perEmerald: 1, perHillSecond: 0, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 },
+      win: { combinator: 'any', conditions: [] },
+      endStructural: ['allBotsDead'], winnerBy: 'topScore', deathEndsMatch: false,
+    },
+    MOB_HUNTER: {
+      label: 'Mob Hunter',
+      elements: { pvp: false, bots: true, spawnEggs: true, waveSpawns: false, emeralds: false, hill: false, ctf: false, towers: false },
+      scoring: { perKill: 0, perMobKill: 1, perEmerald: 0, perHillSecond: 0, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 },
+      win: { combinator: 'any', conditions: [] },
+      endStructural: [], winnerBy: 'topScore', deathEndsMatch: false, // timer-bound
+    },
+    COLLECT_EMERALDS: {
+      label: 'Collect Emeralds',
+      elements: { pvp: false, bots: true, spawnEggs: true, waveSpawns: false, emeralds: true, hill: false, ctf: false, towers: false },
+      scoring: { perKill: 0, perMobKill: 0, perEmerald: 1, perHillSecond: 0, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 },
+      win: { combinator: 'any', conditions: [] },
+      endStructural: ['allEmeralds'], winnerBy: 'topScore', deathEndsMatch: false,
+    },
+    KING_OF_HILL: {
+      label: 'King of the Hill',
+      elements: { pvp: true, bots: false, spawnEggs: false, waveSpawns: false, emeralds: false, hill: true, ctf: false, towers: false },
+      scoring: { perKill: 0, perMobKill: 0, perEmerald: 0, perHillSecond: 1, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 },
+      win: { combinator: 'any', conditions: [] },
+      endStructural: [], winnerBy: 'topScore', deathEndsMatch: false, // full-timer (v3)
+    },
+    SURVIVAL_WAVES: {
+      label: 'Survival Waves',
+      elements: { pvp: false, bots: false, spawnEggs: false, waveSpawns: true, emeralds: false, hill: false, ctf: false, towers: false },
+      scoring: { perKill: 0, perMobKill: 0, perEmerald: 0, perHillSecond: 0, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 1 },
+      win: { combinator: 'any', conditions: [] },
+      endStructural: ['survivedAllWaves', 'allPlayersDead'], winnerBy: 'topScore', deathEndsMatch: true,
+    },
+    DEATHMATCH: {
+      label: 'Deathmatch',
+      elements: { pvp: true, bots: false, spawnEggs: false, waveSpawns: false, emeralds: false, hill: false, ctf: false, towers: false },
+      scoring: { perKill: 1, perMobKill: 0, perEmerald: 0, perHillSecond: 0, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 },
+      win: { combinator: 'any', conditions: [{ type: 'playerKills', target: 10 }] },
+      endStructural: [], winnerBy: 'topScore', deathEndsMatch: false,
+    },
+    CAPTURE_FLAG: {
+      label: 'Capture the Flag',
+      elements: { pvp: true, bots: false, spawnEggs: false, waveSpawns: false, emeralds: false, hill: false, ctf: true, towers: false },
+      scoring: { perKill: 0, perMobKill: 0, perEmerald: 0, perHillSecond: 0, perFlag: 1, perTowerDestroyed: 0, perWaveDefeated: 0 },
+      win: { combinator: 'any', conditions: [{ type: 'flagsCaptured', target: 3 }] },
+      endStructural: [], winnerBy: 'topScore', deathEndsMatch: false,
+    },
+    DEFEND_TOWER: {
+      label: 'Defend the Tower',
+      elements: { pvp: true, bots: false, spawnEggs: false, waveSpawns: false, emeralds: false, hill: false, ctf: false, towers: true },
+      scoring: { perKill: 0, perMobKill: 0, perEmerald: 0, perHillSecond: 0, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 }, // health-based
+      win: { combinator: 'any', conditions: [{ type: 'towersDestroyed', target: 1 }] },
+      endStructural: [], winnerBy: 'destroyer', deathEndsMatch: false, // timeout tiebreak = topTowerHp (see winner())
+    },
+  },
+
+  // Merge a partial ruleset over DEFAULT (deep-ish for the known sub-objects).
+  normalize(rs) {
+    const d = this.DEFAULT;
+    return {
+      label: rs.label || d.label,
+      elements: Object.assign({}, d.elements, rs.elements),
+      scoring: Object.assign({}, d.scoring, rs.scoring),
+      win: { combinator: (rs.win && rs.win.combinator) || 'any', conditions: (rs.win && rs.win.conditions) || [] },
+      endStructural: rs.endStructural || [],
+      winnerBy: rs.winnerBy || d.winnerBy,
+      deathEndsMatch: !!rs.deathEndsMatch,
+      stages: rs.stages || null,
+    };
+  },
+
+  // ── Scoring ────────────────────────────────────────────────
+  _statOf(game, id) { return (game.arenaState.stats && game.arenaState.stats[id]) || {}; },
+  _wavesDefeated(game) { return (game._arenaMode && game._arenaMode.wavesCleared) || 0; },
+
+  // Per-player individual points (summed for a team).
+  individualScore(rs, game, id) {
+    const s = rs.scoring, st = this._statOf(game, id);
+    return (st.kills || 0) * s.perKill
+         + (st.mobKills || 0) * s.perMobKill
+         + (st.emeralds || 0) * s.perEmerald
+         + (st.hillSeconds || 0) * s.perHillSecond
+         + (st.flagCaptures || 0) * s.perFlag
+         + (st.towersDestroyed || 0) * s.perTowerDestroyed;
+  },
+  // Match-level (shared) points, added once — not multiplied by team size.
+  sharedScore(rs, game) { return this._wavesDefeated(game) * rs.scoring.perWaveDefeated; },
+
+  // A player's displayed score = own individual points + the shared component.
+  playerScore(rs, game, id) { return this.individualScore(rs, game, id) + this.sharedScore(rs, game); },
+
+  // Team score = sum of members' individual points + the shared component once.
+  teamScore(rs, game, teamId) {
+    let sum = 0;
+    for (const p of game.activePlayers()) if (p && p.teamId === teamId) sum += this.individualScore(rs, game, p._ownerId);
+    return sum + this.sharedScore(rs, game);
+  },
+
+  // ── Win / end evaluation ───────────────────────────────────
+  _ownerIds(game) { return game.activePlayers().map((p, i) => (p && p._ownerId) || ('p' + (i + 1))); },
+  _maxStat(game, key) { let m = 0; for (const id of this._ownerIds(game)) m = Math.max(m, this._statOf(game, id)[key] || 0); return m; },
+
+  // Is a single threshold condition currently satisfied?
+  conditionMet(rs, game, cond) {
+    switch (cond.type) {
+      case 'playerKills':            return this._maxStat(game, 'kills') >= cond.target;
+      case 'hillSecondsTotal':       return this._maxStat(game, 'hillSeconds') >= cond.target;
+      case 'hillSecondsConsecutive': return this._maxStat(game, 'hillStreak') >= cond.target;
+      case 'emeraldsCollected':      return this._maxStat(game, 'emeralds') >= cond.target;
+      case 'flagsCaptured': {
+        const t0 = this._teamStat(game, 0, 'flagCaptures'), t1 = this._teamStat(game, 1, 'flagCaptures');
+        return Math.max(t0, t1, this._maxStat(game, 'flagCaptures')) >= cond.target;
+      }
+      case 'towersDestroyed':        return this._totalStat(game, 'towersDestroyed') >= cond.target;
+      case 'totalPoints':            return this._topPlayerScore(rs, game) >= cond.target;
+      default: return false;
+    }
+  },
+  _teamStat(game, teamId, key) { let n = 0; for (const p of game.activePlayers()) if (p && p.teamId === teamId) n += (this._statOf(game, p._ownerId)[key] || 0); return n; },
+  _totalStat(game, key) { let n = 0; for (const id of this._ownerIds(game)) n += (this._statOf(game, id)[key] || 0); return n; },
+  _topPlayerScore(rs, game) { let m = 0; for (const id of this._ownerIds(game)) m = Math.max(m, this.playerScore(rs, game, id)); return m; },
+
+  // Structural enders that depend on the world/systems (guarded).
+  _structuralMet(rs, game, kind) {
+    switch (kind) {
+      case 'allBotsDead':      return !!(game.mobManager && game.mobManager.mobs && game.mobManager.mobs.filter(m => m.alive).length === 0);
+      case 'allEmeralds':      return (typeof EMERALD_SYSTEM !== 'undefined') ? EMERALD_SYSTEM.allRoundsComplete() : false;
+      case 'survivedAllWaves': return this._wavesDefeated(game) >= ((game._arenaMode && game._arenaMode.totalWaves) || Infinity);
+      case 'allPlayersDead':   return game.activePlayers().length > 0 && game.activePlayers().every(p => p.hp <= 0);
+      default: return false;
+    }
+  },
+
+  // Has the match ended? `timeUp` is passed by the caller (arena timer).
+  // Returns true when the flat win conditions (ANY/ALL), any structural ender,
+  // deathEndsMatch, or the timer fires.
+  isEnded(rs, game, timeUp) {
+    const conds = rs.win.conditions || [];
+    if (conds.length) {
+      const met = rs.win.combinator === 'all'
+        ? conds.every(c => this.conditionMet(rs, game, c))
+        : conds.some(c => this.conditionMet(rs, game, c));
+      if (met) return true;
+    }
+    for (const s of (rs.endStructural || [])) if (this._structuralMet(rs, game, s)) return true;
+    if (rs.deathEndsMatch && this._structuralMet(rs, game, 'allPlayersDead')) return true;
+    return !!timeUp;
+  },
+
+  // Resolve the winning player id (or null/tie). winnerBy: topScore | destroyer
+  // | topTowerHp. Falls back to topScore for ties on the primary metric.
+  winner(rs, game) {
+    if (rs.winnerBy === 'destroyer' || rs.winnerBy === 'topTowerHp') {
+      const w = (typeof TOWER_SYSTEM !== 'undefined') ? TOWER_SYSTEM.winner() : null;
+      if (w) return w; // a tower was actually destroyed → destroyer wins
+      if (typeof TOWER_SYSTEM !== 'undefined' && TOWER_SYSTEM.towers && TOWER_SYSTEM.towers.length) {
+        const top = TOWER_SYSTEM.towers.reduce((a, b) => (b.hp > a.hp ? b : a));
+        const tie = TOWER_SYSTEM.towers.filter(t => t.hp === top.hp).length > 1;
+        return tie ? null : top.ownerId; // timeout → most tower HP left
+      }
+      return null;
+    }
+    // topScore
+    let bestId = null, best = -1, tie = false;
+    for (const id of this._ownerIds(game)) {
+      const sc = this.playerScore(rs, game, id);
+      if (sc > best) { best = sc; bestId = id; tie = false; }
+      else if (sc === best) tie = true;
+    }
+    return tie ? null : bestId;
+  },
+
+  // Which element systems should be active for this ruleset (drives setup).
+  activeElements(rs) { return Object.keys(rs.elements).filter(k => rs.elements[k]); },
+};
+
+if (typeof window !== 'undefined') { window.ARENA_RULES = ARENA_RULES; window.ARENA_STAT_KEYS = ARENA_STAT_KEYS; }
+if (typeof module !== 'undefined' && module.exports) module.exports = { ARENA_RULES, ARENA_STAT_KEYS, ARENA_SHARED_KEYS };

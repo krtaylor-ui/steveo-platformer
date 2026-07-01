@@ -242,3 +242,36 @@ emerald gem (no separate collectible added — confirmed with Kevin).
 
 Headless: test-scoring.js 18/18 (per-mode score, summed-vs-shared team score,
 CTF/Tower stat writes); test-v3.js 52/52; test-pause.js 7/7.
+
+---
+
+# Arena Rules Engine — Pass 1: schema + evaluator + parity (2026-07-01)
+
+New `js/arena-rules.js` (standalone — the live match loop is NOT yet wired to it).
+A mode is declarative data (a RULESET): `elements` (which world systems are on),
+`scoring` (weights on tracked stats), `win` (flat ANY/ALL conditions), plus
+`endStructural`, `winnerBy`, `deathEndsMatch`, and a reserved `stages` slot for
+sequencing later.
+
+Agreed model:
+- **Track everything** scoreable as a per-player stat (`ARENA_STAT_KEYS`: kills,
+  deaths, mobKills, emeralds, hillSeconds, hillStreak, flagCaptures, towerDamage,
+  towersDestroyed) even when a mode doesn't score it.
+- **Three discrete mob-spawn toggles** kept separate: `bots` (ambient; future AI
+  players), `waveSpawns` (structural difficulty ramp), `spawnEggs` (designer-placed).
+- **Teams stay a pre-launch setting** — the engine only aggregates.
+- **Per-player stats SUM for a team; match-level counters (wavesDefeated) are
+  SHARED (added once).** This one split covers every summed/shared case
+  (individualScore + sharedScore).
+- Win logic pass 1 = flat conditions combined ANY/ALL; `stages` reserved for
+  sequencing (destroy tower → then capture flag → then hold hill) in a later pass.
+
+The 7 current modes are encoded as `ARENA_RULES.PRESETS`. Parity test (test-rules.js,
+run headless) — 32/32 assertions: each preset reproduces the hardcoded scoring,
+team aggregation, and end/win conditions, cross-checked against ARENA_MODES.
+
+Next steps (not done yet): (1) live-track the new stats (hillSeconds/hillStreak/
+towersDestroyed) in game.js; (2) make Defend the Tower event-driven + multi-tower
+(a destroyed tower ends the match only if a win condition references it);
+(3) swap game types to run through the engine (delete the switch arms once parity
+is green live); (4) the "Custom Rules" mode + authoring UI.
