@@ -175,7 +175,7 @@ html[data-theme="retro"] {
   margin: 0 auto;
   padding: 20px;
   min-height: 100vh;
-  font-family: 'Arial', sans-serif;
+  font-family: var(--font);
   box-sizing: border-box;
 }
 
@@ -1395,7 +1395,7 @@ html[data-theme="retro"] {
   padding: 20px;
   min-height: 100vh;
   box-sizing: border-box;
-  font-family: 'Arial', sans-serif;
+  font-family: var(--font);
 }
 
 .online-header {

@@ -21,13 +21,15 @@
       overflow: hidden;
     }
     body {
-      background: #0d0d1a;
+      /* Theme-driven identity (Phase 3 v3 §5): tokens live in style.css. Modern
+         defaults used as fallbacks so the base looks modern, not hardcoded retro. */
+      background: var(--bg, #16181f);
       display: flex;
       flex-direction: column;
       align-items: center;
       height: 100vh;
       overflow: hidden;
-      font-family: 'Courier New', monospace;
+      font-family: var(--font, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);
       color: #fff;
       user-select: none;
     }
@@ -35,10 +37,10 @@
       flex-shrink: 0;
       font-size: 1.1rem;
       padding: 5px 0 3px;
-      color: #7ec8e3;
-      text-shadow: 1px 1px 0 #004466, 2px 2px 0 #002233;
-      letter-spacing: 3px;
-      text-transform: uppercase;
+      color: var(--accent, #7c8cff);
+      text-shadow: var(--title-shadow, none);
+      letter-spacing: var(--title-spacing, 0.5px);
+      text-transform: var(--title-transform, none);
     }
     #canvas-wrap {
       flex: 1 1 0;
