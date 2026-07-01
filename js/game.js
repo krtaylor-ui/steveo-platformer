@@ -773,7 +773,8 @@ class Game {
     // Defaults OFF (co-op unaffected); WI6 will expose the toggle in pre-launch.
     // Deathmatch requires PvP; otherwise the Friendly-Fire toggle gates it.
     this._pvpEnabled = !!(this.arenaConfig &&
-      (this.arenaConfig.friendlyFire || this.arenaConfig.arenaGameMode === 'DEATHMATCH'));
+      (this.arenaConfig.friendlyFire || this.arenaConfig.arenaGameMode === 'DEATHMATCH'
+       || this.arenaConfig.arenaGameMode === 'CAPTURE_FLAG'));
     this.mobManager.pvpEnabled = this._pvpEnabled;
     this.mobManager.onPlayerKill = (killer /*, victimId */) => {
       if (this.arenaState.scores[killer] != null) this.arenaState.scores[killer]++;
@@ -823,6 +824,8 @@ class Game {
     if (typeof ARENA_MODES !== 'undefined' && this.arenaConfig.arenaGameMode && ARENA_MODES.initMode) {
       ARENA_MODES.initMode(this.arenaConfig.arenaGameMode, this);
     }
+    // Capture the Flag (Phase 3C) — assigns teams + flag bases when mode is CTF.
+    if (typeof CTF_SYSTEM !== 'undefined') CTF_SYSTEM.init(this);
   }
 
   // Per-running-frame: emerald + power-up pickups for each player, then tick
@@ -835,9 +838,10 @@ class Game {
       }
       if (typeof POWERUP_SYSTEM !== 'undefined') POWERUP_SYSTEM.checkPickup(p);
     };
-    award(this.player, 'p1');
-    if (this.player2) award(this.player2, 'p2');
+    // Award all active players (Phase 3: P3/P4 previously missed emerald pickups).
+    this.activePlayers().forEach((p, i) => award(p, 'p' + (i + 1)));
     if (typeof POWERUP_SYSTEM !== 'undefined') POWERUP_SYSTEM.update(this);
+    if (typeof CTF_SYSTEM !== 'undefined') CTF_SYSTEM.update(this);
   }
 
   // Evenly spread N bot columns across the interior (avoiding the side walls).
@@ -1053,6 +1057,7 @@ class Game {
   _drawArenaWorldOverlay(ctx) {
     if (typeof EMERALD_SYSTEM !== 'undefined' && EMERALD_SYSTEM.draw) EMERALD_SYSTEM.draw(ctx, this.camera, this.frameCount);
     if (typeof POWERUP_SYSTEM !== 'undefined' && POWERUP_SYSTEM.draw) POWERUP_SYSTEM.draw(ctx, this.camera, this.frameCount);
+    if (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.draw) CTF_SYSTEM.draw(ctx, this.camera, this.frameCount);
     // King-of-the-Hill platform — tinted green while held, gold otherwise (Phase 3A.3).
     if (this._arenaHill && this._arenaMode && this._arenaMode.key === 'KING_OF_HILL' && typeof _drawHillPlatform === 'function') {
       // Hill tinted by its owner: P1 blue, P2 red, P3 green, P4 yellow; contested = white; unclaimed gold.

@@ -1633,6 +1633,10 @@ class MobManager {
     // damage any OTHER player (owner-tagged 'p1'/'p2'/...). OFF by default so
     // co-op is unaffected. Tagged list built once; carries forward to N players.
     const pvpTargets = this.pvpEnabled ? this._pvpPlayerList(allPlayers) : null;
+    // Team play (CTF, Phase 3C): map ownerId → teamId so arrows never hit a teammate.
+    // teamId is null outside team modes, so this is a no-op for FFA Deathmatch/KotH.
+    const teamOf = {};
+    if (pvpTargets) for (const [id, p] of pvpTargets) teamOf[id] = p ? p.teamId : null;
     for (const pa of this.playerArrows) {
       pa.update(player, level);
       if (!pa.alive) continue;
@@ -1653,6 +1657,8 @@ class MobManager {
       if (pa.alive && pvpTargets) {
         for (const [id, p] of pvpTargets) {
           if (!p || p.hp <= 0 || id === pa.owner) continue;
+          // Friendly fire is always off between teammates in team modes (CTF).
+          if (p.teamId != null && teamOf[pa.owner] != null && p.teamId === teamOf[pa.owner]) continue;
           if (pa.x > p.x && pa.x < p.x + p.width &&
               pa.y > p.y && pa.y < p.y + p.height) {
             if (p.crouching && p.hasShield) {

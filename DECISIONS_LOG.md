@@ -67,3 +67,21 @@ is committed (`91176fa`) and complete in code. CTF still `comingSoon`. Building 
 - HUD shows CONTESTED + per-player times; hill tint extended to P3 green / P4 yellow / contested white.
 - Bugfix: `_ownerIds` now derives from `activePlayers()` instead of the legacy `player2?2:1`
   heuristic — corrects Deathmatch leader/HUD for 3–4 players too.
+
+### Phase 3C — CTF + Teams (Task 3) — DONE (playable), one editor tool deferred
+- New `js/ctf-system.js` (mirrors emerald/powerup system pattern): flag grab / carry / drop-on-death /
+  teammate-return / auto-return (15s = 900 frames) / capture (50 pts). Verified with a 17-assertion
+  headless test against the real code.
+- Teams: 2 teams, players alternate by index → 2P = 1v1, 4P = P1&P3 (Red) vs P2&P4 (Blue). Team
+  assignment + colours set in `CTF_SYSTEM.assignTeams`; `p.teamId`/`p.teamColor` (reserved in 3B) now used.
+- **Team-aware friendly fire** added to the arrow PvP in mobs.js: teammates never damage each other
+  (guarded by `teamId != null`, so it's a no-op for FFA Deathmatch/KotH). FF forced on for CTF.
+- CTF win/score/HUD/winner wired in arena-modes.js; `CAPTURE_FLAG` un-greyed (no longer comingSoon).
+- Pre-launch: "Captures to Win" slider (`cfg.captureTarget`, default 3); FF locked on with teammate note.
+- Also fixed an adjacent 4-player bug: `_updateArenaCollectibles` now awards emerald pickups to ALL
+  active players (P3/P4 were previously skipped).
+- **Deferred (documented gap vs brief §4.3):** explicit *flag-placement design tool* in the editor.
+  Instead, flag home bases **auto-anchor to each team's player spawn points** (falling back to map
+  quarters). This makes CTF fully playable without a new editor placeable; an explicit flag tool can be
+  added later using the same placeable pattern as Player Spawn Points if designers want custom bases.
+  Per the brief's CTF spawn decision, teams use 2 spawn points per side (2v2 max).

@@ -30,6 +30,7 @@ const ARENA_PRELAUNCH = {
     this._toggle('pl-waves-group',          modeKey === 'SURVIVAL_WAVES');
     this._toggle('pl-killtarget-group',     modeKey === 'DEATHMATCH');
     this._toggle('pl-koth-scoring-group',   modeKey === 'KING_OF_HILL');
+    this._toggle('pl-capture-target-group', modeKey === 'CAPTURE_FLAG');
 
     // Friendly Fire — forced on + locked for Deathmatch; optional elsewhere.
     const ff = document.getElementById('pl-friendly-fire');
@@ -37,6 +38,8 @@ const ARENA_PRELAUNCH = {
     if (ff) {
       if (modeKey === 'DEATHMATCH') { ff.checked = true; ff.disabled = true;
         if (ffNote) ffNote.textContent = 'Always on for Deathmatch.'; }
+      else if (modeKey === 'CAPTURE_FLAG') { ff.checked = true; ff.disabled = true;
+        if (ffNote) ffNote.textContent = 'On for CTF — but teammates never damage each other.'; }
       else if (modeKey === 'KING_OF_HILL') { ff.disabled = false; ff.checked = true;
         if (ffNote) ffNote.textContent = 'On by default — fight for the hill. Uncheck for a no-combat race.'; }
       else { ff.disabled = false; ff.checked = false;
@@ -58,6 +61,8 @@ const ARENA_PRELAUNCH = {
     waves?.addEventListener('input', (e) => { const v = document.getElementById('pl-waves-val'); if (v) v.textContent = e.target.value; });
     const kt = document.getElementById('pl-killtarget');
     kt?.addEventListener('input', (e) => { const v = document.getElementById('pl-killtarget-val'); if (v) v.textContent = e.target.value; });
+    const ct = document.getElementById('pl-capture-target');
+    ct?.addEventListener('input', (e) => { const v = document.getElementById('pl-capture-target-val'); if (v) v.textContent = e.target.value; });
     document.getElementById('pl-cancel-btn')?.addEventListener('click', () => this.hide());
     document.getElementById('pl-start-btn')?.addEventListener('click', () => this._start());
   },
@@ -86,6 +91,9 @@ const ARENA_PRELAUNCH = {
     } else if (this._mode === 'DEATHMATCH') {
       cfg.killTarget = num('pl-killtarget', 10);
       cfg.friendlyFire = true; // Deathmatch always PvP
+    } else if (this._mode === 'CAPTURE_FLAG') {
+      cfg.captureTarget = num('pl-capture-target', 3);
+      cfg.friendlyFire = true; // CTF is PvP (team-aware; teammates never damage each other)
     }
 
     const cb = this._onStart;

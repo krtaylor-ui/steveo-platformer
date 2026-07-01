@@ -22,8 +22,8 @@ const ARENA_MODES = {
     SURVIVAL_WAVES:   { label: 'Survival Waves',  desc: 'Escalating waves — survive as long as you can.' },
     // Phase 3B — PvP deathmatch (local 1-4 players; friendly fire forced on).
     DEATHMATCH:       { label: 'Deathmatch',       desc: 'Most player eliminations wins.' },
-    // Reserved — needs teams (Phase 3C). Shown greyed in pickers.
-    CAPTURE_FLAG:     { label: 'Capture the Flag', desc: 'Capture the enemy flag. (Coming soon)',        comingSoon: true },
+    // Phase 3C — teams + PvP. Grab the enemy flag, carry it to your base to score.
+    CAPTURE_FLAG:     { label: 'Capture the Flag', desc: 'Grab the enemy flag and bring it home.' },
   },
 
   // Game types playable right now (excludes coming-soon/PvP types).
@@ -80,6 +80,10 @@ const ARENA_MODES = {
     if (modeKey === 'DEATHMATCH') {
       // First to killTarget eliminations wins (or most kills when the timer ends).
       ms.killTarget = Math.max(1, Math.min(50, (game.arenaConfig && game.arenaConfig.killTarget) || 10));
+    }
+    if (modeKey === 'CAPTURE_FLAG') {
+      // First team to captureTarget flag captures wins (or most when the timer ends).
+      ms.captureTarget = Math.max(1, Math.min(10, (game.arenaConfig && game.arenaConfig.captureTarget) || 3));
     }
     game._arenaMode = ms;
   },
@@ -233,6 +237,11 @@ const ARENA_MODES = {
         if (this._leader(game).score >= ms.killTarget) a.phase = 'ended';
         break;
       }
+      case 'CAPTURE_FLAG': {
+        // First team to captureTarget captures wins (flag logic runs in CTF_SYSTEM).
+        if (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.maxCaptures() >= ms.captureTarget) a.phase = 'ended';
+        break;
+      }
       case 'MOB_HUNTER':
       default:
         break; // timer-bound; the caller ends on timeUp
@@ -253,6 +262,10 @@ const ARENA_MODES = {
         return kills + (ms.wave || 0) * 50 + (ms.cleared ? 100 : 0); // +50/wave, +1/kill, +100 clear-all
       case 'DEATHMATCH':
         return this._leader(game).score; // winner's elimination count
+      case 'CAPTURE_FLAG': {
+        const ts = game.arenaState.teamScores || [0, 0];
+        return Math.max(ts[0] || 0, ts[1] || 0) * (typeof CTF_SYSTEM !== 'undefined' ? CTF_SYSTEM.CAPTURE_POINTS : 50);
+      }
       default:
         return kills; // MOB_HUNTER
     }
@@ -281,6 +294,11 @@ const ARENA_MODES = {
         const parts = this._ownerIds(game).map(id => `${id.toUpperCase()}:${s[id] || 0}`);
         return `${parts.join('  ')}   (to ${ms.killTarget})`;
       }
+      case 'CAPTURE_FLAG': {
+        const ts = game.arenaState.teamScores || [0, 0];
+        const names = (typeof CTF_TEAM_NAMES !== 'undefined') ? CTF_TEAM_NAMES : ['Red', 'Blue'];
+        return `${names[0]} ${ts[0] || 0} — ${ts[1] || 0} ${names[1]}   (to ${ms.captureTarget})`;
+      }
       default:
         return `Kills: ${game.arenaState.scores.p1 || 0}`;
     }
@@ -292,6 +310,13 @@ const ARENA_MODES = {
     if (ms && ms.key === 'DEATHMATCH') return this._leader(game).id.toUpperCase() + ' wins!';
     // KotH is a contest between 2+ players → name the top holder.
     if (ms && ms.key === 'KING_OF_HILL' && game.activePlayers().length >= 2) return this._kothLeader(game).toUpperCase() + ' wins the hill!';
+    // CTF → name the winning team by capture count.
+    if (ms && ms.key === 'CAPTURE_FLAG') {
+      const ts = game.arenaState.teamScores || [0, 0];
+      const names = (typeof CTF_TEAM_NAMES !== 'undefined') ? CTF_TEAM_NAMES : ['Red', 'Blue'];
+      if ((ts[0] || 0) === (ts[1] || 0)) return "It's a tie!";
+      return `${(ts[1] || 0) > (ts[0] || 0) ? names[1] : names[0]} team wins!`;
+    }
     return null;
   },
 
