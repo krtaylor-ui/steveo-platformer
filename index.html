@@ -477,8 +477,57 @@
             <button id="online-play-btn" class="btn btn-large">Online Play</button>
             <p>Play with friends</p>
           </div>
+          <div class="online-play-button">
+            <button id="community-btn" class="btn btn-large">🌐 Community</button>
+            <p>Browse, rate &amp; download worlds</p>
+          </div>
         </section>
 
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Community Browse Screen (Phase 3) ───────────────────── -->
+  <div id="community-screen" style="display: none;">
+    <div class="community-container">
+      <div class="community-header">
+        <button id="community-back-btn" class="btn btn-small">← Dashboard</button>
+        <h2>🌐 Community Worlds</h2>
+        <button class="theme-toggle-btn btn-mute" title="Switch theme">🌙</button>
+      </div>
+      <div class="community-tabs">
+        <button class="community-tab active" data-ctab="browse">Browse</button>
+        <button class="community-tab" data-ctab="favorites">★ Favorites</button>
+        <button class="community-tab" data-ctab="stats">My Stats</button>
+      </div>
+
+      <div id="community-browse-tab" class="community-tab-content active">
+        <div class="community-filters">
+          <input type="text" id="community-search" placeholder="Search worlds…">
+          <select id="community-mode"><option value="">All modes</option>
+            <option value="NORMAL">Normal</option><option value="PLATFORMER">Platformer</option>
+            <option value="SPEEDRUNNER">Speed Runner</option><option value="ARENA">Arena</option></select>
+          <select id="community-genre"><option value="">All genres</option>
+            <option value="Adventure">Adventure</option><option value="Puzzle">Puzzle</option>
+            <option value="Combat">Combat</option><option value="Parkour">Parkour</option>
+            <option value="Creative">Creative</option></select>
+          <select id="community-difficulty"><option value="">Any difficulty</option>
+            <option value="EASY">Easy</option><option value="MEDIUM">Medium</option><option value="HARD">Hard</option></select>
+          <select id="community-sort"><option value="recent">Newest</option>
+            <option value="rating">Top rated</option><option value="downloads">Most downloaded</option>
+            <option value="name">Name (A–Z)</option></select>
+        </div>
+        <div id="community-grid" class="community-grid"></div>
+        <div id="community-status" class="community-status"></div>
+      </div>
+
+      <div id="community-favorites-tab" class="community-tab-content">
+        <div id="community-fav-grid" class="community-grid"></div>
+        <div id="community-fav-status" class="community-status"></div>
+      </div>
+
+      <div id="community-stats-tab" class="community-tab-content">
+        <div id="community-stats-body" class="community-stats-body"></div>
       </div>
     </div>
   </div>
@@ -869,6 +918,7 @@
   <script src="js/sandbox-ui.js?v=17k2-3b"></script>
 
   <script src="js/online-play.js?v=17k2-3b"></script>
+  <script src="js/community-ui.js?v=17k2-3b"></script>
   <script src="js/arena-select.js?v=17k2-3b"></script>
   <!-- Phase 3A.3 arena UI (invoked on user action; order after the above) -->
   <script src="js/arena-prelaunch.js?v=17k2-3b"></script>

@@ -99,3 +99,30 @@ is committed (`91176fa`) and complete in code. CTF still `comingSoon`. Building 
   paint (no flash). Toggle button (🌙/👾) in the dashboard header. Preset list is data-driven — adding a
   third theme = one tokens block + one entry in `THEME.THEMES`.
 - Persistence: client-side localStorage (per the up-front answer).
+
+### Remaining features audit + completion (Task 5)
+Audited current state first (server/*.js + js/*.js), then built the missing pieces. Requires the two
+new SQL migrations to be run in Supabase (server/sql/community.sql, server/sql/stats.sql — documented in
+MIGRATIONS.md). All backend follows the existing verifyToken + supabaseAdmin + setupXxxRoutes patterns.
+
+- **Publishing:** creator/editor attribution already existed (creator_id/creator_name + editors array).
+  Added `published_at` stamp + optional `genre`/`difficulty` on publish, and `original_author`
+  preservation on download/fork. Publish now records the World-Builder achievement (fire-and-forget).
+- **Community Browse (net-new, headline):** `server/community-routes.js` — browse/search published worlds
+  by others (filters: genre/difficulty/mode + sort recent/rating/downloads/name), favorite/unfavorite +
+  favorites list, rate (1–5, upsert + recomputed rollups), download (clone published world into own
+  sandbox, bumps download_count, preserves attribution). Client: `js/community-ui.js` + `#community-screen`
+  + dashboard "Community" button — Browse / Favorites / My Stats tabs with rating stars, favorite toggle,
+  download button. Verified backend logic patterns; needs DB migration + browser test to confirm end-to-end.
+- **Leaderboards:** extended arena routes with per-world (`world_id`) + recency window
+  (`?since=day|week|month|all`) filtering; PvP modes (Deathmatch/CTF) now rankable. Personal-best endpoint
+  (`GET /api/stats/personal-best/:mode`, optional worldId). Server-backed. (The speedrunner ghost
+  leaderboard remains localStorage-only — server-backed speedrun times deferred; note below.)
+- **Achievements + Analytics (conservative per brief):** `server/stats-routes.js` — `player_stats`
+  (matches/wins/kills/deaths/captures/published/play-time) + `player_achievements`; 6 meaningful triggers
+  (first match/win/capture/publish, sharpshooter, veteran) evaluated server-side. `POST /api/stats/match`
+  hooked into arena end (`_recordMatchStats`), `POST /api/stats/publish` on publish; `GET /api/stats/me`
+  powers the My Stats tab. Achievement threshold logic headless-verified.
+- **Deferred (documented gaps):** genre/difficulty have no editor UI yet (publish route accepts them; browse
+  filters work once set); server-backed per-level speedrun ghost leaderboard (still localStorage);
+  browser + Supabase end-to-end verification of the new endpoints/UI (couldn't run DB/browser in this env).

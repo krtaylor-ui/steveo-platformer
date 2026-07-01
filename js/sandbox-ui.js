@@ -569,6 +569,13 @@ const SANDBOX = {
       this.currentWorldData.is_published = isPublished;
       document.getElementById('sb-publish-btn').textContent = isPublished ? 'Unpublish' : 'Publish';
       alert(isPublished ? 'World published!' : 'World unpublished');
+      // Record the publish for stats/achievements (Phase 4, fire-and-forget).
+      if (isPublished) {
+        AUTH.authedFetch('/api/stats/publish', { method: 'POST' })
+          .then(r => r.json())
+          .then((d) => { if (d && d.unlocked && d.unlocked.length) console.log('Achievement unlocked:', d.unlocked.map(a => a.name).join(', ')); })
+          .catch(() => {});
+      }
     } catch (error) {
       console.error('Publish error:', error);
       alert('Failed to publish world');

@@ -504,9 +504,15 @@ module.exports = function setupWorldsRoutes(app) {
         }
       }
 
+      // Stamp publication time + optional community metadata (genre/difficulty).
+      // Requires server/sql/community.sql to have added these columns.
+      const patch = { is_published: isPublished, published_at: isPublished ? new Date().toISOString() : null };
+      if (req.body.genre != null) patch.genre = String(req.body.genre).slice(0, 40);
+      if (req.body.difficulty != null) patch.difficulty = String(req.body.difficulty).slice(0, 20);
+
       const { data: world, error } = await supabaseAdmin
         .from('worlds')
-        .update({ is_published: isPublished })
+        .update(patch)
         .eq('id', worldId)
         .eq('creator_id', req.user.id)
         .select()

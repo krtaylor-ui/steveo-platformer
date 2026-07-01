@@ -204,3 +204,25 @@ defaulting to `1.0`.
 - Creates a `.bak.json` backup before overwriting.
 - Adds `worldAdvSettings` (from `multiplierSettings`), `savedAt`, and `saveVersion: 2`.
 - Logs results: converted / skipped / failed counts.
+
+---
+
+## Phase 3 — Supabase migrations (run in the SQL editor before deploy)
+
+Two additive SQL files (safe to re-run; use `IF NOT EXISTS`):
+
+### `server/sql/community.sql` — Community Browse + publishing polish
+- Adds to `worlds`: `published_at`, `genre`, `difficulty`, `download_count`,
+  `rating_sum`, `rating_count`, `original_author` + a published index.
+- Creates `world_favorites` (unique user+world) and `world_ratings` (1–5 stars, unique user+world).
+- **Required before deploying** the updated publish route (it now stamps `published_at`) and the
+  `/api/community/*` routes (browse/favorite/rate/download).
+
+### `server/sql/stats.sql` — Achievements + analytics + per-world/PB leaderboards
+- Adds `world_id` to `arena_results` (+ per-world and per-player indexes) for per-world speedrun/PvP
+  leaderboards and personal-best queries. Existing global leaderboards keep working (`world_id` NULL).
+- Creates `player_stats` (matches/wins/kills/deaths/ctf_captures/worlds_published/play_time) and
+  `player_achievements` (unique player+achievement). Backs `/api/stats/*`.
+
+Both are safe to run on an existing DB; nothing is dropped. If they are NOT run, the new endpoints
+return 500s but the rest of the game is unaffected (features degrade, don't crash).

@@ -10474,6 +10474,39 @@ class Game {
     const durMs  = (this.arenaState.gameStartTime && this.arenaState.endTime)
       ? this.arenaState.endTime - this.arenaState.gameStartTime : 0;
     LEADERBOARD_SYSTEM.submit(mode, score, Math.round(durMs / 1000));
+    this._recordMatchStats(mode, durMs);
+  }
+
+  // Record the local player's match into stats/achievements (Phase 4, fire-and-forget).
+  _recordMatchStats(mode, durMs) {
+    if (typeof AUTH === 'undefined' || !AUTH.authedFetch || !AUTH.isLoggedIn || !AUTH.isLoggedIn()) return;
+    // Did the human (P1) win? PvP → leader/team; PvE → survived.
+    let won = false, captures = 0;
+    const AM = (typeof ARENA_MODES !== 'undefined') ? ARENA_MODES : null;
+    if (mode === 'DEATHMATCH' && AM) won = AM._leader(this).id === 'p1';
+    else if (mode === 'CAPTURE_FLAG') {
+      const ts = this.arenaState.teamScores || [0, 0];
+      const p1Team = (this.player && this.player.teamId != null) ? this.player.teamId : 0;
+      captures = ts[p1Team] || 0;
+      won = (ts[p1Team] || 0) >= (ts[1 - p1Team] || 0) && (ts[0] || ts[1]);
+    } else {
+      won = !!(this.player && this.player.hp > 0); // survived / completed
+    }
+    const body = {
+      won: !!won,
+      kills: this.arenaState.scores.p1 || 0,
+      captures,
+      playTimeMs: Math.max(0, Math.round(durMs)),
+    };
+    try {
+      AUTH.authedFetch('/api/stats/match', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      }).then(r => r.json()).then((data) => {
+        if (data && data.unlocked && data.unlocked.length && this._notify) {
+          for (const a of data.unlocked) this._notify(`🏆 Achievement: ${a.name}`, '#f5b301', 240);
+        }
+      }).catch(() => {});
+    } catch (e) { /* fire-and-forget */ }
   }
 
   _drawHelpButton(ctx) {
