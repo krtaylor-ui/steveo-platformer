@@ -158,6 +158,18 @@ const CUSTOM_RULES_UI = {
     box.querySelectorAll('.cr-rm-step').forEach(b => b.addEventListener('click', () => {
       this._steps.splice(+b.dataset.si, 1); if (!this._steps.length) this._steps = [{ conditions: [] }]; this._renderSteps();
     }));
+    // Warn: finite/cumulative objectives used in a LATER step (2+) may be
+    // unreachable — an earlier step likely consumed the supply (the tower is
+    // already destroyed / the emeralds already collected).
+    const WARN = { towersDestroyed: 'Towers destroyed', emeraldsCollected: 'Emeralds collected' };
+    const warned = [];
+    this._steps.forEach((step, si) => { if (si >= 1) step.conditions.forEach(c => { if (WARN[c.type] && !warned.includes(WARN[c.type])) warned.push(WARN[c.type]); }); });
+    if (warned.length) {
+      const div = document.createElement('div');
+      div.className = 'cr-warn';
+      div.textContent = '⚠ ' + warned.join(' / ') + ' in a later step may be unreachable — these are cumulative/finite, so an earlier step can use up the supply. Consider higher targets in ONE step instead.';
+      box.appendChild(div);
+    }
   },
 
   _wire() {

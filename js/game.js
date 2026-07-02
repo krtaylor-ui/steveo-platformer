@@ -10664,15 +10664,26 @@ class Game {
     if (mode === 'KING_OF_HILL') cols.push({ h: 'HillS', get: (id) => this.arenaState.stats[id]?.hillSeconds || 0 });
     if (mode === 'CAPTURE_FLAG') cols.push({ h: 'Flags', get: (id) => this.arenaState.stats[id]?.flagCaptures || 0 });
     if (mode === 'DEFEND_TOWER') cols.push({ h: 'TwrDmg', get: (id) => this.arenaState.stats[id]?.towerDamage || 0 });
+    // Custom Rules: per-player win progress (step reached / conditions met). This
+    // is what establishes the winner when nobody fully completed their objective.
+    const rs = (mode === 'CUSTOM' && typeof ARENA_RULES !== 'undefined' && AM && AM._rulesetFor) ? AM._rulesetFor(this) : null;
+    if (rs) cols.push({ h: 'Progress', get: (id) => {
+      const os = ARENA_RULES.objectiveStatus(rs, this, id);
+      if (os.mode === 'stages') return os.won ? '✓WON' : `S${Math.min(os.current + 1, os.total)}/${os.total}`;
+      if (os.mode === 'flat')   return os.won ? '✓WON' : `${os.conditions.filter(c => c.met).length}/${os.conditions.length}`;
+      return '—';
+    } });
 
+    const winnerId = (rs && ARENA_RULES.winner) ? ARENA_RULES.winner(rs, this) : ((AM && AM.winnerText && AM._leader && mode === 'DEATHMATCH') ? AM._leader(this).id : null);
     const colW = 72;
     const startX = cx - (cols.length - 1) * colW / 2;
     ctx.textAlign = 'center';
     ctx.font = 'bold 13px Courier New'; ctx.fillStyle = '#88CCFF';
     cols.forEach((c, i) => ctx.fillText(c.h, startX + i * colW, y));
-    ctx.font = '13px Courier New'; ctx.fillStyle = '#FFFFFF';
+    ctx.font = '13px Courier New';
     ids.forEach((id, r) => {
       const ry = y + 22 + r * 20;
+      ctx.fillStyle = (id === winnerId) ? '#FFD700' : '#FFFFFF'; // highlight the winner
       cols.forEach((c, i) => ctx.fillText(String(c.get(id)), startX + i * colW, ry));
     });
   }
