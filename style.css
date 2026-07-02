@@ -1314,6 +1314,23 @@ html[data-theme="retro"] {
 .btn-mute:hover { opacity: 0.7; }
 .btn-mute.muted { opacity: 0.5; }
 
+/* Custom Rules builder modal (Phase 3 v3) */
+.cr-modal { max-width: 620px; max-height: 88vh; overflow-y: auto; }
+.cr-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+.cr-grid .form-group { flex: 1; min-width: 120px; }
+.cr-section { margin-top: 14px; border-top: 1px solid var(--border, #363a46); padding-top: 10px; }
+.cr-section h4 { margin: 0 0 8px 0; font-size: 0.95rem; color: var(--accent, #7c8cff); }
+.cr-checks { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+.cr-check { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; }
+.cr-scoring { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+.cr-score-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.85rem; }
+.cr-score-row input { width: 64px; }
+.cr-cond-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.cr-cond-row .cr-cond-type { flex: 1; }
+.cr-cond-row .cr-cond-target { width: 72px; }
+.cr-step-tag { font-weight: bold; color: var(--accent, #7c8cff); min-width: 18px; }
+#cr-win-hint { display: block; margin-top: 8px; opacity: 0.75; }
+
 /* Build-version badge (dashboard header) — subtle, so you can verify the build. */
 .app-version {
   font-family: var(--font);

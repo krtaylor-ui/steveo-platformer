@@ -186,16 +186,37 @@ const ARENA_RULES = {
     }
   },
 
-  // Has the match ended? `timeUp` is passed by the caller (arena timer).
-  // Returns true when the flat win conditions (ANY/ALL), any structural ender,
-  // deathEndsMatch, or the timer fires.
+  // Is a condition group ({ combinator, conditions }) currently satisfied?
+  _groupMet(rs, game, group) {
+    const conds = (group && group.conditions) || [];
+    if (!conds.length) return false;
+    return group.combinator === 'all'
+      ? conds.every(c => this.conditionMet(rs, game, c))
+      : conds.some(c => this.conditionMet(rs, game, c));
+  },
+
+  // Sequenced win (stages): current stage progress for the HUD. Global (match-wide)
+  // progression — the match advances through stages as each group is met.
+  stageInfo(rs, game) {
+    if (!rs.stages || !rs.stages.length) return null;
+    const idx = Math.min(game._stageIndex || 0, rs.stages.length);
+    return { index: idx, total: rs.stages.length, stage: rs.stages[idx] || null };
+  },
+
+  // Has the match ended? `timeUp` is passed by the caller (arena timer). Supports
+  // either flat win conditions (rs.win, ANY/ALL) OR sequenced stages (rs.stages,
+  // an ordered list of groups completed in turn), plus structural enders,
+  // deathEndsMatch, and the timer.
   isEnded(rs, game, timeUp) {
-    const conds = rs.win.conditions || [];
-    if (conds.length) {
-      const met = rs.win.combinator === 'all'
-        ? conds.every(c => this.conditionMet(rs, game, c))
-        : conds.some(c => this.conditionMet(rs, game, c));
-      if (met) return true;
+    if (rs.stages && rs.stages.length) {
+      let idx = game._stageIndex || 0;
+      // Advance through every stage whose group is currently met (monotonic —
+      // all condition types are cumulative, so a completed stage stays complete).
+      while (idx < rs.stages.length && this._groupMet(rs, game, rs.stages[idx])) idx++;
+      game._stageIndex = idx;
+      if (idx >= rs.stages.length) return true;
+    } else if (this._groupMet(rs, game, rs.win)) {
+      return true;
     }
     for (const s of (rs.endStructural || [])) if (this._structuralMet(rs, game, s)) return true;
     if (rs.deathEndsMatch && this._structuralMet(rs, game, 'allPlayersDead')) return true;
@@ -234,6 +255,8 @@ const ARENA_RULES = {
   // survivalWaveCount, kothScoring) live on the element systems / _arenaMode.
   rulesetForMode(modeKey, cfg) {
     cfg = cfg || {};
+    // Custom Rules: the whole ruleset comes from the authoring UI (cfg.customRuleset).
+    if (modeKey === 'CUSTOM' && cfg.customRuleset) return this.normalize(cfg.customRuleset);
     const rs = this.normalize(this.PRESETS[modeKey] || this.PRESETS.QUICK_BATTLE);
     if (modeKey === 'DEATHMATCH' && cfg.killTarget) rs.win.conditions = [{ type: 'playerKills', target: cfg.killTarget }];
     if (modeKey === 'CAPTURE_FLAG' && cfg.captureTarget) rs.win.conditions = [{ type: 'flagsCaptured', target: cfg.captureTarget }];

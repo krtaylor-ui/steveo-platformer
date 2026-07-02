@@ -26,6 +26,8 @@ const ARENA_MODES = {
     CAPTURE_FLAG:     { label: 'Capture the Flag', desc: 'Grab the enemy flag and bring it home.' },
     // Phase 3 v3 — destroy the enemy Tower while defending your own (PvP).
     DEFEND_TOWER:     { label: 'Defend the Tower', desc: 'Destroy the enemy Tower — defend your own.' },
+    // Phase 3 v3 — author your own rules (elements + scoring + win conditions).
+    CUSTOM:           { label: 'Custom Rules', desc: 'Build your own mode: pick elements, scoring & win conditions.' },
   },
 
   // Game types playable right now (excludes coming-soon/PvP types).
@@ -62,18 +64,20 @@ const ARENA_MODES = {
 
   initMode(modeKey, game) {
     const ms = { key: modeKey, holdFrames: 0 };
-    if (modeKey === 'KING_OF_HILL') {
+    // Build + cache the live ruleset; state below is gated by its ELEMENTS (not
+    // just the mode key) so Custom Rules can compose hill + waves + objectives.
+    const rs = (typeof ARENA_RULES !== 'undefined') ? ARENA_RULES.rulesetForMode(modeKey, game.arenaConfig || {}) : null;
+    const el = (rs && rs.elements) || {};
+    game._ruleset = rs; game._rulesetKey = modeKey || 'QUICK_BATTLE';
+    game._stageIndex = 0; // reset sequenced-win progress each match
+    if (el.hill || modeKey === 'KING_OF_HILL') {
       ms.ownerId = null;  // null | 'p1'..'p4' — current hill owner (display + accrual)
       ms.hold = { p1: 0, p2: 0, p3: 0, p4: 0 }; // frames each player has accrued
       ms.contested = false; // 2+ players standing on the hill this frame
-      // Scoring rule (Phase 3, N-player PvP). Chosen in pre-launch:
-      //   STICKY (default) — sole toucher takes ownership; keeps it (accrues) until a
-      //                      different sole toucher steals it; 2+ or 0 touching = no change.
-      //   SOLE            — only a lone occupant scores; contested = nobody scores.
-      //   ALL             — every occupant scores simultaneously.
+      // Hill scoring rule (STICKY default / SOLE / ALL) — pre-launch selectable.
       ms.scoring = ((game.arenaConfig && game.arenaConfig.kothScoring) || 'STICKY').toUpperCase();
     }
-    if (modeKey === 'SURVIVAL_WAVES') {
+    if (el.waveSpawns || modeKey === 'SURVIVAL_WAVES') {
       ms.wave = 0;
       ms.totalWaves = Math.max(1, Math.min(15, (game.arenaConfig && game.arenaConfig.survivalWaveCount) || this.SURVIVAL_DEFAULT.length));
       ms.betweenTimer = 90; // short delay before wave 1 (lets the countdown clear)
@@ -239,78 +243,59 @@ const ARENA_MODES = {
     const ms = game._arenaMode;
     if (!ms) return;
     const a = game.arenaState;
-    switch (ms.key) {
-      case 'COLLECT_EMERALDS':
-        if (typeof EMERALD_SYSTEM !== 'undefined' && EMERALD_SYSTEM.allRoundsComplete()) a.phase = 'ended';
-        break;
-      case 'KING_OF_HILL': {
-        const live = game.activePlayers();
-        // Owner ids ('p1'..'p4') of every player standing on the hill this frame.
-        const onIds = [];
-        for (const p of live) { if (this._onHill(game, p)) onIds.push(p._ownerId || 'p1'); }
-        ms.contested = onIds.length >= 2;
-        const solo = live.length <= 1;
-        if (solo) {
-          // Single player: accrue only while actually standing on the hill (tuned feel).
-          if (onIds.length === 1) { ms.ownerId = onIds[0]; ms.hold[ms.ownerId]++; }
-        } else if (ms.scoring === 'ALL') {
-          // Every occupant scores; display owner tracks a lone leader.
-          for (const id of onIds) ms.hold[id]++;
-          if (onIds.length === 1) ms.ownerId = onIds[0];
-        } else if (ms.scoring === 'SOLE') {
-          // Only a lone occupant scores; contested → nobody scores or owns.
-          if (onIds.length === 1) { ms.ownerId = onIds[0]; ms.hold[ms.ownerId]++; }
-          else if (onIds.length >= 2) ms.ownerId = null;
-        } else {
-          // STICKY (default): a sole toucher takes/keeps ownership; 2+ or 0 = no change.
-          // The owner accrues continuously — they can hunt others without losing the hill.
-          if (onIds.length === 1) ms.ownerId = onIds[0];
-          if (ms.ownerId) ms.hold[ms.ownerId]++;
-        }
-        // Live stats: total seconds held (per player) + longest consecutive
-        // hold streak (resets when the owner loses/changes) — for scoring + the
-        // "consecutive seconds of hill control" win condition (rules engine).
-        {
-          const stats = game.arenaState.stats;
-          for (const id of this._ownerIds(game)) if (stats[id]) stats[id].hillSeconds = Math.floor((ms.hold[id] || 0) / 60);
-          if (ms.ownerId) {
-            ms._streakFrames = (ms._streakOwner === ms.ownerId) ? (ms._streakFrames || 0) + 1 : 1;
-            ms._streakOwner = ms.ownerId;
-            const s = stats[ms.ownerId];
-            if (s) s.hillStreak = Math.max(s.hillStreak || 0, Math.floor(ms._streakFrames / 60));
-          } else { ms._streakOwner = null; ms._streakFrames = 0; }
-        }
-        // v3: KOTH runs the FULL match timer — winner is the top holder (see
-        // winnerText/_kothLeader). No early end at a hold target (that capped
-        // matches prematurely); the arena timer (timeUp) ends the match.
-        break;
-      }
-      case 'SURVIVAL_WAVES': {
-        // Lose: no player alive (solo: P1 dead; co-op: both dead).
-        const p1Dead = !game.player || game.player.hp <= 0;
-        const p2Dead = !game.player2 || game.player2.hp <= 0;
-        if (p1Dead && p2Dead) { a.phase = 'ended'; break; }
-        // Once the arena is clear: win if all waves done, else spawn the next.
-        const aliveMobs = game.mobManager.mobs.filter(mb => mb.alive).length;
-        if (aliveMobs === 0) {
-          // A spawned wave just got fully defeated → count it (Survival score).
-          if (ms.waveActive) { ms.wavesCleared = (ms.wavesCleared || 0) + 1; ms.waveActive = false; }
-          if (ms.wave >= ms.totalWaves) { ms.cleared = true; a.phase = 'ended'; break; }
-          if (ms.betweenTimer > 0) ms.betweenTimer--;
-          else { this._spawnSurvivalWave(game, ms); ms.betweenTimer = 120; }
-        }
-        break;
-      }
-      case 'DEATHMATCH':    // First to killTarget eliminations
-      case 'CAPTURE_FLAG':  // First team to captureTarget captures
-      case 'DEFEND_TOWER':  // A Tower destroyed (event, via towersDestroyed stat)
-        // Win-detection delegates to the rules engine (arena-rules.js). Element
-        // side-effects (flag/tower updates) still run in their own systems.
-        if (this._engineEnd(game)) a.phase = 'ended';
-        break;
-      case 'MOB_HUNTER':
-      default:
-        break; // timer-bound; the caller ends on timeUp
+    const rs = this._rulesetFor(game);
+    const el = (rs && rs.elements) || {};
+    // Element side-effects run by ACTIVE ELEMENT (not the mode key) so Custom
+    // Rules composing hill + waves + objectives all tick. Win-detection is unified
+    // through the rules engine for every mode (KOTH has no win conditions → it
+    // simply runs the full timer; Survival/Emeralds/Quick end via structural).
+    if (el.hill || ms.hold) this._updateHill(game, ms);
+    if (el.waveSpawns || ms.wave !== undefined) this._updateWaves(game, ms);
+    if (this._engineEnd(game)) a.phase = 'ended';
+  },
+
+  // King-of-the-Hill accrual + live hill stats. Runs whenever the hill element is
+  // active (KOTH preset, or a Custom ruleset with hill enabled).
+  _updateHill(game, ms) {
+    if (!ms.hold) return;
+    const live = game.activePlayers();
+    const onIds = [];
+    for (const p of live) { if (this._onHill(game, p)) onIds.push(p._ownerId || 'p1'); }
+    ms.contested = onIds.length >= 2;
+    const solo = live.length <= 1;
+    if (solo) {
+      if (onIds.length === 1) { ms.ownerId = onIds[0]; ms.hold[ms.ownerId]++; }
+    } else if (ms.scoring === 'ALL') {
+      for (const id of onIds) ms.hold[id]++;
+      if (onIds.length === 1) ms.ownerId = onIds[0];
+    } else if (ms.scoring === 'SOLE') {
+      if (onIds.length === 1) { ms.ownerId = onIds[0]; ms.hold[ms.ownerId]++; }
+      else if (onIds.length >= 2) ms.ownerId = null;
+    } else { // STICKY (default): sole toucher takes/keeps ownership + accrues.
+      if (onIds.length === 1) ms.ownerId = onIds[0];
+      if (ms.ownerId) ms.hold[ms.ownerId]++;
+    }
+    // Live stats: total seconds held + longest consecutive streak (per player).
+    const stats = game.arenaState.stats;
+    for (const id of this._ownerIds(game)) if (stats[id]) stats[id].hillSeconds = Math.floor((ms.hold[id] || 0) / 60);
+    if (ms.ownerId) {
+      ms._streakFrames = (ms._streakOwner === ms.ownerId) ? (ms._streakFrames || 0) + 1 : 1;
+      ms._streakOwner = ms.ownerId;
+      const s = stats[ms.ownerId];
+      if (s) s.hillStreak = Math.max(s.hillStreak || 0, Math.floor(ms._streakFrames / 60));
+    } else { ms._streakOwner = null; ms._streakFrames = 0; }
+  },
+
+  // Survival wave spawning + wavesCleared count. The WIN (all waves survived) and
+  // LOSS (all players dead) are decided by the engine (structural conditions).
+  _updateWaves(game, ms) {
+    if (ms.wave === undefined) return;
+    const aliveMobs = game.mobManager.mobs.filter(mb => mb.alive).length;
+    if (aliveMobs === 0) {
+      if (ms.waveActive) { ms.wavesCleared = (ms.wavesCleared || 0) + 1; ms.waveActive = false; }
+      if (ms.wave >= ms.totalWaves) { ms.cleared = true; return; } // win handled by engine (survivedAllWaves)
+      if (ms.betweenTimer > 0) ms.betweenTimer--;
+      else { this._spawnSurvivalWave(game, ms); ms.betweenTimer = 120; }
     }
   },
 
@@ -373,9 +358,16 @@ const ARENA_MODES = {
       case 'DEFEND_TOWER':
         return (typeof TOWER_SYSTEM !== 'undefined') ? TOWER_SYSTEM.hudText() : '';
       default: {
-        // Quick Battle / Mob Hunter — per-player score.
+        // Quick Battle / Mob Hunter / Custom — per-player score, plus stage
+        // progress for a sequenced Custom ruleset.
         const parts = this._ownerIds(game).map(id => `${id.toUpperCase()}:${this.playerScore(game, id)}`);
-        return parts.length > 1 ? parts.join('  ') : `Score: ${this.playerScore(game, 'p1')}`;
+        let base = parts.length > 1 ? parts.join('  ') : `Score: ${this.playerScore(game, 'p1')}`;
+        if (ms.key === 'CUSTOM' && typeof ARENA_RULES !== 'undefined') {
+          const rs = this._rulesetFor(game);
+          const si = rs ? ARENA_RULES.stageInfo(rs, game) : null;
+          if (si) base = `Stage ${Math.min(si.index + 1, si.total)}/${si.total}   ${base}`;
+        }
+        return base;
       }
     }
   },
@@ -403,6 +395,12 @@ const ARENA_MODES = {
       const names = (typeof CTF_TEAM_NAMES !== 'undefined') ? CTF_TEAM_NAMES : ['Red', 'Blue'];
       if (t0 === t1) return "It's a tie!";
       return `${t1 > t0 ? names[1] : names[0]} team wins!`;
+    }
+    // Custom Rules → use the ruleset's winnerBy (rules engine).
+    if (ms && ms.key === 'CUSTOM' && typeof ARENA_RULES !== 'undefined') {
+      const rs = this._rulesetFor(game);
+      const w = rs ? ARENA_RULES.winner(rs, game) : null;
+      return w ? `${w.toUpperCase()} wins!` : "It's a tie!";
     }
     return null;
   },

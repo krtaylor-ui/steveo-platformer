@@ -92,9 +92,11 @@ const ARENA_SELECT = {
       }
     }
     this.chooseMode(mode => {
-      // Real game types go through the pre-launch settings modal; the null
-      // "Quick Battle (vs bots)" launches straight away.
-      if (mode && typeof ARENA_PRELAUNCH !== 'undefined' && ARENA_PRELAUNCH.show) {
+      // Custom Rules opens the rules builder; other real types go through the
+      // pre-launch settings modal; null "Quick Battle" launches straight away.
+      if (mode === 'CUSTOM' && typeof CUSTOM_RULES_UI !== 'undefined' && CUSTOM_RULES_UI.show) {
+        CUSTOM_RULES_UI.show((cfg) => this._launch(templateData, { arenaGameMode: 'CUSTOM', arenaConfig: cfg }));
+      } else if (mode && typeof ARENA_PRELAUNCH !== 'undefined' && ARENA_PRELAUNCH.show) {
         ARENA_PRELAUNCH.show(mode, (cfg) => this._launch(templateData, { arenaGameMode: mode, arenaConfig: cfg }));
       } else {
         this._launch(templateData, mode ? { arenaGameMode: mode } : {});

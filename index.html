@@ -13,7 +13,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=b3">
+  <link rel="stylesheet" href="style.css?v=b4">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
@@ -858,6 +858,56 @@
     </div>
   </div>
 
+  <!-- ── Custom Rules Builder Modal (Phase 3 v3) ───────────── -->
+  <div id="custom-rules-modal" style="display: none;">
+    <div class="modal-content cr-modal">
+      <h3>⚙️ Custom Rules</h3>
+      <div class="cr-grid">
+        <div class="form-group">
+          <label>Match Length</label>
+          <select id="cr-match-length">
+            <option value="120">2 min</option><option value="180">3 min</option>
+            <option value="300" selected>5 min</option><option value="600">10 min</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Players</label>
+          <select id="cr-player-count">
+            <option value="1" selected>1</option><option value="2">2</option>
+            <option value="3">3</option><option value="4">4</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Player Health</label>
+          <select id="cr-player-health">
+            <option value="4">2 ❤</option><option value="6" selected>3 ❤</option>
+            <option value="10">5 ❤</option><option value="20">10 ❤</option>
+          </select>
+        </div>
+      </div>
+      <div class="cr-section"><h4>Elements</h4><div id="cr-elements" class="cr-checks"></div></div>
+      <div class="cr-section"><h4>Scoring — points per…</h4><div id="cr-scoring" class="cr-scoring"></div></div>
+      <div class="cr-section">
+        <h4>Win Conditions</h4>
+        <div class="form-group">
+          <label>Logic</label>
+          <select id="cr-win-logic">
+            <option value="any" selected>Any of (OR)</option>
+            <option value="all">All of (AND)</option>
+            <option value="sequence">In sequence →</option>
+          </select>
+        </div>
+        <div id="cr-conditions"></div>
+        <button id="cr-add-condition" class="btn btn-small">+ Add condition</button>
+        <small id="cr-win-hint"></small>
+      </div>
+      <div class="form-row">
+        <button id="cr-start-btn" class="btn btn-primary">Start Match</button>
+        <button id="cr-cancel-btn" class="btn btn-secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Arena Leaderboard Modal (Phase 3A.2) ──────────────── -->
   <div id="arena-leaderboard-modal" style="display: none;">
     <div class="modal-content">
@@ -918,57 +968,58 @@
     2P: <kbd>IJKL</kbd>+<kbd>U</kbd>
   </div>
 
-  <script src="js/theme.js?v=b3"></script>
-  <script src="js/auth.js?v=b3"></script>
-  <script src="js/dashboard.js?v=b3"></script>
-  <script src="js/game-selection.js?v=b3"></script>
-  <script src="js/constants.js?v=b3"></script>
-  <script src="js/blocks.js?v=b3"></script>
-  <script src="js/controller-config.js?v=b3"></script>
-  <script src="js/controller-input.js?v=b3"></script>
-  <script src="js/input.js?v=b3"></script>
-  <script src="js/camera.js?v=b3"></script>
-  <script src="js/mobs.js?v=b3"></script>
-  <script src="js/crafting.js?v=b3"></script>
-  <script src="js/player.js?v=b3"></script>
-  <script src="js/level.js?v=b3"></script>
-  <script src="js/redstone.js?v=b3"></script>
-  <script src="js/world.js?v=b3"></script>
-  <script src="js/sandbox.js?v=b3"></script>
-  <script src="js/save-migrations.js?v=b3"></script>
-  <script src="js/saves.js?v=b3"></script>
-  <script src="js/speedrunner-mode.js?v=b3"></script>
-  <script src="js/arena-maps.js?v=b3"></script>
+  <script src="js/theme.js?v=b4"></script>
+  <script src="js/auth.js?v=b4"></script>
+  <script src="js/dashboard.js?v=b4"></script>
+  <script src="js/game-selection.js?v=b4"></script>
+  <script src="js/constants.js?v=b4"></script>
+  <script src="js/blocks.js?v=b4"></script>
+  <script src="js/controller-config.js?v=b4"></script>
+  <script src="js/controller-input.js?v=b4"></script>
+  <script src="js/input.js?v=b4"></script>
+  <script src="js/camera.js?v=b4"></script>
+  <script src="js/mobs.js?v=b4"></script>
+  <script src="js/crafting.js?v=b4"></script>
+  <script src="js/player.js?v=b4"></script>
+  <script src="js/level.js?v=b4"></script>
+  <script src="js/redstone.js?v=b4"></script>
+  <script src="js/world.js?v=b4"></script>
+  <script src="js/sandbox.js?v=b4"></script>
+  <script src="js/save-migrations.js?v=b4"></script>
+  <script src="js/saves.js?v=b4"></script>
+  <script src="js/speedrunner-mode.js?v=b4"></script>
+  <script src="js/arena-maps.js?v=b4"></script>
   <!-- Phase 3A.2 arena systems — must load before game.js (it references them) -->
-  <script src="js/emerald-system.js?v=b3"></script>
-  <script src="js/powerup-system.js?v=b3"></script>
-  <script src="js/ctf-system.js?v=b3"></script>
-  <script src="js/tower-system.js?v=b3"></script>
-  <script src="js/arena-rules.js?v=b3"></script>
-  <script src="js/arena-modes.js?v=b3"></script>
-  <script src="js/leaderboard-system.js?v=b3"></script>
-  <script src="js/game.js?v=b3"></script>
-  <script src="js/menu.js?v=b3"></script>
+  <script src="js/emerald-system.js?v=b4"></script>
+  <script src="js/powerup-system.js?v=b4"></script>
+  <script src="js/ctf-system.js?v=b4"></script>
+  <script src="js/tower-system.js?v=b4"></script>
+  <script src="js/arena-rules.js?v=b4"></script>
+  <script src="js/arena-modes.js?v=b4"></script>
+  <script src="js/leaderboard-system.js?v=b4"></script>
+  <script src="js/game.js?v=b4"></script>
+  <script src="js/menu.js?v=b4"></script>
   <!-- Phase 16: Multiplayer (socket.io loaded from CDN; falls back gracefully if unavailable) -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js" crossorigin="anonymous"></script>
-  <script src="js/multiplayer.js?v=b3"></script>
+  <script src="js/multiplayer.js?v=b4"></script>
   <!-- Phase 16-A: Online lobby UI -->
-  <script src="js/online-ui.js?v=b3"></script>
+  <script src="js/online-ui.js?v=b4"></script>
   <!-- Phase 1D: Game play + auto-save -->
-  <script src="js/music.js?v=b3"></script>
-  <script src="js/game-timer.js?v=b3"></script>
-  <script src="js/game-state.js?v=b3"></script>
-  <script src="js/auto-save.js?v=b3"></script>
-  <script src="js/game-play.js?v=b3"></script>
+  <script src="js/music.js?v=b4"></script>
+  <script src="js/game-timer.js?v=b4"></script>
+  <script src="js/game-state.js?v=b4"></script>
+  <script src="js/auto-save.js?v=b4"></script>
+  <script src="js/game-play.js?v=b4"></script>
   <!-- Phase 1E: Sandbox world browser + editor -->
-  <script src="js/sandbox-ui.js?v=b3"></script>
+  <script src="js/sandbox-ui.js?v=b4"></script>
 
-  <script src="js/online-play.js?v=b3"></script>
-  <script src="js/community-ui.js?v=b3"></script>
-  <script src="js/arena-select.js?v=b3"></script>
+  <script src="js/online-play.js?v=b4"></script>
+  <script src="js/community-ui.js?v=b4"></script>
+  <script src="js/arena-select.js?v=b4"></script>
   <!-- Phase 3A.3 arena UI (invoked on user action; order after the above) -->
-  <script src="js/arena-prelaunch.js?v=b3"></script>
-  <script src="js/test-world.js?v=b3"></script>
+  <script src="js/arena-prelaunch.js?v=b4"></script>
+  <script src="js/custom-rules-ui.js?v=b4"></script>
+  <script src="js/test-world.js?v=b4"></script>
 
   <script>
     // ── Build-version badge ──────────────────────────────────────

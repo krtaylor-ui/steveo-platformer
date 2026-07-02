@@ -45,7 +45,11 @@ const CTF_SYSTEM = {
 
   init(game) {
     this.active = false; this.flags = null; this.bases = null; this.captures = [0, 0];
-    if (!game._arenaMode || game._arenaMode.key !== 'CAPTURE_FLAG') return;
+    // Activate when the ruleset's CTF element is on (CAPTURE_FLAG preset OR a
+    // Custom ruleset with ctf enabled) rather than keying off the mode name.
+    const el = game._ruleset && game._ruleset.elements;
+    const on = el ? el.ctf : (game._arenaMode && game._arenaMode.key === 'CAPTURE_FLAG');
+    if (!on) return;
     this.assignTeams(game);
     game.arenaState.teamScores = [0, 0];
 

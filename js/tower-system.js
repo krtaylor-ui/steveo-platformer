@@ -28,7 +28,11 @@ const TOWER_SYSTEM = {
 
   init(game) {
     this.active = false; this.towers = null; this.heals = null; this._winner = null;
-    if (!game._arenaMode || game._arenaMode.key !== 'DEFEND_TOWER') return;
+    // Activate when the ruleset's towers element is on (DEFEND_TOWER preset OR a
+    // Custom ruleset with towers enabled).
+    const el = game._ruleset && game._ruleset.elements;
+    const on = el ? el.towers : (game._arenaMode && game._arenaMode.key === 'DEFEND_TOWER');
+    if (!on) return;
     const bs = (typeof BLOCK_SIZE !== 'undefined') ? BLOCK_SIZE : 32;
     const hp = (game.arenaConfig && game.arenaConfig.towerHp) | 0;
     this.maxHp = [3, 6, 9, 12].includes(hp) ? hp : 9;

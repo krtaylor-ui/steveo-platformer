@@ -123,5 +123,32 @@ ok(RULES.winner(rs('DEFEND_TOWER'), g) === 'p2', 'Tower winner=destroyer p2');
 TOWER._winner = null; TOWER.towers = [{ ownerId: 'p1', hp: 7, maxHp: 9 }, { ownerId: 'p2', hp: 3, maxHp: 9 }];
 ok(RULES.winner(rs('DEFEND_TOWER'), g) === 'p1', 'Tower timeout winner = most HP (p1)');
 
+console.log('Win-condition sequencing (stages):');
+const stageRs = RULES.normalize({
+  elements: { towers: true, ctf: true, hill: true },
+  stages: [
+    { combinator: 'any', conditions: [{ type: 'towersDestroyed', target: 1 }] },
+    { combinator: 'any', conditions: [{ type: 'flagsCaptured', target: 1 }] },
+    { combinator: 'any', conditions: [{ type: 'hillSecondsTotal', target: 60 }] },
+  ],
+});
+const sg = mkGame('CUSTOM', [P('p1', 0)]); sg._stageIndex = 0;
+ok(RULES.isEnded(stageRs, sg, false) === false && sg._stageIndex === 0, 'stage 0 pending');
+sg.arenaState.stats.p1.towersDestroyed = 1;
+ok(RULES.isEnded(stageRs, sg, false) === false && sg._stageIndex === 1, 'destroy tower → advance to stage 1');
+sg.arenaState.stats.p1.flagCaptures = 1;
+ok(RULES.isEnded(stageRs, sg, false) === false && sg._stageIndex === 2, 'capture flag → advance to stage 2');
+sg.arenaState.stats.p1.hillSeconds = 60;
+ok(RULES.isEnded(stageRs, sg, false) === true, 'hold hill 60s → final stage → match ends');
+ok(RULES.stageInfo(stageRs, sg).total === 3, 'stageInfo reports total stages');
+// CUSTOM ruleset via rulesetForMode(cfg.customRuleset)
+const customCfg = { customRuleset: { elements: { pvp: true }, scoring: { perKill: 2 }, win: { combinator: 'any', conditions: [{ type: 'playerKills', target: 5 }] } } };
+const cr = RULES.rulesetForMode('CUSTOM', customCfg);
+const cg = mkGame('CUSTOM', [P('p1')]); cg.arenaState.stats.p1.kills = 3;
+ok(RULES.playerScore(cr, cg, 'p1') === 6, 'CUSTOM scoring weights apply (3 kills × 2 = 6)');
+ok(RULES.isEnded(cr, cg, false) === false, 'CUSTOM win not met at 3 kills');
+cg.arenaState.stats.p1.kills = 5;
+ok(RULES.isEnded(cr, cg, false) === true, 'CUSTOM win met at 5 kills');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

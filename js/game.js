@@ -755,7 +755,25 @@ class Game {
     //    spawns escalating waves from the designed spawn-lines.
     //  • else if spawn eggs present → per-spawner frequency/cap on-screen spawning.
     //  • else → default Skeleton bots (Quick Play / built-in map / back-compat).
-    if (this.arenaConfig.disableMobs) {
+    // Custom Rules: mob spawning is driven by the ruleset's three discrete mob
+    // elements — bots (ambient), spawnEggs (designer spawners), waveSpawns
+    // (structural waves). Presets keep their existing behaviour below (unchanged).
+    const _cel = (this.arenaConfig.arenaGameMode === 'CUSTOM' && typeof ARENA_RULES !== 'undefined')
+      ? ARENA_RULES.rulesetForMode('CUSTOM', this.arenaConfig).elements : null;
+    if (_cel) {
+      if (this.arenaConfig.disableMobs || _cel.waveSpawns || (!_cel.bots && !_cel.spawnEggs)) {
+        this.mobManager.spawnPoints = []; this.mobManager.arenaMode = false; // waves spawn via ARENA_MODES
+      } else if (_cel.spawnEggs && this.mobManager.spawnPoints.length > 0) {
+        this.mobManager.arenaMode = true; // per-spawner egg spawning
+      } else if (_cel.bots) {
+        const botCols = (m && m.botSpawns?.length) ? m.botSpawns.map(b => b.col) : this._arenaBotColumns(W, this.arenaConfig.botCount);
+        for (const col of botCols.slice(0, this.arenaConfig.botCount)) {
+          const footY = this._arenaFloorY(col, H);
+          const bot = this.mobManager._createMob('Skeleton', col * BLOCK_SIZE, footY);
+          if (bot) this.mobManager.mobs.push(bot);
+        }
+      } else { this.mobManager.spawnPoints = []; this.mobManager.arenaMode = false; }
+    } else if (this.arenaConfig.disableMobs) {
       // Bug-fix pass §2.7: "Disable Mobs" — no bots spawn in this match.
       this.mobManager.spawnPoints = [];
       this.mobManager.arenaMode = false;
@@ -788,7 +806,8 @@ class Game {
     // Deathmatch requires PvP; otherwise the Friendly-Fire toggle gates it.
     this._pvpEnabled = !!(this.arenaConfig &&
       (this.arenaConfig.friendlyFire || this.arenaConfig.arenaGameMode === 'DEATHMATCH'
-       || this.arenaConfig.arenaGameMode === 'CAPTURE_FLAG'));
+       || this.arenaConfig.arenaGameMode === 'CAPTURE_FLAG'
+       || (_cel && _cel.pvp)));
     this.mobManager.pvpEnabled = this._pvpEnabled;
     this.mobManager.onPlayerKill = (killer /*, victimId */) => {
       const st = this.arenaState.stats[killer]; if (st) st.kills++;

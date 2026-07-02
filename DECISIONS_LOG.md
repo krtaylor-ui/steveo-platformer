@@ -329,3 +329,34 @@ side-effects into element systems so update() is fully engine-driven; (3) the
   (CTF now treats respawn-timer-active players as downed).
 
 Tests: node test/run.js → 120/120 (adds placed-towers + heal-mode coverage).
+
+---
+
+# Custom Rules mode + win-condition sequencing (2026-07-01, build 4)
+
+The final rules-engine phase — modes are now fully data-driven and end users can
+author their own.
+
+- **Win-condition sequencing (stages):** ARENA_RULES.isEnded supports `rs.stages`
+  (an ordered list of condition groups) in addition to flat `rs.win` (Any/All).
+  Global, monotonic stage progression tracked on `game._stageIndex` (reset per
+  match in initMode); stageInfo() drives a "Stage X/Y" HUD readout.
+- **Element-driven activation (generalization):** initMode + _setupArena + update
+  now gate systems/side-effects by the ruleset's ELEMENTS, not the mode key:
+  CTF_SYSTEM/TOWER_SYSTEM init on elements.ctf/.towers; hill accrual + wave
+  spawning run via _updateHill/_updateWaves whenever those elements are active;
+  Custom mob spawning honours the three discrete sources (bots/spawnEggs/
+  waveSpawns). The 7 presets are UNCHANGED (their elements match prior behaviour;
+  preset enemy/PvP branches were left intact — only a CUSTOM branch was added).
+- **Win-detection unified:** every mode's end now runs through ARENA_RULES.isEnded
+  (KOTH has no win conditions → full timer; Survival/Emeralds/Quick end via
+  structural conditions). Behaviour verified by the parity suite.
+- **CUSTOM mode + authoring UI:** new `js/custom-rules-ui.js` + `#custom-rules-modal`.
+  Elements checkboxes → scoring weights → win conditions (Any / All / Sequence).
+  Picking "Custom Rules" in the arena Game Type selector opens the builder, which
+  emits `arenaConfig.customRuleset`; rulesetForMode('CUSTOM', cfg) normalizes it.
+  winnerBy defaults to topScore (destroyer/topTowerHp when towers-only).
+
+Tests: node test/run.js → 128/128 (adds stages sequencing + CUSTOM ruleset).
+Deferred still: §2.9 pickaxe hotbar; non-arena spawn override; server-backed
+speedrun ghost board; genre/difficulty editor UI.
