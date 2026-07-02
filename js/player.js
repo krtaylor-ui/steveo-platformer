@@ -79,11 +79,12 @@ class Player {
 
   get isDead()       { return this.hp <= 0; }
 
-  // Derived from selectedSlot: slot 0=pickaxe, 1=sword, 2=bow (if crafted), else 'item'
+  // Derived from selectedSlot: slot 0=sword, 1=bow (if crafted), else 'item'.
+  // The pickaxe is NOT a hotbar slot — mining is always-active (contextual) and
+  // auto-uses the best owned pickaxe; see Game._miningEnabled / the HUD badge.
   get weaponMode() {
-    if (this.selectedSlot === 0) return 'pickaxe';
-    if (this.selectedSlot === 1) return 'sword';
-    if (this.selectedSlot === 2) return this.bow ? 'bow' : 'item';
+    if (this.selectedSlot === 0) return 'sword';
+    if (this.selectedSlot === 1) return this.bow ? 'bow' : 'item';
     return 'item';
   }
 
@@ -826,7 +827,9 @@ class Player {
     }
     ctx.rotate(angle);
 
-    if (this.weapon === 'item') {
+    if (this._mining) {
+      this._drawPickaxeHead(ctx); // always-active mining shows the pickaxe in-hand
+    } else if (this.weapon === 'item') {
       ctx.restore();
       return; // nothing to draw for plain item slots
     } else if (this.weapon === 'sword') {

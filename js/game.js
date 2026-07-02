@@ -201,6 +201,12 @@ class Game {
 
     // Phase 3A.1 — Arena mode init (must precede _buildLevel, which branches on it)
     this.isArena = (this.gameMode === 'arena');
+    // Mining is a reusable capability, not tied to a hotbar slot. Enabled in
+    // Normal mode; a future Arena game type can flip this on (e.g. via a ruleset
+    // element). When enabled, holding the mouse on a mineable block mines it with
+    // the player's best owned pickaxe (no manual select) — see the mining gate +
+    // the pickaxe-tier HUD badge (Normal only).
+    this._miningEnabled = (this.gameMode === 'normal');
     // New ARN sandbox worlds (no grid yet) open in the editor with the starter layout.
     this._arenaStarter = !!options.arenaStarter;
     // True when the SANDBOX editor is editing an arena world (fresh or with a grid),
@@ -2010,6 +2016,10 @@ class Game {
     // ── Weapon actions: bow / sword / pickaxe ─────────────
     // CTF: carrying a flag disables all combat (no attack / no shield) (§6).
     const p1CarryingFlag = (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.isCarrying(this.player));
+    // A left-click that would start MINING shouldn't also swing the sword.
+    const p1OverMineable = this._miningEnabled && target !== BLOCK.AIR &&
+                           !(hoverCol >= 285 && hoverCol <= 314) &&
+                           !this._portalObsidianCells.has(`${hoverCol},${hoverRow}`);
     // Cancel bow draw if player switched off bow slot (or is carrying a flag)
     if ((this.player.weaponMode !== 'bow' || p1CarryingFlag) && this.player.bowDrawing) {
       this.player.bowDrawing   = false;
@@ -2052,8 +2062,8 @@ class Game {
         this.player.drawProgress = 0;
       }
     } else if (this._p1RespawnTimer === 0 && !p1CarryingFlag && this.player.weaponMode === 'sword') {
-      // ── Sword: click/Space attacks (works even when slot is empty) ──
-      if ((this.input.isAttack() || this.input.mouse.clicked) && this.player.attackCooldown === 0) {
+      // ── Sword: Space always attacks; left-click attacks unless it's a mine ──
+      if ((this.input.isAttack() || (this.input.mouse.clicked && !p1OverMineable)) && this.player.attackCooldown === 0) {
         this.mobManager.playerAttack(this.player);
         this._playerAttackDragon();
         this._playerMeleeWither();
@@ -2632,25 +2642,25 @@ class Game {
       }
     }
 
-    // ── Hold mouse: mine (disabled in sandbox and platformer) ──
+    // ── Hold mouse: mine. Mining is always-active where _miningEnabled (Normal
+    // mode; a future Arena mode can enable it) — no pickaxe slot to select; it
+    // uses the player's best owned pickaxe. Holding over a mineable block mines.
     const isWallCol = hoverCol >= 285 && hoverCol <= 314;
-    const canMine   = !isSandbox &&
-                      this.gameMode !== 'platformer' &&
-                      this.gameMode !== 'speedrunner' &&
-                      this.player.weaponMode === 'pickaxe' &&
+    const canMine   = this._miningEnabled &&
                       this.input.mouse.down   &&
                       target !== BLOCK.AIR    &&
                       !isWallCol              &&
                       !this._portalObsidianCells.has(`${hoverCol},${hoverRow}`);
+    this.player._mining = !!canMine; // drives the pickaxe arm while mining
 
     if (canMine) {
       this.level.startBreaking(hoverRow, hoverCol);
-    } else if (!isSandbox && this.gameMode !== 'platformer' && this.gameMode !== 'speedrunner') {
+    } else if (this._miningEnabled) {
       this.level.stopBreaking();
       this._tooWeakNotified = false;
     }
 
-    if (!isSandbox && this.gameMode !== 'platformer' && this.gameMode !== 'speedrunner') {
+    if (this._miningEnabled) {
       const mineResult = this.level.updateBreaking(
         this.player.cx, this.player.cy,
         this.player.pickaxeTier, this.player.pickaxeSpeed
@@ -5575,12 +5585,12 @@ class Game {
       }
     }
 
-    // Hotbar row — slots 0-3 are reserved (locked) and show their icons always
+    // Hotbar row — slots 0-1 are reserved weapons (sword, bow); the pickaxe was
+    // removed (mining is always-active). Slots 2-8 are inventory (hotbar[2..8],
+    // indices unchanged, so placement/pickup are unaffected).
     for (let c = 0; c < L.cols; c++) {
       const sx = L.contentX + c * (L.slotSz + L.gap);
-      if (c < 4) {
-        // Reserved slot: draw locked background + icon
-        const hovered = mx >= sx && mx < sx + L.slotSz && my >= L.hotbarY && my < L.hotbarY + L.slotSz;
+      if (c < 2) {
         ctx.fillStyle = c === this.player.selectedSlot ? 'rgba(255,215,0,0.22)' : 'rgba(30,20,50,0.75)';
         ctx.fillRect(sx, L.hotbarY, L.slotSz, L.slotSz);
         ctx.strokeStyle = c === this.player.selectedSlot ? '#FFD700' : '#6655AA';
@@ -5592,45 +5602,17 @@ class Game {
         ctx.textAlign = 'right'; ctx.textBaseline = 'top';
         ctx.fillText('🔒', sx + L.slotSz - 2, L.hotbarY + 2);
         ctx.textAlign = 'left';
-        // Tool/item icon
-        if (c === 0 || c === 1 || c === 2) {
-          const toolKey  = c === 0 ? this.player.pickaxe : c === 1 ? this.player.sword : this.player.bow;
-          const toolIcon = c === 0 ? '⛏' : c === 1 ? '⚔' : '🏹';
-          const toolData = toolKey ? TOOL_DATA[toolKey] : null;
-          if (toolData) {
-            ctx.fillStyle = toolData.color;
-            ctx.font = `${Math.floor(L.slotSz * 0.45)}px serif`;
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(toolIcon, sx + L.slotSz / 2, L.hotbarY + L.slotSz / 2);
-            ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-          } else {
-            ctx.globalAlpha = 0.35;
-            ctx.fillStyle = '#AAAAAA';
-            ctx.font = `${Math.floor(L.slotSz * 0.45)}px serif`;
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(toolIcon, sx + L.slotSz / 2, L.hotbarY + L.slotSz / 2);
-            ctx.globalAlpha = 1;
-            ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-          }
-        } else if (c === 3) {
-          // Apple slot
-          const appleSlot = this.player.hotbar[3];
-          const hasApple  = appleSlot && appleSlot.type === BLOCK.APPLE && appleSlot.count > 0;
-          ctx.save();
-          if (!hasApple) ctx.globalAlpha = 0.35;
-          const pad   = 5;
-          const scale = (L.slotSz - pad * 2) / BLOCK_SIZE;
-          ctx.translate(sx + pad, L.hotbarY + pad);
-          ctx.scale(scale, scale);
-          drawBlock(ctx, BLOCK.APPLE, 0, 0, 0);
-          ctx.restore();
-          if (hasApple) {
-            ctx.fillStyle = '#fff'; ctx.font = 'bold 10px Courier New';
-            ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-            ctx.fillText(appleSlot.count, sx + L.slotSz - 3, L.hotbarY + L.slotSz - 2);
-            ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-          }
-        }
+        const toolKey  = c === 0 ? this.player.sword : this.player.bow;
+        const toolIcon = c === 0 ? '⚔' : '🏹';
+        const toolData = toolKey ? TOOL_DATA[toolKey] : null;
+        ctx.save();
+        if (!toolData) ctx.globalAlpha = 0.35;
+        ctx.fillStyle = toolData ? toolData.color : '#AAAAAA';
+        ctx.font = `${Math.floor(L.slotSz * 0.45)}px serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(toolIcon, sx + L.slotSz / 2, L.hotbarY + L.slotSz / 2);
+        ctx.restore();
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
       } else {
         drawSlot(this.player.hotbar[c], sx, L.hotbarY, c === this.player.selectedSlot);
       }
@@ -10493,6 +10475,7 @@ class Game {
         this._drawWeaponLabel(ctx);
       }
     }
+    this._drawPickaxeBadge(ctx); // always-active mining tier (Normal mode)
     if (this.player.hasShield)     this._drawShieldIndicator(ctx);
     if (this.player.hasFlintSteel) this._drawFlintSteelIndicator(ctx);
     this._drawBlockInfo(ctx, hoverRow, hoverCol);
@@ -10846,39 +10829,19 @@ class Game {
       ctx.lineWidth   = active ? 1.5 : 1;
       ctx.strokeRect(sx + 0.5, sy + 0.5, SZ - 1, SZ - 1);
 
-      // Tool slots 0–2
-      if (i <= 2) {
-        const toolKey  = i === 0 ? player.pickaxe : i === 1 ? player.sword : player.bow;
-        const toolIcon = i === 0 ? '⛏' : i === 1 ? '⚔' : '🏹';
+      // Weapon slots 0-1 (sword, bow); pickaxe removed (mining is always-active).
+      if (i <= 1) {
+        const toolKey  = i === 0 ? player.sword : player.bow;
+        const toolIcon = i === 0 ? '⚔' : '🏹';
         const toolData = toolKey ? TOOL_DATA[toolKey] : null;
-        if (toolData) {
-          ctx.fillStyle    = toolData.color;
-          ctx.font         = `${SZ * 0.65}px serif`;
-          ctx.textAlign    = 'center'; ctx.textBaseline = 'middle';
-          ctx.fillText(toolIcon, sx + SZ / 2, sy + SZ / 2);
-          ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-        } else if (i === 2) {
-          ctx.fillStyle = 'rgba(180,140,80,0.35)';
-          ctx.font = `${SZ * 0.65}px serif`;
-          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          ctx.fillText('🏹', sx + SZ / 2, sy + SZ / 2);
-          ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-        }
-      } else if (i === 3) {
-        const appleSlot = player.hotbar[3];
-        const hasApple  = appleSlot && appleSlot.type === BLOCK.APPLE && appleSlot.count > 0;
         ctx.save();
-        if (!hasApple) ctx.globalAlpha = 0.3;
-        const pad = 2, scale = (SZ - pad * 2) / BLOCK_SIZE;
-        ctx.translate(sx + pad, sy + pad); ctx.scale(scale, scale);
-        drawBlock(ctx, BLOCK.APPLE, 0, 0, 0);
+        if (!toolData) ctx.globalAlpha = 0.35;
+        ctx.fillStyle = toolData ? toolData.color : 'rgba(180,140,80,0.6)';
+        ctx.font = `${SZ * 0.65}px serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(toolIcon, sx + SZ / 2, sy + SZ / 2);
         ctx.restore();
-        if (hasApple) {
-          ctx.fillStyle    = '#fff'; ctx.font = 'bold 7px Courier New';
-          ctx.textAlign    = 'right'; ctx.textBaseline = 'bottom';
-          ctx.fillText(appleSlot.count, sx + SZ - 1, sy + SZ - 1);
-          ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-        }
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
       } else if (slot) {
         const pad = 2, scale = (SZ - pad * 2) / BLOCK_SIZE;
         ctx.save();
@@ -10914,84 +10877,42 @@ class Game {
       ctx.lineWidth   = active ? 2.5 : 1.5;
       ctx.strokeRect(sx + 0.5, sy + 0.5, SLOT_SIZE - 1, SLOT_SIZE - 1);
 
-      // Tool slots 0-2: show tool icon even if hotbar slot is empty
-      if (i === 0 || i === 1 || i === 2) {
-        const toolKey  = i === 0 ? p.pickaxe : i === 1 ? p.sword : p.bow;
-        const toolIcon = i === 0 ? '⛏' : i === 1 ? '⚔' : '🏹';
+      // Weapon slots 0-1: sword (0), bow (1). Pickaxe removed (mining always-active).
+      if (i <= 1) {
+        const toolKey  = i === 0 ? p.sword : p.bow;
+        const toolIcon = i === 0 ? '⚔' : '🏹';
         const toolData = toolKey ? TOOL_DATA[toolKey] : null;
         if (toolData) {
           ctx.fillStyle    = toolData.color;
           ctx.font         = `${SLOT_SIZE * 0.52}px serif`;
-          ctx.textAlign    = 'center';
-          ctx.textBaseline = 'middle';
+          ctx.textAlign    = 'center'; ctx.textBaseline = 'middle';
           ctx.fillText(toolIcon, sx + SLOT_SIZE / 2, sy + SLOT_SIZE / 2);
-          ctx.textAlign    = 'left';
-          ctx.textBaseline = 'alphabetic';
-          // Tier label (tiny, bottom right)
-          if (i < 2) {
-            ctx.fillStyle    = 'rgba(255,255,255,0.55)';
-            ctx.font         = '7px Courier New';
-            ctx.textAlign    = 'right';
-            ctx.textBaseline = 'bottom';
-            const tierNames  = ['W','S','I','D','N'];
+          ctx.textAlign    = 'left'; ctx.textBaseline = 'alphabetic';
+          if (i === 0) { // sword tier label
+            ctx.fillStyle    = 'rgba(255,255,255,0.55)'; ctx.font = '7px Courier New';
+            ctx.textAlign    = 'right'; ctx.textBaseline = 'bottom';
+            const tierNames  = ['W', 'S', 'I', 'D', 'N'];
             ctx.fillText(tierNames[toolData.tier] ?? '', sx + SLOT_SIZE - 3, sy + SLOT_SIZE - 2);
-            ctx.textAlign    = 'left';
-            ctx.textBaseline = 'alphabetic';
+            ctx.textAlign    = 'left'; ctx.textBaseline = 'alphabetic';
           }
-        } else if (i === 2) {
-          // Bow slot empty — show ghost icon
-          ctx.fillStyle    = 'rgba(180,140,80,0.35)';
-          ctx.font         = `${SLOT_SIZE * 0.52}px serif`;
-          ctx.textAlign    = 'center';
-          ctx.textBaseline = 'middle';
+        } else if (i === 1) {
+          // Bow slot empty — ghost + craft hint
+          ctx.fillStyle    = 'rgba(180,140,80,0.35)'; ctx.font = `${SLOT_SIZE * 0.52}px serif`;
+          ctx.textAlign    = 'center'; ctx.textBaseline = 'middle';
           ctx.fillText('🏹', sx + SLOT_SIZE / 2, sy + SLOT_SIZE / 2);
-          ctx.textAlign    = 'left';
-          ctx.textBaseline = 'alphabetic';
-          ctx.fillStyle    = 'rgba(200,180,100,0.5)';
-          ctx.font         = '7px Courier New';
-          ctx.textAlign    = 'center';
-          ctx.fillText('craft', sx + SLOT_SIZE / 2, sy + SLOT_SIZE - 3);
+          ctx.textAlign    = 'left'; ctx.textBaseline = 'alphabetic';
+          ctx.fillStyle    = 'rgba(200,180,100,0.5)'; ctx.font = '7px Courier New';
+          ctx.textAlign    = 'center'; ctx.fillText('craft', sx + SLOT_SIZE / 2, sy + SLOT_SIZE - 3);
           ctx.textAlign    = 'left';
         }
-        // Arrow count overlay on bow slot (when bow equipped and finite mode)
-        if (i === 2 && toolKey && !this._worldAdvSettings.unlimitedArrows) {
+        // Arrow count overlay on the bow slot (i===1) when equipped + finite ammo
+        if (i === 1 && toolKey && !this._worldAdvSettings.unlimitedArrows) {
           const arrowCount = p.countItem(BLOCK.ARROW);
-          const noAmmo = arrowCount === 0;
-          ctx.fillStyle    = noAmmo ? '#FF5555' : '#FFFFFF';
+          ctx.fillStyle    = arrowCount === 0 ? '#FF5555' : '#FFFFFF';
           ctx.font         = 'bold 10px Courier New';
-          ctx.textAlign    = 'right';
-          ctx.textBaseline = 'bottom';
+          ctx.textAlign    = 'right'; ctx.textBaseline = 'bottom';
           ctx.fillText(arrowCount, sx + SLOT_SIZE - 3, sy + SLOT_SIZE - 2);
-          ctx.textAlign    = 'left';
-          ctx.textBaseline = 'alphabetic';
-        }
-      } else if (i === 3) {
-        // Apple slot (reserved slot 4) — show apple icon, greyed if none held
-        const appleSlot = p.hotbar[3];
-        const hasApple  = appleSlot && appleSlot.type === BLOCK.APPLE && appleSlot.count > 0;
-        ctx.save();
-        if (!hasApple) ctx.globalAlpha = 0.35;
-        const pad   = 5;
-        const scale = (SLOT_SIZE - pad * 2) / BLOCK_SIZE;
-        ctx.translate(sx + pad, sy + pad);
-        ctx.scale(scale, scale);
-        drawBlock(ctx, BLOCK.APPLE, 0, 0, 0);
-        ctx.restore();
-        if (hasApple) {
-          ctx.fillStyle    = '#fff';
-          ctx.font         = 'bold 10px Courier New';
-          ctx.textAlign    = 'right';
-          ctx.textBaseline = 'bottom';
-          ctx.fillText(appleSlot.count, sx + SLOT_SIZE - 3, sy + SLOT_SIZE - 2);
-          ctx.textAlign    = 'left';
-          ctx.textBaseline = 'alphabetic';
-        } else {
-          ctx.fillStyle    = 'rgba(200,180,100,0.5)';
-          ctx.font         = '7px Courier New';
-          ctx.textAlign    = 'center';
-          ctx.textBaseline = 'alphabetic';
-          ctx.fillText('none', sx + SLOT_SIZE / 2, sy + SLOT_SIZE - 3);
-          ctx.textAlign    = 'left';
+          ctx.textAlign    = 'left'; ctx.textBaseline = 'alphabetic';
         }
       } else if (slot) {
         // Normal item slot
@@ -11019,6 +10940,25 @@ class Game {
       ctx.fillText(i + 1, sx + 3, sy + 3);
       ctx.textBaseline = 'alphabetic';
     }
+  }
+
+  // Pickaxe-tier badge — shown when mining is a capability (Normal mode). Since
+  // the pickaxe is no longer a hotbar slot, this tells the player which tier is
+  // auto-used when they mine. Top-left, just under the XP bar.
+  _drawPickaxeBadge(ctx) {
+    if (!this._miningEnabled || !this.player) return;
+    const data = TOOL_DATA[this.player.pickaxe]; if (!data) return;
+    const label = '⛏ ' + String(data.name || 'Pickaxe').replace(/\s*Pickaxe$/i, '');
+    ctx.save();
+    ctx.font = 'bold 11px Courier New';
+    const w = ctx.measureText(label).width + 18, x = 10, y = 48, h = 18;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'; _roundRect(ctx, x, y, w, h, 5); ctx.fill();
+    ctx.strokeStyle = data.color || '#C8A55A'; ctx.lineWidth = 1; _roundRect(ctx, x, y, w, h, 5); ctx.stroke();
+    ctx.fillStyle = data.color || '#C8A55A';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + 9, y + h / 2 + 1);
+    ctx.restore();
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   }
 
   _drawWeaponLabel(ctx) {
