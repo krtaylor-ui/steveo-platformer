@@ -69,7 +69,7 @@ const ARENA_MODES = {
     const rs = (typeof ARENA_RULES !== 'undefined') ? ARENA_RULES.rulesetForMode(modeKey, game.arenaConfig || {}) : null;
     const el = (rs && rs.elements) || {};
     game._ruleset = rs; game._rulesetKey = modeKey || 'QUICK_BATTLE';
-    game._stageIndex = 0; // reset sequenced-win progress each match
+    game._stageProgress = { p1: 0, p2: 0, p3: 0, p4: 0 }; // per-player sequenced-win progress
     if (el.hill || modeKey === 'KING_OF_HILL') {
       ms.ownerId = null;  // null | 'p1'..'p4' — current hill owner (display + accrual)
       ms.hold = { p1: 0, p2: 0, p3: 0, p4: 0 }; // frames each player has accrued
@@ -358,16 +358,16 @@ const ARENA_MODES = {
       case 'DEFEND_TOWER':
         return (typeof TOWER_SYSTEM !== 'undefined') ? TOWER_SYSTEM.hudText() : '';
       default: {
-        // Quick Battle / Mob Hunter / Custom — per-player score, plus stage
-        // progress for a sequenced Custom ruleset.
-        const parts = this._ownerIds(game).map(id => `${id.toUpperCase()}:${this.playerScore(game, id)}`);
-        let base = parts.length > 1 ? parts.join('  ') : `Score: ${this.playerScore(game, 'p1')}`;
-        if (ms.key === 'CUSTOM' && typeof ARENA_RULES !== 'undefined') {
-          const rs = this._rulesetFor(game);
-          const si = rs ? ARENA_RULES.stageInfo(rs, game) : null;
-          if (si) base = `Stage ${Math.min(si.index + 1, si.total)}/${si.total}   ${base}`;
-        }
-        return base;
+        // Quick Battle / Mob Hunter / Custom — per-player score, plus each
+        // player's stage progress for a sequenced Custom ruleset (per-player win).
+        const rs = (ms.key === 'CUSTOM' && typeof ARENA_RULES !== 'undefined') ? this._rulesetFor(game) : null;
+        const hasStages = !!(rs && rs.stages && rs.stages.length);
+        const parts = this._ownerIds(game).map(id => {
+          let s = `${id.toUpperCase()}:${this.playerScore(game, id)}`;
+          if (hasStages) { const si = ARENA_RULES.stageInfo(rs, game, id); if (si) s += ` [S${Math.min(si.index + 1, si.total)}/${si.total}]`; }
+          return s;
+        });
+        return (parts.length > 1 || hasStages) ? parts.join('  ') : `Score: ${this.playerScore(game, 'p1')}`;
       }
     }
   },

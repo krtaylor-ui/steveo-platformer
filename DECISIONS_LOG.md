@@ -406,3 +406,28 @@ Tests: node test/run.js → 135/135.
   conditionCurrent().
 
 Tests: node test/run.js → 138/138.
+
+---
+
+# Per-player win conditions + progress (build 9)
+
+Win conditions are now evaluated PER PLAYER (was global). Each condition is met
+for a player when THEIR value reaches the target; each player has their own stage
+pointer (game._stageProgress[id]); the match ends when the first player completes
+their win (they win). Confirmed with Kevin:
+- **Team-shared progress:** team objectives (flag captures) count the player's
+  TEAM total, so teammates progress/complete together; individual stats
+  (kills, hill time, emeralds, towers) are per-player.
+- Engine: conditionMet/conditionCurrent/_groupMet/stageInfo/objectiveStatus all
+  take an `id`; new playerStageIndex/playerWon/winProgress. winner() = whoever met
+  their win (tiebreak score); on timeout, furthest by winProgress (which now
+  includes FRACTIONAL progress toward unmet conditions, so 6/10 beats 2/10).
+- Presets are unaffected (a global "first to N" == per-player "first player to N").
+- Pause "Objectives" panel now shows EACH player's progress (headline per player;
+  condition detail for 1-2 players); HUD top-line shows per-player [S x/n].
+
+Still to do this batch: end-screen per-player standings + no-winner ranking;
+impossible-condition warning (finite cumulative stats in step 2+); config
+save/load/export/import (recent-3 local + Supabase named up to 10 + file).
+
+Tests: node test/run.js → 144/144.

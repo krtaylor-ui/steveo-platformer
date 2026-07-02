@@ -135,15 +135,15 @@ const stageRs = RULES.normalize({
     { combinator: 'any', conditions: [{ type: 'hillSecondsTotal', target: 60 }] },
   ],
 });
-const sg = mkGame('CUSTOM', [P('p1', 0)]); sg._stageIndex = 0;
-ok(RULES.isEnded(stageRs, sg, false) === false && sg._stageIndex === 0, 'stage 0 pending');
+const sg = mkGame('CUSTOM', [P('p1', 0)]); sg._stageProgress = { p1: 0 };
+ok(RULES.isEnded(stageRs, sg, false) === false && sg._stageProgress.p1 === 0, 'stage 0 pending (per-player)');
 sg.arenaState.stats.p1.towersDestroyed = 1;
-ok(RULES.isEnded(stageRs, sg, false) === false && sg._stageIndex === 1, 'destroy tower → advance to stage 1');
+ok(RULES.isEnded(stageRs, sg, false) === false && sg._stageProgress.p1 === 1, 'destroy tower → p1 advances to stage 1');
 sg.arenaState.stats.p1.flagCaptures = 1;
-ok(RULES.isEnded(stageRs, sg, false) === false && sg._stageIndex === 2, 'capture flag → advance to stage 2');
+ok(RULES.isEnded(stageRs, sg, false) === false && sg._stageProgress.p1 === 2, 'capture flag → p1 advances to stage 2');
 sg.arenaState.stats.p1.hillSeconds = 60;
-ok(RULES.isEnded(stageRs, sg, false) === true, 'hold hill 60s → final stage → match ends');
-ok(RULES.stageInfo(stageRs, sg).total === 3, 'stageInfo reports total stages');
+ok(RULES.isEnded(stageRs, sg, false) === true, 'hold hill 60s → p1 completes → match ends');
+ok(RULES.stageInfo(stageRs, sg, 'p1').total === 3, 'stageInfo reports total stages');
 // CUSTOM ruleset via rulesetForMode(cfg.customRuleset)
 const customCfg = { customRuleset: { elements: { pvp: true }, scoring: { perKill: 2 }, win: { combinator: 'any', conditions: [{ type: 'playerKills', target: 5 }] } } };
 const cr = RULES.rulesetForMode('CUSTOM', customCfg);
@@ -156,7 +156,7 @@ ok(RULES.isEnded(cr, cg, false) === true, 'CUSTOM win met at 5 kills');
 console.log('Per-condition win logic (AND / OR / NOT):');
 const lg = mkGame('CUSTOM', [P('p1')]);
 const rsL = RULES.normalize({ elements: { pvp: true, emeralds: true } });
-const G = (conds) => RULES._groupMet(rsL, lg, { conditions: conds });
+const G = (conds) => RULES._groupMet(rsL, lg, { conditions: conds }, 'p1');
 lg.arenaState.stats.p1.kills = 5; lg.arenaState.stats.p1.emeralds = 1;
 ok(G([{ type: 'playerKills', target: 5, logic: 'and' }, { type: 'emeraldsCollected', target: 3, logic: 'or' }]) === true, 'A OR B — A true → true');
 ok(G([{ type: 'playerKills', target: 9, logic: 'and' }, { type: 'emeraldsCollected', target: 3, logic: 'or' }]) === false, 'A OR B — both false → false');
@@ -169,11 +169,30 @@ ok(G([{ type: 'playerKills', target: 9, logic: 'not' }]) === true, 'NOT A as see
 console.log('Objective status (pause readout):');
 const osFlat = RULES.rulesetForMode('DEATHMATCH', { killTarget: 10 });
 const og = mkGame('DEATHMATCH', [P('p1')]); og.arenaState.stats.p1.kills = 4;
-let os = RULES.objectiveStatus(osFlat, og);
+let os = RULES.objectiveStatus(osFlat, og, 'p1');
 ok(os.mode === 'flat' && os.conditions[0].current === 4 && os.conditions[0].target === 10 && !os.conditions[0].met, 'flat objective status (4/10, unmet)');
-os = RULES.objectiveStatus(stageRs, sg);
+os = RULES.objectiveStatus(stageRs, sg, 'p1');
 ok(os.mode === 'stages' && os.total === 3, 'stage objective status reports steps');
-ok(RULES.objectiveStatus(RULES.rulesetForMode('MOB_HUNTER', {}), og).mode === 'timer', 'timer objective status (no win conditions)');
+ok(RULES.objectiveStatus(RULES.rulesetForMode('MOB_HUNTER', {}), og, 'p1').mode === 'timer', 'timer objective status (no win conditions)');
+
+console.log('Per-player win + team-shared flags + tiebreak:');
+const pw = RULES.normalize({ elements: { pvp: true }, win: { combinator: 'any', conditions: [{ type: 'playerKills', target: 3 }] } });
+const pg = mkGame('CUSTOM', [P('p1'), P('p2')]);
+pg.arenaState.stats.p1.kills = 3; pg.arenaState.stats.p2.kills = 1;
+ok(RULES.playerWon(pw, pg, 'p1') === true && RULES.playerWon(pw, pg, 'p2') === false, 'per-player: p1 met their win, p2 not');
+ok(RULES.isEnded(pw, pg, false) === true && RULES.winner(pw, pg) === 'p1', 'match ends; winner = p1');
+// Team-shared flags: teammates share the team flag total.
+const tf = RULES.normalize({ elements: { ctf: true }, win: { combinator: 'any', conditions: [{ type: 'flagsCaptured', target: 2 }] } });
+const tfg = mkGame('CUSTOM', [P('p1', 0), P('p3', 0), P('p2', 1)]);
+tfg.arenaState.stats.p1.flagCaptures = 1; tfg.arenaState.stats.p3.flagCaptures = 1; // team0 total = 2
+ok(RULES.playerWon(tf, tfg, 'p1') && RULES.playerWon(tf, tfg, 'p3'), 'team-shared: both team0 players win at team total 2');
+ok(!RULES.playerWon(tf, tfg, 'p2'), 'team1 player has not won');
+// No-winner tiebreak by (partial) progress on timeout.
+const tb = RULES.normalize({ elements: { pvp: true }, win: { combinator: 'any', conditions: [{ type: 'playerKills', target: 10 }] } });
+const tbg = mkGame('CUSTOM', [P('p1'), P('p2')]);
+tbg.arenaState.stats.p1.kills = 2; tbg.arenaState.stats.p2.kills = 6;
+ok(RULES.isEnded(tb, tbg, false) === false, 'nobody reached 10 kills yet');
+ok(RULES.winner(tb, tbg) === 'p2', 'timeout tiebreak → p2 (further along: 6/10 vs 2/10)');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

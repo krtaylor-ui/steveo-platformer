@@ -155,25 +155,14 @@ const ARENA_RULES = {
   _ownerIds(game) { return game.activePlayers().map((p, i) => (p && p._ownerId) || ('p' + (i + 1))); },
   _maxStat(game, key) { let m = 0; for (const id of this._ownerIds(game)) m = Math.max(m, this._statOf(game, id)[key] || 0); return m; },
 
-  // Is a single threshold condition currently satisfied?
-  conditionMet(rs, game, cond) {
-    switch (cond.type) {
-      case 'playerKills':            return this._maxStat(game, 'kills') >= cond.target;
-      case 'hillSecondsTotal':       return this._maxStat(game, 'hillSeconds') >= cond.target;
-      case 'hillSecondsConsecutive': return this._maxStat(game, 'hillStreak') >= cond.target;
-      case 'emeraldsCollected':      return this._maxStat(game, 'emeralds') >= cond.target;
-      case 'flagsCaptured': {
-        const t0 = this._teamStat(game, 0, 'flagCaptures'), t1 = this._teamStat(game, 1, 'flagCaptures');
-        return Math.max(t0, t1, this._maxStat(game, 'flagCaptures')) >= cond.target;
-      }
-      case 'towersDestroyed':        return this._totalStat(game, 'towersDestroyed') >= cond.target;
-      case 'totalPoints':            return this._topPlayerScore(rs, game) >= cond.target;
-      default: return false;
-    }
-  },
   _teamStat(game, teamId, key) { let n = 0; for (const p of game.activePlayers()) if (p && p.teamId === teamId) n += (this._statOf(game, p._ownerId)[key] || 0); return n; },
   _totalStat(game, key) { let n = 0; for (const id of this._ownerIds(game)) n += (this._statOf(game, id)[key] || 0); return n; },
   _topPlayerScore(rs, game) { let m = 0; for (const id of this._ownerIds(game)) m = Math.max(m, this.playerScore(rs, game, id)); return m; },
+  _playerById(game, id) { return game.activePlayers().find(p => p && p._ownerId === id) || null; },
+
+  // Win conditions are evaluated PER PLAYER: met for player `id` when their value
+  // (conditionCurrent — team-shared for flags) reaches the target.
+  conditionMet(rs, game, cond, id) { return this.conditionCurrent(rs, game, cond, id) >= cond.target; },
 
   // Structural enders that depend on the world/systems (guarded).
   _structuralMet(rs, game, kind) {
@@ -193,13 +182,13 @@ const ARENA_RULES = {
   //    Rules step builder.
   //  • Combinator: group.combinator 'all'|'any' over the conditions (used by the
   //    built-in presets, which carry no per-condition logic).
-  _groupMet(rs, game, group) {
+  _groupMet(rs, game, group, id) {
     const conds = (group && group.conditions) || [];
     if (!conds.length) return false;
     if (conds.some(c => c.logic)) {
       let acc;
       for (const c of conds) {
-        const t = this.conditionMet(rs, game, c);
+        const t = this.conditionMet(rs, game, c, id);
         const lg = (c.logic || 'and').toLowerCase();
         if (acc === undefined) acc = (lg === 'not') ? !t : t;
         else if (lg === 'or')  acc = acc || t;
@@ -209,33 +198,54 @@ const ARENA_RULES = {
       return !!acc;
     }
     return group.combinator === 'all'
-      ? conds.every(c => this.conditionMet(rs, game, c))
-      : conds.some(c => this.conditionMet(rs, game, c));
+      ? conds.every(c => this.conditionMet(rs, game, c, id))
+      : conds.some(c => this.conditionMet(rs, game, c, id));
   },
 
-  // Sequenced win (stages): current stage progress for the HUD. Global (match-wide)
-  // progression — the match advances through stages as each group is met.
-  stageInfo(rs, game) {
+  // Per-player stage pointer (stored on game._stageProgress[id]); advances through
+  // every stage this player has completed (monotonic — stats are cumulative).
+  playerStageIndex(rs, game, id) {
+    if (!rs.stages || !rs.stages.length) return 0;
+    if (!game._stageProgress) game._stageProgress = {};
+    let idx = game._stageProgress[id] || 0;
+    while (idx < rs.stages.length && this._groupMet(rs, game, rs.stages[idx], id)) idx++;
+    game._stageProgress[id] = idx;
+    return idx;
+  },
+
+  // Has player `id` met the win — all stages complete, or the flat conditions?
+  playerWon(rs, game, id) {
+    if (rs.stages && rs.stages.length) return this.playerStageIndex(rs, game, id) >= rs.stages.length;
+    return this._groupMet(rs, game, rs.win, id);
+  },
+
+  // Numeric progress for end-screen standings + no-winner tiebreak: stages done
+  // dominate, then FRACTIONAL progress toward the current step (or flat)
+  // conditions (so 6/10 kills beats 2/10 even when neither is met), then score.
+  winProgress(rs, game, id) {
+    const score = Math.min(this.playerScore(rs, game, id), 999);
+    const cp = (c) => c.target > 0 ? Math.min(1, this.conditionCurrent(rs, game, c, id) / c.target) : 0;
+    if (rs.stages && rs.stages.length) {
+      const idx = this.playerStageIndex(rs, game, id);
+      const cur = (idx < rs.stages.length) ? (rs.stages[idx].conditions || []) : [];
+      const frac = cur.reduce((s, c) => s + cp(c), 0);
+      return idx * 1e6 + frac * 1e3 + score;
+    }
+    const conds = (rs.win && rs.win.conditions) || [];
+    return conds.reduce((s, c) => s + cp(c), 0) * 1e3 + score;
+  },
+
+  // Per-player stage progress for the HUD/pause readout.
+  stageInfo(rs, game, id) {
     if (!rs.stages || !rs.stages.length) return null;
-    const idx = Math.min(game._stageIndex || 0, rs.stages.length);
+    const idx = Math.min(this.playerStageIndex(rs, game, id), rs.stages.length);
     return { index: idx, total: rs.stages.length, stage: rs.stages[idx] || null };
   },
 
-  // Has the match ended? `timeUp` is passed by the caller (arena timer). Supports
-  // either flat win conditions (rs.win, ANY/ALL) OR sequenced stages (rs.stages,
-  // an ordered list of groups completed in turn), plus structural enders,
-  // deathEndsMatch, and the timer.
+  // Has the match ended? Any player meeting THEIR win, a structural ender,
+  // deathEndsMatch, or the timer (passed by the caller).
   isEnded(rs, game, timeUp) {
-    if (rs.stages && rs.stages.length) {
-      let idx = game._stageIndex || 0;
-      // Advance through every stage whose group is currently met (monotonic —
-      // all condition types are cumulative, so a completed stage stays complete).
-      while (idx < rs.stages.length && this._groupMet(rs, game, rs.stages[idx])) idx++;
-      game._stageIndex = idx;
-      if (idx >= rs.stages.length) return true;
-    } else if (this._groupMet(rs, game, rs.win)) {
-      return true;
-    }
+    for (const id of this._ownerIds(game)) if (this.playerWon(rs, game, id)) return true;
     for (const s of (rs.endStructural || [])) if (this._structuralMet(rs, game, s)) return true;
     if (rs.deathEndsMatch && this._structuralMet(rs, game, 'allPlayersDead')) return true;
     return !!timeUp;
@@ -254,12 +264,16 @@ const ARENA_RULES = {
       }
       return null;
     }
-    // topScore
-    let bestId = null, best = -1, tie = false;
-    for (const id of this._ownerIds(game)) {
-      const sc = this.playerScore(rs, game, id);
-      if (sc > best) { best = sc; bestId = id; tie = false; }
-      else if (sc === best) tie = true;
+    // Winner = whoever met THEIR win (tiebreak: score). If nobody did (timeout),
+    // the player furthest along by winProgress. Ties → null (draw).
+    const ids = this._ownerIds(game);
+    const won = ids.filter(id => this.playerWon(rs, game, id));
+    const pool = won.length ? won : ids;
+    let bestId = null, best = -Infinity, tie = false;
+    for (const id of pool) {
+      const v = won.length ? this.playerScore(rs, game, id) : this.winProgress(rs, game, id);
+      if (v > best) { best = v; bestId = id; tie = false; }
+      else if (v === best) tie = true;
     }
     return tie ? null : bestId;
   },
@@ -275,32 +289,39 @@ const ARENA_RULES = {
       flagsCaptured: 'Team flags', towersDestroyed: 'Towers destroyed', totalPoints: 'Total points',
     })[type] || type;
   },
-  conditionCurrent(rs, game, c) {
+  // Current value of a condition FOR PLAYER `id` (win is per-player). Team
+  // objectives (flag captures) are team-shared → a player's progress = their
+  // team's total; everything else is the player's own stat.
+  conditionCurrent(rs, game, c, id) {
+    const st = this._statOf(game, id);
     switch (c.type) {
-      case 'playerKills':            return this._maxStat(game, 'kills');
-      case 'hillSecondsTotal':       return this._maxStat(game, 'hillSeconds');
-      case 'hillSecondsConsecutive': return this._maxStat(game, 'hillStreak');
-      case 'emeraldsCollected':      return this._maxStat(game, 'emeralds');
-      case 'flagsCaptured':          return Math.max(this._teamStat(game, 0, 'flagCaptures'), this._teamStat(game, 1, 'flagCaptures'), this._maxStat(game, 'flagCaptures'));
-      case 'towersDestroyed':        return this._totalStat(game, 'towersDestroyed');
-      case 'totalPoints':            return this._topPlayerScore(rs, game);
+      case 'playerKills':            return st.kills || 0;
+      case 'hillSecondsTotal':       return st.hillSeconds || 0;
+      case 'hillSecondsConsecutive': return st.hillStreak || 0;
+      case 'emeraldsCollected':      return st.emeralds || 0;
+      case 'towersDestroyed':        return st.towersDestroyed || 0;
+      case 'flagsCaptured': {
+        const p = this._playerById(game, id);
+        return (p && p.teamId != null) ? this._teamStat(game, p.teamId, 'flagCaptures') : (st.flagCaptures || 0);
+      }
+      case 'totalPoints':            return this.playerScore(rs, game, id);
       default: return 0;
     }
   },
-  // Structured objective progress for the pause "Objectives" panel:
-  //   { mode:'stages', current, total, stages:[{index,done,active,conditions:[…]}] }
-  //   { mode:'flat', combinator, conditions:[{label,current,target,met,logic}] }
+  // Structured PER-PLAYER objective progress for the pause / end-screen readout:
+  //   { mode:'stages', current, total, won, stages:[{index,done,active,conditions:[…]}] }
+  //   { mode:'flat', combinator, won, conditions:[{label,current,target,met,logic}] }
   //   { mode:'timer' }
-  objectiveStatus(rs, game) {
+  objectiveStatus(rs, game, id) {
     if (!rs) return { mode: 'timer' };
-    const cs = (c) => { const cur = this.conditionCurrent(rs, game, c); return { label: this._condText(c.type), current: cur, target: c.target, met: cur >= c.target, logic: c.logic || null }; };
+    const cs = (c) => { const cur = this.conditionCurrent(rs, game, c, id); return { label: this._condText(c.type), current: cur, target: c.target, met: cur >= c.target, logic: c.logic || null }; };
     if (rs.stages && rs.stages.length) {
-      const idx = game._stageIndex || 0;
-      return { mode: 'stages', current: idx, total: rs.stages.length,
+      const idx = this.playerStageIndex(rs, game, id);
+      return { mode: 'stages', current: idx, total: rs.stages.length, won: idx >= rs.stages.length,
         stages: rs.stages.map((st, i) => ({ index: i, done: i < idx, active: i === idx, conditions: (st.conditions || []).map(cs) })) };
     }
     const conds = (rs.win && rs.win.conditions) || [];
-    if (conds.length) return { mode: 'flat', combinator: rs.win.combinator, conditions: conds.map(cs) };
+    if (conds.length) return { mode: 'flat', combinator: rs.win.combinator, won: this._groupMet(rs, game, rs.win, id), conditions: conds.map(cs) };
     return { mode: 'timer' };
   },
 

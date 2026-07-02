@@ -12986,23 +12986,33 @@ class Game {
     if (!this.isArena || typeof ARENA_RULES === 'undefined' || typeof ARENA_MODES === 'undefined') return;
     const rs = ARENA_MODES._rulesetFor ? ARENA_MODES._rulesetFor(this) : null;
     if (!rs) return;
-    const st = ARENA_RULES.objectiveStatus(rs, this);
+    const players = this.activePlayers();
     const lines = [];
     const clip = (s) => s.length > 30 ? s.slice(0, 29) + '…' : s;
-    if (st.mode === 'timer') {
+    const sample = ARENA_RULES.objectiveStatus(rs, this, (players[0] && players[0]._ownerId) || 'p1');
+    if (sample.mode === 'timer') {
       lines.push({ t: 'Play until time runs out —', c: '#aab' }, { t: 'highest score wins.', c: '#aab' });
-    } else if (st.mode === 'flat') {
-      lines.push({ t: `Win — ${st.combinator === 'all' ? 'ALL of:' : 'ANY of:'}`, c: '#7ec8e3' });
-      for (const c of st.conditions) lines.push({ t: clip(`${c.met ? '✓' : '○'} ${c.label} ${c.current}/${c.target}`), c: c.met ? '#5aff7a' : '#ccd' });
     } else {
-      lines.push({ t: `Win — complete ${st.total} step${st.total > 1 ? 's' : ''}:`, c: '#7ec8e3' });
-      for (const s of st.stages) {
-        const mark = s.done ? '✓' : (s.active ? '▸' : '○');
-        const col = s.done ? '#5aff7a' : (s.active ? '#FFD700' : '#889');
-        lines.push({ t: `${mark} Step ${s.index + 1}`, c: col });
-        if (s.active) for (const c of s.conditions) {
-          const lg = (c.logic && c.logic !== 'and') ? c.logic.toUpperCase() + ' ' : '';
-          lines.push({ t: clip(`  ${c.met ? '✓' : '○'} ${lg}${c.label} ${c.current}/${c.target}`), c: c.met ? '#5aff7a' : '#ccd' });
+      // Win conditions are per-player — show each player's progress. With 3-4
+      // players, show just the headline per player to fit; 1-2 show conditions.
+      const detail = players.length <= 2;
+      for (const p of players) {
+        const id = p._ownerId || 'p1';
+        const st = ARENA_RULES.objectiveStatus(rs, this, id);
+        if (st.mode === 'stages') {
+          lines.push({ t: `${id.toUpperCase()}  Step ${Math.min(st.current + 1, st.total)}/${st.total}${st.won ? '  ✓ WON' : ''}`, c: st.won ? '#5aff7a' : '#FFD700' });
+          const cur = st.stages[Math.min(st.current, st.total - 1)];
+          if (detail && cur) for (const c of cur.conditions) {
+            const lg = (c.logic && c.logic !== 'and') ? c.logic.toUpperCase() + ' ' : '';
+            lines.push({ t: clip(`  ${c.met ? '✓' : '○'} ${lg}${c.label} ${c.current}/${c.target}`), c: c.met ? '#5aff7a' : '#ccd' });
+          }
+        } else {
+          const met = st.conditions.filter(c => c.met).length;
+          lines.push({ t: `${id.toUpperCase()}  ${met}/${st.conditions.length} ${st.combinator === 'all' ? '(all)' : '(any)'}${st.won ? '  ✓ WON' : ''}`, c: st.won ? '#5aff7a' : '#FFD700' });
+          if (detail) for (const c of st.conditions) {
+            const lg = (c.logic && c.logic !== 'and') ? c.logic.toUpperCase() + ' ' : '';
+            lines.push({ t: clip(`  ${c.met ? '✓' : '○'} ${lg}${c.label} ${c.current}/${c.target}`), c: c.met ? '#5aff7a' : '#ccd' });
+          }
         }
       }
     }
