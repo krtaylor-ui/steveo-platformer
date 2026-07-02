@@ -449,3 +449,23 @@ Configurations panel in the builder:
 
 Needs the `custom_rules.sql` migration run for profile save/load; recent + export/
 import work immediately. Tests: node test/run.js → 144/144.
+
+---
+
+# Branch phase3-v3-look: clean consistency + retro pixel skin (build 13)
+
+Stacked on phase3-v3-pickaxe (off worktree-phase-3b-pvp). Debug order: look →
+pickaxe → base. `git checkout` between branches to fall back.
+
+- **Arena selection = dashboard-style tiles.** arena-select.render now emits
+  `.arena-tile` cards (icon + title + desc + Play) in the auto-fill `.world-list`
+  grid, matching the dashboard game-mode cards ("more tiles" scales via auto-fill).
+- **Retro theme = full pixel-art skin** (confirmed approach: CSS skin on the HTML
+  screens, NOT a canvas rewrite). A big `html[data-theme="retro"]` block skins
+  panels/cards (dark, 3px cyan borders, no radius, hard drop shadow), headings
+  (uppercase neon + pixel shadow), buttons (blocky, monospace, invert on hover,
+  press-offset), inputs/selects, tabs, and flips the Custom Rules white modal's
+  dark text to light. Clean (Modern) theme is untouched.
+
+All CSS/JS-only; the engine suite stays green (144). BOTH branches are
+interactive/visual and UNTESTED in a browser — debug the look branch first.

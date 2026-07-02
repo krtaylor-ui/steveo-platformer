@@ -987,6 +987,26 @@ html[data-theme="retro"] {
   grid-column: 1 / -1;
 }
 
+/* Arena selection tiles — match the dashboard game-mode cards (icon + title +
+   desc + Play), laid out in the .world-list auto-fill grid so many worlds fit. */
+.arena-tile {
+  background: white;
+  border-radius: 12px;
+  padding: 24px 18px;
+  text-align: center;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.arena-tile:hover { transform: translateY(-4px); box-shadow: 0 8px 12px rgba(0, 0, 0, 0.2); }
+.arena-tile .mode-icon { font-size: 2.6rem; margin-bottom: 2px; }
+.arena-tile h3 { margin: 0; font-size: 1.2rem; color: #333; }
+.arena-tile p { margin: 0; color: #666; font-size: 0.85rem; flex: 1 0 auto; }
+.arena-tile .btn { margin-top: 8px; }
+
 .world-list .world-card {
   padding: 20px;
   transition: transform 0.2s;
@@ -1684,3 +1704,119 @@ html[data-theme="retro"] {
 .ach-row.locked { opacity: 0.5; }
 .ach-row.unlocked { border-left: 3px solid #f5b301; }
 .ach-icon { font-size: 1.4rem; }
+
+/* ════════════════════════════════════════════════════════════ */
+/* RETRO THEME — full pixel-art skin (emulates the old canvas-rendered menus).   */
+/* Scoped to html[data-theme="retro"]; the Modern (clean) theme is untouched.    */
+/* Chunky borders, no radius, monospace, neon-cyan on dark, hard offset shadows. */
+/* ════════════════════════════════════════════════════════════ */
+html[data-theme="retro"] { --ui-radius: 0; }
+
+/* Panels / cards → dark pixel panels with a hard drop shadow. */
+html[data-theme="retro"] .modal-content,
+html[data-theme="retro"] .auth-box,
+html[data-theme="retro"] .arena-tile,
+html[data-theme="retro"] .game-mode-card,
+html[data-theme="retro"] .sandbox-feature-card,
+html[data-theme="retro"] .game-slot,
+html[data-theme="retro"] .community-card,
+html[data-theme="retro"] .world-card,
+html[data-theme="retro"] .cr-step {
+  background: #10102a !important;
+  color: #cfe8f2;
+  border: 3px solid #2f6f8f !important;
+  border-radius: 0 !important;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.6);
+}
+
+/* Headings — uppercase neon with a pixel shadow. */
+html[data-theme="retro"] h1,
+html[data-theme="retro"] h2,
+html[data-theme="retro"] h3,
+html[data-theme="retro"] h4 {
+  font-family: 'Courier New', monospace;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #7ec8e3;
+  text-shadow: 2px 2px 0 #002233;
+}
+
+/* Force readable light text on the now-dark panels (clean theme used #333/#666). */
+html[data-theme="retro"] .arena-tile p,
+html[data-theme="retro"] .game-mode-card p,
+html[data-theme="retro"] .world-card p,
+html[data-theme="retro"] .sandbox-feature-card p,
+html[data-theme="retro"] .community-card .cc-desc,
+html[data-theme="retro"] .form-group label,
+html[data-theme="retro"] .cr-check,
+html[data-theme="retro"] .cr-score-row,
+html[data-theme="retro"] .cr-step-cond,
+html[data-theme="retro"] .slot-number,
+html[data-theme="retro"] .empty-text { color: #a9d3e6; }
+html[data-theme="retro"] .arena-tile h3,
+html[data-theme="retro"] .game-mode-card h3,
+html[data-theme="retro"] .world-card h3,
+html[data-theme="retro"] .cr-section h4,
+html[data-theme="retro"] .cr-step-head,
+html[data-theme="retro"] .cr-step-tag { color: #7ec8e3; }
+html[data-theme="retro"] .cr-guide,
+html[data-theme="retro"] #cr-win-hint { color: #7fa8ba; }
+html[data-theme="retro"] .cr-step-cond { background: #0a0a1e; border-radius: 0; }
+
+/* Buttons — blocky, monospace, uppercase, hard shadow; hover inverts. */
+html[data-theme="retro"] .btn,
+html[data-theme="retro"] .btn-primary,
+html[data-theme="retro"] .btn-secondary,
+html[data-theme="retro"] .btn-small,
+html[data-theme="retro"] .btn-large,
+html[data-theme="retro"] .btn-back,
+html[data-theme="retro"] .auth-submit,
+html[data-theme="retro"] #custom-rules-modal .btn-small {
+  background: #0d1b2e !important;
+  color: #7ec8e3 !important;
+  border: 2px solid #7ec8e3 !important;
+  border-radius: 0 !important;
+  font-family: 'Courier New', monospace;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.5);
+  transition: none;
+}
+html[data-theme="retro"] .btn:hover,
+html[data-theme="retro"] .btn-primary:hover,
+html[data-theme="retro"] .btn-secondary:hover,
+html[data-theme="retro"] .btn-small:hover,
+html[data-theme="retro"] .btn-large:hover,
+html[data-theme="retro"] .auth-submit:hover {
+  background: #7ec8e3 !important;
+  color: #06121e !important;
+  transform: none;
+}
+html[data-theme="retro"] .btn:active,
+html[data-theme="retro"] .btn-primary:active,
+html[data-theme="retro"] .btn-large:active { box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5); transform: translate(2px, 2px); }
+
+/* Inputs / selects → dark blocky fields. */
+html[data-theme="retro"] input,
+html[data-theme="retro"] select,
+html[data-theme="retro"] textarea {
+  background: #0a0a1e !important;
+  color: #cfe8f2 !important;
+  border: 2px solid #2f6f8f !important;
+  border-radius: 0 !important;
+  font-family: 'Courier New', monospace;
+}
+
+/* Tabs (auth / community) → blocky, active = neon underline. */
+html[data-theme="retro"] .auth-tab,
+html[data-theme="retro"] .community-tab {
+  background: #0d1b2e; color: #7fa8ba; border: 2px solid #2f6f8f; border-radius: 0;
+  font-family: 'Courier New', monospace; text-transform: uppercase;
+}
+html[data-theme="retro"] .auth-tab.active,
+html[data-theme="retro"] .community-tab.active { background: #10203a; color: #7ec8e3; border-color: #7ec8e3; }
+
+/* Dashboard cards keep their tile grid; the Custom Rules white modal + version
+   badge already inherit the panel/button rules above. Section dividers → pixel. */
+html[data-theme="retro"] .cr-section { border-top: 2px solid #2f6f8f; }
+html[data-theme="retro"] .app-version { border-radius: 0; border: 1px solid #2f6f8f; }

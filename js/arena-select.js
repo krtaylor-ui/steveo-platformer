@@ -45,27 +45,22 @@ const ARENA_SELECT = {
     const list = document.getElementById('arena-world-list');
     if (!list) return;
 
-    // Quick Play card (built-in map) is always first.
+    // Arena worlds render as dashboard-style tiles (icon + title + desc + Play),
+    // in an auto-fill grid so it scales to many worlds. Quick Battle is first.
     const quickCard = `
-      <div class="world-card arena-quickplay-card">
-        <div class="world-card-header"><h3>⚔️ Quick Play</h3></div>
-        <p>Jump straight into the built-in Deathmatch arena.</p>
-        <div class="world-card-actions">
-          <button class="btn btn-primary arena-quickplay-btn">Play</button>
-        </div>
+      <div class="arena-tile arena-quickplay-card">
+        <div class="mode-icon">⚔️</div>
+        <h3>Quick Battle</h3>
+        <p>Jump straight into the built-in bot arena.</p>
+        <button class="btn btn-primary arena-quickplay-btn">Play</button>
       </div>`;
 
     const worldCards = this.worlds.map(w => `
-      <div class="world-card">
-        <div class="world-card-header">
-          <h3>${this._esc(w.world_name)}</h3>
-          ${w.is_published ? '<span class="published-badge">Published</span>' : ''}
-        </div>
+      <div class="arena-tile">
+        <div class="mode-icon">🗺️</div>
+        <h3>${this._esc(w.world_name)}${w.is_published ? ' <span class="published-badge">Published</span>' : ''}</h3>
         <p>${this._esc(w.description) || '(No description)'}</p>
-        <p class="world-card-meta">Created: ${new Date(w.created_at).toLocaleDateString()}</p>
-        <div class="world-card-actions">
-          <button class="btn btn-primary arena-play-btn" data-world-id="${w.id}">Play</button>
-        </div>
+        <button class="btn btn-primary arena-play-btn" data-world-id="${w.id}">Play</button>
       </div>`).join('');
 
     list.innerHTML = quickCard + (worldCards ||
