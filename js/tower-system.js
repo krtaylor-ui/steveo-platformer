@@ -35,21 +35,40 @@ const TOWER_SYSTEM = {
 
     const players = game.activePlayers();
     const w = bs, h = bs * 4;
-    // One Tower per player, standing on the player's spawn ground.
-    this.towers = players.map((p, i) => {
-      const cx = p.x + (p.width || 0) / 2;
-      const groundY = p.y + (p.height || (bs * 1.6));
-      return {
-        ownerId: p._ownerId || ('p' + (i + 1)),
-        x: cx - w / 2, y: groundY - h, w, h,
-        maxHp: this.maxHp, hp: this.maxHp, _hitBy: {},
-      };
-    });
+    // Towers: designer-placed (game._arenaTowers) if any, else one per player at
+    // spawn. Multiple towers are supported; destroying one only ends the match if
+    // a win condition references towersDestroyed (handled by the rules engine).
+    const placedT = Array.isArray(game._arenaTowers) ? game._arenaTowers : [];
+    const mkTower = (cx, groundY, ownerId) => ({ ownerId, x: cx - w / 2, y: groundY - h, w, h, maxHp: this.maxHp, hp: this.maxHp, _hitBy: {} });
+    if (placedT.length) {
+      this.towers = placedT.map((t, i) => {
+        const cx = (t.wx != null) ? t.wx : ((t.col || 0) + 0.5) * bs;
+        const groundY = (t.wy != null) ? t.wy : ((t.row || 0) + 1) * bs;
+        const owner = t.ownerId || ('p' + (((t.slot || (i + 1)) - 1) % 4 + 1));
+        return mkTower(cx, groundY, owner);
+      });
+    } else {
+      this.towers = players.map((p, i) => mkTower(p.x + (p.width || 0) / 2, p.y + (p.height || (bs * 1.6)), p._ownerId || ('p' + (i + 1))));
+    }
 
-    // A few Heal Tower pickups spread across the arena (deterministic layout).
+    // Heal items — pre-launch mode: NONE (none), PLACED (designer-placed only,
+    // reusable), RANDOM (spawn every healIntervalMin, disappear after
+    // healLifetimeSec unless "never"). heal entry: { x, y, taken, respawn, life }
+    // (life -1 = never expires).
+    const cfg = game.arenaConfig || {};
+    this.healMode = (cfg.towerHeal || 'RANDOM').toUpperCase();
+    this.healIntervalFrames = Math.max(60, Math.round((cfg.healIntervalMin != null ? cfg.healIntervalMin : 1) * 3600));
+    this.healLifetimeFrames = (cfg.healLifetimeSec > 0) ? Math.round(cfg.healLifetimeSec * 60) : -1;
+    this._healSpawnTimer = this.healIntervalFrames;
     const W = game.level.pixelWidth;
     const floorY = (game.level.spawnY != null) ? game.level.spawnY : game.level.pixelHeight / 2;
-    this.heals = [0.35, 0.5, 0.65].map(fx => ({ x: W * fx, y: floorY - bs, taken: false, respawn: 0 }));
+    this._healW = W; this._healFloorY = floorY - bs;
+    if (this.healMode === 'PLACED') {
+      const placed = Array.isArray(game._healItems) ? game._healItems : [];
+      this.heals = placed.map(hp => ({ x: (hp.wx != null) ? hp.wx : ((hp.col || 0) + 0.5) * bs, y: (hp.wy != null) ? hp.wy : ((hp.row || 0) + 0.5) * bs, taken: false, respawn: 0, life: -1 }));
+    } else {
+      this.heals = []; // NONE → none; RANDOM → spawned over time in update()
+    }
     this.active = true;
   },
 
@@ -126,7 +145,18 @@ const TOWER_SYSTEM = {
       }
     }
 
-    // 3) Heal Tower pickups — heal the picking player's OWN tower.
+    // 3) RANDOM mode — spawn a new heal every interval; expire by lifetime.
+    if (this.healMode === 'RANDOM' && this.towers.length) {
+      if (--this._healSpawnTimer <= 0) {
+        this._healSpawnTimer = this.healIntervalFrames;
+        const fx = 0.2 + Math.random() * 0.6; // avoid the extreme edges
+        this.heals.push({ x: this._healW * fx, y: this._healFloorY, taken: false, respawn: 0, life: this.healLifetimeFrames });
+      }
+      for (const hpk of this.heals) if (!hpk.taken && hpk.life > 0) hpk.life--;
+      this.heals = this.heals.filter(hpk => hpk.taken || hpk.life !== 0); // drop expired (life hit 0)
+    }
+
+    // 4) Heal Tower pickups — heal the picking player's OWN tower.
     for (const hpk of this.heals) {
       if (hpk.taken) { if (--hpk.respawn <= 0) hpk.taken = false; continue; }
       for (const p of game.activePlayers()) {
@@ -136,12 +166,15 @@ const TOWER_SYSTEM = {
         const own = this.towers.find(t => t.ownerId === p._ownerId && t.hp > 0);
         if (own && own.hp < own.maxHp) {
           this.healTower(own);
-          hpk.taken = true; hpk.respawn = this.HEAL_RESPAWN;
+          // PLACED heals are reusable (respawn after a cooldown); RANDOM ones are consumed.
+          if (this.healMode === 'PLACED') { hpk.taken = true; hpk.respawn = this.HEAL_RESPAWN; }
+          else hpk.life = 0; // consumed → filtered out next frame
           if (game._notify) game._notify(`${(p._ownerId || 'P').toUpperCase()} Tower repaired (${this.bandName(own)})`, '#5aff7a', 120);
           break;
         }
       }
     }
+    if (this.healMode === 'RANDOM') this.heals = this.heals.filter(hpk => hpk.life !== 0 || hpk.taken);
   },
 
   // HUD objective line: each tower's owner + band bars.

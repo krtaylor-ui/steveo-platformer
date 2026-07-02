@@ -90,6 +90,11 @@ const OTHER_PALETTE_ITEMS = [
   { kind: 'spawnline', name: 'Spawn Line',   color: '#9b59b6' },
   // Player spawn points (Phase 3 — distinct from Survival "Spawn Line" mob markers).
   { kind: 'spawnpoint', name: 'Player Spawn', color: '#4aa3ff' },
+  // Arena objects (Phase 3 v3) — CTF Base (flag inherent to its centre), Defend-
+  // the-Tower target, and Heal Tower pickup. One unified placeable, `obj` subtype.
+  { kind: 'arenaobj', obj: 'base',  name: 'CTF Base',   color: '#e74c3c' },
+  { kind: 'arenaobj', obj: 'tower', name: 'Tower',      color: '#9a9488' },
+  { kind: 'arenaobj', obj: 'heal',  name: 'Heal Tower', color: '#2ecc71' },
   // ── Spawn Eggs ───────────────────────────────────────────────
   ...SPAWN_EGG_DEFS.map(d => ({ kind: 'egg', ...d })),
 ];
@@ -257,6 +262,9 @@ class SandboxManager {
     // player starts here (arena). Story/Sandbox/etc. use slot 1 only. Movable + deletable.
     this.placedSpawnPoints = [];
     this.lastSpawnPointSlot = 1;
+    // Arena objects (Phase 3 v3): [{ type:'base'|'tower'|'heal', col,row,wx,wy, team, slot }]
+    this.placedArenaObjs = [];
+    this.selectedArenaObj = null; // 'base' | 'tower' | 'heal' | null
 
     // Config popup for a placed egg / item drop
     this.popup = null; // { kind:'egg'|'item', eggIdx|itemIdx } or null
@@ -277,6 +285,7 @@ class SandboxManager {
   get isHillSelected()      { return this.selectedHill; }
   get isSpawnLineSelected() { return this.selectedSpawnLine; }
   get isSpawnPointSelected() { return this.selectedSpawnPoint; }
+  get isArenaObjSelected()   { return this.selectedArenaObj !== null; }
 
   // Returns a hotbar entry object representing the current selection.
   _currentSelectionEntry() {
@@ -288,6 +297,7 @@ class SandboxManager {
     if (this.isHillSelected)      return { kind: 'hill',      value: 'hill' };
     if (this.isSpawnLineSelected) return { kind: 'spawnline', value: 'spawnline' };
     if (this.isSpawnPointSelected) return { kind: 'spawnpoint', value: 'spawnpoint' };
+    if (this.isArenaObjSelected)   return { kind: 'arenaobj', value: this.selectedArenaObj };
     if (this.isDustSelected)      return { kind: 'dust',      value: 'dust' };
     if (this.isGateSelected)      return { kind: 'gate',      value: this.selectedGateType };
     return { kind: 'block', value: this.selectedBlock };
@@ -304,6 +314,13 @@ class SandboxManager {
     this.selectedHill          = false;
     this.selectedSpawnLine     = false;
     this.selectedSpawnPoint    = false;
+    this.selectedArenaObj      = null;
+    if (entry.kind === 'arenaobj') {
+      this.selectedArenaObj = entry.value;
+      this.selectedEggKey   = null;
+      this.selectedToolKey  = null;
+      return;
+    }
     if (entry.kind === 'emerald') {
       this.selectedEmerald = true;
       this.selectedEggKey  = null;
@@ -604,6 +621,33 @@ class SandboxManager {
   openSpawnPointPopup(idx) { this.popup = { kind: 'spawnpoint', spawnPointIdx: idx }; }
   // Number of distinct players this world can currently host (placed spawn points, capped 4).
   supportedPlayerCount() { return Math.min(4, this.placedSpawnPoints.length); }
+
+  // ── Arena objects (Phase 3 v3): CTF Base / Tower / Heal Tower ──────────────
+  placeArenaObj(type, wx, wy) {
+    const col = Math.floor(wx / BLOCK_SIZE), row = Math.floor(wy / BLOCK_SIZE);
+    if (this.placedArenaObjs.some(o => o.type === type && o.col === col && o.row === row)) return;
+    if (type === 'base'  && this.placedArenaObjs.filter(o => o.type === 'base').length  >= 2) return; // 2 teams
+    if (type === 'tower' && this.placedArenaObjs.filter(o => o.type === 'tower').length >= 4) return; // up to 4
+    const obj = { type, col, row, wx: col * BLOCK_SIZE + BLOCK_SIZE / 2, wy: row * BLOCK_SIZE + BLOCK_SIZE / 2 };
+    if (type === 'base') { const used = new Set(this.placedArenaObjs.filter(o => o.type === 'base').map(o => o.team)); obj.team = used.has(0) ? 1 : 0; }
+    if (type === 'tower') { const used = new Set(this.placedArenaObjs.filter(o => o.type === 'tower').map(o => o.slot)); let s = 1; while (s <= 4 && used.has(s)) s++; obj.slot = s > 4 ? 1 : s; }
+    this.placedArenaObjs.push(obj);
+  }
+  hitTestArenaObjs(wx, wy) {
+    const R = 18;
+    for (let i = 0; i < this.placedArenaObjs.length; i++) {
+      const o = this.placedArenaObjs[i];
+      if (Math.abs(wx - o.wx) < R && Math.abs(wy - o.wy) < R) return i;
+    }
+    return -1;
+  }
+  cycleArenaObj(idx) {
+    const o = this.placedArenaObjs[idx]; if (!o) return;
+    if (o.type === 'base')  o.team = (o.team === 0) ? 1 : 0;     // Red ↔ Blue
+    if (o.type === 'tower') o.slot = ((o.slot || 1) % 4) + 1;    // owner 1→2→3→4→1
+  }
+  removeArenaObj(idx) { if (idx >= 0 && idx < this.placedArenaObjs.length) this.placedArenaObjs.splice(idx, 1); this.popup = null; }
+  openArenaObjPopup(idx) { this.popup = { kind: 'arenaobj', arenaObjIdx: idx }; }
   openEmeraldPopup(idx) { this.popup = { kind: 'emerald', emeraldIdx: idx }; }
   openPowerupPopup(idx) { this.popup = { kind: 'powerup', powerupIdx: idx }; }
 
@@ -833,7 +877,13 @@ class SandboxManager {
           this.selectedHill     = false;
           this.selectedSpawnLine = false;
           this.selectedSpawnPoint = false;
-          if (item.kind === 'emerald') {
+          this.selectedArenaObj = null;
+          if (item.kind === 'arenaobj') {
+            this.selectedArenaObj = item.obj;
+            this.selectedEggKey    = null;
+            this.selectedToolKey   = null;
+            this.selectedBlockItemType = null;
+          } else if (item.kind === 'emerald') {
             this.selectedEmerald = true;
             this.selectedEggKey  = null;
             this.selectedToolKey = null;
@@ -993,6 +1043,17 @@ class SandboxManager {
       return true;
     }
 
+    // Arena-object popup (Base / Tower / Heal) — cycle team/owner + remove.
+    if (this.popup.kind === 'arenaobj') {
+      const o = this.placedArenaObjs[this.popup.arenaObjIdx];
+      if (mx >= px + pw - 26 && mx <= px + pw - 6 && my >= py + 6 && my <= py + 26) { this.closePopup(); return true; }
+      if (mx < px || mx > px + pw || my < py || my > py + 168) { this.closePopup(); return false; }
+      // Change button only applies to base/tower (heal has nothing to cycle).
+      if (o && o.type !== 'heal' && mx >= px + 14 && mx <= px + pw - 14 && my >= py + 88 && my <= py + 118) { this.cycleArenaObj(this.popup.arenaObjIdx); return true; }
+      if (mx >= px + 14 && mx <= px + pw - 14 && my >= py + 124 && my <= py + 154) { this.removeArenaObj(this.popup.arenaObjIdx); return true; }
+      return true;
+    }
+
     // Egg popup (eggH = 244, matches _drawPopup)
     const egg = this.placedEggs[this.popup.eggIdx];
     // X close button
@@ -1059,6 +1120,7 @@ class SandboxManager {
     this._drawPlacedHill(ctx, camera);
     this._drawPlacedSpawnLines(ctx, camera, frameCount);
     this._drawPlacedSpawnPoints(ctx, camera, frameCount);
+    this._drawPlacedArenaObjs(ctx, camera, frameCount);
     this._drawPortalLabels(ctx, camera);
   }
 
@@ -1203,6 +1265,14 @@ class SandboxManager {
       const sx = s.wx - camera.x, sy = s.wy - camera.y;
       if (sx < camera.viewMinX() - 40 || sx > camera.viewMaxX() + 40 || sy < camera.viewMinY() - 40 || sy > camera.viewMaxY() + 40) continue;
       _drawSpawnPointMarker(ctx, sx, sy, s.slot || 1, frameCount);
+    }
+  }
+
+  _drawPlacedArenaObjs(ctx, camera, frameCount) {
+    for (const o of this.placedArenaObjs) {
+      const sx = o.wx - camera.x, sy = o.wy - camera.y;
+      if (sx < camera.viewMinX() - 80 || sx > camera.viewMaxX() + 80 || sy < camera.viewMinY() - 140 || sy > camera.viewMaxY() + 80) continue;
+      _drawArenaObjMarker(ctx, sx, sy, o, frameCount);
     }
   }
 
@@ -1527,6 +1597,13 @@ class SandboxManager {
           const ecx = sx + SB_SLOT_SIZE / 2, ecy = sy + SB_SLOT_SIZE / 2 - 2;
           _drawSpawnPointMarker(ctx, ecx, ecy, entry.slot || 1, 0);
           this._sbSlotLabel(ctx, 'P-SPWN', '#4aa3ff', sx, sy);
+        } else if (entry.kind === 'arenaobj') {
+          const ecx = sx + SB_SLOT_SIZE / 2, ecy = sy + SB_SLOT_SIZE / 2 - 1;
+          const t = entry.value;
+          _drawArenaObjMarker(ctx, ecx, ecy, { type: t, team: 0, slot: 1 }, 0, true);
+          const lbl = t === 'base' ? 'BASE' : t === 'tower' ? 'TOWER' : 'HEAL';
+          const col = t === 'base' ? '#e74c3c' : t === 'tower' ? '#f5d142' : '#2ecc71';
+          this._sbSlotLabel(ctx, lbl, col, sx, sy);
         }
       }
 
@@ -1838,6 +1915,12 @@ class SandboxManager {
         ctx.fillStyle = selected ? '#fff' : '#aaa'; ctx.font = '7px Courier New';
         ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText('P-SPWN', cxc, gy + slotSz - 4);
         if (hov) { ctx.fillStyle = itm.color; ctx.fillText(itm.name, cxc, gy - 1); }
+      } else if (isSpecialTab && itm.kind === 'arenaobj') {
+        _drawArenaObjMarker(ctx, cxc, cyc - 1, { type: itm.obj, team: 0, slot: 1 }, 0, true);
+        const lbl = itm.obj === 'base' ? 'BASE' : itm.obj === 'tower' ? 'TOWER' : 'HEAL';
+        ctx.fillStyle = selected ? '#fff' : '#aaa'; ctx.font = '7px Courier New';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText(lbl, cxc, gy + slotSz - 4);
+        if (hov) { ctx.fillStyle = itm.color; ctx.fillText(itm.name, cxc, gy - 1); }
       } else {
         // Block (either special tab block kind or regular tab block)
         const btype = isSpecialTab ? itm.blockType : items[i];
@@ -2100,6 +2183,33 @@ class SandboxManager {
       return;
     }
 
+    // ── Arena-object popup (Base / Tower / Heal) ──────────────
+    if (this.popup.kind === 'arenaobj') {
+      const o = this.placedArenaObjs[this.popup.arenaObjIdx];
+      if (!o) { this.popup = null; ctx.restore(); return; }
+      const popH = 168;
+      const titles = { base: 'CTF BASE', tower: 'TOWER', heal: 'HEAL TOWER' };
+      const accent = { base: '#e74c3c', tower: '#f5d142', heal: '#2ecc71' }[o.type] || '#7ec8e3';
+      const teamNames = (typeof CTF_TEAM_NAMES !== 'undefined') ? CTF_TEAM_NAMES : ['Red', 'Blue'];
+      let sub = '';
+      if (o.type === 'base')  sub = `${teamNames[o.team || 0]} team  (flag spawns at centre)`;
+      if (o.type === 'tower') sub = `Owner: Player ${o.slot || 1}`;
+      if (o.type === 'heal')  sub = 'Repairs the owner\'s tower one band';
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      ctx.fillStyle = '#13131f'; _roundRect(ctx, px, py, pw, popH, 8); ctx.fill();
+      ctx.strokeStyle = accent; ctx.lineWidth = 2; _roundRect(ctx, px, py, pw, popH, 8); ctx.stroke();
+      ctx.fillStyle = '#FFD700'; ctx.font = 'bold 12px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(titles[o.type] || 'ARENA OBJECT', CANVAS_W / 2, py + 22);
+      ctx.fillStyle = accent; ctx.font = 'bold 11px Courier New';
+      ctx.fillText(sub, CANVAS_W / 2, py + 66);
+      if (o.type !== 'heal') _btn(o.type === 'base' ? '⟳  Change Team' : '⟳  Change Owner', px + 14, py + 88, pw - 28, 30, '#7ec8e3', '#445566');
+      _btn('✕  Remove', px + 14, py + 124, pw - 28, 30, '#FF6644', '#553333');
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.restore();
+      return;
+    }
+
     // ── Egg popup ─────────────────────────────────────────────
     const egg = this.placedEggs[this.popup.eggIdx];
     if (!egg) { this.popup = null; ctx.restore(); return; }
@@ -2278,6 +2388,61 @@ function _drawSpawnPointMarker(ctx, sx, sy, slot, frameCount) {
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 11px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('P' + (slot || 1), 0, 5);
+  ctx.restore();
+}
+
+// Arena object marker (Phase 3 v3): CTF Base (3×2 glow zone + team flag at its
+// centre), Tower (4-tall battlemented structure with owner banner), or Heal
+// Tower (green cross). `small` draws a compact glyph for palette/hotbar slots.
+function _drawArenaObjMarker(ctx, sx, sy, o, frameCount, small) {
+  const BS = (typeof BLOCK_SIZE !== 'undefined') ? BLOCK_SIZE : 32;
+  const teamCols = (typeof CTF_TEAM_COLORS !== 'undefined') ? CTF_TEAM_COLORS : ['#e74c3c', '#3498db'];
+  const ownerCols = { 1: '#42a0ff', 2: '#ff5a5a', 3: '#5aff7a', 4: '#f5d142' };
+  ctx.save();
+  ctx.translate(sx, sy);
+  if (o.type === 'base') {
+    const col = teamCols[o.team || 0];
+    if (small) {
+      ctx.fillStyle = col + '33'; ctx.fillRect(-11, -6, 22, 12);
+      ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.setLineDash([3, 2]); ctx.strokeRect(-11, -6, 22, 12); ctx.setLineDash([]);
+      ctx.strokeStyle = '#2b2b3a'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(0, -8); ctx.stroke();
+      ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(9, -5); ctx.lineTo(0, -2); ctx.closePath(); ctx.fill();
+    } else {
+      const w = 3 * BS, h = 2 * BS;
+      ctx.fillStyle = col + '22'; ctx.fillRect(-w / 2, -h / 2, w, h);
+      ctx.strokeStyle = col + 'cc'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.strokeRect(-w / 2, -h / 2, w, h); ctx.setLineDash([]);
+      // Flag at centre (inherent to the base)
+      const bob = Math.sin((frameCount || 0) * 0.12) * 2;
+      ctx.strokeStyle = '#2b2b3a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, 16); ctx.lineTo(0, -18); ctx.stroke();
+      ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(0, -18); ctx.lineTo(16 + bob, -13); ctx.lineTo(2, -6); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
+    }
+  } else if (o.type === 'tower') {
+    const oc = ownerCols[o.slot || 1] || '#cccccc';
+    const w = small ? 12 : BS, h = small ? 22 : BS * 4;
+    ctx.fillStyle = '#8a8175'; ctx.fillRect(-w / 2, -h, w, h);
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1;
+    for (let r = 0; r <= 4; r++) { const ly = -h + (h / 4) * r; ctx.beginPath(); ctx.moveTo(-w / 2, ly); ctx.lineTo(w / 2, ly); ctx.stroke(); }
+    ctx.strokeRect(-w / 2 + 0.5, -h + 0.5, w - 1, h - 1);
+    // battlements
+    ctx.fillStyle = '#8a8175'; ctx.fillRect(-w / 2 - 2, -h - 4, 4, 6); ctx.fillRect(-2, -h - 4, 4, 6); ctx.fillRect(w / 2 - 2, -h - 4, 4, 6);
+    // owner banner
+    ctx.fillStyle = oc; ctx.fillRect(-5, -h + 5, 10, 12);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(-5, -h + 5, 10, 12);
+    if (!small) {
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 9px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('P' + (o.slot || 1), 0, -h + 11);
+    }
+  } else { // heal
+    const r = small ? 8 : 10;
+    const bob = small ? 0 : Math.sin((frameCount || 0) * 0.08) * 2;
+    ctx.fillStyle = 'rgba(40,220,90,0.95)';
+    ctx.fillRect(-r / 3, -r + bob, (r / 3) * 2, r * 2);
+    ctx.fillRect(-r, -r / 3 + bob, r * 2, (r / 3) * 2);
+    ctx.strokeStyle = '#0a3'; ctx.lineWidth = 1;
+    ctx.strokeRect(-r / 3, -r + bob, (r / 3) * 2, r * 2);
+    ctx.strokeRect(-r, -r / 3 + bob, r * 2, (r / 3) * 2);
+  }
   ctx.restore();
 }
 

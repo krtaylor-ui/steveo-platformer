@@ -152,6 +152,7 @@ const GAME_STATE = {
       placedHill: game.sandbox ? (game.sandbox.placedHill ? { ...game.sandbox.placedHill } : null) : null,
       // Player spawn points (Phase 3) — where each player starts, tagged by slot 1–4.
       playerSpawns: game.sandbox ? game.sandbox.placedSpawnPoints.map(s => ({ ...s })) : [],
+      arenaObjects: game.sandbox ? game.sandbox.placedArenaObjs.map(o => ({ ...o })) : [],
       placedItems,
       portalLinks,
       sandboxLevers,

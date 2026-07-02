@@ -134,5 +134,36 @@ ok(CTF.captures[0] === capBefore, 'respawning player cannot capture');
 gr._respawnTimers[0] = 0; CTF.update(gr);
 ok(eF.carriedBy === carrier || CTF.captures[0] > capBefore, 'after respawn the player can act again');
 
+// Placed towers + heal-item modes (NONE / PLACED / RANDOM).
+console.log('Tower placeables + heal modes:');
+function mkTowerGame(cfg, extra) {
+  const g = {
+    _notify() {}, arenaConfig: Object.assign({ arenaGameMode: 'DEFEND_TOWER', towerHp: 9 }, cfg || {}),
+    _arenaMode: { key: 'DEFEND_TOWER' },
+    arenaState: { stats: { p1: {}, p2: {} } },
+    level: { pixelWidth: 1000, pixelHeight: 400, spawnY: 200 },
+    _players: [{ _ownerId: 'p1', x: 100, y: 100, width: 20, height: 52, hp: 6, maxHp: 6 },
+               { _ownerId: 'p2', x: 800, y: 100, width: 20, height: 52, hp: 6, maxHp: 6 }],
+    activePlayers() { return this._players; }, mobManager: { playerArrows: [] }, frameCount: 0,
+  };
+  return Object.assign(g, extra || {});
+}
+// Placed towers override the auto-per-player placement.
+let tg = mkTowerGame({}, { _arenaTowers: [{ ownerId: 'p1', slot: 1, col: 5, row: 6 }, { ownerId: 'p2', slot: 2, col: 20, row: 6 }] });
+TOWER.init(tg);
+ok(TOWER.towers.length === 2 && TOWER.towers[0].ownerId === 'p1' && TOWER.towers[1].ownerId === 'p2', 'towers built from placed markers');
+// NONE
+tg = mkTowerGame({ towerHeal: 'NONE' }); TOWER.init(tg);
+ok(TOWER.heals.length === 0, 'heal mode NONE → no heal items');
+// PLACED
+tg = mkTowerGame({ towerHeal: 'PLACED' }, { _healItems: [{ wx: 500, wy: 180 }, { wx: 600, wy: 180 }] }); TOWER.init(tg);
+ok(TOWER.heals.length === 2 && TOWER.heals[0].life === -1, 'heal mode PLACED → items from _healItems (never expire)');
+// RANDOM — spawns over time
+tg = mkTowerGame({ towerHeal: 'RANDOM', healIntervalMin: 0.017, healLifetimeSec: 0 }); TOWER.init(tg);
+ok(TOWER.heals.length === 0, 'RANDOM starts with no heals');
+for (let i = 0; i < 65; i++) { tg.frameCount = i; TOWER.update(tg); }
+ok(TOWER.heals.length >= 1, 'RANDOM spawns a heal after the interval');
+ok(TOWER.heals[0].life === -1, 'RANDOM heal with lifetime 0 never expires');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

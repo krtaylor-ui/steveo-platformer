@@ -838,6 +838,22 @@ class Game {
     if (typeof ARENA_MODES !== 'undefined' && this.arenaConfig.arenaGameMode && ARENA_MODES.initMode) {
       ARENA_MODES.initMode(this.arenaConfig.arenaGameMode, this);
     }
+    // Arena objects (Phase 3 v3): derive CTF bases / towers / heal items from the
+    // designer-placed markers (arena template, else the live sandbox) so CTF_SYSTEM
+    // and TOWER_SYSTEM can anchor to them (they fall back to auto-placement if none).
+    {
+      const objs = (this._arenaTemplateData && Array.isArray(this._arenaTemplateData.arenaObjects))
+        ? this._arenaTemplateData.arenaObjects
+        : ((this.sandbox && Array.isArray(this.sandbox.placedArenaObjs)) ? this.sandbox.placedArenaObjs : []);
+      const cx = (o) => (o.wx != null) ? o.wx : (o.col + 0.5) * BLOCK_SIZE;
+      const cy = (o) => (o.wy != null) ? o.wy : (o.row + 0.5) * BLOCK_SIZE;
+      const bases = objs.filter(o => o.type === 'base');
+      const towers = objs.filter(o => o.type === 'tower');
+      const heals = objs.filter(o => o.type === 'heal');
+      this._ctfBases   = bases.length  ? bases.map(o => ({ team: (o.team === 1) ? 1 : 0, x: cx(o), y: cy(o) })) : null;
+      this._arenaTowers = towers.length ? towers.map(o => ({ ownerId: 'p' + (o.slot || 1), slot: o.slot || 1, col: o.col, row: o.row })) : null;
+      this._healItems  = heals.map(o => ({ wx: cx(o), wy: cy(o) }));
+    }
     // Capture the Flag (Phase 3C) — assigns teams + flag bases when mode is CTF.
     if (typeof CTF_SYSTEM !== 'undefined') CTF_SYSTEM.init(this);
     // Defend the Tower (Phase 3 v3) — one Tower per player at their spawn.
@@ -2316,6 +2332,7 @@ class Game {
         const puIdx   = this.sandbox.hitTestPowerups(world.x, world.y);
         const slIdx   = this.sandbox.hitTestSpawnLines(world.x, world.y);
         const spIdx   = this.sandbox.hitTestSpawnPoints(world.x, world.y);
+        const aoIdx   = this.sandbox.hitTestArenaObjs(world.x, world.y);
         if (eggIdx >= 0) {
           this.sandbox.openPopup(eggIdx);
         } else if (itemIdx >= 0) {
@@ -2328,6 +2345,8 @@ class Game {
           this.sandbox.openSpawnLinePopup(slIdx);
         } else if (spIdx >= 0) {
           this.sandbox.openSpawnPointPopup(spIdx);
+        } else if (aoIdx >= 0) {
+          this.sandbox.openArenaObjPopup(aoIdx);
         } else if (this.sandbox.hitTestHill(world.x, world.y)) {
           this.sandbox.openHillPopup();
         } else if (target === BLOCK.AIR) {
@@ -2352,6 +2371,8 @@ class Game {
             } else {
               this.sandbox.placeSpawnPoint(world.x, world.y);
             }
+          } else if (this.sandbox.isArenaObjSelected) {
+            this.sandbox.placeArenaObj(this.sandbox.selectedArenaObj, world.x, world.y);
           } else if (this.sandbox.isToolSelected || this.sandbox.isBlockItemSelected) {
             this.sandbox.placeItem(world.x, world.y);
           } else if (this.sandbox.isMultiBlock) {
@@ -13432,6 +13453,11 @@ class Game {
       // Auto-migration: worlds authored before spawn points existed get 2 seeded
       // (movable + deletable) so arena play works out of the box for 2 players.
       if (this.sandbox.placedSpawnPoints.length === 0) this._seedDefaultSpawnPoints();
+      // Arena objects (Phase 3 v3): CTF Base / Tower / Heal Tower placeables.
+      this.sandbox.placedArenaObjs = (Array.isArray(data.arenaObjects) ? data.arenaObjects : [])
+        .filter(o => o && typeof o.col === 'number' && typeof o.row === 'number' && ['base', 'tower', 'heal'].includes(o.type))
+        .map(o => ({ type: o.type, col: o.col, row: o.row, wx: o.col * BLOCK_SIZE + BLOCK_SIZE / 2, wy: o.row * BLOCK_SIZE + BLOCK_SIZE / 2,
+                     team: (o.team === 1) ? 1 : 0, slot: (o.slot >= 1 && o.slot <= 4) ? o.slot : 1 }));
     }
 
     // Restore sandbox portal registry + links

@@ -305,3 +305,27 @@ the match only if a win condition references it — the engine already models th
 tower-system still auto-places one per player); (2) generalize KOTH/Survival
 side-effects into element systems so update() is fully engine-driven; (3) the
 "Custom Rules" mode + authoring UI. Suite: `node test/run.js` → 109/109.
+
+---
+
+# Sandbox arena placeables + Tower heal config (2026-07-01, build 3)
+
+- **One unified `arenaobj` sandbox placeable** (subtypes base / tower / heal) rather
+  than three separate ones — palette + hotbar icon + world marker + click-to-place +
+  popup (Base cycles team, Tower cycles owner P1-4, Heal remove-only) + persistence
+  (`arenaObjects` world-data key) + load. Placed in the "Other" palette tab; shows in
+  the sandbox hotbar when selected.
+- **CTF Base** carries the flag inherently (flag spawns at the base centre); the 3×2
+  zone is what CTF scoring uses. `_setupArena` derives `game._ctfBases` from placed
+  bases; CTF falls back to team spawns / map quarters when none are placed.
+- **Towers** are now designer-placeable and multiple are supported. `_setupArena`
+  derives `game._arenaTowers`; TOWER_SYSTEM builds from them (owner from the marker
+  slot), else auto-places one per player. Destroying one only ends the match if a win
+  condition references towersDestroyed (rules engine) — so multi-tower is future-proof.
+- **Heal Tower items**: placeable + a pre-launch mode — NONE / PLACED (designer-placed,
+  reusable; good for redstone puzzles) / RANDOM (spawn every N min, disappear after a
+  lifetime, or "never"). TOWER_SYSTEM honours all three (game._healItems for PLACED).
+- **CTF respawn bug** (build 2): a respawning carrier no longer keeps/rescores the flag
+  (CTF now treats respawn-timer-active players as downed).
+
+Tests: node test/run.js → 120/120 (adds placed-towers + heal-mode coverage).
