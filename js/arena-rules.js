@@ -267,6 +267,43 @@ const ARENA_RULES = {
   // Which element systems should be active for this ruleset (drives setup).
   activeElements(rs) { return Object.keys(rs.elements).filter(k => rs.elements[k]); },
 
+  // Human label + current numeric value for a condition (for the pause readout).
+  _condText(type) {
+    return ({
+      playerKills: 'Player kills', hillSecondsTotal: 'Hill seconds (total)',
+      hillSecondsConsecutive: 'Hill seconds (streak)', emeraldsCollected: 'Emeralds',
+      flagsCaptured: 'Team flags', towersDestroyed: 'Towers destroyed', totalPoints: 'Total points',
+    })[type] || type;
+  },
+  conditionCurrent(rs, game, c) {
+    switch (c.type) {
+      case 'playerKills':            return this._maxStat(game, 'kills');
+      case 'hillSecondsTotal':       return this._maxStat(game, 'hillSeconds');
+      case 'hillSecondsConsecutive': return this._maxStat(game, 'hillStreak');
+      case 'emeraldsCollected':      return this._maxStat(game, 'emeralds');
+      case 'flagsCaptured':          return Math.max(this._teamStat(game, 0, 'flagCaptures'), this._teamStat(game, 1, 'flagCaptures'), this._maxStat(game, 'flagCaptures'));
+      case 'towersDestroyed':        return this._totalStat(game, 'towersDestroyed');
+      case 'totalPoints':            return this._topPlayerScore(rs, game);
+      default: return 0;
+    }
+  },
+  // Structured objective progress for the pause "Objectives" panel:
+  //   { mode:'stages', current, total, stages:[{index,done,active,conditions:[…]}] }
+  //   { mode:'flat', combinator, conditions:[{label,current,target,met,logic}] }
+  //   { mode:'timer' }
+  objectiveStatus(rs, game) {
+    if (!rs) return { mode: 'timer' };
+    const cs = (c) => { const cur = this.conditionCurrent(rs, game, c); return { label: this._condText(c.type), current: cur, target: c.target, met: cur >= c.target, logic: c.logic || null }; };
+    if (rs.stages && rs.stages.length) {
+      const idx = game._stageIndex || 0;
+      return { mode: 'stages', current: idx, total: rs.stages.length,
+        stages: rs.stages.map((st, i) => ({ index: i, done: i < idx, active: i === idx, conditions: (st.conditions || []).map(cs) })) };
+    }
+    const conds = (rs.win && rs.win.conditions) || [];
+    if (conds.length) return { mode: 'flat', combinator: rs.win.combinator, conditions: conds.map(cs) };
+    return { mode: 'timer' };
+  },
+
   // Build the live ruleset for a mode key + pre-launch config: start from the
   // matching preset (null/unknown → Quick Battle) and inject config-driven win
   // targets (killTarget, captureTarget). Other pre-launch values (towerHp,

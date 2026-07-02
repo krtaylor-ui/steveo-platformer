@@ -166,5 +166,14 @@ lg.arenaState.stats.p1.emeralds = 5;
 ok(G([{ type: 'playerKills', target: 5, logic: 'and' }, { type: 'emeraldsCollected', target: 3, logic: 'not' }]) === false, 'A AND NOT B — B true → false');
 ok(G([{ type: 'playerKills', target: 9, logic: 'not' }]) === true, 'NOT A as seed — A false → true');
 
+console.log('Objective status (pause readout):');
+const osFlat = RULES.rulesetForMode('DEATHMATCH', { killTarget: 10 });
+const og = mkGame('DEATHMATCH', [P('p1')]); og.arenaState.stats.p1.kills = 4;
+let os = RULES.objectiveStatus(osFlat, og);
+ok(os.mode === 'flat' && os.conditions[0].current === 4 && os.conditions[0].target === 10 && !os.conditions[0].met, 'flat objective status (4/10, unmet)');
+os = RULES.objectiveStatus(stageRs, sg);
+ok(os.mode === 'stages' && os.total === 3, 'stage objective status reports steps');
+ok(RULES.objectiveStatus(RULES.rulesetForMode('MOB_HUNTER', {}), og).mode === 'timer', 'timer objective status (no win conditions)');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

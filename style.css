@@ -1337,6 +1337,14 @@ html[data-theme="retro"] {
 .cr-step-add .cr-add-logic { width: 68px; }
 .cr-step-add .cr-add-type { flex: 1; min-width: 130px; }
 .cr-step-add .cr-add-target { width: 64px; }
+/* The shared .btn-small is white-on-white on this light modal — give the
+   builder's small buttons a visible style. */
+#custom-rules-modal .btn-small { background: #4a4ad0; color: #fff; border: none; }
+#custom-rules-modal .btn-small:hover { background: #3a3ac0; }
+#custom-rules-modal .cr-step-cond .btn-small,
+#custom-rules-modal .cr-step-head .btn-small { background: #c0392b; padding: 2px 8px; }
+#custom-rules-modal .cr-step-cond .btn-small:hover,
+#custom-rules-modal .cr-step-head .btn-small:hover { background: #a52f22; }
 
 /* Build-version badge (dashboard header) — subtle, so you can verify the build. */
 .app-version {

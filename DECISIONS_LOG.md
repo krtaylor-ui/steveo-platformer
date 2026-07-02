@@ -386,3 +386,23 @@ speedrun ghost board; genre/difficulty editor UI.
   while others continue" in MP is simplified to match-end for now.
 
 Tests: node test/run.js → 135/135.
+
+---
+
+# Custom Rules polish + pause Objectives panel (build 8)
+
+- **Fixed white-on-white buttons** in the builder: the shared .btn-small is white
+  text on translucent white (built for the dark dashboard) → invisible on the
+  white modal. Overrode #custom-rules-modal .btn-small (indigo; red for remove).
+- **Condition options are element-valid:** each step's condition dropdown only
+  offers conditions whose required element is enabled (playerKills→pvp,
+  flagsCaptured→ctf, towersDestroyed→towers, hill*→hill, emeralds→emeralds;
+  totalPoints always). Turning an element off prunes any now-invalid conditions.
+- **Objectives status in the pause menu** (Kevin's suggestion — off the HUD): a
+  left-side "🎯 Objectives" panel reads ARENA_RULES.objectiveStatus(rs, game) and
+  shows either the timer note, the flat conditions (✓/○ with current/target), or
+  the step sequence (✓ done / ▸ current / ○ pending, with the active step's
+  conditions and their AND/OR/NOT). New engine helpers objectiveStatus() +
+  conditionCurrent().
+
+Tests: node test/run.js → 138/138.

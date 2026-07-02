@@ -32,14 +32,16 @@ const CUSTOM_RULES_UI = {
     { key: 'perTowerDestroyed', label: 'Tower destroyed',    dflt: 10, needs: ['towers'] },
     { key: 'perWaveDefeated',   label: 'Wave defeated',      dflt: 10, needs: ['waveSpawns'] },
   ],
+  // `needs` = the element that must be enabled for this condition to be offered
+  // (null = always available). Keeps the win conditions valid for the ruleset.
   CONDITIONS: [
-    { type: 'playerKills',            label: 'Player kills' },
-    { type: 'hillSecondsTotal',       label: 'Total seconds on hill' },
-    { type: 'hillSecondsConsecutive', label: 'Consecutive seconds on hill' },
-    { type: 'emeraldsCollected',      label: 'Emeralds collected' },
-    { type: 'flagsCaptured',          label: 'Team flag captures' },
-    { type: 'towersDestroyed',        label: 'Towers destroyed' },
-    { type: 'totalPoints',            label: 'Total points' },
+    { type: 'playerKills',            label: 'Player kills',                needs: 'pvp' },
+    { type: 'hillSecondsTotal',       label: 'Total seconds on hill',       needs: 'hill' },
+    { type: 'hillSecondsConsecutive', label: 'Consecutive seconds on hill', needs: 'hill' },
+    { type: 'emeraldsCollected',      label: 'Emeralds collected',          needs: 'emeralds' },
+    { type: 'flagsCaptured',          label: 'Team flag captures',          needs: 'ctf' },
+    { type: 'towersDestroyed',        label: 'Towers destroyed',            needs: 'towers' },
+    { type: 'totalPoints',            label: 'Total points',                needs: null },
   ],
 
   _onStart: null,
@@ -69,13 +71,37 @@ const CUSTOM_RULES_UI = {
     document.querySelectorAll('#cr-elements input[data-el]').forEach(cb => { el[cb.dataset.el] = cb.checked; });
     return el;
   },
+  // Conditions offerable given the enabled elements (totalPoints always).
+  _validConditions() {
+    const el = this._checkedElements();
+    return this.CONDITIONS.filter(c => !c.needs || el[c.needs]);
+  },
+  // Drop already-added conditions whose element was just turned off (so a step
+  // can't become permanently unwinnable via a stale condition).
+  _pruneInvalidConditions() {
+    const el = this._checkedElements();
+    let changed = false;
+    for (const step of this._steps) {
+      const before = step.conditions.length;
+      step.conditions = step.conditions.filter(c => {
+        const def = this.CONDITIONS.find(x => x.type === c.type);
+        return !def || !def.needs || el[def.needs];
+      });
+      if (step.conditions.length !== before) changed = true;
+    }
+    return changed;
+  },
 
   _renderElements() {
     const box = document.getElementById('cr-elements'); if (!box) return;
     box.innerHTML = this.ELEMENTS.map(e =>
       `<label class="cr-check"><input type="checkbox" data-el="${e.key}"> ${e.label}</label>`).join('');
-    // Re-show relevant scoring rows when an element is toggled.
-    box.querySelectorAll('input[data-el]').forEach(cb => cb.addEventListener('change', () => this._renderScoring()));
+    // Toggling an element updates the scoring rows AND the valid win conditions.
+    box.querySelectorAll('input[data-el]').forEach(cb => cb.addEventListener('change', () => {
+      this._renderScoring();
+      this._pruneInvalidConditions();
+      this._renderSteps();
+    }));
   },
 
   // Show only the scoring rows whose element is enabled (pre-filled with defaults).
@@ -95,7 +121,8 @@ const CUSTOM_RULES_UI = {
   _renderSteps() {
     const box = document.getElementById('cr-steps'); if (!box) return;
     const logicOpts = ['and', 'or', 'not'].map(l => `<option value="${l}">${l.toUpperCase()}</option>`).join('');
-    const typeOpts = this.CONDITIONS.map(c => `<option value="${c.type}">${c.label}</option>`).join('');
+    const valid = this._validConditions();
+    const typeOpts = valid.map(c => `<option value="${c.type}">${c.label}</option>`).join('');
     box.innerHTML = this._steps.map((step, si) => {
       const conds = step.conditions.length
         ? step.conditions.map((c, ci) => {

@@ -12980,6 +12980,47 @@ class Game {
     ctx.fillText('Now Playing: ' + curTrack, px + pw / 2, py + ph - 8);
   }
 
+  // Arena win-condition status, shown beside the pause panel (left side) so it
+  // stays off the in-play HUD. Reads the rules engine's objectiveStatus().
+  _drawArenaObjectivesPanel(ctx) {
+    if (!this.isArena || typeof ARENA_RULES === 'undefined' || typeof ARENA_MODES === 'undefined') return;
+    const rs = ARENA_MODES._rulesetFor ? ARENA_MODES._rulesetFor(this) : null;
+    if (!rs) return;
+    const st = ARENA_RULES.objectiveStatus(rs, this);
+    const lines = [];
+    const clip = (s) => s.length > 30 ? s.slice(0, 29) + '…' : s;
+    if (st.mode === 'timer') {
+      lines.push({ t: 'Play until time runs out —', c: '#aab' }, { t: 'highest score wins.', c: '#aab' });
+    } else if (st.mode === 'flat') {
+      lines.push({ t: `Win — ${st.combinator === 'all' ? 'ALL of:' : 'ANY of:'}`, c: '#7ec8e3' });
+      for (const c of st.conditions) lines.push({ t: clip(`${c.met ? '✓' : '○'} ${c.label} ${c.current}/${c.target}`), c: c.met ? '#5aff7a' : '#ccd' });
+    } else {
+      lines.push({ t: `Win — complete ${st.total} step${st.total > 1 ? 's' : ''}:`, c: '#7ec8e3' });
+      for (const s of st.stages) {
+        const mark = s.done ? '✓' : (s.active ? '▸' : '○');
+        const col = s.done ? '#5aff7a' : (s.active ? '#FFD700' : '#889');
+        lines.push({ t: `${mark} Step ${s.index + 1}`, c: col });
+        if (s.active) for (const c of s.conditions) {
+          const lg = (c.logic && c.logic !== 'and') ? c.logic.toUpperCase() + ' ' : '';
+          lines.push({ t: clip(`  ${c.met ? '✓' : '○'} ${lg}${c.label} ${c.current}/${c.target}`), c: c.met ? '#5aff7a' : '#ccd' });
+        }
+      }
+    }
+    const pad = 12, lineH = 16, w = 200, x = 12;
+    const h = pad * 2 + 22 + lines.length * lineH;
+    const y = Math.max(12, (CANVAS_H - h) / 2);
+    ctx.save();
+    ctx.fillStyle = 'rgba(10,10,25,0.92)'; _roundRect(ctx, x, y, w, h, 8); ctx.fill();
+    ctx.strokeStyle = '#444466'; ctx.lineWidth = 2; _roundRect(ctx, x, y, w, h, 8); ctx.stroke();
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#FFD700'; ctx.font = 'bold 12px Courier New';
+    ctx.fillText('🎯 OBJECTIVES', x + pad, y + pad + 10);
+    ctx.font = '11px Courier New';
+    let ly = y + pad + 30;
+    for (const L of lines) { ctx.fillStyle = L.c; ctx.fillText(L.t, x + pad, ly); ly += lineH; }
+    ctx.restore();
+  }
+
   _drawPauseOverlay(ctx) {
     const mx  = this.input.mouse.x, my = this.input.mouse.y;
     const hit = (b) => mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h;
@@ -12989,6 +13030,7 @@ class Game {
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
     if (this.state === 'paused') {
+      this._drawArenaObjectivesPanel(ctx); // arena win-condition status (left side)
       const { px, py, pw, ph, tabH, numCtrlPlayers, resumeBtn, menuBtn, saveBtn, levelSelBtn } = this._pauseLayout();
       const TABS       = ['pause', 'settings', 'help'];
       const TAB_LABELS = ['⏸ PAUSE', '⚙ SETTINGS', '? HELP'];
