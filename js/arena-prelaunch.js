@@ -93,6 +93,7 @@ const ARENA_PRELAUNCH = {
       playerCount:   Math.max(1, Math.min(4, num('pl-player-count', 1))), // Phase 3B: 1-4 local
       playerHealthHp: num('pl-player-health', 6),
       disableMobDrops: chk('pl-disable-drops'), // all modes; default off
+      lives:         (() => { const v = val('pl-lives', 'unlimited'); return v === 'unlimited' ? 'unlimited' : Math.max(1, parseInt(v, 10) || 3); })(),
       disableMobs:   chk('pl-disable-mobs'),    // suppress bot spawns (non-mob modes)
       friendlyFire:  chk('pl-friendly-fire'),   // Phase 3B PvP gate
     };

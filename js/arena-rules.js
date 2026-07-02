@@ -40,7 +40,7 @@ const ARENA_RULES = {
     label: 'Custom Rules',
     elements: { pvp: false, bots: false, waveSpawns: false, spawnEggs: false,
                 emeralds: false, hill: false, ctf: false, towers: false },
-    scoring: { perKill: 0, perMobKill: 0, perEmerald: 0, perHillSecond: 0,
+    scoring: { perKill: 0, perMobKill: 0, perEmerald: 0, perHill10s: 0,
                perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 },
     win: { combinator: 'any', conditions: [] },   // flat conditions (ANY/ALL)
     endStructural: [],                              // structural enders (OR-ed)
@@ -54,56 +54,56 @@ const ARENA_RULES = {
     QUICK_BATTLE: {
       label: 'Quick Battle',
       elements: { pvp: true, bots: true, spawnEggs: true, waveSpawns: false, emeralds: true, hill: false, ctf: false, towers: false },
-      scoring: { perKill: 1, perMobKill: 1, perEmerald: 1, perHillSecond: 0, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 },
+      scoring: { perKill: 1, perMobKill: 1, perEmerald: 1, perHill10s: 0, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 },
       win: { combinator: 'any', conditions: [] },
       endStructural: ['allBotsDead'], winnerBy: 'topScore', deathEndsMatch: false,
     },
     MOB_HUNTER: {
       label: 'Mob Hunter',
       elements: { pvp: false, bots: true, spawnEggs: true, waveSpawns: false, emeralds: false, hill: false, ctf: false, towers: false },
-      scoring: { perKill: 0, perMobKill: 1, perEmerald: 0, perHillSecond: 0, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 },
+      scoring: { perKill: 0, perMobKill: 1, perEmerald: 0, perHill10s: 0, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 },
       win: { combinator: 'any', conditions: [] },
       endStructural: [], winnerBy: 'topScore', deathEndsMatch: false, // timer-bound
     },
     COLLECT_EMERALDS: {
       label: 'Collect Emeralds',
       elements: { pvp: false, bots: true, spawnEggs: true, waveSpawns: false, emeralds: true, hill: false, ctf: false, towers: false },
-      scoring: { perKill: 0, perMobKill: 0, perEmerald: 1, perHillSecond: 0, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 },
+      scoring: { perKill: 0, perMobKill: 0, perEmerald: 1, perHill10s: 0, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 },
       win: { combinator: 'any', conditions: [] },
       endStructural: ['allEmeralds'], winnerBy: 'topScore', deathEndsMatch: false,
     },
     KING_OF_HILL: {
       label: 'King of the Hill',
       elements: { pvp: true, bots: false, spawnEggs: false, waveSpawns: false, emeralds: false, hill: true, ctf: false, towers: false },
-      scoring: { perKill: 0, perMobKill: 0, perEmerald: 0, perHillSecond: 1, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 },
+      scoring: { perKill: 0, perMobKill: 0, perEmerald: 0, perHill10s: 1, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 },
       win: { combinator: 'any', conditions: [] },
       endStructural: [], winnerBy: 'topScore', deathEndsMatch: false, // full-timer (v3)
     },
     SURVIVAL_WAVES: {
       label: 'Survival Waves',
       elements: { pvp: false, bots: false, spawnEggs: false, waveSpawns: true, emeralds: false, hill: false, ctf: false, towers: false },
-      scoring: { perKill: 0, perMobKill: 0, perEmerald: 0, perHillSecond: 0, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 1 },
+      scoring: { perKill: 0, perMobKill: 0, perEmerald: 0, perHill10s: 0, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 1 },
       win: { combinator: 'any', conditions: [] },
       endStructural: ['survivedAllWaves', 'allPlayersDead'], winnerBy: 'topScore', deathEndsMatch: true,
     },
     DEATHMATCH: {
       label: 'Deathmatch',
       elements: { pvp: true, bots: false, spawnEggs: false, waveSpawns: false, emeralds: false, hill: false, ctf: false, towers: false },
-      scoring: { perKill: 1, perMobKill: 0, perEmerald: 0, perHillSecond: 0, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 },
+      scoring: { perKill: 1, perMobKill: 0, perEmerald: 0, perHill10s: 0, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 },
       win: { combinator: 'any', conditions: [{ type: 'playerKills', target: 10 }] },
       endStructural: [], winnerBy: 'topScore', deathEndsMatch: false,
     },
     CAPTURE_FLAG: {
       label: 'Capture the Flag',
       elements: { pvp: true, bots: false, spawnEggs: false, waveSpawns: false, emeralds: false, hill: false, ctf: true, towers: false },
-      scoring: { perKill: 0, perMobKill: 0, perEmerald: 0, perHillSecond: 0, perFlag: 1, perTowerDestroyed: 0, perWaveDefeated: 0 },
+      scoring: { perKill: 0, perMobKill: 0, perEmerald: 0, perHill10s: 0, perFlag: 1, perTowerDestroyed: 0, perWaveDefeated: 0 },
       win: { combinator: 'any', conditions: [{ type: 'flagsCaptured', target: 3 }] },
       endStructural: [], winnerBy: 'topScore', deathEndsMatch: false,
     },
     DEFEND_TOWER: {
       label: 'Defend the Tower',
       elements: { pvp: true, bots: false, spawnEggs: false, waveSpawns: false, emeralds: false, hill: false, ctf: false, towers: true },
-      scoring: { perKill: 0, perMobKill: 0, perEmerald: 0, perHillSecond: 0, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 }, // health-based
+      scoring: { perKill: 0, perMobKill: 0, perEmerald: 0, perHill10s: 0, perFlag: 0, perTowerDestroyed: 0, perWaveDefeated: 0 }, // health-based
       win: { combinator: 'any', conditions: [{ type: 'towersDestroyed', target: 1 }] },
       endStructural: [], winnerBy: 'destroyer', deathEndsMatch: false, // timeout tiebreak = topTowerHp (see winner())
     },
@@ -134,7 +134,7 @@ const ARENA_RULES = {
     return (st.kills || 0) * s.perKill
          + (st.mobKills || 0) * s.perMobKill
          + (st.emeralds || 0) * s.perEmerald
-         + (st.hillSeconds || 0) * s.perHillSecond
+         + Math.floor((st.hillSeconds || 0) / 10) * s.perHill10s
          + (st.flagCaptures || 0) * s.perFlag
          + (st.towersDestroyed || 0) * s.perTowerDestroyed;
   },
@@ -186,10 +186,28 @@ const ARENA_RULES = {
     }
   },
 
-  // Is a condition group ({ combinator, conditions }) currently satisfied?
+  // Is a condition group currently satisfied? Two forms:
+  //  • Per-condition logic: each condition carries logic 'and'|'or'|'not',
+  //    evaluated left-to-right (acc AND c / acc OR c / acc AND NOT c; the first
+  //    condition seeds acc, negated when its logic is 'not'). Used by the Custom
+  //    Rules step builder.
+  //  • Combinator: group.combinator 'all'|'any' over the conditions (used by the
+  //    built-in presets, which carry no per-condition logic).
   _groupMet(rs, game, group) {
     const conds = (group && group.conditions) || [];
     if (!conds.length) return false;
+    if (conds.some(c => c.logic)) {
+      let acc;
+      for (const c of conds) {
+        const t = this.conditionMet(rs, game, c);
+        const lg = (c.logic || 'and').toLowerCase();
+        if (acc === undefined) acc = (lg === 'not') ? !t : t;
+        else if (lg === 'or')  acc = acc || t;
+        else if (lg === 'not') acc = acc && !t;
+        else                   acc = acc && t;
+      }
+      return !!acc;
+    }
     return group.combinator === 'all'
       ? conds.every(c => this.conditionMet(rs, game, c))
       : conds.some(c => this.conditionMet(rs, game, c));

@@ -1328,11 +1328,15 @@ html[data-theme="retro"] {
 .cr-scoring { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
 .cr-score-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.85rem; color: #2a2a3a; }
 .cr-score-row input { width: 64px; }
-.cr-cond-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.cr-cond-row .cr-cond-type { flex: 1; }
-.cr-cond-row .cr-cond-target { width: 72px; }
-.cr-step-tag { font-weight: bold; color: #4a4ad0; min-width: 18px; }
-#cr-win-hint { display: block; margin-top: 8px; color: #555; }
+.cr-guide { display: block; color: #555; margin: 4px 0 10px; font-size: 0.8rem; line-height: 1.4; }
+.cr-step { border: 1px solid #d8d8e0; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+.cr-step-head { font-weight: bold; color: #4a4ad0; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+.cr-step-cond { display: flex; justify-content: space-between; align-items: center; background: #f2f2f7; border-radius: 4px; padding: 3px 8px; margin-bottom: 4px; font-size: 0.85rem; color: #2a2a3a; }
+.cr-step-empty { color: #888; font-size: 0.8rem; font-style: italic; margin-bottom: 6px; }
+.cr-step-add { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.cr-step-add .cr-add-logic { width: 68px; }
+.cr-step-add .cr-add-type { flex: 1; min-width: 130px; }
+.cr-step-add .cr-add-target { width: 64px; }
 
 /* Build-version badge (dashboard header) — subtle, so you can verify the build. */
 .app-version {

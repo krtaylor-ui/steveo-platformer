@@ -750,6 +750,12 @@ class Game {
     // Disable mob drops when requested (pre-launch toggle, all modes; default off).
     this.mobManager.dropsDisabled = !!this.arenaConfig.disableMobDrops;
 
+    // Player lives (pre-launch / Custom Rules): 0 = unlimited; else N respawns.
+    const _lv = this.arenaConfig.lives;
+    this._arenaLives = (_lv && _lv !== 'unlimited') ? Math.max(1, _lv | 0) : 0;
+    this._arenaStartPlayers = this.activePlayers().length;
+    if (this._arenaLives > 0) this.activePlayers().forEach(p => { p._arenaLives = this._arenaLives; });
+
     // Enemies:
     //  • SURVIVAL_WAVES → ignore spawn eggs + default bots entirely; ARENA_MODES
     //    spawns escalating waves from the designed spawn-lines.
@@ -1390,6 +1396,13 @@ class Game {
       }
       // running: collectibles + power-ups update every frame.
       this._updateArenaCollectibles();
+
+      // Lives (last-standing): if the match started with 2+ players and only one
+      // remains un-eliminated, end it — the survivor wins on the end screen.
+      if (this._arenaLives > 0 && this._arenaStartPlayers > 1 && this.activePlayers().length <= 1) {
+        a.phase = 'ended'; a.endTime = a.endTime || Date.now();
+        return;
+      }
 
       // A game mode (Phase 3A.2) owns the win condition when one is set;
       // otherwise fall back to the Phase 3A.1 Deathmatch rule.
@@ -3954,9 +3967,21 @@ class Game {
     if (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.active) CTF_SYSTEM.onPlayerDefeated(this, this.player);
     if (this.isArena && this.arenaState.stats.p1) this.arenaState.stats.p1.deaths++;
 
-    // Arena: unlimited respawns at the player's spawn after a short delay (no death modal/elimination)
+    // Arena: respawn after a short delay. With limited Lives, decrement and end
+    // the match for P1 when exhausted (solo → game over; MP → standings shown).
     if (this.isArena) {
-      this._notify('Respawning…', '#FFD700', this.arenaRespawnFrames);
+      if (this._arenaLives > 0) {
+        this.player._arenaLives = (this.player._arenaLives || 0) - 1;
+        if (this.player._arenaLives <= 0) {
+          this._notify('Out of lives!', '#FF5555', 200);
+          this.arenaState.phase = 'ended';
+          this.arenaState.endTime = this.arenaState.endTime || Date.now();
+          this.player.hp = this.player.maxHp; // keep the object valid for the end screen
+          return;
+        }
+      }
+      const livesLeft = this._arenaLives > 0 ? `  (${this.player._arenaLives} ${this.player._arenaLives === 1 ? 'life' : 'lives'} left)` : '';
+      this._notify('Respawning…' + livesLeft, '#FFD700', this.arenaRespawnFrames);
       this._p1RespawnTimer = this.arenaRespawnFrames;
       this.player.hp = this.player.maxHp;
       return;
@@ -4081,8 +4106,18 @@ class Game {
     // CTF: drop any carried flag here so the respawned player never keeps it (§6).
     if (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.active) CTF_SYSTEM.onPlayerDefeated(this, p);
     if (this.isArena) { const s = this.arenaState.stats[p._ownerId || Game.ownerId(i)]; if (s) s.deaths++; }
-    // Arena: unlimited respawns, no elimination.
+    // Arena: respawn after a delay. With limited Lives, decrement and eliminate
+    // (remove) this player when exhausted — safe (activePlayers skips null slots).
     if (this.isArena) {
+      if (this._arenaLives > 0) {
+        p._arenaLives = (p._arenaLives || 0) - 1;
+        if (p._arenaLives <= 0) {
+          this._notify(`P${i + 1} eliminated!`, '#FF5555', 200);
+          this.players[i] = null;
+          this._respawnTimers[i] = 0;
+          return;
+        }
+      }
       this._respawnTimers[i] = this.arenaRespawnFrames;
       p.hp = p.maxHp;
       return;

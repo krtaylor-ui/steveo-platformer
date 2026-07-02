@@ -47,10 +47,13 @@ g = mkGame('COLLECT_EMERALDS', [P('p1')]); g.arenaState.stats.p1.emeralds = 7;
 ok(RULES.playerScore(rs('COLLECT_EMERALDS'), g, 'p1') === 7, 'Emeralds rules=7');
 ok(AM.playerScore(g, 'p1') === 7, 'Emeralds hardcoded=7');
 
-// KOTH: hardcoded uses hold frames (round /60); rules use hillSeconds stat.
-g = mkGame('KING_OF_HILL', [P('p1')]); g._arenaMode.hold.p1 = 1500; g.arenaState.stats.p1.hillSeconds = 25;
-ok(RULES.playerScore(rs('KING_OF_HILL'), g, 'p1') === 25, 'KOTH rules=25s');
-ok(AM.playerScore(g, 'p1') === 25, 'KOTH hardcoded=25s (1500f/60)');
+// KOTH: hill scored in 10-second blocks (perHill10s). 250s → 25 blocks.
+g = mkGame('KING_OF_HILL', [P('p1')]); g._arenaMode.hold.p1 = 15000; g.arenaState.stats.p1.hillSeconds = 250;
+ok(RULES.playerScore(rs('KING_OF_HILL'), g, 'p1') === 25, 'KOTH rules = hill 10s-blocks (250s → 25)');
+ok(AM.playerScore(g, 'p1') === 25, 'KOTH hardcoded = hill 10s-blocks (250s → 25)');
+// 47s → 4 blocks (floors partial blocks)
+g = mkGame('KING_OF_HILL', [P('p1')]); g.arenaState.stats.p1.hillSeconds = 47;
+ok(RULES.playerScore(rs('KING_OF_HILL'), g, 'p1') === 4, 'hill 47s → 4 blocks (floored)');
 
 // Survival: shared wavesDefeated
 g = mkGame('SURVIVAL_WAVES', [P('p1'), P('p2')]); g._arenaMode.wavesCleared = 4;
@@ -149,6 +152,19 @@ ok(RULES.playerScore(cr, cg, 'p1') === 6, 'CUSTOM scoring weights apply (3 kills
 ok(RULES.isEnded(cr, cg, false) === false, 'CUSTOM win not met at 3 kills');
 cg.arenaState.stats.p1.kills = 5;
 ok(RULES.isEnded(cr, cg, false) === true, 'CUSTOM win met at 5 kills');
+
+console.log('Per-condition win logic (AND / OR / NOT):');
+const lg = mkGame('CUSTOM', [P('p1')]);
+const rsL = RULES.normalize({ elements: { pvp: true, emeralds: true } });
+const G = (conds) => RULES._groupMet(rsL, lg, { conditions: conds });
+lg.arenaState.stats.p1.kills = 5; lg.arenaState.stats.p1.emeralds = 1;
+ok(G([{ type: 'playerKills', target: 5, logic: 'and' }, { type: 'emeraldsCollected', target: 3, logic: 'or' }]) === true, 'A OR B — A true → true');
+ok(G([{ type: 'playerKills', target: 9, logic: 'and' }, { type: 'emeraldsCollected', target: 3, logic: 'or' }]) === false, 'A OR B — both false → false');
+ok(G([{ type: 'playerKills', target: 5, logic: 'and' }, { type: 'emeraldsCollected', target: 3, logic: 'and' }]) === false, 'A AND B — B false → false');
+ok(G([{ type: 'playerKills', target: 5, logic: 'and' }, { type: 'emeraldsCollected', target: 3, logic: 'not' }]) === true, 'A AND NOT B — B false → true');
+lg.arenaState.stats.p1.emeralds = 5;
+ok(G([{ type: 'playerKills', target: 5, logic: 'and' }, { type: 'emeraldsCollected', target: 3, logic: 'not' }]) === false, 'A AND NOT B — B true → false');
+ok(G([{ type: 'playerKills', target: 9, logic: 'not' }]) === true, 'NOT A as seed — A false → true');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

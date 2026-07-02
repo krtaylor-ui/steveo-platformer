@@ -360,3 +360,29 @@ author their own.
 Tests: node test/run.js → 128/128 (adds stages sequencing + CUSTOM ruleset).
 Deferred still: §2.9 pickaxe hotbar; non-arena spawn override; server-backed
 speedrun ghost board; genre/difficulty editor UI.
+
+---
+
+# Custom Rules v2: step builder, reactive scoring, lives, hill/10s (build 7)
+
+- **Win builder redesigned as a step sequence.** Each step is built by adding
+  conditions one at a time (logic AND/OR/NOT + condition + value + "Add"); each
+  appears with a ✕ to remove. "Add another step" appends the next step. Guidance
+  text explains it. Engine `_groupMet` now evaluates per-condition logic
+  (and/or/not, left→right, first condition seeds; NOT negates) in addition to the
+  presets' any/all combinator. Headless tests cover AND/OR/NOT + sequencing.
+- **Scoring reactive + defaulted.** Each scoring row shows only when its element
+  is enabled, pre-filled: Player kill 3, Mob kill 1, Emerald 1, 10s-on-hill 3,
+  Flag 5, Tower 10, Wave 10.
+- **Hill scoring is per 10 seconds** (was per second): individualScore uses
+  floor(hillSeconds/10) × perHill10s. KOTH preset weight → perHill10s:1 (its
+  headline score()/winner still use hold frames, so only the HUD top-line number
+  shifts to 10s-blocks).
+- **Player Lives** (Unlimited / 1 / 2 / 3) added to BOTH the standard pre-launch
+  modal and the Custom builder. Limited lives decrement on death; a player out of
+  lives is eliminated (secondary players are nulled — the existing safe co-op
+  path; P1 out ends the match). Last-standing: when a 2+ player match drops to one
+  remaining, it ends. Unlimited = current behaviour (default). NOTE: P1 "spectate
+  while others continue" in MP is simplified to match-end for now.
+
+Tests: node test/run.js → 135/135.

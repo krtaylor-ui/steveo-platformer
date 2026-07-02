@@ -42,8 +42,8 @@ ok(AM.playerScore(g, 'p1') === 4, `Mob Hunter = mobKills (got ${AM.playerScore(g
 g = mkGame('COLLECT_EMERALDS', [P('p1')]); g.arenaState.stats.p1.emeralds = 7;
 ok(AM.playerScore(g, 'p1') === 7, `Emeralds = emeralds`);
 
-g = mkGame('KING_OF_HILL', [P('p1')]); g._arenaMode.hold.p1 = 180; g.arenaState.stats.p1.hillSeconds = 3;
-ok(AM.playerScore(g, 'p1') === 3, `KOTH = seconds held (hillSeconds=3, got ${AM.playerScore(g, 'p1')})`);
+g = mkGame('KING_OF_HILL', [P('p1')]); g._arenaMode.hold.p1 = 1800; g.arenaState.stats.p1.hillSeconds = 30;
+ok(AM.playerScore(g, 'p1') === 3, `KOTH = hill 10s-blocks (30s → 3, got ${AM.playerScore(g, 'p1')})`);
 
 g = mkGame('SURVIVAL_WAVES', [P('p1'), P('p2')]); g._arenaMode.wavesCleared = 4;
 ok(AM.playerScore(g, 'p1') === 4 && AM.playerScore(g, 'p2') === 4, `Survival = waves defeated (shared)`);
