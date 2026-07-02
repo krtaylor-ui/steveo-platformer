@@ -226,3 +226,10 @@ Two additive SQL files (safe to re-run; use `IF NOT EXISTS`):
 
 Both are safe to run on an existing DB; nothing is dropped. If they are NOT run, the new endpoints
 return 500s but the rest of the game is unaffected (features degrade, don't crash).
+
+### `server/sql/custom_rules.sql` — saved Custom Rules configs (Phase 3 v3)
+- Creates `custom_rules` (id, user_id, name, config jsonb, created_at) for the
+  "save to profile" feature (up to 10 per user, enforced in the route layer).
+- Backs `GET/POST/DELETE /api/custom-rules`. Recent-3 and export/import work
+  without it (localStorage + file); only the profile save/load needs this table.
+- Safe to run on an existing DB.

@@ -223,6 +223,9 @@ setupCommunityRoutes(app);
 const setupStatsRoutes = require('./server/stats-routes');
 setupStatsRoutes(app);
 
+const setupCustomRulesRoutes = require('./server/custom-rules-routes');
+setupCustomRulesRoutes(app);
+
 // ============================================================
 // API ENDPOINTS (Express Routes)
 // ============================================================

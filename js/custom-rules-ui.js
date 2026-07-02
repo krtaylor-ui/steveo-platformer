@@ -59,11 +59,114 @@ const CUSTOM_RULES_UI = {
     this._renderElements();
     this._renderScoring();
     this._renderSteps();
+    this._renderRecent();
+    this._fetchSaved();
+    this._msg('');
     this._wire();
     modal.style.display = 'flex';
   },
 
   hide() { const m = document.getElementById('custom-rules-modal'); if (m) m.style.display = 'none'; },
+
+  // ── Configurations: recent (localStorage), saved (Supabase), export/import ──
+  _recentKey: 'steveo_custom_recent',
+  _msg(text) { const el = document.getElementById('cr-config-msg'); if (el) el.textContent = text || ''; },
+
+  // Capture the full builder state to a portable config object.
+  _snapshot() {
+    const num = (id, d) => { const el = document.getElementById(id); const n = el ? parseInt(el.value, 10) : NaN; return Number.isFinite(n) ? n : d; };
+    const val = (id, d) => { const el = document.getElementById(id); return el ? el.value : d; };
+    const scoring = Object.assign({}, this._scoreVals);
+    document.querySelectorAll('#cr-scoring input[data-score]').forEach(i => { scoring[i.dataset.score] = Math.max(0, parseInt(i.value, 10) || 0); });
+    return {
+      v: 1,
+      common: { matchLength: num('cr-match-length', 300), playerCount: num('cr-player-count', 1), playerHealth: num('cr-player-health', 6), lives: val('cr-lives', 'unlimited') },
+      elements: this._checkedElements(),
+      scoring,
+      steps: this._steps.map(s => ({ conditions: s.conditions.map(c => ({ type: c.type, target: c.target, logic: c.logic })) })),
+    };
+  },
+  // Apply a config object back onto the builder.
+  _restore(config) {
+    if (!config || typeof config !== 'object') return;
+    const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = String(v); };
+    const c = config.common || {};
+    set('cr-match-length', c.matchLength); set('cr-player-count', c.playerCount);
+    set('cr-player-health', c.playerHealth); set('cr-lives', c.lives);
+    document.querySelectorAll('#cr-elements input[data-el]').forEach(cb => { cb.checked = !!(config.elements && config.elements[cb.dataset.el]); });
+    this._scoreVals = Object.assign({}, this._scoreVals, config.scoring || {});
+    this._steps = (Array.isArray(config.steps) && config.steps.length)
+      ? config.steps.map(s => ({ conditions: (s.conditions || []).map(x => ({ type: x.type, target: x.target || 1, logic: x.logic || 'and' })) }))
+      : [{ conditions: [] }];
+    this._renderScoring();
+    this._renderSteps();
+  },
+
+  _loadRecent() { try { return JSON.parse(localStorage.getItem(this._recentKey) || '[]'); } catch (e) { return []; } },
+  _pushRecent(snap) { let r = this._loadRecent(); r.unshift({ ts: Date.now(), config: snap }); r = r.slice(0, 3); try { localStorage.setItem(this._recentKey, JSON.stringify(r)); } catch (e) {} },
+  _renderRecent() {
+    const box = document.getElementById('cr-recent'); if (!box) return;
+    const r = this._loadRecent();
+    box.innerHTML = r.length ? r.map((e, i) => `<button class="btn btn-small cr-recent-chip" data-i="${i}">↩ Recent ${i + 1}</button>`).join('') : '<span class="cr-guide">No recent configs yet.</span>';
+    box.querySelectorAll('.cr-recent-chip').forEach(b => b.addEventListener('click', () => { const e = this._loadRecent()[+b.dataset.i]; if (e) { this._restore(e.config); this._msg('Loaded recent config.'); } }));
+  },
+
+  async _fetchSaved() {
+    if (typeof AUTH === 'undefined' || !AUTH.authedFetch) return;
+    try {
+      const res = await AUTH.authedFetch('/api/custom-rules');
+      if (!res.ok) return;
+      this._saved = await res.json();
+      const sel = document.getElementById('cr-saved-select'); if (!sel) return;
+      sel.innerHTML = `<option value="">— Saved configs (${this._saved.length}/10) —</option>` +
+        this._saved.map(s => `<option value="${s.id}">${String(s.name || 'Config').replace(/[<>]/g, '')}</option>`).join('');
+    } catch (e) {}
+  },
+  async _saveToProfile() {
+    if (typeof AUTH === 'undefined' || !AUTH.authedFetch) { this._msg('Sign in to save to your profile.'); return; }
+    const name = (prompt('Name this configuration:') || '').trim();
+    if (!name) return;
+    try {
+      const res = await AUTH.authedFetch('/api/custom-rules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, config: this._snapshot() }) });
+      const data = await res.json();
+      if (!res.ok) { this._msg(data.error || 'Save failed.'); return; }
+      this._msg(`Saved "${name}".`);
+      this._fetchSaved();
+    } catch (e) { this._msg('Save failed.'); }
+  },
+  async _deleteSaved() {
+    const sel = document.getElementById('cr-saved-select'); const id = sel && sel.value; if (!id) { this._msg('Pick a saved config to delete.'); return; }
+    try {
+      const res = await AUTH.authedFetch(`/api/custom-rules/${id}`, { method: 'DELETE' });
+      if (!res.ok) { this._msg('Delete failed.'); return; }
+      this._msg('Deleted.');
+      this._fetchSaved();
+    } catch (e) { this._msg('Delete failed.'); }
+  },
+  _loadSaved() {
+    const sel = document.getElementById('cr-saved-select'); const id = sel && sel.value; if (!id) { this._msg('Pick a saved config to load.'); return; }
+    const entry = (this._saved || []).find(s => String(s.id) === String(id));
+    if (entry) { this._restore(entry.config); this._msg(`Loaded "${entry.name}".`); }
+  },
+  _export() {
+    try {
+      const blob = new Blob([JSON.stringify(this._snapshot(), null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = 'steveo-custom-rules.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      this._msg('Exported to a file.');
+    } catch (e) { this._msg('Export failed.'); }
+  },
+  _import(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try { this._restore(JSON.parse(reader.result)); this._msg('Imported config.'); }
+      catch (e) { this._msg('Import failed — not a valid config file.'); }
+    };
+    reader.readAsText(file);
+  },
 
   _condLabel(type) { const c = this.CONDITIONS.find(x => x.type === type); return c ? c.label : type; },
   _checkedElements() {
@@ -178,9 +281,17 @@ const CUSTOM_RULES_UI = {
     document.getElementById('cr-add-step')?.addEventListener('click', () => { this._steps.push({ conditions: [] }); this._renderSteps(); });
     document.getElementById('cr-cancel-btn')?.addEventListener('click', () => this.hide());
     document.getElementById('cr-start-btn')?.addEventListener('click', () => this._start());
+    // Configurations
+    document.getElementById('cr-load-btn')?.addEventListener('click', () => this._loadSaved());
+    document.getElementById('cr-delete-btn')?.addEventListener('click', () => this._deleteSaved());
+    document.getElementById('cr-save-btn')?.addEventListener('click', () => this._saveToProfile());
+    document.getElementById('cr-export-btn')?.addEventListener('click', () => this._export());
+    document.getElementById('cr-import-btn')?.addEventListener('click', () => document.getElementById('cr-import-file')?.click());
+    document.getElementById('cr-import-file')?.addEventListener('change', (e) => { this._import(e.target.files && e.target.files[0]); e.target.value = ''; });
   },
 
   _start() {
+    this._pushRecent(this._snapshot()); // remember the last 3 launched configs
     const num = (id, dflt) => { const el = document.getElementById(id); const n = el ? parseInt(el.value, 10) : NaN; return Number.isFinite(n) ? n : dflt; };
     const val = (id, dflt) => { const el = document.getElementById(id); return el ? el.value : dflt; };
     const elements = this._checkedElements();

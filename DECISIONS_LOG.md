@@ -431,3 +431,21 @@ impossible-condition warning (finite cumulative stats in step 2+); config
 save/load/export/import (recent-3 local + Supabase named up to 10 + file).
 
 Tests: node test/run.js → 144/144.
+
+---
+
+# Custom Rules save/load/export/import (build 11)
+
+Configurations panel in the builder:
+- **Recent (localStorage)** — the last 3 launched configs, reloadable as chips.
+- **Saved to profile (Supabase)** — up to 10 named configs. New `custom_rules`
+  table + `server/custom-rules-routes.js` (GET/POST/DELETE `/api/custom-rules`,
+  cap enforced server-side) + `server/sql/custom_rules.sql` migration. Load/Save/
+  Delete from a dropdown.
+- **Export / Import** — download the current config as JSON, or import one from a
+  file (validated → restored). Works without the DB (recent + file are local).
+- `_snapshot()` / `_restore()` capture + reapply the full builder state
+  (common settings, elements, scoring weights, steps).
+
+Needs the `custom_rules.sql` migration run for profile save/load; recent + export/
+import work immediately. Tests: node test/run.js → 144/144.
