@@ -259,6 +259,12 @@ class Game {
       this._arenaWorldName = options.worldName || null;
     }
 
+    // World provenance / lineage (uid, created/updated, origin, copiedFrom). Lives
+    // inside world_data so it travels with the world across export/import/copy and
+    // local↔cloud — the basis for the future "copy to online/offline" + cleanup tool.
+    this._loadedProvenance = (options.templateData && options.templateData.provenance)
+                          || (options.worldData && options.worldData.provenance) || null;
+
     this._buildLevel();
 
     this.state         = 'playing'; // 'playing' | 'won' | 'dead' | 'paused' | 'confirmExit'

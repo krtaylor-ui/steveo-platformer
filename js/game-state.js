@@ -8,6 +8,26 @@ const GAME_STATE = {
   // SERIALIZE: Convert current game to a JSON-safe object
   // Produces a v2 SandboxSaves-compatible payload + playerProgress field.
   // ════════════════════════════════════════════════════════════
+  // Build/refresh the world's lineage metadata. Preserves uid/createdAt/copiedFrom
+  // from the loaded world; stamps a fresh updatedAt each save. origin defaults to
+  // 'cloud' (the local-worlds mode will set 'local'); copiedFrom/At are populated
+  // by the future "copy to online/offline" flow.
+  _provenance(game) {
+    const prev = game._loadedProvenance || {};
+    const uid  = prev.uid || ('w-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8));
+    const prov = {
+      uid,
+      createdAt:  prev.createdAt || Date.now(),
+      updatedAt:  Date.now(),
+      creator:    prev.creator || game._sbPlayerName || null,
+      origin:     game._worldOrigin || prev.origin || 'cloud',
+      copiedFrom: prev.copiedFrom || null,
+      copiedAt:   prev.copiedAt   || null,
+    };
+    game._loadedProvenance = prov; // keep stable across saves this session
+    return prov;
+  },
+
   serialize(game) {
     if (!game || !game.level) return null;
     const p = game.player;
@@ -185,6 +205,7 @@ const GAME_STATE = {
       worldAdvSettings: game._worldAdvSettings
         ? JSON.parse(JSON.stringify(game._worldAdvSettings))
         : null,
+      provenance: GAME_STATE._provenance(game),
       // Player progress — separate from world data, applied post-construction
       playerProgress: {
         px:           Math.floor(p.x),

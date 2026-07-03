@@ -1,9 +1,32 @@
 # Steveo Platformer — Future Roadmap & Design Notes
 
-> **Status:** Planning / design capture. **Nothing here is built yet.**
-> Captured from design discussion on 2026‑07‑02, at game **build 15** (branch `phase3-v3-look`).
-> This doc seeds later implementation sessions. It records *intent, approach, effort, reuse,
-> and open decisions* — not final specs. Update it as decisions are made.
+> **Status:** Living doc. Updated 2026‑07‑05 at **build 43** (merged to `main`, live on Railway).
+> Records *intent, approach, effort, reuse, and open decisions* — not final specs.
+
+## ✅ Shipped since this doc was written (builds 24–43)
+- **Installable version (PWA)** — §2 below. DONE (build 27): `manifest.json` + `sw.js`
+  offline app shell + install support. *Follow‑up left:* raster PNG icons (192/512).
+- **Mobile mode (touch)** — §3 below. DONE (build 28): responsive canvas + touch overlay;
+  Speed Run auto‑run→accelerate button, Platformer d‑pad, Arena twin‑stick.
+- **HTML pause menu + universal controller nav** — §5 below. DONE (builds 25, 32–36):
+  tabbed mode‑aware HTML pause overlay + `js/gamepad‑nav.js`; classic canvas menu kept
+  behind the Konami combo.
+- **Leaderboards revamp** — arena per‑world Leader + browse feed; Speed Run hybrid
+  (local + server sync) with account initials. DONE (builds 24, 30, 26).
+- **Speed Runner race‑car model** — countdown + perfect start, accelerate/coast, actual‑speed
+  %, per‑run level reset, fast configurable redstone. DONE (builds 38–43).
+
+## 🔜 Still planned (not built)
+- **User Guide** — §1 below (not started).
+- **Local‑first / offline worlds + login sync** — see new section [6] below (design agreed
+  2026‑07‑05; provenance metadata landed build 44, structure next).
+- **World cleanup widget** — see new section [7] below.
+- **Tower Defense + MOBA + Bot/AI** — §4 below (not started).
+- **itch.io release / Tauri desktop installer** — see new section [8] below.
+
+---
+
+> _Original planning notes (2026‑07‑02, build 15) follow. Some are now shipped (above)._
 
 The engine is vanilla‑JS + `<canvas>`, served as static files (`index.html` + `js/*.js`
 with `?v=bN` cache‑busters), backed by Node/Express + Socket.IO + Supabase.
@@ -300,3 +323,84 @@ tokens + retro FX (build 20), `body.in-game` gate (build 19/20).
 
 *Living document — update as decisions land and features ship. Keep `DECISIONS_LOG.md` for what
 *was* built; this file is for what's *planned*.*
+
+---
+
+## 6. Local‑first / offline worlds + optional login sync  *(design agreed 2026‑07‑05)*
+
+**Goal:** the app works fully **offline with no login** — pre‑loaded worlds, build custom
+worlds, save games (all local) — and login is an *optional upgrade* that adds cloud worlds,
+downloading, and online play.
+
+**Current reality (why this is a refactor, not a feature):** today every world lives in
+**Supabase**, even unpublished ("published" is just an `is_published` flag on the same row).
+Solo *progress* uses `localStorage` (`NormalProgress`) and the `SandboxSaves` localStorage
+helpers exist but are **dormant** (only the disabled canvas `menu.js` used them). The HTML UI
+calls `authedFetch('/api/worlds…')` directly in ~10 files.
+
+**The model (decided — no two‑way sync):** it's **2 locations + 1 flag**, not 3 states.
+- **Cloud** (Supabase) worlds; "Published" = a filter/badge on some of them.
+- **Local** (localStorage) worlds.
+- Move between them only via **explicit "Copy to Online" / "Copy to Offline"** — never an
+  automatic merge, never a login‑time "which is newer?" prompt (that's where sync bugs live).
+- Logging in from offline **adds** cloud access; it does **not** reconcile local worlds.
+- Tame copy‑sprawl with: **provenance metadata** (see below) + an **opt‑in "update existing
+  copy vs save as new"** prompt when a same‑lineage copy already exists in the target.
+
+**Provenance metadata (LANDED build 44):** `world_data.provenance = { uid, createdAt,
+updatedAt, creator, origin('cloud'|'local'), copiedFrom, copiedAt }`, stamped in
+`GAME_STATE._provenance()` and captured on load (`game._loadedProvenance`). Travels inside
+world_data across export/import/copy. `copiedFrom/At` get populated by the copy flow.
+
+**Work remaining:**
+1. **Guest entry path** + a session **mode flag** (local vs online) — see the entry‑screen
+   idea in [8]/below.
+2. **Local data provider** mirroring the world/game API against `localStorage`, so the
+   dashboard / game slots / sandbox browser list local worlds in guest mode (the core
+   refactor; abstract the ~10 `authedFetch` call sites behind one provider interface).
+3. **Bundled worlds** — curate more `default-worlds/*.json` as read‑only starters (copy‑to‑play).
+4. **Copy to Online/Offline** actions + the opt‑in overwrite‑or‑fork prompt.
+5. Online‑only features (MP, community browse, cloud leaderboards) **grey out** in guest mode.
+
+**Entry‑screen UX (proposed):** the initial audio‑trigger screen offers **"Play Offline"** /
+**"Play Online"**. Online + not logged in → login, then cloud dashboard; Online + logged in →
+cloud dashboard; Offline → guest/local. Logged‑in users can still choose Offline (e.g. on a
+plane). Remember the last choice; allow switching modes from the dashboard.
+
+**Effort:** MODERATE (local‑only build) + MODERATE (login‑sync), dominated by the provider
+abstraction. Pairs perfectly with the Tauri/itch desktop build [8].
+
+---
+
+## 7. World cleanup widget ("🧹 Manage Worlds")  *(design 2026‑07‑05)*
+
+A self‑contained HTML panel (like the theme‑settings modal) that visualizes all worlds and
+tames copy‑sprawl. **Depends on the provenance metadata [6] existing.**
+
+- **Lineage tree** grouping each root world with its copies (cloud ☁ / local 💾 badges,
+  published tag), drawn from `copiedFrom`.
+- **Per‑world metrics** — all cheap, derived from `world_data` JSON: block count (non‑air
+  cells), placed‑object counts, dimensions, last‑edited (`updatedAt`); **block‑level diff**
+  between two worlds ("differ by N cells" / "identical" via a grid hash) for pre‑delete compare.
+- **Suggested cleanup** — flag exact duplicates and older/subset copies superseded by a newer
+  descendant; one‑click delete (individual or all‑flagged).
+- **Honest limits:** compares **snapshots**, not per‑edit history; the connection graph needs
+  provenance (else only fuzzy name+creator grouping). **Effort:** LOW–MODERATE (mostly pure
+  functions: count/hash/diff + display).
+
+---
+
+## 8. itch.io release / Tauri desktop installer  *(feasibility 2026‑07‑05)*
+
+**Caveat:** client + server app. itch hosts the **client**; the Node/Express + Supabase
+backend stays on Railway. Any itch build must point API + Socket.IO at the Railway URL
+(client uses relative `/api/…` today; server already runs `app.use(cors())` all‑origins and
+Bearer tokens, so **no server CORS change needed** — just a configurable client base URL).
+
+- **Route A — HTML5 web build:** zip the static client, upload as an in‑browser itch game.
+- **Route B — Tauri desktop installer (recommended):** wrap the web client → `.exe`/`.dmg`/
+  `.AppImage` for itch download (Tauri ≈ tiny OS‑webview; Electron heavier). Optional code‑signing.
+- **Prerequisite:** add a configurable **API/socket base URL** (defaults to same‑origin so
+  Railway + local keep working; set to Railway for the itch build).
+- Best combined with the local‑first mode [6]: offline‑capable desktop app that *optionally*
+  signs in for cloud/online.
