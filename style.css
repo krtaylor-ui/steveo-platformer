@@ -2117,3 +2117,6 @@ html[data-theme="retro"] .lb-table .lb-score { color: #FFD700; }
 
 html[data-theme="retro"] .pause-section + .pause-section,
 html[data-theme="retro"] .pause-footer { border-top-color: #2f6f8f; }
+
+/* Guard: the pause body always stacks (tabs on top, panel below). */
+.pause-main { display: block; }

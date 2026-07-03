@@ -67,7 +67,9 @@ const PAUSE_MENU = {
     if (!confirm || !main) return;
     const isConfirm = game.state === 'confirmExit';
     confirm.style.display = isConfirm ? 'flex' : 'none';
-    main.style.display    = isConfirm ? 'none' : 'flex';
+    // block, NOT flex — flex would lay the tab bar and active panel out in a row
+    // (narrow tabs on the left, squished content on the right).
+    main.style.display    = isConfirm ? 'none' : 'block';
     if (isConfirm) {
       const isHost = !!(game._onlineGameId && window.multiplayerManager?.isCreator);
       const title = this.el('pause-confirm-title');

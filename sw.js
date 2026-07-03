@@ -12,7 +12,7 @@
 // Bump CACHE_VERSION on release to drop the old shell.
 // ============================================================
 
-const CACHE_VERSION = 'steveo-shell-v32';
+const CACHE_VERSION = 'steveo-shell-v33';
 const CORE = ['/', '/index.html', '/style.css', '/manifest.json', '/icon.svg'];
 
 self.addEventListener('install', (event) => {
