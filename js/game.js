@@ -94,6 +94,7 @@ class Game {
       srBaseSpeed:               1.0,
       srMaxMultiplier:           2.0,
       srBoostPct:                0.05,
+      srDecel:                   2,      // release deceleration, × the accel rate (tunable in pause)
       srTimeBoostEnabled:        true,
       srTimeBoostIntervalSec:    5,
       srDistBoostEnabled:        true,
@@ -14891,6 +14892,7 @@ class Game {
       // Keep player frozen at spawn (player.update already ran — override it)
       this.player.x  = sr.spawnX; this.player.y  = sr.spawnY;
       this.player.vx = 0;         this.player.vy = 0;
+      sr.vx = 0; // reset accelerate-model velocity for the run
       sr.srZoom      += (1.0 - sr.srZoom)      * 0.08;
       sr.srLookAhead += (0   - sr.srLookAhead) * 0.08;
       return;
@@ -14919,11 +14921,16 @@ class Game {
       || this.input.isDown('ArrowRight') || this.input.isDown('KeyD')
       || this.input.gamepads.some(g => g && g.connected && (g.dpad1 || g.moveX > 0.3));
     sr.accelHeld = accel;
+    // Own the horizontal velocity (sr.vx) so player.js's 0.72 friction can't
+    // compound with our coast (that caused the near-instant dead stop). Decel is
+    // LINEAR at srDecel× the accel rate (default 2× = slows in half the ramp time).
+    if (sr.vx == null) sr.vx = Math.max(0, this.player.vx || 0);
     const topSpeed = this.player.moveSpeed * 3 * this._srGetEffectiveMultiplier() * baseSpeed;
-    const SR_ACCEL = 0.7;   // ramp-up per frame (px/frame)
-    const SR_COAST = 0.95;  // release decay (gentle — coast, don't stop)
-    if (accel) this.player.vx = Math.min(topSpeed, Math.max(this.player.vx, 0) + SR_ACCEL);
-    else       this.player.vx = Math.max(0, this.player.vx * SR_COAST);
+    const SR_ACCEL = 0.7;                                  // ramp-up per frame (px/frame)
+    const SR_DECEL = (aws.srDecel ?? 2) * SR_ACCEL;        // release decel (tunable in pause)
+    if (accel) sr.vx = Math.min(topSpeed, Math.max(sr.vx, 0) + SR_ACCEL);
+    else       sr.vx = Math.max(0, sr.vx - SR_DECEL);
+    this.player.vx = sr.vx;
     const vxSign = Math.sign(this.player.vx);
 
     // Distance moved this frame (always track for total race stats)

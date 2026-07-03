@@ -364,6 +364,16 @@ const PAUSE_MENU = {
     const ctrlRows = this._assignRows(game);
     if (ctrlRows.length) body.appendChild(this._section('Controls', ctrlRows));
 
+    // Speed Run: live-tunable deceleration (× the accelerate rate). Temporary
+    // knob for dialing in the coast feel.
+    if (game.gameMode === 'speedrunner') {
+      body.appendChild(this._section('Speed Run', [
+        this._row('Deceleration',
+          this._cycle([1, 1.5, 2, 3, 4, 5], () => aws.srDecel ?? 2, v => { game._worldAdvSettings.srDecel = v; }, v => v + '× accel'),
+          'how fast you slow when not accelerating'),
+      ]));
+    }
+
     // Physics / World & Physics (normal, platformer, sandbox). Greyed if locked.
     if (game.gameMode === 'normal' || game.gameMode === 'platformer' || game.gameMode === 'sandbox') {
       const locked = !!aws.physicsLocked;
