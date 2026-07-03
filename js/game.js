@@ -12608,7 +12608,10 @@ class Game {
     const isSb       = this.gameMode === 'sandbox';
     const hasLvlSel  = (this.gameMode === 'normal'      && !!this._sandboxLoadKey) ||
                        (this.gameMode === 'platformer'  && !!this._platformerLoadKey);
-    const threeBtn   = isSb || hasLvlSel;
+    // Only Level Select needs the taller 3-button panel now. Sandbox's old
+    // "Save World" pause button was removed — saving lives on the top-right
+    // editor Save button (plus F / B quick-save), so it was redundant.
+    const threeBtn   = hasLvlSel;
 
     // Controller-assignment rows — always show P1 row; add P2 row in 2P mode
     const numCtrlPlayers = (!isSb && !this._onlineGameId)
@@ -12625,7 +12628,6 @@ class Game {
       resumeBtn: { x: bx, y: py + tabH + 88,                    w: bw, h: 44, label: '▶  Resume'      },
       menuBtn:   { x: bx, y: py + tabH + (threeBtn ? 204 : 146), w: bw, h: 44, label: '⟵  Main Menu' },
     };
-    if (isSb)      layout.saveBtn     = { x: bx, y: py + tabH + 146, w: bw, h: 44, label: '💾  Save World'   };
     if (hasLvlSel) layout.levelSelBtn = { x: bx, y: py + tabH + 146, w: bw, h: 44, label: '🗺  Level Select'  };
     return layout;
   }
