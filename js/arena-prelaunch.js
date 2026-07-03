@@ -29,6 +29,18 @@ const ARENA_PRELAUNCH = {
     this._toggle('pl-mob-difficulty-group', modeKey === 'MOB_HUNTER' || modeKey === 'COLLECT_EMERALDS');
     this._toggle('pl-waves-group',          modeKey === 'SURVIVAL_WAVES');
     this._toggle('pl-killtarget-group',     modeKey === 'DEATHMATCH');
+    this._toggle('pl-koth-scoring-group',   modeKey === 'KING_OF_HILL');
+    this._toggle('pl-capture-target-group', modeKey === 'CAPTURE_FLAG');
+    this._toggle('pl-flag-return-group',    modeKey === 'CAPTURE_FLAG');
+    this._toggle('pl-tower-hp-group',       modeKey === 'DEFEND_TOWER');
+    this._toggle('pl-tower-heal-group',     modeKey === 'DEFEND_TOWER');
+    // The random-heal sub-settings only show when mode === RANDOM.
+    const healMode = document.getElementById('pl-tower-heal-mode');
+    this._toggle('pl-tower-heal-random-group', modeKey === 'DEFEND_TOWER' && (!healMode || healMode.value === 'RANDOM'));
+    // "Disable Mobs" — offered only for modes where killing mobs isn't the point
+    // (Bug-fix pass §2.7). Hidden for Mob Hunter / Survival Waves (mobs ARE the point).
+    const mobsOptional = ['COLLECT_EMERALDS', 'KING_OF_HILL', 'DEATHMATCH', 'CAPTURE_FLAG', 'DEFEND_TOWER'].includes(modeKey);
+    this._toggle('pl-disable-mobs-group', mobsOptional);
 
     // Friendly Fire — forced on + locked for Deathmatch; optional elsewhere.
     const ff = document.getElementById('pl-friendly-fire');
@@ -36,7 +48,11 @@ const ARENA_PRELAUNCH = {
     if (ff) {
       if (modeKey === 'DEATHMATCH') { ff.checked = true; ff.disabled = true;
         if (ffNote) ffNote.textContent = 'Always on for Deathmatch.'; }
-      else { ff.disabled = false;
+      else if (modeKey === 'CAPTURE_FLAG') { ff.checked = true; ff.disabled = true;
+        if (ffNote) ffNote.textContent = 'On for CTF — but teammates never damage each other.'; }
+      else if (modeKey === 'KING_OF_HILL') { ff.disabled = false; ff.checked = true;
+        if (ffNote) ffNote.textContent = 'On by default — fight for the hill. Uncheck for a no-combat race.'; }
+      else { ff.disabled = false; ff.checked = false;
         if (ffNote) ffNote.textContent = 'Players can damage each other.'; }
     }
 
@@ -55,6 +71,14 @@ const ARENA_PRELAUNCH = {
     waves?.addEventListener('input', (e) => { const v = document.getElementById('pl-waves-val'); if (v) v.textContent = e.target.value; });
     const kt = document.getElementById('pl-killtarget');
     kt?.addEventListener('input', (e) => { const v = document.getElementById('pl-killtarget-val'); if (v) v.textContent = e.target.value; });
+    const ct = document.getElementById('pl-capture-target');
+    ct?.addEventListener('input', (e) => { const v = document.getElementById('pl-capture-target-val'); if (v) v.textContent = e.target.value; });
+    const hi = document.getElementById('pl-tower-heal-interval');
+    hi?.addEventListener('input', (e) => { const v = document.getElementById('pl-heal-interval-val'); if (v) v.textContent = e.target.value; });
+    const hm = document.getElementById('pl-tower-heal-mode');
+    hm?.addEventListener('change', (e) => this._toggle('pl-tower-heal-random-group', e.target.value === 'RANDOM'));
+    const fr = document.getElementById('pl-flag-return');
+    fr?.addEventListener('input', (e) => { const v = document.getElementById('pl-flag-return-val'); if (v) v.textContent = e.target.value; });
     document.getElementById('pl-cancel-btn')?.addEventListener('click', () => this.hide());
     document.getElementById('pl-start-btn')?.addEventListener('click', () => this._start());
   },
@@ -69,6 +93,8 @@ const ARENA_PRELAUNCH = {
       playerCount:   Math.max(1, Math.min(4, num('pl-player-count', 1))), // Phase 3B: 1-4 local
       playerHealthHp: num('pl-player-health', 6),
       disableMobDrops: chk('pl-disable-drops'), // all modes; default off
+      lives:         (() => { const v = val('pl-lives', 'unlimited'); return v === 'unlimited' ? 'unlimited' : Math.max(1, parseInt(v, 10) || 3); })(),
+      disableMobs:   chk('pl-disable-mobs'),    // suppress bot spawns (non-mob modes)
       friendlyFire:  chk('pl-friendly-fire'),   // Phase 3B PvP gate
     };
     if (this._mode === 'COLLECT_EMERALDS') {
@@ -78,9 +104,21 @@ const ARENA_PRELAUNCH = {
       cfg.mobDifficulty = val('pl-mob-difficulty', 'MEDIUM');
     } else if (this._mode === 'SURVIVAL_WAVES') {
       cfg.survivalWaveCount = num('pl-waves', 5);
+    } else if (this._mode === 'KING_OF_HILL') {
+      cfg.kothScoring = val('pl-koth-scoring', 'STICKY');
     } else if (this._mode === 'DEATHMATCH') {
       cfg.killTarget = num('pl-killtarget', 10);
       cfg.friendlyFire = true; // Deathmatch always PvP
+    } else if (this._mode === 'CAPTURE_FLAG') {
+      cfg.captureTarget = num('pl-capture-target', 3);
+      cfg.flagReturnSeconds = num('pl-flag-return', 15); // dropped-flag reset timer (§6)
+      cfg.friendlyFire = true; // CTF is PvP (team-aware; teammates never damage each other)
+    } else if (this._mode === 'DEFEND_TOWER') {
+      cfg.towerHp = num('pl-tower-hp', 9); // 3/6/9/12 (§7)
+      cfg.towerHeal = val('pl-tower-heal-mode', 'RANDOM');       // NONE | PLACED | RANDOM
+      cfg.healIntervalMin = num('pl-tower-heal-interval', 1);    // minutes between random heals
+      cfg.healLifetimeSec = num('pl-tower-heal-lifetime', 20);   // 0 = never disappears
+      cfg.friendlyFire = true; // Tower combat is PvP (team-aware when 2v2)
     }
 
     const cb = this._onStart;

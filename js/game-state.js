@@ -132,6 +132,17 @@ const GAME_STATE = {
       ? game._endCrystals.map(c => ({ col: c.col, row: c.row, destroyed: !!c.destroyed }))
       : null;
 
+    // Live mobs — the exact set alive at save time, so re-entering the world
+    // restores them (position / hp / state) instead of respawning fresh from
+    // spawn eggs. Spawn eggs still drive respawns for killed / additional mobs.
+    const liveMobs = (game.mobManager && typeof game.mobManager.serializeMobs === 'function')
+      ? game.mobManager.serializeMobs()
+      : [];
+    // Ground item drops (mob loot / broken-block drops) not yet picked up.
+    const droppedItems = (typeof game._captureDroppedItems === 'function')
+      ? game._captureDroppedItems()
+      : [];
+
     return {
       saveVersion: 2,
       savedAt: new Date().toISOString(),
@@ -150,6 +161,9 @@ const GAME_STATE = {
       // Arena objectives (Phase 3A.3)
       spawnLines: game.sandbox ? game.sandbox.placedSpawnLines.map(s => ({ ...s })) : [],
       placedHill: game.sandbox ? (game.sandbox.placedHill ? { ...game.sandbox.placedHill } : null) : null,
+      // Player spawn points (Phase 3) — where each player starts, tagged by slot 1–4.
+      playerSpawns: game.sandbox ? game.sandbox.placedSpawnPoints.map(s => ({ ...s })) : [],
+      arenaObjects: game.sandbox ? game.sandbox.placedArenaObjs.map(o => ({ ...o })) : [],
       placedItems,
       portalLinks,
       sandboxLevers,
@@ -164,6 +178,8 @@ const GAME_STATE = {
       endPortalAnchors,
       dragonState,
       crystalStates,
+      liveMobs,
+      droppedItems,
       dragonDefeated:  !!game._dragonDefeated,
       collectedDiscs:  game._collectedDiscs ? [...game._collectedDiscs] : [],
       worldAdvSettings: game._worldAdvSettings

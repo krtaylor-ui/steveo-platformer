@@ -1,0 +1,198 @@
+// Parity tests: the ARENA_RULES presets reproduce the current hardcoded modes.
+const fs = require('fs');
+const vm = require('vm');
+const path = require('path').join(__dirname, '..', 'js');
+const sandbox = { window: {}, BLOCK_SIZE: 32, PLAYER_W: 20, PLAYER_H: 52, Math, console };
+vm.createContext(sandbox);
+for (const f of ['ctf-system.js', 'tower-system.js', 'arena-rules.js', 'arena-modes.js']) {
+  vm.runInContext(fs.readFileSync(`${path}/${f}`, 'utf8'), sandbox, { filename: f });
+}
+const RULES = sandbox.window.ARENA_RULES;
+const AM = sandbox.window.ARENA_MODES;
+const TOWER = sandbox.window.TOWER_SYSTEM;
+const KEYS = sandbox.window.ARENA_STAT_KEYS;
+
+let pass = 0, fail = 0;
+const ok = (c, m) => { if (c) pass++; else { fail++; console.log('  FAIL:', m); } };
+const blank = () => { const s = {}; for (const k of KEYS) s[k] = 0; return s; };
+function mkGame(modeKey, players, extra) {
+  const g = {
+    _arenaMode: modeKey ? { key: modeKey, hold: { p1: 0, p2: 0, p3: 0, p4: 0 }, wavesCleared: 0, totalWaves: 5, killTarget: 10, captureTarget: 3 } : undefined,
+    arenaConfig: { arenaGameMode: modeKey },
+    arenaState: { stats: { p1: blank(), p2: blank(), p3: blank(), p4: blank() }, teamScores: [0, 0] },
+    _players: players,
+    activePlayers() { return this._players; },
+    _numPlayers() { return this._players.length; },
+    mobManager: { mobs: [] },
+  };
+  Object.assign(g, extra || {});
+  return g;
+}
+const P = (id, team) => ({ _ownerId: id, teamId: team ?? null, hp: 6, maxHp: 6, width: 20, height: 52, x: 0, y: 0 });
+const rs = (k) => RULES.normalize(RULES.PRESETS[k]);
+
+console.log('Scoring parity (rules preset == hardcoded ARENA_MODES):');
+// Quick Battle
+let g = mkGame(null, [P('p1')]); Object.assign(g.arenaState.stats.p1, { kills: 2, mobKills: 3, emeralds: 1 });
+ok(RULES.playerScore(rs('QUICK_BATTLE'), g, 'p1') === 6, 'QuickBattle rules=6');
+ok(AM.playerScore(g, 'p1') === 6, 'QuickBattle hardcoded=6');
+
+// Mob Hunter
+g = mkGame('MOB_HUNTER', [P('p1')]); Object.assign(g.arenaState.stats.p1, { mobKills: 4, kills: 9, emeralds: 9 });
+ok(RULES.playerScore(rs('MOB_HUNTER'), g, 'p1') === 4, 'MobHunter rules=4 (mobKills only)');
+ok(AM.playerScore(g, 'p1') === 4, 'MobHunter hardcoded=4');
+
+// Collect Emeralds
+g = mkGame('COLLECT_EMERALDS', [P('p1')]); g.arenaState.stats.p1.emeralds = 7;
+ok(RULES.playerScore(rs('COLLECT_EMERALDS'), g, 'p1') === 7, 'Emeralds rules=7');
+ok(AM.playerScore(g, 'p1') === 7, 'Emeralds hardcoded=7');
+
+// KOTH: hill scored in 10-second blocks (perHill10s). 250s → 25 blocks.
+g = mkGame('KING_OF_HILL', [P('p1')]); g._arenaMode.hold.p1 = 15000; g.arenaState.stats.p1.hillSeconds = 250;
+ok(RULES.playerScore(rs('KING_OF_HILL'), g, 'p1') === 25, 'KOTH rules = hill 10s-blocks (250s → 25)');
+ok(AM.playerScore(g, 'p1') === 25, 'KOTH hardcoded = hill 10s-blocks (250s → 25)');
+// 47s → 4 blocks (floors partial blocks)
+g = mkGame('KING_OF_HILL', [P('p1')]); g.arenaState.stats.p1.hillSeconds = 47;
+ok(RULES.playerScore(rs('KING_OF_HILL'), g, 'p1') === 4, 'hill 47s → 4 blocks (floored)');
+
+// Survival: shared wavesDefeated
+g = mkGame('SURVIVAL_WAVES', [P('p1'), P('p2')]); g._arenaMode.wavesCleared = 4;
+ok(RULES.playerScore(rs('SURVIVAL_WAVES'), g, 'p1') === 4 && RULES.playerScore(rs('SURVIVAL_WAVES'), g, 'p2') === 4, 'Survival rules=4 shared');
+ok(AM.playerScore(g, 'p1') === 4, 'Survival hardcoded=4');
+
+// Deathmatch
+g = mkGame('DEATHMATCH', [P('p1')]); Object.assign(g.arenaState.stats.p1, { kills: 3, mobKills: 9 });
+ok(RULES.playerScore(rs('DEATHMATCH'), g, 'p1') === 3, 'Deathmatch rules=3 (kills only)');
+ok(AM.playerScore(g, 'p1') === 3, 'Deathmatch hardcoded=3');
+
+// Defend the Tower: no points
+g = mkGame('DEFEND_TOWER', [P('p1')]); Object.assign(g.arenaState.stats.p1, { kills: 5, towerDamage: 8 });
+ok(RULES.playerScore(rs('DEFEND_TOWER'), g, 'p1') === 0, 'Tower rules=0 points');
+ok(AM.playerScore(g, 'p1') === 0, 'Tower hardcoded=0 points');
+
+console.log('Team aggregation (summed vs shared):');
+g = mkGame('MOB_HUNTER', [P('p1', 0), P('p2', 1), P('p3', 0)]);
+g.arenaState.stats.p1.mobKills = 2; g.arenaState.stats.p3.mobKills = 3; g.arenaState.stats.p2.mobKills = 1;
+ok(RULES.teamScore(rs('MOB_HUNTER'), g, 0) === 5, 'MobHunter team0 summed=5');
+g = mkGame('SURVIVAL_WAVES', [P('p1', 0), P('p3', 0)]); g._arenaMode.wavesCleared = 6;
+ok(RULES.teamScore(rs('SURVIVAL_WAVES'), g, 0) === 6, 'Survival team shared=6 (not 12)');
+g = mkGame('CAPTURE_FLAG', [P('p1', 0), P('p2', 1), P('p3', 0)]);
+g.arenaState.stats.p1.flagCaptures = 2; g.arenaState.stats.p3.flagCaptures = 1;
+ok(RULES.teamScore(rs('CAPTURE_FLAG'), g, 0) === 3, 'CTF team0=3 (sum of members)');
+
+console.log('End / win conditions parity:');
+// Deathmatch ends at killTarget
+g = mkGame('DEATHMATCH', [P('p1'), P('p2')]); g.arenaState.stats.p1.kills = 9;
+ok(RULES.isEnded(rs('DEATHMATCH'), g, false) === false, 'Deathmatch not ended at 9');
+g.arenaState.stats.p1.kills = 10;
+ok(RULES.isEnded(rs('DEATHMATCH'), g, false) === true, 'Deathmatch ends at 10');
+ok(RULES.winner(rs('DEATHMATCH'), g) === 'p1', 'Deathmatch winner=p1');
+
+// KOTH never ends early; only on timer (v3 behaviour)
+g = mkGame('KING_OF_HILL', [P('p1')]); g.arenaState.stats.p1.hillSeconds = 999;
+ok(RULES.isEnded(rs('KING_OF_HILL'), g, false) === false, 'KOTH does not end early');
+ok(RULES.isEnded(rs('KING_OF_HILL'), g, true) === true, 'KOTH ends on timer');
+
+// Collect Emeralds ends when all collected (structural)
+g = mkGame('COLLECT_EMERALDS', [P('p1')], { });
+sandbox.EMERALD_SYSTEM = { allRoundsComplete: () => true };
+ok(RULES.isEnded(rs('COLLECT_EMERALDS'), g, false) === true, 'Emeralds end when all collected');
+sandbox.EMERALD_SYSTEM = { allRoundsComplete: () => false };
+ok(RULES.isEnded(rs('COLLECT_EMERALDS'), g, false) === false, 'Emeralds not ended when incomplete');
+
+// Quick Battle ends when all bots dead
+g = mkGame(null, [P('p1')], { mobManager: { mobs: [{ alive: false }] } });
+ok(RULES.isEnded(rs('QUICK_BATTLE'), g, false) === true, 'QuickBattle ends when all bots dead');
+g = mkGame(null, [P('p1')], { mobManager: { mobs: [{ alive: true }] } });
+ok(RULES.isEnded(rs('QUICK_BATTLE'), g, false) === false, 'QuickBattle not ended with bots alive');
+
+// Survival ends on all-players-dead (deathEndsMatch) or survivedAllWaves
+g = mkGame('SURVIVAL_WAVES', [P('p1'), P('p2')]); g._players[0].hp = 0; g._players[1].hp = 0;
+ok(RULES.isEnded(rs('SURVIVAL_WAVES'), g, false) === true, 'Survival ends when all dead');
+g = mkGame('SURVIVAL_WAVES', [P('p1')]); g._arenaMode.wavesCleared = 5; g._arenaMode.totalWaves = 5;
+ok(RULES.isEnded(rs('SURVIVAL_WAVES'), g, false) === true, 'Survival ends when all waves cleared');
+
+// CTF ends at captureTarget team captures
+g = mkGame('CAPTURE_FLAG', [P('p1', 0), P('p2', 1)]); g.arenaState.stats.p1.flagCaptures = 3;
+ok(RULES.isEnded(rs('CAPTURE_FLAG'), g, false) === true, 'CTF ends at 3 team captures');
+
+// Defend the Tower ends when a tower destroyed; winner=destroyer
+g = mkGame('DEFEND_TOWER', [P('p1'), P('p2')]);
+TOWER.active = true; TOWER._winner = 'p2'; TOWER.towers = [{ ownerId: 'p1', hp: 0, maxHp: 9 }];
+g.arenaState.stats.p2.towersDestroyed = 1;
+ok(RULES.isEnded(rs('DEFEND_TOWER'), g, false) === true, 'Tower ends on destruction');
+ok(RULES.winner(rs('DEFEND_TOWER'), g) === 'p2', 'Tower winner=destroyer p2');
+// timeout: most tower HP wins
+TOWER._winner = null; TOWER.towers = [{ ownerId: 'p1', hp: 7, maxHp: 9 }, { ownerId: 'p2', hp: 3, maxHp: 9 }];
+ok(RULES.winner(rs('DEFEND_TOWER'), g) === 'p1', 'Tower timeout winner = most HP (p1)');
+
+console.log('Win-condition sequencing (stages):');
+const stageRs = RULES.normalize({
+  elements: { towers: true, ctf: true, hill: true },
+  stages: [
+    { combinator: 'any', conditions: [{ type: 'towersDestroyed', target: 1 }] },
+    { combinator: 'any', conditions: [{ type: 'flagsCaptured', target: 1 }] },
+    { combinator: 'any', conditions: [{ type: 'hillSecondsTotal', target: 60 }] },
+  ],
+});
+const sg = mkGame('CUSTOM', [P('p1', 0)]); sg._stageProgress = { p1: 0 };
+ok(RULES.isEnded(stageRs, sg, false) === false && sg._stageProgress.p1 === 0, 'stage 0 pending (per-player)');
+sg.arenaState.stats.p1.towersDestroyed = 1;
+ok(RULES.isEnded(stageRs, sg, false) === false && sg._stageProgress.p1 === 1, 'destroy tower → p1 advances to stage 1');
+sg.arenaState.stats.p1.flagCaptures = 1;
+ok(RULES.isEnded(stageRs, sg, false) === false && sg._stageProgress.p1 === 2, 'capture flag → p1 advances to stage 2');
+sg.arenaState.stats.p1.hillSeconds = 60;
+ok(RULES.isEnded(stageRs, sg, false) === true, 'hold hill 60s → p1 completes → match ends');
+ok(RULES.stageInfo(stageRs, sg, 'p1').total === 3, 'stageInfo reports total stages');
+// CUSTOM ruleset via rulesetForMode(cfg.customRuleset)
+const customCfg = { customRuleset: { elements: { pvp: true }, scoring: { perKill: 2 }, win: { combinator: 'any', conditions: [{ type: 'playerKills', target: 5 }] } } };
+const cr = RULES.rulesetForMode('CUSTOM', customCfg);
+const cg = mkGame('CUSTOM', [P('p1')]); cg.arenaState.stats.p1.kills = 3;
+ok(RULES.playerScore(cr, cg, 'p1') === 6, 'CUSTOM scoring weights apply (3 kills × 2 = 6)');
+ok(RULES.isEnded(cr, cg, false) === false, 'CUSTOM win not met at 3 kills');
+cg.arenaState.stats.p1.kills = 5;
+ok(RULES.isEnded(cr, cg, false) === true, 'CUSTOM win met at 5 kills');
+
+console.log('Per-condition win logic (AND / OR / NOT):');
+const lg = mkGame('CUSTOM', [P('p1')]);
+const rsL = RULES.normalize({ elements: { pvp: true, emeralds: true } });
+const G = (conds) => RULES._groupMet(rsL, lg, { conditions: conds }, 'p1');
+lg.arenaState.stats.p1.kills = 5; lg.arenaState.stats.p1.emeralds = 1;
+ok(G([{ type: 'playerKills', target: 5, logic: 'and' }, { type: 'emeraldsCollected', target: 3, logic: 'or' }]) === true, 'A OR B — A true → true');
+ok(G([{ type: 'playerKills', target: 9, logic: 'and' }, { type: 'emeraldsCollected', target: 3, logic: 'or' }]) === false, 'A OR B — both false → false');
+ok(G([{ type: 'playerKills', target: 5, logic: 'and' }, { type: 'emeraldsCollected', target: 3, logic: 'and' }]) === false, 'A AND B — B false → false');
+ok(G([{ type: 'playerKills', target: 5, logic: 'and' }, { type: 'emeraldsCollected', target: 3, logic: 'not' }]) === true, 'A AND NOT B — B false → true');
+lg.arenaState.stats.p1.emeralds = 5;
+ok(G([{ type: 'playerKills', target: 5, logic: 'and' }, { type: 'emeraldsCollected', target: 3, logic: 'not' }]) === false, 'A AND NOT B — B true → false');
+ok(G([{ type: 'playerKills', target: 9, logic: 'not' }]) === true, 'NOT A as seed — A false → true');
+
+console.log('Objective status (pause readout):');
+const osFlat = RULES.rulesetForMode('DEATHMATCH', { killTarget: 10 });
+const og = mkGame('DEATHMATCH', [P('p1')]); og.arenaState.stats.p1.kills = 4;
+let os = RULES.objectiveStatus(osFlat, og, 'p1');
+ok(os.mode === 'flat' && os.conditions[0].current === 4 && os.conditions[0].target === 10 && !os.conditions[0].met, 'flat objective status (4/10, unmet)');
+os = RULES.objectiveStatus(stageRs, sg, 'p1');
+ok(os.mode === 'stages' && os.total === 3, 'stage objective status reports steps');
+ok(RULES.objectiveStatus(RULES.rulesetForMode('MOB_HUNTER', {}), og, 'p1').mode === 'timer', 'timer objective status (no win conditions)');
+
+console.log('Per-player win + team-shared flags + tiebreak:');
+const pw = RULES.normalize({ elements: { pvp: true }, win: { combinator: 'any', conditions: [{ type: 'playerKills', target: 3 }] } });
+const pg = mkGame('CUSTOM', [P('p1'), P('p2')]);
+pg.arenaState.stats.p1.kills = 3; pg.arenaState.stats.p2.kills = 1;
+ok(RULES.playerWon(pw, pg, 'p1') === true && RULES.playerWon(pw, pg, 'p2') === false, 'per-player: p1 met their win, p2 not');
+ok(RULES.isEnded(pw, pg, false) === true && RULES.winner(pw, pg) === 'p1', 'match ends; winner = p1');
+// Team-shared flags: teammates share the team flag total.
+const tf = RULES.normalize({ elements: { ctf: true }, win: { combinator: 'any', conditions: [{ type: 'flagsCaptured', target: 2 }] } });
+const tfg = mkGame('CUSTOM', [P('p1', 0), P('p3', 0), P('p2', 1)]);
+tfg.arenaState.stats.p1.flagCaptures = 1; tfg.arenaState.stats.p3.flagCaptures = 1; // team0 total = 2
+ok(RULES.playerWon(tf, tfg, 'p1') && RULES.playerWon(tf, tfg, 'p3'), 'team-shared: both team0 players win at team total 2');
+ok(!RULES.playerWon(tf, tfg, 'p2'), 'team1 player has not won');
+// No-winner tiebreak by (partial) progress on timeout.
+const tb = RULES.normalize({ elements: { pvp: true }, win: { combinator: 'any', conditions: [{ type: 'playerKills', target: 10 }] } });
+const tbg = mkGame('CUSTOM', [P('p1'), P('p2')]);
+tbg.arenaState.stats.p1.kills = 2; tbg.arenaState.stats.p2.kills = 6;
+ok(RULES.isEnded(tb, tbg, false) === false, 'nobody reached 10 kills yet');
+ok(RULES.winner(tb, tbg) === 'p2', 'timeout tiebreak → p2 (further along: 6/10 vs 2/10)');
+
+console.log(`\n${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);

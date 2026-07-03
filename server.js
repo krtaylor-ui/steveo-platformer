@@ -216,6 +216,16 @@ setupFriendsRoutes(app);
 const setupGameSessionsRoutes = require('./server/game-sessions-routes');
 setupGameSessionsRoutes(app);
 
+// Phase 3: community browse (favorites/ratings/download) + Phase 4 stats/achievements
+const setupCommunityRoutes = require('./server/community-routes');
+setupCommunityRoutes(app);
+
+const setupStatsRoutes = require('./server/stats-routes');
+setupStatsRoutes(app);
+
+const setupCustomRulesRoutes = require('./server/custom-rules-routes');
+setupCustomRulesRoutes(app);
+
 // ============================================================
 // API ENDPOINTS (Express Routes)
 // ============================================================

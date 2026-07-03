@@ -1,21 +1,51 @@
 /* ════════════════════════════════════════════════════════════ */
+/* THEME TOKENS (Phase 3) — Modern is default; 8-bit Retro via      */
+/* <html data-theme="retro">. Managed by js/theme.js (localStorage).*/
+/* Only the UI chrome is themed — in-canvas pixel art is untouched. */
+/* ════════════════════════════════════════════════════════════ */
+:root {
+  /* Modern (default): clean dark, indigo accent, sans-serif, soft edges */
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --bg: #16181f;
+  --accent: #7c8cff;
+  --accent-2: #a06cff;
+  --border: #363a46;
+  --title-shadow: none;
+  --title-spacing: 0.5px;
+  --title-transform: none;
+  --ui-radius: 12px;
+}
+html[data-theme="retro"] {
+  /* 8-bit Retro: the original neon-monospace look */
+  --font: 'Courier New', monospace;
+  --bg: #0d0d1a;
+  --accent: #7ec8e3;
+  --accent-2: #667eea;
+  --border: #333;
+  --title-shadow: 1px 1px 0 #004466, 2px 2px 0 #002233;
+  --title-spacing: 3px;
+  --title-transform: uppercase;
+  --ui-radius: 4px;
+}
+
+/* ════════════════════════════════════════════════════════════ */
 /* AUTH SCREEN */
 /* ════════════════════════════════════════════════════════════ */
 
 #login-screen {
   position: fixed;
   inset: 0;
-  background: #0d0d1a;
+  background: var(--bg);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 2000;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font);
 }
 
 .auth-box {
   background: #111122;
-  border: 2px solid #7ec8e3;
+  border: 2px solid var(--accent);
   border-radius: 8px;
   padding: 40px;
   width: 360px;
@@ -24,12 +54,12 @@
 
 .auth-box h2 {
   text-align: center;
-  color: #7ec8e3;
+  color: var(--accent);
   font-size: 1.4rem;
   letter-spacing: 3px;
   text-transform: uppercase;
   margin-bottom: 30px;
-  text-shadow: 1px 1px 0 #004466, 2px 2px 0 #002233;
+  text-shadow: var(--title-shadow);
 }
 
 .auth-tabs {
@@ -44,7 +74,7 @@
   border: none;
   border-bottom: 2px solid transparent;
   color: #555;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font);
   font-size: 0.9rem;
   padding: 8px;
   cursor: pointer;
@@ -55,8 +85,8 @@
 }
 
 .auth-tab.active {
-  color: #7ec8e3;
-  border-bottom-color: #7ec8e3;
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 
 .auth-form {
@@ -66,11 +96,11 @@
 }
 
 .auth-form input {
-  background: #0d0d1a;
+  background: var(--bg);
   border: 1px solid #333;
   border-radius: 4px;
   color: #ccc;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font);
   font-size: 0.95rem;
   padding: 10px 12px;
   transition: border-color 0.2s;
@@ -78,7 +108,7 @@
 }
 
 .auth-form input:focus {
-  border-color: #7ec8e3;
+  border-color: var(--accent);
 }
 
 .auth-form input::placeholder {
@@ -89,10 +119,10 @@
   margin-top: 6px;
   padding: 12px;
   background: #1a1a2e;
-  border: 2px solid #7ec8e3;
+  border: 2px solid var(--accent);
   border-radius: 4px;
-  color: #7ec8e3;
-  font-family: 'Courier New', monospace;
+  color: var(--accent);
+  font-family: var(--font);
   font-size: 1rem;
   letter-spacing: 2px;
   text-transform: uppercase;
@@ -101,7 +131,7 @@
 }
 
 .auth-submit:hover {
-  background: #7ec8e3;
+  background: var(--accent);
   color: #000;
 }
 
@@ -145,7 +175,7 @@
   margin: 0 auto;
   padding: 20px;
   min-height: 100vh;
-  font-family: 'Arial', sans-serif;
+  font-family: var(--font);
   box-sizing: border-box;
 }
 
@@ -381,12 +411,26 @@
 .online-play-section {
   display: flex;
   justify-content: center;
+  gap: 32px;
   padding-bottom: 40px;
 }
 
 .online-play-button {
   text-align: center;
   color: white;
+}
+
+/* Equal-size Online Play / Community buttons (text lengths + the 🌐 emoji make
+   their content-box heights differ; pin height + line-height so both match). */
+.online-play-button .btn-large {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 260px;
+  height: 62px;
+  padding: 0 50px;
+  line-height: 1;
+  box-sizing: border-box;
 }
 
 .online-play-button p {
@@ -521,7 +565,7 @@
 .game-selection-header h2 {
   margin: 0;
   font-size: 1.8rem;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font);
 }
 
 .btn-back {
@@ -532,7 +576,7 @@
   border-radius: 6px;
   cursor: pointer;
   font-size: 1rem;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font);
   transition: background 0.2s;
 }
 
@@ -635,7 +679,7 @@
 .modal-content h3 {
   margin-top: 0;
   color: #333;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font);
 }
 
 .form-group {
@@ -726,7 +770,7 @@
   background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(4px);
   z-index: 800;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font);
   color: white;
   border-bottom: 1px solid rgba(126, 200, 227, 0.3);
   gap: 12px;
@@ -750,7 +794,7 @@
 .play-hud-title {
   font-size: 1rem;
   font-weight: bold;
-  color: #7ec8e3;
+  color: var(--accent);
   letter-spacing: 1px;
   white-space: nowrap;
   overflow: hidden;
@@ -773,7 +817,7 @@
   padding: 5px 14px;
   border-radius: 4px;
   cursor: pointer;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font);
   font-size: 0.82rem;
   letter-spacing: 0.5px;
   transition: background 0.15s;
@@ -836,7 +880,7 @@
   align-items: center;
   justify-content: center;
   z-index: 2500;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font);
   color: white;
 }
 
@@ -848,7 +892,7 @@
   width: 52px;
   height: 52px;
   border: 4px solid rgba(255, 255, 255, 0.2);
-  border-top-color: #7ec8e3;
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: loading-spin 0.85s linear infinite;
   margin: 0 auto 18px;
@@ -858,7 +902,7 @@
   margin: 0;
   font-size: 1rem;
   letter-spacing: 2px;
-  color: #7ec8e3;
+  color: var(--accent);
   text-transform: uppercase;
 }
 
@@ -879,10 +923,12 @@
 }
 
 .sandbox-container {
+  width: 100%;
   max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
   min-height: 100vh;
+  box-sizing: border-box;
 }
 
 .sandbox-header {
@@ -940,6 +986,26 @@
   text-align: center;
   grid-column: 1 / -1;
 }
+
+/* Arena selection tiles — match the dashboard game-mode cards (icon + title +
+   desc + Play), laid out in the .world-list auto-fill grid so many worlds fit. */
+.arena-tile {
+  background: white;
+  border-radius: 12px;
+  padding: 24px 18px;
+  text-align: center;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.arena-tile:hover { transform: translateY(-4px); box-shadow: 0 8px 12px rgba(0, 0, 0, 0.2); }
+.arena-tile .mode-icon { font-size: 2.6rem; margin-bottom: 2px; }
+.arena-tile h3 { margin: 0; font-size: 1.2rem; color: #333; }
+.arena-tile p { margin: 0; color: #666; font-size: 0.85rem; flex: 1 0 auto; }
+.arena-tile .btn { margin-top: 8px; }
 
 .world-list .world-card {
   padding: 20px;
@@ -1058,6 +1124,7 @@
 #arena-settings-modal,
 #arena-mode-select-modal,
 #arena-prelaunch-modal,
+#custom-rules-modal,
 #test-world-modal,
 #arena-leaderboard-modal {
   position: fixed;
@@ -1075,6 +1142,7 @@
 #arena-settings-modal .modal-content,
 #arena-mode-select-modal .modal-content,
 #arena-prelaunch-modal .modal-content,
+#custom-rules-modal .modal-content,
 #test-world-modal .modal-content,
 #arena-leaderboard-modal .modal-content {
   max-width: 500px;
@@ -1250,7 +1318,7 @@
   padding: 4px 12px;
   border-radius: 6px;
   font-size: 0.85rem;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font);
   white-space: nowrap;
 }
 
@@ -1267,6 +1335,68 @@
 }
 .btn-mute:hover { opacity: 0.7; }
 .btn-mute.muted { opacity: 0.5; }
+
+/* Custom Rules builder modal (Phase 3 v3). The modal-content is white, so text
+   needs an explicit dark colour (it would otherwise inherit the body's white). */
+#custom-rules-modal .modal-content.cr-modal { max-width: 620px; max-height: 88vh; overflow-y: auto; color: #2a2a3a; }
+.cr-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+.cr-grid .form-group { flex: 1; min-width: 120px; }
+.cr-section { margin-top: 14px; border-top: 1px solid #d8d8e0; padding-top: 10px; }
+.cr-section h4 { margin: 0 0 8px 0; font-size: 0.95rem; color: #4a4ad0; }
+.cr-checks { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+.cr-check { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #2a2a3a; cursor: pointer; }
+.cr-scoring { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+.cr-score-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.85rem; color: #2a2a3a; }
+.cr-score-row input { width: 64px; }
+.cr-guide { display: block; color: #555; margin: 4px 0 10px; font-size: 0.8rem; line-height: 1.4; }
+.cr-step { border: 1px solid #d8d8e0; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+.cr-step-head { font-weight: bold; color: #4a4ad0; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+.cr-step-cond { display: flex; justify-content: space-between; align-items: center; background: #f2f2f7; border-radius: 4px; padding: 3px 8px; margin-bottom: 4px; font-size: 0.85rem; color: #2a2a3a; }
+.cr-step-empty { color: #888; font-size: 0.8rem; font-style: italic; margin-bottom: 6px; }
+.cr-step-add { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.cr-step-add .cr-add-logic { width: 68px; }
+.cr-step-add .cr-add-type { flex: 1; min-width: 130px; }
+.cr-step-add .cr-add-target { width: 64px; }
+.cr-warn { color: #8a6d00; background: #fff6d8; border: 1px solid #e0c060; border-radius: 4px; padding: 6px 8px; margin-top: 6px; font-size: 0.78rem; line-height: 1.35; }
+.cr-recent { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.cr-config-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.cr-config-row select { flex: 1; min-width: 140px; }
+/* The shared .btn-small is white-on-white on this light modal — give the
+   builder's small buttons a visible style. */
+#custom-rules-modal .btn-small { background: #4a4ad0; color: #fff; border: none; }
+#custom-rules-modal .btn-small:hover { background: #3a3ac0; }
+#custom-rules-modal .cr-step-cond .btn-small,
+#custom-rules-modal .cr-step-head .btn-small { background: #c0392b; padding: 2px 8px; }
+#custom-rules-modal .cr-step-cond .btn-small:hover,
+#custom-rules-modal .cr-step-head .btn-small:hover { background: #a52f22; }
+
+/* Build-version badge (dashboard header) — subtle, so you can verify the build. */
+.app-version {
+  font-family: var(--font);
+  font-size: 0.72rem;
+  opacity: 0.75;
+  padding: 2px 8px;
+  border: 1px solid var(--border, #363a46);
+  border-radius: var(--ui-radius, 6px);
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+}
+
+/* Theme switch toggle — distinct from the music mute button so it does not
+   read as a second mute control (and is not swept up by the mute handler). */
+.theme-toggle-btn {
+  background: var(--accent, #667eea);
+  border: none;
+  color: #fff;
+  font-size: 1.1rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: var(--ui-radius, 6px);
+  transition: filter 0.2s, transform 0.1s;
+}
+.theme-toggle-btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+.theme-toggle-btn:active { transform: translateY(0); }
 
 /* Game config startup splash */
 #game-config-startup {
@@ -1337,7 +1467,7 @@
   padding: 20px;
   min-height: 100vh;
   box-sizing: border-box;
-  font-family: 'Arial', sans-serif;
+  font-family: var(--font);
 }
 
 .online-header {
@@ -1485,19 +1615,19 @@
 #reset-password-screen {
   position: fixed;
   inset: 0;
-  background: #0d0d1a;
+  background: var(--bg);
   display: none;               /* toggled to flex when a recovery link opens */
   align-items: center;
   justify-content: center;
   z-index: 2100;               /* above the login screen */
-  font-family: 'Courier New', monospace;
+  font-family: var(--font);
 }
 
 /* Link-styled buttons inside the auth box (Forgot password / Back). */
 .auth-link {
   background: none;
   border: none;
-  color: #7ec8e3;
+  color: var(--accent);
   font-family: inherit;
   font-size: 0.85rem;
   cursor: pointer;
@@ -1521,3 +1651,172 @@
   min-height: 1.1em;
   margin: 4px 0 0;
 }
+
+/* ════════════════════════════════════════════════════════════ */
+/* COMMUNITY BROWSE (Phase 3) — themed via tokens                 */
+/* ════════════════════════════════════════════════════════════ */
+#community-screen {
+  position: fixed; inset: 0; overflow-y: auto; z-index: 1500;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  font-family: var(--font); color: #fff;
+}
+.community-container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+.community-header { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+.community-header h2 { flex: 1; margin: 0; }
+.community-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.community-tab {
+  background: rgba(0,0,0,0.25); color: #fff; border: 1px solid rgba(255,255,255,0.25);
+  border-radius: var(--ui-radius); padding: 8px 16px; cursor: pointer; font-family: var(--font);
+}
+.community-tab.active { background: var(--accent); color: #101018; border-color: var(--accent); font-weight: bold; }
+.community-tab-content { display: none; }
+.community-tab-content.active { display: block; }
+.community-filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.community-filters input, .community-filters select {
+  padding: 8px 10px; border-radius: var(--ui-radius); border: 1px solid var(--border);
+  background: rgba(0,0,0,0.3); color: #fff; font-family: var(--font);
+}
+.community-filters input { flex: 1; min-width: 160px; }
+.community-status { text-align: center; padding: 14px; opacity: 0.85; }
+.community-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+.community-card {
+  background: rgba(255,255,255,0.96); color: #222; border-radius: var(--ui-radius);
+  padding: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); display: flex; flex-direction: column; gap: 6px;
+}
+.cc-title { font-weight: bold; font-size: 1.05rem; }
+.cc-meta { font-size: 0.78rem; color: #666; }
+.cc-desc { font-size: 0.82rem; color: #444; max-height: 3.2em; overflow: hidden; }
+.cc-stats { font-size: 0.85rem; color: #555; }
+.cc-rate { font-size: 0.8rem; color: #666; }
+.rating-display .star { color: #ddd; } .rating-display .star.on { color: #f5b301; }
+.rate-star { color: #ccc; cursor: pointer; font-size: 1.1rem; } .rate-star.on { color: #f5b301; }
+.rate-star:hover { color: #f5b301; }
+.cc-actions { display: flex; gap: 8px; margin-top: 6px; }
+.cc-actions .btn { flex: 1; }
+.cc-fav.faved { background: #f5b301; color: #101018; }
+.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+.stat-cell { background: rgba(0,0,0,0.28); border-radius: var(--ui-radius); padding: 16px; text-align: center; }
+.stat-num { font-size: 1.8rem; font-weight: bold; color: var(--accent); }
+.stat-label { font-size: 0.8rem; opacity: 0.85; }
+.ach-head { margin: 10px 0; }
+.ach-list { display: flex; flex-direction: column; gap: 8px; }
+.ach-row { display: flex; align-items: center; gap: 12px; background: rgba(0,0,0,0.25); border-radius: var(--ui-radius); padding: 10px 14px; }
+.ach-row.locked { opacity: 0.5; }
+.ach-row.unlocked { border-left: 3px solid #f5b301; }
+.ach-icon { font-size: 1.4rem; }
+
+/* ════════════════════════════════════════════════════════════ */
+/* RETRO THEME — full pixel-art skin (emulates the old canvas-rendered menus).   */
+/* Scoped to html[data-theme="retro"]; the Modern (clean) theme is untouched.    */
+/* Chunky borders, no radius, monospace, neon-cyan on dark, hard offset shadows. */
+/* ════════════════════════════════════════════════════════════ */
+html[data-theme="retro"] { --ui-radius: 0; }
+
+/* Panels / cards → dark pixel panels with a hard drop shadow. */
+html[data-theme="retro"] .modal-content,
+html[data-theme="retro"] .auth-box,
+html[data-theme="retro"] .arena-tile,
+html[data-theme="retro"] .game-mode-card,
+html[data-theme="retro"] .sandbox-feature-card,
+html[data-theme="retro"] .game-slot,
+html[data-theme="retro"] .community-card,
+html[data-theme="retro"] .world-card,
+html[data-theme="retro"] .cr-step {
+  background: #10102a !important;
+  color: #cfe8f2;
+  border: 3px solid #2f6f8f !important;
+  border-radius: 0 !important;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.6);
+}
+
+/* Headings — uppercase neon with a pixel shadow. */
+html[data-theme="retro"] h1,
+html[data-theme="retro"] h2,
+html[data-theme="retro"] h3,
+html[data-theme="retro"] h4 {
+  font-family: 'Courier New', monospace;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #7ec8e3;
+  text-shadow: 2px 2px 0 #002233;
+}
+
+/* Force readable light text on the now-dark panels (clean theme used #333/#666). */
+html[data-theme="retro"] .arena-tile p,
+html[data-theme="retro"] .game-mode-card p,
+html[data-theme="retro"] .world-card p,
+html[data-theme="retro"] .sandbox-feature-card p,
+html[data-theme="retro"] .community-card .cc-desc,
+html[data-theme="retro"] .form-group label,
+html[data-theme="retro"] .cr-check,
+html[data-theme="retro"] .cr-score-row,
+html[data-theme="retro"] .cr-step-cond,
+html[data-theme="retro"] .slot-number,
+html[data-theme="retro"] .empty-text { color: #a9d3e6; }
+html[data-theme="retro"] .arena-tile h3,
+html[data-theme="retro"] .game-mode-card h3,
+html[data-theme="retro"] .world-card h3,
+html[data-theme="retro"] .cr-section h4,
+html[data-theme="retro"] .cr-step-head,
+html[data-theme="retro"] .cr-step-tag { color: #7ec8e3; }
+html[data-theme="retro"] .cr-guide,
+html[data-theme="retro"] #cr-win-hint { color: #7fa8ba; }
+html[data-theme="retro"] .cr-step-cond { background: #0a0a1e; border-radius: 0; }
+
+/* Buttons — blocky, monospace, uppercase, hard shadow; hover inverts. */
+html[data-theme="retro"] .btn,
+html[data-theme="retro"] .btn-primary,
+html[data-theme="retro"] .btn-secondary,
+html[data-theme="retro"] .btn-small,
+html[data-theme="retro"] .btn-large,
+html[data-theme="retro"] .btn-back,
+html[data-theme="retro"] .auth-submit,
+html[data-theme="retro"] #custom-rules-modal .btn-small {
+  background: #0d1b2e !important;
+  color: #7ec8e3 !important;
+  border: 2px solid #7ec8e3 !important;
+  border-radius: 0 !important;
+  font-family: 'Courier New', monospace;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.5);
+  transition: none;
+}
+html[data-theme="retro"] .btn:hover,
+html[data-theme="retro"] .btn-primary:hover,
+html[data-theme="retro"] .btn-secondary:hover,
+html[data-theme="retro"] .btn-small:hover,
+html[data-theme="retro"] .btn-large:hover,
+html[data-theme="retro"] .auth-submit:hover {
+  background: #7ec8e3 !important;
+  color: #06121e !important;
+  transform: none;
+}
+html[data-theme="retro"] .btn:active,
+html[data-theme="retro"] .btn-primary:active,
+html[data-theme="retro"] .btn-large:active { box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5); transform: translate(2px, 2px); }
+
+/* Inputs / selects → dark blocky fields. */
+html[data-theme="retro"] input,
+html[data-theme="retro"] select,
+html[data-theme="retro"] textarea {
+  background: #0a0a1e !important;
+  color: #cfe8f2 !important;
+  border: 2px solid #2f6f8f !important;
+  border-radius: 0 !important;
+  font-family: 'Courier New', monospace;
+}
+
+/* Tabs (auth / community) → blocky, active = neon underline. */
+html[data-theme="retro"] .auth-tab,
+html[data-theme="retro"] .community-tab {
+  background: #0d1b2e; color: #7fa8ba; border: 2px solid #2f6f8f; border-radius: 0;
+  font-family: 'Courier New', monospace; text-transform: uppercase;
+}
+html[data-theme="retro"] .auth-tab.active,
+html[data-theme="retro"] .community-tab.active { background: #10203a; color: #7ec8e3; border-color: #7ec8e3; }
+
+/* Dashboard cards keep their tile grid; the Custom Rules white modal + version
+   badge already inherit the panel/button rules above. Section dividers → pixel. */
+html[data-theme="retro"] .cr-section { border-top: 2px solid #2f6f8f; }
+html[data-theme="retro"] .app-version { border-radius: 0; border: 1px solid #2f6f8f; }

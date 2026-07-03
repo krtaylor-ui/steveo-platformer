@@ -646,7 +646,7 @@ class Arrow {
       if (!p || p.hp <= 0) continue;
       if (this.x > p.x && this.x < p.x + p.width &&
           this.y > p.y && this.y < p.y + p.height) {
-        if (p.crouching && p.hasShield) {
+        if (p.crouching && p.hasShield && !(typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.isCarrying(p))) {
           // Shield deflects — reverse direction, now acts as player arrow
           this.vx = -this.vx;
           this.isPlayerArrow = true;
@@ -999,7 +999,7 @@ class BlazeShot {
     if (!this.deflected &&
         this.x > player.x && this.x < player.x + player.width &&
         this.y > player.y && this.y < player.y + player.height) {
-      if (player.crouching && player.hasShield) {
+      if (player.crouching && player.hasShield && !(typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.isCarrying(player))) {
         // Shield deflects — bounce back
         this.vx       = -this.vx;
         this.vy       = -this.vy * 0.5;
@@ -1525,6 +1525,7 @@ class MobManager {
   // to host so the SAME mobs (type/position/hp/id) persist and keep simulating,
   // rather than despawning and respawning fresh under the new host.
   adoptSerializedMobs(snapshots) {
+    let maxId = 0;
     for (const m of snapshots || []) {
       if (!m || m.alive === false) continue;
       const mob = this._createMob(m.type, m.x, m.y);
@@ -1532,12 +1533,17 @@ class MobManager {
       mob.x = m.x; mob.y = m.y;
       if (m.hp    != null)        mob.hp    = m.hp;
       if (m.maxHp != null)        mob.maxHp = m.maxHp;
-      if (m.id    != null)        mob.id    = m.id;
+      if (m.id    != null)        { mob.id = m.id; maxId = Math.max(maxId, m.id); }
       if (m.flipped !== undefined) mob.facing = m.flipped ? 1 : -1;
+      if (m.state)                 mob.state = m.state;
+      if (m.walkTimer   != null)   mob.walkTimer   = m.walkTimer;
+      if (m.hitCooldown != null)   mob.hitCooldown = m.hitCooldown;
       if (m.fusing  !== undefined) mob.fusing = m.fusing;
       if (m.fuseTimer != null)     mob.fuseTimer = m.fuseTimer;
       this.mobs.push(mob);
     }
+    // Keep the id counter ahead of any restored ids so later spawns stay unique.
+    if (maxId > Mob._nextId) Mob._nextId = maxId;
   }
 
   addPlayerArrow(x, y, vx, vy, damage, owner = 'p1') {
@@ -1633,6 +1639,10 @@ class MobManager {
     // damage any OTHER player (owner-tagged 'p1'/'p2'/...). OFF by default so
     // co-op is unaffected. Tagged list built once; carries forward to N players.
     const pvpTargets = this.pvpEnabled ? this._pvpPlayerList(allPlayers) : null;
+    // Team play (CTF, Phase 3C): map ownerId → teamId so arrows never hit a teammate.
+    // teamId is null outside team modes, so this is a no-op for FFA Deathmatch/KotH.
+    const teamOf = {};
+    if (pvpTargets) for (const [id, p] of pvpTargets) teamOf[id] = p ? p.teamId : null;
     for (const pa of this.playerArrows) {
       pa.update(player, level);
       if (!pa.alive) continue;
@@ -1653,9 +1663,11 @@ class MobManager {
       if (pa.alive && pvpTargets) {
         for (const [id, p] of pvpTargets) {
           if (!p || p.hp <= 0 || id === pa.owner) continue;
+          // Friendly fire is always off between teammates in team modes (CTF).
+          if (p.teamId != null && teamOf[pa.owner] != null && p.teamId === teamOf[pa.owner]) continue;
           if (pa.x > p.x && pa.x < p.x + p.width &&
               pa.y > p.y && pa.y < p.y + p.height) {
-            if (p.crouching && p.hasShield) {
+            if (p.crouching && p.hasShield && !(typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.isCarrying(p))) {
               pa.vx = -pa.vx;   // shield deflect — arrow now belongs to nobody
               pa.owner = null;  // so it can even strike the original shooter
             } else {
@@ -1791,6 +1803,19 @@ class MobManager {
       this.droppedItems.push(new ItemDrop(x, y, itemKey, amount, pickupDelay));
     }
     if (items.length > 0 && this.dropCallback) this.dropCallback(items);
+  }
+
+  // Restore previously-saved ground drops without the pickup/sound side-effects
+  // of dropItems() — used when re-entering a Normal-mode world.
+  restoreDroppedItems(items) {
+    if (!Array.isArray(items)) return;
+    for (const it of items) {
+      if (!it || typeof it.x !== 'number' || typeof it.y !== 'number' || !it.itemKey) continue;
+      const drop = new ItemDrop(it.x, it.y, it.itemKey, it.amount || 1, 0);
+      drop.vx = 0; drop.vy = 0;
+      if (typeof it.life === 'number' && it.life > 0) drop.life = it.life;
+      this.droppedItems.push(drop);
+    }
   }
 
   addPlayerDamageNum(player, amount) {

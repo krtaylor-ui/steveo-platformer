@@ -79,11 +79,12 @@ class Player {
 
   get isDead()       { return this.hp <= 0; }
 
-  // Derived from selectedSlot: slot 0=pickaxe, 1=sword, 2=bow (if crafted), else 'item'
+  // Derived from selectedSlot: slot 0=sword, 1=bow (if crafted), else 'item'.
+  // The pickaxe is NOT a hotbar slot — mining is always-active (contextual) and
+  // auto-uses the best owned pickaxe; see Game._miningEnabled / the HUD badge.
   get weaponMode() {
-    if (this.selectedSlot === 0) return 'pickaxe';
-    if (this.selectedSlot === 1) return 'sword';
-    if (this.selectedSlot === 2) return this.bow ? 'bow' : 'item';
+    if (this.selectedSlot === 0) return 'sword';
+    if (this.selectedSlot === 1) return this.bow ? 'bow' : 'item';
     return 'item';
   }
 
@@ -445,8 +446,8 @@ class Player {
       ? blockType : null;
     if (newOre !== null) this.discoveredOres.add(blockType);
 
-    // Slots 0-2 are reserved for tools (pickaxe/sword/bow), slot 3 for apples.
-    // All other items go to slots 4-8 then inventory.
+    // Hotbar layout after the pickaxe removal: slot 0 = sword, 1 = bow, 2 = apple
+    // (reserved food), 3-8 = free inventory. (Was: 0-2 tools, 3 apple, 4-8 free.)
 
     // Platformer mode: route priority items to their dedicated hotbar slot first.
     if (this.platformerSlots) {
@@ -459,23 +460,23 @@ class Player {
       }
     }
 
-    // Apples: prefer slot 3
+    // Apples: prefer slot 2 (the reserved food slot after sword+bow).
     if (blockType === BLOCK.APPLE) {
-      if (this.hotbar[3]?.type === BLOCK.APPLE) { this.hotbar[3].count++; return newOre; }
-      if (!this.hotbar[3]) { this.hotbar[3] = { type: blockType, count: 1 }; return newOre; }
-      // Slot 3 occupied by something else — fall through to free slots
+      if (this.hotbar[2]?.type === BLOCK.APPLE) { this.hotbar[2].count++; return newOre; }
+      if (!this.hotbar[2]) { this.hotbar[2] = { type: blockType, count: 1 }; return newOre; }
+      // Slot 2 occupied by something else — fall through to free slots
     }
 
-    // 1. Merge into existing stack in free hotbar slots (4-8)
-    for (let i = 4; i < 9; i++) {
+    // 1. Merge into existing stack in free hotbar slots (3-8)
+    for (let i = 3; i < 9; i++) {
       if (this.hotbar[i]?.type === blockType) { this.hotbar[i].count++; return newOre; }
     }
     // 2. Merge into existing inventory stack
     for (let i = 0; i < 36; i++) {
       if (this.inventory[i]?.type === blockType) { this.inventory[i].count++; return newOre; }
     }
-    // 3. First empty free hotbar slot (4-8)
-    for (let i = 4; i < 9; i++) {
+    // 3. First empty free hotbar slot (3-8)
+    for (let i = 3; i < 9; i++) {
       if (!this.hotbar[i]) { this.hotbar[i] = { type: blockType, count: 1 }; return newOre; }
     }
     // 4. First empty inventory slot
@@ -644,7 +645,7 @@ class Player {
     // ── Colors ──────────────────────────────────────────────
     const SKIN    = '#F4C78A';
     const HAIR    = '#7D4E1A';
-    const SHIRT   = '#4A8FD4';
+    const SHIRT   = this.shirtColor || '#4A8FD4'; // CTF team shirt colour (§6)
     const PANTS   = '#2C5F8A';
     const SHOE    = '#3D1C02';
     const SHADOW  = 'rgba(0,0,0,0.4)';
@@ -750,7 +751,7 @@ class Player {
   _drawCrouch(ctx, sx, sy) {
     const SKIN  = '#F4C78A';
     const HAIR  = '#7D4E1A';
-    const SHIRT = '#4A8FD4';
+    const SHIRT = this.shirtColor || '#4A8FD4'; // CTF team shirt colour (§6)
     const PANTS = '#2C5F8A';
     const SHOE  = '#3D1C02';
 
@@ -826,7 +827,9 @@ class Player {
     }
     ctx.rotate(angle);
 
-    if (this.weapon === 'item') {
+    if (this._mining) {
+      this._drawPickaxeHead(ctx); // always-active mining shows the pickaxe in-hand
+    } else if (this.weapon === 'item') {
       ctx.restore();
       return; // nothing to draw for plain item slots
     } else if (this.weapon === 'sword') {

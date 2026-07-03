@@ -201,6 +201,12 @@ class Game {
 
     // Phase 3A.1 — Arena mode init (must precede _buildLevel, which branches on it)
     this.isArena = (this.gameMode === 'arena');
+    // Mining is a reusable capability, not tied to a hotbar slot. Enabled in
+    // Normal mode; a future Arena game type can flip this on (e.g. via a ruleset
+    // element). When enabled, holding the mouse on a mineable block mines it with
+    // the player's best owned pickaxe (no manual select) — see the mining gate +
+    // the pickaxe-tier HUD badge (Normal only).
+    this._miningEnabled = (this.gameMode === 'normal');
     // New ARN sandbox worlds (no grid yet) open in the editor with the starter layout.
     this._arenaStarter = !!options.arenaStarter;
     // True when the SANDBOX editor is editing an arena world (fresh or with a grid),
@@ -215,8 +221,16 @@ class Game {
       );
       this.arenaRespawnFrames = Math.max(1, Math.round(this.arenaConfig.respawnDelay / (1000 / 60)));
       this.arenaState  = { phase: 'countdown', countdownStart: null, gameStartTime: null, endTime: null,
-        // Phase 3B — scores keyed p1..p4 (present players filled in _setupArena).
-        scores: { p1: 0, p2: 0, p3: 0, p4: 0 },
+        // Per-player individual stats — always tracked; the per-mode SCORE is
+        // derived from these by ARENA_MODES.playerScore (see arena-modes.js).
+        stats: (typeof ARENA_RULES !== 'undefined')
+          ? { p1: ARENA_RULES.blankStat(), p2: ARENA_RULES.blankStat(), p3: ARENA_RULES.blankStat(), p4: ARENA_RULES.blankStat() }
+          : {
+              p1: { kills: 0, deaths: 0, mobKills: 0, emeralds: 0, hillSeconds: 0, hillStreak: 0, flagCaptures: 0, towerDamage: 0, towersDestroyed: 0 },
+              p2: { kills: 0, deaths: 0, mobKills: 0, emeralds: 0, hillSeconds: 0, hillStreak: 0, flagCaptures: 0, towerDamage: 0, towersDestroyed: 0 },
+              p3: { kills: 0, deaths: 0, mobKills: 0, emeralds: 0, hillSeconds: 0, hillStreak: 0, flagCaptures: 0, towerDamage: 0, towersDestroyed: 0 },
+              p4: { kills: 0, deaths: 0, mobKills: 0, emeralds: 0, hillSeconds: 0, hillStreak: 0, flagCaptures: 0, towerDamage: 0, towersDestroyed: 0 },
+            },
         // Reserved for Phase 3C teams (no logic yet).
         teamsEnabled: false, teamScores: { A: 0, B: 0 } };
       this._arenaSpawns = { p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, p3: { x: 0, y: 0 }, p4: { x: 0, y: 0 } };
@@ -685,10 +699,22 @@ class Game {
     // Player spawn positions (pixels). Built-in map carries explicit spawns;
     // otherwise the level default (P1) + evenly-spaced columns for P2-P4.
     const spawnKeys = ['p1', 'p2', 'p3', 'p4'];
+    // Editor-placed player spawn points (Phase 3), sorted by designer slot 1..4.
+    // These take priority over the auto-spread fallback so designers control starts.
+    const placedSpawns = (this._arenaTemplateData && Array.isArray(this._arenaTemplateData.playerSpawns))
+      ? this._arenaTemplateData.playerSpawns
+          .filter(s => s && typeof s.col === 'number' && typeof s.row === 'number')
+          .slice()
+          .sort((a, b) => (a.slot || 1) - (b.slot || 1))
+      : [];
     for (let i = 0; i < 4; i++) {
       const ms = m && m.playerSpawns && m.playerSpawns[i];
+      // Prefer the placed point tagged for this player number; else the i-th by slot order.
+      const placed = placedSpawns.find(s => (s.slot || 1) === i + 1) || placedSpawns[i];
       if (ms) {
         this._arenaSpawns[spawnKeys[i]] = { x: ms.col * BLOCK_SIZE, y: ms.row * BLOCK_SIZE };
+      } else if (placed) {
+        this._arenaSpawns[spawnKeys[i]] = { x: placed.col * BLOCK_SIZE, y: placed.row * BLOCK_SIZE };
       } else if (i === 0) {
         this._arenaSpawns.p1 = { x: this.level.spawnX, y: this.level.spawnY };
       } else {
@@ -730,12 +756,40 @@ class Game {
     // Disable mob drops when requested (pre-launch toggle, all modes; default off).
     this.mobManager.dropsDisabled = !!this.arenaConfig.disableMobDrops;
 
+    // Player lives (pre-launch / Custom Rules): 0 = unlimited; else N respawns.
+    const _lv = this.arenaConfig.lives;
+    this._arenaLives = (_lv && _lv !== 'unlimited') ? Math.max(1, _lv | 0) : 0;
+    this._arenaStartPlayers = this.activePlayers().length;
+    if (this._arenaLives > 0) this.activePlayers().forEach(p => { p._arenaLives = this._arenaLives; });
+
     // Enemies:
     //  • SURVIVAL_WAVES → ignore spawn eggs + default bots entirely; ARENA_MODES
     //    spawns escalating waves from the designed spawn-lines.
     //  • else if spawn eggs present → per-spawner frequency/cap on-screen spawning.
     //  • else → default Skeleton bots (Quick Play / built-in map / back-compat).
-    if (this.arenaConfig.arenaGameMode === 'SURVIVAL_WAVES') {
+    // Custom Rules: mob spawning is driven by the ruleset's three discrete mob
+    // elements — bots (ambient), spawnEggs (designer spawners), waveSpawns
+    // (structural waves). Presets keep their existing behaviour below (unchanged).
+    const _cel = (this.arenaConfig.arenaGameMode === 'CUSTOM' && typeof ARENA_RULES !== 'undefined')
+      ? ARENA_RULES.rulesetForMode('CUSTOM', this.arenaConfig).elements : null;
+    if (_cel) {
+      if (this.arenaConfig.disableMobs || _cel.waveSpawns || (!_cel.bots && !_cel.spawnEggs)) {
+        this.mobManager.spawnPoints = []; this.mobManager.arenaMode = false; // waves spawn via ARENA_MODES
+      } else if (_cel.spawnEggs && this.mobManager.spawnPoints.length > 0) {
+        this.mobManager.arenaMode = true; // per-spawner egg spawning
+      } else if (_cel.bots) {
+        const botCols = (m && m.botSpawns?.length) ? m.botSpawns.map(b => b.col) : this._arenaBotColumns(W, this.arenaConfig.botCount);
+        for (const col of botCols.slice(0, this.arenaConfig.botCount)) {
+          const footY = this._arenaFloorY(col, H);
+          const bot = this.mobManager._createMob('Skeleton', col * BLOCK_SIZE, footY);
+          if (bot) this.mobManager.mobs.push(bot);
+        }
+      } else { this.mobManager.spawnPoints = []; this.mobManager.arenaMode = false; }
+    } else if (this.arenaConfig.disableMobs) {
+      // Bug-fix pass §2.7: "Disable Mobs" — no bots spawn in this match.
+      this.mobManager.spawnPoints = [];
+      this.mobManager.arenaMode = false;
+    } else if (this.arenaConfig.arenaGameMode === 'SURVIVAL_WAVES') {
       this.mobManager.spawnPoints = [];
       this.mobManager.arenaMode = false;
     } else if (this.mobManager.spawnPoints.length > 0) {
@@ -752,19 +806,23 @@ class Game {
       }
     }
 
-    // Kill attribution → arena scores.
+    // Kill attribution → per-player individual stats. Mob kills are always
+    // tracked as a stat; whether they contribute to a mode's SCORE is decided by
+    // ARENA_MODES.playerScore (e.g. Deathmatch score = player kills only).
     this.mobManager.onKill = (owner) => {
-      if (this.arenaState.scores[owner] != null) this.arenaState.scores[owner]++;
+      const st = this.arenaState.stats[owner]; if (st) st.mobKills++;
     };
 
     // Phase 3B PvP spike — friendly-fire gates player→player arrow damage.
     // Defaults OFF (co-op unaffected); WI6 will expose the toggle in pre-launch.
     // Deathmatch requires PvP; otherwise the Friendly-Fire toggle gates it.
     this._pvpEnabled = !!(this.arenaConfig &&
-      (this.arenaConfig.friendlyFire || this.arenaConfig.arenaGameMode === 'DEATHMATCH'));
+      (this.arenaConfig.friendlyFire || this.arenaConfig.arenaGameMode === 'DEATHMATCH'
+       || this.arenaConfig.arenaGameMode === 'CAPTURE_FLAG'
+       || (_cel && _cel.pvp)));
     this.mobManager.pvpEnabled = this._pvpEnabled;
     this.mobManager.onPlayerKill = (killer /*, victimId */) => {
-      if (this.arenaState.scores[killer] != null) this.arenaState.scores[killer]++;
+      const st = this.arenaState.stats[killer]; if (st) st.kills++;
     };
 
     // Camera (Phase 3A.3): single-screen = fixed, centered (neutralize follow);
@@ -811,6 +869,26 @@ class Game {
     if (typeof ARENA_MODES !== 'undefined' && this.arenaConfig.arenaGameMode && ARENA_MODES.initMode) {
       ARENA_MODES.initMode(this.arenaConfig.arenaGameMode, this);
     }
+    // Arena objects (Phase 3 v3): derive CTF bases / towers / heal items from the
+    // designer-placed markers (arena template, else the live sandbox) so CTF_SYSTEM
+    // and TOWER_SYSTEM can anchor to them (they fall back to auto-placement if none).
+    {
+      const objs = (this._arenaTemplateData && Array.isArray(this._arenaTemplateData.arenaObjects))
+        ? this._arenaTemplateData.arenaObjects
+        : ((this.sandbox && Array.isArray(this.sandbox.placedArenaObjs)) ? this.sandbox.placedArenaObjs : []);
+      const cx = (o) => (o.wx != null) ? o.wx : (o.col + 0.5) * BLOCK_SIZE;
+      const cy = (o) => (o.wy != null) ? o.wy : (o.row + 0.5) * BLOCK_SIZE;
+      const bases = objs.filter(o => o.type === 'base');
+      const towers = objs.filter(o => o.type === 'tower');
+      const heals = objs.filter(o => o.type === 'heal');
+      this._ctfBases   = bases.length  ? bases.map(o => ({ team: (o.team === 1) ? 1 : 0, x: cx(o), y: cy(o) })) : null;
+      this._arenaTowers = towers.length ? towers.map(o => ({ ownerId: 'p' + (o.slot || 1), slot: o.slot || 1, col: o.col, row: o.row })) : null;
+      this._healItems  = heals.map(o => ({ wx: cx(o), wy: cy(o) }));
+    }
+    // Capture the Flag (Phase 3C) — assigns teams + flag bases when mode is CTF.
+    if (typeof CTF_SYSTEM !== 'undefined') CTF_SYSTEM.init(this);
+    // Defend the Tower (Phase 3 v3) — one Tower per player at their spawn.
+    if (typeof TOWER_SYSTEM !== 'undefined') TOWER_SYSTEM.init(this);
   }
 
   // Per-running-frame: emerald + power-up pickups for each player, then tick
@@ -819,13 +897,15 @@ class Game {
     const award = (p, who) => {
       if (!p) return;
       if (typeof EMERALD_SYSTEM !== 'undefined') {
-        EMERALD_SYSTEM.checkPickup(p, () => { if (this.arenaState.scores[who] != null) this.arenaState.scores[who]++; });
+        EMERALD_SYSTEM.checkPickup(p, () => { const st = this.arenaState.stats[who]; if (st) st.emeralds++; });
       }
       if (typeof POWERUP_SYSTEM !== 'undefined') POWERUP_SYSTEM.checkPickup(p);
     };
-    award(this.player, 'p1');
-    if (this.player2) award(this.player2, 'p2');
+    // Award all active players (Phase 3: P3/P4 previously missed emerald pickups).
+    this.activePlayers().forEach((p) => award(p, p._ownerId || 'p1'));
     if (typeof POWERUP_SYSTEM !== 'undefined') POWERUP_SYSTEM.update(this);
+    if (typeof CTF_SYSTEM !== 'undefined') CTF_SYSTEM.update(this);
+    if (typeof TOWER_SYSTEM !== 'undefined') TOWER_SYSTEM.update(this);
   }
 
   // Evenly spread N bot columns across the interior (avoiding the side walls).
@@ -1041,11 +1121,16 @@ class Game {
   _drawArenaWorldOverlay(ctx) {
     if (typeof EMERALD_SYSTEM !== 'undefined' && EMERALD_SYSTEM.draw) EMERALD_SYSTEM.draw(ctx, this.camera, this.frameCount);
     if (typeof POWERUP_SYSTEM !== 'undefined' && POWERUP_SYSTEM.draw) POWERUP_SYSTEM.draw(ctx, this.camera, this.frameCount);
+    if (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.draw) CTF_SYSTEM.draw(ctx, this.camera, this.frameCount);
+    if (typeof TOWER_SYSTEM !== 'undefined' && TOWER_SYSTEM.draw) TOWER_SYSTEM.draw(ctx, this.camera, this.frameCount);
     // King-of-the-Hill platform — tinted green while held, gold otherwise (Phase 3A.3).
     if (this._arenaHill && this._arenaMode && this._arenaMode.key === 'KING_OF_HILL' && typeof _drawHillPlatform === 'function') {
-      // Hill tinted by its sticky owner: P1 blue, P2 red, unclaimed gold.
+      // Hill tinted by its owner: P1 blue, P2 red, P3 green, P4 yellow; unowned = yellow.
+      // v3: no white "contested" tint — Sticky keeps the owner's colour while contested
+      // (owner persists in state); Sole clears the owner when contested → yellow.
       const owner = (typeof ARENA_MODES !== 'undefined' && ARENA_MODES.hillOwner) ? ARENA_MODES.hillOwner(this) : null;
-      const color = owner === 'p1' ? '#42a0ff' : owner === 'p2' ? '#ff5a5a' : '#f1c40f';
+      const ownerColors = { p1: '#42a0ff', p2: '#ff5a5a', p3: '#5aff7a', p4: '#f5d142' };
+      const color = ownerColors[owner] || '#f1c40f';
       _drawHillPlatform(ctx, this._arenaHill.x - this.camera.x, this._arenaHill.y - this.camera.y, color,
         this._arenaHill.w / BLOCK_SIZE, this._arenaHill.h / BLOCK_SIZE);
     }
@@ -1247,6 +1332,17 @@ class Game {
     }
     this._escWas = escNow;
 
+    // Freeze/resume the arena match timer whenever the game is paused — detected
+    // centrally each frame so EVERY resume path is covered (ESC toggle AND the
+    // pause-menu Resume/save/settings buttons, which set state directly).
+    if (this.isArena) {
+      const pausedNow = (this.state === 'paused' || this.state === 'confirmExit');
+      if (pausedNow !== this._arenaWasPaused) {
+        this._onArenaPauseChange(pausedNow);
+        this._arenaWasPaused = pausedNow;
+      }
+    }
+
     // ── Pause / confirm-exit: handle pause menu only ───────────
     if (this.state === 'paused' || this.state === 'confirmExit') {
       this._updatePause();
@@ -1307,10 +1403,17 @@ class Game {
       // running: collectibles + power-ups update every frame.
       this._updateArenaCollectibles();
 
+      // Lives (last-standing): if the match started with 2+ players and only one
+      // remains un-eliminated, end it — the survivor wins on the end screen.
+      if (this._arenaLives > 0 && this._arenaStartPlayers > 1 && this.activePlayers().length <= 1) {
+        a.phase = 'ended'; a.endTime = a.endTime || Date.now();
+        return;
+      }
+
       // A game mode (Phase 3A.2) owns the win condition when one is set;
       // otherwise fall back to the Phase 3A.1 Deathmatch rule.
       const dur = this.arenaConfig.gameDuration;
-      const timeUp = dur > 0 && Date.now() - a.gameStartTime >= dur;
+      const timeUp = dur > 0 && this._arenaElapsedMs() >= dur;
       if (typeof ARENA_MODES !== 'undefined' && this.arenaConfig.arenaGameMode && ARENA_MODES.update) {
         ARENA_MODES.update(this); // flips a.phase to 'ended' via its win condition
         if (a.phase === 'ended' || timeUp) { // timeUp ends timer-bound modes (e.g. Fight Mobs)
@@ -1911,12 +2014,18 @@ class Game {
     const target   = this.level.get(hoverRow, hoverCol);
 
     // ── Weapon actions: bow / sword / pickaxe ─────────────
-    // Cancel bow draw if player switched off bow slot
-    if (this.player.weaponMode !== 'bow' && this.player.bowDrawing) {
+    // CTF: carrying a flag disables all combat (no attack / no shield) (§6).
+    const p1CarryingFlag = (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.isCarrying(this.player));
+    // A left-click that would start MINING shouldn't also swing the sword.
+    const p1OverMineable = this._miningEnabled && target !== BLOCK.AIR &&
+                           !(hoverCol >= 285 && hoverCol <= 314) &&
+                           !this._portalObsidianCells.has(`${hoverCol},${hoverRow}`);
+    // Cancel bow draw if player switched off bow slot (or is carrying a flag)
+    if ((this.player.weaponMode !== 'bow' || p1CarryingFlag) && this.player.bowDrawing) {
       this.player.bowDrawing   = false;
       this.player.drawProgress = 0;
     }
-    if (this._p1RespawnTimer === 0 && this.player.weaponMode === 'bow') {
+    if (this._p1RespawnTimer === 0 && !p1CarryingFlag && this.player.weaponMode === 'bow') {
       // Hold click/Space to charge; release to fire
       const hasArrows = this._worldAdvSettings.unlimitedArrows || this.player.countItem(BLOCK.ARROW) > 0;
       const aimDown = this.input.isAttack() || this.input.mouse.down;
@@ -1952,9 +2061,9 @@ class Game {
         this.player.bowDrawing   = false;
         this.player.drawProgress = 0;
       }
-    } else if (this._p1RespawnTimer === 0 && this.player.weaponMode === 'sword') {
-      // ── Sword: click/Space attacks (works even when slot is empty) ──
-      if ((this.input.isAttack() || this.input.mouse.clicked) && this.player.attackCooldown === 0) {
+    } else if (this._p1RespawnTimer === 0 && !p1CarryingFlag && this.player.weaponMode === 'sword') {
+      // ── Sword: Space always attacks; left-click attacks unless it's a mine ──
+      if ((this.input.isAttack() || (this.input.mouse.clicked && !p1OverMineable)) && this.player.attackCooldown === 0) {
         this.mobManager.playerAttack(this.player);
         this._playerAttackDragon();
         this._playerMeleeWither();
@@ -1967,7 +2076,7 @@ class Game {
         this.player.swingTimer     = 15;
         this._playSound('sounds/attack-sword.mp3');
       }
-    } else if (this._p1RespawnTimer === 0 && this.player.weaponMode === 'pickaxe') {
+    } else if (this._p1RespawnTimer === 0 && !p1CarryingFlag && this.player.weaponMode === 'pickaxe') {
       // ── Pickaxe: Space/click also attacks mobs; mouse-hold mines (below) ──
       if ((this.input.isAttack() || this.input.mouse.clicked) && this.player.attackCooldown === 0) {
         this.mobManager.playerAttack(this.player);
@@ -1987,6 +2096,8 @@ class Game {
     for (let i = 1; i < this.players.length; i++) {
       const p = this.players[i];
       if (!p || this._respawnTimers[i] > 0) continue;
+      // CTF: carrying a flag disables combat (no attack / no shield) (§6).
+      if (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.isCarrying(p)) { p.bowDrawing = false; p.drawProgress = 0; continue; }
       const owner   = Game.ownerId(i);
       const attHeld = this.input.pAttack(i);
       if (p.bow) {
@@ -2262,6 +2373,8 @@ class Game {
         const emIdx   = this.sandbox.hitTestEmeralds(world.x, world.y);
         const puIdx   = this.sandbox.hitTestPowerups(world.x, world.y);
         const slIdx   = this.sandbox.hitTestSpawnLines(world.x, world.y);
+        const spIdx   = this.sandbox.hitTestSpawnPoints(world.x, world.y);
+        const aoIdx   = this.sandbox.hitTestArenaObjs(world.x, world.y);
         if (eggIdx >= 0) {
           this.sandbox.openPopup(eggIdx);
         } else if (itemIdx >= 0) {
@@ -2272,6 +2385,10 @@ class Game {
           this.sandbox.openPowerupPopup(puIdx);
         } else if (slIdx >= 0) {
           this.sandbox.openSpawnLinePopup(slIdx);
+        } else if (spIdx >= 0) {
+          this.sandbox.openSpawnPointPopup(spIdx);
+        } else if (aoIdx >= 0) {
+          this.sandbox.openArenaObjPopup(aoIdx);
         } else if (this.sandbox.hitTestHill(world.x, world.y)) {
           this.sandbox.openHillPopup();
         } else if (target === BLOCK.AIR) {
@@ -2290,6 +2407,14 @@ class Game {
             this.sandbox.placeHill(world.x, world.y);
           } else if (this.sandbox.isSpawnLineSelected) {
             this.sandbox.placeSpawnLine(world.x, world.y);
+          } else if (this.sandbox.isSpawnPointSelected) {
+            if (this.sandbox.placedSpawnPoints.length >= 4) {
+              this._notify('Max 4 player spawn points (one per player)', '#CC8844', 120);
+            } else {
+              this.sandbox.placeSpawnPoint(world.x, world.y);
+            }
+          } else if (this.sandbox.isArenaObjSelected) {
+            this.sandbox.placeArenaObj(this.sandbox.selectedArenaObj, world.x, world.y);
           } else if (this.sandbox.isToolSelected || this.sandbox.isBlockItemSelected) {
             this.sandbox.placeItem(world.x, world.y);
           } else if (this.sandbox.isMultiBlock) {
@@ -2517,25 +2642,25 @@ class Game {
       }
     }
 
-    // ── Hold mouse: mine (disabled in sandbox and platformer) ──
+    // ── Hold mouse: mine. Mining is always-active where _miningEnabled (Normal
+    // mode; a future Arena mode can enable it) — no pickaxe slot to select; it
+    // uses the player's best owned pickaxe. Holding over a mineable block mines.
     const isWallCol = hoverCol >= 285 && hoverCol <= 314;
-    const canMine   = !isSandbox &&
-                      this.gameMode !== 'platformer' &&
-                      this.gameMode !== 'speedrunner' &&
-                      this.player.weaponMode === 'pickaxe' &&
+    const canMine   = this._miningEnabled &&
                       this.input.mouse.down   &&
                       target !== BLOCK.AIR    &&
                       !isWallCol              &&
                       !this._portalObsidianCells.has(`${hoverCol},${hoverRow}`);
+    this.player._mining = !!canMine; // drives the pickaxe arm while mining
 
     if (canMine) {
       this.level.startBreaking(hoverRow, hoverCol);
-    } else if (!isSandbox && this.gameMode !== 'platformer' && this.gameMode !== 'speedrunner') {
+    } else if (this._miningEnabled) {
       this.level.stopBreaking();
       this._tooWeakNotified = false;
     }
 
-    if (!isSandbox && this.gameMode !== 'platformer' && this.gameMode !== 'speedrunner') {
+    if (this._miningEnabled) {
       const mineResult = this.level.updateBreaking(
         this.player.cx, this.player.cy,
         this.player.pickaxeTier, this.player.pickaxeSpeed
@@ -3848,10 +3973,25 @@ class Game {
     // death animation), and cancel any in-progress bow draw (Phase 3A.3).
     this._spawnDeathParts(this.player);
     this.player.bowDrawing = false; this.player.drawProgress = 0;
+    // CTF: a defeated flag carrier drops the flag here (never keeps it on respawn).
+    if (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.active) CTF_SYSTEM.onPlayerDefeated(this, this.player);
+    if (this.isArena && this.arenaState.stats.p1) this.arenaState.stats.p1.deaths++;
 
-    // Arena: unlimited respawns at the player's spawn after a short delay (no death modal/elimination)
+    // Arena: respawn after a short delay. With limited Lives, decrement and end
+    // the match for P1 when exhausted (solo → game over; MP → standings shown).
     if (this.isArena) {
-      this._notify('Respawning…', '#FFD700', this.arenaRespawnFrames);
+      if (this._arenaLives > 0) {
+        this.player._arenaLives = (this.player._arenaLives || 0) - 1;
+        if (this.player._arenaLives <= 0) {
+          this._notify('Out of lives!', '#FF5555', 200);
+          this.arenaState.phase = 'ended';
+          this.arenaState.endTime = this.arenaState.endTime || Date.now();
+          this.player.hp = this.player.maxHp; // keep the object valid for the end screen
+          return;
+        }
+      }
+      const livesLeft = this._arenaLives > 0 ? `  (${this.player._arenaLives} ${this.player._arenaLives === 1 ? 'life' : 'lives'} left)` : '';
+      this._notify('Respawning…' + livesLeft, '#FFD700', this.arenaRespawnFrames);
       this._p1RespawnTimer = this.arenaRespawnFrames;
       this.player.hp = this.player.maxHp;
       return;
@@ -3971,8 +4111,23 @@ class Game {
     if (!p) return;
     // Death effect (body-part scatter) + cancel any bow draw (Phase 3A.3).
     this._spawnDeathParts(p); p.bowDrawing = false; p.drawProgress = 0;
-    // Arena: unlimited respawns, no elimination.
+    // Death sound for P2-P4 too (Bug-fix pass §2.5 — only P1 played it before).
+    this._playSound('sounds/player-death.mp3');
+    // CTF: drop any carried flag here so the respawned player never keeps it (§6).
+    if (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.active) CTF_SYSTEM.onPlayerDefeated(this, p);
+    if (this.isArena) { const s = this.arenaState.stats[p._ownerId || Game.ownerId(i)]; if (s) s.deaths++; }
+    // Arena: respawn after a delay. With limited Lives, decrement and eliminate
+    // (remove) this player when exhausted — safe (activePlayers skips null slots).
     if (this.isArena) {
+      if (this._arenaLives > 0) {
+        p._arenaLives = (p._arenaLives || 0) - 1;
+        if (p._arenaLives <= 0) {
+          this._notify(`P${i + 1} eliminated!`, '#FF5555', 200);
+          this.players[i] = null;
+          this._respawnTimers[i] = 0;
+          return;
+        }
+      }
       this._respawnTimers[i] = this.arenaRespawnFrames;
       p.hp = p.maxHp;
       return;
@@ -4029,6 +4184,35 @@ class Game {
 
   // Owner id ('p1'..'p4') for a slot index — matches arena score keys.
   static ownerId(i) { return 'p' + (i + 1); }
+
+  // Freeze / resume the arena match timer across pause (Bug-fix pass §2.4).
+  // We accumulate total paused time (pausedTotal) and, while currently paused,
+  // also subtract the live pause segment (pausedAt) — so both the HUD readout
+  // AND the timeUp win-check freeze during the pause, not just correct on resume.
+  _onArenaPauseChange(paused) {
+    if (!this.isArena) return;
+    const a = this.arenaState;
+    if (paused) {
+      if (!a.pausedAt) a.pausedAt = Date.now();
+    } else if (a.pausedAt) {
+      const seg = Date.now() - a.pausedAt;
+      // Running-phase pauses accumulate into pausedTotal; a pause during the
+      // pre-match countdown (gameStartTime not set yet) only shifts countdownStart.
+      if (a.gameStartTime) a.pausedTotal = (a.pausedTotal || 0) + seg;
+      else if (a.countdownStart) a.countdownStart += seg;
+      a.pausedAt = null;
+    }
+  }
+
+  // Elapsed match time (ms) with paused time removed. Used by the HUD timer and
+  // the timeUp win-check so the timer visibly stops while the game is paused.
+  _arenaElapsedMs() {
+    const a = this.arenaState;
+    if (!a || !a.gameStartTime) return 0;
+    const end = a.endTime || Date.now();
+    const livePause = a.pausedAt ? (Date.now() - a.pausedAt) : 0;
+    return Math.max(0, end - a.gameStartTime - (a.pausedTotal || 0) - livePause);
+  }
 
   // Position the camera: centroid-follow for 2+ players, single-follow for 1.
   _followCamera() {
@@ -4189,6 +4373,57 @@ class Game {
     if (pIdx === 1) this._drawCompactHotbar(ctx, p2, true);
 
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+  }
+
+  // 4-player layout (v3 §4): P3/P4 get a compact health bar + hotbar in the
+  // lower band — P3 directly below P1's hotbar (left), P4 below P2's (right).
+  // P1 (top-left) and P2 (top-right full HUD) are unchanged.
+  _drawLowerPlayerHUD(ctx, p, pIdx) {
+    if (!p) return;
+    ctx.save();
+    const SZ = 19, GAP = 1;
+    const bw = 9 * SZ + 8 * GAP;        // match hotbar width (179)
+    const bh = 14;
+    const rightAlign = (pIdx === 3);    // P4 → right, P3 → left
+    const bx = rightAlign ? (CANVAS_W - 10 - bw) : 10;
+    const healthY = 72;                 // just below the P1/P2 hotbars (bottom ≈66)
+    const hotbarY = healthY + bh + 3;   // 89
+
+    // Background pill + red track + coloured fill
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    _roundRect(ctx, bx - 2, healthY - 2, bw + 4, bh + 4, 4); ctx.fill();
+    ctx.fillStyle = '#550000';
+    ctx.fillRect(bx, healthY, bw, bh);
+    const hpPct = Math.max(0, p.hp / p.maxHp);
+    ctx.fillStyle = hpPct > 0.6 ? '#22BB22' : hpPct > 0.3 ? '#BBBB00' : '#CC2222';
+    ctx.fillRect(bx, healthY, Math.round(bw * hpPct), bh);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    for (let i = 1; i < p.maxHp / 2; i++) ctx.fillRect(bx + Math.round(bw * (i / (p.maxHp / 2))), healthY, 1, bh);
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1;
+    ctx.strokeRect(bx, healthY, bw, bh);
+
+    // Player label (P3 green / P4 yellow) + HP text
+    const col = pIdx === 2 ? '#5aff7a' : '#f5d142';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = col; ctx.font = 'bold 9px Courier New'; ctx.textAlign = 'left';
+    ctx.fillText('P' + (pIdx + 1), bx + 3, healthY + bh / 2);
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'right';
+    ctx.fillText(`${Math.max(0, p.hp)}/${p.maxHp}`, bx + bw - 3, healthY + bh / 2);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+
+    // Hotbar directly below the health bar
+    this._drawCompactHotbar(ctx, p, rightAlign, hotbarY);
+
+    // Respawn overlay
+    if (this._respawnTimers[pIdx] > 0) {
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      _roundRect(ctx, bx - 2, healthY - 2, bw + 4, bh + 4, 4); ctx.fill();
+      ctx.fillStyle = '#FF8888'; ctx.font = 'bold 9px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(`Respawn ${Math.ceil(this._respawnTimers[pIdx] / 60)}s`, bx + bw / 2, healthY + bh / 2);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    }
     ctx.restore();
   }
 
@@ -5350,12 +5585,12 @@ class Game {
       }
     }
 
-    // Hotbar row — slots 0-3 are reserved (locked) and show their icons always
+    // Hotbar row — slots 0-1 are reserved weapons (sword, bow); the pickaxe was
+    // removed (mining is always-active). Slots 2-8 are inventory (hotbar[2..8],
+    // indices unchanged, so placement/pickup are unaffected).
     for (let c = 0; c < L.cols; c++) {
       const sx = L.contentX + c * (L.slotSz + L.gap);
-      if (c < 4) {
-        // Reserved slot: draw locked background + icon
-        const hovered = mx >= sx && mx < sx + L.slotSz && my >= L.hotbarY && my < L.hotbarY + L.slotSz;
+      if (c < 2) {
         ctx.fillStyle = c === this.player.selectedSlot ? 'rgba(255,215,0,0.22)' : 'rgba(30,20,50,0.75)';
         ctx.fillRect(sx, L.hotbarY, L.slotSz, L.slotSz);
         ctx.strokeStyle = c === this.player.selectedSlot ? '#FFD700' : '#6655AA';
@@ -5367,45 +5602,17 @@ class Game {
         ctx.textAlign = 'right'; ctx.textBaseline = 'top';
         ctx.fillText('🔒', sx + L.slotSz - 2, L.hotbarY + 2);
         ctx.textAlign = 'left';
-        // Tool/item icon
-        if (c === 0 || c === 1 || c === 2) {
-          const toolKey  = c === 0 ? this.player.pickaxe : c === 1 ? this.player.sword : this.player.bow;
-          const toolIcon = c === 0 ? '⛏' : c === 1 ? '⚔' : '🏹';
-          const toolData = toolKey ? TOOL_DATA[toolKey] : null;
-          if (toolData) {
-            ctx.fillStyle = toolData.color;
-            ctx.font = `${Math.floor(L.slotSz * 0.45)}px serif`;
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(toolIcon, sx + L.slotSz / 2, L.hotbarY + L.slotSz / 2);
-            ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-          } else {
-            ctx.globalAlpha = 0.35;
-            ctx.fillStyle = '#AAAAAA';
-            ctx.font = `${Math.floor(L.slotSz * 0.45)}px serif`;
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(toolIcon, sx + L.slotSz / 2, L.hotbarY + L.slotSz / 2);
-            ctx.globalAlpha = 1;
-            ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-          }
-        } else if (c === 3) {
-          // Apple slot
-          const appleSlot = this.player.hotbar[3];
-          const hasApple  = appleSlot && appleSlot.type === BLOCK.APPLE && appleSlot.count > 0;
-          ctx.save();
-          if (!hasApple) ctx.globalAlpha = 0.35;
-          const pad   = 5;
-          const scale = (L.slotSz - pad * 2) / BLOCK_SIZE;
-          ctx.translate(sx + pad, L.hotbarY + pad);
-          ctx.scale(scale, scale);
-          drawBlock(ctx, BLOCK.APPLE, 0, 0, 0);
-          ctx.restore();
-          if (hasApple) {
-            ctx.fillStyle = '#fff'; ctx.font = 'bold 10px Courier New';
-            ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-            ctx.fillText(appleSlot.count, sx + L.slotSz - 3, L.hotbarY + L.slotSz - 2);
-            ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-          }
-        }
+        const toolKey  = c === 0 ? this.player.sword : this.player.bow;
+        const toolIcon = c === 0 ? '⚔' : '🏹';
+        const toolData = toolKey ? TOOL_DATA[toolKey] : null;
+        ctx.save();
+        if (!toolData) ctx.globalAlpha = 0.35;
+        ctx.fillStyle = toolData ? toolData.color : '#AAAAAA';
+        ctx.font = `${Math.floor(L.slotSz * 0.45)}px serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(toolIcon, sx + L.slotSz / 2, L.hotbarY + L.slotSz / 2);
+        ctx.restore();
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
       } else {
         drawSlot(this.player.hotbar[c], sx, L.hotbarY, c === this.player.selectedSlot);
       }
@@ -7955,7 +8162,7 @@ class Game {
       if (this.level.isSolid(fr, fc)) return false;
       if (fb.x > p.x && fb.x < p.x + p.width &&
           fb.y > p.y && fb.y < p.y + p.height) {
-        if (p.hasShield && p.crouching) {
+        if (p.hasShield && p.crouching && !(typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.isCarrying(p))) {
           this._notify('Shield blocks fire!', '#44AAFF', 90);
         } else {
           if (p.takeDamage(20)) {
@@ -8676,6 +8883,20 @@ class Game {
     }
   }
 
+  // Seed 2 default player spawn points (Phase 3 auto-migration) near the level's
+  // start position. They are ordinary placed objects — fully movable + deletable.
+  _seedDefaultSpawnPoints() {
+    if (!this.sandbox || !this.level) return;
+    const bs = BLOCK_SIZE;
+    const W = this.level.width, H = this.level.height;
+    const baseCol = Math.max(1, Math.min(W - 2, Math.round((this.level.spawnX || bs * 3) / bs)));
+    const baseRow = Math.max(1, Math.min(H - 2, Math.round((this.level.spawnY || bs * 3) / bs)));
+    const cols = [baseCol, Math.max(1, Math.min(W - 2, baseCol + 4))];
+    this.sandbox.placedSpawnPoints = cols.map((col, i) => ({
+      col, row: baseRow, wx: col * bs + bs / 2, wy: baseRow * bs + bs / 2, slot: i + 1,
+    }));
+  }
+
   // Warnings for the Arena settings tab: an enabled game type missing its
   // required design element (uses the editor's placed objects). Phase 3A.3.
   _arenaSettingsWarnings(enabled) {
@@ -8685,6 +8906,13 @@ class Game {
     if (enabled.includes('KING_OF_HILL') && !sb.placedHill) w.push('King of the Hill: no Hill placed');
     if (enabled.includes('COLLECT_EMERALDS') && (!sb.placedEmeralds || sb.placedEmeralds.length === 0)) w.push('Collect Emeralds: no emeralds placed');
     if (enabled.includes('SURVIVAL_WAVES') && (!sb.placedSpawnLines || sb.placedSpawnLines.length === 0)) w.push('Survival Waves: no Spawn Lines placed');
+    // Player spawn points (Phase 3) — how many players this world can currently host.
+    const spawnN = typeof sb.supportedPlayerCount === 'function' ? sb.supportedPlayerCount() : (sb.placedSpawnPoints ? sb.placedSpawnPoints.length : 0);
+    if (enabled.length > 0) {
+      if (spawnN === 0) w.push('No Player Spawns placed — add up to 4 (arena falls back to auto-start positions)');
+      else if (spawnN < 4) w.push(`Player Spawns: supports up to ${spawnN} player${spawnN === 1 ? '' : 's'} (add more for 3–4P)`);
+      else w.push('Player Spawns: supports up to 4 players');
+    }
     return w;
   }
 
@@ -10247,6 +10475,7 @@ class Game {
         this._drawWeaponLabel(ctx);
       }
     }
+    this._drawPickaxeBadge(ctx); // always-active mining tier (Normal mode)
     if (this.player.hasShield)     this._drawShieldIndicator(ctx);
     if (this.player.hasFlintSteel) this._drawFlintSteelIndicator(ctx);
     this._drawBlockInfo(ctx, hoverRow, hoverCol);
@@ -10283,13 +10512,12 @@ class Game {
     this._drawHelpButton(ctx);
     this._drawControllerStatus(ctx);
     this._drawContextPrompt(ctx);
-    { let yOff = 0;
-      for (let i = 1; i < this.players.length; i++) {
-        const p = this.players[i];
-        if (!p) continue;
-        this._drawSecondaryHUD(ctx, p, i, yOff);
-        yOff += 52;
-      } }
+    for (let i = 1; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (!p) continue;
+      if (i === 1) this._drawSecondaryHUD(ctx, p, i, 0); // P2 top-right (full HUD)
+      else         this._drawLowerPlayerHUD(ctx, p, i);  // P3 lower-left, P4 lower-right
+    }
     if (this.isArena) this._drawArenaHUD(ctx);
     ctx.restore();
   }
@@ -10301,7 +10529,7 @@ class Game {
     ctx.textAlign = 'center';
 
     // Timer (counts down to the limit, or up if unlimited)
-    let t = this.arenaState.gameStartTime ? (this.arenaState.endTime || Date.now()) - this.arenaState.gameStartTime : 0;
+    let t = this._arenaElapsedMs();
     const dur = this.arenaConfig.gameDuration;
     const shown = dur > 0 ? Math.max(0, dur - t) : t;
     const sec = Math.floor(shown / 1000), mm = Math.floor(sec / 60), ss = sec % 60;
@@ -10309,14 +10537,18 @@ class Game {
     ctx.fillStyle = '#FFD700';
     ctx.fillText(`${mm}:${String(ss).padStart(2, '0')}`, CANVAS_W / 2, 14);
 
-    // Kills + bots remaining
-    const k1 = this.arenaState.scores.p1 || 0;
+    // Per-player score (derived per mode) + bots remaining.
     const bots = this.mobManager.mobs.filter(m => m.alive).length;
     ctx.font = 'bold 13px Courier New';
     ctx.fillStyle = '#FFFFFF';
-    const line = this.player2
-      ? `P1: ${k1}    P2: ${this.arenaState.scores.p2 || 0}    Bots: ${bots}`
-      : `Kills: ${k1}    Bots: ${bots}`;
+    let line;
+    if (typeof ARENA_MODES !== 'undefined' && ARENA_MODES.playerScore) {
+      const ids = this.activePlayers().map(p => p._ownerId || 'p1');
+      const parts = ids.map(id => `${id.toUpperCase()}: ${ARENA_MODES.playerScore(this, id)}`);
+      line = (ids.length > 1 ? parts.join('   ') : `Score: ${ARENA_MODES.playerScore(this, 'p1')}`) + `    Bots: ${bots}`;
+    } else {
+      line = `Score: ${this.arenaState.stats.p1.kills}    Bots: ${bots}`;
+    }
     ctx.fillText(line, CANVAS_W / 2, 32);
 
     // Game-mode objective line (Phase 3A.2).
@@ -10367,50 +10599,76 @@ class Game {
     this._submitArenaResultOnce(); // leaderboard submit (once), mode runs only
 
     ctx.save();
-    ctx.fillStyle = 'rgba(0,0,0,0.82)';
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    const cx = CANVAS_W / 2, cy = CANVAS_H / 2;
     ctx.fillStyle = '#FFD700';
-    ctx.font = 'bold 48px Arial';
-    ctx.fillText('Game Over!', CANVAS_W / 2, CANVAS_H / 2 - 70);
+    ctx.font = 'bold 40px Arial';
+    ctx.fillText('Game Over!', cx, cy - 118);
 
+    const AM = (typeof ARENA_MODES !== 'undefined') ? ARENA_MODES : null;
     const mode = this.arenaConfig.arenaGameMode;
-    const k1 = this.arenaState.scores.p1 || 0;
-    ctx.fillStyle = '#FFFFFF';
-    if (mode && typeof ARENA_MODES !== 'undefined') {
-      ctx.font = 'bold 26px Arial';
-      ctx.fillText(ARENA_MODES.label(mode), CANVAS_W / 2, CANVAS_H / 2 - 20);
-      // Deathmatch: name the winning player + show every player's eliminations.
-      const winTxt = ARENA_MODES.winnerText ? ARENA_MODES.winnerText(this) : null;
-      if (winTxt) {
-        ctx.fillStyle = '#FFD700'; ctx.font = 'bold 24px Arial';
-        ctx.fillText(winTxt, CANVAS_W / 2, CANVAS_H / 2 + 12);
-        ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 16px Arial';
-        const s = this.arenaState.scores;
-        const line = this.activePlayers().map((p, i) => `P${i + 1}: ${s['p' + (i + 1)] || 0}`).join('    ');
-        ctx.fillText(line, CANVAS_W / 2, CANVAS_H / 2 + 40);
-      } else {
-        ctx.font = 'bold 22px Arial';
-        ctx.fillText(`Score: ${ARENA_MODES.score(this)}`, CANVAS_W / 2, CANVAS_H / 2 + 16);
-      }
-    } else if (this.player2) {
-      const k2 = this.arenaState.scores.p2 || 0;
-      const winner = k1 === k2 ? "It's a tie!" : (k1 > k2 ? 'Player 1 wins!' : 'Player 2 wins!');
-      ctx.font = 'bold 28px Arial';
-      ctx.fillText(winner, CANVAS_W / 2, CANVAS_H / 2 - 18);
-      ctx.font = 'bold 20px Arial';
-      ctx.fillText(`P1: ${k1} kills     P2: ${k2} kills`, CANVAS_W / 2, CANVAS_H / 2 + 22);
-    } else {
-      ctx.font = 'bold 26px Arial';
-      ctx.fillText(`You defeated ${k1} bot${k1 === 1 ? '' : 's'}!`, CANVAS_W / 2, CANVAS_H / 2 - 14);
-    }
-    ctx.fillStyle = '#AAAAAA';
-    ctx.font = 'bold 18px Arial';
-    ctx.fillText('Press ESC to exit', CANVAS_W / 2, CANVAS_H / 2 + 72);
+    ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 22px Arial';
+    ctx.fillText(AM ? AM.label(mode) : 'Quick Battle', cx, cy - 80);
+
+    // Winner / headline score.
+    let winTxt = (AM && AM.winnerText) ? AM.winnerText(this) : null;
+    if (!winTxt) winTxt = `Score: ${AM ? AM.score(this) : 0}`;
+    ctx.fillStyle = '#FFD700'; ctx.font = 'bold 24px Arial';
+    ctx.fillText(winTxt, cx, cy - 48);
+
+    // Per-player individual stats breakdown.
+    this._drawArenaStatsTable(ctx, cx, cy - 16);
+
+    ctx.fillStyle = '#AAAAAA'; ctx.font = 'bold 18px Arial';
+    ctx.fillText('Press ESC to exit', cx, cy + 132);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
     ctx.restore();
+  }
+
+  // Per-player individual stats table for the arena end screen. Columns adapt to
+  // the mode (Score always; Flags only for CTF; TwrDmg only for Defend the Tower).
+  _drawArenaStatsTable(ctx, cx, y) {
+    const ids = this.activePlayers().map(p => p._ownerId || 'p1');
+    if (!ids.length) return;
+    const AM = (typeof ARENA_MODES !== 'undefined') ? ARENA_MODES : null;
+    const mode = this.arenaConfig.arenaGameMode;
+    const cols = [
+      { h: 'Player', get: (id) => id.toUpperCase() },
+      { h: 'Score',  get: (id) => AM ? AM.playerScore(this, id) : 0 },
+      { h: 'Kills',  get: (id) => this.arenaState.stats[id]?.kills || 0 },
+      { h: 'Deaths', get: (id) => this.arenaState.stats[id]?.deaths || 0 },
+      { h: 'Mobs',   get: (id) => this.arenaState.stats[id]?.mobKills || 0 },
+      { h: 'Gems',   get: (id) => this.arenaState.stats[id]?.emeralds || 0 },
+    ];
+    if (mode === 'KING_OF_HILL') cols.push({ h: 'HillS', get: (id) => this.arenaState.stats[id]?.hillSeconds || 0 });
+    if (mode === 'CAPTURE_FLAG') cols.push({ h: 'Flags', get: (id) => this.arenaState.stats[id]?.flagCaptures || 0 });
+    if (mode === 'DEFEND_TOWER') cols.push({ h: 'TwrDmg', get: (id) => this.arenaState.stats[id]?.towerDamage || 0 });
+    // Custom Rules: per-player win progress (step reached / conditions met). This
+    // is what establishes the winner when nobody fully completed their objective.
+    const rs = (mode === 'CUSTOM' && typeof ARENA_RULES !== 'undefined' && AM && AM._rulesetFor) ? AM._rulesetFor(this) : null;
+    if (rs) cols.push({ h: 'Progress', get: (id) => {
+      const os = ARENA_RULES.objectiveStatus(rs, this, id);
+      if (os.mode === 'stages') return os.won ? '✓WON' : `S${Math.min(os.current + 1, os.total)}/${os.total}`;
+      if (os.mode === 'flat')   return os.won ? '✓WON' : `${os.conditions.filter(c => c.met).length}/${os.conditions.length}`;
+      return '—';
+    } });
+
+    const winnerId = (rs && ARENA_RULES.winner) ? ARENA_RULES.winner(rs, this) : ((AM && AM.winnerText && AM._leader && mode === 'DEATHMATCH') ? AM._leader(this).id : null);
+    const colW = 72;
+    const startX = cx - (cols.length - 1) * colW / 2;
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 13px Courier New'; ctx.fillStyle = '#88CCFF';
+    cols.forEach((c, i) => ctx.fillText(c.h, startX + i * colW, y));
+    ctx.font = '13px Courier New';
+    ids.forEach((id, r) => {
+      const ry = y + 22 + r * 20;
+      ctx.fillStyle = (id === winnerId) ? '#FFD700' : '#FFFFFF'; // highlight the winner
+      cols.forEach((c, i) => ctx.fillText(String(c.get(id)), startX + i * colW, ry));
+    });
   }
 
   // Submit the arena result to the leaderboard exactly once (mode runs only).
@@ -10421,10 +10679,43 @@ class Game {
 
     const mode = this.arenaConfig.arenaGameMode;
     if (!mode || typeof LEADERBOARD_SYSTEM === 'undefined' || !LEADERBOARD_SYSTEM.submit) return;
-    const score = (typeof ARENA_MODES !== 'undefined') ? ARENA_MODES.score(this) : (this.arenaState.scores.p1 || 0);
+    const score = (typeof ARENA_MODES !== 'undefined') ? ARENA_MODES.score(this) : (this.arenaState.stats.p1.kills || 0);
     const durMs  = (this.arenaState.gameStartTime && this.arenaState.endTime)
       ? this.arenaState.endTime - this.arenaState.gameStartTime : 0;
     LEADERBOARD_SYSTEM.submit(mode, score, Math.round(durMs / 1000));
+    this._recordMatchStats(mode, durMs);
+  }
+
+  // Record the local player's match into stats/achievements (Phase 4, fire-and-forget).
+  _recordMatchStats(mode, durMs) {
+    if (typeof AUTH === 'undefined' || !AUTH.authedFetch || !AUTH.isLoggedIn || !AUTH.isLoggedIn()) return;
+    // Did the human (P1) win? PvP → leader/team; PvE → survived.
+    let won = false, captures = 0;
+    const AM = (typeof ARENA_MODES !== 'undefined') ? ARENA_MODES : null;
+    if (mode === 'DEATHMATCH' && AM) won = AM._leader(this).id === 'p1';
+    else if (mode === 'CAPTURE_FLAG') {
+      const ts = this.arenaState.teamScores || [0, 0];
+      const p1Team = (this.player && this.player.teamId != null) ? this.player.teamId : 0;
+      captures = ts[p1Team] || 0;
+      won = (ts[p1Team] || 0) >= (ts[1 - p1Team] || 0) && (ts[0] || ts[1]);
+    } else {
+      won = !!(this.player && this.player.hp > 0); // survived / completed
+    }
+    const body = {
+      won: !!won,
+      kills: this.arenaState.stats.p1.kills || 0,
+      captures,
+      playTimeMs: Math.max(0, Math.round(durMs)),
+    };
+    try {
+      AUTH.authedFetch('/api/stats/match', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      }).then(r => r.json()).then((data) => {
+        if (data && data.unlocked && data.unlocked.length && this._notify) {
+          for (const a of data.unlocked) this._notify(`🏆 Achievement: ${a.name}`, '#f5b301', 240);
+        }
+      }).catch(() => {});
+    } catch (e) { /* fire-and-forget */ }
   }
 
   _drawHelpButton(ctx) {
@@ -10519,11 +10810,11 @@ class Game {
 
   // Compact 9-slot hotbar used in 2P mode — width matches HP bar (180px).
   // rightAlign=false → P1 left side; rightAlign=true → P2 right side.
-  _drawCompactHotbar(ctx, player, rightAlign) {
+  _drawCompactHotbar(ctx, player, rightAlign, hbYOverride = null) {
     const SZ = 19, GAP = 1;
     const totalW = 9 * SZ + 8 * GAP;   // 179px ≈ HP bar width (180px)
     const hbX = rightAlign ? (CANVAS_W - 10 - totalW) : 10;
-    const hbY = 47;   // XP bar ends at y=43, +4px gap
+    const hbY = hbYOverride != null ? hbYOverride : 47;   // XP bar ends at y=43, +4px gap
     const accentCol = rightAlign ? '#88AAFF' : '#FFD700';
 
     for (let i = 0; i < 9; i++) {
@@ -10538,39 +10829,19 @@ class Game {
       ctx.lineWidth   = active ? 1.5 : 1;
       ctx.strokeRect(sx + 0.5, sy + 0.5, SZ - 1, SZ - 1);
 
-      // Tool slots 0–2
-      if (i <= 2) {
-        const toolKey  = i === 0 ? player.pickaxe : i === 1 ? player.sword : player.bow;
-        const toolIcon = i === 0 ? '⛏' : i === 1 ? '⚔' : '🏹';
+      // Weapon slots 0-1 (sword, bow); pickaxe removed (mining is always-active).
+      if (i <= 1) {
+        const toolKey  = i === 0 ? player.sword : player.bow;
+        const toolIcon = i === 0 ? '⚔' : '🏹';
         const toolData = toolKey ? TOOL_DATA[toolKey] : null;
-        if (toolData) {
-          ctx.fillStyle    = toolData.color;
-          ctx.font         = `${SZ * 0.65}px serif`;
-          ctx.textAlign    = 'center'; ctx.textBaseline = 'middle';
-          ctx.fillText(toolIcon, sx + SZ / 2, sy + SZ / 2);
-          ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-        } else if (i === 2) {
-          ctx.fillStyle = 'rgba(180,140,80,0.35)';
-          ctx.font = `${SZ * 0.65}px serif`;
-          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          ctx.fillText('🏹', sx + SZ / 2, sy + SZ / 2);
-          ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-        }
-      } else if (i === 3) {
-        const appleSlot = player.hotbar[3];
-        const hasApple  = appleSlot && appleSlot.type === BLOCK.APPLE && appleSlot.count > 0;
         ctx.save();
-        if (!hasApple) ctx.globalAlpha = 0.3;
-        const pad = 2, scale = (SZ - pad * 2) / BLOCK_SIZE;
-        ctx.translate(sx + pad, sy + pad); ctx.scale(scale, scale);
-        drawBlock(ctx, BLOCK.APPLE, 0, 0, 0);
+        if (!toolData) ctx.globalAlpha = 0.35;
+        ctx.fillStyle = toolData ? toolData.color : 'rgba(180,140,80,0.6)';
+        ctx.font = `${SZ * 0.65}px serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(toolIcon, sx + SZ / 2, sy + SZ / 2);
         ctx.restore();
-        if (hasApple) {
-          ctx.fillStyle    = '#fff'; ctx.font = 'bold 7px Courier New';
-          ctx.textAlign    = 'right'; ctx.textBaseline = 'bottom';
-          ctx.fillText(appleSlot.count, sx + SZ - 1, sy + SZ - 1);
-          ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-        }
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
       } else if (slot) {
         const pad = 2, scale = (SZ - pad * 2) / BLOCK_SIZE;
         ctx.save();
@@ -10606,84 +10877,42 @@ class Game {
       ctx.lineWidth   = active ? 2.5 : 1.5;
       ctx.strokeRect(sx + 0.5, sy + 0.5, SLOT_SIZE - 1, SLOT_SIZE - 1);
 
-      // Tool slots 0-2: show tool icon even if hotbar slot is empty
-      if (i === 0 || i === 1 || i === 2) {
-        const toolKey  = i === 0 ? p.pickaxe : i === 1 ? p.sword : p.bow;
-        const toolIcon = i === 0 ? '⛏' : i === 1 ? '⚔' : '🏹';
+      // Weapon slots 0-1: sword (0), bow (1). Pickaxe removed (mining always-active).
+      if (i <= 1) {
+        const toolKey  = i === 0 ? p.sword : p.bow;
+        const toolIcon = i === 0 ? '⚔' : '🏹';
         const toolData = toolKey ? TOOL_DATA[toolKey] : null;
         if (toolData) {
           ctx.fillStyle    = toolData.color;
           ctx.font         = `${SLOT_SIZE * 0.52}px serif`;
-          ctx.textAlign    = 'center';
-          ctx.textBaseline = 'middle';
+          ctx.textAlign    = 'center'; ctx.textBaseline = 'middle';
           ctx.fillText(toolIcon, sx + SLOT_SIZE / 2, sy + SLOT_SIZE / 2);
-          ctx.textAlign    = 'left';
-          ctx.textBaseline = 'alphabetic';
-          // Tier label (tiny, bottom right)
-          if (i < 2) {
-            ctx.fillStyle    = 'rgba(255,255,255,0.55)';
-            ctx.font         = '7px Courier New';
-            ctx.textAlign    = 'right';
-            ctx.textBaseline = 'bottom';
-            const tierNames  = ['W','S','I','D','N'];
+          ctx.textAlign    = 'left'; ctx.textBaseline = 'alphabetic';
+          if (i === 0) { // sword tier label
+            ctx.fillStyle    = 'rgba(255,255,255,0.55)'; ctx.font = '7px Courier New';
+            ctx.textAlign    = 'right'; ctx.textBaseline = 'bottom';
+            const tierNames  = ['W', 'S', 'I', 'D', 'N'];
             ctx.fillText(tierNames[toolData.tier] ?? '', sx + SLOT_SIZE - 3, sy + SLOT_SIZE - 2);
-            ctx.textAlign    = 'left';
-            ctx.textBaseline = 'alphabetic';
+            ctx.textAlign    = 'left'; ctx.textBaseline = 'alphabetic';
           }
-        } else if (i === 2) {
-          // Bow slot empty — show ghost icon
-          ctx.fillStyle    = 'rgba(180,140,80,0.35)';
-          ctx.font         = `${SLOT_SIZE * 0.52}px serif`;
-          ctx.textAlign    = 'center';
-          ctx.textBaseline = 'middle';
+        } else if (i === 1) {
+          // Bow slot empty — ghost + craft hint
+          ctx.fillStyle    = 'rgba(180,140,80,0.35)'; ctx.font = `${SLOT_SIZE * 0.52}px serif`;
+          ctx.textAlign    = 'center'; ctx.textBaseline = 'middle';
           ctx.fillText('🏹', sx + SLOT_SIZE / 2, sy + SLOT_SIZE / 2);
-          ctx.textAlign    = 'left';
-          ctx.textBaseline = 'alphabetic';
-          ctx.fillStyle    = 'rgba(200,180,100,0.5)';
-          ctx.font         = '7px Courier New';
-          ctx.textAlign    = 'center';
-          ctx.fillText('craft', sx + SLOT_SIZE / 2, sy + SLOT_SIZE - 3);
+          ctx.textAlign    = 'left'; ctx.textBaseline = 'alphabetic';
+          ctx.fillStyle    = 'rgba(200,180,100,0.5)'; ctx.font = '7px Courier New';
+          ctx.textAlign    = 'center'; ctx.fillText('craft', sx + SLOT_SIZE / 2, sy + SLOT_SIZE - 3);
           ctx.textAlign    = 'left';
         }
-        // Arrow count overlay on bow slot (when bow equipped and finite mode)
-        if (i === 2 && toolKey && !this._worldAdvSettings.unlimitedArrows) {
+        // Arrow count overlay on the bow slot (i===1) when equipped + finite ammo
+        if (i === 1 && toolKey && !this._worldAdvSettings.unlimitedArrows) {
           const arrowCount = p.countItem(BLOCK.ARROW);
-          const noAmmo = arrowCount === 0;
-          ctx.fillStyle    = noAmmo ? '#FF5555' : '#FFFFFF';
+          ctx.fillStyle    = arrowCount === 0 ? '#FF5555' : '#FFFFFF';
           ctx.font         = 'bold 10px Courier New';
-          ctx.textAlign    = 'right';
-          ctx.textBaseline = 'bottom';
+          ctx.textAlign    = 'right'; ctx.textBaseline = 'bottom';
           ctx.fillText(arrowCount, sx + SLOT_SIZE - 3, sy + SLOT_SIZE - 2);
-          ctx.textAlign    = 'left';
-          ctx.textBaseline = 'alphabetic';
-        }
-      } else if (i === 3) {
-        // Apple slot (reserved slot 4) — show apple icon, greyed if none held
-        const appleSlot = p.hotbar[3];
-        const hasApple  = appleSlot && appleSlot.type === BLOCK.APPLE && appleSlot.count > 0;
-        ctx.save();
-        if (!hasApple) ctx.globalAlpha = 0.35;
-        const pad   = 5;
-        const scale = (SLOT_SIZE - pad * 2) / BLOCK_SIZE;
-        ctx.translate(sx + pad, sy + pad);
-        ctx.scale(scale, scale);
-        drawBlock(ctx, BLOCK.APPLE, 0, 0, 0);
-        ctx.restore();
-        if (hasApple) {
-          ctx.fillStyle    = '#fff';
-          ctx.font         = 'bold 10px Courier New';
-          ctx.textAlign    = 'right';
-          ctx.textBaseline = 'bottom';
-          ctx.fillText(appleSlot.count, sx + SLOT_SIZE - 3, sy + SLOT_SIZE - 2);
-          ctx.textAlign    = 'left';
-          ctx.textBaseline = 'alphabetic';
-        } else {
-          ctx.fillStyle    = 'rgba(200,180,100,0.5)';
-          ctx.font         = '7px Courier New';
-          ctx.textAlign    = 'center';
-          ctx.textBaseline = 'alphabetic';
-          ctx.fillText('none', sx + SLOT_SIZE / 2, sy + SLOT_SIZE - 3);
-          ctx.textAlign    = 'left';
+          ctx.textAlign    = 'left'; ctx.textBaseline = 'alphabetic';
         }
       } else if (slot) {
         // Normal item slot
@@ -10711,6 +10940,25 @@ class Game {
       ctx.fillText(i + 1, sx + 3, sy + 3);
       ctx.textBaseline = 'alphabetic';
     }
+  }
+
+  // Pickaxe-tier badge — shown when mining is a capability (Normal mode). Since
+  // the pickaxe is no longer a hotbar slot, this tells the player which tier is
+  // auto-used when they mine. Top-left, just under the XP bar.
+  _drawPickaxeBadge(ctx) {
+    if (!this._miningEnabled || !this.player) return;
+    const data = TOOL_DATA[this.player.pickaxe]; if (!data) return;
+    const label = '⛏ ' + String(data.name || 'Pickaxe').replace(/\s*Pickaxe$/i, '');
+    ctx.save();
+    ctx.font = 'bold 11px Courier New';
+    const w = ctx.measureText(label).width + 18, x = 10, y = 48, h = 18;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'; _roundRect(ctx, x, y, w, h, 5); ctx.fill();
+    ctx.strokeStyle = data.color || '#C8A55A'; ctx.lineWidth = 1; _roundRect(ctx, x, y, w, h, 5); ctx.stroke();
+    ctx.fillStyle = data.color || '#C8A55A';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + 9, y + h / 2 + 1);
+    ctx.restore();
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   }
 
   _drawWeaponLabel(ctx) {
@@ -12683,6 +12931,57 @@ class Game {
     ctx.fillText('Now Playing: ' + curTrack, px + pw / 2, py + ph - 8);
   }
 
+  // Arena win-condition status, shown beside the pause panel (left side) so it
+  // stays off the in-play HUD. Reads the rules engine's objectiveStatus().
+  _drawArenaObjectivesPanel(ctx) {
+    if (!this.isArena || typeof ARENA_RULES === 'undefined' || typeof ARENA_MODES === 'undefined') return;
+    const rs = ARENA_MODES._rulesetFor ? ARENA_MODES._rulesetFor(this) : null;
+    if (!rs) return;
+    const players = this.activePlayers();
+    const lines = [];
+    const clip = (s) => s.length > 30 ? s.slice(0, 29) + '…' : s;
+    const sample = ARENA_RULES.objectiveStatus(rs, this, (players[0] && players[0]._ownerId) || 'p1');
+    if (sample.mode === 'timer') {
+      lines.push({ t: 'Play until time runs out —', c: '#aab' }, { t: 'highest score wins.', c: '#aab' });
+    } else {
+      // Win conditions are per-player — show each player's progress. With 3-4
+      // players, show just the headline per player to fit; 1-2 show conditions.
+      const detail = players.length <= 2;
+      for (const p of players) {
+        const id = p._ownerId || 'p1';
+        const st = ARENA_RULES.objectiveStatus(rs, this, id);
+        if (st.mode === 'stages') {
+          lines.push({ t: `${id.toUpperCase()}  Step ${Math.min(st.current + 1, st.total)}/${st.total}${st.won ? '  ✓ WON' : ''}`, c: st.won ? '#5aff7a' : '#FFD700' });
+          const cur = st.stages[Math.min(st.current, st.total - 1)];
+          if (detail && cur) for (const c of cur.conditions) {
+            const lg = (c.logic && c.logic !== 'and') ? c.logic.toUpperCase() + ' ' : '';
+            lines.push({ t: clip(`  ${c.met ? '✓' : '○'} ${lg}${c.label} ${c.current}/${c.target}`), c: c.met ? '#5aff7a' : '#ccd' });
+          }
+        } else {
+          const met = st.conditions.filter(c => c.met).length;
+          lines.push({ t: `${id.toUpperCase()}  ${met}/${st.conditions.length} ${st.combinator === 'all' ? '(all)' : '(any)'}${st.won ? '  ✓ WON' : ''}`, c: st.won ? '#5aff7a' : '#FFD700' });
+          if (detail) for (const c of st.conditions) {
+            const lg = (c.logic && c.logic !== 'and') ? c.logic.toUpperCase() + ' ' : '';
+            lines.push({ t: clip(`  ${c.met ? '✓' : '○'} ${lg}${c.label} ${c.current}/${c.target}`), c: c.met ? '#5aff7a' : '#ccd' });
+          }
+        }
+      }
+    }
+    const pad = 12, lineH = 16, w = 200, x = 12;
+    const h = pad * 2 + 22 + lines.length * lineH;
+    const y = Math.max(12, (CANVAS_H - h) / 2);
+    ctx.save();
+    ctx.fillStyle = 'rgba(10,10,25,0.92)'; _roundRect(ctx, x, y, w, h, 8); ctx.fill();
+    ctx.strokeStyle = '#444466'; ctx.lineWidth = 2; _roundRect(ctx, x, y, w, h, 8); ctx.stroke();
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#FFD700'; ctx.font = 'bold 12px Courier New';
+    ctx.fillText('🎯 OBJECTIVES', x + pad, y + pad + 10);
+    ctx.font = '11px Courier New';
+    let ly = y + pad + 30;
+    for (const L of lines) { ctx.fillStyle = L.c; ctx.fillText(L.t, x + pad, ly); ly += lineH; }
+    ctx.restore();
+  }
+
   _drawPauseOverlay(ctx) {
     const mx  = this.input.mouse.x, my = this.input.mouse.y;
     const hit = (b) => mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h;
@@ -12692,6 +12991,7 @@ class Game {
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
     if (this.state === 'paused') {
+      this._drawArenaObjectivesPanel(ctx); // arena win-condition status (left side)
       const { px, py, pw, ph, tabH, numCtrlPlayers, resumeBtn, menuBtn, saveBtn, levelSelBtn } = this._pauseLayout();
       const TABS       = ['pause', 'settings', 'help'];
       const TAB_LABELS = ['⏸ PAUSE', '⚙ SETTINGS', '? HELP'];
@@ -13202,6 +13502,19 @@ class Game {
         ? { col: data.placedHill.col, row: data.placedHill.row,
             w: Math.max(1, Math.min(20, data.placedHill.w || 4)), h: Math.max(1, Math.min(20, data.placedHill.h || 1)) }
         : null;
+      // Player spawn points (Phase 3). Key `playerSpawns` (distinct from mob spawnPoints).
+      this.sandbox.placedSpawnPoints = (Array.isArray(data.playerSpawns) ? data.playerSpawns : [])
+        .filter(s => s && typeof s.col === 'number' && typeof s.row === 'number')
+        .slice(0, 4)
+        .map(s => ({ col: s.col, row: s.row, wx: s.col * BLOCK_SIZE + BLOCK_SIZE / 2, wy: s.row * BLOCK_SIZE + BLOCK_SIZE / 2, slot: (s.slot >= 1 && s.slot <= 4) ? s.slot : 1 }));
+      // Auto-migration: worlds authored before spawn points existed get 2 seeded
+      // (movable + deletable) so arena play works out of the box for 2 players.
+      if (this.sandbox.placedSpawnPoints.length === 0) this._seedDefaultSpawnPoints();
+      // Arena objects (Phase 3 v3): CTF Base / Tower / Heal Tower placeables.
+      this.sandbox.placedArenaObjs = (Array.isArray(data.arenaObjects) ? data.arenaObjects : [])
+        .filter(o => o && typeof o.col === 'number' && typeof o.row === 'number' && ['base', 'tower', 'heal'].includes(o.type))
+        .map(o => ({ type: o.type, col: o.col, row: o.row, wx: o.col * BLOCK_SIZE + BLOCK_SIZE / 2, wy: o.row * BLOCK_SIZE + BLOCK_SIZE / 2,
+                     team: (o.team === 1) ? 1 : 0, slot: (o.slot >= 1 && o.slot <= 4) ? o.slot : 1 }));
     }
 
     // Restore sandbox portal registry + links
@@ -13635,6 +13948,56 @@ class Game {
       }
     }
 
+    // Overlay saved runtime redstone state on top of the template layout, so a
+    // world played in Normal mode keeps toggled levers / powered wiring across
+    // leave/re-enter (the sim re-propagates downstream from these on next tick).
+    if (progress && progress.redstoneState && typeof progress.redstoneState === 'object') {
+      const rsState = progress.redstoneState;
+      for (const l of (rsState.levers || [])) {
+        const comp = this.redstone.getAt(l.col, l.row);
+        if (comp && comp.type === 'lever') comp.on = !!l.on;
+      }
+      for (const t of (rsState.trapdoors || [])) {
+        const comp = this.redstone.getAt(t.col, t.row);
+        if (comp && comp.type === 'trapdoor') comp.open = !!t.open;
+      }
+      for (const p of (rsState.pistons || [])) {
+        const comp = this.redstone.getAt(p.col, p.row);
+        if (comp && comp.type === 'piston') comp.extended = !!p.extended;
+      }
+      for (const d of (rsState.dust || [])) {
+        const dust = this._dustBlocks.get(`${d.col},${d.row}`);
+        if (dust) { dust.on = !!d.on; dust.everTriggered = !!d.everTriggered; }
+      }
+      for (const g of (rsState.gates || [])) {
+        const gate = this._gateBlocks.get(`${g.col},${g.row}`);
+        if (gate) { gate.outputPowered = !!g.outputPowered; gate.everTriggered = !!g.everTriggered; }
+      }
+      for (const t of (rsState.transmitters || [])) {
+        const tx = this._transmitters.get(`${t.col},${t.row}`);
+        if (tx) tx.powered = !!t.powered;
+      }
+      for (const r of (rsState.receivers || [])) {
+        const rx = this._receivers.get(`${r.col},${r.row}`);
+        if (rx) rx.powered = !!r.powered;
+      }
+      this._dustConnDirty = true;
+    }
+
+    // Restore live mobs + ground drops so re-entering the world keeps the exact
+    // set that was alive/dropped, rather than respawning from spawn eggs. Prefer
+    // the NormalProgress checkpoint (legacy localStorage flow); fall back to the
+    // world payload (cloud game-slot flow, where `data` is the saved snapshot).
+    // Skipped on New Game so a fresh start spawns from eggs.
+    if (!this._normalNewGame) {
+      const savedMobs  = (progress && Array.isArray(progress.liveMobs) && progress.liveMobs.length)
+        ? progress.liveMobs : (Array.isArray(data.liveMobs) ? data.liveMobs : []);
+      const savedDrops = (progress && Array.isArray(progress.droppedItems) && progress.droppedItems.length)
+        ? progress.droppedItems : (Array.isArray(data.droppedItems) ? data.droppedItems : []);
+      if (savedMobs.length)  this.mobManager.adoptSerializedMobs(savedMobs);
+      if (savedDrops.length) this.mobManager.restoreDroppedItems(savedDrops);
+    }
+
     // Mark already-collected items so they don't reappear
     if (progress && Array.isArray(progress.collectedItems) && progress.collectedItems.length > 0) {
       const done = new Set(progress.collectedItems);
@@ -13759,9 +14122,35 @@ class Game {
     const result = NormalProgress.save(
       this._sandboxLoadKey, this.player, bed || null,
       this.level.grid, collectedKeys, this._chests, this._dayNight,
-      this._worldAdvSettings.twoPlayerMode, this._collectedDiscs
+      this._worldAdvSettings.twoPlayerMode, this._collectedDiscs,
+      this._captureRedstoneState(), this._captureDroppedItems(),
+      this.mobManager ? this.mobManager.serializeMobs() : []
     );
     if (!result.ok) this._notify('Save failed: ' + result.error, '#FF4444', 200);
+  }
+
+  // Snapshot the live redstone device states so they survive leave/re-enter in
+  // Normal mode (the world template only carries their initial wiring layout).
+  _captureRedstoneState() {
+    const comps = this.redstone?.components || [];
+    return {
+      levers:    comps.filter(c => c.type === 'lever')    .map(c => ({ col: c.col, row: c.row, on: !!c.on })),
+      trapdoors: comps.filter(c => c.type === 'trapdoor') .map(c => ({ col: c.col, row: c.row, open: !!c.open })),
+      pistons:   comps.filter(c => c.type === 'piston')   .map(c => ({ col: c.col, row: c.row, extended: !!c.extended })),
+      dust: [...(this._dustBlocks?.values() ?? [])].map(d => ({ col: d.col, row: d.row, on: !!d.on, everTriggered: !!d.everTriggered })),
+      gates: [...(this._gateBlocks?.values() ?? [])].map(g => ({ col: g.col, row: g.row, outputPowered: !!g.outputPowered, everTriggered: !!g.everTriggered })),
+      transmitters: [...(this._transmitters?.values() ?? [])].map(t => ({ col: t.col, row: t.row, powered: !!t.powered })),
+      receivers:    [...(this._receivers?.values() ?? [])].map(r => ({ col: r.col, row: r.row, powered: !!r.powered })),
+    };
+  }
+
+  // Snapshot ground item drops (mob loot / broken-block drops) not yet collected.
+  _captureDroppedItems() {
+    const drops = this.mobManager?.droppedItems || [];
+    return drops.filter(d => d && d.alive).map(d => ({
+      x: Math.round(d.x), y: Math.round(d.y),
+      itemKey: d.itemKey, amount: d.amount, life: d.life,
+    }));
   }
 
   // ── Platformer mode: play a Sandbox-created world as a platformer level ──
@@ -13787,6 +14176,19 @@ class Game {
       }
     }
 
+    // Player 1 spawn point (Phase 3): a placed player spawn point overrides the
+    // sandbox editor position, so a Platformer level starts the player at the
+    // DESIGNED spot — not wherever the designer left off in the editor.
+    {
+      const spawns = Array.isArray(data.playerSpawns) ? data.playerSpawns : [];
+      const p1 = spawns.find(s => (s.slot || 1) === 1) || spawns[0];
+      if (p1 && typeof p1.col === 'number' && typeof p1.row === 'number') {
+        const px = p1.col * BLOCK_SIZE, py = p1.row * BLOCK_SIZE;
+        this.level.spawnX = px; this.level.spawnY = py;
+        if (this.player) { this.player.x = px; this.player.y = py; this.player.vx = 0; this.player.vy = 0; }
+      }
+    }
+
     // Convert spawn eggs to mob spawn points
     const EGG_TO_MOB = {
       zombie: 'Zombie', skeleton: 'Skeleton', creeper: 'Creeper',
@@ -13799,6 +14201,16 @@ class Game {
           .map(e => ({ col: e.col, row: e.row, mobTypeName: EGG_TO_MOB[e.mobType], timer: 0, active: true }))
       : [];
     this.mobManager.setupSpawnPoints(eggSpawnsPf);
+
+    // Restore live mobs + ground drops saved with this world (cloud game-slot
+    // snapshot), so re-entering keeps the mobs that were alive instead of
+    // respawning fresh from spawn eggs. Fresh templates carry none → no-op.
+    if (Array.isArray(data.liveMobs) && data.liveMobs.length) {
+      this.mobManager.adoptSerializedMobs(data.liveMobs);
+    }
+    if (Array.isArray(data.droppedItems) && data.droppedItems.length) {
+      this.mobManager.restoreDroppedItems(data.droppedItems);
+    }
 
     // Placed tool/weapon/block items → collectible pickups
     this._platformerItems = (Array.isArray(data.placedItems) ? data.placedItems : [])
