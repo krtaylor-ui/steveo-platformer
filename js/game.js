@@ -14821,7 +14821,11 @@ class Game {
     const now    = Date.now();
     if (now > b.itemExpiresMs && b.item !== 1.0) { b.item = 1.0; b.itemStack = 0; }
     const maxMult = this._worldAdvSettings.srMaxMultiplier ?? SR_CONFIG.maxMultiplier;
-    return Math.min(b.timeBased * b.distBased * b.blockBoost * b.item, maxMult);
+    // Normal accumulation (time/dist/item boosts) caps at maxMult. The
+    // SPEED_BOOSTER block stacks ON TOP and can push above the cap, up to
+    // 1.5× maxMult — so hitting a booster at max speed still speeds you up.
+    const base = Math.min(b.timeBased * b.distBased * b.item, maxMult);
+    return Math.min(base * b.blockBoost, maxMult * 1.5);
   }
 
   _updateSpeedRunner() {
@@ -14927,9 +14931,11 @@ class Game {
       || this.input.isDown('ArrowRight') || this.input.isDown('KeyD')
       || this.input.gamepads.some(g => g && g.connected && (g.dpad1 || g.moveX > 0.3));
     sr.accelHeld = accel;
-    // Own the horizontal velocity (sr.vx) so player.js's 0.72 friction can't
-    // compound with our coast (that caused the near-instant dead stop). Decel is
-    // LINEAR at srDecel× the accel rate (default 2× = slows in half the ramp time).
+    // Own the horizontal velocity (sr.vx) so player._handleInput doesn't clobber
+    // it each frame (it would snap vx to a fixed speed, ignoring the boost, and
+    // its 0.72 friction compounded our coast into a dead stop). srControlled tells
+    // the player to leave horizontal vx to us. Decel is LINEAR at srDecel× accel.
+    this.player.srControlled = true;
     if (sr.vx == null) sr.vx = Math.max(0, this.player.vx || 0);
     const topSpeed = this.player.moveSpeed * 3 * this._srGetEffectiveMultiplier() * baseSpeed;
     const SR_ACCEL = 0.7;                                  // ramp-up per frame (px/frame)

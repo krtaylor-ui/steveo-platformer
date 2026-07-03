@@ -224,7 +224,12 @@ class Player {
     // Horizontal movement — analog-aware (uses left stick magnitude when available)
     const mx = typeof input.moveX === 'function' ? input.moveX()
              : (input.isLeft() ? -1 : input.isRight() ? 1 : 0);
-    if (mx < 0) {
+    if (this.srControlled) {
+      // Speed Runner owns horizontal velocity (game._updateSpeedRunner ramps /
+      // coasts sr.vx). Don't let key input or the 0.72 friction here fight it —
+      // otherwise vx snaps to a fixed speed and ignores the boost multiplier.
+      if (this.vx > 0.01) this.facing = 1;
+    } else if (mx < 0) {
       this.vx    = speed * mx;   // mx is negative → vx moves left
       this.facing = -1;
     } else if (mx > 0) {
