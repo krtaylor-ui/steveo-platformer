@@ -2023,3 +2023,24 @@ html[data-theme="retro"] .gp-focus { outline-color: #ffe000; }
   position: absolute; right: 0; top: 0; bottom: 0; width: 50%;
 }
 html[data-theme="retro"] #touch-controls .tc-btn { border-radius: 6px; font-family: 'Courier New', monospace; }
+
+/* ============================================================
+   Fix: leaderboard + pause-overlay text was inheriting the body's white
+   color on the white .modal-content (Modern), rendering white-on-white
+   (incl. the "No scores yet" message → looked empty). Set explicit dark text
+   in Modern; light in Retro (where .modal-content is dark).
+   ============================================================ */
+#lb-list, #lb-list p, .lb-ol li, .lb-ol .lb-name { color: #2a2a3a; }
+.lb-ol li { border-bottom-color: rgba(0, 0, 0, 0.1); }
+.lb-ol .lb-score { color: #b8860b; }              /* readable amber on white */
+#arena-leaderboard-modal .world-list-empty { color: #66708a; }
+.pause-panel { color: #2a2a3a; }
+
+html[data-theme="retro"] #lb-list,
+html[data-theme="retro"] #lb-list p,
+html[data-theme="retro"] .lb-ol li,
+html[data-theme="retro"] .lb-ol .lb-name,
+html[data-theme="retro"] #arena-leaderboard-modal .world-list-empty,
+html[data-theme="retro"] .pause-panel { color: #cfe8f2; }
+html[data-theme="retro"] .lb-ol .lb-score { color: #FFD700; }
+html[data-theme="retro"] .lb-ol li { border-bottom-color: rgba(126, 200, 227, 0.2); }
