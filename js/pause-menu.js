@@ -290,12 +290,9 @@ const PAUSE_MENU = {
   _buildButtons(game) {
     const wrap = this.el('pause-buttons');
     if (!wrap) return;
+    // Level Select removed from every mode — it just returned to the mode's
+    // picker, which Main Menu already does (redundant).
     const btns = [{ label: '▶  Resume', cls: 'btn-primary', act: () => this._resume() }];
-    // Level Select only where it differs from Main Menu (a level/world picker for
-    // that mode). Normal is omitted — there it just returns to the world list,
-    // same as Main Menu.
-    if (game.gameMode === 'platformer' && game._platformerLoadKey) btns.push({ label: '≡  Level Select', cls: 'btn-secondary', act: () => this._levelSelect() });
-    else if (game.gameMode === 'speedrunner') btns.push({ label: '≡  Level Select', cls: 'btn-secondary', act: () => this._levelSelect() });
     if (game.isArena) btns.push({ label: '🏆  View Leaderboard', cls: 'btn-secondary', act: () => this._viewLeaderboard() });
     btns.push({ label: '⏻  Main Menu', cls: 'btn-danger', act: () => this._mainMenu() });
 

@@ -2085,7 +2085,9 @@ html[data-theme="retro"] .lb-table .lb-score { color: #FFD700; }
    ============================================================ */
 .pause-panel { max-width: 560px; width: 94%; max-height: 90vh; }
 .pause-tab { padding: 10px 4px; font-size: 0.88rem; }
-.pause-tab-panel { min-height: 260px; }
+/* Hold a stable height across tabs (sized ~to the Settings group) so switching
+   to Help/Pause doesn't shrink the modal — extra white space is fine. */
+.pause-tab-panel { min-height: 380px; }
 
 .pause-quick { margin: 12px 0; }
 .pause-section { margin: 0 0 14px; }
