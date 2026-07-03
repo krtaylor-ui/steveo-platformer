@@ -346,14 +346,18 @@ const PAUSE_MENU = {
       this._row('Sound Effects', this._slider(() => pct('sfxVolume', 0.5), v => { game._worldAdvSettings.sfxVolume = v / 100; })),
     ]));
 
-    // Controls
+    // Controls. Move/Aim sensitivity + deadzone are controller-only — hide them
+    // when no gamepad is connected (keyboard players don't need them).
+    const hasPad = !!(game.input && game.input.gamepads && game.input.gamepads.some(g => g && g.connected));
     const ctrlRows = this._assignRows(game);
-    ctrlRows.push(this._row('Move Sensitivity', this._cycle(this.OPT.sens, () => aws.controllerSensitivity ?? 1.0, v => { game._worldAdvSettings.controllerSensitivity = v; }, v => v.toFixed(2) + 'x')));
-    if (game.gameMode !== 'speedrunner') {
-      ctrlRows.push(this._row('Aim Sensitivity', this._cycle(this.OPT.sens, () => aws.controllerAimSensitivity ?? 1.0, v => { game._worldAdvSettings.controllerAimSensitivity = v; }, v => v.toFixed(2) + 'x')));
-      ctrlRows.push(this._row('Stick Deadzone', this._cycle(this.OPT.deadzone, () => aws.controllerDeadzone ?? 0.20, v => { game._worldAdvSettings.controllerDeadzone = v; }, v => Math.round(v * 100) + '%')));
+    if (hasPad) {
+      ctrlRows.push(this._row('Move Sensitivity', this._cycle(this.OPT.sens, () => aws.controllerSensitivity ?? 1.0, v => { game._worldAdvSettings.controllerSensitivity = v; }, v => v.toFixed(2) + 'x')));
+      if (game.gameMode !== 'speedrunner') {
+        ctrlRows.push(this._row('Aim Sensitivity', this._cycle(this.OPT.sens, () => aws.controllerAimSensitivity ?? 1.0, v => { game._worldAdvSettings.controllerAimSensitivity = v; }, v => v.toFixed(2) + 'x')));
+        ctrlRows.push(this._row('Stick Deadzone', this._cycle(this.OPT.deadzone, () => aws.controllerDeadzone ?? 0.20, v => { game._worldAdvSettings.controllerDeadzone = v; }, v => Math.round(v * 100) + '%')));
+      }
     }
-    body.appendChild(this._section('Controls', ctrlRows));
+    if (ctrlRows.length) body.appendChild(this._section('Controls', ctrlRows));
 
     // Physics / World & Physics (normal, platformer, sandbox). Greyed if locked.
     if (game.gameMode === 'normal' || game.gameMode === 'platformer' || game.gameMode === 'sandbox') {
