@@ -84,6 +84,47 @@ module.exports = function setupArenaLeaderboardRoutes(app) {
     }
   });
 
+  // ── Global leaderboard feed (scrollable list, World + Game-Type filters) ──
+  // Returns top entries across ALL worlds/modes with the world name + date
+  // joined in, for the arena picker's "🏆 Leaderboards" browse screen. Optional
+  // ?world= and ?mode= filters. (For now includes every world; a later build
+  // will screen to System-Published levels via a tag.)
+  app.get('/api/arena/leaderboard-feed', verifyToken, async (req, res) => {
+    try {
+      const limit = Math.min(300, Math.max(1, parseInt(req.query.limit, 10) || 200));
+      let q = supabaseAdmin
+        .from('arena_results')
+        .select('world_id, mode, player_name, score, created_at')
+        .order('score', { ascending: false })
+        .limit(limit);
+      if (req.query.world) q = q.eq('world_id', req.query.world);
+      if (req.query.mode && VALID_MODES.includes(req.query.mode)) q = q.eq('mode', req.query.mode);
+
+      const { data, error } = await q;
+      if (error) { console.error('[arena] feed query failed:', error); return res.status(500).json({ error: 'Query failed' }); }
+
+      // Join world names (arena_results.world_id has no FK, so do it in a 2nd query).
+      const ids = [...new Set((data || []).map(r => r.world_id).filter(Boolean))];
+      const names = {};
+      if (ids.length) {
+        const { data: ws } = await supabaseAdmin.from('worlds').select('id, world_name').in('id', ids);
+        for (const w of (ws || [])) names[w.id] = w.world_name;
+      }
+      const results = (data || []).map(r => ({
+        created_at:  r.created_at,
+        world_id:    r.world_id || null,
+        world_name:  r.world_id ? (names[r.world_id] || 'Unknown World') : 'Quick Battle',
+        mode:        r.mode,
+        score:       r.score,
+        player_name: r.player_name || 'Player',
+      }));
+      res.json({ results });
+    } catch (error) {
+      console.error('[arena] feed error:', error);
+      res.status(500).json({ error: 'Failed to load leaderboard feed' });
+    }
+  });
+
   // ── Per-world "Leader" (top scorer per mode) for a batch of worlds ──
   // One request powers the arena tiles' "View Leaderboard" affordance: returns
   // { [worldId]: { [mode]: { player_name, score, created_at } } } — the single

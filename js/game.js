@@ -119,7 +119,7 @@ class Game {
       arenaViewType:             'single',  // 'single' (fixed camera) | 'scrolling' (camera follows)
       arenaMobHealth:            'MEDIUM',  // 'EASY' | 'MEDIUM' | 'HARD' — default mob-HP preset
       arenaRespawnTime:          2,         // seconds (0–10) — arena respawn delay
-      arenaEnabledTypes:         ['MOB_HUNTER', 'COLLECT_EMERALDS', 'KING_OF_HILL', 'SURVIVAL_WAVES'],
+      arenaEnabledTypes:         ['MOB_HUNTER', 'COLLECT_EMERALDS', 'KING_OF_HILL', 'SURVIVAL_WAVES', 'DEATHMATCH', 'CAPTURE_FLAG', 'DEFEND_TOWER', 'CUSTOM'],
     };
     // Phase 3B — player-model refactor. `players[]` is the backing store for
     // 1-4 local players. `player`/`player2` are live accessors over slots 0/1
@@ -9539,35 +9539,43 @@ class Game {
       drawRow(5, 'Respawn Time',  `${aws.arenaRespawnTime ?? 2}s`);
       drawRow(6, 'Redstone Speed',`${(aws.redstoneSpeed || 1).toFixed(2)}x`);
 
-      // Enabled game types — 4 inline toggle chips + greyed coming-soon note.
+      // Enabled game types — ALL arena modes as toggle chips (2 rows of 4).
+      // These declare which modes a world supports; unselected modes are greyed
+      // out in the Arena mode picker (arena-select chooseMode/_supports).
       const typesY = L.FIRST_ROW + 7 * rowH;
       ctx.font = '11px Courier New'; ctx.fillStyle = '#AAAACC';
       ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       ctx.fillText('Game Types', L.MOB_COL, typesY + 11);
       const enabled = Array.isArray(aws.arenaEnabledTypes) ? aws.arenaEnabledTypes : [];
-      const chips = [['MOB_HUNTER','Hunt'],['COLLECT_EMERALDS','Emrld'],['KING_OF_HILL','Hill'],['SURVIVAL_WAVES','Wave']];
-      const chipW = 56, chipX0 = L.px + 120;
+      const chips = [
+        ['MOB_HUNTER', 'Hunt'], ['COLLECT_EMERALDS', 'Emrld'], ['KING_OF_HILL', 'Hill'], ['SURVIVAL_WAVES', 'Wave'],
+        ['DEATHMATCH', 'DM'],   ['CAPTURE_FLAG', 'CTF'],       ['DEFEND_TOWER', 'Tower'], ['CUSTOM', 'Custom'],
+      ];
+      const chipW = 56, chipGap = 4, perRow = 4, chipX0 = L.px + 120;
       this._wsArenaChips = [];
       chips.forEach(([key, lbl], ci) => {
-        const cx = chipX0 + ci * (chipW + 4);
+        const row = Math.floor(ci / perRow), col = ci % perRow;
+        const cx = chipX0 + col * (chipW + chipGap);
+        const cy = typesY + row * (tgH + chipGap);
         const on = enabled.includes(key);
-        const hov = mx2 >= cx && mx2 <= cx + chipW && my2 >= typesY && my2 <= typesY + tgH;
+        const hov = mx2 >= cx && mx2 <= cx + chipW && my2 >= cy && my2 <= cy + tgH;
         ctx.fillStyle = on ? (hov ? '#2e6b3a' : '#27562f') : (hov ? '#3a2a2a' : '#2a2333');
         ctx.strokeStyle = on ? '#4CAF50' : '#555577'; ctx.lineWidth = 1;
-        ctx.fillRect(cx, typesY, chipW, tgH); ctx.strokeRect(cx, typesY, chipW, tgH);
+        ctx.fillRect(cx, cy, chipW, tgH); ctx.strokeRect(cx, cy, chipW, tgH);
         ctx.font = 'bold 10px Courier New'; ctx.fillStyle = on ? '#9fffce' : '#888899';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(lbl, cx + chipW / 2, typesY + 12);
-        this._wsArenaChips.push({ x: cx, y: typesY, w: chipW, h: tgH, key });
+        ctx.fillText(lbl, cx + chipW / 2, cy + 12);
+        this._wsArenaChips.push({ x: cx, y: cy, w: chipW, h: tgH, key });
       });
 
-      // Warnings (enabled type missing its required design element).
+      // Warnings (enabled type missing its required design element), below both rows.
+      const warnY = typesY + 2 * (tgH + chipGap) + 10;
       const warn = this._arenaSettingsWarnings(enabled);
       if (warn.length) {
         ctx.font = '9px Courier New'; ctx.fillStyle = '#FF9800';
         ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-        ctx.fillText('⚠ ' + warn[0], L.MOB_COL, typesY + 40);
-        if (warn[1]) ctx.fillText('⚠ ' + warn[1], L.MOB_COL, typesY + 53);
+        ctx.fillText('⚠ ' + warn[0], L.MOB_COL, warnY);
+        if (warn[1]) ctx.fillText('⚠ ' + warn[1], L.MOB_COL, warnY + 13);
       }
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     } else {

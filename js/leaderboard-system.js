@@ -78,60 +78,108 @@ const LEADERBOARD_SYSTEM = {
     CAPTURE_FLAG: 'Capture the Flag',
   },
 
-  // Global (all-worlds) leaderboards — the top-of-arena "🏆 Leaderboards" button.
-  async showModal(mode = 'MOB_HUNTER') {
-    this._ctx = { worldId: null, modes: Object.keys(this.MODE_LABELS), title: '🏆 Arena Leaderboards' };
-    await this._openModal(mode);
+  _label(k) { return this.ALL_MODE_LABELS[k] || this.MODE_LABELS[k] || k; },
+
+  // The browse feed: top entries across all worlds/modes, with world name + date.
+  async fetchFeed(world, mode, limit = 200) {
+    if (typeof AUTH === 'undefined' || !AUTH.authedFetch) return [];
+    try {
+      const qs = [];
+      if (world) qs.push(`world=${encodeURIComponent(world)}`);
+      if (mode)  qs.push(`mode=${encodeURIComponent(mode)}`);
+      qs.push(`limit=${limit}`);
+      const res = await AUTH.authedFetch(`/api/arena/leaderboard-feed?${qs.join('&')}`);
+      if (!res.ok) return [];
+      const d = await res.json();
+      return d.results || [];
+    } catch (e) { console.error('Leaderboard feed failed:', e); return []; }
   },
 
-  // World-specific leaderboards — the per-tile / pause-menu "View Leaderboard"
-  // button. `modes` limits the tabs to the game types that have a recorded
-  // Leader for this world (falls back to all modes with records for the world).
-  async showWorldModal(worldId, worldName, modes) {
-    if (!worldId) return this.showModal();
-    const avail = (modes && modes.length) ? modes : Object.keys(this.ALL_MODE_LABELS);
-    this._ctx = { worldId, modes: avail, title: `🏆 ${worldName || 'World'} — Leaders` };
-    await this._openModal(avail[0]);
-  },
+  // Global browse — the arena picker's "🏆 Leaderboards" button. A single
+  // scrollable feed (Date / World / Game Type / Score / Player) with a World
+  // filter and a Game-Type filter.
+  async showModal() { await this._openFeed(null); },
 
-  async _openModal(mode) {
+  // Per-tile / pause "View Leaderboard" → same feed, pre-filtered to one world.
+  async showWorldModal(worldId /*, worldName, modes */) { await this._openFeed(worldId || null); },
+
+  async _openFeed(presetWorld) {
     const modal = document.getElementById('arena-leaderboard-modal');
     if (!modal) return;
     modal.style.display = 'flex';
     const titleEl = modal.querySelector('h3');
-    if (titleEl && this._ctx) titleEl.textContent = this._ctx.title;
+    if (titleEl) titleEl.textContent = '🏆 Arena Leaderboards';
     const closeBtn = document.getElementById('lb-close-btn');
     if (closeBtn) closeBtn.onclick = () => { modal.style.display = 'none'; };
-    this._renderTabs(mode);
-    await this._renderList(mode);
+
+    this._filter = { world: presetWorld || '', mode: '' };
+    // Build the World dropdown from an unfiltered fetch (so every world that has
+    // a score is listed), then render + wire the filters.
+    const universe = await this.fetchFeed('', '', 300);
+    this._worldOpts = [];
+    const seen = new Set();
+    for (const r of universe) {
+      const key = r.world_id || '__quick';
+      if (seen.has(key)) continue;
+      seen.add(key);
+      this._worldOpts.push({ id: r.world_id || '', name: r.world_name });
+    }
+    this._worldOpts.sort((a, b) => a.name.localeCompare(b.name));
+    this._renderFilters();
+    await this._renderFeed();
   },
 
-  _label(k) { return this.ALL_MODE_LABELS[k] || this.MODE_LABELS[k] || k; },
-
-  _renderTabs(active) {
-    const tabs = document.getElementById('lb-tabs');
-    if (!tabs) return;
-    const keys = (this._ctx && this._ctx.modes) || Object.keys(this.MODE_LABELS);
-    tabs.innerHTML = keys.map(k =>
-      `<button class="btn ${k === active ? 'btn-primary' : 'btn-secondary'} lb-tab" data-mode="${k}">${this._esc(this._label(k))}</button>`
-    ).join(' ');
-    tabs.querySelectorAll('.lb-tab').forEach(b =>
-      b.addEventListener('click', () => this._openModal(b.dataset.mode)));
+  _renderFilters() {
+    const bar = document.getElementById('lb-tabs');
+    if (!bar) return;
+    const f = this._filter || { world: '', mode: '' };
+    const worldOpts = ['<option value="">All Worlds</option>'].concat(
+      (this._worldOpts || []).map(w =>
+        `<option value="${this._esc(w.id)}" ${w.id === f.world ? 'selected' : ''}>${this._esc(w.name)}</option>`)
+    ).join('');
+    const modeOpts = ['<option value="">All Game Types</option>'].concat(
+      Object.keys(this.ALL_MODE_LABELS).map(k =>
+        `<option value="${k}" ${k === f.mode ? 'selected' : ''}>${this._esc(this.ALL_MODE_LABELS[k])}</option>`)
+    ).join('');
+    bar.innerHTML =
+      `<label class="lb-filter">World <select id="lb-filter-world">${worldOpts}</select></label>` +
+      `<label class="lb-filter">Game Type <select id="lb-filter-mode">${modeOpts}</select></label>`;
+    const wsel = document.getElementById('lb-filter-world');
+    const msel = document.getElementById('lb-filter-mode');
+    if (wsel) wsel.onchange = () => { this._filter.world = wsel.value; this._renderFeed(); };
+    if (msel) msel.onchange = () => { this._filter.mode = msel.value; this._renderFeed(); };
   },
 
-  async _renderList(mode) {
+  _fmtDate(iso) {
+    try {
+      const d = new Date(iso);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    } catch (e) { return ''; }
+  },
+
+  async _renderFeed() {
     const list = document.getElementById('lb-list');
     if (!list) return;
-    list.innerHTML = '<p>Loading…</p>';
-    const worldId = this._ctx ? this._ctx.worldId : null;
-    const rows = await this.fetch(mode, 10, worldId);
+    list.innerHTML = '<p class="world-list-empty">Loading…</p>';
+    const f = this._filter || { world: '', mode: '' };
+    const rows = await this.fetchFeed(f.world, f.mode, 200);
     if (!rows.length) {
-      list.innerHTML = '<p class="world-list-empty">No scores yet. Be the first!</p>';
+      list.innerHTML = '<p class="world-list-empty">No scores recorded yet.</p>';
       return;
     }
-    list.innerHTML = `<ol class="lb-ol">${rows.map(r =>
-      `<li><span class="lb-name">${this._esc(r.player_name || 'Player')}</span>` +
-      `<span class="lb-score">${r.score}</span></li>`).join('')}</ol>`;
+    const body = rows.map((r, i) =>
+      `<tr>` +
+      `<td class="lb-rank">${i + 1}</td>` +
+      `<td class="lb-date">${this._esc(this._fmtDate(r.created_at))}</td>` +
+      `<td class="lb-world">${this._esc(r.world_name)}</td>` +
+      `<td class="lb-type">${this._esc(this._label(r.mode))}</td>` +
+      `<td class="lb-score">${r.score}</td>` +
+      `<td class="lb-player">${this._esc(r.player_name)}</td>` +
+      `</tr>`).join('');
+    list.innerHTML =
+      `<table class="lb-table"><thead><tr>` +
+      `<th>#</th><th>Date</th><th>World</th><th>Game Type</th><th>Score</th><th>Player</th>` +
+      `</tr></thead><tbody>${body}</tbody></table>`;
   },
 
   _esc(s) {

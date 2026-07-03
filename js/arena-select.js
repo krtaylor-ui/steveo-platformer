@@ -82,11 +82,15 @@ const ARENA_SELECT = {
     }
   },
 
-  // Does a world's design support a given arena mode? Based on the special
-  // elements placed in the map (most modes auto-anchor to spawns, so this
-  // reflects what the map was *designed* for). DEATHMATCH/CUSTOM fit any map.
-  _supports(wd, key) {
-    if (!wd) return key === 'DEATHMATCH' || key === 'CUSTOM';
+  // Which arena modes does a world support? Prefer the designer's EXPLICIT
+  // selection (worldAdvSettings.arenaEnabledTypes, set via the sandbox arena
+  // settings "Game Types" chips); fall back to inferring from placed elements
+  // for older worlds that never set it. Returns null = "all modes" (no data).
+  _supportedModes(wd) {
+    const explicit = wd && wd.worldAdvSettings && wd.worldAdvSettings.arenaEnabledTypes;
+    if (Array.isArray(explicit) && explicit.length) return explicit.slice();
+    if (!wd) return null; // Quick Play / unknown → all modes allowed
+    // Legacy inference from placed elements.
     const objs   = Array.isArray(wd.arenaObjects) ? wd.arenaObjects : [];
     const bases  = objs.filter(o => o && o.type === 'base').length;
     const towers = objs.filter(o => o && o.type === 'tower').length;
@@ -95,17 +99,19 @@ const ARENA_SELECT = {
     const hasSpawns   = (Array.isArray(wd.spawnEggs) && wd.spawnEggs.length > 0)
                      || (Array.isArray(wd.spawnLines) && wd.spawnLines.length > 0);
     const pSpawns     = Array.isArray(wd.playerSpawns) ? wd.playerSpawns.length : 0;
-    switch (key) {
-      case 'KING_OF_HILL':     return hasHill;
-      case 'COLLECT_EMERALDS': return hasEmeralds;
-      case 'CAPTURE_FLAG':     return bases >= 2 || pSpawns >= 2;
-      case 'DEFEND_TOWER':     return towers >= 1;
-      case 'MOB_HUNTER':
-      case 'SURVIVAL_WAVES':   return hasSpawns;
-      case 'DEATHMATCH':
-      case 'CUSTOM':           return true;
-      default:                 return true;
-    }
+    const out = ['DEATHMATCH', 'CUSTOM']; // fit any map
+    if (hasHill)                 out.push('KING_OF_HILL');
+    if (hasEmeralds)             out.push('COLLECT_EMERALDS');
+    if (bases >= 2 || pSpawns >= 2) out.push('CAPTURE_FLAG');
+    if (towers >= 1)             out.push('DEFEND_TOWER');
+    if (hasSpawns)               out.push('MOB_HUNTER', 'SURVIVAL_WAVES');
+    return out;
+  },
+
+  // Does a world support a given mode? (Used by the tile game-type filter.)
+  _supports(wd, key) {
+    const modes = this._supportedModes(wd);
+    return modes ? modes.includes(key) : true;
   },
 
   // Short chips describing the special elements a map contains.
@@ -234,6 +240,8 @@ const ARENA_SELECT = {
         return;
       }
     }
+    // Modes this world declares support for (null = all, e.g. Quick Play).
+    const supported = this._supportedModes(templateData);
     this.chooseMode(mode => {
       // Custom Rules opens the rules builder; other real types go through the
       // pre-launch settings modal; null "Quick Battle" launches straight away.
@@ -245,23 +253,29 @@ const ARENA_SELECT = {
       } else {
         this._launch(templateData, mode ? { arenaGameMode: mode } : {}, worldId, worldName);
       }
-    });
+    }, supported);
   },
 
   // Show the game-mode picker, then call onPick(modeKeyOrNull). Reused by the
   // editor's "Test in Arena" too. null → Phase 3A.1 classic Deathmatch.
-  chooseMode(onPick) {
+  // `supported` (array of mode keys, or null = all) greys out modes the selected
+  // world doesn't declare support for (from its Game Types settings).
+  chooseMode(onPick, supported = null) {
     const modal = document.getElementById('arena-mode-select-modal');
     const list  = document.getElementById('arena-mode-list');
     if (!modal || !list || typeof ARENA_MODES === 'undefined') { onPick(null); return; }
 
     const modes = [
       { key: null, label: 'Quick Battle (vs bots)', desc: 'Defeat the default bots.' },
-      // Playable game types, then greyed coming-soon (PvP) types (Phase 3A.3).
-      ...Object.keys(ARENA_MODES.DEFS).map(k => ({
-        key: k, label: ARENA_MODES.DEFS[k].label, desc: ARENA_MODES.DEFS[k].desc,
-        disabled: !!ARENA_MODES.DEFS[k].comingSoon,
-      })),
+      // Playable game types; greyed if comingSoon OR not supported by this world.
+      ...Object.keys(ARENA_MODES.DEFS).map(k => {
+        const unsupported = supported ? !supported.includes(k) : false;
+        return {
+          key: k, label: ARENA_MODES.DEFS[k].label,
+          desc: unsupported ? 'Not enabled for this world (set it in Sandbox → Arena settings).' : ARENA_MODES.DEFS[k].desc,
+          disabled: !!ARENA_MODES.DEFS[k].comingSoon || unsupported,
+        };
+      }),
     ];
     list.innerHTML = modes.map(m =>
       `<button class="btn ${m.disabled ? 'btn-secondary' : 'btn-primary'} arena-mode-opt" data-mode="${m.key || ''}"

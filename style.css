@@ -1174,7 +1174,7 @@ html[data-theme="retro"] {
 #custom-rules-modal .modal-content,
 #test-world-modal .modal-content,
 #arena-leaderboard-modal .modal-content {
-  max-width: 500px;
+  max-width: 680px;
   /* Long option lists (pre-launch settings, custom-rules builder, mode picker)
      can exceed the viewport — cap height and scroll inside the modal so every
      option and the action buttons stay reachable. */
@@ -2044,3 +2044,29 @@ html[data-theme="retro"] #arena-leaderboard-modal .world-list-empty,
 html[data-theme="retro"] .pause-panel { color: #cfe8f2; }
 html[data-theme="retro"] .lb-ol .lb-score { color: #FFD700; }
 html[data-theme="retro"] .lb-ol li { border-bottom-color: rgba(126, 200, 227, 0.2); }
+
+/* ============================================================
+   Arena leaderboard BROWSE feed (single scrollable list + two filters).
+   Columns: # / Date / World / Game Type / Score / Player. ≥10 rows visible,
+   scrolls inside the modal. Dark text on the white Modern modal; light in Retro.
+   ============================================================ */
+#lb-tabs { align-items: center; }
+.lb-filter { display: flex; flex-direction: column; font-size: 0.72rem; gap: 3px; color: #2a2a3a; }
+.lb-filter select { padding: 4px 6px; border-radius: 5px; min-width: 150px; }
+.lb-list { min-height: 120px; max-height: 52vh; overflow-y: auto; overflow-x: auto; }
+.lb-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; color: #2a2a3a; }
+.lb-table th, .lb-table td { text-align: left; padding: 5px 8px; white-space: nowrap; }
+.lb-table thead th {
+  position: sticky; top: 0; background: #eef0f7; color: #444a5e;
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; z-index: 1;
+}
+.lb-table tbody tr { border-bottom: 1px solid rgba(0, 0, 0, 0.08); }
+.lb-table .lb-rank { color: #8a8fa3; width: 1.5em; }
+.lb-table .lb-score { font-weight: bold; color: #b8860b; text-align: right; }
+.lb-table .lb-world { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+
+html[data-theme="retro"] .lb-filter { color: #cfe8f2; }
+html[data-theme="retro"] .lb-table { color: #cfe8f2; }
+html[data-theme="retro"] .lb-table thead th { background: #10202a; color: #7ec8e3; }
+html[data-theme="retro"] .lb-table tbody tr { border-bottom-color: rgba(126, 200, 227, 0.2); }
+html[data-theme="retro"] .lb-table .lb-score { color: #FFD700; }
