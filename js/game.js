@@ -14808,6 +14808,12 @@ class Game {
         }
       }
     }
+
+    // Snapshot the authored initial redstone state so each SR run re-arms traps /
+    // pistons / levers to exactly how the designer left them (see _srRespawn).
+    this._sr._redstoneInit = this.redstone.components.map(c => ({
+      on: c.on, open: c.open, extended: c.extended, fuse: c.fuse,
+    }));
   }
 
   _srGetEffectiveMultiplier() {
@@ -15272,6 +15278,25 @@ class Game {
     sr.dead          = false;
     sr.startMs       = null;  // player must press jump again to start race
     sr.ghostFrameIdx = 0;
+    sr.vx            = 0;
+
+    // Reset the level to its authored start state so every run is identical:
+    // respawn mobs (clear the field + re-ready every spawn point), clear leftover
+    // drops from the last run, and re-arm redstone to its initial snapshot.
+    if (this.mobManager) {
+      this.mobManager.mobs = [];
+      this.mobManager.droppedItems = [];
+      for (const sp of this.mobManager.spawnPoints) sp.timer = 0;
+    }
+    if (this.redstone && sr._redstoneInit) {
+      this.redstone.components.forEach((c, i) => {
+        const s = sr._redstoneInit[i]; if (!s) return;
+        if (s.on !== undefined)       c.on = s.on;
+        if (s.open !== undefined)     c.open = s.open;
+        if (s.extended !== undefined) c.extended = s.extended;
+        if (s.fuse !== undefined)     c.fuse = s.fuse;
+      });
+    }
   }
 
   _srFollowCamera() {
