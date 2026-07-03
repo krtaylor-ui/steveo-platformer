@@ -221,6 +221,7 @@ const ARENA_SELECT = {
   // Fetch the chosen world's data (null → Quick Play built-in map), then launch.
   async play(worldId) {
     let templateData = null;
+    const worldName = worldId ? (this.allWorlds.find(w => w.id === worldId)?.world_name || null) : null;
     if (worldId) {
       try {
         const res = await AUTH.authedFetch(`/api/worlds/sandbox/${worldId}`);
@@ -238,11 +239,11 @@ const ARENA_SELECT = {
       // pre-launch settings modal; null "Quick Battle" launches straight away.
       // worldId is threaded through so per-world leaderboards record correctly.
       if (mode === 'CUSTOM' && typeof CUSTOM_RULES_UI !== 'undefined' && CUSTOM_RULES_UI.show) {
-        CUSTOM_RULES_UI.show((cfg) => this._launch(templateData, { arenaGameMode: 'CUSTOM', arenaConfig: cfg }, worldId));
+        CUSTOM_RULES_UI.show((cfg) => this._launch(templateData, { arenaGameMode: 'CUSTOM', arenaConfig: cfg }, worldId, worldName));
       } else if (mode && typeof ARENA_PRELAUNCH !== 'undefined' && ARENA_PRELAUNCH.show) {
-        ARENA_PRELAUNCH.show(mode, (cfg) => this._launch(templateData, { arenaGameMode: mode, arenaConfig: cfg }, worldId));
+        ARENA_PRELAUNCH.show(mode, (cfg) => this._launch(templateData, { arenaGameMode: mode, arenaConfig: cfg }, worldId, worldName));
       } else {
-        this._launch(templateData, mode ? { arenaGameMode: mode } : {}, worldId);
+        this._launch(templateData, mode ? { arenaGameMode: mode } : {}, worldId, worldName);
       }
     });
   },
@@ -278,7 +279,7 @@ const ARENA_SELECT = {
   },
 
   // Single launch path (Phase 3A.2 wraps this with a mode selector).
-  _launch(templateData, extraOptions = {}, worldId = null) {
+  _launch(templateData, extraOptions = {}, worldId = null, worldName = null) {
     if (window.menu && typeof window.menu._stop === 'function') window.menu._stop();
     if (window.game && typeof window.game.destroy === 'function') window.game.destroy();
     document.getElementById('arena-select-screen').style.display = 'none';
@@ -286,6 +287,7 @@ const ARENA_SELECT = {
     const options = Object.assign({}, extraOptions);
     if (templateData) options.templateData = templateData;
     if (worldId) options.worldId = worldId; // per-world leaderboard recording
+    if (worldName) options.worldName = worldName;
 
     window.game = new Game('arena', options, () => {
       window.game = null;
