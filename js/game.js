@@ -55,6 +55,8 @@ class Game {
     // 800×500 resolution is unaffected by visibility).
     if (typeof document !== 'undefined' && document.body) {
       document.body.classList.remove('pre-game');
+      // Menu-only retro FX (posterize/scanlines/etc.) pause while a match runs.
+      document.body.classList.add('in-game');
       window.dispatchEvent(new Event('resize'));
     }
     this.input           = new InputManager(this.canvas);
@@ -1193,6 +1195,8 @@ class Game {
 
   destroy() {
     this._running = false;
+    // Back to the menus → re-enable menu-only retro FX.
+    if (typeof document !== 'undefined' && document.body) document.body.classList.remove('in-game');
     this._closeSaveDialog();
     // Clean up AFK document event listeners
     if (this._afkListenerCleanup) { this._afkListenerCleanup(); this._afkListenerCleanup = null; }

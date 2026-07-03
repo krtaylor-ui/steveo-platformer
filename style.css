@@ -1140,6 +1140,7 @@ html[data-theme="retro"] {
 
 /* New modals share the create-game-modal overlay treatment */
 #create-world-modal,
+#theme-settings-modal,
 #import-games-modal,
 #import-file-modal,
 #arena-settings-modal,
@@ -1158,6 +1159,7 @@ html[data-theme="retro"] {
 }
 
 #create-world-modal .modal-content,
+#theme-settings-modal .modal-content,
 #import-games-modal .modal-content,
 #import-file-modal .modal-content,
 #arena-settings-modal .modal-content,
@@ -1846,3 +1848,65 @@ html[data-theme="retro"] .community-tab.active { background: #10203a; color: #7e
    badge already inherit the panel/button rules above. Section dividers → pixel. */
 html[data-theme="retro"] .cr-section { border-top: 2px solid #2f6f8f; }
 html[data-theme="retro"] .app-version { border-radius: 0; border: 1px solid #2f6f8f; }
+
+/* ============================================================ */
+/* Retro FX — independent, user-tunable 8-bit effects.          */
+/* Toggled via data-fx-* on <html> (theme.js); menu-only (gated  */
+/* by body:not(.in-game) so gameplay is never filtered). Assets  */
+/* --frame / --dither are generated at runtime by theme.js.      */
+/* ============================================================ */
+
+/* ── Screen-FX overlay layers (full-screen, inert by default) ── */
+.retro-fx-layer { position: fixed; inset: 0; z-index: 4000; pointer-events: none; display: none; }
+.fx-scanlines { background: repeating-linear-gradient(0deg, rgba(0,0,0,0.28) 0 1px, transparent 1px 3px); }
+.fx-dither { background-image: var(--dither, none); background-size: 8px 8px; image-rendering: pixelated; mix-blend-mode: overlay; opacity: 0.5; }
+.fx-vignette { background: radial-gradient(120% 130% at 50% 45%, transparent 55%, rgba(0,0,0,0.55) 100%); }
+html[data-theme="retro"][data-fx-scan]   body:not(.in-game) .fx-scanlines,
+html[data-theme="retro"][data-fx-dither] body:not(.in-game) .fx-dither,
+html[data-theme="retro"][data-fx-crt]    body:not(.in-game) .fx-vignette { display: block; }
+
+/* ── Posterize / chromatic aberration — SVG filters on the menu (body) ── */
+html[data-theme="retro"][data-fx-post]:not([data-fx-aberr]) body:not(.in-game) { filter: url(#fx-posterize); }
+html[data-theme="retro"][data-fx-aberr]:not([data-fx-post]) body:not(.in-game) { filter: url(#fx-aberr); }
+html[data-theme="retro"][data-fx-post][data-fx-aberr]      body:not(.in-game) { filter: url(#fx-posterize) url(#fx-aberr); }
+
+/* ── Pixel sprites — nearest-neighbour upscale ── */
+html[data-theme="retro"][data-fx-pixspr] img,
+html[data-theme="retro"][data-fx-pixspr] canvas { image-rendering: pixelated; }
+
+/* ── Pixel frame — ONE generated 9-slice image skins every button/panel ── */
+html[data-theme="retro"][data-fx-frame] .btn,
+html[data-theme="retro"][data-fx-frame] .btn-primary,
+html[data-theme="retro"][data-fx-frame] .btn-secondary,
+html[data-theme="retro"][data-fx-frame] .btn-small,
+html[data-theme="retro"][data-fx-frame] .arena-tile,
+html[data-theme="retro"][data-fx-frame] .world-card,
+html[data-theme="retro"][data-fx-frame] .game-slot,
+html[data-theme="retro"][data-fx-frame] .game-mode-card,
+html[data-theme="retro"][data-fx-frame] .community-card,
+html[data-theme="retro"][data-fx-frame] .modal-content {
+  border: 6px solid transparent;
+  border-image: var(--frame, none) 6 stretch;
+  image-rendering: pixelated;
+  border-radius: 0 !important;
+}
+
+/* ── Theme & Retro FX settings modal (light modal; dark text so it never goes
+      white-on-white; retro overrides flip it to light-on-dark) ── */
+.ts-modal h3 { margin-top: 0; }
+.ts-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; color: #2a2a3a; font-size: 0.92rem; cursor: pointer; }
+.ts-master { font-weight: 700; border-bottom: 1px solid #e2e4ee; padding-bottom: 12px; margin-bottom: 4px; }
+.ts-grp { font-size: 0.68rem; letter-spacing: 0.16em; text-transform: uppercase; color: #8a8fa3; margin: 12px 0 2px; font-weight: 700; }
+.ts-hint { color: #8a8fa3; font-size: 0.82rem; margin: 4px 0 8px; }
+.ts-slider input[type=range] { width: 120px; accent-color: #6a5cff; }
+.ts-slider b { color: #6a5cff; font-variant-numeric: tabular-nums; }
+.ts-body.ts-disabled { opacity: 0.45; pointer-events: none; }
+.ts-toggle { -webkit-appearance: none; appearance: none; width: 40px; height: 22px; border-radius: 11px; background: #cfd3e6; position: relative; cursor: pointer; flex: none; border: 0; transition: background 0.15s; }
+.ts-toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.3); transition: transform 0.15s; }
+.ts-toggle:checked { background: #6a5cff; }
+.ts-toggle:checked::after { transform: translateX(18px); }
+.ts-toggle:focus-visible { outline: 2px solid #6a5cff; outline-offset: 2px; }
+html[data-theme="retro"] .ts-row { color: #cfe8f2; }
+html[data-theme="retro"] .ts-grp { color: #7ec8e3; }
+html[data-theme="retro"] .ts-hint { color: #7fa8ba; }
+html[data-theme="retro"] .ts-master { border-bottom-color: #2f6f8f; }
