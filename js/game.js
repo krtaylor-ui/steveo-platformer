@@ -14900,7 +14900,6 @@ class Game {
 
     const now    = Date.now();
     const mom    = sr.momentum;
-    const vxSign = Math.sign(this.player.vx);
     const aws    = this._worldAdvSettings;
 
     // World-configurable boost params (fall back to SR_CONFIG defaults)
@@ -14910,6 +14909,22 @@ class Game {
     const distEnabled    = aws.srDistBoostEnabled          ?? true;
     const distIntervalPx = (aws.srDistBoostIntervalBlocks ?? 5) * BLOCK_SIZE;
     const baseSpeed      = aws.srBaseSpeed                 ?? 1.0;
+
+    // ── Accelerate-or-coast movement (forward only; no left, no brake) ──
+    // Hold accelerate (Right arrow / D / d-pad-right / right stick) to ramp the
+    // player up toward the boosted top speed; release to coast down gradually
+    // (momentum) rather than stopping. The boost system (below) keeps rewarding
+    // continuous acceleration — stop coasting to a near-halt and boosts reset.
+    const accel = this.input.isRight()
+      || this.input.isDown('ArrowRight') || this.input.isDown('KeyD')
+      || this.input.gamepads.some(g => g && g.connected && (g.dpad1 || g.moveX > 0.3));
+    sr.accelHeld = accel;
+    const topSpeed = this.player.moveSpeed * 3 * this._srGetEffectiveMultiplier() * baseSpeed;
+    const SR_ACCEL = 0.7;   // ramp-up per frame (px/frame)
+    const SR_COAST = 0.95;  // release decay (gentle — coast, don't stop)
+    if (accel) this.player.vx = Math.min(topSpeed, Math.max(this.player.vx, 0) + SR_ACCEL);
+    else       this.player.vx = Math.max(0, this.player.vx * SR_COAST);
+    const vxSign = Math.sign(this.player.vx);
 
     // Distance moved this frame (always track for total race stats)
     const frameDx = Math.abs(this.player.x - sr.lastX);
@@ -14952,12 +14967,8 @@ class Game {
     }
     mom.lastVxSign = vxSign;
 
-    // Apply SR speed multiplier only while a direction key is held.
-    // Without this guard, the 0.72 deceleration factor in player.js is dominated by
-    // mult > 1 and the player accelerates on key release instead of slowing down.
-    const mult = this._srGetEffectiveMultiplier() * baseSpeed;
-    const activeInput = this.input.isLeft() || this.input.isRight();
-    if (activeInput && Math.abs(this.player.vx) > 0.1) this.player.vx *= mult;
+    // (Speed is now driven by the accelerate-or-coast block above, which already
+    // folds in the boost multiplier via topSpeed — no separate mult step here.)
 
     // Reset block boost (re-set below if in contact)
     sr.boosts.blockBoost = 1.0;

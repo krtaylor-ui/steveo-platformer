@@ -444,7 +444,8 @@ const PAUSE_MENU = {
       ];
     } else if (game.gameMode === 'speedrunner') {
       rows = [
-        ['Move', 'A/D / Arrows / L-Stick'],
+        ['Accelerate (hold)', 'Right / D / D-pad→ / R-stick'],
+        ['Release', 'coast — slows down gradually'],
         ['Jump (hold = higher)', 'W / Up / [A]'],
         ['Ghost on/off', 'K / Select'],
         ['Restart run', 'R'],

@@ -141,12 +141,18 @@ const TOUCH_CONTROLS = {
     const jump   = this._root.querySelector('.tc-jump-btn');
     const pad    = this._root.querySelector('.tc-aimpad');
     const show = (el, on) => { if (el) el.style.display = on ? '' : 'none'; };
+    // Reset labels (a prior mode may have relabelled them).
+    if (leftBtn) leftBtn.textContent = '◀';
+    if (rightBtn) rightBtn.textContent = '▶';
+    if (action) action.textContent = '✦';
 
     this._root.style.display = 'block';
     if (mode === 'speedrunner') {
-      // Auto-run forward; single big JUMP. No move buttons, no aim pad.
-      this._autorun = true;
-      show(left, false); show(action, false); show(pad, false); show(jump, true);
+      // Accelerate button (holds the accelerate input) + JUMP; release coasts.
+      // Reuse the right-move button (KeyD) as accelerate — SR reads KeyD as accel.
+      show(left, true); show(leftBtn, false); show(rightBtn, true);
+      show(action, false); show(pad, false); show(jump, true);
+      if (rightBtn) rightBtn.textContent = '▶▶';
     } else if (mode === 'platformer') {
       show(left, true); show(leftBtn, true); show(rightBtn, true);
       show(action, true); show(jump, true); show(pad, false);
