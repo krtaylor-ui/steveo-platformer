@@ -159,12 +159,14 @@ const ARENA_SELECT = {
       const badges = this._badges(w.world_data)
         .map(t => `<span class="arena-badge">${this._esc(t)}</span>`).join('');
       return `
-        <div class="arena-tile">
+        <div class="arena-tile" data-tile-world-id="${w.id}">
           <div class="mode-icon">🗺️</div>
           <h3>${this._esc(w.world_name)}${w.is_published ? ' <span class="published-badge">Published</span>' : ''}</h3>
           <p>${this._esc(w.description) || '(No description)'}</p>
           <div class="arena-tile-badges">${badges}</div>
-          <button class="btn btn-primary arena-play-btn" data-world-id="${w.id}">Play</button>
+          <div class="arena-tile-actions">
+            <button class="btn btn-primary arena-play-btn" data-world-id="${w.id}">Play</button>
+          </div>
         </div>`;
     }).join('');
 
@@ -184,6 +186,36 @@ const ARENA_SELECT = {
     list.querySelector('.arena-quickplay-btn')?.addEventListener('click', () => this.play(null));
     list.querySelectorAll('.arena-play-btn').forEach(btn =>
       btn.addEventListener('click', (e) => this.play(e.currentTarget.dataset.worldId)));
+
+    // Async: add a "View Leaderboard" button to any tile whose world already has
+    // a recorded Leader (so tiles nobody has played stay uncluttered).
+    this._enhanceLeaderButtons(pageItems.filter(it => !it.__quick).map(w => w.id));
+  },
+
+  // Fetch the reigning leaders for the visible worlds (one request) and inject a
+  // "View Leaderboard" button into each tile that has at least one.
+  async _enhanceLeaderButtons(worldIds) {
+    if (typeof LEADERBOARD_SYSTEM === 'undefined' || !LEADERBOARD_SYSTEM.fetchWorldLeaders || !worldIds.length) return;
+    const list = document.getElementById('arena-world-list');
+    if (!list) return;
+    const token = (this._leaderToken = (this._leaderToken || 0) + 1);
+    let leaders;
+    try { leaders = await LEADERBOARD_SYSTEM.fetchWorldLeaders(worldIds); }
+    catch { return; }
+    if (token !== this._leaderToken) return; // a newer render superseded this one
+    for (const wid of worldIds) {
+      const modes = leaders[wid] ? Object.keys(leaders[wid]) : [];
+      if (!modes.length) continue;
+      const tile = list.querySelector(`.arena-tile[data-tile-world-id="${wid}"]`);
+      const actions = tile && tile.querySelector('.arena-tile-actions');
+      if (!actions || actions.querySelector('.arena-lb-btn')) continue;
+      const worldName = tile.querySelector('h3')?.textContent || 'World';
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-secondary arena-lb-btn';
+      btn.textContent = '🏆 View Leaderboard';
+      btn.addEventListener('click', () => LEADERBOARD_SYSTEM.showWorldModal(wid, worldName, modes));
+      actions.appendChild(btn);
+    }
   },
 
   // Fetch the chosen world's data (null → Quick Play built-in map), then launch.
@@ -204,12 +236,13 @@ const ARENA_SELECT = {
     this.chooseMode(mode => {
       // Custom Rules opens the rules builder; other real types go through the
       // pre-launch settings modal; null "Quick Battle" launches straight away.
+      // worldId is threaded through so per-world leaderboards record correctly.
       if (mode === 'CUSTOM' && typeof CUSTOM_RULES_UI !== 'undefined' && CUSTOM_RULES_UI.show) {
-        CUSTOM_RULES_UI.show((cfg) => this._launch(templateData, { arenaGameMode: 'CUSTOM', arenaConfig: cfg }));
+        CUSTOM_RULES_UI.show((cfg) => this._launch(templateData, { arenaGameMode: 'CUSTOM', arenaConfig: cfg }, worldId));
       } else if (mode && typeof ARENA_PRELAUNCH !== 'undefined' && ARENA_PRELAUNCH.show) {
-        ARENA_PRELAUNCH.show(mode, (cfg) => this._launch(templateData, { arenaGameMode: mode, arenaConfig: cfg }));
+        ARENA_PRELAUNCH.show(mode, (cfg) => this._launch(templateData, { arenaGameMode: mode, arenaConfig: cfg }, worldId));
       } else {
-        this._launch(templateData, mode ? { arenaGameMode: mode } : {});
+        this._launch(templateData, mode ? { arenaGameMode: mode } : {}, worldId);
       }
     });
   },
@@ -245,13 +278,14 @@ const ARENA_SELECT = {
   },
 
   // Single launch path (Phase 3A.2 wraps this with a mode selector).
-  _launch(templateData, extraOptions = {}) {
+  _launch(templateData, extraOptions = {}, worldId = null) {
     if (window.menu && typeof window.menu._stop === 'function') window.menu._stop();
     if (window.game && typeof window.game.destroy === 'function') window.game.destroy();
     document.getElementById('arena-select-screen').style.display = 'none';
 
     const options = Object.assign({}, extraOptions);
     if (templateData) options.templateData = templateData;
+    if (worldId) options.worldId = worldId; // per-world leaderboard recording
 
     window.game = new Game('arena', options, () => {
       window.game = null;

@@ -83,4 +83,36 @@ module.exports = function setupArenaLeaderboardRoutes(app) {
       res.status(500).json({ error: 'Failed to load leaderboard' });
     }
   });
+
+  // ── Per-world "Leader" (top scorer per mode) for a batch of worlds ──
+  // One request powers the arena tiles' "View Leaderboard" affordance: returns
+  // { [worldId]: { [mode]: { player_name, score, created_at } } } — the single
+  // reigning leader for every (world, mode) that has at least one recorded score.
+  app.get('/api/arena/world-leaders', verifyToken, async (req, res) => {
+    try {
+      const ids = String(req.query.worldIds || '')
+        .split(',').map(s => s.trim()).filter(Boolean).slice(0, 50);
+      if (!ids.length) return res.json({ leaders: {} });
+
+      // Pull every scored row for these worlds (ordered high→low) and reduce to
+      // the top entry per (world, mode) in memory. Row counts here are modest.
+      const { data, error } = await supabaseAdmin
+        .from('arena_results')
+        .select('world_id, mode, player_name, score, created_at')
+        .in('world_id', ids)
+        .order('score', { ascending: false });
+      if (error) { console.error('[arena] world-leaders query failed:', error); return res.status(500).json({ error: 'Query failed' }); }
+
+      const leaders = {};
+      for (const r of (data || [])) {
+        if (!r.world_id || !r.mode) continue;
+        const w = (leaders[r.world_id] || (leaders[r.world_id] = {}));
+        if (!w[r.mode]) w[r.mode] = { player_name: r.player_name, score: r.score, created_at: r.created_at };
+      }
+      res.json({ leaders });
+    } catch (error) {
+      console.error('[arena] world-leaders error:', error);
+      res.status(500).json({ error: 'Failed to load world leaders' });
+    }
+  });
 };

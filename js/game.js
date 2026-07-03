@@ -247,6 +247,8 @@ class Game {
       this._arenaSpawns = { p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, p3: { x: 0, y: 0 }, p4: { x: 0, y: 0 } };
       // A user-designed arena (played from the picker / editor Test) arrives as a saved grid.
       this._arenaTemplateData = options.templateData || options.worldData || null;
+      // World id for per-world leaderboards (null for the built-in Quick Battle).
+      this._arenaWorldId = options.worldId || null;
     }
 
     this._buildLevel();
@@ -10610,6 +10612,7 @@ class Game {
   // ── Arena end screen (Phase 3A.1 Deathmatch + 3A.2 modes) ──
   _drawArenaEnd(ctx) {
     this._submitArenaResultOnce(); // leaderboard submit (once), mode runs only
+    this._fetchArenaLeaderOnce();  // current world/mode Leader (async, cached)
 
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.85)';
@@ -10635,8 +10638,17 @@ class Game {
     // Per-player individual stats breakdown.
     this._drawArenaStatsTable(ctx, cx, cy - 16);
 
+    // Current world/mode Leader ("who to beat") — the single top scorer.
+    if (this._arenaLeader) {
+      const L = this._arenaLeader;
+      ctx.fillStyle = '#FFD700'; ctx.font = 'bold 15px Courier New';
+      ctx.fillText('👑 LEADER', cx, cy + 100);
+      ctx.fillStyle = '#FFFFFF'; ctx.font = '14px Courier New';
+      ctx.fillText(`${L.player_name || 'Player'} — ${L.score}`, cx, cy + 120);
+    }
+
     ctx.fillStyle = '#AAAAAA'; ctx.font = 'bold 18px Arial';
-    ctx.fillText('Press ESC to exit', cx, cy + 132);
+    ctx.fillText('Press ESC to exit', cx, cy + 148);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
     ctx.restore();
@@ -10695,8 +10707,21 @@ class Game {
     const score = (typeof ARENA_MODES !== 'undefined') ? ARENA_MODES.score(this) : (this.arenaState.stats.p1.kills || 0);
     const durMs  = (this.arenaState.gameStartTime && this.arenaState.endTime)
       ? this.arenaState.endTime - this.arenaState.gameStartTime : 0;
-    LEADERBOARD_SYSTEM.submit(mode, score, Math.round(durMs / 1000));
+    LEADERBOARD_SYSTEM.submit(mode, score, Math.round(durMs / 1000), this._arenaWorldId);
     this._recordMatchStats(mode, durMs);
+  }
+
+  // Fetch the current (pre-match) Leader for this world+mode, once, so the end
+  // screen can show "who to beat" alongside the just-finished result. Cached on
+  // this._arenaLeader; the redraw loop picks it up when it resolves.
+  _fetchArenaLeaderOnce() {
+    if (this._arenaLeaderFetched) return;
+    this._arenaLeaderFetched = true;
+    const mode = this.arenaConfig.arenaGameMode;
+    if (!mode || typeof LEADERBOARD_SYSTEM === 'undefined' || !LEADERBOARD_SYSTEM.fetchLeader) return;
+    LEADERBOARD_SYSTEM.fetchLeader(mode, this._arenaWorldId)
+      .then(lead => { this._arenaLeader = lead || null; })
+      .catch(() => {});
   }
 
   // Record the local player's match into stats/achievements (Phase 4, fire-and-forget).
