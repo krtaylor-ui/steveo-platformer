@@ -446,8 +446,8 @@ class Player {
       ? blockType : null;
     if (newOre !== null) this.discoveredOres.add(blockType);
 
-    // Slots 0-2 are reserved for tools (pickaxe/sword/bow), slot 3 for apples.
-    // All other items go to slots 4-8 then inventory.
+    // Hotbar layout after the pickaxe removal: slot 0 = sword, 1 = bow, 2 = apple
+    // (reserved food), 3-8 = free inventory. (Was: 0-2 tools, 3 apple, 4-8 free.)
 
     // Platformer mode: route priority items to their dedicated hotbar slot first.
     if (this.platformerSlots) {
@@ -460,23 +460,23 @@ class Player {
       }
     }
 
-    // Apples: prefer slot 3
+    // Apples: prefer slot 2 (the reserved food slot after sword+bow).
     if (blockType === BLOCK.APPLE) {
-      if (this.hotbar[3]?.type === BLOCK.APPLE) { this.hotbar[3].count++; return newOre; }
-      if (!this.hotbar[3]) { this.hotbar[3] = { type: blockType, count: 1 }; return newOre; }
-      // Slot 3 occupied by something else — fall through to free slots
+      if (this.hotbar[2]?.type === BLOCK.APPLE) { this.hotbar[2].count++; return newOre; }
+      if (!this.hotbar[2]) { this.hotbar[2] = { type: blockType, count: 1 }; return newOre; }
+      // Slot 2 occupied by something else — fall through to free slots
     }
 
-    // 1. Merge into existing stack in free hotbar slots (4-8)
-    for (let i = 4; i < 9; i++) {
+    // 1. Merge into existing stack in free hotbar slots (3-8)
+    for (let i = 3; i < 9; i++) {
       if (this.hotbar[i]?.type === blockType) { this.hotbar[i].count++; return newOre; }
     }
     // 2. Merge into existing inventory stack
     for (let i = 0; i < 36; i++) {
       if (this.inventory[i]?.type === blockType) { this.inventory[i].count++; return newOre; }
     }
-    // 3. First empty free hotbar slot (4-8)
-    for (let i = 4; i < 9; i++) {
+    // 3. First empty free hotbar slot (3-8)
+    for (let i = 3; i < 9; i++) {
       if (!this.hotbar[i]) { this.hotbar[i] = { type: blockType, count: 1 }; return newOre; }
     }
     // 4. First empty inventory slot

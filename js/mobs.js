@@ -1799,6 +1799,19 @@ class MobManager {
     if (items.length > 0 && this.dropCallback) this.dropCallback(items);
   }
 
+  // Restore previously-saved ground drops without the pickup/sound side-effects
+  // of dropItems() — used when re-entering a Normal-mode world.
+  restoreDroppedItems(items) {
+    if (!Array.isArray(items)) return;
+    for (const it of items) {
+      if (!it || typeof it.x !== 'number' || typeof it.y !== 'number' || !it.itemKey) continue;
+      const drop = new ItemDrop(it.x, it.y, it.itemKey, it.amount || 1, 0);
+      drop.vx = 0; drop.vy = 0;
+      if (typeof it.life === 'number' && it.life > 0) drop.life = it.life;
+      this.droppedItems.push(drop);
+    }
+  }
+
   addPlayerDamageNum(player, amount) {
     this.damageNums.push(
       new DamageNumber(player.cx, player.y - 8, amount, '#FF3333')

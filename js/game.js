@@ -13948,6 +13948,47 @@ class Game {
       }
     }
 
+    // Overlay saved runtime redstone state on top of the template layout, so a
+    // world played in Normal mode keeps toggled levers / powered wiring across
+    // leave/re-enter (the sim re-propagates downstream from these on next tick).
+    if (progress && progress.redstoneState && typeof progress.redstoneState === 'object') {
+      const rsState = progress.redstoneState;
+      for (const l of (rsState.levers || [])) {
+        const comp = this.redstone.getAt(l.col, l.row);
+        if (comp && comp.type === 'lever') comp.on = !!l.on;
+      }
+      for (const t of (rsState.trapdoors || [])) {
+        const comp = this.redstone.getAt(t.col, t.row);
+        if (comp && comp.type === 'trapdoor') comp.open = !!t.open;
+      }
+      for (const p of (rsState.pistons || [])) {
+        const comp = this.redstone.getAt(p.col, p.row);
+        if (comp && comp.type === 'piston') comp.extended = !!p.extended;
+      }
+      for (const d of (rsState.dust || [])) {
+        const dust = this._dustBlocks.get(`${d.col},${d.row}`);
+        if (dust) { dust.on = !!d.on; dust.everTriggered = !!d.everTriggered; }
+      }
+      for (const g of (rsState.gates || [])) {
+        const gate = this._gateBlocks.get(`${g.col},${g.row}`);
+        if (gate) { gate.outputPowered = !!g.outputPowered; gate.everTriggered = !!g.everTriggered; }
+      }
+      for (const t of (rsState.transmitters || [])) {
+        const tx = this._transmitters.get(`${t.col},${t.row}`);
+        if (tx) tx.powered = !!t.powered;
+      }
+      for (const r of (rsState.receivers || [])) {
+        const rx = this._receivers.get(`${r.col},${r.row}`);
+        if (rx) rx.powered = !!r.powered;
+      }
+      this._dustConnDirty = true;
+    }
+
+    // Restore ground item drops (mob loot / broken-block drops) not yet collected.
+    if (progress && Array.isArray(progress.droppedItems) && progress.droppedItems.length > 0) {
+      this.mobManager.restoreDroppedItems(progress.droppedItems);
+    }
+
     // Mark already-collected items so they don't reappear
     if (progress && Array.isArray(progress.collectedItems) && progress.collectedItems.length > 0) {
       const done = new Set(progress.collectedItems);
@@ -14072,9 +14113,34 @@ class Game {
     const result = NormalProgress.save(
       this._sandboxLoadKey, this.player, bed || null,
       this.level.grid, collectedKeys, this._chests, this._dayNight,
-      this._worldAdvSettings.twoPlayerMode, this._collectedDiscs
+      this._worldAdvSettings.twoPlayerMode, this._collectedDiscs,
+      this._captureRedstoneState(), this._captureDroppedItems()
     );
     if (!result.ok) this._notify('Save failed: ' + result.error, '#FF4444', 200);
+  }
+
+  // Snapshot the live redstone device states so they survive leave/re-enter in
+  // Normal mode (the world template only carries their initial wiring layout).
+  _captureRedstoneState() {
+    const comps = this.redstone?.components || [];
+    return {
+      levers:    comps.filter(c => c.type === 'lever')    .map(c => ({ col: c.col, row: c.row, on: !!c.on })),
+      trapdoors: comps.filter(c => c.type === 'trapdoor') .map(c => ({ col: c.col, row: c.row, open: !!c.open })),
+      pistons:   comps.filter(c => c.type === 'piston')   .map(c => ({ col: c.col, row: c.row, extended: !!c.extended })),
+      dust: [...(this._dustBlocks?.values() ?? [])].map(d => ({ col: d.col, row: d.row, on: !!d.on, everTriggered: !!d.everTriggered })),
+      gates: [...(this._gateBlocks?.values() ?? [])].map(g => ({ col: g.col, row: g.row, outputPowered: !!g.outputPowered, everTriggered: !!g.everTriggered })),
+      transmitters: [...(this._transmitters?.values() ?? [])].map(t => ({ col: t.col, row: t.row, powered: !!t.powered })),
+      receivers:    [...(this._receivers?.values() ?? [])].map(r => ({ col: r.col, row: r.row, powered: !!r.powered })),
+    };
+  }
+
+  // Snapshot ground item drops (mob loot / broken-block drops) not yet collected.
+  _captureDroppedItems() {
+    const drops = this.mobManager?.droppedItems || [];
+    return drops.filter(d => d && d.alive).map(d => ({
+      x: Math.round(d.x), y: Math.round(d.y),
+      itemKey: d.itemKey, amount: d.amount, life: d.life,
+    }));
   }
 
   // ── Platformer mode: play a Sandbox-created world as a platformer level ──
@@ -14097,6 +14163,19 @@ class Game {
         for (let c = 0; c < row.length; c++) {
           this.level.set(r, c, row[c]);
         }
+      }
+    }
+
+    // Player 1 spawn point (Phase 3): a placed player spawn point overrides the
+    // sandbox editor position, so a Platformer level starts the player at the
+    // DESIGNED spot — not wherever the designer left off in the editor.
+    {
+      const spawns = Array.isArray(data.playerSpawns) ? data.playerSpawns : [];
+      const p1 = spawns.find(s => (s.slot || 1) === 1) || spawns[0];
+      if (p1 && typeof p1.col === 'number' && typeof p1.row === 'number') {
+        const px = p1.col * BLOCK_SIZE, py = p1.row * BLOCK_SIZE;
+        this.level.spawnX = px; this.level.spawnY = py;
+        if (this.player) { this.player.x = px; this.player.y = py; this.player.vx = 0; this.player.vy = 0; }
       }
     }
 

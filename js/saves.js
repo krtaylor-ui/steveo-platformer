@@ -232,7 +232,7 @@ const PROGRESS_PREFIX = 'nwprogress|';
 const NormalProgress = {
   key(sandboxKey) { return PROGRESS_PREFIX + sandboxKey; },
 
-  save(sandboxKey, player, bedPos = null, levelGrid = null, collectedItemKeys = null, chestsMap = null, dayNight = null, twoPlayerMode = false, collectedDiscs = null) {
+  save(sandboxKey, player, bedPos = null, levelGrid = null, collectedItemKeys = null, chestsMap = null, dayNight = null, twoPlayerMode = false, collectedDiscs = null, redstoneState = null, droppedItems = null) {
     const payload = {
       savedAt:     new Date().toISOString(),
       twoPlayerMode: !!twoPlayerMode,
@@ -264,6 +264,11 @@ const NormalProgress = {
         halfCycleMs: dayNight.halfCycleMs,
       } : null,
       collectedDiscs: collectedDiscs ? [...collectedDiscs] : [],
+      // Runtime redstone device states (levers/dust/gates/wireless), so a world
+      // played in Normal mode keeps its wiring state across leave/re-enter.
+      redstoneState: redstoneState || null,
+      // Live ground item drops (mob loot, broken-block drops) not yet picked up.
+      droppedItems: Array.isArray(droppedItems) ? droppedItems : [],
     };
     try {
       localStorage.setItem(this.key(sandboxKey), JSON.stringify(payload));
