@@ -17,6 +17,17 @@ const verifyToken = async (req, res, next) => {
   }
 };
 
+// The account username lives in the `users` table (id, email, username), NOT in
+// Supabase Auth user_metadata — so reading req.user.user_metadata.username always
+// fell back to "Player". Look it up by id instead.
+async function usernameFor(userId, fallback) {
+  try {
+    const { data } = await supabaseAdmin.from('users').select('username').eq('id', userId).single();
+    if (data && data.username) return data.username;
+  } catch (e) { /* fall through */ }
+  return fallback || 'Player';
+}
+
 // Must match ARENA_MODES active types (js/arena-modes.js). PvP modes now rank too
 // (Deathmatch = winner eliminations, CTF = captures × 50) — Phase 3B/3C.
 const VALID_MODES = ['MOB_HUNTER', 'COLLECT_EMERALDS', 'KING_OF_HILL', 'SURVIVAL_WAVES', 'DEATHMATCH', 'CAPTURE_FLAG'];
@@ -41,7 +52,7 @@ module.exports = function setupArenaLeaderboardRoutes(app) {
 
       const row = {
         player_id:   req.user.id,
-        player_name: req.user.user_metadata?.username || 'Player',
+        player_name: await usernameFor(req.user.id, req.user.user_metadata?.username),
         mode,
         score:    sc,
         duration: dur,

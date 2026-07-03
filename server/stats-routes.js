@@ -57,8 +57,15 @@ function setupStatsRoutes(app) {
   app.post('/api/stats/match', verifyToken, async (req, res) => {
     try {
       const b = req.body || {};
-      const meta = req.user.user_metadata || {};
-      const name = b.playerName || meta.username || (req.user.email || 'Player').split('@')[0];
+      // Username lives in the `users` table, not auth metadata.
+      let name = b.playerName;
+      if (!name) {
+        try {
+          const { data } = await supabaseAdmin.from('users').select('username').eq('id', req.user.id).single();
+          name = (data && data.username) || null;
+        } catch (e) { /* fall through */ }
+      }
+      if (!name) name = (req.user.email || 'Player').split('@')[0];
       const prev = await loadStats(req.user.id);
       const next = {
         player_id: req.user.id, player_name: name,

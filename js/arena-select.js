@@ -110,6 +110,7 @@ const ARENA_SELECT = {
 
   // Does a world support a given mode? (Used by the tile game-type filter.)
   _supports(wd, key) {
+    if (key === 'CUSTOM') return true; // always available, not a per-world toggle
     const modes = this._supportedModes(wd);
     return modes ? modes.includes(key) : true;
   },
@@ -269,7 +270,8 @@ const ARENA_SELECT = {
       { key: null, label: 'Quick Battle (vs bots)', desc: 'Defeat the default bots.' },
       // Playable game types; greyed if comingSoon OR not supported by this world.
       ...Object.keys(ARENA_MODES.DEFS).map(k => {
-        const unsupported = supported ? !supported.includes(k) : false;
+        // Custom Rules is always available (never gated by a world's support set).
+        const unsupported = (supported && k !== 'CUSTOM') ? !supported.includes(k) : false;
         return {
           key: k, label: ARENA_MODES.DEFS[k].label,
           desc: unsupported ? 'Not enabled for this world (set it in Sandbox → Arena settings).' : ARENA_MODES.DEFS[k].desc,

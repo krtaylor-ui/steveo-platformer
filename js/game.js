@@ -119,7 +119,7 @@ class Game {
       arenaViewType:             'single',  // 'single' (fixed camera) | 'scrolling' (camera follows)
       arenaMobHealth:            'MEDIUM',  // 'EASY' | 'MEDIUM' | 'HARD' — default mob-HP preset
       arenaRespawnTime:          2,         // seconds (0–10) — arena respawn delay
-      arenaEnabledTypes:         ['MOB_HUNTER', 'COLLECT_EMERALDS', 'KING_OF_HILL', 'SURVIVAL_WAVES', 'DEATHMATCH', 'CAPTURE_FLAG', 'DEFEND_TOWER', 'CUSTOM'],
+      arenaEnabledTypes:         ['MOB_HUNTER', 'COLLECT_EMERALDS', 'KING_OF_HILL', 'SURVIVAL_WAVES', 'DEATHMATCH', 'CAPTURE_FLAG', 'DEFEND_TOWER'],
     };
     // Phase 3B — player-model refactor. `players[]` is the backing store for
     // 1-4 local players. `player`/`player2` are live accessors over slots 0/1
@@ -1036,6 +1036,18 @@ class Game {
   // Re-centre the camera so the focus stays on screen under zoom `z`. Arenas frame
   // the level centre; everything else frames the player (midpoint in 2-player).
   // Reuses the zoom-aware clamp so the viewport never leaves the level.
+  // Resolve the frame's view zoom AND camera focus, and publish the zoom to the
+  // camera so toWorld()/highlight/placement all use the SAME transform. Must run
+  // BEFORE any mouse→grid conversion in a frame (update AND render) — otherwise
+  // the block-placement highlight is computed with the previous frame's zoom/
+  // camera but drawn under the current one, so it drifts from the cursor when
+  // zoomed. Idempotent within a frame (safe to call in both update and render).
+  _syncViewTransform() {
+    const z = this._resolveViewZoom();
+    this.camera._srZoom = z;
+    return z;
+  }
+
   _focusCam(z) {
     let fx, fy;
     if (this.isArena) { fx = this.level.pixelWidth / 2; fy = this.level.pixelHeight / 2; }
@@ -2030,6 +2042,9 @@ class Game {
     const _onlineNonHost = !!(this._onlineGameId && !window.multiplayerManager?.isCreator);
 
     // ── Cursor world position ──────────────────────────────
+    // Resolve zoom + camera first so the grid cell we mine/place into matches
+    // exactly what the highlight is drawn on under the current zoom.
+    this._syncViewTransform();
     const world    = this.camera.toWorld(this.input.mouse.x, this.input.mouse.y);
     const hoverCol = Math.floor(world.x / BLOCK_SIZE);
     const hoverRow = Math.floor(world.y / BLOCK_SIZE);
@@ -5173,6 +5188,9 @@ class Game {
     window._gameRef = this; // Phase 16: expose for multiplayerManager callbacks
     const ctx      = this.ctx;
     const _p1GpConnected = this.input.p1GpSlot >= 0 && this.input.gamepads[this.input.p1GpSlot]?.connected;
+    // Resolve zoom + camera BEFORE converting the cursor to a grid cell, so the
+    // highlight lands under the mouse at any zoom (see _syncViewTransform).
+    const _activeZoom = this._syncViewTransform();
     const world    = this.camera.toWorld(this.input.mouse.x, this.input.mouse.y);
     const hoverCol = Math.floor(world.x / BLOCK_SIZE);
     const hoverRow = Math.floor(world.y / BLOCK_SIZE);
@@ -5201,16 +5219,14 @@ class Game {
     // out, or DYNAMIC co-op fit). The matching ctx.restore() is below, after the
     // world overlays. Unlike SR (zoom-out only), arena PRESET can also zoom IN, so
     // the transform applies whenever zoom differs from 1.0 in either direction.
-    const _activeZoom = this._resolveViewZoom();
+    // _activeZoom + camera._srZoom already resolved at the top of _render via
+    // _syncViewTransform() (so the cursor→grid conversion above matches).
     ctx.save();
     if (Math.abs(_activeZoom - 1.0) > 0.005) {
       ctx.translate(CANVAS_W / 2, CANVAS_H / 2);
       ctx.scale(_activeZoom, _activeZoom);
       ctx.translate(-CANVAS_W / 2, -CANVAS_H / 2);
     }
-    // Pass zoom to camera so level.draw expands the rendered viewport and toWorld
-    // (mouse→world, e.g. bow aim) undoes the scale correctly.
-    this.camera._srZoom = _activeZoom;
     this.level.draw(ctx, this.camera, this.redstone);
     // Re-draw open chest with lid-open state on top
     if (this._chestOpen) {
@@ -9547,9 +9563,11 @@ class Game {
       ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       ctx.fillText('Game Types', L.MOB_COL, typesY + 11);
       const enabled = Array.isArray(aws.arenaEnabledTypes) ? aws.arenaEnabledTypes : [];
+      // Custom Rules is intentionally omitted — it's ALWAYS available in Arena
+      // (it defines its own elements/scoring), so it isn't a per-world toggle.
       const chips = [
         ['MOB_HUNTER', 'Hunt'], ['COLLECT_EMERALDS', 'Emrld'], ['KING_OF_HILL', 'Hill'], ['SURVIVAL_WAVES', 'Wave'],
-        ['DEATHMATCH', 'DM'],   ['CAPTURE_FLAG', 'CTF'],       ['DEFEND_TOWER', 'Tower'], ['CUSTOM', 'Custom'],
+        ['DEATHMATCH', 'DM'],   ['CAPTURE_FLAG', 'CTF'],       ['DEFEND_TOWER', 'Tower'],
       ];
       const chipW = 56, chipGap = 4, perRow = 4, chipX0 = L.px + 120;
       this._wsArenaChips = [];

@@ -14,6 +14,16 @@ const verifyToken = async (req, res, next) => {
   }
 };
 
+// Username lives in the `users` table, not auth user_metadata (see
+// arena-leaderboard-routes). Prefer a client-sent name, else look it up.
+async function usernameFor(userId, fallback) {
+  try {
+    const { data } = await supabaseAdmin.from('users').select('username').eq('id', userId).single();
+    if (data && data.username) return data.username;
+  } catch (e) { /* fall through */ }
+  return fallback || 'Player';
+}
+
 // Speed Run leaderboards — hybrid with the client's localStorage top-5. The
 // client keeps working offline; when online it best-effort mirrors runs here
 // and merges server rows back in. Keyed by a per-level string (playerName:
@@ -30,7 +40,7 @@ module.exports = function setupSpeedrunRoutes(app) {
 
       const row = {
         player_id:   req.user.id,
-        player_name: username || req.user.user_metadata?.username || 'Player',
+        player_name: await usernameFor(req.user.id, username),
         level_id:    levelId.slice(0, 200),
         initials,
         ms: m,
