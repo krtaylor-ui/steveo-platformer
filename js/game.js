@@ -94,6 +94,7 @@ class Game {
       srBaseSpeed:               1.0,
       srMaxMultiplier:           2.0,
       srBoostPct:                0.05,
+      srAccel:                   0.5,    // acceleration per frame (px/frame) — race-car ramp to max
       srDecel:                   2,      // release deceleration, × the accel rate (tunable in pause)
       srTimeBoostEnabled:        true,
       srTimeBoostIntervalSec:    5,
@@ -1170,11 +1171,17 @@ class Game {
     }
   }
 
+  // Per-world redstone rate multiplier, honored in ALL modes (0.25×–8×). At high
+  // values pistons/trapdoors fire near-instantly — useful for fast Speed-Run
+  // traps (a pressure plate hit early can trip a piston further along in time).
+  _rsRate() {
+    return Math.max(0.25, Math.min(8.0, (this._worldAdvSettings && this._worldAdvSettings.redstoneSpeed) || 1.0));
+  }
+
   // Redstone propagation step in frames (coarse per-world cadence; Phase 3A.2).
-  // Baseline 6 frames; redstoneSpeed>1 shortens it, <1 lengthens it. Defaults to
-  // 1.0 outside arena (redstoneSpeed unset).
+  // Baseline 6 frames; higher rate → fewer frames (faster), min 1.
   _rsStepFrames() {
-    return Math.max(1, Math.round(6 / (this.redstoneSpeed || 1.0)));
+    return Math.max(1, Math.round(6 / this._rsRate()));
   }
 
   // ── Blocky Minecraft-style clouds ───────────────────────────
@@ -2293,7 +2300,7 @@ class Game {
         : null;
       this.redstone.update(this.level, this.player, this.input, _rsExtraOn);
     }
-    this.redstone.updatePistonAnimations(this.redstoneSpeed || 1);
+    this.redstone.updatePistonAnimations(this._rsRate());
     this._applyPistonKnockback();
     // Before TNT explodes, drop items from any chests in blast radius + play sound + visual
     for (const comp of this.redstone.components) {
@@ -8911,7 +8918,7 @@ class Game {
       else if (hitRow(3)) aws.arenaPresetZoom = cycF([0.3,0.5,0.7,1.0,1.2,1.5], aws.arenaPresetZoom || 1.0);
       else if (hitRow(4)) aws.arenaMobHealth = cyc(['EASY','MEDIUM','HARD'], aws.arenaMobHealth || 'MEDIUM');
       else if (hitRow(5)) aws.arenaRespawnTime = cyc([0,1,2,3,5,8,10], aws.arenaRespawnTime ?? 2);
-      else if (hitRow(6)) aws.redstoneSpeed = cycF([0.5,0.75,1.0,1.25,1.5,2.0], aws.redstoneSpeed || 1.0);
+      else if (hitRow(6)) aws.redstoneSpeed = cycF([0.5,1.0,2.0,3.0,4.0,6.0,8.0], aws.redstoneSpeed || 1.0);
       else if (Array.isArray(this._wsArenaChips)) {
         for (const c of this._wsArenaChips) {
           if (mx >= c.x && mx <= c.x + c.w && my >= c.y && my <= c.y + c.h) {
@@ -14919,39 +14926,35 @@ class Game {
     // ── Active race ───────────────────────────────────────────
 
     const now    = Date.now();
-    const mom    = sr.momentum;
     const aws    = this._worldAdvSettings;
+    const baseSpeed = aws.srBaseSpeed ?? 1.0;
 
-    // World-configurable boost params (fall back to SR_CONFIG defaults)
-    const boostPct       = aws.srBoostPct                 ?? SR_CONFIG.timeBoostPct;
-    const timeEnabled    = aws.srTimeBoostEnabled          ?? true;
-    const timeInterval   = aws.srTimeBoostIntervalSec      ?? SR_CONFIG.timeBoostIntervalSec;
-    const distEnabled    = aws.srDistBoostEnabled          ?? true;
-    const distIntervalPx = (aws.srDistBoostIntervalBlocks ?? 5) * BLOCK_SIZE;
-    const baseSpeed      = aws.srBaseSpeed                 ?? 1.0;
-
-    // ── Accelerate-or-coast movement (forward only; no left, no brake) ──
-    // Hold accelerate (Right arrow / D / d-pad-right / right stick) to ramp the
-    // player up toward the boosted top speed; release to coast down gradually
-    // (momentum) rather than stopping. The boost system (below) keeps rewarding
-    // continuous acceleration — stop coasting to a near-halt and boosts reset.
+    // ── Race-car movement: gradual accel from 0 to a FIXED max; a boost raises
+    // the ceiling (reach max faster / exceed it) for its duration; releasing
+    // coasts down. Forward only, no braking. No time/dist accumulation — the max
+    // is fixed, so actual speed always matches the recorded ghost.
     const accel = this.input.isRight()
       || this.input.isDown('ArrowRight') || this.input.isDown('KeyD')
       || this.input.gamepads.some(g => g && g.connected && (g.dpad1 || g.moveX > 0.3));
     sr.accelHeld = accel;
-    // Own the horizontal velocity (sr.vx) so player._handleInput doesn't clobber
-    // it each frame (it would snap vx to a fixed speed, ignoring the boost, and
-    // its 0.72 friction compounded our coast into a dead stop). srControlled tells
-    // the player to leave horizontal vx to us. Decel is LINEAR at srDecel× accel.
-    this.player.srControlled = true;
+    this.player.srControlled = true;   // SR owns horizontal vx (see player.js)
     if (sr.vx == null) sr.vx = Math.max(0, this.player.vx || 0);
-    const topSpeed = this.player.moveSpeed * 3 * this._srGetEffectiveMultiplier() * baseSpeed;
-    const SR_ACCEL = 0.7;                                  // ramp-up per frame (px/frame)
-    const SR_DECEL = (aws.srDecel ?? 2) * SR_ACCEL;        // release decel (tunable in pause)
-    if (accel) sr.vx = Math.min(topSpeed, Math.max(sr.vx, 0) + SR_ACCEL);
-    else       sr.vx = Math.max(0, sr.vx - SR_DECEL);
+    const SR_ACCEL  = Math.max(0.05, aws.srAccel ?? 0.5);  // fixed accel/frame (tunable)
+    const SR_DECEL  = (aws.srDecel ?? 2) * SR_ACCEL;       // release decel (tunable)
+    const maxSpeed  = this.player.moveSpeed * 3 * (aws.srMaxMultiplier ?? SR_CONFIG.maxMultiplier) * baseSpeed;
+    sr.maxSpeed     = maxSpeed;
+    // Active boost (booster block / pickup / perfect start) raises the ceiling and
+    // accelerates faster; capped at 1.5× max.
+    const boostMult = Math.min(1.5, Math.max(sr.boosts.blockBoost || 1, sr.boosts.item || 1));
+    const effMax    = maxSpeed * boostMult;
+    const accelRate = SR_ACCEL * (boostMult > 1 ? 2 : 1);
+    if (accel) {
+      if (sr.vx < effMax) sr.vx = Math.min(effMax, sr.vx + accelRate);
+      else                sr.vx = Math.max(effMax, sr.vx - SR_DECEL); // ease down when a boost ends
+    } else {
+      sr.vx = Math.max(0, sr.vx - SR_DECEL);
+    }
     this.player.vx = sr.vx;
-    const vxSign = Math.sign(this.player.vx);
 
     // Perfect start: a fresh accelerate press within perfectStartMs of GREEN
     // (and not held through the countdown) grants a short speed boost.
@@ -14964,9 +14967,25 @@ class Game {
         sr.boosts.itemExpiresMs = now + SR_CONFIG.perfectStartMsDur;
         sr.boosts.itemStack     = 1;
         sr.perfectChecked       = true;
+        sr.fireUntil            = now + SR_CONFIG.perfectStartMsDur; // flame trail cue
         this._notify('⚡ PERFECT START!', '#FFDD44', 120);
       } else if (accel && sr.accelAtGo) {
         sr.perfectChecked = true;                       // held through → no reaction bonus
+      }
+    }
+
+    // Perfect-start flame trail — orange/red particles streaming off the back.
+    if (sr.fireUntil && now < sr.fireUntil && sr.vx > 1) {
+      const p = this.player, rearX = p.x + p.width / 2 - 12;
+      for (let i = 0; i < 2; i++) {
+        sr.particles.push({
+          x: rearX + Math.random() * 8,
+          y: p.y + 10 + Math.random() * (p.height - 20),
+          vx: -2 - Math.random() * 2.5,
+          vy: -0.5 - Math.random() * 1.5,
+          life: 12 + Math.random() * 12,
+          color: ['#FF3B00', '#FF7B00', '#FFC400'][Math.floor(Math.random() * 3)],
+        });
       }
     }
 
@@ -14975,65 +14994,22 @@ class Game {
     sr.lastX = this.player.x;
     sr.distanceTraveled += frameDx;
 
-    // Momentum-based boosts: reset on direction reversal or full stop
-    if (vxSign !== 0 && mom.lastVxSign !== 0 && vxSign !== mom.lastVxSign) {
-      // Direction change: zero velocity so mult doesn't amplify the reversal
-      this.player.vx  = 0;
-      sr.boosts.timeBased = 1.0;
-      sr.boosts.distBased = 1.0;
-      mom.running    = false;
-      mom.runStartMs = 0;
-      mom.runDist    = 0;
-    } else if (Math.abs(this.player.vx) < 0.2) {
-      // Stopped: drop boosts back to 1×
-      if (mom.running) {
-        sr.boosts.timeBased = 1.0;
-        sr.boosts.distBased = 1.0;
-        mom.running    = false;
-        mom.runStartMs = 0;
-        mom.runDist    = 0;
-      }
-    } else {
-      // Continuously running: accumulate momentum
-      if (!mom.running) {
-        mom.running    = true;
-        mom.runStartMs = now;
-        mom.runDist    = 0;
-      }
-      mom.runDist += frameDx;
-      const runSec = (now - mom.runStartMs) / 1000;
-      sr.boosts.timeBased = timeEnabled
-        ? Math.min(1.0 + Math.floor(runSec     / timeInterval)   * boostPct, SR_CONFIG.timeBoostCap)
-        : 1.0;
-      sr.boosts.distBased = distEnabled
-        ? Math.min(1.0 + Math.floor(mom.runDist / distIntervalPx) * boostPct, SR_CONFIG.distBoostCap)
-        : 1.0;
-    }
-    mom.lastVxSign = vxSign;
-
-    // (Speed is now driven by the accelerate-or-coast block above, which already
-    // folds in the boost multiplier via topSpeed — no separate mult step here.)
-
-    // Reset block boost (re-set below if in contact)
+    // Reset block boost (re-set by _srCheckBoosterBlocks below if in contact).
     sr.boosts.blockBoost = 1.0;
 
-    // Camera zoom — range [minZoomSpeed → maxZoomSpeed] maps to [no zoom → full zoom]
-    // effectiveMult is what the HUD shows (boost-only, no baseSpeed scaling).
-    const effectiveMult = this._srGetEffectiveMultiplier();
+    // Camera zoom driven by ACTUAL speed fraction (rest → max, exceeding on boost).
+    const speedMult  = (sr.vx || 0) / (this.player.moveSpeed * 3 * baseSpeed);
     const srMaxMult  = aws.srMaxMultiplier ?? SR_CONFIG.maxMultiplier;
     const minZoomSpd = aws.srMinZoomSpeed ?? 1.0;            // -1 = zoom disabled
     const maxZoomSpd = aws.srMaxZoomSpeed ?? srMaxMult;      // null → same as speed cap
 
-    // zoomPct 0→1: disabled or min≥max → 0; otherwise linear interpolation clamped to [0,1]
     let zoomPct = 0;
     if (minZoomSpd >= 0 && maxZoomSpd > minZoomSpd) {
-      zoomPct = Math.max(0, Math.min(1, (effectiveMult - minZoomSpd) / (maxZoomSpd - minZoomSpd)));
+      zoomPct = Math.max(0, Math.min(1, (speedMult - minZoomSpd) / (maxZoomSpd - minZoomSpd)));
     }
-
     sr.srZoom += (1.0 - zoomPct * 0.28 - sr.srZoom) * 0.08;
-    // Look-ahead stays locked to zoom level (same zoomPct drives both)
     const SR_LA_MAX = (0.40 * CANVAS_W) / 0.72 - PLAYER_W / 2; // ≈ 434 world-px at max
-    const laTarget  = Math.sign(this.player.vx) * zoomPct * SR_LA_MAX;
+    const laTarget  = (sr.vx > 0.01 ? 1 : 0) * zoomPct * SR_LA_MAX;
     sr.srLookAhead += (laTarget - sr.srLookAhead) * 0.08;
 
     this._srCheckBoosterBlocks();
@@ -15313,6 +15289,7 @@ class Game {
     sr.perfectChecked = false;
     sr.ghostFrameIdx  = 0;
     sr.vx             = 0;
+    sr.fireUntil      = 0;
 
     // Reset the level to its authored start state so every run is identical:
     // respawn mobs (clear the field + re-ready every spawn point), clear leftover
@@ -15525,12 +15502,12 @@ class Game {
     ctx.fillText(timeStr, CANVAS_W / 2, 31);
     ctx.restore();
 
-    // Speed meter — bottom left (bar spans 1.0× → srMaxMultiplier)
-    const mult      = this._srGetEffectiveMultiplier();
-    const srCapMult = this._worldAdvSettings.srMaxMultiplier ?? SR_CONFIG.maxMultiplier;
-    const pct       = srCapMult > 1.0
-      ? Math.max(0, Math.min(1, (mult - 1.0) / (srCapMult - 1.0)))
-      : 1.0;
+    // Speed meter — ACTUAL character speed as a % of the world's max speed.
+    // 100% = at max; a boost can push it above 100% (bar caps, % keeps counting).
+    const maxSpd  = sr.maxSpeed || (this.player.moveSpeed * 3 * (this._worldAdvSettings.srMaxMultiplier ?? SR_CONFIG.maxMultiplier) * (this._worldAdvSettings.srBaseSpeed ?? 1));
+    const spdPct  = maxSpd > 0 ? (sr.vx || 0) / maxSpd : 0;   // 0 → 1 (→ ~1.5 on a boost)
+    const pct     = Math.max(0, Math.min(1, spdPct));
+    const boosted = spdPct > 1.001;
     const meterW = 180, meterH = 14, mX = 10, mY = CANVAS_H - 40;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -15541,13 +15518,17 @@ class Game {
     grad.addColorStop(1,   '#FF6B6B');
     ctx.fillStyle = grad;
     ctx.fillRect(mX, mY, Math.round(meterW * pct), meterH);
-    ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1;
+    if (boosted) { // boost overlay pulsing on the full bar
+      ctx.fillStyle = 'rgba(120,220,255,0.45)';
+      ctx.fillRect(mX, mY, meterW, meterH);
+    }
+    ctx.strokeStyle = boosted ? '#7BD8FF' : '#FFFFFF'; ctx.lineWidth = 1;
     ctx.strokeRect(mX, mY, meterW, meterH);
-    ctx.fillStyle    = '#FFFFFF';
-    ctx.font         = '9px Courier New';
+    ctx.fillStyle    = boosted ? '#7BD8FF' : '#FFFFFF';
+    ctx.font         = 'bold 9px Courier New';
     ctx.textAlign    = 'left';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText(`SPD ${Math.round(mult * 100)}%`, mX, mY - 3);
+    ctx.fillText(`SPD ${Math.round(spdPct * 100)}%${boosted ? ' ⚡' : ''}`, mX, mY - 3);
     ctx.restore();
 
     // Item boost timer

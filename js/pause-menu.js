@@ -368,6 +368,9 @@ const PAUSE_MENU = {
     // knob for dialing in the coast feel.
     if (game.gameMode === 'speedrunner') {
       body.appendChild(this._section('Speed Run', [
+        this._row('Acceleration',
+          this._cycle([0.2, 0.35, 0.5, 0.7, 1.0, 1.5], () => aws.srAccel ?? 0.5, v => { game._worldAdvSettings.srAccel = v; }, v => v.toFixed(2) + '/f'),
+          'how quickly you build up to max speed'),
         this._row('Deceleration',
           this._cycle([1, 1.5, 2, 3, 4, 5], () => aws.srDecel ?? 2, v => { game._worldAdvSettings.srDecel = v; }, v => v + '× accel'),
           'how fast you slow when not accelerating'),
@@ -387,6 +390,7 @@ const PAUSE_MENU = {
         rows.push(this._row('Disable XP Speed Boost', this._toggle(() => aws.disableXpSpeedBoost, v => { game._worldAdvSettings.disableXpSpeedBoost = v; }, locked)));
         rows.push(this._row('Jump Pad Force', this._cycle(this.OPT.jumpPad, () => aws.jumpPadVForce ?? -18, v => { game._worldAdvSettings.jumpPadVForce = v; }, v => String(v), locked)));
         rows.push(this._row('Default Zoom', this._cycle(this.OPT.zoom, () => aws.worldZoom ?? 1.0, v => { game._worldAdvSettings.worldZoom = v; }, v => v.toFixed(2) + 'x', locked)));
+        rows.push(this._row('Redstone Speed', this._cycle([0.5, 1, 2, 3, 4, 6, 8], () => aws.redstoneSpeed ?? 1.0, v => { game._worldAdvSettings.redstoneSpeed = v; }, v => v + 'x', locked), 'higher = faster pistons/traps'));
       }
       const sec = this._section(game.gameMode === 'sandbox' ? 'World & Physics' : 'Physics', rows);
       if (locked) { const note = document.createElement('div'); note.className = 'pause-lock-note'; note.textContent = '🔒 Locked in World Settings'; sec.insertBefore(note, sec.children[1]); }
