@@ -17,7 +17,19 @@ const SANDBOX = {
   async init() {
     this._showBrowser();
     this._setupStaticListeners();
+    this._applyModeUI();
     await this.loadWorlds();
+  },
+
+  // Hide online-only sandbox actions (importing cloud games / server file import)
+  // when playing offline. Creating, editing, saving, copying, deleting all work
+  // locally against LOCAL_WORLDS.
+  _applyModeUI() {
+    const local = (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal());
+    ['import-games-btn', 'import-file-btn'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = local ? 'none' : '';
+    });
   },
 
   _showBrowser() {
@@ -140,6 +152,13 @@ const SANDBOX = {
 
   // ── Load + render worlds ───────────────────────────────────────
   async loadWorlds() {
+    if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
+      const data = LOCAL_WORLDS.list({ page: this.currentPage, filter: this.currentFilter, sort: this.currentSort });
+      this.worlds = data.worlds;
+      this.renderWorlds(this.worlds);
+      this.updatePagination(data.page, data.totalPages);
+      return;
+    }
     try {
       const res = await AUTH.authedFetch(
         `/api/worlds/sandbox?page=${this.currentPage}&filter=${this.currentFilter}&sort=${this.currentSort}`
@@ -203,6 +222,13 @@ const SANDBOX = {
 
   // Inline game-mode change from a world card (no editor round-trip).
   async changeWorldMode(worldId, gameModeDefault) {
+    if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
+      LOCAL_WORLDS.setMode(worldId, gameModeDefault);
+      const w = this.worlds.find(x => x.id === worldId);
+      if (w) { w.world_data = w.world_data || {}; w.world_data.gameModeDefault = gameModeDefault; }
+      if (this.currentFilter !== 'all') await this.loadWorlds();
+      return;
+    }
     try {
       const res = await AUTH.authedFetch(`/api/worlds/sandbox/${worldId}/mode`, {
         method: 'POST',
@@ -275,6 +301,13 @@ const SANDBOX = {
       if (!(worldHeight >= 30 && worldHeight <= 500)) { alert('Height must be 30-500'); return; }
     }
 
+    if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
+      LOCAL_WORLDS.create({ worldName: name, description, worldWidth: sendWidth, worldHeight: sendHeight, gameModeDefault, config });
+      this.hideCreateWorldModal();
+      this.currentPage = 0;
+      await this.loadWorlds();
+      return;
+    }
     try {
       const res = await AUTH.authedFetch('/api/worlds/sandbox/create', {
         method: 'POST',
@@ -492,12 +525,22 @@ const SANDBOX = {
   // ── Editor: open a world in sandbox mode ───────────────────────
   async editWorld(worldId) {
     try {
-      const res = await AUTH.authedFetch(`/api/worlds/sandbox/${worldId}`);
-      if (!res.ok) { alert('Failed to load world'); return; }
-      const world = await res.json();
+      const local = (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal());
+      let world;
+      if (local) {
+        world = LOCAL_WORLDS.get(worldId);
+        if (!world) { alert('World not found'); return; }
+      } else {
+        const res = await AUTH.authedFetch(`/api/worlds/sandbox/${worldId}`);
+        if (!res.ok) { alert('Failed to load world'); return; }
+        world = await res.json();
+      }
 
       this.selectedWorldId = worldId;
       this.currentWorldData = world;
+      // Publishing is an online-only (community) action.
+      const pubBtn = document.getElementById('sb-publish-btn');
+      if (pubBtn) pubBtn.style.display = local ? 'none' : '';
 
       // Tear down the legacy menu loop + any prior game before launching, so
       // nothing draws/handles input on top of the editor (mirrors GAME_PLAY).
@@ -541,6 +584,12 @@ const SANDBOX = {
     if (!this.selectedWorldId || !window.game) { alert('No world loaded'); return; }
     try {
       const worldData = GAME_STATE.serialize(window.game);
+      if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
+        const ok = LOCAL_WORLDS.save(this.selectedWorldId, worldData);
+        this._setSaveIndicator(ok ? 'saved' : 'unsaved');
+        if (!ok) alert('Failed to save world');
+        return;
+      }
       const res = await AUTH.authedFetch(`/api/worlds/sandbox/${this.selectedWorldId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -556,6 +605,10 @@ const SANDBOX = {
 
   async togglePublish() {
     if (!this.selectedWorldId || !this.currentWorldData) return;
+    if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
+      alert('Publishing shares a world with the community — an online feature. Choose “☁ Go Online” to publish.');
+      return;
+    }
     const isPublished = !this.currentWorldData.is_published;
     try {
       const res = await AUTH.authedFetch(`/api/worlds/sandbox/${this.selectedWorldId}/publish`, {
@@ -590,6 +643,12 @@ const SANDBOX = {
     const newName = prompt('New world name:', defaultName);
     if (newName === null) return;
 
+    if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
+      LOCAL_WORLDS.copy(worldId, newName);
+      if (this.selectedWorldId) this.exitEditor();
+      else { this.currentPage = 0; await this.loadWorlds(); }
+      return;
+    }
     try {
       const res = await AUTH.authedFetch(`/api/worlds/sandbox/${worldId}/copy`, {
         method: 'POST',
@@ -608,6 +667,12 @@ const SANDBOX = {
 
   async deleteWorld(worldId) {
     if (!worldId) return;
+    if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
+      LOCAL_WORLDS.remove(worldId);
+      if (this.selectedWorldId === worldId) this.exitEditor();
+      else await this.loadWorlds();
+      return;
+    }
     try {
       const res = await AUTH.authedFetch(`/api/worlds/sandbox/${worldId}`, { method: 'DELETE' });
       if (!res.ok) { alert('Failed to delete world'); return; }

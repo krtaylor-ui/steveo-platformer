@@ -195,11 +195,10 @@ const DASHBOARD = {
   },
 
   _navigateToMode(mode) {
-    // Offline mode reads/writes worlds locally. The local data provider that
-    // powers the mode screens lands in Phase 1b; until then, guard so offline
-    // doesn't fall through to server calls that would fail.
-    if (APP_MODE.isLocal()) {
-      alert('Offline worlds are coming in the next update.\n\nFor now, choose “☁ Go Online” to reach your saved worlds.');
+    // Offline: Sandbox works locally (build/save worlds in localStorage). The
+    // other modes' local providers land in later slices — guard them for now.
+    if (APP_MODE.isLocal() && mode !== 'SANDBOX') {
+      alert('This mode isn’t available offline yet — coming in a later update.\n\nSandbox (build & save your own worlds) works offline now, or choose “☁ Go Online”.');
       return;
     }
     if (mode === 'SANDBOX') {
