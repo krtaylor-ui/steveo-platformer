@@ -2,8 +2,29 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Steveo Platformer</title>
+  <!-- PWA (§3): installable to desktop/mobile home screens; runs standalone. -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#16181f">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon.svg">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Steveo">
+  <meta name="description" content="Build, mine, race and battle — a canvas platformer/sandbox/arena game.">
+  <!-- Register the service worker (caches the app shell for offline solo play;
+       online multiplayer still needs the network). -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('/sw.js').catch(function (e) {
+          console.warn('SW registration failed:', e);
+        });
+      });
+    }
+  </script>
   <!-- Apply the saved theme + retro FX before first paint (avoids a flash of the
        wrong theme). Keep the FX defaults in sync with theme.js FX_DEFAULTS. -->
   <script>
@@ -23,7 +44,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=b26">
+  <link rel="stylesheet" href="style.css?v=b27">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
@@ -1155,61 +1176,61 @@
     2P: <kbd>IJKL</kbd>+<kbd>U</kbd>
   </div>
 
-  <script src="js/theme.js?v=b26"></script>
-  <script src="js/auth.js?v=b26"></script>
-  <script src="js/dashboard.js?v=b26"></script>
-  <script src="js/game-selection.js?v=b26"></script>
-  <script src="js/constants.js?v=b26"></script>
-  <script src="js/blocks.js?v=b26"></script>
-  <script src="js/controller-config.js?v=b26"></script>
-  <script src="js/controller-input.js?v=b26"></script>
-  <script src="js/input.js?v=b26"></script>
-  <script src="js/camera.js?v=b26"></script>
-  <script src="js/mobs.js?v=b26"></script>
-  <script src="js/crafting.js?v=b26"></script>
-  <script src="js/player.js?v=b26"></script>
-  <script src="js/level.js?v=b26"></script>
-  <script src="js/redstone.js?v=b26"></script>
-  <script src="js/world.js?v=b26"></script>
-  <script src="js/sandbox.js?v=b26"></script>
-  <script src="js/save-migrations.js?v=b26"></script>
-  <script src="js/saves.js?v=b26"></script>
-  <script src="js/speedrunner-mode.js?v=b26"></script>
-  <script src="js/arena-maps.js?v=b26"></script>
+  <script src="js/theme.js?v=b27"></script>
+  <script src="js/auth.js?v=b27"></script>
+  <script src="js/dashboard.js?v=b27"></script>
+  <script src="js/game-selection.js?v=b27"></script>
+  <script src="js/constants.js?v=b27"></script>
+  <script src="js/blocks.js?v=b27"></script>
+  <script src="js/controller-config.js?v=b27"></script>
+  <script src="js/controller-input.js?v=b27"></script>
+  <script src="js/input.js?v=b27"></script>
+  <script src="js/camera.js?v=b27"></script>
+  <script src="js/mobs.js?v=b27"></script>
+  <script src="js/crafting.js?v=b27"></script>
+  <script src="js/player.js?v=b27"></script>
+  <script src="js/level.js?v=b27"></script>
+  <script src="js/redstone.js?v=b27"></script>
+  <script src="js/world.js?v=b27"></script>
+  <script src="js/sandbox.js?v=b27"></script>
+  <script src="js/save-migrations.js?v=b27"></script>
+  <script src="js/saves.js?v=b27"></script>
+  <script src="js/speedrunner-mode.js?v=b27"></script>
+  <script src="js/arena-maps.js?v=b27"></script>
   <!-- Phase 3A.2 arena systems — must load before game.js (it references them) -->
-  <script src="js/emerald-system.js?v=b26"></script>
-  <script src="js/powerup-system.js?v=b26"></script>
-  <script src="js/ctf-system.js?v=b26"></script>
-  <script src="js/tower-system.js?v=b26"></script>
-  <script src="js/arena-rules.js?v=b26"></script>
-  <script src="js/arena-modes.js?v=b26"></script>
-  <script src="js/leaderboard-system.js?v=b26"></script>
-  <script src="js/pause-menu.js?v=b26"></script>
-  <script src="js/game.js?v=b26"></script>
-  <script src="js/menu.js?v=b26"></script>
+  <script src="js/emerald-system.js?v=b27"></script>
+  <script src="js/powerup-system.js?v=b27"></script>
+  <script src="js/ctf-system.js?v=b27"></script>
+  <script src="js/tower-system.js?v=b27"></script>
+  <script src="js/arena-rules.js?v=b27"></script>
+  <script src="js/arena-modes.js?v=b27"></script>
+  <script src="js/leaderboard-system.js?v=b27"></script>
+  <script src="js/pause-menu.js?v=b27"></script>
+  <script src="js/game.js?v=b27"></script>
+  <script src="js/menu.js?v=b27"></script>
   <!-- Phase 16: Multiplayer (socket.io loaded from CDN; falls back gracefully if unavailable) -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js" crossorigin="anonymous"></script>
-  <script src="js/multiplayer.js?v=b26"></script>
+  <script src="js/multiplayer.js?v=b27"></script>
   <!-- Phase 16-A: Online lobby UI -->
-  <script src="js/online-ui.js?v=b26"></script>
+  <script src="js/online-ui.js?v=b27"></script>
   <!-- Phase 1D: Game play + auto-save -->
-  <script src="js/music.js?v=b26"></script>
-  <script src="js/game-timer.js?v=b26"></script>
-  <script src="js/game-state.js?v=b26"></script>
-  <script src="js/auto-save.js?v=b26"></script>
-  <script src="js/game-play.js?v=b26"></script>
+  <script src="js/music.js?v=b27"></script>
+  <script src="js/game-timer.js?v=b27"></script>
+  <script src="js/game-state.js?v=b27"></script>
+  <script src="js/auto-save.js?v=b27"></script>
+  <script src="js/game-play.js?v=b27"></script>
   <!-- Phase 1E: Sandbox world browser + editor -->
-  <script src="js/sandbox-ui.js?v=b26"></script>
+  <script src="js/sandbox-ui.js?v=b27"></script>
 
-  <script src="js/online-play.js?v=b26"></script>
-  <script src="js/community-ui.js?v=b26"></script>
-  <script src="js/arena-select.js?v=b26"></script>
+  <script src="js/online-play.js?v=b27"></script>
+  <script src="js/community-ui.js?v=b27"></script>
+  <script src="js/arena-select.js?v=b27"></script>
   <!-- Phase 3A.3 arena UI (invoked on user action; order after the above) -->
-  <script src="js/arena-prelaunch.js?v=b26"></script>
-  <script src="js/custom-rules-ui.js?v=b26"></script>
-  <script src="js/test-world.js?v=b26"></script>
+  <script src="js/arena-prelaunch.js?v=b27"></script>
+  <script src="js/custom-rules-ui.js?v=b27"></script>
+  <script src="js/test-world.js?v=b27"></script>
   <!-- Universal gamepad navigation for all HTML screens/modals -->
-  <script src="js/gamepad-nav.js?v=b26"></script>
+  <script src="js/gamepad-nav.js?v=b27"></script>
 
   <script>
     // ── Build-version badge ──────────────────────────────────────

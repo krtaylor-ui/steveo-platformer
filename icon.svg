@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Maskable-safe: keep the glyph within the central ~80% safe zone. -->
+  <rect width="512" height="512" rx="96" fill="#16181f"/>
+  <rect x="40" y="40" width="432" height="432" rx="72" fill="#1e2130"/>
+  <!-- Pickaxe -->
+  <g transform="rotate(-20 256 256)">
+    <rect x="240" y="150" width="32" height="240" rx="10" fill="#c8a06a"/>
+    <path d="M120 168 Q256 108 392 168 Q256 150 120 168 Z" fill="#8f9bb3"/>
+    <path d="M120 168 Q256 108 392 168 L392 196 Q256 138 120 196 Z" fill="#b7c2d8"/>
+  </g>
+  <!-- Ground blocks -->
+  <rect x="120" y="392" width="80" height="60" fill="#4caf50"/>
+  <rect x="216" y="392" width="80" height="60" fill="#7c8cff"/>
+  <rect x="312" y="392" width="80" height="60" fill="#ff8a65"/>
+</svg>
