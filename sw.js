@@ -12,7 +12,7 @@
 // Bump CACHE_VERSION on release to drop the old shell.
 // ============================================================
 
-const CACHE_VERSION = 'steveo-shell-v47';
+const CACHE_VERSION = 'steveo-shell-v48';
 const CORE = ['/', '/index.html', '/style.css', '/manifest.json', '/icon.svg',
   // Pre-loaded starter worlds (seeded into local storage on first offline use).
   '/default-worlds/normal-default.json', '/default-worlds/platformer-default.json',

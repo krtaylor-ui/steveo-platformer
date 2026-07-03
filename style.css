@@ -1103,13 +1103,17 @@ html[data-theme="retro"] {
 }
 
 .published-badge {
-  background: #4CAF50;
-  color: white;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: bold;
-  white-space: nowrap;
+  background: #2e9e4a;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 0.8rem;
+  line-height: 1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
 .world-card-actions {
@@ -2143,3 +2147,15 @@ html[data-theme="retro"] .pause-subrow { border-left-color: #2f6f8f; }
 .start-choice:active { transform: scale(0.97); }
 .start-choice-title { font-size: 1.25rem; font-weight: bold; letter-spacing: 1px; }
 .start-choice-sub   { font-size: 0.72rem; opacity: 0.8; letter-spacing: 0.3px; }
+
+/* Cross-space section in the Sandbox browser: the OTHER space's worlds (badged)
+   with a single Copy-to-Online/Offline action. */
+.cross-space { grid-column: 1 / -1; margin-top: 10px; border-top: 2px dashed var(--panel-border, #d0d3e0); padding-top: 12px; }
+.cross-space-title { font-size: 0.82rem; opacity: 0.75; margin: 0 0 10px; font-weight: 700; }
+.world-card.cross-card { opacity: 0.92; }
+.origin-badge {
+  font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+  background: rgba(120, 140, 200, 0.22); color: #4a5578; white-space: nowrap;
+}
+html[data-theme="retro"] .cross-space { border-top-color: #2f6f8f; }
+html[data-theme="retro"] .origin-badge { background: rgba(126,200,227,0.18); color: #7ec8e3; }

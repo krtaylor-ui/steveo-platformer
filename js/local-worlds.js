@@ -40,6 +40,7 @@ const LOCAL_WORLDS = {
   },
 
   get(id) { return this._all()[id] || null; },
+  listAll() { return Object.values(this._all()); },
 
   // Create an empty world — no grid; the sandbox editor builds it from the
   // stored dimensions (same as the server's fresh-world path).

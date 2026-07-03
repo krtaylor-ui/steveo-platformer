@@ -168,7 +168,7 @@ const ARENA_SELECT = {
       return `
         <div class="arena-tile" data-tile-world-id="${w.id}">
           <div class="mode-icon">🗺️</div>
-          <h3>${this._esc(w.world_name)}${w.is_published ? ' <span class="published-badge">Published</span>' : ''}</h3>
+          <h3>${this._esc(w.world_name)}${w.is_published ? ' <span class="published-badge" title="Published">★</span>' : ''}</h3>
           <p>${this._esc(w.description) || '(No description)'}</p>
           <div class="arena-tile-badges">${badges}</div>
           <div class="arena-tile-actions">

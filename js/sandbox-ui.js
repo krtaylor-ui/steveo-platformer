@@ -160,6 +160,7 @@ const SANDBOX = {
       this.worlds = data.worlds;
       this.renderWorlds(this.worlds);
       this.updatePagination(data.page, data.totalPages);
+      this._renderCrossSpace();
       return;
     }
     try {
@@ -172,6 +173,7 @@ const SANDBOX = {
       this.worlds = data.worlds || [];
       this.renderWorlds(this.worlds);
       this.updatePagination(data.page, data.totalPages);
+      this._renderCrossSpace();
     } catch (error) {
       console.error('Load worlds error:', error);
       alert('Failed to load worlds');
@@ -192,7 +194,7 @@ const SANDBOX = {
         <div class="world-card-header">
           <h3>${this._esc(w.world_name)}</h3>
           <span class="mode-badge mode-${mode}">${this.getModeLabel(mode)}</span>
-          ${w.is_published ? '<span class="published-badge">Published</span>' : ''}
+          ${w.is_published ? '<span class="published-badge" title="Published">★</span>' : ''}
         </div>
         <p>${this._esc(w.description) || '(No description)'}</p>
         <p class="world-card-meta">Created: ${new Date(w.created_at).toLocaleDateString()}</p>
@@ -221,6 +223,96 @@ const SANDBOX = {
       }));
     list.querySelectorAll('.mode-select').forEach(sel =>
       sel.addEventListener('change', (e) => this.changeWorldMode(e.target.dataset.worldId, e.target.value)));
+  },
+
+  // Cross-space section: show the OTHER space's worlds (badged) with a single
+  // "Copy to Online/Offline" button. Online → lists your local worlds; offline →
+  // lists your cloud worlds (only if a valid session is reachable).
+  async _renderCrossSpace() {
+    const list = document.getElementById('world-list');
+    if (!list || typeof APP_MODE === 'undefined') return;
+    const local = APP_MODE.isLocal();
+    let others = [], act, badge, heading;
+
+    if (local) {
+      // Cloud worlds — need a live session; skip silently if logged out/offline.
+      if (typeof AUTH === 'undefined' || !AUTH.isLoggedIn || !AUTH.isLoggedIn()) return;
+      try {
+        const res = await AUTH.authedFetch('/api/worlds/sandbox?page=0&filter=all&sort=newest');
+        if (!res.ok) return;
+        others = (await res.json()).worlds || [];
+      } catch (e) { return; }
+      act = 'offline'; badge = '☁ Cloud'; heading = '☁ Your Online Worlds — copy into your offline worlds';
+    } else {
+      others = (typeof LOCAL_WORLDS !== 'undefined') ? LOCAL_WORLDS.listAll() : [];
+      act = 'online'; badge = '💾 Local'; heading = '💾 Your Offline Worlds — copy into your online account';
+    }
+    if (!others.length) return;
+
+    const actLabel = act === 'online' ? '⬆ Copy to Online' : '⬇ Copy to Offline';
+    const cards = others.map(w => {
+      const mode = (w.world_data && w.world_data.gameModeDefault) || 'NRM';
+      return `<div class="world-card cross-card">
+        <div class="world-card-header">
+          <h3>${this._esc(w.world_name)}</h3>
+          <span class="mode-badge mode-${mode}">${this.getModeLabel(mode)}</span>
+          <span class="origin-badge">${badge}</span>
+        </div>
+        <div class="world-card-actions">
+          <button class="btn btn-primary cross-copy-btn" data-id="${this._esc(w.id)}" data-act="${act}">${actLabel}</button>
+        </div>
+      </div>`;
+    }).join('');
+    list.insertAdjacentHTML('beforeend',
+      `<div class="cross-space"><h4 class="cross-space-title">${heading}</h4>${cards}</div>`);
+    list.querySelectorAll('.cross-copy-btn').forEach(b => b.addEventListener('click', (e) => {
+      const id = e.currentTarget.dataset.id;
+      if (e.currentTarget.dataset.act === 'online') this._copyToOnline(id);
+      else this._copyToOffline(id);
+    }));
+  },
+
+  // Promote a local world into the cloud account (create + save its world_data).
+  async _copyToOnline(localId) {
+    const w = LOCAL_WORLDS.get(localId);
+    if (!w) return;
+    const wd = JSON.parse(JSON.stringify(w.world_data || {}));
+    const srcUid = (wd.provenance && wd.provenance.uid) || localId;
+    const user = (typeof AUTH !== 'undefined' && AUTH.getUser && AUTH.getUser());
+    wd.provenance = {
+      uid: 'c-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      createdAt: Date.now(), updatedAt: Date.now(),
+      creator: (user && user.username) || 'Player', origin: 'cloud', copiedFrom: srcUid, copiedAt: Date.now(),
+    };
+    try {
+      const cRes = await AUTH.authedFetch('/api/worlds/sandbox/create', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ worldName: `${w.world_name} (from Offline)`, description: w.description || '',
+          worldWidth: wd.worldWidth || 650, worldHeight: wd.worldHeight || 60, gameModeDefault: wd.gameModeDefault || 'NRM', config: {} }),
+      });
+      const created = await cRes.json();
+      if (!cRes.ok) { alert('Copy failed: ' + (created.error || '')); return; }
+      await AUTH.authedFetch(`/api/worlds/sandbox/${created.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ worldData: wd }),
+      });
+      alert(`“${w.world_name}” copied to your online account.`);
+      this.currentPage = 0; await this.loadWorlds();
+    } catch (e) { console.error('Copy to online error:', e); alert('Copy to online failed.'); }
+  },
+
+  // Copy a cloud world down into local (offline) storage.
+  async _copyToOffline(cloudId) {
+    try {
+      const res = await AUTH.authedFetch(`/api/worlds/sandbox/${cloudId}`);
+      if (!res.ok) { alert('Copy failed'); return; }
+      const world = await res.json();
+      LOCAL_WORLDS.importWorld({
+        worldName: `${world.world_name} (from Online)`, description: world.description || '',
+        worldData: world.world_data, mode: world.world_data && world.world_data.gameModeDefault,
+      });
+      alert(`“${world.world_name}” copied to your offline worlds.`);
+      await this.loadWorlds();
+    } catch (e) { console.error('Copy to offline error:', e); alert('Copy to offline failed.'); }
   },
 
   // Inline game-mode change from a world card (no editor round-trip).
