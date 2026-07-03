@@ -232,7 +232,7 @@ const PROGRESS_PREFIX = 'nwprogress|';
 const NormalProgress = {
   key(sandboxKey) { return PROGRESS_PREFIX + sandboxKey; },
 
-  save(sandboxKey, player, bedPos = null, levelGrid = null, collectedItemKeys = null, chestsMap = null, dayNight = null, twoPlayerMode = false, collectedDiscs = null, redstoneState = null, droppedItems = null) {
+  save(sandboxKey, player, bedPos = null, levelGrid = null, collectedItemKeys = null, chestsMap = null, dayNight = null, twoPlayerMode = false, collectedDiscs = null, redstoneState = null, droppedItems = null, liveMobs = null) {
     const payload = {
       savedAt:     new Date().toISOString(),
       twoPlayerMode: !!twoPlayerMode,
@@ -269,6 +269,8 @@ const NormalProgress = {
       redstoneState: redstoneState || null,
       // Live ground item drops (mob loot, broken-block drops) not yet picked up.
       droppedItems: Array.isArray(droppedItems) ? droppedItems : [],
+      // Live mobs alive at save time — restored on re-entry instead of respawned.
+      liveMobs: Array.isArray(liveMobs) ? liveMobs : [],
     };
     try {
       localStorage.setItem(this.key(sandboxKey), JSON.stringify(payload));

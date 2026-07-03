@@ -13984,9 +13984,18 @@ class Game {
       this._dustConnDirty = true;
     }
 
-    // Restore ground item drops (mob loot / broken-block drops) not yet collected.
-    if (progress && Array.isArray(progress.droppedItems) && progress.droppedItems.length > 0) {
-      this.mobManager.restoreDroppedItems(progress.droppedItems);
+    // Restore live mobs + ground drops so re-entering the world keeps the exact
+    // set that was alive/dropped, rather than respawning from spawn eggs. Prefer
+    // the NormalProgress checkpoint (legacy localStorage flow); fall back to the
+    // world payload (cloud game-slot flow, where `data` is the saved snapshot).
+    // Skipped on New Game so a fresh start spawns from eggs.
+    if (!this._normalNewGame) {
+      const savedMobs  = (progress && Array.isArray(progress.liveMobs) && progress.liveMobs.length)
+        ? progress.liveMobs : (Array.isArray(data.liveMobs) ? data.liveMobs : []);
+      const savedDrops = (progress && Array.isArray(progress.droppedItems) && progress.droppedItems.length)
+        ? progress.droppedItems : (Array.isArray(data.droppedItems) ? data.droppedItems : []);
+      if (savedMobs.length)  this.mobManager.adoptSerializedMobs(savedMobs);
+      if (savedDrops.length) this.mobManager.restoreDroppedItems(savedDrops);
     }
 
     // Mark already-collected items so they don't reappear
@@ -14114,7 +14123,8 @@ class Game {
       this._sandboxLoadKey, this.player, bed || null,
       this.level.grid, collectedKeys, this._chests, this._dayNight,
       this._worldAdvSettings.twoPlayerMode, this._collectedDiscs,
-      this._captureRedstoneState(), this._captureDroppedItems()
+      this._captureRedstoneState(), this._captureDroppedItems(),
+      this.mobManager ? this.mobManager.serializeMobs() : []
     );
     if (!result.ok) this._notify('Save failed: ' + result.error, '#FF4444', 200);
   }
@@ -14191,6 +14201,16 @@ class Game {
           .map(e => ({ col: e.col, row: e.row, mobTypeName: EGG_TO_MOB[e.mobType], timer: 0, active: true }))
       : [];
     this.mobManager.setupSpawnPoints(eggSpawnsPf);
+
+    // Restore live mobs + ground drops saved with this world (cloud game-slot
+    // snapshot), so re-entering keeps the mobs that were alive instead of
+    // respawning fresh from spawn eggs. Fresh templates carry none → no-op.
+    if (Array.isArray(data.liveMobs) && data.liveMobs.length) {
+      this.mobManager.adoptSerializedMobs(data.liveMobs);
+    }
+    if (Array.isArray(data.droppedItems) && data.droppedItems.length) {
+      this.mobManager.restoreDroppedItems(data.droppedItems);
+    }
 
     // Placed tool/weapon/block items → collectible pickups
     this._platformerItems = (Array.isArray(data.placedItems) ? data.placedItems : [])

@@ -1525,6 +1525,7 @@ class MobManager {
   // to host so the SAME mobs (type/position/hp/id) persist and keep simulating,
   // rather than despawning and respawning fresh under the new host.
   adoptSerializedMobs(snapshots) {
+    let maxId = 0;
     for (const m of snapshots || []) {
       if (!m || m.alive === false) continue;
       const mob = this._createMob(m.type, m.x, m.y);
@@ -1532,12 +1533,17 @@ class MobManager {
       mob.x = m.x; mob.y = m.y;
       if (m.hp    != null)        mob.hp    = m.hp;
       if (m.maxHp != null)        mob.maxHp = m.maxHp;
-      if (m.id    != null)        mob.id    = m.id;
+      if (m.id    != null)        { mob.id = m.id; maxId = Math.max(maxId, m.id); }
       if (m.flipped !== undefined) mob.facing = m.flipped ? 1 : -1;
+      if (m.state)                 mob.state = m.state;
+      if (m.walkTimer   != null)   mob.walkTimer   = m.walkTimer;
+      if (m.hitCooldown != null)   mob.hitCooldown = m.hitCooldown;
       if (m.fusing  !== undefined) mob.fusing = m.fusing;
       if (m.fuseTimer != null)     mob.fuseTimer = m.fuseTimer;
       this.mobs.push(mob);
     }
+    // Keep the id counter ahead of any restored ids so later spawns stay unique.
+    if (maxId > Mob._nextId) Mob._nextId = maxId;
   }
 
   addPlayerArrow(x, y, vx, vy, damage, owner = 'p1') {
