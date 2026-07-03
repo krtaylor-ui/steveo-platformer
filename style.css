@@ -1150,6 +1150,7 @@ html[data-theme="retro"] {
 
 /* New modals share the create-game-modal overlay treatment */
 #create-world-modal,
+#copy-world-modal,
 #theme-settings-modal,
 #import-games-modal,
 #import-file-modal,
@@ -1169,6 +1170,7 @@ html[data-theme="retro"] {
 }
 
 #create-world-modal .modal-content,
+#copy-world-modal .modal-content,
 #theme-settings-modal .modal-content,
 #import-games-modal .modal-content,
 #import-file-modal .modal-content,
@@ -2161,3 +2163,10 @@ html[data-theme="retro"] .pause-subrow { border-left-color: #2f6f8f; }
 }
 html[data-theme="retro"] .cross-space-title { border-top-color: #2f6f8f; }
 html[data-theme="retro"] .origin-badge { background: rgba(126,200,227,0.18); color: #7ec8e3; }
+
+/* Copy-world modal destination chooser. */
+#copy-world-modal .copy-dest { border: 1px solid var(--panel-border, #d0d3e0); border-radius: 8px; padding: 6px 12px 10px; margin: 12px 0; color: #2a2a3a; }
+#copy-world-modal .copy-dest legend { font-size: 0.76rem; opacity: 0.7; padding: 0 6px; }
+#copy-world-modal .copy-dest-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; cursor: pointer; }
+#copy-world-modal #copy-world-name { width: 100%; }
+html[data-theme="retro"] #copy-world-modal .copy-dest { color: #cfe8f2; border-color: #2f6f8f; }

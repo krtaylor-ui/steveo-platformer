@@ -90,6 +90,10 @@ const SANDBOX = {
     document.getElementById('confirm-import-btn')?.addEventListener('click', () => this.confirmImport());
     document.getElementById('cancel-import-file-btn')?.addEventListener('click', () => this.hideImportFileModal());
 
+    // Copy world modal (name + destination)
+    document.getElementById('copy-world-confirm')?.addEventListener('click', () => this._confirmCopy());
+    document.getElementById('copy-world-cancel')?.addEventListener('click', () => this._hideCopyModal());
+
     // Editor HUD
     document.getElementById('sb-editor-back-btn')?.addEventListener('click', () => this.exitEditor());
     document.getElementById('sb-save-btn')?.addEventListener('click', () => this.saveWorld());
@@ -160,7 +164,6 @@ const SANDBOX = {
       this.worlds = data.worlds;
       this.renderWorlds(this.worlds);
       this.updatePagination(data.page, data.totalPages);
-      this._renderCrossSpace();
       return;
     }
     try {
@@ -173,7 +176,6 @@ const SANDBOX = {
       this.worlds = data.worlds || [];
       this.renderWorlds(this.worlds);
       this.updatePagination(data.page, data.totalPages);
-      this._renderCrossSpace();
     } catch (error) {
       console.error('Load worlds error:', error);
       alert('Failed to load worlds');
@@ -182,118 +184,155 @@ const SANDBOX = {
 
   renderWorlds(worlds) {
     const list = document.getElementById('world-list');
-    if (!worlds || worlds.length === 0) {
-      list.innerHTML = '<p class="world-list-empty">No worlds yet. Create one to get started!</p>';
-      return;
+    if (!list) return;
+    const online = (typeof APP_MODE !== 'undefined' && APP_MODE.isOnline());
+    let html = (worlds || []).map(w => this._worldCard(w)).join('');
+    // Online only: also show your LOCAL worlds as full cards under a divider, so
+    // you can Edit/Copy/Delete them and (via Copy) promote them to your account —
+    // all in one place. (Offline shows only local worlds.)
+    if (online && typeof LOCAL_WORLDS !== 'undefined') {
+      const locals = LOCAL_WORLDS.listAll();
+      if (locals.length) {
+        html += '<div class="cross-space-title">💾 Your Offline Worlds</div>';
+        html += locals.map(w => this._worldCard(w)).join('');
+      }
     }
+    list.innerHTML = html || '<p class="world-list-empty">No worlds yet. Create one to get started!</p>';
+    this._wireCards();
+  },
 
-    list.innerHTML = worlds.map(w => {
-      const mode = w.world_data?.gameModeDefault || 'NRM';
-      return `
+  // A world lives locally if it's in LOCAL_WORLDS — per-world actions branch on
+  // THIS (its origin), not the session mode, so you can edit a local world while
+  // online and vice-versa.
+  _isLocalWorld(id) { return typeof LOCAL_WORLDS !== 'undefined' && !!LOCAL_WORLDS.get(id); },
+
+  _worldCard(w) {
+    const mode = (w.world_data && w.world_data.gameModeDefault) || 'NRM';
+    const isLocal = this._isLocalWorld(w.id);
+    const origin = isLocal
+      ? '<span class="origin-badge">💾 Local</span>'
+      : '<span class="origin-badge origin-cloud">☁ Cloud</span>';
+    return `
       <div class="world-card">
         <div class="world-card-header">
           <h3>${this._esc(w.world_name)}</h3>
           <span class="mode-badge mode-${mode}">${this.getModeLabel(mode)}</span>
           ${w.is_published ? '<span class="published-badge" title="Published">★</span>' : ''}
+          ${origin}
         </div>
         <p>${this._esc(w.description) || '(No description)'}</p>
-        <p class="world-card-meta">Created: ${new Date(w.created_at).toLocaleDateString()}</p>
+        <p class="world-card-meta">Created: ${w.created_at ? new Date(w.created_at).toLocaleDateString() : '—'}</p>
         <div class="world-card-actions">
           <label class="mode-select-label">Mode:
-            <select class="mode-select" data-world-id="${w.id}">
+            <select class="mode-select" data-world-id="${this._esc(w.id)}">
               ${['NRM', 'PLT', 'RUN', 'ARN'].map(m =>
                 `<option value="${m}"${m === mode ? ' selected' : ''}>${this.getModeLabel(m)}</option>`).join('')}
             </select>
           </label>
-          <button class="btn btn-primary edit-world-btn" data-world-id="${w.id}">Edit</button>
-          <button class="btn btn-secondary copy-world-btn" data-world-id="${w.id}">Copy</button>
-          ${(typeof APP_MODE !== 'undefined' && APP_MODE.isOnline()) ? `<button class="btn btn-secondary copy-offline-btn" data-world-id="${w.id}">⬇ Copy to Offline</button>` : ''}
-          <button class="btn btn-danger delete-world-btn" data-world-id="${w.id}">Delete</button>
+          <button class="btn btn-primary edit-world-btn" data-world-id="${this._esc(w.id)}">Edit</button>
+          <button class="btn btn-secondary copy-world-btn" data-world-id="${this._esc(w.id)}">Copy</button>
+          <button class="btn btn-danger delete-world-btn" data-world-id="${this._esc(w.id)}">Delete</button>
         </div>
-      </div>
-    `;
-    }).join('');
+      </div>`;
+  },
 
+  _wireCards() {
+    const list = document.getElementById('world-list');
+    if (!list) return;
     list.querySelectorAll('.edit-world-btn').forEach(btn =>
-      btn.addEventListener('click', (e) => this.editWorld(e.target.dataset.worldId)));
+      btn.addEventListener('click', (e) => this.editWorld(e.currentTarget.dataset.worldId)));
     list.querySelectorAll('.copy-world-btn').forEach(btn =>
-      btn.addEventListener('click', (e) => this.copyWorld(e.target.dataset.worldId)));
+      btn.addEventListener('click', (e) => this.copyWorld(e.currentTarget.dataset.worldId)));
     list.querySelectorAll('.delete-world-btn').forEach(btn =>
       btn.addEventListener('click', (e) => {
-        if (confirm('Delete this world? This cannot be undone.')) this.deleteWorld(e.target.dataset.worldId);
+        if (confirm('Delete this world? This cannot be undone.')) this.deleteWorld(e.currentTarget.dataset.worldId);
       }));
     list.querySelectorAll('.mode-select').forEach(sel =>
-      sel.addEventListener('change', (e) => this.changeWorldMode(e.target.dataset.worldId, e.target.value)));
-    list.querySelectorAll('.copy-offline-btn').forEach(btn =>
-      btn.addEventListener('click', (e) => this._copyToOffline(e.currentTarget.dataset.worldId)));
+      sel.addEventListener('change', (e) => this.changeWorldMode(e.currentTarget.dataset.worldId, e.currentTarget.value)));
   },
 
   // Cross-space section — ONLINE ONLY. Shows your LOCAL worlds (badged) as tiles
   // with a single "⬆ Copy to Online". (In offline mode we intentionally show only
   // local worlds — surfacing cloud worlds there would be confusing.) Cloud cards
   // get their own "⬇ Copy to Offline" in renderWorlds.
-  _renderCrossSpace() {
-    const list = document.getElementById('world-list');
-    if (!list || typeof APP_MODE === 'undefined' || !APP_MODE.isOnline()) return;
-    const others = (typeof LOCAL_WORLDS !== 'undefined') ? LOCAL_WORLDS.listAll() : [];
-    if (!others.length) return;
-
-    let html = '<div class="cross-space-title">💾 Your Offline Worlds — copy into your online account</div>';
-    html += others.map(w => {
-      const mode = (w.world_data && w.world_data.gameModeDefault) || 'NRM';
-      return `<div class="world-card cross-card">
-        <div class="world-card-header">
-          <h3>${this._esc(w.world_name)}</h3>
-          <span class="mode-badge mode-${mode}">${this.getModeLabel(mode)}</span>
-          <span class="origin-badge">💾 Local</span>
-        </div>
-        <p>${this._esc(w.description) || '(No description)'}</p>
-        <div class="world-card-actions">
-          <button class="btn btn-primary cross-copy-btn" data-id="${this._esc(w.id)}">⬆ Copy to Online</button>
-        </div>
-      </div>`;
-    }).join('');
-    // Direct children of the #world-list grid → they tile exactly like the cards
-    // above (the title spans the full row via CSS).
-    list.insertAdjacentHTML('beforeend', html);
-    list.querySelectorAll('.cross-copy-btn').forEach(b =>
-      b.addEventListener('click', (e) => this._copyToOnline(e.currentTarget.dataset.id)));
+  // ── Copy modal (name + destination) ────────────────────────────
+  // One Copy button per card opens this: choose a name and where the copy goes
+  // (💾 Offline / ☁ Online). Default = the world's current space; Online is
+  // disabled when not signed in.
+  _openCopyModal(worldId) {
+    const isLocal = this._isLocalWorld(worldId);
+    const src = isLocal ? LOCAL_WORLDS.get(worldId)
+      : ((this.worlds || []).find(w => w.id === worldId)
+         || (this.currentWorldData && this.currentWorldData.id === worldId ? this.currentWorldData : null));
+    if (!src) { alert('World not found'); return; }
+    this._copySrc = { id: worldId, isLocal, world: src };
+    const modal = document.getElementById('copy-world-modal');
+    if (!modal) return;
+    const nameEl = document.getElementById('copy-world-name');
+    if (nameEl) nameEl.value = `${src.world_name} (Copy)`;
+    const loggedIn = (typeof AUTH !== 'undefined' && AUTH.isLoggedIn && AUTH.isLoggedIn());
+    const offR = document.getElementById('copy-dest-offline');
+    const onR  = document.getElementById('copy-dest-online');
+    const onRow = document.getElementById('copy-dest-online-row');
+    if (onR)  onR.disabled = !loggedIn;
+    if (onRow) onRow.style.opacity = loggedIn ? '1' : '0.5';
+    // Default to the world's own space (fall back to offline if online unavailable).
+    if (!isLocal && loggedIn) { if (onR) onR.checked = true; }
+    else { if (offR) offR.checked = true; }
+    modal.style.display = 'flex';
   },
 
-  // Promote a local world into the cloud account (create + save its world_data).
-  async _copyToOnline(localId) {
-    const w = LOCAL_WORLDS.get(localId);
-    if (!w) return;
-    let name = w.world_name;
-    const wd = JSON.parse(JSON.stringify(w.world_data || {}));
-    const srcUid = (wd.provenance && wd.provenance.uid) || localId;
-    const srcCreated = wd.provenance && wd.provenance.createdAt;
-    const srcCreator = wd.provenance && wd.provenance.creator;
+  _hideCopyModal() {
+    const m = document.getElementById('copy-world-modal');
+    if (m) m.style.display = 'none';
+    this._copySrc = null;
+  },
 
-    // Duplicate guard: warn if a cloud world looks like the same one — by shared
-    // lineage (already copied up) or matching name + creation time + creator.
-    const dup = (this.worlds || []).find(c => {
-      const cp = c.world_data && c.world_data.provenance;
-      if (cp && cp.copiedFrom && cp.copiedFrom === srcUid) return true;
-      return c.world_name === name && cp && cp.createdAt === srcCreated && cp.creator === srcCreator;
-    });
-    if (dup) {
-      if (!confirm(`“${name}” looks like it's already in your online worlds.\n\nOK = copy it anyway\nCancel = don't copy`)) return;
-      const nn = prompt('Name for the online copy (rename it, or keep as-is):', name);
-      if (nn === null) return;               // cancel
-      name = (nn.trim() || name);
+  async _confirmCopy() {
+    const ctx = this._copySrc;
+    if (!ctx) return;
+    const nameEl = document.getElementById('copy-world-name');
+    const name = ((nameEl && nameEl.value) || '').trim() || `${ctx.world.world_name} (Copy)`;
+    const destEl = document.querySelector('input[name="copy-dest"]:checked');
+    const dest = (destEl && destEl.value) || (ctx.isLocal ? 'offline' : 'online');
+    const srcData = ctx.world.world_data || {};
+
+    if (dest === 'online') {
+      if (!(typeof AUTH !== 'undefined' && AUTH.isLoggedIn && AUTH.isLoggedIn())) {
+        alert('Sign in (Play Online) to copy into your account.'); return;
+      }
+      // Duplicate guard vs your cloud worlds (shared lineage OR same name).
+      const srcUid = srcData.provenance && srcData.provenance.uid;
+      const dup = (this.worlds || []).find(c => {
+        if (this._isLocalWorld(c.id)) return false;
+        const cp = c.world_data && c.world_data.provenance;
+        if (cp && srcUid && cp.copiedFrom === srcUid) return true;
+        return c.world_name === name;
+      });
+      if (dup && !confirm(`A world named “${name}” (or a copy of this one) is already in your online worlds.\n\nOK = copy anyway\nCancel = go back and rename`)) return;
+      await this._doCopyToCloud(name, srcData, ctx.world.description);
+    } else {
+      LOCAL_WORLDS.importWorld({ worldName: name, description: ctx.world.description || '', worldData: srcData, mode: srcData.gameModeDefault });
     }
+    this._hideCopyModal();
+    this.currentPage = 0;
+    await this.loadWorlds();
+  },
 
+  async _doCopyToCloud(name, srcData, description) {
+    const wd = JSON.parse(JSON.stringify(srcData || {}));
+    const srcUid = (wd.provenance && wd.provenance.uid) || null;
     const user = (typeof AUTH !== 'undefined' && AUTH.getUser && AUTH.getUser());
     wd.provenance = {
       uid: 'c-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       createdAt: Date.now(), updatedAt: Date.now(),
-      creator: (user && user.username) || 'Player', origin: 'cloud', copiedFrom: srcUid, copiedAt: Date.now(),
+      creator: (user && user.username) || 'Player', origin: 'cloud',
+      copiedFrom: srcUid, copiedAt: srcUid ? Date.now() : null,
     };
     try {
       const cRes = await AUTH.authedFetch('/api/worlds/sandbox/create', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ worldName: name, description: w.description || '',
+        body: JSON.stringify({ worldName: name, description: description || '',
           worldWidth: wd.worldWidth || 650, worldHeight: wd.worldHeight || 60, gameModeDefault: wd.gameModeDefault || 'NRM', config: {} }),
       });
       const created = await cRes.json();
@@ -301,29 +340,12 @@ const SANDBOX = {
       await AUTH.authedFetch(`/api/worlds/sandbox/${created.id}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ worldData: wd }),
       });
-      alert(`“${name}” copied to your online account.`);
-      this.currentPage = 0; await this.loadWorlds();
     } catch (e) { console.error('Copy to online error:', e); alert('Copy to online failed.'); }
-  },
-
-  // Copy a cloud world down into local (offline) storage.
-  async _copyToOffline(cloudId) {
-    try {
-      const res = await AUTH.authedFetch(`/api/worlds/sandbox/${cloudId}`);
-      if (!res.ok) { alert('Copy failed'); return; }
-      const world = await res.json();
-      LOCAL_WORLDS.importWorld({
-        worldName: world.world_name, description: world.description || '',
-        worldData: world.world_data, mode: world.world_data && world.world_data.gameModeDefault,
-      });
-      alert(`“${world.world_name}” copied to your offline worlds.`);
-      await this.loadWorlds();
-    } catch (e) { console.error('Copy to offline error:', e); alert('Copy to offline failed.'); }
   },
 
   // Inline game-mode change from a world card (no editor round-trip).
   async changeWorldMode(worldId, gameModeDefault) {
-    if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
+    if (this._isLocalWorld(worldId)) {
       LOCAL_WORLDS.setMode(worldId, gameModeDefault);
       const w = this.worlds.find(x => x.id === worldId);
       if (w) { w.world_data = w.world_data || {}; w.world_data.gameModeDefault = gameModeDefault; }
@@ -563,7 +585,7 @@ const SANDBOX = {
   // ── Export the open world as a downloadable JSON file ──────────
   async exportWorld() {
     if (!this.selectedWorldId) { alert('No world loaded'); return; }
-    if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
+    if (this._isLocalWorld(this.selectedWorldId)) {
       const w = LOCAL_WORLDS.get(this.selectedWorldId);
       if (!w) { alert('No world loaded'); return; }
       const payload = {
@@ -656,7 +678,7 @@ const SANDBOX = {
   // ── Editor: open a world in sandbox mode ───────────────────────
   async editWorld(worldId) {
     try {
-      const local = (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal());
+      const local = this._isLocalWorld(worldId);
       let world;
       if (local) {
         world = LOCAL_WORLDS.get(worldId);
@@ -715,7 +737,7 @@ const SANDBOX = {
     if (!this.selectedWorldId || !window.game) { alert('No world loaded'); return; }
     try {
       const worldData = GAME_STATE.serialize(window.game);
-      if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
+      if (this._isLocalWorld(this.selectedWorldId)) {
         const ok = LOCAL_WORLDS.save(this.selectedWorldId, worldData);
         this._setSaveIndicator(ok ? 'saved' : 'unsaved');
         if (!ok) alert('Failed to save world');
@@ -736,8 +758,8 @@ const SANDBOX = {
 
   async togglePublish() {
     if (!this.selectedWorldId || !this.currentWorldData) return;
-    if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
-      alert('Publishing shares a world with the community — an online feature. Choose “☁ Go Online” to publish.');
+    if (this._isLocalWorld(this.selectedWorldId)) {
+      alert('Publishing shares a world with the community — an online feature. A local world must be copied to your online account first.');
       return;
     }
     const isPublished = !this.currentWorldData.is_published;
@@ -766,39 +788,12 @@ const SANDBOX = {
     }
   },
 
-  // ── Copy / delete (work from both browser cards and editor) ────
-  async copyWorld(worldId) {
-    if (!worldId) return;
-    const source = this.worlds.find(w => w.id === worldId) || this.currentWorldData;
-    const defaultName = source ? `${source.world_name} (Copy)` : 'Copy';
-    const newName = prompt('New world name:', defaultName);
-    if (newName === null) return;
-
-    if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
-      LOCAL_WORLDS.copy(worldId, newName);
-      if (this.selectedWorldId) this.exitEditor();
-      else { this.currentPage = 0; await this.loadWorlds(); }
-      return;
-    }
-    try {
-      const res = await AUTH.authedFetch(`/api/worlds/sandbox/${worldId}/copy`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ newName }),
-      });
-      if (!res.ok) { alert('Failed to copy world'); return; }
-
-      if (this.selectedWorldId) this.exitEditor();
-      else { this.currentPage = 0; await this.loadWorlds(); }
-    } catch (error) {
-      console.error('Copy error:', error);
-      alert('Failed to copy world');
-    }
-  },
+  // Copy — opens the name+destination modal (works from cards and the editor).
+  copyWorld(worldId) { this._openCopyModal(worldId); },
 
   async deleteWorld(worldId) {
     if (!worldId) return;
-    if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
+    if (this._isLocalWorld(worldId)) {
       LOCAL_WORLDS.remove(worldId);
       if (this.selectedWorldId === worldId) this.exitEditor();
       else await this.loadWorlds();
