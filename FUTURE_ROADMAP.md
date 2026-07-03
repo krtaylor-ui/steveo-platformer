@@ -249,5 +249,54 @@ Confirmed existing systems the future work builds on:
 
 ---
 
+## 5. HTML pause menu + universal controller navigation
+
+Queued to land **with the leaderboard revamp** (that work touches this menu anyway).
+Decided direction (2026-07-03).
+
+### 5a. Rebuild the pause menu as HTML
+Today it's canvas-rendered in `js/game.js` (`_pauseLayout`, `_drawPauseOverlay`, its
+click/gamepad handling, `_drawCtrlAssignRows`, `_drawPauseVolSliders`). Replace with an
+HTML modal overlay shown while `game.state === 'paused'`:
+- Tabs Pause / Settings / Help (same content). Buttons: Resume, Main Menu, Level Select
+  (conditional). **No "Save World"** (removed build 23). **Add "View Leaderboard."**
+- Settings: volume sliders → `_worldAdvSettings` + live audio; input-assignment rows for
+  **up to 4 players** (reuse `ControllerConfig`; the canvas `_drawCtrlAssignRows` already
+  takes any player count — port to HTML `<select>`s).
+- Inherits theme tokens + the retro FX (`data-fx-*`, `body.in-game`) → looks right in
+  clean AND retro for free. Keep the exit-dialog save-before-quit + F/B quick-save.
+- Freeze/resume the loop as now; show/hide overlay on pause; delete the dead canvas paths.
+
+### 5b. Universal controller navigation (new `js/gamepad-nav.js`)
+One module drives **every** HTML screen/modal with a gamepad. **Both** modes, together
+(user decision — build both):
+- **D-pad/stick = spatial focus** — highlight jumps to the nearest focusable element in the
+  pressed direction, by bounding-rect geometry (NOT DOM order). Visible focus ring (clean +
+  retro).
+- **Left stick = virtual cursor** — free DOM pointer; **A** clicks via
+  `document.elementFromPoint`. Universal fallback for anything focus can't reach.
+- **A** = activate focused element / cursor target; **B** = back (drive the screen's
+  back/close/cancel; add a `[data-gp-back]` hook + match `.btn-back` / `.ts-close` /
+  `#*-cancel-btn`).
+- Focusables = visible+enabled `button,a,input,select,.btn,.toggle,[role=button]` in the
+  **top-most visible screen/modal only** (re-scope on screen switch).
+- **Dropdowns:** focused `<select>` → D-pad up/down cycles the value directly (don't rely on
+  native open — can't drive it via gamepad). Sliders → D-pad left/right nudges. **Text
+  inputs:** focus works but typing needs a real keyboard → on-screen keyboard is a separate
+  future item (note, don't build).
+- Runs its **own rAF poll, active only when `body:not(.in-game)`** so it never fights the
+  in-game controller handling in `game.js`. Reuse `input.js` `updateGamepad`/`gpJustDown` +
+  `controller-config.js`; use player-1's assignment.
+
+**Effort:** medium–large but build-once, applies to all ~20 screens/modals. **Gotchas:** works
+in both themes; never active during gameplay; handles screen switching; add a headless unit
+test for the pure "nearest element in direction" pick function (rects → chosen index) — the
+rest is browser+gamepad only.
+
+**Reuse:** `input.js` (gamepad poll), `controller-config.js` (per-player assignment), theme
+tokens + retro FX (build 20), `body.in-game` gate (build 19/20).
+
+---
+
 *Living document — update as decisions land and features ship. Keep `DECISIONS_LOG.md` for what
 *was* built; this file is for what's *planned*.*
