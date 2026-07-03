@@ -48,6 +48,15 @@ class Game {
   constructor(mode = 'normal', options = {}, onReturnToMenu = null) {
     this.canvas          = document.getElementById('gameCanvas');
     this.ctx             = this.canvas.getContext('2d');
+    // The game view (title + canvas + controls) is hidden at boot via
+    // body.pre-game so the empty canvas box doesn't flash before the dashboard
+    // appears. A game is starting now → reveal it and recompute the canvas
+    // display size (resizeCanvas keyed off the resize event; the internal
+    // 800×500 resolution is unaffected by visibility).
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.remove('pre-game');
+      window.dispatchEvent(new Event('resize'));
+    }
     this.input           = new InputManager(this.canvas);
     this.gameMode        = mode;          // 'normal' | 'sandbox' | 'platformer' | 'speedrunner'
     this._onReturnToMenu = onReturnToMenu;
