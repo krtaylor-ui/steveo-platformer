@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 36 (drop Level Select everywhere; stable pause modal height)';
+const GAME_VERSION = 'v3 · build 37 (fix compact-hotbar overlap; per-player controller tuning)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

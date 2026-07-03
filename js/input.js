@@ -22,10 +22,15 @@ class InputManager {
     this.gamepads  = [0, 1, 2, 3].map(i => this._emptyGamepad(i));
     this._gpPrev   = [0, 1, 2, 3].map(i => this._emptyGamepad(i));
 
-    // Controller settings (set by game.js each frame)
+    // Controller settings (set by game.js each frame). The single values are a
+    // fallback; the per-player arrays (P1-P4, filled from ControllerConfig) are
+    // authoritative so each controller user can tune their own.
     this.controllerSensitivity    = 1.0;
     this.controllerAimSensitivity = 1.0;
     this.controllerDeadzone       = GP_DEADZONE_STICK;
+    this.playerSensitivity    = [1.0, 1.0, 1.0, 1.0];
+    this.playerAimSensitivity = [1.0, 1.0, 1.0, 1.0];
+    this.playerDeadzone       = [GP_DEADZONE_STICK, GP_DEADZONE_STICK, GP_DEADZONE_STICK, GP_DEADZONE_STICK];
 
     // Assigned input slots — set each frame by game.js from ControllerConfig
     // -1 = KB1 (WASD), -2 = KB2 (Arrows), 0-3 = gamepad slot
@@ -67,6 +72,16 @@ class InputManager {
     return (value - Math.sign(value) * dz) / (1 - dz);
   }
 
+  // Per-player controller tuning (player index 0-3), with a global fallback.
+  _sens(i)     { return this.playerSensitivity[i]    ?? this.controllerSensitivity    ?? 1.0; }
+  _aimSens(i)  { return this.playerAimSensitivity[i] ?? this.controllerAimSensitivity ?? 1.0; }
+  _deadzone(i) { return this.playerDeadzone[i]       ?? this.controllerDeadzone       ?? GP_DEADZONE_STICK; }
+  // Deadzone for a raw gamepad SLOT (0-3), resolved via which player uses it.
+  _deadzoneForSlot(slot) {
+    const p = [this.p1GpSlot, this.p2GpSlot, this.p3GpSlot, this.p4GpSlot].indexOf(slot);
+    return p >= 0 ? this._deadzone(p) : (this.controllerDeadzone ?? GP_DEADZONE_STICK);
+  }
+
   // Poll Gamepad API — call once per frame at the START of _update()
   updateGamepad() {
     const raw = navigator.getGamepads ? navigator.getGamepads() : [];
@@ -98,10 +113,10 @@ class InputManager {
         dpad1:     btn(15),  // Right
         dpad2:     btn(13),  // Down
         dpad3:     btn(14),  // Left
-        moveX: this._applyDeadZone(a[0] ?? 0, this.controllerDeadzone),
-        moveY: this._applyDeadZone(a[1] ?? 0, this.controllerDeadzone),
-        aimX:  this._applyDeadZone(a[2] ?? 0, this.controllerDeadzone),
-        aimY:  this._applyDeadZone(a[3] ?? 0, this.controllerDeadzone),
+        moveX: this._applyDeadZone(a[0] ?? 0, this._deadzoneForSlot(i)),
+        moveY: this._applyDeadZone(a[1] ?? 0, this._deadzoneForSlot(i)),
+        aimX:  this._applyDeadZone(a[2] ?? 0, this._deadzoneForSlot(i)),
+        aimY:  this._applyDeadZone(a[3] ?? 0, this._deadzoneForSlot(i)),
       };
     }
   }
@@ -185,7 +200,7 @@ class InputManager {
     const gp = this.dualInput ? this._anyGp()
                               : (this.p1GpSlot >= 0 ? this.gamepads[this.p1GpSlot] : this.gamepads[0]);
     if (!gp || !gp.connected) return;
-    const sens = this.controllerAimSensitivity ?? 1.0;
+    const sens = this._aimSens(0);
     this.mouse.x = Math.max(0, Math.min(canvasW, this.mouse.x + gp.aimX * speedPx * sens));
     this.mouse.y = Math.max(0, Math.min(canvasH, this.mouse.y + gp.aimY * speedPx * sens));
   }
@@ -249,11 +264,11 @@ class InputManager {
   moveX() {
     if (this.dualInput) {
       const kb = (this.isDown('KeyD') ? 1 : 0) - (this.isDown('KeyA') ? 1 : 0);
-      const gp = this._anyGp().moveX * (this.controllerSensitivity ?? 1.0);
+      const gp = this._anyGp().moveX * (this._sens(0));
       return Math.abs(kb) >= Math.abs(gp) ? kb : gp;
     }
     const s = this.p1GpSlot;
-    if (s >= 0)   return this._p1gp().moveX * (this.controllerSensitivity ?? 1.0);
+    if (s >= 0)   return this._p1gp().moveX * (this._sens(0));
     if (s === -2) return (this.isDown('ArrowRight') ? 1 : 0) - (this.isDown('ArrowLeft') ? 1 : 0);
     return (this.isDown('KeyD') ? 1 : 0) - (this.isDown('KeyA') ? 1 : 0);
   }
@@ -294,7 +309,7 @@ class InputManager {
   }
   moveX2() {
     const s = this.p2GpSlot;
-    if (s >= 0) return this._p2gp().moveX * (this.controllerSensitivity ?? 1.0);
+    if (s >= 0) return this._p2gp().moveX * (this._sens(1));
     if (s === -2) return (this.isDown('ArrowRight') ? 1 : 0) - (this.isDown('ArrowLeft') ? 1 : 0);
     return (this.isDown('KeyD') ? 1 : 0) - (this.isDown('KeyA') ? 1 : 0);
   }
@@ -327,7 +342,7 @@ class InputManager {
   pMoveX(i)  {
     if (i === 0) return this.moveX();
     if (i === 1) return this.moveX2();
-    return this._slotGp(this._pSlot(i)).moveX * (this.controllerSensitivity ?? 1.0);
+    return this._slotGp(this._pSlot(i)).moveX * (this._sens(i));
   }
   // Right-stick gamepad object for a player (aim). P1/P2 keep their helpers.
   pGp(i)     { return i === 0 ? this._p1gp() : i === 1 ? this._p2gp() : this._slotGp(this._pSlot(i)); }

@@ -307,9 +307,9 @@ const PAUSE_MENU = {
   },
 
   _playerCount(game) {
-    if (game._onlineGameId) return 0;
+    if (game._onlineGameId) return 1; // still let the local player pick/tune their controller
     if (game.isArena) return Math.max(1, Math.min(4, game.activePlayers ? game.activePlayers().length : 1));
-    if (game.gameMode === 'sandbox') return 0;
+    if (game.gameMode === 'sandbox') return 1; // single player, but may use a controller
     return game._worldAdvSettings?.twoPlayerMode ? 2 : 1;
   },
 
@@ -324,10 +324,25 @@ const PAUSE_MENU = {
     const rows = [];
     for (let p = 1; p <= n; p++) {
       const sel = this._select(OPTS, () => ControllerConfig.getAssignment(p),
-        v => { ControllerConfig.setAssignment(p, parseInt(v, 10)); });
+        v => { ControllerConfig.setAssignment(p, parseInt(v, 10)); this._buildSettings(game); });
       rows.push(this._row(`<span class="pause-pbadge" style="background:${P[p - 1]}">P${p}</span> Input`, sel));
+      // Controller-only tuning appears UNDER a player once they're on a gamepad,
+      // so each player sets their own move/aim sensitivity + deadzone.
+      if (ControllerConfig.getAssignment(p) >= 0) {
+        rows.push(this._subrow('Move Sensitivity', this._cycle(this.OPT.sens, () => ControllerConfig.getSensitivity(p), v => ControllerConfig.setSensitivity(p, v), v => v.toFixed(2) + 'x')));
+        if (game.gameMode !== 'speedrunner')
+          rows.push(this._subrow('Aim Sensitivity', this._cycle(this.OPT.sens, () => ControllerConfig.getAimSensitivity(p), v => ControllerConfig.setAimSensitivity(p, v), v => v.toFixed(2) + 'x')));
+        rows.push(this._subrow('Stick Deadzone', this._cycle(this.OPT.deadzone, () => ControllerConfig.getDeadzone(p), v => ControllerConfig.setDeadzone(p, v), v => Math.round(v * 100) + '%')));
+      }
     }
     return rows;
+  },
+
+  // Indented sub-row (controller tuning grouped under its player).
+  _subrow(label, controlEl) {
+    const row = this._row(label, controlEl);
+    row.classList.add('pause-subrow');
+    return row;
   },
 
   _buildSettings(game) {
@@ -343,17 +358,10 @@ const PAUSE_MENU = {
       this._row('Sound Effects', this._slider(() => pct('sfxVolume', 0.5), v => { game._worldAdvSettings.sfxVolume = v / 100; })),
     ]));
 
-    // Controls. Move/Aim sensitivity + deadzone are controller-only — hide them
-    // when no gamepad is connected (keyboard players don't need them).
-    const hasPad = !!(game.input && game.input.gamepads && game.input.gamepads.some(g => g && g.connected));
+    // Controls. Each player's assignment row is followed by their own move/aim
+    // sensitivity + deadzone (controller-only — shown only when that player is
+    // on a gamepad), so tuning is per-player rather than global.
     const ctrlRows = this._assignRows(game);
-    if (hasPad) {
-      ctrlRows.push(this._row('Move Sensitivity', this._cycle(this.OPT.sens, () => aws.controllerSensitivity ?? 1.0, v => { game._worldAdvSettings.controllerSensitivity = v; }, v => v.toFixed(2) + 'x')));
-      if (game.gameMode !== 'speedrunner') {
-        ctrlRows.push(this._row('Aim Sensitivity', this._cycle(this.OPT.sens, () => aws.controllerAimSensitivity ?? 1.0, v => { game._worldAdvSettings.controllerAimSensitivity = v; }, v => v.toFixed(2) + 'x')));
-        ctrlRows.push(this._row('Stick Deadzone', this._cycle(this.OPT.deadzone, () => aws.controllerDeadzone ?? 0.20, v => { game._worldAdvSettings.controllerDeadzone = v; }, v => Math.round(v * 100) + '%')));
-      }
-    }
     if (ctrlRows.length) body.appendChild(this._section('Controls', ctrlRows));
 
     // Physics / World & Physics (normal, platformer, sandbox). Greyed if locked.

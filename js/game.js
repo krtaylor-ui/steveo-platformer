@@ -1923,6 +1923,13 @@ class Game {
       this.input.p2GpSlot = ControllerConfig.getAssignment(2);
       this.input.p3GpSlot = ControllerConfig.getAssignment(3);
       this.input.p4GpSlot = ControllerConfig.getAssignment(4);
+      // Per-player controller tuning (each controller user's own sensitivity /
+      // aim / deadzone) — authoritative over the single global values above.
+      for (let i = 0; i < 4; i++) {
+        this.input.playerSensitivity[i]    = ControllerConfig.getSensitivity(i + 1);
+        this.input.playerAimSensitivity[i] = ControllerConfig.getAimSensitivity(i + 1);
+        this.input.playerDeadzone[i]       = ControllerConfig.getDeadzone(i + 1);
+      }
     }
     // Single-player: both keyboard and any connected gamepad drive P1 simultaneously.
     // Disabled in co-op/arena multiplayer and online games for per-player isolation.
@@ -11059,7 +11066,10 @@ class Game {
     const label = '⛏ ' + String(data.name || 'Pickaxe').replace(/\s*Pickaxe$/i, '');
     ctx.save();
     ctx.font = 'bold 11px Courier New';
-    const w = ctx.measureText(label).width + 18, x = 10, y = 48, h = 18;
+    // The left compact hotbar (2P / arena / compactHotbar option) sits at y≈47-66,
+    // right where this badge would — drop the badge below it to avoid overlap.
+    const compactLeft = !!(this.player2 || this.isArena || this._worldAdvSettings.compactHotbar);
+    const w = ctx.measureText(label).width + 18, x = 10, y = compactLeft ? 70 : 48, h = 18;
     ctx.fillStyle = 'rgba(0,0,0,0.5)'; _roundRect(ctx, x, y, w, h, 5); ctx.fill();
     ctx.strokeStyle = data.color || '#C8A55A'; ctx.lineWidth = 1; _roundRect(ctx, x, y, w, h, 5); ctx.stroke();
     ctx.fillStyle = data.color || '#C8A55A';
