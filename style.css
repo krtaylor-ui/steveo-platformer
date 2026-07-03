@@ -1992,3 +1992,34 @@ html[data-theme="retro"] .ts-master { border-bottom-color: #2f6f8f; }
 .gp-focus { outline: 3px solid var(--accent, #6a5cff); outline-offset: 2px; border-radius: 4px; }
 html[data-theme="retro"] #pause-overlay :focus-visible,
 html[data-theme="retro"] .gp-focus { outline-color: #ffe000; }
+
+/* ============================================================
+   Touch controls (js/touch-controls.js) — mobile on-screen input.
+   Fixed above the canvas; only shown in-game for Speed Run / Platformer /
+   Arena. touch-action:none stops the browser from scrolling/zooming on drags.
+   ============================================================ */
+#touch-controls {
+  position: fixed; inset: 0; z-index: 1500;
+  pointer-events: none;              /* only the buttons/pad capture touches */
+  touch-action: none;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+#touch-controls .tc-cluster { position: absolute; bottom: 24px; z-index: 2; display: flex; gap: 16px; align-items: flex-end; }
+#touch-controls .tc-left  { left: 20px; }
+#touch-controls .tc-right { right: 20px; }
+#touch-controls .tc-btn {
+  pointer-events: auto; touch-action: none;
+  width: 66px; height: 66px; border-radius: 50%;
+  background: rgba(30, 33, 48, 0.5); color: #fff;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  font-size: 1.7rem; line-height: 1; display: flex; align-items: center; justify-content: center;
+  user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+}
+#touch-controls .tc-jump-btn   { width: 82px; height: 82px; background: rgba(76, 175, 80, 0.45); border-color: #6ee27a; }
+#touch-controls .tc-action-btn { background: rgba(255, 138, 101, 0.45); border-color: #ff8a65; }
+#touch-controls .tc-btn.tc-active { background: var(--accent, #6a5cff); transform: scale(0.94); }
+#touch-controls .tc-aimpad {
+  pointer-events: auto; touch-action: none; z-index: 1;
+  position: absolute; right: 0; top: 0; bottom: 0; width: 50%;
+}
+html[data-theme="retro"] #touch-controls .tc-btn { border-radius: 6px; font-family: 'Courier New', monospace; }
