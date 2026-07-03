@@ -1856,7 +1856,14 @@ class MenuSystem {
 
 window.addEventListener('load', () => {
   const canvas      = document.getElementById('gameCanvas');
+  // The canvas-rendered menu (MenuSystem) is KEPT as a reference for a future
+  // fully-rendered menu system, but it is NOT the active UI — the HTML dashboard
+  // (dashboard.js) is. We still construct it so window.menu._stop() and
+  // window._menuRef._initMenuAudio() (start-button audio unlock) resolve, but we
+  // do NOT start() its render loop: starting it painted the old menu onto the
+  // canvas for a frame before the dashboard overlay came up (the "flash on
+  // arrival"). To bring the rendered menu back, call window.menu.start().
   window.menu       = new MenuSystem(canvas);
   window._menuRef   = window.menu;   // exposed for start button audio unlock
-  window.menu.start();
+  // window.menu.start();  // ← intentionally disabled; see note above.
 });
