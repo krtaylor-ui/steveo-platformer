@@ -5,12 +5,47 @@
 further down are the historical record. `DECISIONS_LOG.md` = every decision;
 `FUTURE_ROADMAP.md` = planned work (User Guide, PWA, mobile, Tower Defense/bots).
 
-## CURRENT STATE (2026-07-03) — builds 12–22, merged to main, live on Railway
+## CURRENT STATE (2026-07-03) — builds 12–28
 
-**Where things are:** All Phase-3 work (v1/v2/v3 + builds 12–22) is merged into
-`main` and pushed to origin → **Railway auto-deploys on push to `main`**. There
-are **no live users yet**, so shipping untested straight to prod is fine.
-`GAME_VERSION` = `v3 · build 22`; cache-buster `?v=b22` (bump BOTH every commit).
+**Where things are:** builds 12–23 are on `main` (live on Railway). **Builds 24–28
+(the Leaderboards + PWA + Mobile + Pause/Controller brief) are committed on the
+worktree branch `phase3-v3-look` and NOT YET merged to `main`.** There are **no
+live users yet**. `GAME_VERSION` = `v3 · build 28`; cache-buster `?v=b28`
+(bump BOTH every commit). Test suite: **182/182** (added test-gamepad-nav.js = 22).
+
+**Builds 24–28 (this brief — all browser-UNTESTED; headless 182/182):**
+- **24 — §1 Arena per-world Leader.** worldId threaded through the arena launch →
+  score submit; single current Leader (top scorer) shown on the match-end screen,
+  a world-tile "View Leaderboard" button (only on worlds with a Leader), and a
+  per-world modal. New `GET /api/arena/world-leaders` batch endpoint. No migration
+  (world_id already applied); append-all model already retains full history.
+- **25 — §4 HTML pause menu + universal gamepad nav.** Canvas pause replaced by
+  `js/pause-menu.js` + `#pause-overlay` (tabs, Resume/Level Select/View
+  Leaderboard/Main Menu, live volume, up-to-4 controller <select>s, confirm-exit).
+  New `js/gamepad-nav.js` drives every HTML screen/modal (spatial focus + virtual
+  cursor + A/B), active in menus AND while the pause overlay is open. Deleted the
+  dead canvas pause paths; kept the arena objectives panel.
+- **26 — §2 Speed Run.** Hybrid: local top-5 + best-effort server sync (new
+  `speedrun_results` table + `server/speedrun-routes.js`); account initials
+  remembered + pre-filled; theme-aware victory overlay; ghost audited functional.
+  **Tile "View Leaderboard" button DEFERRED** (canvas menu.js select).
+- **27 — §3 PWA.** `manifest.json` + `icon.svg` + `sw.js` (offline app shell;
+  online MP unchanged). Follow-up: PNG icons.
+- **28 — §3 Mobile touch.** `js/touch-controls.js` feeds `window.game.input`
+  (keys + mouse). Speed Run auto-run, Platformer dpad+jump+action, Arena
+  twin-stick. Normal/Sandbox out of scope.
+
+**Migrations still to run in Supabase for full function:** `server/sql/speedrun.sql`
+(Speed Run server times). Everything else degrades gracefully without it.
+
+**Ship the 24–28 batch when ready:** from the primary checkout →
+`git -C <primary-root> merge --ff-only phase3-v3-look && git push origin main`.
+
+---
+
+## Prior state (builds 12–22, on main, live on Railway)
+
+`GAME_VERSION` was `v3 · build 22`; cache-buster `?v=b22`.
 
 **Working model (important):** the harness makes edits go through a git worktree
 under `.claude/worktrees/phase-3b-pvp` (branch `phase3-v3-look`, kept identical to

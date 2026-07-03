@@ -521,3 +521,46 @@ Audit answers (Q0/§5):
   paused — acceptable; a follow-up could exempt the panel if desired.
 - Headless test/test-gamepad-nav.js (22) covers the pure geometry pick; the rest
   is browser+gamepad only. Suite: 182/182.
+
+## §2 Speed Run leaderboard (build 26)
+- Ghost runner AUDITED FULLY FUNCTIONAL — preserved as-is (no rebuild needed).
+- Hybrid storage: local top-5 stays authoritative + offline; when logged in, runs
+  best-effort mirror to new `speedrun_results` (server/speedrun-routes.js +
+  server/sql/speedrun.sql, mounted in server.js) and server rows merge into local
+  on level load (SPEEDRUN_SYNC.merge, dedup by name+ms). Keyed by the same
+  `playerName:worldName` levelId the local board uses (no worldId plumbing needed).
+- Account initials: srSaveInitials (keyed to account) remembers the chosen
+  initials → PRE-FILLS the arcade name-entry; entries also record the username.
+- Theme-aware victory overlay: headings + active slot use the live --accent token;
+  leaderboard shows username beside initials.
+- DEFERRED (browser-only / ambiguous UI): the world-tile "View Leaderboard" button.
+  Speed Run's world select is the canvas legacy menu.js (+ an HTML dashboard entry
+  not traced) — an HTML tile button needs an interactive pass. Board still shows
+  at end-of-run + on the menu select card. Needs speedrun.sql run in Supabase.
+
+## §3 PWA (build 27)
+- manifest.json (standalone, theme/bg colors, SVG icon any+maskable) + icon.svg +
+  <head> links/metas + sw.js. SW caches the app shell on-demand ("cache what you
+  fetch" → the ?v=bN URLs are what get cached; no file enumeration). Navigations
+  network-first→cache; other assets stale-while-revalidate; /api/*, /socket.io/*
+  and cross-origin always network → online MP unchanged, offline solo works.
+  CACHE_VERSION bumps per build. Follow-up: raster PNG icons (192/512).
+
+## §3 Mobile touch (build 28)
+- js/touch-controls.js feeds window.game.input directly (keys + mouse) — no
+  input.js changes. Mode layouts: Speed Run auto-run + JUMP; Platformer
+  LEFT/RIGHT/JUMP/ACTION; Arena LEFT/RIGHT/JUMP + right-half AIM/FIRE pad
+  (twin-stick). Auto-detect touch + manual override (localStorage/URL); optional
+  haptics; safe-area + viewport-fit=cover. Clusters z-index above the aim pad.
+- v1 SIMPLIFICATIONS (browser-untested here): digital LEFT/RIGHT (not an analog
+  stick — KB1 movement is digital); auto-run assumes rightward Speed Run levels;
+  no orientation lock (nice-to-have). Normal & Sandbox intentionally excluded.
+
+## Verification / status
+- `node test/run.js` → 182/182 (adds test-gamepad-nav.js's 22 geometry assertions
+  to the prior 160). All new/changed JS + server files pass `node -c`.
+- **Browser-untested** (no browser/device/DB here): the HTML pause overlay + retro
+  look, gamepad navigation feel, per-world Leader end-to-end, Speed Run server
+  sync, PWA install/offline, and ALL touch controls. Two SQL migrations pending in
+  Supabase: server/sql/speedrun.sql (Speed Run times). arena world-leaders needs
+  no new migration (world_id already applied).
