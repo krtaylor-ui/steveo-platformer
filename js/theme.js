@@ -29,7 +29,7 @@ const THEME = {
 
   // Independent retro effects. Defaults = a tasteful "medium retro".
   FX_KEYS: ['frame', 'pixspr', 'post', 'aberr', 'scan', 'dither', 'crt'],
-  FX_DEFAULTS: { frame: true, pixspr: true, post: true, aberr: false, scan: true, dither: false, crt: true, levels: 5 },
+  FX_DEFAULTS: { frame: true, pixspr: true, post: true, aberr: false, scan: true, dither: false, crt: true, levels: 8 },
   _assetsBuilt: false,
 
   get() {
@@ -42,7 +42,7 @@ const THEME = {
     let fx = {};
     try { fx = JSON.parse(localStorage.getItem(this.FX_KEY) || '{}') || {}; } catch (e) {}
     const out = Object.assign({}, this.FX_DEFAULTS, fx);
-    out.levels = Math.max(2, Math.min(8, parseInt(out.levels, 10) || this.FX_DEFAULTS.levels));
+    out.levels = Math.max(3, Math.min(8, parseInt(out.levels, 10) || this.FX_DEFAULTS.levels));
     for (const k of this.FX_KEYS) out[k] = !!out[k];
     return out;
   },

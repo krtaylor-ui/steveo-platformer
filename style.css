@@ -1893,6 +1893,14 @@ html[data-theme="retro"][data-fx-frame] .modal-content {
 
 /* ── Theme & Retro FX settings modal (light modal; dark text so it never goes
       white-on-white; retro overrides flip it to light-on-dark) ── */
+/* Icon button for the theme/settings gear. NOT .btn-mute — that class is wired
+   to the mute toggle (click + icon-swap) across all its elements. */
+.theme-settings-open {
+  background: transparent; border: none; color: inherit; font-size: 1.3rem;
+  cursor: pointer; line-height: 1; padding: 0 6px; transition: opacity 0.2s;
+}
+.theme-settings-open:hover { opacity: 0.7; }
+
 .ts-modal h3 { margin-top: 0; }
 .ts-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; color: #2a2a3a; font-size: 0.92rem; cursor: pointer; }
 .ts-master { font-weight: 700; border-bottom: 1px solid #e2e4ee; padding-bottom: 12px; margin-bottom: 4px; }

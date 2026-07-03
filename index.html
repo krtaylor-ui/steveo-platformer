@@ -23,7 +23,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=b20">
+  <link rel="stylesheet" href="style.css?v=b21">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
@@ -147,9 +147,9 @@
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <filter id="fx-posterize" color-interpolation-filters="sRGB">
       <feComponentTransfer>
-        <feFuncR id="pfR" type="discrete" tableValues="0 .25 .5 .75 1"/>
-        <feFuncG id="pfG" type="discrete" tableValues="0 .25 .5 .75 1"/>
-        <feFuncB id="pfB" type="discrete" tableValues="0 .25 .5 .75 1"/>
+        <feFuncR id="pfR" type="discrete" tableValues="0 .143 .286 .429 .571 .714 .857 1"/>
+        <feFuncG id="pfG" type="discrete" tableValues="0 .143 .286 .429 .571 .714 .857 1"/>
+        <feFuncB id="pfB" type="discrete" tableValues="0 .143 .286 .429 .571 .714 .857 1"/>
       </feComponentTransfer>
     </filter>
     <filter id="fx-aberr" color-interpolation-filters="sRGB" x="-5%" y="-5%" width="110%" height="110%">
@@ -279,7 +279,7 @@
         <label class="ts-row"><span>Pixel sprites</span><input type="checkbox" id="ts-pixspr" class="ts-toggle"></label>
         <div class="ts-grp">Color</div>
         <label class="ts-row"><span>Posterize (palette cut)</span><input type="checkbox" id="ts-post" class="ts-toggle"></label>
-        <label class="ts-row ts-slider"><span>Palette levels <b id="ts-levels-val">5</b></span><input type="range" id="ts-levels" min="2" max="8" step="1" value="5"></label>
+        <label class="ts-row ts-slider"><span>Palette levels <b id="ts-levels-val">8</b></span><input type="range" id="ts-levels" min="3" max="8" step="1" value="8"></label>
         <label class="ts-row"><span>Chromatic aberration</span><input type="checkbox" id="ts-aberr" class="ts-toggle"></label>
         <div class="ts-grp">Screen FX</div>
         <label class="ts-row"><span>Scanlines</span><input type="checkbox" id="ts-scan" class="ts-toggle"></label>
@@ -505,7 +505,7 @@
         <div class="user-info">
           <span class="app-version" title="Build version — verify you're on the right build">…</span>
           <button class="theme-toggle-btn" title="Switch theme">🌙</button>
-          <button class="theme-settings-open btn-mute" title="Theme &amp; retro settings" aria-label="Theme and retro settings">🎛️</button>
+          <button class="theme-settings-open" title="Theme &amp; retro settings" aria-label="Theme and retro settings">🎛️</button>
           <button id="music-mute-btn" class="btn-mute" title="Mute music">🔊</button>
           <span id="username-display">Welcome, Player!</span>
           <button id="logout-btn" class="btn btn-small">Logout</button>
@@ -1087,58 +1087,58 @@
     2P: <kbd>IJKL</kbd>+<kbd>U</kbd>
   </div>
 
-  <script src="js/theme.js?v=b20"></script>
-  <script src="js/auth.js?v=b20"></script>
-  <script src="js/dashboard.js?v=b20"></script>
-  <script src="js/game-selection.js?v=b20"></script>
-  <script src="js/constants.js?v=b20"></script>
-  <script src="js/blocks.js?v=b20"></script>
-  <script src="js/controller-config.js?v=b20"></script>
-  <script src="js/controller-input.js?v=b20"></script>
-  <script src="js/input.js?v=b20"></script>
-  <script src="js/camera.js?v=b20"></script>
-  <script src="js/mobs.js?v=b20"></script>
-  <script src="js/crafting.js?v=b20"></script>
-  <script src="js/player.js?v=b20"></script>
-  <script src="js/level.js?v=b20"></script>
-  <script src="js/redstone.js?v=b20"></script>
-  <script src="js/world.js?v=b20"></script>
-  <script src="js/sandbox.js?v=b20"></script>
-  <script src="js/save-migrations.js?v=b20"></script>
-  <script src="js/saves.js?v=b20"></script>
-  <script src="js/speedrunner-mode.js?v=b20"></script>
-  <script src="js/arena-maps.js?v=b20"></script>
+  <script src="js/theme.js?v=b21"></script>
+  <script src="js/auth.js?v=b21"></script>
+  <script src="js/dashboard.js?v=b21"></script>
+  <script src="js/game-selection.js?v=b21"></script>
+  <script src="js/constants.js?v=b21"></script>
+  <script src="js/blocks.js?v=b21"></script>
+  <script src="js/controller-config.js?v=b21"></script>
+  <script src="js/controller-input.js?v=b21"></script>
+  <script src="js/input.js?v=b21"></script>
+  <script src="js/camera.js?v=b21"></script>
+  <script src="js/mobs.js?v=b21"></script>
+  <script src="js/crafting.js?v=b21"></script>
+  <script src="js/player.js?v=b21"></script>
+  <script src="js/level.js?v=b21"></script>
+  <script src="js/redstone.js?v=b21"></script>
+  <script src="js/world.js?v=b21"></script>
+  <script src="js/sandbox.js?v=b21"></script>
+  <script src="js/save-migrations.js?v=b21"></script>
+  <script src="js/saves.js?v=b21"></script>
+  <script src="js/speedrunner-mode.js?v=b21"></script>
+  <script src="js/arena-maps.js?v=b21"></script>
   <!-- Phase 3A.2 arena systems — must load before game.js (it references them) -->
-  <script src="js/emerald-system.js?v=b20"></script>
-  <script src="js/powerup-system.js?v=b20"></script>
-  <script src="js/ctf-system.js?v=b20"></script>
-  <script src="js/tower-system.js?v=b20"></script>
-  <script src="js/arena-rules.js?v=b20"></script>
-  <script src="js/arena-modes.js?v=b20"></script>
-  <script src="js/leaderboard-system.js?v=b20"></script>
-  <script src="js/game.js?v=b20"></script>
-  <script src="js/menu.js?v=b20"></script>
+  <script src="js/emerald-system.js?v=b21"></script>
+  <script src="js/powerup-system.js?v=b21"></script>
+  <script src="js/ctf-system.js?v=b21"></script>
+  <script src="js/tower-system.js?v=b21"></script>
+  <script src="js/arena-rules.js?v=b21"></script>
+  <script src="js/arena-modes.js?v=b21"></script>
+  <script src="js/leaderboard-system.js?v=b21"></script>
+  <script src="js/game.js?v=b21"></script>
+  <script src="js/menu.js?v=b21"></script>
   <!-- Phase 16: Multiplayer (socket.io loaded from CDN; falls back gracefully if unavailable) -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js" crossorigin="anonymous"></script>
-  <script src="js/multiplayer.js?v=b20"></script>
+  <script src="js/multiplayer.js?v=b21"></script>
   <!-- Phase 16-A: Online lobby UI -->
-  <script src="js/online-ui.js?v=b20"></script>
+  <script src="js/online-ui.js?v=b21"></script>
   <!-- Phase 1D: Game play + auto-save -->
-  <script src="js/music.js?v=b20"></script>
-  <script src="js/game-timer.js?v=b20"></script>
-  <script src="js/game-state.js?v=b20"></script>
-  <script src="js/auto-save.js?v=b20"></script>
-  <script src="js/game-play.js?v=b20"></script>
+  <script src="js/music.js?v=b21"></script>
+  <script src="js/game-timer.js?v=b21"></script>
+  <script src="js/game-state.js?v=b21"></script>
+  <script src="js/auto-save.js?v=b21"></script>
+  <script src="js/game-play.js?v=b21"></script>
   <!-- Phase 1E: Sandbox world browser + editor -->
-  <script src="js/sandbox-ui.js?v=b20"></script>
+  <script src="js/sandbox-ui.js?v=b21"></script>
 
-  <script src="js/online-play.js?v=b20"></script>
-  <script src="js/community-ui.js?v=b20"></script>
-  <script src="js/arena-select.js?v=b20"></script>
+  <script src="js/online-play.js?v=b21"></script>
+  <script src="js/community-ui.js?v=b21"></script>
+  <script src="js/arena-select.js?v=b21"></script>
   <!-- Phase 3A.3 arena UI (invoked on user action; order after the above) -->
-  <script src="js/arena-prelaunch.js?v=b20"></script>
-  <script src="js/custom-rules-ui.js?v=b20"></script>
-  <script src="js/test-world.js?v=b20"></script>
+  <script src="js/arena-prelaunch.js?v=b21"></script>
+  <script src="js/custom-rules-ui.js?v=b21"></script>
+  <script src="js/test-world.js?v=b21"></script>
 
   <script>
     // ── Build-version badge ──────────────────────────────────────
