@@ -1867,14 +1867,23 @@ html[data-theme="retro"] .app-version { border-radius: 0; border: 1px solid #2f6
 .fx-scanlines { background: repeating-linear-gradient(0deg, rgba(0,0,0,0.28) 0 1px, transparent 1px 3px); }
 .fx-dither { background-image: var(--dither, none); background-size: 8px 8px; image-rendering: pixelated; mix-blend-mode: overlay; opacity: 0.5; }
 .fx-vignette { background: radial-gradient(120% 130% at 50% 45%, transparent 55%, rgba(0,0,0,0.55) 100%); }
+/* FX show in menus (body:not(.in-game)) AND while the HTML pause overlay is open
+   in-game (body.pause-open) — so the pause menu gets the full retro treatment,
+   switched off again the moment it closes. */
 html[data-theme="retro"][data-fx-scan]   body:not(.in-game) .fx-scanlines,
 html[data-theme="retro"][data-fx-dither] body:not(.in-game) .fx-dither,
-html[data-theme="retro"][data-fx-crt]    body:not(.in-game) .fx-vignette { display: block; }
+html[data-theme="retro"][data-fx-crt]    body:not(.in-game) .fx-vignette,
+html[data-theme="retro"][data-fx-scan]   body.pause-open .fx-scanlines,
+html[data-theme="retro"][data-fx-dither] body.pause-open .fx-dither,
+html[data-theme="retro"][data-fx-crt]    body.pause-open .fx-vignette { display: block; }
 
 /* ── Posterize / chromatic aberration — SVG filters on the menu (body) ── */
-html[data-theme="retro"][data-fx-post]:not([data-fx-aberr]) body:not(.in-game) { filter: url(#fx-posterize); }
-html[data-theme="retro"][data-fx-aberr]:not([data-fx-post]) body:not(.in-game) { filter: url(#fx-aberr); }
-html[data-theme="retro"][data-fx-post][data-fx-aberr]      body:not(.in-game) { filter: url(#fx-posterize) url(#fx-aberr); }
+html[data-theme="retro"][data-fx-post]:not([data-fx-aberr]) body:not(.in-game),
+html[data-theme="retro"][data-fx-post]:not([data-fx-aberr]) body.pause-open { filter: url(#fx-posterize); }
+html[data-theme="retro"][data-fx-aberr]:not([data-fx-post]) body:not(.in-game),
+html[data-theme="retro"][data-fx-aberr]:not([data-fx-post]) body.pause-open { filter: url(#fx-aberr); }
+html[data-theme="retro"][data-fx-post][data-fx-aberr]      body:not(.in-game),
+html[data-theme="retro"][data-fx-post][data-fx-aberr]      body.pause-open { filter: url(#fx-posterize) url(#fx-aberr); }
 
 /* ── Pixel sprites — nearest-neighbour upscale ── */
 html[data-theme="retro"][data-fx-pixspr] img,
@@ -2070,3 +2079,41 @@ html[data-theme="retro"] .lb-table { color: #cfe8f2; }
 html[data-theme="retro"] .lb-table thead th { background: #10202a; color: #7ec8e3; }
 html[data-theme="retro"] .lb-table tbody tr { border-bottom-color: rgba(126, 200, 227, 0.2); }
 html[data-theme="retro"] .lb-table .lb-score { color: #FFD700; }
+
+/* ============================================================
+   Pause menu redesign (build 32): bigger tabbed modal, per-mode sections.
+   ============================================================ */
+.pause-panel { max-width: 560px; width: 94%; max-height: 90vh; }
+.pause-tab { padding: 10px 4px; font-size: 0.88rem; }
+.pause-tab-panel { min-height: 260px; }
+
+.pause-quick { margin: 12px 0; }
+.pause-section { margin: 0 0 14px; }
+.pause-section + .pause-section { border-top: 1px solid var(--panel-border, #e2e4ee); padding-top: 12px; }
+.pause-section-title { font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.6; font-weight: 700; margin-bottom: 8px; }
+
+.pause-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 6px 0; font-size: 0.9rem; }
+.pause-row-label { display: flex; flex-direction: column; gap: 1px; }
+.pause-row-sub { font-size: 0.72rem; opacity: 0.55; }
+.pause-key { font-size: 0.66rem; opacity: 0.5; border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; margin-left: 4px; }
+.pause-obj-row { padding-top: 0; }
+.pause-objectives { font-size: 0.8rem; opacity: 0.85; line-height: 1.5; text-align: right; width: 100%; }
+
+.pause-cycle {
+  min-width: 92px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+  background: var(--accent, #6a5cff); color: #fff; border: none; font-weight: 700; font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+.pause-cycle:hover { filter: brightness(1.08); }
+.pause-cycle.pause-locked, .ts-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.pause-slider { display: flex; align-items: center; gap: 10px; flex: 1; max-width: 60%; }
+.pause-slider input[type=range] { flex: 1; accent-color: var(--accent, #6a5cff); }
+
+.pause-lock-note { font-size: 0.72rem; color: #c9862b; margin: 2px 0 8px; }
+.pause-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--panel-border, #e2e4ee); font-size: 0.7rem; opacity: 0.6; }
+.pause-track { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pause-version { flex: none; }
+
+html[data-theme="retro"] .pause-section + .pause-section,
+html[data-theme="retro"] .pause-footer { border-top-color: #2f6f8f; }

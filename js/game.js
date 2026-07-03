@@ -120,6 +120,11 @@ class Game {
       arenaMobHealth:            'MEDIUM',  // 'EASY' | 'MEDIUM' | 'HARD' — default mob-HP preset
       arenaRespawnTime:          2,         // seconds (0–10) — arena respawn delay
       arenaEnabledTypes:         ['MOB_HUNTER', 'COLLECT_EMERALDS', 'KING_OF_HILL', 'SURVIVAL_WAVES', 'DEATHMATCH', 'CAPTURE_FLAG', 'DEFEND_TOWER'],
+      // Sandbox designer locks: when true, the in-play pause menu greys these
+      // sections ("Locked in World Settings") so players can't override the
+      // designer's tuning. Toggled from the Sandbox World Settings panel.
+      physicsLocked:             false,
+      bossScalingLocked:         false,
     };
     // Phase 3B — player-model refactor. `players[]` is the backing store for
     // 1-4 local players. `player`/`player2` are live accessors over slots 0/1

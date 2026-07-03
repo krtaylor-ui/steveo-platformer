@@ -44,7 +44,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=b31">
+  <link rel="stylesheet" href="style.css?v=b32">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
@@ -1068,48 +1068,24 @@
           <button class="pause-tab" data-tab="help">? Help</button>
         </div>
 
-        <!-- Pause tab -->
+        <!-- Pause tab: mode badge + quick controls + buttons + footer -->
         <div id="pause-tab-pause" class="pause-tab-panel">
           <div class="pause-mode-badge" id="pause-mode-badge">Mode</div>
           <div class="pause-mode-sub" id="pause-mode-sub" style="display:none;"></div>
+          <div id="pause-quick" class="pause-quick"></div>
           <div id="pause-buttons" class="pause-buttons"></div>
-          <p class="pause-hint">Esc / Start to resume &nbsp;·&nbsp; F to quick-save</p>
+          <div id="pause-footer" class="pause-footer"></div>
         </div>
 
-        <!-- Settings tab -->
+        <!-- Settings tab: mode-specific sections injected by pause-menu.js -->
         <div id="pause-tab-settings" class="pause-tab-panel" style="display:none;">
-          <div id="pause-coop-settings">
-            <label class="pause-2p-row" id="pause-2p-row" style="display:none;">
-              <span>2-Player Co-op</span>
-              <input type="checkbox" id="pause-2p-toggle" class="ts-toggle">
-            </label>
-            <div id="pause-assign-rows" class="pause-assign-rows"></div>
-          </div>
-          <div id="pause-sandbox-settings" style="display:none;">
-            <p class="pause-hint">Mob drops · Day/Night · Advanced · Controller sensitivity</p>
-            <button id="pause-worldsettings-btn" class="btn btn-primary" style="width:100%;">⚙ Open World Settings</button>
-          </div>
-          <div class="pause-vol">
-            <div class="pause-vol-row">
-              <span class="pause-vol-name">♪ Music</span>
-              <input type="range" id="pause-music-vol" min="0" max="100" step="5" value="50">
-              <span id="pause-music-vol-label" class="pause-vol-label">50%</span>
-            </div>
-            <div class="pause-vol-row">
-              <span class="pause-vol-name">🔊 SFX</span>
-              <input type="range" id="pause-sfx-vol" min="0" max="100" step="5" value="50">
-              <span id="pause-sfx-vol-label" class="pause-vol-label">50%</span>
-            </div>
-          </div>
+          <div id="pause-settings-body"></div>
         </div>
 
-        <!-- Help tab -->
+        <!-- Help tab: mode-specific controls injected by pause-menu.js -->
         <div id="pause-tab-help" class="pause-tab-panel" style="display:none;">
-          <div id="pause-help-rows" class="pause-help-rows"></div>
-          <button id="pause-tutorial-btn" class="btn btn-secondary" style="width:100%;margin-top:8px;">Open Full Tutorial</button>
+          <div id="pause-help-body"></div>
         </div>
-
-        <div class="pause-version" id="pause-version"></div>
       </div>
 
       <!-- Confirm-exit sub-panel -->
@@ -1176,63 +1152,63 @@
     2P: <kbd>IJKL</kbd>+<kbd>U</kbd>
   </div>
 
-  <script src="js/theme.js?v=b31"></script>
-  <script src="js/auth.js?v=b31"></script>
-  <script src="js/dashboard.js?v=b31"></script>
-  <script src="js/game-selection.js?v=b31"></script>
-  <script src="js/constants.js?v=b31"></script>
-  <script src="js/blocks.js?v=b31"></script>
-  <script src="js/controller-config.js?v=b31"></script>
-  <script src="js/controller-input.js?v=b31"></script>
-  <script src="js/input.js?v=b31"></script>
-  <script src="js/camera.js?v=b31"></script>
-  <script src="js/mobs.js?v=b31"></script>
-  <script src="js/crafting.js?v=b31"></script>
-  <script src="js/player.js?v=b31"></script>
-  <script src="js/level.js?v=b31"></script>
-  <script src="js/redstone.js?v=b31"></script>
-  <script src="js/world.js?v=b31"></script>
-  <script src="js/sandbox.js?v=b31"></script>
-  <script src="js/save-migrations.js?v=b31"></script>
-  <script src="js/saves.js?v=b31"></script>
-  <script src="js/speedrunner-mode.js?v=b31"></script>
-  <script src="js/arena-maps.js?v=b31"></script>
+  <script src="js/theme.js?v=b32"></script>
+  <script src="js/auth.js?v=b32"></script>
+  <script src="js/dashboard.js?v=b32"></script>
+  <script src="js/game-selection.js?v=b32"></script>
+  <script src="js/constants.js?v=b32"></script>
+  <script src="js/blocks.js?v=b32"></script>
+  <script src="js/controller-config.js?v=b32"></script>
+  <script src="js/controller-input.js?v=b32"></script>
+  <script src="js/input.js?v=b32"></script>
+  <script src="js/camera.js?v=b32"></script>
+  <script src="js/mobs.js?v=b32"></script>
+  <script src="js/crafting.js?v=b32"></script>
+  <script src="js/player.js?v=b32"></script>
+  <script src="js/level.js?v=b32"></script>
+  <script src="js/redstone.js?v=b32"></script>
+  <script src="js/world.js?v=b32"></script>
+  <script src="js/sandbox.js?v=b32"></script>
+  <script src="js/save-migrations.js?v=b32"></script>
+  <script src="js/saves.js?v=b32"></script>
+  <script src="js/speedrunner-mode.js?v=b32"></script>
+  <script src="js/arena-maps.js?v=b32"></script>
   <!-- Phase 3A.2 arena systems — must load before game.js (it references them) -->
-  <script src="js/emerald-system.js?v=b31"></script>
-  <script src="js/powerup-system.js?v=b31"></script>
-  <script src="js/ctf-system.js?v=b31"></script>
-  <script src="js/tower-system.js?v=b31"></script>
-  <script src="js/arena-rules.js?v=b31"></script>
-  <script src="js/arena-modes.js?v=b31"></script>
-  <script src="js/leaderboard-system.js?v=b31"></script>
-  <script src="js/pause-menu.js?v=b31"></script>
-  <script src="js/game.js?v=b31"></script>
-  <script src="js/menu.js?v=b31"></script>
+  <script src="js/emerald-system.js?v=b32"></script>
+  <script src="js/powerup-system.js?v=b32"></script>
+  <script src="js/ctf-system.js?v=b32"></script>
+  <script src="js/tower-system.js?v=b32"></script>
+  <script src="js/arena-rules.js?v=b32"></script>
+  <script src="js/arena-modes.js?v=b32"></script>
+  <script src="js/leaderboard-system.js?v=b32"></script>
+  <script src="js/pause-menu.js?v=b32"></script>
+  <script src="js/game.js?v=b32"></script>
+  <script src="js/menu.js?v=b32"></script>
   <!-- Phase 16: Multiplayer (socket.io loaded from CDN; falls back gracefully if unavailable) -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js" crossorigin="anonymous"></script>
-  <script src="js/multiplayer.js?v=b31"></script>
+  <script src="js/multiplayer.js?v=b32"></script>
   <!-- Phase 16-A: Online lobby UI -->
-  <script src="js/online-ui.js?v=b31"></script>
+  <script src="js/online-ui.js?v=b32"></script>
   <!-- Phase 1D: Game play + auto-save -->
-  <script src="js/music.js?v=b31"></script>
-  <script src="js/game-timer.js?v=b31"></script>
-  <script src="js/game-state.js?v=b31"></script>
-  <script src="js/auto-save.js?v=b31"></script>
-  <script src="js/game-play.js?v=b31"></script>
+  <script src="js/music.js?v=b32"></script>
+  <script src="js/game-timer.js?v=b32"></script>
+  <script src="js/game-state.js?v=b32"></script>
+  <script src="js/auto-save.js?v=b32"></script>
+  <script src="js/game-play.js?v=b32"></script>
   <!-- Phase 1E: Sandbox world browser + editor -->
-  <script src="js/sandbox-ui.js?v=b31"></script>
+  <script src="js/sandbox-ui.js?v=b32"></script>
 
-  <script src="js/online-play.js?v=b31"></script>
-  <script src="js/community-ui.js?v=b31"></script>
-  <script src="js/arena-select.js?v=b31"></script>
+  <script src="js/online-play.js?v=b32"></script>
+  <script src="js/community-ui.js?v=b32"></script>
+  <script src="js/arena-select.js?v=b32"></script>
   <!-- Phase 3A.3 arena UI (invoked on user action; order after the above) -->
-  <script src="js/arena-prelaunch.js?v=b31"></script>
-  <script src="js/custom-rules-ui.js?v=b31"></script>
-  <script src="js/test-world.js?v=b31"></script>
+  <script src="js/arena-prelaunch.js?v=b32"></script>
+  <script src="js/custom-rules-ui.js?v=b32"></script>
+  <script src="js/test-world.js?v=b32"></script>
   <!-- Universal gamepad navigation for all HTML screens/modals -->
-  <script src="js/gamepad-nav.js?v=b31"></script>
+  <script src="js/gamepad-nav.js?v=b32"></script>
   <!-- Mobile touch controls (Speed Run / Platformer / Arena) -->
-  <script src="js/touch-controls.js?v=b31"></script>
+  <script src="js/touch-controls.js?v=b32"></script>
 
   <script>
     // ── Build-version badge ──────────────────────────────────────
