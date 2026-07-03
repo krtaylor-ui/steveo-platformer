@@ -469,3 +469,55 @@ pickaxe → base. `git checkout` between branches to fall back.
 
 All CSS/JS-only; the engine suite stays green (144). BOTH branches are
 interactive/visual and UNTESTED in a browser — debug the look branch first.
+
+---
+
+# Leaderboards Redesign + PWA + Mobile + Pause/Controller Brief (2026-07-03)
+
+Session scope (confirmed with Kevin up-front): **attempt all four sections**,
+checkpoint each, flag partials. Storage for Speed Run = **hybrid** (local top-5
++ best-effort server sync). Arena Leader surfaces = **skip the load screen**
+(arena has none) → end-screen + world-tile button + pause button only.
+
+Audit answers (Q0/§5):
+- **Ghost runner is FULLY FUNCTIONAL** (SpeedRunnerGhost in speedrunner-mode.js:
+  record/playback/toggle[K]/persist `sr_ghost_${levelId}`). Preserve, don't rebuild.
+- Speed Run leaderboard = localStorage-only (`sr_lb_${levelId}`), top-5, anonymous,
+  canvas-drawn, NOT themed. Ghost + LB shown on the menu select card + end HUD.
+- Arena: `arena_results` already has `world_id` + recency API; APPENDS all rows
+  (full history retained) → the "retain >#1" recommendation is already satisfied;
+  a Leader is a `limit=1` query. Client just never sent `worldId`.
+
+## §1 Arena per-world Leader (build 24)
+- Threaded `worldId` (+ `worldName`) through arena launch → Game options →
+  `_submitArenaResultOnce` → `LEADERBOARD_SYSTEM.submit(mode, score, dur, worldId)`.
+- New batch endpoint `GET /api/arena/world-leaders?worldIds=` returns the reigning
+  leader per (world, mode) in one request (powers the tiles without N×M fetches).
+- Surfaces: match-end 👑 LEADER line (async-fetched + cached), world-tile
+  "View Leaderboard" button injected ONLY on worlds with a recorded Leader,
+  per-world modal (reuses #arena-leaderboard-modal; tabs limited to modes with
+  records). Quick Battle (null worldId) still uses the global per-mode board.
+- No new migration (world_id column already present/applied).
+
+## §4 HTML pause menu + gamepad nav (build 25)
+- Replaced canvas pause with `js/pause-menu.js` + `#pause-overlay`, reconciled
+  each frame by `PAUSE_MENU.sync(game, wantOpen)` in Game.update() (covers ESC +
+  every button path). Deleted _pauseLayout/_updatePause/_drawPauseOverlay/
+  _drawCtrlAssignRows/_drawPauseVolSliders/_confirmLayout; kept
+  _drawArenaObjectivesPanel (still drawn on canvas beside the overlay).
+- ASSUMPTION: controller-assignment rows show per mode — Arena = activePlayers()
+  (1–4), Normal/Platformer = 1 or 2 (twoPlayerMode), Sandbox/online = 0 (World
+  Settings shortcut instead). Ported to HTML <select>s (dropped the canvas
+  version's KB2-only-if-other-has-KB1 constraint — simplification; browser-untested).
+- DECISION (resolves §4a/§4b tension): gamepad-nav.js is active in menus AND while
+  the pause overlay is open (which is in-game). Gate = `body:not(.in-game) OR
+  PAUSE_MENU.isOpen()`. Since Game.update() early-returns while paused, game.js
+  consumes no pad input then, so there's no conflict.
+- Pause overlay z-index 1900 < shared modals (2000) so the arena leaderboard modal
+  opened from the pause "View Leaderboard" button renders on top of it.
+- Retro look: overlay uses `.modal-content` so the build-13 retro SKIN applies in
+  both themes. The build-20 customizable FX (scanlines/posterize/pixel-frame) stay
+  menu-only (gated `:not(.in-game)`), so they don't apply over live gameplay while
+  paused — acceptable; a follow-up could exempt the panel if desired.
+- Headless test/test-gamepad-nav.js (22) covers the pure geometry pick; the rest
+  is browser+gamepad only. Suite: 182/182.

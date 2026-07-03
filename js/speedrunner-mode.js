@@ -68,7 +68,35 @@ class SpeedRunnerGhost {
   }
 }
 
+// ── Account helpers: remembered initials + username ─────────
+// Persist the player's initials against their account so a returning player
+// doesn't re-type them each run (keyed to the account when logged in, else a
+// shared local key). The username is recorded alongside the classic initials.
+
+function _srInitialsKey() {
+  try {
+    const u = (typeof AUTH !== 'undefined' && AUTH.getUser && AUTH.getUser());
+    const id = u && (u.id || u.email);
+    return id ? `sr_initials_${id}` : 'sr_initials';
+  } catch { return 'sr_initials'; }
+}
+function srGetSavedInitials() {
+  try { return localStorage.getItem(_srInitialsKey()) || ''; } catch { return ''; }
+}
+function srSaveInitials(initials) {
+  try { if (initials) localStorage.setItem(_srInitialsKey(), initials); } catch {}
+}
+function srUsername() {
+  try {
+    const u = (typeof AUTH !== 'undefined' && AUTH.getUser && AUTH.getUser());
+    return (u && (u.user_metadata?.username || u.username || u.email)) || null;
+  } catch { return null; }
+}
+
 // ── Local leaderboard (top 5 per level) ─────────────────────
+// Source of truth for offline play. Entries now also carry the account
+// `user`name (the initials stay the classic arcade display). SPEEDRUN_SYNC
+// best-effort mirrors these to the server and merges server rows back in.
 
 const SpeedRunnerLeaderboard = {
   get(levelId) {
@@ -82,14 +110,64 @@ const SpeedRunnerLeaderboard = {
     return lb.length < 5 || ms < lb[lb.length - 1].ms;
   },
 
-  add(levelId, name, ms) {
-    let lb = this.get(levelId);
-    const clean = (name || 'AAA').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4) || 'AAA';
-    lb.push({ name: clean, ms });
-    lb.sort((a, b) => a.ms - b.ms);
-    lb = lb.slice(0, 5);
+  _cleanName(name) {
+    return (name || 'AAA').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4) || 'AAA';
+  },
+
+  // Merge a set of rows into the top-5 and persist. Dedups by name+ms so a row
+  // that arrives from both local and server isn't double-counted.
+  _mergeRows(levelId, rows) {
+    let lb = this.get(levelId).concat(rows || [])
+      .map(r => ({ name: this._cleanName(r.name), ms: r.ms, user: r.user || null }))
+      .filter(r => typeof r.ms === 'number' && r.ms > 0);
+    const seen = new Set();
+    lb = lb.sort((a, b) => a.ms - b.ms).filter(r => {
+      const k = `${r.name}|${r.ms}`;
+      if (seen.has(k)) return false; seen.add(k); return true;
+    }).slice(0, 5);
     try { localStorage.setItem(`sr_lb_${levelId}`, JSON.stringify(lb)); } catch {}
     return lb;
+  },
+
+  add(levelId, name, ms) {
+    const clean = this._cleanName(name);
+    srSaveInitials(clean); // remember for next time
+    const lb = this._mergeRows(levelId, [{ name: clean, ms, user: srUsername() }]);
+    // Best-effort server mirror (no-op offline / logged out).
+    if (typeof SPEEDRUN_SYNC !== 'undefined') SPEEDRUN_SYNC.submit(levelId, clean, ms, srUsername());
+    return lb;
+  },
+};
+
+// ── Hybrid server sync (best-effort; local stays offline-capable) ──
+const SPEEDRUN_SYNC = {
+  async submit(levelId, name, ms, username) {
+    if (typeof AUTH === 'undefined' || !AUTH.authedFetch || !AUTH.isLoggedIn || !AUTH.isLoggedIn()) return;
+    try {
+      await AUTH.authedFetch('/api/speedrun/results', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ levelId, name, ms, username }),
+      });
+    } catch (e) { /* offline / server down → local already has it */ }
+  },
+
+  async fetch(levelId) {
+    if (typeof AUTH === 'undefined' || !AUTH.authedFetch) return [];
+    try {
+      const res = await AUTH.authedFetch(`/api/speedrun/results?levelId=${encodeURIComponent(levelId)}`);
+      if (!res.ok) return [];
+      const d = await res.json();
+      return d.results || [];
+    } catch (e) { return []; }
+  },
+
+  // Pull server rows for a level and merge into the local top-5. Returns the
+  // merged list (or the current local list if the server had nothing / failed).
+  async merge(levelId) {
+    const rows = await this.fetch(levelId);
+    return rows.length ? SpeedRunnerLeaderboard._mergeRows(levelId, rows)
+                       : SpeedRunnerLeaderboard.get(levelId);
   },
 };
 

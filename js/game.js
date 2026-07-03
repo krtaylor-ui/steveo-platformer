@@ -13982,6 +13982,13 @@ class Game {
 
     // Unique level ID for ghost + leaderboard
     this._sr.levelId = `${data.playerName || ''}:${data.worldName || ''}`;
+    // Hybrid leaderboard: pull any server times for this level and merge them
+    // into the local top-5 (best-effort; local stays authoritative offline).
+    if (typeof SPEEDRUN_SYNC !== 'undefined') {
+      SPEEDRUN_SYNC.merge(this._sr.levelId)
+        .then(lb => { if (this._sr) this._sr.leaderboard = lb; })
+        .catch(() => {});
+    }
 
     // Scan grid for goals and speed items; extract speed items from grid (drawn dynamically)
     this._sr.goals      = [];
@@ -14432,7 +14439,12 @@ class Game {
 
     // Show name entry or leaderboard
     if (SpeedRunnerLeaderboard.qualifies(this._sr.levelId, elapsed)) {
-      this._sr.nameEntry   = { letters: ['A','A','A',''], cursor: 0 };
+      // Pre-fill the arcade initials from the player's remembered value so a
+      // returning player can just confirm instead of re-typing.
+      const saved = (typeof srGetSavedInitials === 'function') ? srGetSavedInitials() : '';
+      const letters = ['A', 'A', 'A', ''];
+      for (let i = 0; i < 4; i++) if (saved[i]) letters[i] = saved[i];
+      this._sr.nameEntry   = { letters, cursor: 0 };
       this._sr.nameEntryMs = elapsed;
     } else {
       this._sr.leaderboard    = SpeedRunnerLeaderboard.get(this._sr.levelId);
@@ -14713,7 +14725,15 @@ class Game {
       ctx.fillStyle = 'rgba(0,0,0,0.75)';
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
-      ctx.fillStyle    = '#FFD700';
+      // Theme-aware accent (indigo in Modern, neon-cyan in Retro) read from the
+      // live CSS token, with the classic gold as a fallback.
+      let accent = '#FFD700';
+      try {
+        const rs = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+        if (rs) accent = rs;
+      } catch (e) {}
+
+      ctx.fillStyle    = accent;
       ctx.font         = 'bold 44px Courier New';
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
@@ -14725,7 +14745,7 @@ class Game {
 
       if (sr.nameEntry) {
         const ne = sr.nameEntry;
-        ctx.fillStyle = '#FFDD44';
+        ctx.fillStyle = accent;
         ctx.font      = 'bold 15px Courier New';
         ctx.fillText('NEW HIGH SCORE! Enter your name:', CANVAS_W / 2, CANVAS_H / 2 + 4);
         // 4 letter boxes, 4th is optional (may be empty)
@@ -14736,7 +14756,7 @@ class Game {
           const isActive = i === ne.cursor;
           ctx.fillStyle = isActive ? 'rgba(255,215,0,0.35)' : (isEmpty ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.12)');
           ctx.fillRect(bx - 13, by - 22, 26, 30);
-          ctx.strokeStyle = isActive ? '#FFD700' : (isEmpty ? '#444' : '#666');
+          ctx.strokeStyle = isActive ? accent : (isEmpty ? '#444' : '#666');
           ctx.lineWidth   = isActive ? 2 : 1;
           ctx.strokeRect(bx - 13, by - 22, 26, 30);
           ctx.font         = 'bold 22px Courier New';
@@ -14762,14 +14782,17 @@ class Game {
         ctx.fillText('← → move  ↑ ↓ change letter  SPACE/Enter to confirm', CANVAS_W / 2, CANVAS_H / 2 + 82);
 
       } else if (sr.showLeaderboard && sr.leaderboard) {
-        ctx.fillStyle = '#FFD700';
+        ctx.fillStyle = accent;
         ctx.font      = 'bold 16px Courier New';
         ctx.fillText('TOP TIMES', CANVAS_W / 2, CANVAS_H / 2 + 12);
         ctx.font = '13px Courier New';
         const lb = sr.leaderboard;
         for (let i = 0; i < lb.length; i++) {
           ctx.fillStyle = '#DDDDDD';
-          ctx.fillText(`#${i+1}  ${lb[i].name}  ${srFormatTime(lb[i].ms)}`,
+          // Show the account username in parentheses when it differs from the
+          // arcade initials (server-synced entries carry it).
+          const who = (lb[i].user && lb[i].user.toUpperCase() !== lb[i].name) ? `  (${lb[i].user})` : '';
+          ctx.fillText(`#${i+1}  ${lb[i].name}  ${srFormatTime(lb[i].ms)}${who}`,
                        CANVAS_W / 2, CANVAS_H / 2 + 34 + i * 20);
         }
         ctx.fillStyle = '#777';

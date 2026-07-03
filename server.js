@@ -209,6 +209,9 @@ setupWorldsRoutes(app);
 const setupArenaLeaderboardRoutes = require('./server/arena-leaderboard-routes');
 setupArenaLeaderboardRoutes(app);
 
+const setupSpeedrunRoutes = require('./server/speedrun-routes');
+setupSpeedrunRoutes(app);
+
 // Phase 2: online multiplayer — friends + game sessions
 const setupFriendsRoutes = require('./server/friends-routes');
 setupFriendsRoutes(app);
