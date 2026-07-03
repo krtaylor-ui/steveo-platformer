@@ -8864,6 +8864,16 @@ class Game {
         const cur = Z.findIndex(v => Math.abs(v - (aws.worldZoom ?? 1.0)) < 0.001);
         aws.worldZoom = Z[(cur < 0 ? 2 : cur + 1) % Z.length];
       }
+      // Row 7: Lock Physics — greys the pause-menu physics section for players
+      const r7Y = L.FIRST_ROW + 288;
+      if (mx >= tgX && mx <= tgX + tgW && my >= r7Y && my <= r7Y + tgH) {
+        aws.physicsLocked = !aws.physicsLocked;
+      }
+      // Row 8: Lock Boss Scaling — greys the pause-menu boss multipliers
+      const r8Y = L.FIRST_ROW + 336;
+      if (mx >= tgX && mx <= tgX + tgW && my >= r8Y && my <= r8Y + tgH) {
+        aws.bossScalingLocked = !aws.bossScalingLocked;
+      }
       return;
     }
 
@@ -9524,6 +9534,12 @@ class Game {
       drawPhysRow(L.FIRST_ROW + 240, 'Default Zoom',
         '(base view zoom; Z cycles 100-400% in sandbox/God)',
         `${(aws.worldZoom || 1).toFixed(2)}x`);
+      drawPhysRow(L.FIRST_ROW + 288, 'Lock Physics',
+        '(grey these out in the pause menu — players can\'t override)',
+        aws.physicsLocked ? 'On' : 'Off');
+      drawPhysRow(L.FIRST_ROW + 336, 'Lock Boss Scaling',
+        '(grey boss health/damage/rate in the pause menu)',
+        aws.bossScalingLocked ? 'On' : 'Off');
 
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     } else if (this._wsTab === 'arena') {
