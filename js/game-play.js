@@ -99,20 +99,34 @@ const GAME_PLAY = {
     screen.style.display = 'flex';
 
     const startBtn = document.getElementById('startup-start-btn');
+    const backBtn  = document.getElementById('startup-back-btn');
 
-    const begin = () => {
+    const cleanup = () => {
       screen.style.display = 'none';
       document.removeEventListener('keydown', onKey);
       if (startBtn) startBtn.removeEventListener('click', begin);
+      if (backBtn)  backBtn.removeEventListener('click', goBack);
+    };
+    const begin = () => {
+      cleanup();
       // Unpause — the (already-running, pause-aware) timer resumes counting.
       if (window.game) window.game.state = 'playing';
     };
+    // Go Back: abort before playing — tear down the freshly-built game and
+    // return to the game-selection screen (same as a normal exit).
+    const goBack = () => {
+      cleanup();
+      if (window.game && typeof window.game.destroy === 'function') window.game.destroy();
+      this._onGameExit();
+    };
     const onKey = (e) => {
       if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); begin(); }
+      else if (e.code === 'Escape') { e.preventDefault(); goBack(); }
     };
 
     document.addEventListener('keydown', onKey);
     if (startBtn) startBtn.addEventListener('click', begin);
+    if (backBtn)  backBtn.addEventListener('click', goBack);
   },
 
   _modeLabel(mode) {

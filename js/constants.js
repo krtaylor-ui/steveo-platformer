@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 41 (SR: speed now tracks boosts; booster exceeds max cap)';
+const GAME_VERSION = 'v3 · build 42 (SR countdown + perfect start; Play label; startup Go Back)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

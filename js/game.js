@@ -14892,19 +14892,27 @@ class Game {
 
     // ── Pre-race: player frozen at spawn until jump pressed ──
     if (!sr.startMs) {
-      if (this.input.isJustDown('Space') || this.input.p1JustDown('jump') ||
-          this.input.isJustDown('KeyW')) {
-        sr.startMs       = Date.now();
-        sr.lastX         = this.player.x;
-        sr.ghostRec      = new SpeedRunnerGhost(sr.levelId);
-        sr.ghostFrameIdx = 0;
-      }
-      // Keep player frozen at spawn (player.update already ran — override it)
+      // Race-light countdown (3·2·1·GO) — auto-starts; no click needed.
+      if (sr.countdownStart == null) sr.countdownStart = Date.now();
+      // Keep player frozen at spawn during the countdown.
       this.player.x  = sr.spawnX; this.player.y  = sr.spawnY;
       this.player.vx = 0;         this.player.vy = 0;
       sr.vx = 0; // reset accelerate-model velocity for the run
       sr.srZoom      += (1.0 - sr.srZoom)      * 0.08;
       sr.srLookAhead += (0   - sr.srLookAhead) * 0.08;
+      if (Date.now() - sr.countdownStart >= SR_CONFIG.countdownMs) {
+        // GREEN — race begins. Record whether accelerate was already held (so a
+        // press held through the countdown doesn't earn the reaction bonus).
+        sr.startMs        = Date.now();
+        sr.goMs           = sr.startMs;
+        sr.perfectChecked = false;
+        sr.accelAtGo      = this.input.isRight() || this.input.isDown('ArrowRight')
+                          || this.input.isDown('KeyD')
+                          || this.input.gamepads.some(g => g && g.connected && (g.dpad1 || g.moveX > 0.3));
+        sr.lastX          = this.player.x;
+        sr.ghostRec       = new SpeedRunnerGhost(sr.levelId);
+        sr.ghostFrameIdx  = 0;
+      }
       return;
     }
 
@@ -14944,6 +14952,23 @@ class Game {
     else       sr.vx = Math.max(0, sr.vx - SR_DECEL);
     this.player.vx = sr.vx;
     const vxSign = Math.sign(this.player.vx);
+
+    // Perfect start: a fresh accelerate press within perfectStartMs of GREEN
+    // (and not held through the countdown) grants a short speed boost.
+    if (!sr.perfectChecked) {
+      const sinceGo = now - (sr.goMs || now);
+      if (sinceGo > SR_CONFIG.perfectStartMs) {
+        sr.perfectChecked = true;                       // window closed → no bonus
+      } else if (accel && !sr.accelAtGo) {
+        sr.boosts.item          = 1 + SR_CONFIG.perfectStartBoost;
+        sr.boosts.itemExpiresMs = now + SR_CONFIG.perfectStartMsDur;
+        sr.boosts.itemStack     = 1;
+        sr.perfectChecked       = true;
+        this._notify('⚡ PERFECT START!', '#FFDD44', 120);
+      } else if (accel && sr.accelAtGo) {
+        sr.perfectChecked = true;                       // held through → no reaction bonus
+      }
+    }
 
     // Distance moved this frame (always track for total race stats)
     const frameDx = Math.abs(this.player.x - sr.lastX);
@@ -15282,9 +15307,12 @@ class Game {
     sr.ghostRec      = null;
     sr.deathParts    = null;
     sr.dead          = false;
-    sr.startMs       = null;  // player must press jump again to start race
-    sr.ghostFrameIdx = 0;
-    sr.vx            = 0;
+    sr.startMs        = null;  // re-run: countdown restarts before the race
+    sr.countdownStart = null;
+    sr.goMs           = null;
+    sr.perfectChecked = false;
+    sr.ghostFrameIdx  = 0;
+    sr.vx             = 0;
 
     // Reset the level to its authored start state so every run is identical:
     // respawn mobs (clear the field + re-ready every spawn point), clear leftover
@@ -15403,26 +15431,52 @@ class Game {
     if (!this._sr) return;
     const sr = this._sr;
 
-    // ── Pre-race start screen ──────────────────────────────────
+    // ── Pre-race countdown (race lights: 3·2·1·GO) ─────────────
     if (!sr.startMs && !sr.dead && !sr.won) {
+      const cd  = sr.countdownStart ? (Date.now() - sr.countdownStart) : 0;
+      const CD  = SR_CONFIG.countdownMs;
+      const num = Math.max(1, Math.ceil((CD - cd) / 1000));  // 3 → 2 → 1
+      const lit = Math.min(3, Math.floor(cd / 1000) + 1);    // red lights lit so far
       ctx.save();
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-      ctx.fillStyle    = '#FF6B6B';
-      ctx.font         = 'bold 38px Courier New';
-      ctx.textAlign    = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('SPEED RUNNER', CANVAS_W / 2, CANVAS_H / 2 - 50);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font      = '18px Courier New';
-      ctx.fillText('Press SPACE or Jump to Start', CANVAS_W / 2, CANVAS_H / 2 + 5);
-      ctx.fillStyle = '#888';
-      ctx.font      = '11px Courier New';
-      ctx.fillText('[K] or Select  →  toggle ghost replay', CANVAS_W / 2, CANVAS_H / 2 + 36);
-      ctx.textAlign    = 'left';
-      ctx.textBaseline = 'alphabetic';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#FF6B6B'; ctx.font = 'bold 34px Courier New';
+      ctx.fillText('SPEED RUNNER', CANVAS_W / 2, CANVAS_H / 2 - 78);
+      const cx = CANVAS_W / 2, ly = CANVAS_H / 2 - 20, R = 20, gap = 56;
+      for (let i = 0; i < 3; i++) {
+        const on = i < lit;
+        ctx.beginPath(); ctx.arc(cx + (i - 1) * gap, ly, R, 0, Math.PI * 2);
+        ctx.fillStyle = on ? '#FF3B3B' : '#3a1a1a';
+        if (on) { ctx.shadowColor = '#FF3B3B'; ctx.shadowBlur = 18; }
+        ctx.fill(); ctx.shadowBlur = 0;
+        ctx.strokeStyle = on ? '#FF8080' : '#552222'; ctx.lineWidth = 3; ctx.stroke();
+      }
+      ctx.fillStyle = '#FFDD44'; ctx.font = 'bold 54px Courier New';
+      ctx.fillText(String(num), cx, CANVAS_H / 2 + 44);
+      ctx.fillStyle = '#888'; ctx.font = '11px Courier New';
+      ctx.fillText('Hit Accelerate the instant it turns GREEN for a perfect start  ·  [K] ghost', cx, CANVAS_H / 2 + 92);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
       ctx.restore();
       return;
+    }
+
+    // ── GO! flash (first ~0.7 s of the race) ───────────────────
+    if (sr.goMs && Date.now() - sr.goMs < 700) {
+      const a = Math.max(0, 1 - (Date.now() - sr.goMs) / 700);
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const cx = CANVAS_W / 2;
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath(); ctx.arc(cx + (i - 1) * 44, 66, 15, 0, Math.PI * 2);
+        ctx.fillStyle = '#2BE04B'; ctx.shadowColor = '#2BE04B'; ctx.shadowBlur = 20;
+        ctx.fill(); ctx.shadowBlur = 0;
+      }
+      ctx.fillStyle = '#2BE04B'; ctx.font = 'bold 58px Courier New';
+      ctx.fillText('GO!', cx, CANVAS_H / 2 - 20);
+      ctx.globalAlpha = 1; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.restore();
     }
 
     // ── Dead / respawn overlay ─────────────────────────────────

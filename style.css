@@ -2126,3 +2126,6 @@ html[data-theme="retro"] .pause-footer { border-top-color: #2f6f8f; }
 /* Controller tuning grouped under its player (indented sub-rows). */
 .pause-subrow { padding-left: 16px; margin-left: 4px; border-left: 2px solid var(--panel-border, #d0d3e0); font-size: 0.84rem; }
 html[data-theme="retro"] .pause-subrow { border-left-color: #2f6f8f; }
+
+/* Startup config screen: Go Back + Start Game side by side. */
+.startup-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }

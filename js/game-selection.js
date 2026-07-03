@@ -52,8 +52,8 @@ const GAME_SELECTION = {
           <h3 class="game-name">${game.game_name}</h3>
           <p class="world-name">World: ${game.world_name || 'Unnamed World'}</p>
           <div class="game-actions">
-            <button class="btn btn-primary continue-btn" data-game-id="${game.id}">Continue</button>
-            <button class="btn btn-secondary restart-btn" data-game-id="${game.id}">Restart</button>
+            <button class="btn btn-primary continue-btn" data-game-id="${game.id}">${this.currentMode === 'SPEEDRUNNER' ? 'Play' : 'Continue'}</button>
+            ${this.currentMode === 'SPEEDRUNNER' ? '' : `<button class="btn btn-secondary restart-btn" data-game-id="${game.id}">Restart</button>`}
             <button class="btn btn-secondary copy-btn" data-game-id="${game.id}">Copy</button>
             <button class="btn btn-danger delete-btn" data-game-id="${game.id}">Delete</button>
           </div>

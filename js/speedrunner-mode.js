@@ -19,6 +19,10 @@ const SR_CONFIG = {
   itemExtensionMs:      3000,   // each extra item extends by 3 s
   respawnFadeMs:        1000,   // 1 s death fade-in
   respawnWaitMs:        1500,   // then 1.5 s before "press space" prompt
+  countdownMs:          3000,   // race-light countdown before GO (3·2·1·GO)
+  perfectStartMs:       120,    // press accelerate within this of GO → perfect start
+  perfectStartBoost:    0.25,   // +25% (item-style) boost for a perfect start
+  perfectStartMsDur:    2500,   // how long the perfect-start boost lasts
 };
 
 // ── Ghost recording & playback ───────────────────────────────
