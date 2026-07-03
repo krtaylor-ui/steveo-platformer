@@ -44,7 +44,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=b44">
+  <link rel="stylesheet" href="style.css?v=b45">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
@@ -1135,7 +1135,16 @@
        dashboard — which read as "click twice to enter". -->
   <div id="start-screen" style="display: none;">
     <h2>⛏ Steveo Platformer</h2>
-    <button id="start-button">Start Game</button>
+    <div class="start-choices">
+      <button id="start-online" class="start-choice">
+        <span class="start-choice-title">▶ Play Online</span>
+        <span class="start-choice-sub">cloud saves · multiplayer · community</span>
+      </button>
+      <button id="start-offline" class="start-choice">
+        <span class="start-choice-title">💾 Play Offline</span>
+        <span class="start-choice-sub">local worlds · no login needed</span>
+      </button>
+    </div>
   </div>
   <h1 id="game-title">⛏ Steveo Platformer</h1>
   <div id="canvas-wrap">
@@ -1155,63 +1164,64 @@
     2P: <kbd>IJKL</kbd>+<kbd>U</kbd>
   </div>
 
-  <script src="js/theme.js?v=b44"></script>
-  <script src="js/auth.js?v=b44"></script>
-  <script src="js/dashboard.js?v=b44"></script>
-  <script src="js/game-selection.js?v=b44"></script>
-  <script src="js/constants.js?v=b44"></script>
-  <script src="js/blocks.js?v=b44"></script>
-  <script src="js/controller-config.js?v=b44"></script>
-  <script src="js/controller-input.js?v=b44"></script>
-  <script src="js/input.js?v=b44"></script>
-  <script src="js/camera.js?v=b44"></script>
-  <script src="js/mobs.js?v=b44"></script>
-  <script src="js/crafting.js?v=b44"></script>
-  <script src="js/player.js?v=b44"></script>
-  <script src="js/level.js?v=b44"></script>
-  <script src="js/redstone.js?v=b44"></script>
-  <script src="js/world.js?v=b44"></script>
-  <script src="js/sandbox.js?v=b44"></script>
-  <script src="js/save-migrations.js?v=b44"></script>
-  <script src="js/saves.js?v=b44"></script>
-  <script src="js/speedrunner-mode.js?v=b44"></script>
-  <script src="js/arena-maps.js?v=b44"></script>
+  <script src="js/theme.js?v=b45"></script>
+  <script src="js/auth.js?v=b45"></script>
+  <script src="js/app-mode.js?v=b45"></script>
+  <script src="js/dashboard.js?v=b45"></script>
+  <script src="js/game-selection.js?v=b45"></script>
+  <script src="js/constants.js?v=b45"></script>
+  <script src="js/blocks.js?v=b45"></script>
+  <script src="js/controller-config.js?v=b45"></script>
+  <script src="js/controller-input.js?v=b45"></script>
+  <script src="js/input.js?v=b45"></script>
+  <script src="js/camera.js?v=b45"></script>
+  <script src="js/mobs.js?v=b45"></script>
+  <script src="js/crafting.js?v=b45"></script>
+  <script src="js/player.js?v=b45"></script>
+  <script src="js/level.js?v=b45"></script>
+  <script src="js/redstone.js?v=b45"></script>
+  <script src="js/world.js?v=b45"></script>
+  <script src="js/sandbox.js?v=b45"></script>
+  <script src="js/save-migrations.js?v=b45"></script>
+  <script src="js/saves.js?v=b45"></script>
+  <script src="js/speedrunner-mode.js?v=b45"></script>
+  <script src="js/arena-maps.js?v=b45"></script>
   <!-- Phase 3A.2 arena systems — must load before game.js (it references them) -->
-  <script src="js/emerald-system.js?v=b44"></script>
-  <script src="js/powerup-system.js?v=b44"></script>
-  <script src="js/ctf-system.js?v=b44"></script>
-  <script src="js/tower-system.js?v=b44"></script>
-  <script src="js/arena-rules.js?v=b44"></script>
-  <script src="js/arena-modes.js?v=b44"></script>
-  <script src="js/leaderboard-system.js?v=b44"></script>
-  <script src="js/pause-menu.js?v=b44"></script>
-  <script src="js/game.js?v=b44"></script>
-  <script src="js/menu.js?v=b44"></script>
+  <script src="js/emerald-system.js?v=b45"></script>
+  <script src="js/powerup-system.js?v=b45"></script>
+  <script src="js/ctf-system.js?v=b45"></script>
+  <script src="js/tower-system.js?v=b45"></script>
+  <script src="js/arena-rules.js?v=b45"></script>
+  <script src="js/arena-modes.js?v=b45"></script>
+  <script src="js/leaderboard-system.js?v=b45"></script>
+  <script src="js/pause-menu.js?v=b45"></script>
+  <script src="js/game.js?v=b45"></script>
+  <script src="js/menu.js?v=b45"></script>
   <!-- Phase 16: Multiplayer (socket.io loaded from CDN; falls back gracefully if unavailable) -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js" crossorigin="anonymous"></script>
-  <script src="js/multiplayer.js?v=b44"></script>
+  <script src="js/multiplayer.js?v=b45"></script>
   <!-- Phase 16-A: Online lobby UI -->
-  <script src="js/online-ui.js?v=b44"></script>
+  <script src="js/online-ui.js?v=b45"></script>
   <!-- Phase 1D: Game play + auto-save -->
-  <script src="js/music.js?v=b44"></script>
-  <script src="js/game-timer.js?v=b44"></script>
-  <script src="js/game-state.js?v=b44"></script>
-  <script src="js/auto-save.js?v=b44"></script>
-  <script src="js/game-play.js?v=b44"></script>
+  <script src="js/music.js?v=b45"></script>
+  <script src="js/game-timer.js?v=b45"></script>
+  <script src="js/game-state.js?v=b45"></script>
+  <script src="js/auto-save.js?v=b45"></script>
+  <script src="js/game-play.js?v=b45"></script>
   <!-- Phase 1E: Sandbox world browser + editor -->
-  <script src="js/sandbox-ui.js?v=b44"></script>
+  <script src="js/sandbox-ui.js?v=b45"></script>
 
-  <script src="js/online-play.js?v=b44"></script>
-  <script src="js/community-ui.js?v=b44"></script>
-  <script src="js/arena-select.js?v=b44"></script>
+  <script src="js/online-play.js?v=b45"></script>
+  <script src="js/community-ui.js?v=b45"></script>
+  <script src="js/arena-select.js?v=b45"></script>
   <!-- Phase 3A.3 arena UI (invoked on user action; order after the above) -->
-  <script src="js/arena-prelaunch.js?v=b44"></script>
-  <script src="js/custom-rules-ui.js?v=b44"></script>
-  <script src="js/test-world.js?v=b44"></script>
+  <script src="js/arena-prelaunch.js?v=b45"></script>
+  <script src="js/custom-rules-ui.js?v=b45"></script>
+  <script src="js/test-world.js?v=b45"></script>
   <!-- Universal gamepad navigation for all HTML screens/modals -->
-  <script src="js/gamepad-nav.js?v=b44"></script>
+  <script src="js/gamepad-nav.js?v=b45"></script>
   <!-- Mobile touch controls (Speed Run / Platformer / Arena) -->
-  <script src="js/touch-controls.js?v=b44"></script>
+  <script src="js/touch-controls.js?v=b45"></script>
 
   <script>
     // ── Build-version badge ──────────────────────────────────────
@@ -1254,36 +1264,37 @@
       setTimeout(resizeCanvas, 200);
     })();
 
-    // ── Start button: gate audio unlock behind a user gesture ───
+    // ── Start screen: "Play Online / Play Offline" gates audio behind the
+    //    first user gesture, then routes into the (cloud or local) dashboard.
     (function () {
-      const screen = document.getElementById('start-screen');
-      const btn    = document.getElementById('start-button');
-      if (!screen || !btn) return;
-      btn.addEventListener('click', () => {
-        screen.style.display = 'none';
-        // This click is the user gesture that unlocks audio. Start the intro
-        // music directly (don't depend on the menu having booted / its blocked
-        // autoplay). Reuse the menu's audio element if it exists.
+      const screen  = document.getElementById('start-screen');
+      const online  = document.getElementById('start-online');
+      const offline = document.getElementById('start-offline');
+      if (!screen) return;
+
+      // Shared audio unlock (also called on login success). Idempotent.
+      window._unlockIntroAudio = function () {
         try {
           if (window._menuRef && typeof window._menuRef._initMenuAudio === 'function') {
             window._menuRef._initMenuAudio();
           }
           let a = window._menuAudio;
-          if (!a) {
-            a = new Audio('music/intro/intro.mp3');
-            a.loop = true;
-            window._menuAudio = a;
-          }
+          if (!a) { a = new Audio('music/intro/intro.mp3'); a.loop = true; window._menuAudio = a; }
           if (typeof DEFAULT_MUSIC_VOLUME !== 'undefined' && typeof MAX_AUDIO_VOLUME !== 'undefined') {
             a.volume = DEFAULT_MUSIC_VOLUME * MAX_AUDIO_VOLUME;
           }
           a.muted = (typeof MUSIC_CONTROL !== 'undefined') ? MUSIC_CONTROL.isMuted() : false;
           if (a.paused) { const p = a.play(); if (p && p.catch) p.catch(() => {}); }
         } catch (e) { /* audio optional */ }
-        // Post-login flow: the title screen leads into the dashboard.
-        if (typeof DASHBOARD !== 'undefined' && DASHBOARD.currentUser) {
-          DASHBOARD._enterDashboard();
-        }
+      };
+
+      online?.addEventListener('click', () => {
+        window._unlockIntroAudio();
+        if (typeof DASHBOARD !== 'undefined') DASHBOARD._startOnline();
+      });
+      offline?.addEventListener('click', () => {
+        window._unlockIntroAudio();
+        if (typeof DASHBOARD !== 'undefined') DASHBOARD._startOffline();
       });
     })();
   </script>

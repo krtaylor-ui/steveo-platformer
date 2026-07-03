@@ -2129,3 +2129,17 @@ html[data-theme="retro"] .pause-subrow { border-left-color: #2f6f8f; }
 
 /* Startup config screen: Go Back + Start Game side by side. */
 .startup-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+/* Start-screen "Play Online / Play Offline" choice. */
+.start-choices { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
+.start-choice {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  min-width: 220px; padding: 22px 26px; cursor: pointer;
+  background: #1a1a2e; color: var(--accent, #7c8cff);
+  border: 2px solid var(--accent, #7c8cff); border-radius: var(--ui-radius, 8px);
+  font-family: var(--font, system-ui, sans-serif); transition: background 0.2s, color 0.2s, transform 0.1s;
+}
+.start-choice:hover  { background: var(--accent, #7c8cff); color: #000; }
+.start-choice:active { transform: scale(0.97); }
+.start-choice-title { font-size: 1.25rem; font-weight: bold; letter-spacing: 1px; }
+.start-choice-sub   { font-size: 0.72rem; opacity: 0.8; letter-spacing: 0.3px; }

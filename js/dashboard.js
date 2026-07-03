@@ -13,24 +13,35 @@ const DASHBOARD = {
 
     this.currentUser = AUTH.getUser();
 
-    if (!this.currentUser) {
-      this._showLogin();
-      return;
-    }
+    // Everyone lands on the title screen first — it offers "Play Online" and
+    // "Play Offline", so login is no longer forced up front (offline needs none).
+    // Validate any cached session in the BACKGROUND so "Play Online" can decide
+    // login-vs-dashboard without blocking the choice screen.
+    this._sessionCheck = (this.currentUser ? AUTH.ensureValidSession() : Promise.resolve(false))
+      .catch(() => false);
 
-    // A cached user isn't proof of a live session — the token may have expired.
-    // Validate (and refresh if possible) before trusting the login state.
-    const sessionOk = await AUTH.ensureValidSession();
-    if (!sessionOk) {
-      AUTH._clearSession();
-      this.currentUser = null;
-      this._showLogin();
-      return;
-    }
-
-    // Show the "Steveo Platformer" title screen first; its Start button (wired
-    // in index.html) unlocks audio + intro music, then calls _enterDashboard().
     this._showTitleScreen();
+  },
+
+  // "Play Online" — go straight to the cloud dashboard if a valid session
+  // exists, otherwise show login (which returns here on success).
+  async _startOnline() {
+    APP_MODE.set('online');
+    let ok = false;
+    try { ok = this.currentUser ? await this._sessionCheck : false; } catch (e) { ok = false; }
+    if (ok) {
+      this._enterDashboard();
+    } else {
+      if (this.currentUser && !ok) { AUTH._clearSession(); this.currentUser = null; }
+      this._showLogin();
+    }
+  },
+
+  // "Play Offline" — guest/local mode; no login required (a logged-in user may
+  // also choose this, e.g. on a plane). Worlds come from localStorage.
+  _startOffline() {
+    APP_MODE.set('local');
+    this._enterDashboard();
   },
 
   // Title splash shown after login. The Start button is the user gesture that
@@ -45,8 +56,36 @@ const DASHBOARD = {
   _enterDashboard() {
     this._showDashboard();
     if (!this._listenersBound) { this._setupListeners(); this._listenersBound = true; }
+    this._applyModeUI();
     this._updateUserDisplay();
-    this._loadMostRecentWorld();
+    // Quick-play / recent worlds come from the server → skip in offline mode.
+    if (!APP_MODE.isLocal()) this._loadMostRecentWorld();
+  },
+
+  // Show/hide the online-only entry points based on session mode.
+  _applyModeUI() {
+    const local = APP_MODE.isLocal();
+    const online = document.getElementById('online-play-btn');
+    const community = document.getElementById('community-btn');
+    if (online)    online.style.display    = local ? 'none' : '';
+    if (community) community.style.display  = local ? 'none' : '';
+    // A "Go Online" affordance to leave offline mode (returns to the choice).
+    let go = document.getElementById('go-online-btn');
+    if (local && !go) {
+      const logout = document.getElementById('logout-btn');
+      if (logout && logout.parentNode) {
+        go = document.createElement('button');
+        go.id = 'go-online-btn';
+        go.className = 'btn btn-small';
+        go.textContent = '☁ Go Online';
+        go.addEventListener('click', () => this._showTitleScreen());
+        logout.parentNode.insertBefore(go, logout);
+      }
+    }
+    if (go) go.style.display = local ? '' : 'none';
+    // Logout only makes sense when actually logged in.
+    const logout = document.getElementById('logout-btn');
+    if (logout) logout.style.display = (local && !this.currentUser) ? 'none' : '';
   },
 
   _showDashboard() {
@@ -63,7 +102,10 @@ const DASHBOARD = {
 
   _updateUserDisplay() {
     const el = document.getElementById('username-display');
-    if (el && this.currentUser) {
+    if (!el) return;
+    if (APP_MODE.isLocal()) {
+      el.textContent = this.currentUser ? `${this.currentUser.username} (offline)` : 'Guest (offline)';
+    } else if (this.currentUser) {
       el.textContent = `Welcome, ${this.currentUser.username}!`;
     }
   },
@@ -153,6 +195,13 @@ const DASHBOARD = {
   },
 
   _navigateToMode(mode) {
+    // Offline mode reads/writes worlds locally. The local data provider that
+    // powers the mode screens lands in Phase 1b; until then, guard so offline
+    // doesn't fall through to server calls that would fail.
+    if (APP_MODE.isLocal()) {
+      alert('Offline worlds are coming in the next update.\n\nFor now, choose “☁ Go Online” to reach your saved worlds.');
+      return;
+    }
     if (mode === 'SANDBOX') {
       SANDBOX.init();
     } else if (mode === 'ARENA') {
@@ -302,7 +351,9 @@ const AUTH_UI = {
     try {
       await fn();
       DASHBOARD.currentUser = AUTH.getUser();
-      DASHBOARD._showTitleScreen();
+      APP_MODE.set('online');
+      if (window._unlockIntroAudio) window._unlockIntroAudio();
+      DASHBOARD._enterDashboard();
     } catch (err) {
       this._showError(err.message);
     } finally {
