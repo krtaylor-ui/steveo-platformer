@@ -18,18 +18,21 @@ const SANDBOX = {
     this._showBrowser();
     this._setupStaticListeners();
     this._applyModeUI();
+    // Offline: seed the pre-loaded starter worlds once before listing.
+    if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal() && typeof LOCAL_WORLDS !== 'undefined') {
+      await LOCAL_WORLDS.seedDefaults();
+    }
     await this.loadWorlds();
   },
 
-  // Hide online-only sandbox actions (importing cloud games / server file import)
-  // when playing offline. Creating, editing, saving, copying, deleting all work
-  // locally against LOCAL_WORLDS.
+  // Offline: file import/export work locally; only importing CLOUD games is
+  // online-only. Create/edit/save/copy/delete all run against LOCAL_WORLDS.
   _applyModeUI() {
     const local = (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal());
-    ['import-games-btn', 'import-file-btn'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.style.display = local ? 'none' : '';
-    });
+    const games = document.getElementById('import-games-btn');
+    if (games) games.style.display = local ? 'none' : '';   // cloud games = online only
+    const file = document.getElementById('import-file-btn');
+    if (file) file.style.display = '';                        // file import works offline too
   },
 
   _showBrowser() {
@@ -388,6 +391,19 @@ const SANDBOX = {
   },
 
   async importFile(fileData, requestedMode) {
+    if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
+      let parsed;
+      try { parsed = JSON.parse(fileData); } catch (e) { alert('Invalid JSON file'); return; }
+      const wd = parsed.world_data || parsed;                    // export wrapper OR raw payload
+      const name = parsed.world_name || parsed.worldName || 'Imported World';
+      const created = LOCAL_WORLDS.importWorld({ worldName: name, description: parsed.description || '', worldData: wd, mode: requestedMode });
+      document.getElementById('file-import-section').style.display = 'none';
+      document.getElementById('import-success-section').style.display = 'block';
+      document.getElementById('imported-world-name').textContent = `Imported: ${created.world_name}`;
+      this.pendingFileImport = null;
+      setTimeout(() => { this.hideImportFileModal(); this.currentPage = 0; this.loadWorlds(); }, 1500);
+      return;
+    }
     try {
       const res = await AUTH.authedFetch('/api/worlds/sandbox/import-file', {
         method: 'POST',
@@ -449,6 +465,23 @@ const SANDBOX = {
   // ── Export the open world as a downloadable JSON file ──────────
   async exportWorld() {
     if (!this.selectedWorldId) { alert('No world loaded'); return; }
+    if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
+      const w = LOCAL_WORLDS.get(this.selectedWorldId);
+      if (!w) { alert('No world loaded'); return; }
+      const payload = {
+        world_name: w.world_name, description: w.description,
+        game_mode_default: (w.world_data && w.world_data.gameModeDefault) || 'NRM',
+        world_data: w.world_data, exportedAt: new Date().toISOString(),
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = (w.world_name || 'world').replace(/[^a-z0-9_-]+/gi, '_') + '.json';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      return;
+    }
     try {
       const res = await AUTH.authedFetch(`/api/worlds/sandbox/${this.selectedWorldId}/export`);
       if (!res.ok) { alert('Failed to export world'); return; }

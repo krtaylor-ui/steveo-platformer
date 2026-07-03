@@ -93,6 +93,51 @@ const LOCAL_WORLDS = {
   },
 
   remove(id) { const map = this._all(); delete map[id]; this._persist(map); return true; },
+
+  // Import a world from a parsed file / bundled JSON. `worldData` is either a
+  // server export's world_data or a raw world payload (grid at top level). mode
+  // (optional) forces the game mode; else the payload's gameModeDefault stays.
+  importWorld({ worldName, description = '', worldData, mode }) {
+    const map = this._all();
+    const id = this._uid();
+    const wd = worldData ? JSON.parse(JSON.stringify(worldData)) : {};
+    if (mode) wd.gameModeDefault = mode;
+    const srcUid = (wd.provenance && wd.provenance.uid) || null;
+    wd.provenance = {
+      uid: id, createdAt: Date.now(), updatedAt: Date.now(),
+      creator: 'Guest', origin: 'local',
+      copiedFrom: srcUid, copiedAt: srcUid ? Date.now() : null,
+    };
+    map[id] = {
+      id, world_name: worldName || 'Imported World', description,
+      is_published: false, created_at: new Date().toISOString(), world_data: wd,
+    };
+    this._persist(map);
+    return map[id];
+  },
+
+  // Seed the pre-loaded starter worlds (default-worlds/*.json) into the local
+  // store on first offline use. Best-effort — offline-uncached fetches skip
+  // (the SW precaches these, so they're normally available). Runs once.
+  SEED_KEY: 'steveo_local_seeded',
+  async seedDefaults() {
+    try { if (localStorage.getItem(this.SEED_KEY)) return; } catch (e) {}
+    const defs = [
+      { file: 'normal-default.json',      mode: 'NRM', name: 'Starter · Normal' },
+      { file: 'platformer-default.json',  mode: 'PLT', name: 'Starter · Platformer' },
+      { file: 'speedrunner-default.json', mode: 'RUN', name: 'Starter · Speed Run' },
+    ];
+    for (const d of defs) {
+      try {
+        const res = await fetch('/default-worlds/' + d.file);
+        if (!res.ok) continue;
+        const parsed = await res.json();
+        const wd = parsed.world_data || parsed;
+        this.importWorld({ worldName: d.name, description: 'Pre-loaded starter world.', worldData: wd, mode: d.mode });
+      } catch (e) { /* offline / not cached → skip this starter */ }
+    }
+    try { localStorage.setItem(this.SEED_KEY, '1'); } catch (e) {}
+  },
 };
 
 if (typeof window !== 'undefined') window.LOCAL_WORLDS = LOCAL_WORLDS;

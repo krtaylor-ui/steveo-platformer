@@ -12,8 +12,11 @@
 // Bump CACHE_VERSION on release to drop the old shell.
 // ============================================================
 
-const CACHE_VERSION = 'steveo-shell-v46';
-const CORE = ['/', '/index.html', '/style.css', '/manifest.json', '/icon.svg'];
+const CACHE_VERSION = 'steveo-shell-v47';
+const CORE = ['/', '/index.html', '/style.css', '/manifest.json', '/icon.svg',
+  // Pre-loaded starter worlds (seeded into local storage on first offline use).
+  '/default-worlds/normal-default.json', '/default-worlds/platformer-default.json',
+  '/default-worlds/speedrunner-default.json'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
