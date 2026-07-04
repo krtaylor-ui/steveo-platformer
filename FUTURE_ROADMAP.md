@@ -1,9 +1,10 @@
 # Steveo Platformer — Future Roadmap & Design Notes
 
-> **Status:** Living doc. Updated 2026‑07‑05 at **build 43** (merged to `main`, live on Railway).
-> Records *intent, approach, effort, reuse, and open decisions* — not final specs.
+> **Status:** Living doc. Updated 2026‑07‑03 at **build 50** (merged to `main`; not yet
+> pushed to origin/Railway — origin is at build 43). Records *intent, approach, effort,
+> reuse, and open decisions* — not final specs.
 
-## ✅ Shipped since this doc was written (builds 24–43)
+## ✅ Shipped since this doc was written (builds 24–50)
 - **Installable version (PWA)** — §2 below. DONE (build 27): `manifest.json` + `sw.js`
   offline app shell + install support. *Follow‑up left:* raster PNG icons (192/512).
 - **Mobile mode (touch)** — §3 below. DONE (build 28): responsive canvas + touch overlay;
@@ -15,14 +16,19 @@
   (local + server sync) with account initials. DONE (builds 24, 30, 26).
 - **Speed Runner race‑car model** — countdown + perfect start, accelerate/coast, actual‑speed
   %, per‑run level reset, fast configurable redstone. DONE (builds 38–43).
+- **Local‑first / offline worlds** — §6 below. LARGELY DONE (builds 44–50): provenance
+  metadata, Play Online/Offline entry + session mode, offline Sandbox via a localStorage
+  provider, file import/export + bundled starters, and the explicit Copy‑to‑Online/Offline
+  bridge (unified Copy modal). *Remaining:* offline providers for the OTHER modes
+  (Normal/Platformer/Arena), F‑key quick‑save reconciliation, login‑sync polish — see §6.
 
 ## 🔜 Still planned (not built)
 - **User Guide** — §1 below (not started).
-- **Local‑first / offline worlds + login sync** — see new section [6] below (design agreed
-  2026‑07‑05; provenance metadata landed build 44, structure next).
-- **World cleanup widget** — see new section [7] below.
+- **Offline providers for Normal / Platformer / Arena** — extend the §6 local provider
+  beyond Sandbox (only Sandbox works offline today).
+- **World cleanup widget** — see section [7] below (provenance dependency now shipped).
 - **Tower Defense + MOBA + Bot/AI** — §4 below (not started).
-- **itch.io release / Tauri desktop installer** — see new section [8] below.
+- **itch.io release / Tauri desktop installer** — see section [8] below.
 
 ---
 
@@ -326,7 +332,14 @@ tokens + retro FX (build 20), `body.in-game` gate (build 19/20).
 
 ---
 
-## 6. Local‑first / offline worlds + optional login sync  *(design agreed 2026‑07‑05)*
+## 6. Local‑first / offline worlds + optional login sync  *(design agreed 2026‑07‑05; LARGELY SHIPPED builds 44–50)*
+
+> **Status (build 50):** the offline‑Sandbox path is shipped end‑to‑end — Play Offline →
+> pre‑loaded starters + create/build/save/reopen/copy/delete/import/export, all local, no
+> login — plus the explicit Copy‑to‑Online/Offline bridge. What's left: the local provider
+> only covers **Sandbox**; Normal/Platformer/Arena are still guarded offline. The editor
+> F‑key quick‑save still uses the legacy `SandboxSaves` store (Save button uses local‑worlds)
+> — reconcile. Login‑sync stays "adds cloud, never merges" as designed. All browser‑UNTESTED.
 
 **Goal:** the app works fully **offline with no login** — pre‑loaded worlds, build custom
 worlds, save games (all local) — and login is an *optional upgrade* that adds cloud worlds,
@@ -352,15 +365,21 @@ updatedAt, creator, origin('cloud'|'local'), copiedFrom, copiedAt }`, stamped in
 `GAME_STATE._provenance()` and captured on load (`game._loadedProvenance`). Travels inside
 world_data across export/import/copy. `copiedFrom/At` get populated by the copy flow.
 
-**Work remaining:**
-1. **Guest entry path** + a session **mode flag** (local vs online) — see the entry‑screen
-   idea in [8]/below.
-2. **Local data provider** mirroring the world/game API against `localStorage`, so the
-   dashboard / game slots / sandbox browser list local worlds in guest mode (the core
-   refactor; abstract the ~10 `authedFetch` call sites behind one provider interface).
-3. **Bundled worlds** — curate more `default-worlds/*.json` as read‑only starters (copy‑to‑play).
-4. **Copy to Online/Offline** actions + the opt‑in overwrite‑or‑fork prompt.
-5. Online‑only features (MP, community browse, cloud leaderboards) **grey out** in guest mode.
+**Work — status:**
+1. ✅ **Guest entry path** + session **mode flag** — DONE build 45 (`js/app-mode.js`
+   `APP_MODE`; Play Online/Offline start screen).
+2. 🟡 **Local data provider** mirroring the world API against `localStorage` — DONE for
+   **Sandbox** build 46 (`js/local-worlds.js` `LOCAL_WORLDS`; `sandbox-ui.js` branches on
+   `APP_MODE.isLocal()`). **Still TODO:** the same provider treatment for Normal / Platformer
+   / Arena game slots (those modes are still guarded offline).
+3. ✅ **Bundled worlds** — DONE build 47 (`LOCAL_WORLDS.seedDefaults()` seeds
+   `default-worlds/*`; added to SW precache).
+4. ✅ **Copy to Online/Offline** + the opt‑in overwrite‑or‑fork prompt — DONE builds 48–50
+   (unified Copy modal; duplicate/lineage guard).
+5. ✅ Online‑only features (MP, community browse, cloud leaderboards) **grey out** in guest
+   mode — DONE build 45.
+6. 🟡 **Follow‑ups:** reconcile the editor F‑key quick‑save (legacy `SandboxSaves`) with the
+   local‑worlds Save path; browser‑test the whole offline flow; optional login‑sync polish.
 
 **Entry‑screen UX (proposed):** the initial audio‑trigger screen offers **"Play Offline"** /
 **"Play Online"**. Online + not logged in → login, then cloud dashboard; Online + logged in →
@@ -375,7 +394,7 @@ abstraction. Pairs perfectly with the Tauri/itch desktop build [8].
 ## 7. World cleanup widget ("🧹 Manage Worlds")  *(design 2026‑07‑05)*
 
 A self‑contained HTML panel (like the theme‑settings modal) that visualizes all worlds and
-tames copy‑sprawl. **Depends on the provenance metadata [6] existing.**
+tames copy‑sprawl. **Provenance metadata dependency [6] now shipped (build 44) — unblocked.**
 
 - **Lineage tree** grouping each root world with its copies (cloud ☁ / local 💾 badges,
   published tag), drawn from `copiedFrom`.

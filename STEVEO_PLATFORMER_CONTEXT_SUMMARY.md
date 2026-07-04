@@ -1,45 +1,62 @@
 # Steveo Platformer — Context Summary
 
-**Updated:** 2026-07-03. **Branch: `main` (deployed to Railway).** See the
-**CURRENT STATE** section immediately below for the latest; the Phase-3 sections
-further down are the historical record. `DECISIONS_LOG.md` = every decision;
-`FUTURE_ROADMAP.md` = planned work (User Guide, PWA, mobile, Tower Defense/bots).
+**Updated:** 2026-07-03. **Branch: `main`.** See the **CURRENT STATE** section
+immediately below for the latest; the Phase-3 sections further down are the
+historical record. `DECISIONS_LOG.md` = every decision; `FUTURE_ROADMAP.md` =
+planned work (User Guide, Tower Defense/bots, world cleanup, itch/Tauri).
 
-## CURRENT STATE (2026-07-03) — builds 12–28
+## CURRENT STATE (2026-07-03) — build 50
 
-**Where things are:** builds 12–23 are on `main` (live on Railway). **Builds 24–28
-(the Leaderboards + PWA + Mobile + Pause/Controller brief) are committed on the
-worktree branch `phase3-v3-look` and NOT YET merged to `main`.** There are **no
-live users yet**. `GAME_VERSION` = `v3 · build 28`; cache-buster `?v=b28`
-(bump BOTH every commit). Test suite: **182/182** (added test-gamepad-nav.js = 22).
+**Where things are:** `main` is at **build 50**. Builds 12–43 shipped earlier
+(24–28 Leaderboards/PWA/Mobile/Pause; 29–43 assorted fixes + the Speed Run
+race-car model). **Builds 44–50 — the local-first / offline-worlds initiative
+(FUTURE_ROADMAP §6) — are now merged into `main` but NOT YET pushed to
+`origin`/Railway** (origin/main is still at build 43). There are **no live users
+yet**. `GAME_VERSION` = `v3 · build 50`; cache-buster `?v=b50`; SW
+`CACHE_VERSION = steveo-shell-v50` (bump ALL THREE every commit). Test suite:
+**182/182**. All of 44–50 is headless-verified but **browser-UNTESTED**.
 
-**Builds 24–28 (this brief — all browser-UNTESTED; headless 182/182):**
-- **24 — §1 Arena per-world Leader.** worldId threaded through the arena launch →
-  score submit; single current Leader (top scorer) shown on the match-end screen,
-  a world-tile "View Leaderboard" button (only on worlds with a Leader), and a
-  per-world modal. New `GET /api/arena/world-leaders` batch endpoint. No migration
-  (world_id already applied); append-all model already retains full history.
-- **25 — §4 HTML pause menu + universal gamepad nav.** Canvas pause replaced by
-  `js/pause-menu.js` + `#pause-overlay` (tabs, Resume/Level Select/View
-  Leaderboard/Main Menu, live volume, up-to-4 controller <select>s, confirm-exit).
-  New `js/gamepad-nav.js` drives every HTML screen/modal (spatial focus + virtual
-  cursor + A/B), active in menus AND while the pause overlay is open. Deleted the
-  dead canvas pause paths; kept the arena objectives panel.
-- **26 — §2 Speed Run.** Hybrid: local top-5 + best-effort server sync (new
-  `speedrun_results` table + `server/speedrun-routes.js`); account initials
-  remembered + pre-filled; theme-aware victory overlay; ghost audited functional.
-  **Tile "View Leaderboard" button DEFERRED** (canvas menu.js select).
-- **27 — §3 PWA.** `manifest.json` + `icon.svg` + `sw.js` (offline app shell;
-  online MP unchanged). Follow-up: PNG icons.
-- **28 — §3 Mobile touch.** `js/touch-controls.js` feeds `window.game.input`
-  (keys + mouse). Speed Run auto-run, Platformer dpad+jump+action, Arena
-  twin-stick. Normal/Sandbox out of scope.
+**Builds 44–50 (local-first / offline worlds — FUTURE_ROADMAP §6):**
+- **44 — World provenance metadata.** Every saved world carries
+  `world_data.provenance = { uid, createdAt, updatedAt, creator, origin, copiedFrom,
+  copiedAt }` (`GAME_STATE._provenance`, captured on load into
+  `game._loadedProvenance`). Travels inside world_data across export/import/copy and
+  local↔cloud — the foundation for the copy model + the world-cleanup widget (§7).
+- **45 — Play Online/Offline entry + session mode (Phase 1a).** New `js/app-mode.js`
+  (`APP_MODE`: 'online' vs 'local', persisted; `body.offline-mode`). Start screen
+  offers **Play Online / Play Offline** (login only via Play Online w/o session).
+  Dashboard adapts to mode (online-only buttons hidden offline; ☁ Go Online;
+  Guest/`<user> (offline)` identity). Online path byte-for-byte unchanged.
+- **46 — Offline Sandbox via local provider (Phase 1b).** New `js/local-worlds.js`
+  (`LOCAL_WORLDS`): localStorage world store mirroring the server world shape.
+  `sandbox-ui.js` branches on `APP_MODE.isLocal()` for load/create/edit/save/copy/
+  delete/changeMode — build + save + reopen custom worlds offline, no login.
+  Known rough edge: editor F-key quick-save still uses the legacy `SandboxSaves`
+  store while the Save button uses local-worlds (to reconcile).
+- **47 — Offline file import/export + bundled starters.** Client-side local import
+  (parses .json → `LOCAL_WORLDS.importWorld`) and export (server-shaped .json);
+  `LOCAL_WORLDS.seedDefaults()` imports `default-worlds/*` (Normal/Platformer/Speed
+  Run) into local storage on first offline Sandbox open (added to SW precache).
+- **48–50 — Copy-to-Online/Offline bridge.** Explicit copy between spaces (no
+  auto-sync): `_copyToOnline` / `_copyToOffline` re-stamp provenance + preserve
+  lineage. Landed as a badged cross-space section (48), then online-only + tile
+  layout + duplicate guard (49), then consolidated into **one Copy button per card →
+  a name+destination modal**, with per-world actions branching on the world's origin
+  (`_isLocalWorld`) rather than the session mode (50). "Published" → green ★ badge.
+
+**Work remaining on §6 (not built):** guest access to the OTHER modes (only Sandbox
+has a local provider so far — Normal/Platformer/Arena still guarded offline);
+reconciling the editor F-key quick-save with local-worlds; optional login-sync
+polish. See FUTURE_ROADMAP §6.
 
 **Migrations still to run in Supabase for full function:** `server/sql/speedrun.sql`
 (Speed Run server times). Everything else degrades gracefully without it.
 
-**Ship the 24–28 batch when ready:** from the primary checkout →
-`git -C <primary-root> merge --ff-only phase3-v3-look && git push origin main`.
+**Ship / push when ready:** `git push origin main` (builds 44–50 are committed
+on `main` locally but not yet on origin). The edit→merge loop is: edit in the
+`phase3-v3-look` worktree → `node test/run.js` (182/182) → bump GAME_VERSION +
+`?v=bN` + SW `CACHE_VERSION` → commit → from the primary checkout
+`git merge --ff-only phase3-v3-look` → `git push origin main`.
 
 ---
 

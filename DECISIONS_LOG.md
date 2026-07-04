@@ -564,3 +564,78 @@ Audit answers (Q0/§5):
   sync, PWA install/offline, and ALL touch controls. Two SQL migrations pending in
   Supabase: server/sql/speedrun.sql (Speed Run times). arena world-leaders needs
   no new migration (world_id already applied).
+
+## §6 Local-first / offline worlds (builds 44–50)
+
+> Gap: builds 29–43 are not individually logged here (assorted fixes + the Speed
+> Run race-car model; see git log and FUTURE_ROADMAP "Shipped" list). This section
+> resumes the log at the local-first initiative.
+
+### Provenance metadata (build 44)
+- DECISION: every world carries `world_data.provenance = { uid, createdAt, updatedAt,
+  creator, origin('cloud'|'local'), copiedFrom, copiedAt }`, stamped in
+  `GAME_STATE._provenance()` and captured on load (`game._loadedProvenance`). It
+  lives INSIDE world_data so it travels for free across export/import/copy and
+  local↔cloud. Additive; `copiedFrom/At` populate once the copy flow exists (built 48–50).
+- Rationale: foundation for the "copy to online/offline" model (no two-way sync) and
+  the future world-cleanup widget (§7), which needs lineage to group copies.
+
+### Play Online/Offline entry + session mode (build 45)
+- DECISION (the model — no two-way sync): it's **2 locations + 1 flag**, not 3 states.
+  Cloud (Supabase) worlds with a "Published" filter/badge; Local (localStorage) worlds;
+  move between them only via explicit Copy. Logging in ADDS cloud access; it never
+  reconciles local worlds (that's where sync bugs live).
+- New `js/app-mode.js` (`APP_MODE`): 'online' vs 'local', persisted; `body.offline-mode`.
+  Start screen offers Play Online / Play Offline; login is triggered only by Play Online
+  when there's no valid session (offline needs none). Audio-unlock refactored to a shared
+  `window._unlockIntroAudio()` used by both buttons + login success.
+- Dashboard adapts to mode: online-only buttons (Online Play, Community) hidden offline;
+  a ☁ Go Online button; Guest(offline)/`<user> (offline)` identity; logout hidden for
+  guests. The ONLINE path is byte-for-byte unchanged.
+
+### Offline Sandbox via local provider (build 46)
+- New `js/local-worlds.js` (`LOCAL_WORLDS`): localStorage store mirroring the server
+  world shape ({id, world_name, description, is_published, created_at, world_data}), so
+  the Sandbox UI works offline with ONE branch per data call — the online path is
+  byte-for-byte unchanged. world_data (incl. provenance) is exactly what
+  `GAME_STATE.serialize` emits, so build/save/reopen round-trips.
+- `sandbox-ui.js` branches on `APP_MODE.isLocal()` for load/create/edit/save/copy/delete/
+  changeMode. Publish greyed offline (community = online); cloud-game/file import hidden
+  in the offline browser. Dashboard lets Sandbox through the offline guard; other modes
+  stay guarded pending their own providers.
+- KNOWN ROUGH EDGE (to reconcile): the editor F-key quick-save still uses the legacy
+  `SandboxSaves` store; the Save button is the local-worlds path.
+
+### Offline file import/export + bundled starters (build 47)
+- Local IMPORT parses the .json in-browser → `LOCAL_WORLDS.importWorld` (handles both
+  server-export wrappers and raw payloads; stamps provenance + copiedFrom lineage).
+  Local EXPORT serializes to a downloadable .json in the SAME shape as the server export,
+  so it re-imports locally OR online. Both pure client-side; online paths unchanged.
+- `LOCAL_WORLDS.seedDefaults()` imports `default-worlds/*` (Normal/Platformer/Speed Run)
+  into local storage once on first offline Sandbox open. Those JSONs added to the SW
+  precache so seeding works offline.
+
+### Copy-to-Online/Offline bridge (builds 48–50)
+- DECISION (build 49): the copy bridge is ONLINE-ONLY. Offline mode shows just your local
+  worlds (surfacing cloud worlds while "offline" was confusing). Online shows cloud worlds
+  (primary) + a "💾 Your Offline Worlds" section, with Copy buttons both directions.
+- `_copyToOnline`: create cloud world + PUT world_data (provenance re-stamped origin:'cloud',
+  copiedFrom the local uid). `_copyToOffline`: `LOCAL_WORLDS.importWorld` from the cloud
+  world_data (lineage preserved). Single click = a NEW copy (per the copy paradigm).
+- Duplicate guard: if a target world shares lineage (`copiedFrom`) or matches name +
+  creation time + creator, warn with copy-anyway / rename / cancel. Dropped the
+  "(from Offline/Online)" name suffixes so names stay consistent (and the dup check works).
+- FINAL SHAPE (build 50): consolidated to ONE "Copy" button per card → a modal (name field
+  + destination 💾 Offline / ☁ Online, Online disabled when logged out, defaulting to the
+  world's space). Per-world actions (edit/save/delete/mode/publish/export) now branch on the
+  WORLD's origin (`_isLocalWorld`) instead of the session mode — so you can edit a local
+  world while online and vice-versa. Cross-space cards render via a shared `_worldCard` so
+  they match the primary tiles. "Published" label → a green circular ★ badge.
+
+### Verification / status (build 50)
+- `node test/run.js` → **182/182**. GAME_VERSION `v3 · build 50`; cache-buster `?v=b50`;
+  SW `CACHE_VERSION = steveo-shell-v50`.
+- Merged to `main`; **NOT yet pushed to origin/Railway** (origin at build 43).
+- Browser-UNTESTED: the entire offline flow (entry, local Sandbox CRUD, import/export,
+  seeded starters, the copy modal + duplicate guard). Migration still pending:
+  `server/sql/speedrun.sql`.
