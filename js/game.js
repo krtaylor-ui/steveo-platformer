@@ -1361,13 +1361,11 @@ class Game {
     const escNow  = this.input.isDown('Escape');
     const escEdge = (escNow && !this._escWas) || this.input.p1JustDown('menu');
     if (escEdge) {
-      if (this._testMode) {
-        // Universal Test World (Phase 3A.3): Esc always exits straight back to the
-        // editor — no pause, no persistence.
-        this.destroy();
-        if (this._onReturnToMenu) this._onReturnToMenu();
-        return;
-      } else if (this.isArena && this.arenaState.phase === 'ended') {
+      // Test mode (Sandbox playtest): Esc opens the normal pause menu — same
+      // options as a real game — whose Exit routes back to the editor via
+      // _onReturnToMenu (the launcher's callback), not the main menu. (The ✕ EXIT
+      // TEST button remains for an instant one-click exit.)
+      if (this.isArena && this.arenaState.phase === 'ended') {
         this.destroy();
         if (this._onReturnToMenu) this._onReturnToMenu();
         return;
@@ -15295,6 +15293,15 @@ class Game {
         life: 45 + Math.random() * 50,
         color: ['#FF6B6B','#FFD700','#4ECDC4','#FFA07A','#FFFFFF'][i % 5],
       });
+    }
+
+    // Test mode (Sandbox playtest): finishing is not a real run — never save a
+    // ghost or record a high score. Show the (read-only) leaderboard, then Space
+    // returns to the editor (handled in _updateSpeedRunner via _onReturnToMenu).
+    if (this._testMode) {
+      this._sr.leaderboard     = SpeedRunnerLeaderboard.get(this._sr.levelId);
+      this._sr.showLeaderboard = true;
+      return;
     }
 
     // Save ghost if it's a new best

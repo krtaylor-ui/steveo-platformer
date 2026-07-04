@@ -74,8 +74,10 @@ const PAUSE_MENU = {
       const isHost = !!(game._onlineGameId && window.multiplayerManager?.isCreator);
       const title = this.el('pause-confirm-title');
       const msg   = this.el('pause-confirm-msg');
-      if (title) title.textContent = isHost ? 'Leave and End Session?' : 'Return to Main Menu?';
-      if (msg)   msg.textContent   = isHost ? 'You are the host. All players will be kicked.'
+      if (title) title.textContent = game._testMode ? 'Exit test — back to Sandbox?'
+                                   : isHost ? 'Leave and End Session?' : 'Return to Main Menu?';
+      if (msg)   msg.textContent   = game._testMode ? 'This was a playtest — nothing is saved or scored.'
+                                   : isHost ? 'You are the host. All players will be kicked.'
                                             : 'Any unsaved progress will be lost.';
     }
   },
@@ -117,7 +119,7 @@ const PAUSE_MENU = {
 
   _confirmExit() {
     const g = this._game; if (!g) return;
-    g._saveNormalProgress();
+    if (!g._testMode) g._saveNormalProgress();   // playtests never persist
     if (g._onlineGameId) window.multiplayerManager?.disconnect();
     this.close();
     g.destroy();
@@ -293,8 +295,9 @@ const PAUSE_MENU = {
     // Level Select removed from every mode — it just returned to the mode's
     // picker, which Main Menu already does (redundant).
     const btns = [{ label: '▶  Resume', cls: 'btn-primary', act: () => this._resume() }];
-    if (game.isArena) btns.push({ label: '🏆  View Leaderboard', cls: 'btn-secondary', act: () => this._viewLeaderboard() });
-    btns.push({ label: '⏻  Main Menu', cls: 'btn-danger', act: () => this._mainMenu() });
+    if (game.isArena && !game._testMode) btns.push({ label: '🏆  View Leaderboard', cls: 'btn-secondary', act: () => this._viewLeaderboard() });
+    // In a Sandbox playtest, "exit" returns to the editor (not the main menu).
+    btns.push({ label: game._testMode ? '⏻  Exit to Sandbox' : '⏻  Main Menu', cls: 'btn-danger', act: () => this._mainMenu() });
 
     wrap.innerHTML = '';
     for (const b of btns) {

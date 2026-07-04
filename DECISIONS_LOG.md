@@ -830,3 +830,25 @@ body's **white** → invisible on white. Prior fixes patched specific elements (
 message) but not the import modal's generic text. Fix: one default `color:#2a2a3a` on `.modal-content`
 (Modern); Retro already overrides bg+color to dark/light. Elements with their own color keep it via
 specificity/source-order. Files: style.css (+ `?v=b55`, SW `steveo-shell-v55`, GAME_VERSION build 55).
+
+---
+
+## Build 56 (2026-07-04) — Sandbox playtest: easy exit via pause menu + no scoring
+
+Feedback: no easy exit from a test world in Sandbox; want the normal pause options but exiting to
+Sandbox, and no high-score recording in test mode.
+
+- **Esc now opens the pause menu in test mode** (was: hard-exit on the first Esc, so the pause options
+  never appeared). The pause overlay's exit already routes through `_onReturnToMenu`, which for a
+  Sandbox-launched test IS the editor-reopen callback (`TEST_WORLD._launch` / `launchArenaTest`) — so
+  **Exit returns to the Sandbox editor, not the main menu**. The ✕ EXIT TEST button stays for one-click exit.
+- **Pause menu relabeled in test mode:** the danger button reads **"Exit to Sandbox"** (not "Main Menu");
+  the confirm dialog reads "Exit test — back to Sandbox? / This was a playtest — nothing is saved or
+  scored." Arena "View Leaderboard" is hidden in test mode. `_confirmExit` skips `_saveNormalProgress`
+  when `_testMode` (playtests never persist).
+- **No high scores in test mode:** `_srTriggerWin` now early-returns in `_testMode` — no ghost save
+  (`SpeedRunnerGhost.saveIfBest`) and no leaderboard entry/name-prompt; it shows the read-only board and
+  Space returns to the editor. (Arena results were already gated in `_submitArenaResultOnce`.)
+
+Files: js/game.js (Esc handler + `_srTriggerWin`), js/pause-menu.js (labels, confirm text, skip save),
+js/constants.js (build 56), index.html (`?v=b56`), sw.js (`steveo-shell-v56`). Tests 182/182; `node -c` clean.
