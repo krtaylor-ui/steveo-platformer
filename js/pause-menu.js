@@ -385,6 +385,7 @@ const PAUSE_MENU = {
         this._row('Jump Height', this._cycle(this.OPT.jumpH, () => aws.jumpHeightBlocks ?? null, v => { game._worldAdvSettings.jumpHeightBlocks = v; }, v => v == null ? 'Default' : v + ' bl', locked)),
         this._row('Air Jump', this._toggle(() => aws.airJumpEnabled, v => { game._worldAdvSettings.airJumpEnabled = v; }, locked)),
         this._row('Sprint', this._toggle(() => aws.sprintEnabled !== false, v => { game._worldAdvSettings.sprintEnabled = v; }, locked)),
+        this._row('Auto-Climb', this._toggle(() => !!aws.autoStepUp, v => { game._worldAdvSettings.autoStepUp = v; }, locked)),
       ];
       if (game.gameMode === 'sandbox') {
         rows.push(this._row('Disable XP Speed Boost', this._toggle(() => aws.disableXpSpeedBoost, v => { game._worldAdvSettings.disableXpSpeedBoost = v; }, locked)));

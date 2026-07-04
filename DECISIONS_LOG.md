@@ -767,3 +767,30 @@ local rename works offline immediately.
   "Imported World". The uploaded `fileName` is now threaded through `handleFileSelect` →
   `pendingFileImport` → `confirmImport` → `importFile`, and sent to the server, which applies the same
   fallback chain. Files: js/sandbox-ui.js, server/worlds-routes.js.
+
+---
+
+## Build 54 (2026-07-04) — Auto-Climb (walk up 1-block ledges)
+
+Requested for Speed Runner; implemented universally + configurable per world.
+
+- **Engine (js/player.js):** new `Player._tryAutoStep(level, c, bRowT, bRowB)` called from the horizontal
+  collision sweep in `_applyPhysics`. When movement is blocked by an obstacle that is exactly **one
+  block high with clear headroom** (feet-row solid, head-row + the row above the step clear at the
+  obstacle column, and no low ceiling over the player's current span) AND the player is on the ground,
+  it lifts the player onto the step (`y = bRowB*BLOCK_SIZE - height`) and lets the horizontal move
+  complete instead of stopping. 2-block+ walls still block (→ jump). Gated by `player._autoStepUp`.
+- **Config (universal, per world):** new `worldAdvSettings.autoStepUp` (default **false**). Applied to
+  every player each frame via `_applyMovementConfig` (`p._autoStepUp = !!aws.autoStepUp`), so it works
+  in all modes and toggles live. Free-rides the existing serialize/Object.assign path.
+- **UI:** new **Auto-Climb** row in the canvas World Settings → Physics tab (row 6, after Sprint). To
+  fit a 9th row, physics-tab row spacing tightened 48→42px in both the draw and click handlers (last
+  row lands where it did before; `RY(k)=FIRST_ROW+k*42` helper). Also added an Auto-Climb toggle to the
+  HTML pause menu Physics section (normal/platformer/sandbox).
+- **Sample worlds:** the 3 Speed Run worlds now ship with `autoStepUp:true` (regenerated); arenas
+  unchanged. Existing imports can enable it via World Settings → Physics.
+
+Files: js/player.js, js/game.js, js/pause-menu.js, tools/gen-sample-worlds.js, sample-worlds/SR_*.json,
+index.html (`?v=b54`), sw.js (`steveo-shell-v54`), js/constants.js (build 54), world_creation.md.
+Tests: `node test/run.js` → **182/182**; all modified files pass `node -c`. Browser-UNTESTED — the
+step-up feel + the tightened physics-panel layout warrant a quick look.

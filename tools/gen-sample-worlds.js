@@ -289,7 +289,9 @@ function buildSpeedRun(opts) {
   const startC = 4, startR = base - 1;
   const payload = world({
     name, mode: 'RUN', gr, playerPx: startC * BS, playerPy: (startR - 1) * BS - 20,
-    description: desc, adv: { backgroundTheme: theme },
+    // autoStepUp on by default for Speed Run — walk/run up 1-block ledges without
+    // jumping (build 54). Toggle per-world in World Settings → Physics → Auto-Climb.
+    description: desc, adv: { backgroundTheme: theme, autoStepUp: true },
   });
   emit(payload, [
     { c: startC, r: startR, label: 'start' },

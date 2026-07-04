@@ -109,6 +109,7 @@ class Game {
       jumpHeightBlocks:          null,      // null = use default JUMP_VELOCITY; else apex in blocks
       airJumpEnabled:            false,     // allow one mid-air (double) jump
       sprintEnabled:             true,      // Shift = 2× ground speed
+      autoStepUp:                false,     // walk/run up 1-block ledges without jumping (universal, per-world)
       // Phase 3A.3 — universal per-world "prescribed" zoom (all modes). The
       // sandbox/God-mode Z key cycles 100/200/300/400% then back to this default.
       worldZoom:                 1.0,       // 0.5–2.0 base view zoom
@@ -4252,6 +4253,7 @@ class Game {
     p._gravityOverride = g;
     p._sprintEnabled   = aws.sprintEnabled !== false;
     p._airJumpEnabled  = !!aws.airJumpEnabled;
+    p._autoStepUp      = !!aws.autoStepUp;
     p._jumpVelocityOverride = aws.jumpHeightBlocks
       ? -Math.sqrt(2 * g * aws.jumpHeightBlocks * BLOCK_SIZE)
       : null;
@@ -8896,51 +8898,40 @@ class Game {
       const tgX = L.px + L.pw - 82, tgW = 64, tgH = 24;
       const GRAVITY_OPTS = [0.10, 0.20, 0.33, 0.50, 0.66, 0.80, 1.00, 1.20, 1.50];
       const JUMPPAD_OPTS = [-6, -9, -12, -15, -18, -21, -24];
+      const JUMPH_OPTS = [null, 2, 2.5, 3, 3.5, 4, 4.5, 5];
+      const RY = (k) => L.FIRST_ROW + k * 42;   // physics-tab row spacing (9 rows)
+      const hitRow = (rY) => mx >= tgX && mx <= tgX + tgW && my >= rY && my <= rY + tgH;
       // Row 1: Gravity
-      if (mx >= tgX && mx <= tgX + tgW && my >= L.FIRST_ROW && my <= L.FIRST_ROW + tgH) {
+      if (hitRow(RY(0))) {
         const cur = GRAVITY_OPTS.findIndex(v => Math.abs(v - (aws.physicsGravity ?? GRAVITY)) < 0.005);
         aws.physicsGravity = GRAVITY_OPTS[(cur < 0 ? 4 : cur + 1) % GRAVITY_OPTS.length];
       }
       // Row 2: Jump Pad Force
-      const r2Y = L.FIRST_ROW + 48;
-      if (mx >= tgX && mx <= tgX + tgW && my >= r2Y && my <= r2Y + tgH) {
+      if (hitRow(RY(1))) {
         const cur = JUMPPAD_OPTS.indexOf(aws.jumpPadVForce ?? -18);
         aws.jumpPadVForce = JUMPPAD_OPTS[(cur < 0 ? 4 : cur + 1) % JUMPPAD_OPTS.length];
       }
       // Row 3: Jump Height (player jump apex, in blocks; null = default)
-      const JUMPH_OPTS = [null, 2, 2.5, 3, 3.5, 4, 4.5, 5];
-      const r3Y = L.FIRST_ROW + 96;
-      if (mx >= tgX && mx <= tgX + tgW && my >= r3Y && my <= r3Y + tgH) {
+      if (hitRow(RY(2))) {
         const cur = JUMPH_OPTS.findIndex(v => v === (aws.jumpHeightBlocks ?? null));
         aws.jumpHeightBlocks = JUMPH_OPTS[(cur < 0 ? 0 : cur + 1) % JUMPH_OPTS.length];
       }
       // Row 4: Air Jump (double jump) toggle
-      const r4Y = L.FIRST_ROW + 144;
-      if (mx >= tgX && mx <= tgX + tgW && my >= r4Y && my <= r4Y + tgH) {
-        aws.airJumpEnabled = !aws.airJumpEnabled;
-      }
+      if (hitRow(RY(3))) aws.airJumpEnabled = !aws.airJumpEnabled;
       // Row 5: Sprint toggle (default on)
-      const r5Y = L.FIRST_ROW + 192;
-      if (mx >= tgX && mx <= tgX + tgW && my >= r5Y && my <= r5Y + tgH) {
-        aws.sprintEnabled = (aws.sprintEnabled === false);
-      }
-      // Row 6: Default Zoom (base view zoom, all modes)
-      const r6Y = L.FIRST_ROW + 240;
-      if (mx >= tgX && mx <= tgX + tgW && my >= r6Y && my <= r6Y + tgH) {
+      if (hitRow(RY(4))) aws.sprintEnabled = (aws.sprintEnabled === false);
+      // Row 6: Auto-Climb — walk/run up 1-block ledges without jumping (universal)
+      if (hitRow(RY(5))) aws.autoStepUp = !aws.autoStepUp;
+      // Row 7: Default Zoom (base view zoom, all modes)
+      if (hitRow(RY(6))) {
         const Z = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
         const cur = Z.findIndex(v => Math.abs(v - (aws.worldZoom ?? 1.0)) < 0.001);
         aws.worldZoom = Z[(cur < 0 ? 2 : cur + 1) % Z.length];
       }
-      // Row 7: Lock Physics — greys the pause-menu physics section for players
-      const r7Y = L.FIRST_ROW + 288;
-      if (mx >= tgX && mx <= tgX + tgW && my >= r7Y && my <= r7Y + tgH) {
-        aws.physicsLocked = !aws.physicsLocked;
-      }
-      // Row 8: Lock Boss Scaling — greys the pause-menu boss multipliers
-      const r8Y = L.FIRST_ROW + 336;
-      if (mx >= tgX && mx <= tgX + tgW && my >= r8Y && my <= r8Y + tgH) {
-        aws.bossScalingLocked = !aws.bossScalingLocked;
-      }
+      // Row 8: Lock Physics — greys the pause-menu physics section for players
+      if (hitRow(RY(7))) aws.physicsLocked = !aws.physicsLocked;
+      // Row 9: Lock Boss Scaling — greys the pause-menu boss multipliers
+      if (hitRow(RY(8))) aws.bossScalingLocked = !aws.bossScalingLocked;
       return;
     }
 
@@ -9595,28 +9586,32 @@ class Game {
         ctx.fillText(valStr, tgX + tgW / 2, rY + 13);
       };
 
-      drawPhysRow(L.FIRST_ROW, 'Gravity',
+      const RY = (k) => L.FIRST_ROW + k * 42;   // physics-tab row spacing (9 rows)
+      drawPhysRow(RY(0), 'Gravity',
         '(acceleration per frame — default 0.66)',
         (aws.physicsGravity ?? GRAVITY).toFixed(2));
-      drawPhysRow(L.FIRST_ROW + 48, 'Jump Pad Force',
+      drawPhysRow(RY(1), 'Jump Pad Force',
         '(vertical launch on JUMP_PAD blocks)',
         (aws.jumpPadVForce ?? -18).toString());
-      drawPhysRow(L.FIRST_ROW + 96, 'Jump Height',
+      drawPhysRow(RY(2), 'Jump Height',
         '(player jump apex in blocks — default ~3.5)',
         aws.jumpHeightBlocks ? aws.jumpHeightBlocks + ' bl' : 'Default');
-      drawPhysRow(L.FIRST_ROW + 144, 'Air Jump',
+      drawPhysRow(RY(3), 'Air Jump',
         '(allow one mid-air double jump)',
         aws.airJumpEnabled ? 'On' : 'Off');
-      drawPhysRow(L.FIRST_ROW + 192, 'Sprint',
+      drawPhysRow(RY(4), 'Sprint',
         '(hold Shift to move 2× speed)',
         aws.sprintEnabled !== false ? 'On' : 'Off');
-      drawPhysRow(L.FIRST_ROW + 240, 'Default Zoom',
+      drawPhysRow(RY(5), 'Auto-Climb',
+        '(walk/run up 1-block ledges — no jump needed)',
+        aws.autoStepUp ? 'On' : 'Off');
+      drawPhysRow(RY(6), 'Default Zoom',
         '(base view zoom; Z cycles 100-400% in sandbox/God)',
         `${(aws.worldZoom || 1).toFixed(2)}x`);
-      drawPhysRow(L.FIRST_ROW + 288, 'Lock Physics',
+      drawPhysRow(RY(7), 'Lock Physics',
         '(grey these out in the pause menu — players can\'t override)',
         aws.physicsLocked ? 'On' : 'Off');
-      drawPhysRow(L.FIRST_ROW + 336, 'Lock Boss Scaling',
+      drawPhysRow(RY(8), 'Lock Boss Scaling',
         '(grey boss health/damage/rate in the pause menu)',
         aws.bossScalingLocked ? 'On' : 'Off');
 

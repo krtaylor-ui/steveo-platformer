@@ -64,6 +64,7 @@ class Player {
     this.speedMultiplier = 1;      // extra multiplier stacked on top of hyperSpeed (1 or 2)
     this.canPhaseThrough = false;  // noclip: walk through blocks (X key, god mode only)
     this.xpSpeedDisabled = false;  // set by game.js from worldAdvSettings.disableXpSpeedBoost
+    this._autoStepUp     = false;  // set by game.js from worldAdvSettings.autoStepUp — walk up 1-block ledges
 
     // Jump buffer / coyote time
     this._jumpBuffer  = 0;
@@ -400,6 +401,9 @@ class Player {
       let stopped = false;
       for (let c = colStart; c <= colEnd; c++) {
         if (level.isSolid(bRowT, c) || level.isSolid(bRowB, c)) {
+          // Auto-climb: if the obstacle is a single block with clear headroom,
+          // step up onto it and keep moving instead of stopping (opt-in per world).
+          if (this._tryAutoStep(level, c, bRowT, bRowB)) { this.x = newX; stopped = true; break; }
           this.x  = c * BLOCK_SIZE - this.width;
           this.vx = 0;
           stopped = true;
@@ -414,6 +418,7 @@ class Player {
       let stopped = false;
       for (let c = colStart; c >= colEnd; c--) {
         if (level.isSolid(bRowT, c) || level.isSolid(bRowB, c)) {
+          if (this._tryAutoStep(level, c, bRowT, bRowB)) { this.x = newX; stopped = true; break; }
           this.x  = (c + 1) * BLOCK_SIZE;
           this.vx = 0;
           stopped = true;
@@ -425,6 +430,26 @@ class Player {
 
     // World bounds
     this.x = Math.max(0, this.x);
+  }
+
+  // Auto-climb: when horizontal movement is blocked at column `c`, lift the player
+  // onto the obstacle IFF it's exactly one block high with clear headroom — so
+  // walking/running up a single-block ledge is seamless (no jump). Only from the
+  // ground, and only when the per-world setting enables it. Returns true if it
+  // stepped up (the caller then completes the horizontal move).
+  //   bRowB = feet row, bRowT = head row (bRowB-1 when standing).
+  _tryAutoStep(level, c, bRowT, bRowB) {
+    if (!this._autoStepUp || !this.onGround) return false;
+    if (!level.isSolid(bRowB, c)) return false;   // must be blocked at the feet row
+    if (level.isSolid(bRowT, c)) return false;    // obstacle ≥ 2 blocks → not a step
+    const headRow = bRowT - 1;                    // the row the player rises into
+    if (level.isSolid(headRow, c)) return false;  // no room above the step
+    // Don't clip into a low ceiling above the player's current span.
+    const cl = Math.floor((this.x + 2) / BLOCK_SIZE);
+    const cr = Math.floor((this.x + this.width - 2) / BLOCK_SIZE);
+    for (let cc = cl; cc <= cr; cc++) if (level.isSolid(headRow, cc)) return false;
+    this.y = bRowB * BLOCK_SIZE - this.height;    // sit the player's feet on the step top
+    return true;
   }
 
   _animate(input) {

@@ -30,6 +30,10 @@ via the generator.
 - **Grid:** `grid[row][col]`, H rows × W cols, row 0 = top. Block ids = `BLOCK` enum; solidity = `BLOCK_DATA.solid`.
 - **Physics (constants.js):** GRAVITY 0.66, JUMP_VELOCITY −12.0, MOVE_SPEED 6.0 → **apex ≈ 3.4 blocks**,
   same-level gap ≈ 6.8. Design rule: jumps lip-to-lip ≤ 4, rise ≤ 2, raised platforms ≤ 3 up.
+- **Auto-Climb (build 54):** per-world `worldAdvSettings.autoStepUp` — walk/run up **1-block** ledges
+  with no jump (universal; toggle in World Settings → Physics → Auto-Climb, or the pause menu). ON by
+  default in the sample Speed Run worlds. Only affects single-block steps; 2+ still need a jump — so
+  level geometry can still use height for pacing.
 - **Speed Run:** `GOAL` (10) = finish, `playerPx/playerPy` = start, `levelId = playerName:worldName` (unique
   per world), `SPEED_ITEM`/`SPEED_BOOSTER`/`JUMP_PAD` supported. Respawn = back to start (no mid checkpoints
   in SR mode today — see open questions).
