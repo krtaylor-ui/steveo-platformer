@@ -12,8 +12,10 @@
 // Bump CACHE_VERSION on release to drop the old shell.
 // ============================================================
 
-const CACHE_VERSION = 'steveo-shell-v51';
+const CACHE_VERSION = 'steveo-shell-v52';
 const CORE = ['/', '/index.html', '/style.css', '/manifest.json', '/icon.svg',
+  // App icons (player-head, build 52).
+  '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon-180.png',
   // Pre-loaded starter worlds (seeded into local storage on first offline use).
   '/default-worlds/normal-default.json', '/default-worlds/platformer-default.json',
   '/default-worlds/speedrunner-default.json'];
