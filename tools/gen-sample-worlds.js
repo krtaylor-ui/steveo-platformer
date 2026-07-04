@@ -332,10 +332,12 @@ function buildSpeedRun(opts) {
     }
   }
 
-  // Finish plateau + GOAL gate
+  // Finish plateau + full-height GOAL line (spans the whole column above the
+  // surface, so a jumper is caught at any height — matches the SR full-column
+  // finish detection). Surface/body stay solid so you can run into it.
   layGround(c + 1, totalW - 1, top);
   const goalC = totalW - 8;
-  set(gr, goalC, top - 1, B.GOAL); set(gr, goalC, top - 2, B.GOAL);
+  for (let rr = 0; rr <= top - 1; rr++) set(gr, goalC, rr, B.GOAL);
 
   const startC = 4, startR = base - 1;
   const payload = world({

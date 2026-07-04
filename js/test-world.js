@@ -1,21 +1,22 @@
 // ============================================================
-// test-world.js — Universal Test World (Phase 3A.3)
+// test-world.js — Universal Test World (Phase 3A.3, HUD refresh build 57)
 // ------------------------------------------------------------
 // Launches the CURRENTLY EDITED world in any game mode as a throwaway instance:
-// no Supabase save, no leaderboard recording, no autosave. The game shows a
-// "🧪 TEST" badge and Esc returns straight to the editor (Game._testMode handles
-// the no-persistence + Esc-exit behaviour). Works for all four modes because the
-// Game constructor accepts `options.templateData` for sandbox/normal/platformer/
-// speedrunner (game.js ~453/489/497/514).
+// no Supabase save, no leaderboard/high-score recording, no autosave. While a
+// test runs, an always-on-top #test-hud shows two buttons — ↺ Restart and
+// ← Return to Sandbox — so there's a clear exit in every mode (the old canvas
+// ✕ button was skipped by the Speed-Runner HUD). Esc also exits to the editor.
+// The edited world is captured ONCE so Restart replays the exact same layout.
 // ============================================================
 
 const TEST_WORLD = {
-  // Open the "test in which mode?" modal.
+  _data: null,   // serialized editor world (captured once per test session)
+  _wid: null,    // sandbox world id to reopen on exit
+
   open() {
     if (!window.game) { alert('Open a world first.'); return; }
     const modal = document.getElementById('test-world-modal');
-    if (!modal) { return; }
-    modal.style.display = 'flex';
+    if (modal) modal.style.display = 'flex';
   },
 
   hide() {
@@ -26,6 +27,9 @@ const TEST_WORLD = {
   // mode: 'normal' | 'platformer' | 'speedrunner' | 'arena'
   choose(mode) {
     this.hide();
+    // Capture the edited world ONCE (from the live editor) so Restart replays it.
+    this._wid  = (typeof SANDBOX_UI !== 'undefined') ? SANDBOX_UI.selectedWorldId : null;
+    this._data = (typeof GAME_STATE !== 'undefined' && window.game) ? GAME_STATE.serialize(window.game) : null;
     if (mode === 'arena' && typeof ARENA_SELECT !== 'undefined' && ARENA_SELECT.chooseMode) {
       // Arena also needs a game type — reuse the picker, then launch.
       ARENA_SELECT.chooseMode((gameMode) => this._launch('arena', gameMode));
@@ -35,25 +39,42 @@ const TEST_WORLD = {
   },
 
   _launch(mode, arenaGameMode) {
-    if (!window.game) return;
-    const wid = (typeof SANDBOX_UI !== 'undefined') ? SANDBOX_UI.selectedWorldId : null;
-    const worldData = (typeof GAME_STATE !== 'undefined') ? GAME_STATE.serialize(window.game) : null;
-
     if (window.menu && typeof window.menu._stop === 'function') window.menu._stop();
-    if (typeof window.game.destroy === 'function') window.game.destroy();
+    if (window.game && typeof window.game.destroy === 'function') window.game.destroy();
     const hud = document.getElementById('sandbox-editor-hud');
     if (hud) hud.style.display = 'none';
 
     const options = { testMode: true };
-    if (worldData) options.templateData = worldData;
+    if (this._data) options.templateData = this._data;
     if (arenaGameMode) options.arenaGameMode = arenaGameMode;
 
-    window.game = new Game(mode, options, () => {
+    // Exit → back to the editor on the same world (nothing from the test persists).
+    // Used by the ← Return button, Esc, the pause menu, and natural end screens
+    // (all route through the Game's _onReturnToMenu callback).
+    const exit = () => {
+      this._hideControls();
       window.game = null;
-      // Back to the editor on the same world (no changes persisted from the test).
-      if (wid && typeof SANDBOX_UI !== 'undefined' && SANDBOX_UI.editWorld) SANDBOX_UI.editWorld(wid);
+      if (this._wid && typeof SANDBOX_UI !== 'undefined' && SANDBOX_UI.editWorld) SANDBOX_UI.editWorld(this._wid);
       else if (typeof SANDBOX_UI !== 'undefined' && SANDBOX_UI._returnToBrowser) SANDBOX_UI._returnToBrowser();
-    });
+    };
+    window.game = new Game(mode, options, exit);
+    // Restart = relaunch the same test from scratch (fresh timer / clean state).
+    this._showControls(() => this._launch(mode, arenaGameMode), exit);
+  },
+
+  _showControls(onRestart, onExit) {
+    const hud = document.getElementById('test-hud');
+    if (!hud) return;
+    hud.style.display = 'flex';
+    const r = document.getElementById('test-hud-restart');
+    const x = document.getElementById('test-hud-exit');
+    if (r) r.onclick = () => onRestart();
+    if (x) x.onclick = () => onExit();
+  },
+
+  _hideControls() {
+    const hud = document.getElementById('test-hud');
+    if (hud) hud.style.display = 'none';
   },
 };
 

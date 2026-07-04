@@ -1153,6 +1153,45 @@ html[data-theme="retro"] {
   cursor: not-allowed;
 }
 
+/* Sandbox playtest controls — a small always-on-top bar while testing a level.
+   Fixed top-centre so it's visible over any mode's canvas (unlike the old canvas
+   ✕ button, which the Speed-Runner HUD skipped). */
+#test-hud {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(20, 22, 30, 0.92);
+  border: 1px solid #3a3f52;
+  border-radius: 10px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+  z-index: 3000;
+}
+#test-hud .test-hud-badge {
+  font-size: 0.8rem;
+  font-weight: bold;
+  color: #ffcf5c;
+  letter-spacing: 0.5px;
+}
+#test-hud .test-hud-btn {
+  padding: 7px 14px;
+  font-size: 0.85rem;
+  font-weight: bold;
+  font-family: var(--font, system-ui, sans-serif);
+  color: #fff;
+  background: #3457d5;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+#test-hud .test-hud-btn:hover { filter: brightness(1.12); }
+#test-hud .test-hud-btn:active { transform: scale(0.97); }
+#test-hud .test-hud-btn-exit { background: #d1495b; }
+
 /* New modals share the create-game-modal overlay treatment */
 #create-world-modal,
 #copy-world-modal,

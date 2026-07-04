@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 56 (test-world exit via pause menu → Sandbox; no scoring in test mode)';
+const GAME_VERSION = 'v3 · build 57 (test-world HUD: Restart + Return to Sandbox buttons; full-column finish line)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

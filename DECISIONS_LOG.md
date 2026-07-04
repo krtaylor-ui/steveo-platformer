@@ -852,3 +852,30 @@ Sandbox, and no high-score recording in test mode.
 
 Files: js/game.js (Esc handler + `_srTriggerWin`), js/pause-menu.js (labels, confirm text, skip save),
 js/constants.js (build 56), index.html (`?v=b56`), sw.js (`steveo-shell-v56`). Tests 182/182; `node -c` clean.
+
+---
+
+## Build 57 (2026-07-04) — test-world HUD (Restart + Return to Sandbox) + full-column finish
+
+Feedback: still no visible exit in a Sandbox test (the canvas ✕ button was skipped by the Speed-Runner
+HUD's early return in `_drawHUD`), Esc "froze" the game (opened a pause overlay that wasn't a usable exit
+in the test context), and the finish line (a discrete block) missed jumpers.
+
+- **New `#test-hud`** — an always-on-top HTML bar (fixed top-centre, z-index 3000) shown whenever a
+  Sandbox playtest runs, with **↺ Restart** and **← Return to Sandbox** buttons + a "🧪 Test" badge.
+  Reliable in every mode (unlike the canvas button). Wired in `TEST_WORLD` (`_showControls`/`_hideControls`).
+- **`TEST_WORLD` refactor:** captures the edited world ONCE (so Restart replays the exact layout);
+  `_launch` shows the HUD, sets the Game's exit callback (Return/Esc/pause/end all route through it →
+  reopen editor), and Restart relaunches the same test. The "Test in Arena" button now routes through
+  `TEST_WORLD.choose('arena')` so it shares the HUD.
+- **Esc in test mode exits to the editor** (no pause-freeze). App-level.
+- **No high scores in test** (build 56) retained: `_srTriggerWin` early-returns; arena gated.
+- **Full-column finish line:** `_srCheckGoals` now wins on any horizontal contact with the goal's
+  COLUMN, at any height — so jumpers are caught. Works for ALL Speed Run worlds wherever a GOAL block is
+  placed (engine-level). The generator also draws the finish as a full-height GOAL banner (regenerated
+  SR worlds).
+
+Files: js/game.js (Esc + `_srCheckGoals`), js/test-world.js (HUD + capture-once), js/sandbox-ui.js
+(arena-test reroute), index.html (#test-hud + `?v=b57`), style.css (#test-hud), sw.js
+(`steveo-shell-v57`), js/constants.js (build 57), tools/gen-sample-worlds.js + sample-worlds/SR_*.json.
+Tests 182/182; `node -c` clean; structural check 9/9.

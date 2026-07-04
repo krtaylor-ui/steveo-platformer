@@ -103,7 +103,7 @@ const SANDBOX = {
     document.getElementById('sb-delete-btn')?.addEventListener('click', () => {
       if (confirm('Delete this world? This cannot be undone.')) this.deleteWorld(this.selectedWorldId);
     });
-    document.getElementById('sb-test-arena-btn')?.addEventListener('click', () => this.launchArenaTest());
+    document.getElementById('sb-test-arena-btn')?.addEventListener('click', () => { if (typeof TEST_WORLD !== 'undefined') TEST_WORLD.choose('arena'); });
     // Universal Test World (Phase 3A.3)
     document.getElementById('sb-test-world-btn')?.addEventListener('click', () => { if (typeof TEST_WORLD !== 'undefined') TEST_WORLD.open(); });
     document.getElementById('test-world-cancel-btn')?.addEventListener('click', () => { if (typeof TEST_WORLD !== 'undefined') TEST_WORLD.hide(); });

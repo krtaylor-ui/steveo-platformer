@@ -1361,11 +1361,14 @@ class Game {
     const escNow  = this.input.isDown('Escape');
     const escEdge = (escNow && !this._escWas) || this.input.p1JustDown('menu');
     if (escEdge) {
-      // Test mode (Sandbox playtest): Esc opens the normal pause menu — same
-      // options as a real game — whose Exit routes back to the editor via
-      // _onReturnToMenu (the launcher's callback), not the main menu. (The ✕ EXIT
-      // TEST button remains for an instant one-click exit.)
-      if (this.isArena && this.arenaState.phase === 'ended') {
+      // Test mode (Sandbox playtest): Esc exits straight back to the editor via
+      // _onReturnToMenu (the launcher's callback). The on-screen ↺ Restart /
+      // ← Sandbox buttons (#test-hud) are the primary controls; no pause-freeze.
+      if (this._testMode) {
+        this.destroy();
+        if (this._onReturnToMenu) this._onReturnToMenu();
+        return;
+      } else if (this.isArena && this.arenaState.phase === 'ended') {
         this.destroy();
         if (this._onReturnToMenu) this._onReturnToMenu();
         return;
@@ -15185,9 +15188,11 @@ class Game {
   _srCheckGoals() {
     const p = this.player;
     for (const g of this._sr.goals) {
-      const gx = g.col * BLOCK_SIZE, gy = g.row * BLOCK_SIZE;
-      if (p.x + p.width > gx && p.x < gx + BLOCK_SIZE &&
-          p.y + p.height > gy && p.y < gy + BLOCK_SIZE) {
+      const gx = g.col * BLOCK_SIZE;
+      // Full-height finish LINE: any horizontal contact with the goal's column
+      // wins, at any vertical position — so a jumper is caught too. (The finish
+      // spans the whole column wherever the goal block was placed.)
+      if (p.x + p.width > gx && p.x < gx + BLOCK_SIZE) {
         this._srTriggerWin(); return;
       }
     }
