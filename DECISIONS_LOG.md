@@ -819,3 +819,14 @@ Generator: `buildSpeedRun` rewritten to a script builder; **reachability validat
 (PAD_JUMP_UP/DX envelope) so wide pad-jumps validate. Added ore/glowstone block ids + solidity.
 All 9 worlds still pass the structural check. Files: tools/gen-sample-worlds.js, sample-worlds/SR_*.json,
 world_creation.md. No js/ or GAME_VERSION change (content-only).
+
+---
+
+## Build 55 (2026-07-04) — fix: white-on-white text in file-import & Modern modals
+
+The Modern `.modal-content` is `background:white` but set no default text color, so bare descendants
+(the file-input's filename/"No file chosen" text, the mode-override `<span>`, stray `<p>`s) inherited the
+body's **white** → invisible on white. Prior fixes patched specific elements (leaderboard, pause, success
+message) but not the import modal's generic text. Fix: one default `color:#2a2a3a` on `.modal-content`
+(Modern); Retro already overrides bg+color to dark/light. Elements with their own color keep it via
+specificity/source-order. Files: style.css (+ `?v=b55`, SW `steveo-shell-v55`, GAME_VERSION build 55).

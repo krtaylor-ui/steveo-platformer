@@ -669,6 +669,11 @@ html[data-theme="retro"] {
 
 .modal-content {
   background: white;
+  /* Default dark text so bare descendants (file-input filename, stray <p>/<span>,
+     the mode-override span) don't inherit the body's white → white-on-white on the
+     white Modern modal. Retro overrides both bg + color (see html[data-theme=retro]).
+     Elements with their own color (h3, labels, warnings) keep it via specificity. */
+  color: #2a2a3a;
   border-radius: 12px;
   padding: 30px;
   max-width: 400px;
