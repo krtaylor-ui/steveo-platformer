@@ -1,8 +1,7 @@
 # Steveo Platformer — Future Roadmap & Design Notes
 
-> **Status:** Living doc. Updated 2026‑07‑03 at **build 50** (merged to `main`; not yet
-> pushed to origin/Railway — origin is at build 43). Records *intent, approach, effort,
-> reuse, and open decisions* — not final specs.
+> **Status:** Living doc. Updated 2026‑07‑03 at **build 51** (merged to `main`).
+> Records *intent, approach, effort, reuse, and open decisions* — not final specs.
 
 ## ✅ Shipped since this doc was written (builds 24–50)
 - **Installable version (PWA)** — §2 below. DONE (build 27): `manifest.json` + `sw.js`
@@ -21,13 +20,22 @@
   provider, file import/export + bundled starters, and the explicit Copy‑to‑Online/Offline
   bridge (unified Copy modal). *Remaining:* offline providers for the OTHER modes
   (Normal/Platformer/Arena), F‑key quick‑save reconciliation, login‑sync polish — see §6.
+- **Per‑world background theme (Tier 1)** — §9 below. DONE (build 51): a "BG" tab in the
+  Sandbox World Settings modal picks Auto/Sky/Cave/Nether/End; forces that backdrop
+  everywhere (visual only — gameplay biome regions untouched). Works in Arena + all modes.
 
 ## 🔜 Still planned (not built)
 - **User Guide** — §1 below (not started).
 - **Offline providers for Normal / Platformer / Arena** — extend the §6 local provider
   beyond Sandbox (only Sandbox works offline today).
 - **World cleanup widget** — see section [7] below (provenance dependency now shipped).
-- **Tower Defense + MOBA + Bot/AI** — §4 below (not started).
+- **Editable background transition zones (Tier 3)** — §9 below; generalize the hardcoded
+  depth/column thresholds into designer‑editable zones. Good moment to **revisit Platformer
+  mode + bosses** (§10).
+- **Warden boss** — §10 below (not started).
+- **Tower Defense mode** (roam‑free, wave‑survival — *distinct from "Defend the Tower"*) —
+  §11 below (not started).
+- **Tower Defense + MOBA + Bot/AI** (the larger action‑TD/MOBA substrate) — §4 below.
 - **itch.io release / Tauri desktop installer** — see section [8] below.
 
 ---
@@ -423,3 +431,86 @@ Bearer tokens, so **no server CORS change needed** — just a configurable clien
   Railway + local keep working; set to Railway for the itch build).
 - Best combined with the local‑first mode [6]: offline‑capable desktop app that *optionally*
   signs in for cloud/online.
+
+---
+
+## 9. Background themes + editable transition zones  *(Tier 1 SHIPPED build 51; Tier 3 planned)*
+
+**Goal:** let a Sandbox designer choose a world's backdrop, and (later) control where
+backgrounds change.
+
+**How backgrounds work today (the constraint):** there is **no "dimension" state**. The
+backdrop is recomputed every frame from the player's grid position — `_playerBiome()`
+(`game.js`) returns `plains/cave/nether/end` from column (X) + row (Y), and `_drawSky()`
+paints it. Nether/End are just **column ranges** of the same world (constants
+`BIOME_CAVE_END=300`, `BIOME_END_START=500`), and gameplay (dragon fight bounds, End‑void
+death, portals, music state machine) keys off those same constants. So "visual theme" and
+"gameplay biome region" are welded together.
+
+### ✅ Tier 1 — per‑world background picker (build 51)
+Decoupled visuals from gameplay: added `_worldAdvSettings.backgroundTheme`
+(`'auto'|'sky'|'cave'|'nether'|'end'`, default `'auto'`) + a new `_skyBiome()` that returns
+the override when set and falls back to `_playerBiome()` when `'auto'`. `_render` draws from
+`_skyBiome()`; `_playerBiome()` (gameplay) is untouched, so forcing a theme never breaks the
+Nether/End regions, dragon, void death, or music. A forced Sky/Cave also pins the depth blend
+so it ignores player depth. UI = a **"BG" tab** in the canvas World Settings modal (mirrors
+the Physics tab); free‑rides the existing `worldAdvSettings` serialize path. Works in Arena
+and every mode. Backward‑compatible (older worlds default to Auto).
+
+### 🟠 Tier 3 — editable transition zones (planned)
+Make the *boundaries* designer‑editable instead of hardcoded:
+- **Vertical (depth):** today the sky→cave blend is hardcoded to rows 24→28 in `_drawSky`
+  and row 28 in `_playerBiome`. Generalize into a config table (e.g. `[{theme, fromRow,
+  toRow}]`) + UI to set the thresholds. Reasonable scope.
+- **Horizontal (columns):** the 150/300/500 boundaries are **load‑bearing gameplay
+  constants** (dragon bounds, portals, void death, music). Making these editable is riskier
+  and should be scoped separately — likely requires promoting "biome region" to real
+  per‑world data rather than global constants.
+- **Pairs well with revisiting Platformer mode + bosses (§10):** authored vertical zones
+  (sky → cave → nether descent) would give Platformer levels real environmental variety and
+  natural boss‑arena backdrops. Consider doing Tier 3 and the Platformer/boss pass together.
+
+**Effort:** Tier 3 vertical = MODERATE; horizontal/full region‑as‑data = LARGE.
+
+---
+
+## 10. Warden boss + Platformer boss pass  *(idea captured 2026‑07‑03)*
+
+**Warden boss** — a new heavy melee/ranged boss in the Minecraft‑Warden vein (high HP, area
+attack, slow but punishing). Reuses the existing boss infrastructure (Wither/Dragon: HP bar,
+`bossHealthMultiplier`/`bossDamageMultiplier`/`bossAttackRateMultiplier` scaling in
+`_worldAdvSettings`, boss AI patterns in `mobs.js`). Open design points: signature attack
+(sonic boom / shockwave?), trigger (sculk‑style proximity, or a summon block), which
+dimensions/areas it spawns in, and loot.
+
+**Platformer boss pass** — Platformer mode currently has no dedicated bosses. Revisit it to
+add boss encounters (Warden being one candidate), ideally with authored background transition
+zones (§9 Tier 3) framing the arenas. Group this with the Tier 3 work.
+
+**Effort:** single new boss = MODERATE (heavy reuse of the boss/mob systems); the Platformer
+encounter framing depends on how much §9 Tier 3 lands first.
+
+---
+
+## 11. Tower Defense mode (standalone)  *(idea captured 2026‑07‑03 — DISTINCT from "Defend the Tower")*
+
+**Not** the existing Arena **Defend the Tower** PvP mode (`tower-system.js`, first‑tower‑
+destroyed wins). This is a **dedicated single/co‑op Tower Defense game mode**: waves of mobs
+advance toward a goal/core along a route; the player places and upgrades towers (emerald
+economy) to stop them; survive N waves to win.
+
+**Relationship to §4:** §4 describes the *full* "Action Tower Defense + MOBA" substrate
+(authored lanes, waypoint minions, allied creeps, team targeting, objective bots) — a LARGE
+multi‑phase vision. This §11 is the **smaller, shippable first cut**: one route, a few tower
+types, wave survival, protect the core — effectively the "Single‑player TD prototype" called
+out in §4e, promoted to its own roadmap line because it's a concrete standalone mode the user
+wants, separate from the Arena Defend‑the‑Tower confusion.
+
+**Reuse (already in the codebase):** `EMERALD_SYSTEM` (currency), `arena-modes.js`
+`_updateWaves`/`wavesCleared` + `arena-rules.js` win conditions (waves), `placedSpawnLines`
+(authorable enemy spawns), `TOWER_SYSTEM` (a core/base with HP to defend), reactive mob AI
+(`_createMob`). The genuinely new piece is **path/waypoint following** for the advancing wave
+(see §4b) + tower placement/upgrade UI.
+
+**Effort:** MODERATE for the standalone prototype (heavy reuse); grows into §4 if extended to
+lanes/MOBA/bots.

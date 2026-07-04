@@ -5,16 +5,26 @@ immediately below for the latest; the Phase-3 sections further down are the
 historical record. `DECISIONS_LOG.md` = every decision; `FUTURE_ROADMAP.md` =
 planned work (User Guide, Tower Defense/bots, world cleanup, itch/Tauri).
 
-## CURRENT STATE (2026-07-03) — build 50
+## CURRENT STATE (2026-07-03) — build 51
 
-**Where things are:** `main` is at **build 50**. Builds 12–43 shipped earlier
+**Where things are:** `main` is at **build 51**. Builds 12–43 shipped earlier
 (24–28 Leaderboards/PWA/Mobile/Pause; 29–43 assorted fixes + the Speed Run
-race-car model). **Builds 44–50 — the local-first / offline-worlds initiative
-(FUTURE_ROADMAP §6) — are now merged into `main` but NOT YET pushed to
-`origin`/Railway** (origin/main is still at build 43). There are **no live users
-yet**. `GAME_VERSION` = `v3 · build 50`; cache-buster `?v=b50`; SW
-`CACHE_VERSION = steveo-shell-v50` (bump ALL THREE every commit). Test suite:
-**182/182**. All of 44–50 is headless-verified but **browser-UNTESTED**.
+race-car model). Builds 44–50 = the local-first / offline-worlds initiative
+(FUTURE_ROADMAP §6). **Build 51 = per-world background theme (FUTURE_ROADMAP §9
+Tier 1).** There are **no live users yet**. `GAME_VERSION` = `v3 · build 51`;
+cache-buster `?v=b51`; SW `CACHE_VERSION = steveo-shell-v51` (bump ALL THREE every
+commit). Test suite: **182/182**. Builds 44–51 are headless-verified;
+44–50 partially browser-tested; **51 browser-UNTESTED**.
+
+**Build 51 — per-world background theme (§9 Tier 1):** new `_worldAdvSettings.backgroundTheme`
+(`'auto'|'sky'|'cave'|'nether'|'end'`, default `'auto'`) + `Game._skyBiome()`, which returns
+the override or falls back to the position-based `Game._playerBiome()`. `_render` draws the
+backdrop from `_skyBiome()`; `_playerBiome()` (music/void-death/dragon/portals) is UNCHANGED,
+so a forced theme is visual-only and never breaks the Nether/End column regions. A forced
+Sky/Cave also pins the `_drawSky` depth blend. UI = a new "BG" tab in the canvas World
+Settings modal (`_drawWorldSettings`/`_updateWorldSettings`). Free-rides the existing
+`worldAdvSettings` serialize/`Object.assign`-on-load path; backward-compatible (old worlds
+default to Auto).
 
 **Builds 44–50 (local-first / offline worlds — FUTURE_ROADMAP §6):**
 - **44 — World provenance metadata.** Every saved world carries

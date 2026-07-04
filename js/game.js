@@ -112,6 +112,10 @@ class Game {
       // Phase 3A.3 — universal per-world "prescribed" zoom (all modes). The
       // sandbox/God-mode Z key cycles 100/200/300/400% then back to this default.
       worldZoom:                 1.0,       // 0.5–2.0 base view zoom
+      // Tier 1 — per-world background theme. 'auto' = position-driven (sky/cave
+      // by depth, nether/end by column, as always). Any other value forces that
+      // backdrop everywhere (VISUAL ONLY — gameplay biome regions are unchanged).
+      backgroundTheme:           'auto',    // 'auto' | 'sky' | 'cave' | 'nether' | 'end'
       // Phase 3A.2 — per-world arena config
       arenaPlayerMaxHealth:      20,        // hp (2–40); UI shows hearts = hp/2
       arenaZoomMode:             'NONE',    // 'NONE' | 'PRESET' | 'DYNAMIC'
@@ -4028,6 +4032,18 @@ class Game {
     return row < 28 ? 'plains' : 'cave';
   }
 
+  // Visual backdrop selector (Tier 1). Honors the per-world backgroundTheme
+  // override; falls back to the position-based gameplay biome when 'auto'. This
+  // is VISUAL ONLY — _playerBiome() (music, void death, dragon, portals) is
+  // unchanged, so forcing a theme never alters gameplay biome regions.
+  _skyBiome() {
+    const theme = this._worldAdvSettings?.backgroundTheme;
+    if (theme && theme !== 'auto') {
+      return theme === 'sky' ? 'plains' : theme; // 'cave' | 'nether' | 'end' pass through
+    }
+    return this._playerBiome();
+  }
+
   _checkDeath() {
     if (!this.player.isDead) return;
     const cause = 'Killed by ' + (this._nearestMobName() ?? 'a monster');
@@ -5242,7 +5258,7 @@ class Game {
       shake.frames--;
     }
 
-    const biome = this._playerBiome();
+    const biome = this._skyBiome();
     this._drawSky(ctx, biome);
     if (biome === 'plains') {
       this._drawCelestial(ctx);   // stars + sun/moon behind clouds
@@ -5848,10 +5864,15 @@ class Game {
       return;
     }
 
-    // Smooth sky→cave blend based on player centre row (24 = start, 28 = full cave)
-    const t = Math.max(0, Math.min(1,
-      (this.player.cy - 24 * BLOCK_SIZE) / (4 * BLOCK_SIZE)
-    ));
+    // Smooth sky→cave blend based on player centre row (24 = start, 28 = full cave).
+    // A forced background theme pins the blend so it ignores player depth:
+    // 'sky' → always full sky (t=0), 'cave' → always full cave (t=1).
+    const _theme = this._worldAdvSettings?.backgroundTheme;
+    const t = (_theme === 'cave') ? 1
+            : (_theme === 'sky')  ? 0
+            : Math.max(0, Math.min(1,
+                (this.player.cy - 24 * BLOCK_SIZE) / (4 * BLOCK_SIZE)
+              ));
 
     if (t < 1) {
       // Day/night sky colors with dawn/dusk blend
@@ -8599,7 +8620,7 @@ class Game {
     }
 
     // Tab bar clicks — sandbox shows all 8 tabs; other modes only show the 4 player-relevant tabs
-    const _allWsTabs = [{ id: 'drops', label: 'Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'multiplayer', label: 'Multi' }, { id: 'speedrunner', label: 'SR' }, { id: 'physics', label: 'Physics' }, { id: 'arena', label: 'Arena' }];
+    const _allWsTabs = [{ id: 'drops', label: 'Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'multiplayer', label: 'Multi' }, { id: 'speedrunner', label: 'SR' }, { id: 'physics', label: 'Physics' }, { id: 'background', label: 'BG' }, { id: 'arena', label: 'Arena' }];
     const _playTabIds = ['advanced', 'input', 'audio', 'multiplayer'];
     const TABS = (this.gameMode === 'sandbox') ? _allWsTabs : _allWsTabs.filter(t => _playTabIds.includes(t.id));
     const TAB_STRIDE = Math.floor((L.pw - 16) / TABS.length), TAB_W = TAB_STRIDE - 3;
@@ -8912,6 +8933,18 @@ class Game {
       return;
     }
 
+    if (this._wsTab === 'background') {
+      const aws = this._worldAdvSettings;
+      const tgX = L.px + L.pw - 100, tgW = 82, tgH = 24;
+      const BG_OPTS = ['auto', 'sky', 'cave', 'nether', 'end'];
+      // Row 1: Background theme cycle
+      if (mx >= tgX && mx <= tgX + tgW && my >= L.FIRST_ROW && my <= L.FIRST_ROW + tgH) {
+        const cur = BG_OPTS.indexOf(aws.backgroundTheme || 'auto');
+        aws.backgroundTheme = BG_OPTS[(cur < 0 ? 0 : cur + 1) % BG_OPTS.length];
+      }
+      return;
+    }
+
     if (this._wsTab === 'arena') {
       const aws  = this._worldAdvSettings;
       const tgX  = L.px + L.pw - 100, tgW = 86, tgH = 22, rowH = 30;
@@ -9041,7 +9074,7 @@ class Game {
     ctx.fillText('×', xbx + 10, xby + 11);
 
     // Tab bar — sandbox shows all 8 tabs; other modes show only 4 player-relevant tabs
-    const _allWsTabs2 = [{ id: 'drops', label: 'Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'multiplayer', label: 'Multi' }, { id: 'speedrunner', label: 'SR' }, { id: 'physics', label: 'Physics' }, { id: 'arena', label: 'Arena' }];
+    const _allWsTabs2 = [{ id: 'drops', label: 'Drops' }, { id: 'time', label: 'Time' }, { id: 'advanced', label: 'Advanced' }, { id: 'input', label: 'Input' }, { id: 'audio', label: 'Audio' }, { id: 'multiplayer', label: 'Multi' }, { id: 'speedrunner', label: 'SR' }, { id: 'physics', label: 'Physics' }, { id: 'background', label: 'BG' }, { id: 'arena', label: 'Arena' }];
     const _playTabIds2 = ['advanced', 'input', 'audio', 'multiplayer'];
     const TABS = (this.gameMode === 'sandbox') ? _allWsTabs2 : _allWsTabs2.filter(t => _playTabIds2.includes(t.id));
     const TAB_STRIDE = Math.floor((L.pw - 16) / TABS.length), TAB_W = TAB_STRIDE - 3;
@@ -9575,6 +9608,45 @@ class Game {
       drawPhysRow(L.FIRST_ROW + 336, 'Lock Boss Scaling',
         '(grey boss health/damage/rate in the pause menu)',
         aws.bossScalingLocked ? 'On' : 'Off');
+
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    } else if (this._wsTab === 'background') {
+      // ── Background tab (Tier 1) ───────────────────────────────
+      const aws  = this._worldAdvSettings;
+      const mx2  = this.input.mouse.x, my2 = this.input.mouse.y;
+      const tgX  = L.px + L.pw - 100, tgW = 82, tgH = 24;
+
+      ctx.font = '9px Courier New'; ctx.fillStyle = '#888899';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText('Per-world backdrop (visual only)  ·  P or Esc to close',
+        L.px + L.pw / 2, L.CONTENT_Y + 8);
+
+      const THEME_LABELS = { auto: 'Auto', sky: 'Sky', cave: 'Cave', nether: 'Nether', end: 'End' };
+      const drawBgRow = (rY, label, sub, valStr) => {
+        ctx.font = '11px Courier New'; ctx.fillStyle = '#AAAACC';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(label, L.MOB_COL, rY + 11);
+        ctx.font = '9px Courier New'; ctx.fillStyle = '#666677';
+        ctx.fillText(sub, L.MOB_COL, rY + 26);
+        const hov = mx2 >= tgX && mx2 <= tgX + tgW && my2 >= rY && my2 <= rY + tgH;
+        ctx.fillStyle = hov ? '#1A2A3A' : '#232333';
+        ctx.strokeStyle = hov ? '#44AAFF' : '#555577'; ctx.lineWidth = 1;
+        ctx.fillRect(tgX, rY, tgW, tgH); ctx.strokeRect(tgX, rY, tgW, tgH);
+        ctx.font = 'bold 11px Courier New'; ctx.fillStyle = '#88CCFF';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(valStr, tgX + tgW / 2, rY + 13);
+      };
+
+      drawBgRow(L.FIRST_ROW, 'Background',
+        '(Auto = follows location: sky/cave by depth, nether/end by area)',
+        THEME_LABELS[aws.backgroundTheme || 'auto']);
+
+      ctx.font = '9px Courier New'; ctx.fillStyle = '#666677';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText('Sky / Cave / Nether / End force that backdrop everywhere in this world.',
+        L.MOB_COL, L.FIRST_ROW + 64);
+      ctx.fillText('Gameplay is unchanged — this only swaps the painted background.',
+        L.MOB_COL, L.FIRST_ROW + 80);
 
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     } else if (this._wsTab === 'arena') {
