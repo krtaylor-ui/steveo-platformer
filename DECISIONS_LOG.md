@@ -639,3 +639,131 @@ Audit answers (Q0/§5):
 - Browser-UNTESTED: the entire offline flow (entry, local Sandbox CRUD, import/export,
   seeded starters, the copy modal + duplicate guard). Migration still pending:
   `server/sql/speedrun.sql`.
+
+---
+
+## Sample Worlds content pass (2026-07-04) — [Sample] test batch
+
+**What:** a content-generation session (not a code feature). Produced a batch of playable
+**test** worlds for Kevin to try before an official release. Deliverables:
+`SAMPLE_WORLDS_CONCEPTS.md` (Phase A concepts), `SAMPLE_WORLDS_README.md` (import steps +
+physics writeup + redstone assessment + what-to-try-first), `tools/gen-sample-worlds.js`
+(generator + structural validator), and 9 world files in `sample-worlds/`.
+
+### Up-front decisions (Kevin, in-session)
+- **Scope:** *Focused (~9)* — 3 Speed Run + 1 flagship per Arena category (6). (Options offered:
+  lean ~15 / full ~24 / focused ~9.)
+- **Delivery:** JSON import, accepted **with the caveat** that offline file-import hardcodes
+  `requestedMode='NRM'` (`js/sandbox-ui.js` handleFileSelect/importFile) — every imported world
+  lands as **Normal**, so Kevin sets the real mode via the per-card **Mode dropdown** (all 4 modes,
+  `_worldCard`). No code changes; documented in the README. (No `seedDefaults` patch.)
+- **Redstone reference:** Kevin copied `Platformer_-_V2_PLT_2026-07-04.json` into `saves/`
+  (the published V2 is unreachable here — cloud, other account, no browser/Supabase). Studied it
+  directly instead of first-principles.
+
+### Data model confirmed (by reading the code, for the generator)
+- Worlds authored in the **raw `GAME_STATE.serialize()` shape** (top-level `grid`, `worldName`,
+  `gameModeDefault`, placeables, `worldAdvSettings`, `provenance`). `importFile` reads
+  `parsed.world_data || parsed` and `world_name || worldName` — raw shape imports cleanly.
+- **Grid = `grid[row][col]`**, H rows × W cols, row 0 top. Block ids per `BLOCK` enum; solidity per
+  `BLOCK_DATA.solid` (leaves/lava/goal/lever/booster/speed-item non-solid; trapdoor solid-when-closed
+  via `redstone.isTrapdoorOpen`).
+- **Speed Run:** `GOAL` (id 10) = finish; `playerPx/playerPy` = start; `levelId = playerName:worldName`
+  (must be unique → all use playerName `Sample` + distinct worldName); `SPEED_ITEM`/`SPEED_BOOSTER`/`JUMP_PAD`
+  supported. sr* tuning keys default in engine (game.js 94–104); stated explicitly anyway.
+- **Arena:** placeable shapes — spawnpoint `{col,row,wx,wy,slot}`, arenaobj `{type:'base'|'tower'|'heal',…,team|slot}`,
+  hill `{col,row,w,h}`, emerald/powerup/spawnline/egg. `arenaViewType:'single'` + `arenaZoomMode:'NONE'`
+  → engine auto-fits whole map on a fixed screen (`_arenaActiveZoom`→`_fitZoom`). `backgroundTheme`
+  (`sky|cave|nether|end`) themes the biome (build 51 feature).
+- **Redstone:** lever(27)/trapdoor(23)/piston(24)/tx(34)/rx(35) live in the grid AND their arrays; dust
+  is overlay-only (`dustBlocks`). Propagation = lever→orthogonally-adjacent dust chain→adjacent device
+  (OR-logic), per `js/redstone.js` + `game.js` `_rsStartFromSource`/`_rsProcessQueue`.
+
+### Physics basis (Section 2A)
+GRAVITY 0.66, JUMP_VELOCITY −12.0, MOVE_SPEED 6.0 → **apex ≈ 3.4 blocks**, **airtime 36.4 f**,
+**max same-level gap ≈ 6.8 blocks**. Design rule: jumps lip-to-lip ≤ 4, rise ≤ 2, raised arena
+platforms ≤ 3 up → reachable by construction. Feel note logged: jump is floaty/forgiving; a
+tighter feel would want ~−11 / ~0.72 (not changed this pass).
+
+### Structural check (Section 2) — best-effort, catches broken not bad
+`tools/gen-sample-worlds.js` validates each world: (a) spawns/hill/bases/towers/heal on solid
+ground with 2-block headroom; (b) physics-honest BFS reachability (≤3 up, ≤6 across shrinking with
+rise, drop-offs, lava/void non-standable) from start to every objective; (c) arena spawn counts.
+**Bugs the check caught during authoring:** `B.OAK_PLANKS` typo (undefined → `null` cells → non-solid
+platform in Keep Siege), and several jumps exceeding the 3-up / lip-to-lip budget (SR gaps, FFA mesas
+at 5-up, KOTH ledges at 6-up). All fixed; final run = **9/9 pass**, plus a cross-file integrity pass
+(dims, no null cells, unique SR levelIds, GOAL present, arena ≥2 spawns).
+
+### Built (9/9) — all pass structural check
+| World | Mode | Biome | Category |
+|---|---|---|---|
+| `[Sample] SR · First Steps` | RUN | Overworld | Speed Run (easy) |
+| `[Sample] SR · Cavern Dash` | RUN | Cave | Speed Run (medium) |
+| `[Sample] SR · Nether Gauntlet` | RUN | Nether | Speed Run (hard, lava) |
+| `[Sample] Arena · Grassland Melee` | ARN | Overworld | 4-Player FFA |
+| `[Sample] Arena · Void Twins` | ARN | End | 2v2 / Team |
+| `[Sample] Arena · Fortress Rush` | ARN | Nether | Capture the Flag |
+| `[Sample] Arena · Crater Crown` | ARN | Cave | King of the Hill |
+| `[Sample] Arena · Keep Siege` | ARN | Overworld | Defend the Tower |
+| `[Sample] Arena · Switch & Sever` | ARN | Cave | Creative + redstone |
+
+Biome coverage requirement met: Overworld ✓ Cave ✓ Nether ✓ End ✓. Deferred: nothing (full focused
+scope built).
+
+### Redstone assessment (gates the follow-up) — SOLID, greenlight with a note
+lever→dust→trapdoor-door primitive verified wired + walled in `Switch & Sever` (2 circuits), modeled on
+V2's proven construction. Used trapdoor doors (reliable) over pistons (block-push semantics riskier blind).
+Follow-up (full platformer puzzle levels) is greenlit; **first browser-validate a piston gate + AND/NOT
+gate logic** — the two primitives not shipped here. Fun-in-arena unproven; natural pairing = a Custom
+Rules "reach the vault" objective (not built, flagged).
+
+### Not done / notes
+- No Supabase/migration/code changes (content-only pass, as scoped). No browser test possible in this env —
+  the structural check is the substitute; combat balance/pacing/fun are Kevin's playtest call.
+- Proposed (not built): palette-only **End Stone** block for cleaner End reads.
+
+---
+
+## Build 53 (2026-07-04) — world-creation workflow fixes (Kevin feedback)
+
+Four UX fixes from Kevin's first playtest of the sample-worlds batch. Also added
+`world_creation.md` as the ongoing feedback-loop doc (read it first each content pass).
+
+- **Rename worlds from the Sandbox world-select screen.** New **Rename** button on every
+  world card (`_worldCard`/`_wireCards`) → `SANDBOX_UI.renameWorld` (window.prompt). Branches on
+  origin: local → new `LOCAL_WORLDS.rename(id,name)`; cloud → new server route
+  `POST /api/worlds/sandbox/:id/name` (updates `world_name` only — deliberately does NOT touch
+  `world_data`, unlike the save PUT which merges/overwrites it). Cache kept in sync + `loadWorlds()`.
+- **Exit affordance when testing a level.** `SANDBOX_UI.launchArenaTest` now passes
+  `testMode:true`, so the "Test in Arena" path gets the existing `✕ EXIT TEST` button (drawn in
+  `_drawHUD`, which runs for all modes incl. arena) + Esc-to-editor. (Universal Test World already
+  had it; arena-test was the gap — it launched a full persistent match with no visible exit.)
+- **Speed Runner on-screen Restart button.** New `#play-hud-restart` in the play HUD, shown only
+  when `GAME_PLAY.gameMode==='speedrunner'`, next to Pause/Exit. → `GAME_PLAY._restartSpeedRun`
+  (unpauses if paused) → `Game._srRestartRun()` (clears won/dead/nameEntry/showLeaderboard, then
+  `_srRespawn()` resets position/boosts/items/mobs/redstone + re-runs the countdown). Hidden again on
+  return to selection.
+- **Pausing Speed Runner pauses the timer.** The race clock is wall-clock (`Date.now()−startMs`), so
+  it used to keep counting while paused. New pause hook in `_update` records `_srPausedAt` on
+  pause-enter and, on resume, shifts all SR time-anchors forward by the paused duration via
+  `Game._srShiftClocks` (startMs, countdownStart, goMs, deathMs, boost itemExpiresMs) — elapsed now
+  excludes paused time. Works for both the HUD Pause button and Esc pause.
+
+Files: index.html (restart btn + `?v=b53`), sw.js (`steveo-shell-v53`), js/constants.js (GAME_VERSION
+build 53), js/game-play.js, js/game.js, js/sandbox-ui.js, js/local-worlds.js, server/worlds-routes.js.
+Tests: `node test/run.js` → **182/182**. All modified files pass `node -c`. Browser-UNTESTED (no browser
+here) — logic-verified; the SR-restart/pause-timer and rename flows warrant a quick click-through.
+Not committed/pushed (left for Kevin). Server `/name` route needs a deploy to work for cloud worlds;
+local rename works offline immediately.
+
+### Build 53 addendum — import naming
+- **Imports no longer default to "Imported World" when a name is available.** Root cause: the offline
+  path checked `world_name || worldName` but the **server** `/import-file` path only checked
+  `parsed.world_name` — so a raw-serialize file using `worldName` (like the `[Sample]` batch) imported
+  online got the generic name. Also neither path checked a name nested inside `world_data`, nor fell
+  back to the filename.
+- Fix: new `SANDBOX_UI._worldNameFromImport(parsed, wd, fileName)` → embedded name (top-level OR nested
+  in `world_data`, either casing) → **file basename** (`SR_First_Steps.json` → "SR First Steps") →
+  "Imported World". The uploaded `fileName` is now threaded through `handleFileSelect` →
+  `pendingFileImport` → `confirmImport` → `importFile`, and sent to the server, which applies the same
+  fallback chain. Files: js/sandbox-ui.js, server/worlds-routes.js.

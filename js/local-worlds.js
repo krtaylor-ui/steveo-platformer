@@ -68,6 +68,12 @@ const LOCAL_WORLDS = {
     return this._persist(map);
   },
 
+  rename(id, newName) {
+    const map = this._all(); const w = map[id]; if (!w) return false;
+    w.world_name = newName;
+    return this._persist(map);
+  },
+
   setMode(id, gameModeDefault) {
     const map = this._all(); const w = map[id]; if (!w) return false;
     w.world_data = w.world_data || {}; w.world_data.gameModeDefault = gameModeDefault;

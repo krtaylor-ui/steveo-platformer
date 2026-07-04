@@ -271,7 +271,7 @@ module.exports = function setupWorldsRoutes(app) {
   // PLT/RUN is flagged as a mode conflict (the client warns + confirms first).
   app.post('/api/worlds/sandbox/import-file', verifyToken, async (req, res) => {
     try {
-      const { fileData, requestedMode = 'NRM' } = req.body;
+      const { fileData, requestedMode = 'NRM', fileName } = req.body;
       if (!fileData) return res.status(400).json({ error: 'No file data provided' });
 
       let parsed;
@@ -283,7 +283,13 @@ module.exports = function setupWorldsRoutes(app) {
 
       // Export files wrap the grid in `world_data`; tolerate a bare blob too.
       const rawWorldData = parsed.world_data || parsed;
-      const worldName = parsed.world_name || 'Imported World';
+      // Prefer an embedded name (top-level or nested, either casing); else the
+      // uploaded file's basename; else a generic fallback.
+      const fileBase = (typeof fileName === 'string')
+        ? fileName.replace(/^.*[\\/]/, '').replace(/\.json$/i, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+        : '';
+      const worldName = (parsed.world_name || parsed.worldName ||
+        rawWorldData.world_name || rawWorldData.worldName || fileBase || 'Imported World');
       const description = parsed.description || '';
       const fileMode = parsed.game_mode_default || rawWorldData.gameModeDefault || 'NRM';
       const worldWidth = parsed.world_width || rawWorldData.worldWidth || WORLD_W;
@@ -479,6 +485,30 @@ module.exports = function setupWorldsRoutes(app) {
     } catch (error) {
       console.error('Change mode error:', error);
       res.status(500).json({ error: 'Failed to change game mode' });
+    }
+  });
+
+  // ── Rename (world_name only — leaves world_data untouched) ─────
+  app.post('/api/worlds/sandbox/:worldId/name', verifyToken, async (req, res) => {
+    try {
+      const { worldName } = req.body;
+      const name = (typeof worldName === 'string') ? worldName.trim() : '';
+      if (!name) return res.status(400).json({ error: 'Name required' });
+
+      const { data: world, error } = await supabaseAdmin
+        .from('worlds')
+        .update({ world_name: name, updated_at: new Date().toISOString() })
+        .eq('id', req.params.worldId)
+        .eq('creator_id', req.user.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      if (!world) return res.status(404).json({ error: 'World not found' });
+      res.json({ message: 'World renamed', world });
+    } catch (error) {
+      console.error('Rename world error:', error);
+      res.status(500).json({ error: 'Failed to rename world' });
     }
   });
 

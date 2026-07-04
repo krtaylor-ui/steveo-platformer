@@ -140,6 +140,7 @@ const GAME_PLAY = {
   _setupHudButtons() {
     const pauseBtn = document.getElementById('play-hud-pause');
     const exitBtn  = document.getElementById('play-hud-exit');
+    const restartBtn = document.getElementById('play-hud-restart');
 
     if (pauseBtn) {
       pauseBtn.onclick = () => this._togglePause();
@@ -147,6 +148,26 @@ const GAME_PLAY = {
     if (exitBtn) {
       exitBtn.onclick = () => this._exitGame();
     }
+    // Restart button — Speed Runner only (restarts the run to its start line).
+    if (restartBtn) {
+      restartBtn.style.display = (this.gameMode === 'speedrunner') ? '' : 'none';
+      restartBtn.onclick = () => this._restartSpeedRun();
+    }
+  },
+
+  // ════════════════════════════════════════════════════════════
+  // RESTART (Speed Runner): reset the run to the start line + timer,
+  // without leaving the game. Unpauses first if paused.
+  // ════════════════════════════════════════════════════════════
+  _restartSpeedRun() {
+    const g = window.game;
+    if (!g || g.gameMode !== 'speedrunner' || typeof g._srRestartRun !== 'function') return;
+    if (g.state === 'paused') {
+      g.state = 'playing';
+      const pb = document.getElementById('play-hud-pause');
+      if (pb) pb.textContent = 'Pause';
+    }
+    g._srRestartRun();
   },
 
   // ════════════════════════════════════════════════════════════
@@ -194,9 +215,11 @@ const GAME_PLAY = {
     document.getElementById('play-hud').style.display = 'none';
     document.getElementById('game-selection-screen').style.display = 'block';
 
-    // Reset pause button label for next session
+    // Reset pause button label + hide the SR-only restart button for next session
     const pauseBtn = document.getElementById('play-hud-pause');
     if (pauseBtn) pauseBtn.textContent = 'Pause';
+    const restartBtn = document.getElementById('play-hud-restart');
+    if (restartBtn) restartBtn.style.display = 'none';
 
     // Ensure static listeners exist (idempotent), sync the heading to the
     // played game's mode, and refresh the slot list — _loadGames() re-renders

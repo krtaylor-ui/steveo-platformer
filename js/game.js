@@ -1403,6 +1403,17 @@ class Game {
 
     // ── Pause / confirm-exit ──
     const _paused = this.state === 'paused' || this.state === 'confirmExit';
+    // Speed Runner: freeze the race clock while paused. The timer is wall-clock
+    // (Date.now() − startMs), so on resume we shift every SR time-anchor forward by
+    // the paused duration — the elapsed time excludes time spent paused.
+    if (this.gameMode === 'speedrunner' && this._sr) {
+      if (_paused && !this._srPausedAt) {
+        this._srPausedAt = Date.now();
+      } else if (!_paused && this._srPausedAt) {
+        this._srShiftClocks(Date.now() - this._srPausedAt);
+        this._srPausedAt = 0;
+      }
+    }
     if (this._useClassicPause) {
       // Classic canvas menu: keep the HTML overlay closed and drive canvas input.
       if (typeof PAUSE_MENU !== 'undefined' && PAUSE_MENU.isOpen()) PAUSE_MENU.close();
@@ -15344,6 +15355,33 @@ class Game {
       this._sr.nameEntry      = null;
       this._sr.showLeaderboard = true;
     }
+  }
+
+  // Shift all Speed-Runner wall-clock anchors forward by `delta` ms (used to
+  // exclude paused time from the race clock and all time-based SR state).
+  _srShiftClocks(delta) {
+    const sr = this._sr;
+    if (!sr || !delta) return;
+    if (sr.startMs)        sr.startMs        += delta;
+    if (sr.countdownStart) sr.countdownStart += delta;
+    if (sr.goMs)           sr.goMs           += delta;
+    if (sr.deathMs)        sr.deathMs        += delta;
+    if (sr.boosts && sr.boosts.itemExpiresMs) sr.boosts.itemExpiresMs += delta;
+  }
+
+  // Full run restart (HUD ↺ Restart button): clear victory/death/name-entry state
+  // and reset to the start line via _srRespawn (which re-runs the countdown, resets
+  // boosts/items/mobs/redstone and nulls the race clock).
+  _srRestartRun() {
+    if (!this._sr) return;
+    const sr = this._sr;
+    sr.won = false;
+    sr.finishMs = 0;
+    sr.nameEntry = null;
+    sr.showLeaderboard = false;
+    sr.dead = false;
+    this._srPausedAt = 0; // drop any pending pause-shift; a fresh run re-anchors the clock
+    this._srRespawn();
   }
 
   _srRespawn() {

@@ -230,6 +230,7 @@ const SANDBOX = {
             </select>
           </label>
           <button class="btn btn-primary edit-world-btn" data-world-id="${this._esc(w.id)}">Edit</button>
+          <button class="btn btn-secondary rename-world-btn" data-world-id="${this._esc(w.id)}">Rename</button>
           <button class="btn btn-secondary copy-world-btn" data-world-id="${this._esc(w.id)}">Copy</button>
           <button class="btn btn-danger delete-world-btn" data-world-id="${this._esc(w.id)}">Delete</button>
         </div>
@@ -241,6 +242,8 @@ const SANDBOX = {
     if (!list) return;
     list.querySelectorAll('.edit-world-btn').forEach(btn =>
       btn.addEventListener('click', (e) => this.editWorld(e.currentTarget.dataset.worldId)));
+    list.querySelectorAll('.rename-world-btn').forEach(btn =>
+      btn.addEventListener('click', (e) => this.renameWorld(e.currentTarget.dataset.worldId)));
     list.querySelectorAll('.copy-world-btn').forEach(btn =>
       btn.addEventListener('click', (e) => this.copyWorld(e.currentTarget.dataset.worldId)));
     list.querySelectorAll('.delete-world-btn').forEach(btn =>
@@ -370,6 +373,39 @@ const SANDBOX = {
     }
   },
 
+  // ── Rename a world from the select screen (local or cloud) ─────
+  async renameWorld(worldId) {
+    const w = this.worlds.find(x => x.id === worldId) ||
+      (this._isLocalWorld(worldId) ? LOCAL_WORLDS.get(worldId) : null);
+    const current = (w && w.world_name) || '';
+    const input = window.prompt('Rename world:', current);
+    if (input == null) return;                 // cancelled
+    const newName = input.trim();
+    if (!newName || newName === current) return;
+
+    if (this._isLocalWorld(worldId)) {
+      LOCAL_WORLDS.rename(worldId, newName);
+      const c = this.worlds.find(x => x.id === worldId);
+      if (c) c.world_name = newName;
+      this.loadWorlds();
+      return;
+    }
+    try {
+      const res = await AUTH.authedFetch(`/api/worlds/sandbox/${worldId}/name`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ worldName: newName }),
+      });
+      if (!res.ok) { alert('Failed to rename world'); return; }
+      const c = this.worlds.find(x => x.id === worldId);
+      if (c) c.world_name = newName;
+      this.loadWorlds();
+    } catch (error) {
+      console.error('Rename error:', error);
+      alert('Failed to rename world');
+    }
+  },
+
   updatePagination(page, totalPages) {
     const tp = Math.max(totalPages, 1);
     document.getElementById('page-info').textContent = `Page ${page + 1} of ${tp}`;
@@ -480,7 +516,7 @@ const SANDBOX = {
 
       const fileMode = parsed.game_mode_default || (parsed.world_data && parsed.world_data.gameModeDefault) || 'NRM';
       const requestedMode = 'NRM'; // Sandbox imports default to Normal.
-      this.pendingFileImport = { fileData, fileMode, requestedMode };
+      this.pendingFileImport = { fileData, fileMode, requestedMode, fileName: file.name };
 
       const warning = document.getElementById('mode-mismatch-warning');
       if (fileMode !== requestedMode) {
@@ -501,21 +537,36 @@ const SANDBOX = {
   // file's mode differs from the target (NRM).
   async confirmImport() {
     if (!this.pendingFileImport) { alert('Select a file first'); return; }
-    const { fileData, fileMode, requestedMode } = this.pendingFileImport;
+    const { fileData, fileMode, requestedMode, fileName } = this.pendingFileImport;
 
     if (fileMode !== requestedMode && !document.getElementById('confirm-mode-override').checked) {
       alert('Please confirm the mode conversion before importing');
       return;
     }
-    await this.importFile(fileData, requestedMode);
+    await this.importFile(fileData, requestedMode, fileName);
   },
 
-  async importFile(fileData, requestedMode) {
+  // Derive a world name from an imported payload: embedded name (top-level or
+  // nested in world_data, either casing), else the file's basename, else a
+  // generic fallback. Fixes imports landing as "Imported World".
+  _worldNameFromImport(parsed, wd, fileName) {
+    const embedded = (parsed && (parsed.world_name || parsed.worldName)) ||
+                     (wd && (wd.world_name || wd.worldName));
+    if (embedded && String(embedded).trim()) return String(embedded).trim();
+    if (fileName) {
+      const base = String(fileName).replace(/^.*[\\/]/, '').replace(/\.json$/i, '')
+        .replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+      if (base) return base;
+    }
+    return 'Imported World';
+  },
+
+  async importFile(fileData, requestedMode, fileName) {
     if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
       let parsed;
       try { parsed = JSON.parse(fileData); } catch (e) { alert('Invalid JSON file'); return; }
       const wd = parsed.world_data || parsed;                    // export wrapper OR raw payload
-      const name = parsed.world_name || parsed.worldName || 'Imported World';
+      const name = this._worldNameFromImport(parsed, wd, fileName);
       const created = LOCAL_WORLDS.importWorld({ worldName: name, description: parsed.description || '', worldData: wd, mode: requestedMode });
       document.getElementById('file-import-section').style.display = 'none';
       document.getElementById('import-success-section').style.display = 'block';
@@ -528,7 +579,7 @@ const SANDBOX = {
       const res = await AUTH.authedFetch('/api/worlds/sandbox/import-file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileData, requestedMode }),
+        body: JSON.stringify({ fileData, requestedMode, fileName }),
       });
       const result = await res.json();
       if (!res.ok) { alert(`Error: ${result.error}`); return; }
@@ -824,7 +875,9 @@ const SANDBOX = {
       if (window.menu && typeof window.menu._stop === 'function') window.menu._stop();
       if (typeof window.game.destroy === 'function') window.game.destroy();
       document.getElementById('sandbox-editor-hud').style.display = 'none';
-      const options = worldData ? { templateData: worldData } : {};
+      // testMode → shows the ✕ EXIT TEST button + Esc returns straight to the
+      // editor (no leaderboard/persistence), so you're never stuck in a test.
+      const options = worldData ? { templateData: worldData, testMode: true } : { testMode: true };
       if (mode) options.arenaGameMode = mode;
       window.game = new Game('arena', options, () => {
         window.game = null;
