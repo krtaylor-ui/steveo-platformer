@@ -26,11 +26,12 @@ const OUT = path.join(__dirname, '..', 'sample-worlds');
 // ── Block ids (subset used here) ─────────────────────────────
 const B = {
   AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, OAK_LOG: 4, OAK_LEAVES: 5, BEDROCK: 6,
-  PLANKS: 7, OAK_PLANKS: 7, GOAL: 10, GRAVEL: 11, OBSIDIAN: 15, DEEPSLATE: 16, SOUL_SAND: 17,
+  PLANKS: 7, OAK_PLANKS: 7, COAL_ORE: 8, IRON_ORE: 9, GOAL: 10, GRAVEL: 11,
+  DIAMOND_ORE: 12, GOLD_ORE: 13, OBSIDIAN: 15, DEEPSLATE: 16, SOUL_SAND: 17,
   NETHERRACK: 21, LAVA: 22, TRAPDOOR: 23, PISTON: 24, LEVER: 27, TNT: 29,
-  SPEED_BOOSTER: 56, JUMP_PAD: 57, SPEED_ITEM: 58,
+  GLOWSTONE: 48, SPEED_BOOSTER: 56, JUMP_PAD: 57, SPEED_ITEM: 58,
 };
-const SOLID = new Set([1, 2, 3, 4, 6, 7, 11, 15, 16, 17, 21, 24, 29, 57]);
+const SOLID = new Set([1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 15, 16, 17, 21, 24, 29, 48, 57]);
 const HAZARD = new Set([22]); // lava — deadly, never standable
 // trapdoor(23) treated as passable for reachability (the mechanic opens it).
 
@@ -38,6 +39,8 @@ const HAZARD = new Set([22]); // lava — deadly, never standable
 const MAX_JUMP_UP = 3;   // blocks the apex clears
 const MAX_JUMP_DX = 6;   // horizontal blocks in one jump (same level)
 const MAX_DROP    = 40;   // blocks a player may fall to land
+const PAD_JUMP_UP = 7;   // JUMP_PAD launch apex (vy≈-18 → ~7.6 blocks)
+const PAD_JUMP_DX = 10;  // JUMP_PAD horizontal reach
 
 // ── Grid helpers ─────────────────────────────────────────────
 function makeGrid(W, H) {
@@ -183,15 +186,19 @@ function reachable(gr, startC, startR) {
         if (lr >= 0) nbrs.push([nc, lr]);
       }
     }
-    // jumps: up to MAX_JUMP_UP up, MAX_DROP down, MAX_JUMP_DX across
-    for (let dc = -MAX_JUMP_DX; dc <= MAX_JUMP_DX; dc++) {
-      for (let dr = -MAX_JUMP_UP; dr <= MAX_DROP; dr++) {
+    // jumps: up to MAX_JUMP_UP up, MAX_DROP down, MAX_JUMP_DX across.
+    // Standing on a JUMP_PAD launches much higher/farther (vy≈-18 → ~7 up, ~10 across).
+    const onPad = get(gr, c, r + 1) === B.JUMP_PAD;
+    const jUp = onPad ? PAD_JUMP_UP : MAX_JUMP_UP;
+    const jDx = onPad ? PAD_JUMP_DX : MAX_JUMP_DX;
+    for (let dc = -jDx; dc <= jDx; dc++) {
+      for (let dr = -jUp; dr <= MAX_DROP; dr++) {
         if (dc === 0 && dr === 0) continue;
         const nc = c + dc, nr = r + dr;
         if (!standable(gr, nc, nr)) continue;
         // horizontal reach shrinks the higher you go (rough arc gate)
         const upCost = dr < 0 ? -dr : 0;
-        const budget = MAX_JUMP_DX - upCost; // 3-up jump still crosses ~3 across
+        const budget = jDx - upCost;
         if (Math.abs(dc) > Math.max(1, budget)) continue;
         nbrs.push([nc, nr]);
       }
@@ -241,56 +248,98 @@ function emit(payload, pois, startCR, gr) {
   worlds.push({ payload, res });
 }
 
-// ── Shared Speed-Run generator ───────────────────────────────
-// Builds a left→right route as a start plateau + a chain of platforms whose
-// lip-to-lip jump distance and rise are guaranteed within the physics budget
-// (empty gap ∈ {2,3} → dc ∈ {3,4}; |rise| ≤ 2 → up-budget 6−2 = 4 ≥ dc). This
-// makes the whole route reachable BY CONSTRUCTION; the validator re-confirms.
-// Deterministic (index-driven, no RNG) so runs reproduce.
+// ── Speed-Run generator v2 (Batch-1 feedback, build 55) ──────
+// Builds a level from a left→right SEGMENT SCRIPT. Design rules baked in
+// (see world_creation.md "Speed Run design rules v2"):
+//   • Long runs, FEW gaps; every gap doable (≤4 jump, or a jump-pad for wider).
+//   • NO stranding floor: gaps are bottomless (void death) or lava channels.
+//   • Telegraph each gap: a gold ground "warning strip" + a sky marker; jump-pads
+//     use the green pad itself + a glowstone sky "gateway".
+//   • Zone bands: the sub-surface body block changes by region (visual identity).
+//   • Ramps (1-block staircases) climb automatically — reserve jumps for gaps.
+// Deterministic (no RNG). The reachability validator (pad-aware) re-confirms.
+const SR = { DEPTH: 6, STEP_W: 2, PAD_W: 4, CUE_STRIP: 3, SKY_ROW: 6, LEAD: 4, START_W: 24, FINISH_W: 26 };
+
+function srSegWidth(s) {
+  if (s.run)   return s.run;
+  if (s.boost) return s.boost;
+  if (s.gap)   return s.gap;
+  if (s.pad)   return s.pad;
+  if (s.ramp)  return s.ramp * SR.STEP_W;
+  return 0;
+}
+
 function buildSpeedRun(opts) {
-  const { name, W, H, base, block, bandUp, hazard, desc, theme,
-          itemStep, boosterCols, padCols, soulCols } = opts;
-  const gr = makeGrid(W, H);
-  if (hazard != null) rect(gr, 0, base + 2, W - 1, H - 2, hazard);
-  rect(gr, 0, H - 1, W - 1, H - 1, B.BEDROCK);
+  const { name, H, base, surface, bodyBands, hazard, desc, theme, minTop, script } = opts;
+  const totalW = SR.START_W + script.reduce((a, s) => a + srSegWidth(s), 0) + SR.FINISH_W;
+  const gr = makeGrid(totalW, H);
+  const zoneW = totalW / 3;
+  const bodyAt = (col) => bodyBands[Math.max(0, Math.min(2, Math.floor(col / zoneW)))];
 
-  const startW = 26;
-  ground(gr, 0, startW, base, block, 5);
-  let top = base, c = startW;             // c = last occupied column (a lip)
-  const gaps = [2, 3, 2, 3, 3];           // empty-column counts → dc = gap+1 ∈ {3,4}
-  const rises = [-1, 1, -2, 0, 2, -1, 1, -2, 2, 0]; // + = up (row decreases)
-  let i = 0;
-  while (c < W - 34) {
-    const gap = gaps[i % gaps.length];
-    let rise = rises[i % rises.length];
-    let ntop = top - rise;                // up = smaller row number
-    ntop = Math.max(base - bandUp, Math.min(base, ntop));
-    if (Math.abs(ntop - top) > 2) ntop = top + Math.sign(ntop - top) * 2; // clamp rise ≤2
-    const w = 14 + (i % 4) * 4;
-    const a = c + gap + 1;                 // start col of next platform (dc = a-c = gap+1)
-    const b = Math.min(W - 8, a + w - 1);
-    ground(gr, a, b, ntop, block, 5);
-    top = ntop; c = b; i++;
-  }
-  // final plateau + GOAL gate
-  ground(gr, c + 1, W - 1, top, block, 5);
-  const goalC = W - 6;
-  set(gr, goalC, top - 1, B.GOAL); set(gr, goalC, top - 2, B.GOAL);
-
-  // decorations (placed on platform tops where solid ground is 1 below)
-  const onTop = (cc, dy, b) => { // find platform top at column cc, place b `dy` above it
-    for (let rr = 0; rr < H; rr++) if (SOLID.has(get(gr, cc, rr))) { set(gr, cc, rr - dy, b); return; }
+  // Lay a run of ground: surface block on `topRow`, zone body beneath. NO bottom
+  // floor — anything not covered here is open void (fatal fall) unless lava-filled.
+  const layGround = (a, b, topRow) => {
+    for (let cc = a; cc <= b; cc++) {
+      set(gr, cc, topRow, surface);
+      for (let rr = topRow + 1; rr < topRow + SR.DEPTH; rr++) set(gr, cc, rr, bodyAt(cc));
+    }
   };
-  for (const bc of (boosterCols || [])) { onTop(bc, 1, B.SPEED_BOOSTER); onTop(bc + 1, 1, B.SPEED_BOOSTER); }
-  for (const pc of (padCols || [])) onTop(pc, 1, B.JUMP_PAD);
-  for (const sc of (soulCols || [])) onTop(sc, 0, B.SOUL_SAND); // replace the top block itself
-  for (let ic = 40; ic < W - 40; ic += (itemStep || 120)) onTop(ic, 3, B.SPEED_ITEM);
+  const skyBar = (centerCol, wide, thick, blk) => {
+    for (let cc = centerCol - (wide >> 1); cc <= centerCol + (wide >> 1); cc++)
+      for (let rr = SR.SKY_ROW; rr < SR.SKY_ROW + thick; rr++) set(gr, cc, rr, blk);
+  };
+  const skyGate = (col, blk) => { // two vertical pillars framing the approach
+    for (let rr = SR.SKY_ROW; rr < SR.SKY_ROW + 4; rr++) { set(gr, col - 1, rr, blk); set(gr, col + 3, rr, blk); }
+  };
+  const groundCue = (a, b, topRow) => { for (let cc = a; cc <= b; cc++) set(gr, cc, topRow, B.GOLD_ORE); };
+  const lavaFill = (a, b, topRow) => { // lava channel flush with the surface, in the gap
+    if (hazard == null) return;
+    for (let cc = a; cc <= b; cc++) for (let rr = topRow; rr < topRow + 4; rr++) set(gr, cc, rr, hazard);
+  };
+  const item = (col, topRow) => set(gr, col, topRow - 2, B.SPEED_ITEM); // head-height collectible
+
+  // Start plateau
+  layGround(0, SR.START_W, base);
+  let c = SR.START_W, top = base, gapIx = 0;
+
+  for (const s of script) {
+    if (s.run) {
+      layGround(c + 1, c + s.run, top);
+      for (let k = 30; k < s.run; k += 34) item(c + k, top);   // sprinkle speed items
+      c += s.run;
+    } else if (s.boost) {
+      layGround(c + 1, c + s.boost, top);
+      for (let cc = c + 1; cc <= c + s.boost; cc++) set(gr, cc, top - 1, B.SPEED_BOOSTER); // run-through boost
+      c += s.boost;
+    } else if (s.ramp) {
+      const dir = s.dir === 'down' ? 1 : -1;                    // up = row decreases
+      for (let i = 0; i < s.ramp; i++) {
+        let nt = top + dir;
+        nt = Math.max(minTop, Math.min(base, nt));
+        layGround(c + 1, c + SR.STEP_W, nt);
+        top = nt; c += SR.STEP_W;
+      }
+    } else if (s.gap) {
+      groundCue(c - SR.CUE_STRIP + 1, c, top);                  // gold warning strip on takeoff
+      skyBar(c - SR.LEAD, 3, 1 + (gapIx % 3), B.GOLD_ORE);      // sky marker (thickness varies per gap)
+      lavaFill(c + 1, c + s.gap, top);                          // lava channel (nether) — else bottomless
+      c += s.gap; gapIx++;
+    } else if (s.pad) {
+      for (let cc = c - SR.PAD_W + 1; cc <= c; cc++) set(gr, cc, top, B.JUMP_PAD); // 4-wide pad ON the ground
+      skyGate(c - SR.LEAD, B.GLOWSTONE);                        // tall "gateway" = big jump ahead
+      lavaFill(c + 1, c + s.pad, top);
+      c += s.pad; gapIx++;
+    }
+  }
+
+  // Finish plateau + GOAL gate
+  layGround(c + 1, totalW - 1, top);
+  const goalC = totalW - 8;
+  set(gr, goalC, top - 1, B.GOAL); set(gr, goalC, top - 2, B.GOAL);
 
   const startC = 4, startR = base - 1;
   const payload = world({
     name, mode: 'RUN', gr, playerPx: startC * BS, playerPy: (startR - 1) * BS - 20,
-    // autoStepUp on by default for Speed Run — walk/run up 1-block ledges without
-    // jumping (build 54). Toggle per-world in World Settings → Physics → Auto-Climb.
     description: desc, adv: { backgroundTheme: theme, autoStepUp: true },
   });
   emit(payload, [
@@ -299,29 +348,63 @@ function buildSpeedRun(opts) {
   ], [startC, startR], gr);
 }
 
+// EASY — long forgiving run, 5 obstacles, one pad jump.
 function buildSR1() {
   buildSpeedRun({
-    name: '[Sample] SR · First Steps', W: 900, H: 40, base: 30, block: B.GRASS,
-    bandUp: 4, hazard: null, theme: 'sky',
-    desc: 'Easy intro Speed Run — wide platforms, gentle gaps, forgiving. (Set Mode: Speed Runner.)',
-    itemStep: 110, boosterCols: [110, 360, 640], padCols: [230, 500, 780],
+    name: '[Sample] SR · First Steps', H: 40, base: 30, surface: B.GRASS,
+    bodyBands: [B.DIRT, B.STONE, B.GRAVEL], hazard: null, theme: 'sky', minTop: 16,
+    desc: 'Easy intro Speed Run — long runs, few well-telegraphed gaps, auto-climb ramps. (Set Mode: Speed Runner.)',
+    script: [
+      { run: 110 }, { ramp: 2, dir: 'up' }, { run: 100 },
+      { boost: 6 }, { gap: 3 }, { run: 130 },
+      { ramp: 2, dir: 'down' }, { run: 110 },
+      { gap: 3 }, { run: 120 },
+      { gap: 4 }, { run: 120 },
+      { pad: 7 }, { run: 130 },
+      { gap: 3 }, { run: 110 },
+      { gap: 4 }, { run: 100 },
+    ],
   });
 }
+// MEDIUM — a cave run with a trap booster + two pad jumps.
 function buildSR2() {
   buildSpeedRun({
-    name: '[Sample] SR · Cavern Dash', W: 1050, H: 46, base: 34, block: B.DEEPSLATE,
-    bandUp: 6, hazard: null, theme: 'cave',
-    desc: 'Medium technical Speed Run — deepslate cavern, tighter rhythm jumps. (Set Mode: Speed Runner.)',
-    itemStep: 100, boosterCols: [90, 330, 560, 820], padCols: [160, 430, 700, 940],
+    name: '[Sample] SR · Cavern Dash', H: 46, base: 34, surface: B.DEEPSLATE,
+    bodyBands: [B.STONE, B.DEEPSLATE, B.GRAVEL], hazard: null, theme: 'cave', minTop: 16,
+    desc: 'Medium Speed Run — deepslate cavern, a trap booster + pad jumps, but long runs between. (Set Mode: Speed Runner.)',
+    script: [
+      { run: 100 }, { ramp: 3, dir: 'up' }, { run: 90 },
+      { gap: 3 }, { run: 120 },
+      { boost: 6, trap: true }, { gap: 4 }, { run: 120 },
+      { ramp: 2, dir: 'down' }, { run: 100 },
+      { gap: 4 }, { run: 110 },
+      { pad: 8 }, { run: 130 },
+      { gap: 3 }, { run: 100 },
+      { boost: 6 }, { gap: 4 }, { run: 120 },
+      { pad: 7 }, { run: 120 },
+      { gap: 3 }, { run: 100 },
+    ],
   });
 }
+// HARD — nether, lava-channel gaps, trap boosters + pad jumps (still long runs).
 function buildSR3() {
   buildSpeedRun({
-    name: '[Sample] SR · Nether Gauntlet', W: 1200, H: 50, base: 36, block: B.NETHERRACK,
-    bandUp: 5, hazard: B.LAVA, theme: 'nether',
-    desc: 'Hard hazard Speed Run — lava floor under the route, precise jumps, jump-pad chains. (Set Mode: Speed Runner.)',
-    itemStep: 110, boosterCols: [130, 400, 720, 980], padCols: [230, 500, 780, 1050],
-    soulCols: [90, 300, 620, 900],
+    name: '[Sample] SR · Nether Gauntlet', H: 50, base: 36, surface: B.NETHERRACK,
+    bodyBands: [B.NETHERRACK, B.SOUL_SAND, B.OBSIDIAN], hazard: B.LAVA, theme: 'nether', minTop: 16,
+    desc: 'Hard Speed Run — lava-channel gaps (falls are fatal), pad jumps + a trap booster. (Set Mode: Speed Runner.)',
+    script: [
+      { run: 90 }, { ramp: 2, dir: 'up' }, { run: 80 },
+      { gap: 3 }, { run: 110 },
+      { gap: 4 }, { run: 90 },
+      { boost: 6, trap: true }, { gap: 4 }, { run: 100 },
+      { pad: 8 }, { run: 120 },
+      { ramp: 3, dir: 'down' }, { run: 90 },
+      { gap: 4 }, { run: 100 },
+      { boost: 6 }, { gap: 4 }, { run: 110 },
+      { pad: 8 }, { run: 120 },
+      { gap: 3 }, { run: 90 },
+      { gap: 4 }, { run: 90 },
+    ],
   });
 }
 

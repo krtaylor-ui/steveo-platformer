@@ -65,7 +65,45 @@ objective; arena spawn counts. **Does not** judge fun/fairness/pacing — that's
 
 ---
 
+## Speed Run design rules (v2 — from Kevin's Batch 1 playtest, 2026-07-04)
+
+These are now **hard rules** baked into `tools/gen-sample-worlds.js` (`buildSpeedRun`). Apply to every
+future Speed Run level:
+
+1. **No stranding floor — a fall must kill.** SR void-death triggers only when `player.y+height >
+   level.pixelHeight` (below the grid). So gaps must be **bottomless** (no bedrock/solid floor beneath),
+   OR filled with **lava** (SR void/lava death → respawn). The old SR1/SR2 had a full-width bedrock
+   bottom row that caught fallers and stranded them — removed. (SR3's lava-in-gaps already worked.)
+2. **Long runs, few gaps.** Frequent gaps make a level unlearnable/unfair. Levels should be **mostly
+   running** with a **small number of well-spaced gaps** (~5–8 per level), long continuous stretches
+   between them, and every gap **doable** (≤4-block jump, or a jump-pad for wider ones). Prefer longer
+   overall length over more obstacles.
+3. **Telegraph every gap with learnable visual cues.** Players memorize a level run-by-run, so each
+   obstacle must be **recognizable in advance**. Use:
+   - a **ground "warning strip"** — the last ~3 surface blocks before a gap are a distinct bright block
+     (type-coded: e.g. gold = normal gap, the green jump-pad itself = pad-jump);
+   - a **sky marker** floating above the approach (a bar for a small gap; a taller pillar "gateway" for a
+     pad-jump);
+   - **zone bands** under the running path — vary the sub-surface body block by region (e.g. dirt →
+     stone → gravel) so different areas look distinct and the player knows *where* they are.
+4. **Use Auto-Climb for ramps.** 1-block steps are climbed automatically (no jump), so build **ramps**
+   (short 1-block staircases) for elevation changes instead of forcing jumps. Reserve jumps for gaps.
+5. **Jump pads on the ground.** Place JUMP_PAD at the **running surface** so the player naturally runs
+   over and launches (SR checks the block under the feet). If a pad is a **landing target** (elevated),
+   make it **≥4 wide** so it's a forgiving target.
+6. **Speed boosters are tactical.** Place SPEED_BOOSTER strips deliberately: either **before a gap to help
+   build speed** for the jump, or as a **trap** just before a spot where extra speed tempts an early/long
+   jump and overshoots. Not decorative filler.
+
 ## Feedback log (newest at top)
+
+### 2026-07-04 — Batch 1 Speed Run feedback (Kevin) → SR content pass v2 (generator rewrite; no app-code change)
+- `SR · First Steps` / `Cavern Dash` — **Edit:** had a bedrock floor under the gaps → falling stranded
+  the player. Fixed (bottomless gaps = void death). Rebuilt per rules 1–6 above. Now 1118 / 1318 blocks.
+- `SR · Nether Gauntlet` — lava-in-gaps worked; rebuilt per rules 2–6 (longer runs, fewer gaps, cues,
+  ramps, ground pads, tactical boosters). Now 1304 blocks with lava-channel gaps.
+- Global rules 1–6 codified above and enforced in `buildSpeedRun`. The reachability validator is now
+  **pad-aware** (models the jump-pad launch envelope) so wider pad-jumps verify honestly.
 
 ### 2026-07-04 — Batch 1 (the [Sample] worlds) — Kevin reviewing
 _Kevin's per-world verdicts go here as he plays. Template:_

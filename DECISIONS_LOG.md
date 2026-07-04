@@ -794,3 +794,28 @@ Files: js/player.js, js/game.js, js/pause-menu.js, tools/gen-sample-worlds.js, s
 index.html (`?v=b54`), sw.js (`steveo-shell-v54`), js/constants.js (build 54), world_creation.md.
 Tests: `node test/run.js` → **182/182**; all modified files pass `node -c`. Browser-UNTESTED — the
 step-up feel + the tightened physics-panel layout warrant a quick look.
+
+---
+
+## Speed Run content pass v2 (2026-07-04) — Batch-1 feedback (content-only, no app-code change)
+
+Kevin's first playtest of the sample Speed Run worlds → rebuilt all 3 via `tools/gen-sample-worlds.js`.
+Codified 6 design rules (see `world_creation.md` "Speed Run design rules v2"):
+
+1. **No stranding floor.** SR void-death only fires when `player.y+height > level.pixelHeight`. The old
+   SR1/SR2 had a full-width **bedrock bottom row** that caught fallers and stranded them — removed, so
+   gaps are now **bottomless** (fatal fall → respawn). SR3 keeps **lava-channel gaps** (already worked).
+2. **Long runs, few gaps.** Rebuilt from a left→right **segment script** (run/ramp/gap/pad/boost) with
+   long runs (90–130 blocks) between a small number of gaps. Levels lengthened: **1118 / 1318 / 1304**.
+3. **Telegraphed gaps.** Gold-ore **ground warning strip** on each takeoff + a **sky marker** (bar,
+   thickness varies per gap); jump-pads use the green pad + a **glowstone sky gateway**. **Zone bands**
+   vary the sub-surface body block by region (dirt→stone→gravel etc.) for visual identity.
+4. **Auto-climb ramps.** 1-block staircases (build 54 auto-step) for elevation; jumps reserved for gaps.
+5. **Ground jump-pads.** 4-wide `JUMP_PAD` laid ON the running surface (SR checks the block under the
+   feet) so the player runs over and launches across wider gaps.
+6. **Tactical boosters.** `SPEED_BOOSTER` strips placed to help time a jump or as a **trap** before a gap.
+
+Generator: `buildSpeedRun` rewritten to a script builder; **reachability validator made pad-aware**
+(PAD_JUMP_UP/DX envelope) so wide pad-jumps validate. Added ore/glowstone block ids + solidity.
+All 9 worlds still pass the structural check. Files: tools/gen-sample-worlds.js, sample-worlds/SR_*.json,
+world_creation.md. No js/ or GAME_VERSION change (content-only).
