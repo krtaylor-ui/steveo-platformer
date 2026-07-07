@@ -3,7 +3,7 @@
 > **Status:** Living doc. Updated 2026‑07‑03 at **build 51** (merged to `main`).
 > Records *intent, approach, effort, reuse, and open decisions* — not final specs.
 
-## ✅ Shipped since this doc was written (builds 24–50)
+## ✅ Shipped since this doc was written (builds 24–67)
 - **Installable version (PWA)** — §2 below. DONE (build 27): `manifest.json` + `sw.js`
   offline app shell + install support. *Follow‑up left:* raster PNG icons (192/512).
 - **Mobile mode (touch)** — §3 below. DONE (build 28): responsive canvas + touch overlay;
@@ -23,6 +23,17 @@
 - **Per‑world background theme (Tier 1)** — §9 below. DONE (build 51): a "BG" tab in the
   Sandbox World Settings modal picks Auto/Sky/Cave/Nether/End; forces that backdrop
   everywhere (visual only — gameplay biome regions untouched). Works in Arena + all modes.
+- **App icon** — DONE (build 52): PWA raster icons = the player's head (completes the §2 follow‑up).
+- **Sandbox/Speed‑Run UX** — DONE (builds 53, 56–57): rename worlds in Sandbox; exit‑test button +
+  test‑world HUD (Restart + Return to Sandbox); SR restart button + pause freezes the SR timer;
+  sandbox playtest exits to Sandbox with no scoring; full‑column SR finish line.
+- **Movement moves** — DONE (builds 54, 58–63): **Auto‑Climb** 1‑block ledges; **double‑jump air‑roll**;
+  **wall slide, ledge hang/climb, ground slide** (per‑world toggles) with an articulated climb‑up animation.
+- **Unified HTML World Settings panel** — DONE (builds 64–66): data‑driven `world-settings-ui.js`
+  replacing the canvas panel (kept as a Konami bonus); mob drops/arena types/background/tooltips/retro;
+  **Up‑Arrow + J secondary jump**; Konami ending flipped to **B‑then‑A**. (See "World Settings rebuild" below.)
+- **Platformer campaign‑prep** — §12 below, Phase 1. SHIPPED build 67 (on branch, pending browser test):
+  multiple + multi‑colour Goal Stars, emerald collect+count, opt‑in score — groundwork for Campaign mode.
 
 ## 🔜 Still planned (not built)
 - **User Guide** — §1 below (not started).
@@ -517,7 +528,13 @@ lanes/MOBA/bots.
 
 ---
 
-## World Settings rebuild (HTML) — planned (noted 2026-07-07)
+## World Settings rebuild (HTML) — ✅ SHIPPED (builds 64–66)
+
+**Done.** The unified HTML World Settings panel shipped as `js/world-settings-ui.js` — a data-driven
+`SETTINGS` list (each row tagged tab/group/advanced/modes/dependsOn/get/set), with mode-aware tab
+filtering, mob-drops/arena-types/background/tooltips, an advanced-vs-regular colour split, and the retro
+skin. The canvas panel is kept as a **Konami-code bonus** (`_useClassicPause`). The Campaign-prep
+**Scoring** group (build 67) plugs straight into this schema. Original planning note kept below.
 
 The per-world config list is outgrowing the fixed-size **canvas** World Settings panel (the Physics tab is
 already full at 9 rows). New movement toggles (Auto-Climb, Wall Slide, Ledge Hang, Ground Slide + their
@@ -532,3 +549,49 @@ existing **canvas "rendered" menu as a Konami-code bonus in Sandbox** (it's alre
 
 Movement config keys to fold in: `airJumpEnabled`, `autoStepUp`, `wallSlideEnabled`, `wallJumpLockAway`,
 `ledgeHangEnabled`, `slideEnabled`, `slideInvincible`, `slideDurationFrames`, `slideSpeedMult`.
+
+---
+
+## 12. Campaign mode — sequenced levels with branching exits  *(vision agreed 2026‑07‑07; Phase 1 SHIPPED build 67)*
+
+Kevin's vision: a playable **sequence of levels** (Mario-Bros-style) where each level leads to the next,
+with **secret levels** and **skip paths** — the different coloured Goal Stars are the branch exits. This is
+"an action version of normal mode" turned into a progression.
+
+**Core decision (UX + low-complexity):** build a lightweight **Campaign container**, **NOT a new physics
+mode**. Individual levels stay **Platformer** levels (all in-level tech already exists). The new layer only:
+(a) **sequences** levels, (b) **routes coloured-goal exits → destination levels**, (c) tracks
+**progression**. This keeps complexity in one well-scoped place instead of forking gameplay.
+
+**Build order (Kevin's chosen cut):**
+- **Phase 1 — make levels campaign-ready — ✅ SHIPPED build 67.** Multiple Goal Stars end the level;
+  10-colour palette (`GOAL_COLORS`, re-click to cycle in editor, serialized as `world_data.goalStars`);
+  `game._wonExitColor` records which coloured exit was taken; emerald collect+count + a rough score system,
+  all opt-in via the **Scoring** World-Settings group. See DECISIONS 2026‑07‑07 + CONTEXT_SUMMARY build 67.
+- **Phase 2 — Campaign Builder mode (later).** A dedicated builder that sequences existing worlds into a
+  campaign, assigns which world each level/exit points to, and flags **bonus/secret levels**. Kevin: "the
+  campaign build will need to be well thought out" — worried a rigid ordered-list is too limiting, so the
+  builder should support explicit per-exit destinations (a small level graph), not just linear order.
+- **Phase 3 — cross-level carry-over (later).** Carry **inventory, points, emeralds, lives** between
+  levels; **health RESETS at the start of each level**. (Lives → arcade game-over on zero.)
+- **Phase 4 — top-down walkable overworld map (later).** Low-res/low-quality is fine. Kevin explicitly
+  **prefers an overhead map over a side-view level-select** — and it "may complement Tower Defense (§11)
+  as a different level type" (shared top-down substrate). Start the PoC **linear** but keep the data model
+  **map-ready** so this drops in without rework.
+- **Phase 5 — portal-based "World Select" level (later).** A hub level with **portals to multiple worlds**
+  (complements the overhead map); the up-to-10 goal colours map naturally to multiple portal destinations.
+
+**Colours:** 2 exit types used now (gold = normal, one alt = secret/skip); palette sized to **10** so future
+exits (skip-ahead, bonus, per-portal) each get a colour.
+
+**Reuse:** Platformer level runtime (unchanged), `GOAL_COLORS` + `goalStars` serialize + `_wonExitColor`
+(build 67), `EMERALD_SYSTEM` (currency/score), World-Settings schema (`world-settings-ui.js`), world
+provenance/`uid` (§6, for referencing levels in a campaign graph), local-worlds store (§6). Genuinely new:
+the campaign data model (level graph + progression save) + the Builder UI + the overworld map renderer.
+
+**Effort:** Phase 1 done. Phase 2–3 MODERATE (mostly UI + a save schema). Phase 4 LARGER (new top-down
+renderer/navigation — but shareable with §11 TD). Phase 5 SMALL once the graph + map exist.
+
+**Open decisions (for when we start Phase 2):** ordered-list-plus-skip vs. explicit per-exit graph (Kevin
+leans flexible/graph); how a campaign is stored + shared (one object referencing world `uid`s); checkpoints
+within/between levels; lives count + game-over behaviour.

@@ -943,3 +943,38 @@ roof), auto-climb staircase to a full-height goal. Ships with airJump/ledgeHang/
 Generator (`tools/gen-sample-worlds.js`): `buildHomage()` + the reachability validator now takes a
 per-world `{maxUp,maxDx}` envelope so double-jump platforms verify honestly (validated 10/10). No app
 code changed.
+
+---
+
+## Platformer campaign-prep (2026-07-07, build 67) — decisions
+
+Answered Kevin's design questions about coloured goals / emeralds / a Campaign mode. Key decisions:
+
+- **Campaign is a new MODE but a *thin container*, not a new physics engine.** The vision (a playable
+  sequence of levels with secret/skip exits) is a **meta-layer** over existing Platformer levels. Levels
+  stay Platformer levels; the Campaign layer only sequences them, routes coloured-goal exits, and tracks
+  progression. Rationale: maximise reuse, keep complexity in one place, avoid forking gameplay. (Full plan
+  = FUTURE_ROADMAP §12.)
+- **Goal Star still ends a Platformer level — confirmed.** Was a *single* tracked goal
+  (`level.goalCol/goalRow`); build 67 makes it **multi-goal** (any goal touched wins) so levels can have
+  several exits.
+- **Coloured Goal Stars = the branch mechanism.** 10-colour palette (`GOAL_COLORS`), **2 used now**
+  (gold = normal, one alt = secret/skip), sized to 10 for future exit types / World-Select portals. The
+  colour of the goal that ends a level is recorded on `game._wonExitColor` for future routing.
+- **Emeralds + score are OPT-IN World Settings on Platformer** (`platformerEmeralds`, `platformerScore`),
+  not always-on — classic Platformer behaviour is unchanged by default. Score sources (decided, "rough"):
+  emeralds (`emeraldPoints`, dflt 100) + a level-clear bonus (`goalClearPoints`, dflt 1000); enemy-defeat
+  points deferred (current levels have no enemies).
+- **Authoring colours = re-click-to-cycle** in the editor for now (lean first pass). A click-to-open goal
+  popup (like emerald/spawn-point popups) is the planned upgrade, to bundle with the Campaign Builder.
+- **Carry-over (deferred to Campaign Phase 3):** inventory, points, emeralds, **lives** carry between
+  levels; **health resets each level**. Lives → arcade game-over.
+- **Navigation (deferred to Campaign Phase 4):** Kevin wants a **top-down walkable overworld map**
+  (low-res OK), explicitly *preferred over a side-view level-select*; may share a top-down substrate with
+  Tower Defense (§11). Start linear (PoC) but keep the data model map-ready. Plus a portal-based
+  **World Select** hub level (Phase 5).
+- **Build order Kevin chose:** Phase 1 (campaign-ready levels) NOW = build 67; Campaign Builder, carry-over,
+  overworld map, World-Select portals all LATER, in that rough order.
+
+Headless suite 182/182 + targeted smoke test (goalStars serialize round-trip, emerald init from
+`_levelEmeralds`, palette size). Browser-UNTESTED; on branch `platformer-campaign-prep`, not merged.

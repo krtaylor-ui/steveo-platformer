@@ -1,20 +1,74 @@
 # Steveo Platformer — Context Summary
 
-**Updated:** 2026-07-03. **Branch: `main`.** See the **CURRENT STATE** section
-immediately below for the latest; the Phase-3 sections further down are the
-historical record. `DECISIONS_LOG.md` = every decision; `FUTURE_ROADMAP.md` =
-planned work (User Guide, Tower Defense/bots, world cleanup, itch/Tauri).
+**Updated:** 2026-07-07. See the **CURRENT STATE** section immediately below for
+the latest; the Phase-3 sections further down are the historical record.
+`DECISIONS_LOG.md` = every decision; `FUTURE_ROADMAP.md` = planned work (User
+Guide, **Campaign mode** §10, Tower Defense/bots, world cleanup, itch/Tauri).
 
-## CURRENT STATE (2026-07-03) — build 51
+## CURRENT STATE (2026-07-07) — build 67 (on branch, pending browser test)
 
-**Where things are:** `main` is at **build 51**. Builds 12–43 shipped earlier
-(24–28 Leaderboards/PWA/Mobile/Pause; 29–43 assorted fixes + the Speed Run
-race-car model). Builds 44–50 = the local-first / offline-worlds initiative
-(FUTURE_ROADMAP §6). **Build 51 = per-world background theme (FUTURE_ROADMAP §9
-Tier 1).** There are **no live users yet**. `GAME_VERSION` = `v3 · build 51`;
-cache-buster `?v=b51`; SW `CACHE_VERSION = steveo-shell-v51` (bump ALL THREE every
-commit). Test suite: **182/182**. Builds 44–51 are headless-verified;
-44–50 partially browser-tested; **51 browser-UNTESTED**.
+**Where things are:** `main` and `origin/main` are at **build 66** (`5353a14`).
+**Build 67 is committed on branch `platformer-campaign-prep` only** —
+headless-verified (**182/182**) but **browser-UNTESTED and NOT merged**. Merge to
+`main` waits on Kevin's in-browser confirmation. There are **no live users yet**.
+Version bumps this build: `GAME_VERSION` = `v3 · build 67`; cache-buster `?v=b67`;
+SW `CACHE_VERSION = steveo-shell-v67` (bump ALL THREE every commit).
+
+**Build 67 — platformer campaign-prep (groundwork for FUTURE_ROADMAP §10 Campaign
+mode).** Opt-in additions to Platformer levels; no new physics mode.
+- **Multiple Goal Stars.** Any goal the player touches ends the level (was a single
+  tracked `level.goalCol/goalRow`). Win scans a cached `_getGoalCells()` list;
+  the colour index of the goal hit is recorded on `game._wonExitColor` — the hook
+  the future Campaign layer will route branch/secret/skip exits on.
+- **Goal-Star colours.** 10-colour palette (`GOAL_COLORS` in constants.js; index
+  0 = classic gold). In the editor, **re-placing on an existing goal cycles its
+  colour**; colours live in `game._goalColorMap` ("r,c"→idx), serialize as
+  `world_data.goalStars [{row,col,color}]` (via `GAME_STATE._goalStars`), restore
+  in both `_loadPlatformerWorld` + `_loadSandboxWorld`, and render as a colour
+  wash + ring overlay (`_drawGoalColorOverlays`, play + sandbox).
+- **Emeralds in platformer.** `EMERALD_SYSTEM.init` now also reads
+  `game._levelEmeralds` (set on platformer load), so placed emeralds are
+  collectible + counted when the **Collect Emeralds** World Setting is on.
+- **Score.** Opt-in **Score / Points** setting; `game._score` from emeralds
+  (Points/Emerald, dflt 100) + a Level-Clear Bonus (dflt 1000). Top-centre HUD
+  pill (`_drawPlatformerScoreHud`) shows `★ score` and/or `💎 n/total`.
+- **World Settings.** New **Scoring** group (modes platformer + sandbox):
+  `platformerEmeralds`, `platformerScore` toggles + advanced `emeraldPoints`,
+  `goalClearPoints`. All default off → classic behaviour unchanged.
+- **Known follow-up:** colour authoring is re-click-to-cycle (lean first pass); a
+  click-to-open goal popup (like the emerald/spawn-point popups) is the natural
+  upgrade to bundle with the Campaign Builder. Undo/redo doesn't snapshot
+  `_goalColorMap` (stale entries are harmless — only real GOAL cells are read).
+
+**The Campaign vision (decided this session — see FUTURE_ROADMAP §10 + DECISIONS
+2026-07-07).** Kevin wants a playable sequence of levels (secret/skip exits via
+coloured goals). Agreed shape: a lightweight **Campaign container**, NOT a new
+physics mode — levels stay Platformer levels; the new layer only sequences them,
+routes coloured-goal exits, and tracks progression. Build order Kevin chose:
+**(1 = done in 67)** make levels campaign-ready (multi-colour goals, emeralds,
+score); **(2, later)** a **Campaign Builder** mode to sequence worlds + assign
+bonus levels; **(3, later)** cross-level carry-over of **inventory, points,
+emeralds, lives** (health RESETS each level); **(4, later)** a **top-down
+walkable overworld map** (low-res; may share tech with Tower Defense as a level
+type) — Kevin explicitly prefers this over a side-view level-select; **(5, later)**
+a portal-based **World Select** level. Start linear (PoC) but keep the data model
+map-ready. Colours: 2 used now, palette sized to 10.
+
+**Bridge — builds 52–66 (all on `main`, browser-tested unless noted):**
+- **52** — app icon = player's head (PWA raster icons).
+- **53** — rename worlds in Sandbox; exit-test button; SR restart + pause-freezes-timer; import naming.
+- **54** — Auto-Climb (walk/run up 1-block ledges; universal, per-world).
+- **55** — fix white-on-white text in file-import & Modern modals (`.modal-content` colour).
+- **56** — Sandbox playtest: exit via pause menu to Sandbox, no scoring.
+- **57** — test-world HUD (Restart + Return to Sandbox) + full-column SR finish line.
+- **58** — double-jump air-roll animation.
+- **59–63** — movement moves: **wall slide, ledge hang/climb, ground slide** (per-world toggles);
+  ledge-grab exposed-outcorner fix (61); articulated waist+hip climb-up "FIX" (62); hard-edged limbs (63).
+- **64–66** — **unified HTML World Settings panel** (`js/world-settings-ui.js`, data-driven
+  `SETTINGS` list: tab/group/advanced/modes/dependsOn) replacing the canvas panel (canvas kept
+  as a Konami bonus, `_useClassicPause`); mob drops/arena types/background/tooltips/retro skin (65);
+  **Up-Arrow + J secondary jump** + Konami ending flipped to **B-then-A** (66). Also the
+  "First Steps Redux" original homage platformer level (`sample-worlds/First_Steps_Redux.json`).
 
 **Build 51 — per-world background theme (§9 Tier 1):** new `_worldAdvSettings.backgroundTheme`
 (`'auto'|'sky'|'cave'|'nether'|'end'`, default `'auto'`) + `Game._skyBiome()`, which returns
@@ -62,11 +116,15 @@ polish. See FUTURE_ROADMAP §6.
 **Migrations still to run in Supabase for full function:** `server/sql/speedrun.sql`
 (Speed Run server times). Everything else degrades gracefully without it.
 
-**Ship / push when ready:** `git push origin main` (builds 44–50 are committed
-on `main` locally but not yet on origin). The edit→merge loop is: edit in the
-`phase3-v3-look` worktree → `node test/run.js` (182/182) → bump GAME_VERSION +
-`?v=bN` + SW `CACHE_VERSION` → commit → from the primary checkout
-`git merge --ff-only phase3-v3-look` → `git push origin main`.
+**Ship / push loop (current):** build on a feature branch (build 67 is on
+`platformer-campaign-prep`) → `node test/run.js` (**182/182**) → bump the THREE
+version markers (`GAME_VERSION` in `js/constants.js`, all `?v=bN` in `index.html`,
+SW `CACHE_VERSION` in `sw.js`) → commit → **Kevin browser-tests** → `git checkout
+main && git merge --ff-only <branch>` → `git push origin main`. Direct edits on
+`main` also work for small changes. `main` == `origin/main` at build 66; **build
+67 is NOT yet merged** (awaiting browser test). Recent builds (59–66) used
+feature branches merged straight to `main` ("finalize on main" commits); the older
+`phase3-v3-look` / `.claude/worktrees` worktree flow is no longer the primary path.
 
 ---
 

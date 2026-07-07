@@ -40,6 +40,17 @@ via the generator.
 - **Arena:** `arenaViewType:'single'`+`arenaZoomMode:'NONE'` = auto-fit whole map on fixed screen. Placeables:
   spawnpoint `{col,row,slot}`, arenaobj `{type:'base'|'tower'|'heal',…,team|slot}`, hill `{col,row,w,h}`,
   emerald/powerup/spawnline/egg. `backgroundTheme` = `sky|cave|nether|end`.
+- **Platformer (build 67 — campaign-prep):**
+  - **Multiple Goal Stars** — place as many `GOAL` (10) blocks as you like; touching **any** ends the level.
+  - **Goal colours** — 10-colour palette (`GOAL_COLORS`, index 0 = gold). In the editor, **re-click a placed
+    goal to cycle its colour** (a toast confirms). Colours serialize as `world_data.goalStars [{row,col,color}]`;
+    the colour of the goal that ended the level is exposed as `game._wonExitColor` (future Campaign exit routing).
+  - **Emeralds** — place emeralds (same as arena) + turn on World Settings → World → Scoring → **Collect
+    Emeralds**; they become pickups with a `💎 n/total` HUD counter.
+  - **Score** — World Settings → Scoring → **Score / Points** (+ advanced Points/Emerald, Level-Clear Bonus);
+    `★` HUD pill. All Scoring settings are **opt-in** (default off → classic behaviour).
+  - These are Phase 1 groundwork for **Campaign mode** (FUTURE_ROADMAP §12) — sequenced levels with coloured
+    branch/secret/skip exits, an overworld map, and cross-level carry-over, all planned later.
 - **Redstone (works):** lever(grid 27)→orthogonally-adjacent dust chain(`dustBlocks`, overlay)→adjacent
   trapdoor(23)/piston(24), OR-logic. Reference build = `saves/Platformer_-_V2_PLT_2026-07-04.json`.
 - **Regenerate:** `node tools/gen-sample-worlds.js` (writes files + runs the structural reachability check;
