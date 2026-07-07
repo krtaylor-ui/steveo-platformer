@@ -514,3 +514,21 @@ wants, separate from the Arena Defend‑the‑Tower confusion.
 
 **Effort:** MODERATE for the standalone prototype (heavy reuse); grows into §4 if extended to
 lanes/MOBA/bots.
+
+---
+
+## World Settings rebuild (HTML) — planned (noted 2026-07-07)
+
+The per-world config list is outgrowing the fixed-size **canvas** World Settings panel (the Physics tab is
+already full at 9 rows). New movement toggles (Auto-Climb, Wall Slide, Ledge Hang, Ground Slide + their
+sub-options) currently live in the **HTML pause-menu** physics section because the canvas panel can't take
+more rows without overflowing.
+
+**Plan:** rebuild World Settings as a proper **HTML** UI with a **Simple / Advanced** split — surface the
+handful of common knobs up front, tuck the long tail (physics, movement moves, redstone, boss scaling,
+locks) behind an "Advanced" disclosure. Group by theme (Movement, Physics, Arena, Display, Boss). Keep the
+existing **canvas "rendered" menu as a Konami-code bonus in Sandbox** (it's already gated behind
+`_useClassicPause`/Konami) — a nostalgic extra, not the primary path.
+
+Movement config keys to fold in: `airJumpEnabled`, `autoStepUp`, `wallSlideEnabled`, `wallJumpLockAway`,
+`ledgeHangEnabled`, `slideEnabled`, `slideInvincible`, `slideDurationFrames`, `slideSpeedMult`.

@@ -43,6 +43,30 @@ class Player {
     this._rollTotal     = 0;
     this._rollDir       = 1;           // spin direction (captured from facing at jump)
 
+    // ── Optional movement moves (all opt-in per world; default off) ──────────
+    // Wall slide + wall jump
+    this._wallSlideEnabled = false;
+    this._wallJumpLockAway = false;
+    this._wallSliding      = false;    // sliding down a wall this frame
+    this._wallSlideDir     = 0;        // -1 wall on left, +1 wall on right
+    this._ctrlLock         = false;    // control locked after a lock-away wall jump
+    this._lockVx           = 0;        // forced vx while control-locked
+    // Ledge hang
+    this._ledgeHangEnabled = false;
+    this._hangState        = null;     // null | 'hang' | 'up' (climb up) | 'down' (climb down)
+    this._hangX = 0; this._hangY = 0; this._hangSide = 0;
+    this._standX = 0; this._standY = 0;   // on-ledge standing pos (climb target)
+    this._climbT = 0; this._climbDur = 16;
+    this._hangCooldown = 0;            // frames after a drop before re-grabbing
+    this._downWas = false;             // edge-detect the down press for climb-down
+    // Ground slide (jump + down)
+    this._slideEnabled    = false;
+    this._slideInvincible = false;
+    this._slideDur        = 30;        // frames
+    this._slideMult       = 1.6;       // speed multiplier during slide
+    this._slideFrames     = 0;
+    this._slideDir        = 1;
+
     // Bow state
     this.bowDrawing    = false;
     this.drawProgress  = 0;            // 0–1
@@ -211,9 +235,15 @@ class Player {
     if (this.iframes        > 0) this.iframes--;
     if (this.swingTimer     > 0) this.swingTimer--;
     if (this._rollFrames    > 0) this._rollFrames--;
+    if (this._hangCooldown  > 0) this._hangCooldown--;
 
+    // Ledge hang owns the whole frame while active (no gravity/collision).
+    if (this._hangState) { this._updateHang(input, level); this._animate(input); return; }
+
+    this._detectWallSlide(input, level);   // sets _wallSliding (used by jump + physics)
     this._handleInput(input);
     this._applyPhysics(level);
+    this._tryLedgeGrab(input, level);      // grab from air / climb down from a ledge
     this._animate(input);
   }
 
@@ -230,7 +260,12 @@ class Player {
     // Horizontal movement — analog-aware (uses left stick magnitude when available)
     const mx = typeof input.moveX === 'function' ? input.moveX()
              : (input.isLeft() ? -1 : input.isRight() ? 1 : 0);
-    if (this.srControlled) {
+    if (this._ctrlLock) {
+      // Lock-away wall jump: steering disabled, vx forced away from the wall until
+      // landing / hitting a wall / grabbing a ledge (those clear _ctrlLock).
+      this.vx = this._lockVx;
+      this.facing = this._lockVx < 0 ? -1 : 1;
+    } else if (this.srControlled) {
       // Speed Runner owns horizontal velocity (game._updateSpeedRunner ramps /
       // coasts sr.vx). Don't let key input or the 0.72 friction here fight it —
       // otherwise vx snaps to a fixed speed and ignores the boost multiplier.
@@ -297,7 +332,37 @@ class Player {
     // Jump (with coyote time + jump buffer)
     const jumpNow  = input.isJump();
     const jumpEdge = jumpNow && !this._jumpPressed;
+    const jumpVel  = this._jumpVelocityOverride ?? JUMP_VELOCITY;
+
+    // ── Ground slide in progress (opt-in): jump+down started it. ──
+    if (this._slideFrames > 0) {
+      this.vx = this._slideDir * this.moveSpeed * (this._slideMult || 1.6);
+      this.facing = this._slideDir;
+      if (this._slideInvincible) this.iframes = Math.max(this.iframes, 3);
+      if (jumpEdge) {                       // cancel early → hop out of the slide
+        this._slideFrames = 0;
+        this.vy = jumpVel;
+        this.jumpSquish = 1;
+        this.onGround = false;
+      } else {
+        this._slideFrames--;
+      }
+      this._jumpPressed = jumpNow;
+      if (this._jumpBuffer > 0) this._jumpBuffer--;
+      if (this._coyoteTime > 0) this._coyoteTime--;
+      return;   // slide owns movement this frame
+    }
+
     if (jumpEdge) {
+      // Start a ground slide: on the ground, holding down, slide enabled.
+      if (this.onGround && this._slideEnabled && input.isCrouch()) {
+        this._slideDir    = this.facing || 1;
+        this._slideFrames = this._slideDur || 30;
+        this.vx           = this._slideDir * this.moveSpeed * (this._slideMult || 1.6);
+        this._jumpBuffer  = 0;
+        this._jumpPressed = jumpNow;
+        return;
+      }
       // Double-jump while airborne → enable flight (only in god mode)
       if (!this.onGround && this._frameNum - this._lastJumpFrame < 14 && this.godMode) {
         this.flying      = true;
@@ -310,15 +375,25 @@ class Player {
     }
     this._jumpPressed = jumpNow;
 
-    // Jump velocity may be overridden per-world (configurable jump height).
-    const jumpVel = this._jumpVelocityOverride ?? JUMP_VELOCITY;
-
     if (this._coyoteTime > 0 && this._jumpBuffer > 0 && !this.crouching) {
       this.vy          = jumpVel;
       this._jumpBuffer = 0;
       this._coyoteTime = 0;
       this.onGround    = false;
       this.jumpSquish  = 1;
+    } else if (jumpEdge && this._wallSliding) {
+      // Wall jump — a normal jump off the wall. Optional lock-away forces the arc
+      // away from the wall and disables steering until you land / hit a wall / hang.
+      this.vy          = jumpVel;
+      this._jumpBuffer = 0;
+      this.jumpSquish  = 1;
+      if (this._wallJumpLockAway) {
+        this._ctrlLock = true;
+        this._lockVx   = -this._wallSlideDir * this.moveSpeed;
+        this.vx        = this._lockVx;
+        this.facing    = this._lockVx < 0 ? -1 : 1;
+      }
+      this._wallSliding = false;
     } else if (jumpEdge && this._airJumpEnabled && !this.flying && !this.onGround &&
                this._coyoteTime === 0 && !this.crouching && (this._airJumpsUsed || 0) < 1) {
       // Air jump (double jump): one mid-air boost when enabled per-world.
@@ -354,6 +429,8 @@ class Player {
     if (!this.flying) {
       this.vy = Math.min(this.vy + (this._gravityOverride ?? GRAVITY), MAX_FALL_SPEED);
     }
+    // Wall slide: while pressing into a wall in the air, fall slowly (opt-in).
+    if (this._wallSliding && this.vy > 0) this.vy = Math.min(this.vy, 2.6);
 
     const wasOnGround = this.onGround;
     this.onGround = false;
@@ -374,6 +451,7 @@ class Player {
           this.onGround = true;
           this._airJumpsUsed = 0;                // landing refreshes the air jump
           this._rollFrames   = 0;                // landing snaps the roll back to normal
+          this._ctrlLock     = false;            // landing returns control (lock-away wall jump)
           if (!wasOnGround) this.jumpSquish = 0.85;
           if (this.flying) this.flying = false;  // auto-land when touching ground
           stopped = true;
@@ -416,6 +494,7 @@ class Player {
           if (this._tryAutoStep(level, c, bRowT, bRowB)) { this.x = newX; stopped = true; break; }
           this.x  = c * BLOCK_SIZE - this.width;
           this.vx = 0;
+          this._ctrlLock = false;   // hit a wall → control returns
           stopped = true;
           break;
         }
@@ -431,6 +510,7 @@ class Player {
           if (this._tryAutoStep(level, c, bRowT, bRowB)) { this.x = newX; stopped = true; break; }
           this.x  = (c + 1) * BLOCK_SIZE;
           this.vx = 0;
+          this._ctrlLock = false;   // hit a wall → control returns
           stopped = true;
           break;
         }
@@ -460,6 +540,109 @@ class Player {
     for (let cc = cl; cc <= cr; cc++) if (level.isSolid(headRow, cc)) return false;
     this.y = bRowB * BLOCK_SIZE - this.height;    // sit the player's feet on the step top
     return true;
+  }
+
+  // ── Wall slide ──────────────────────────────────────────────
+  // Sets _wallSliding when airborne, falling, and pressing into an adjacent wall.
+  _detectWallSlide(input, level) {
+    this._wallSliding = false;
+    if (!this._wallSlideEnabled || this.onGround || this.flying ||
+        this.canPhaseThrough || this.srControlled || this._slideFrames > 0) return;
+    if (this.vy <= 0) return;                       // only while falling
+    const mx = typeof input.moveX === 'function' ? input.moveX()
+             : (input.isLeft() ? -1 : input.isRight() ? 1 : 0);
+    if (Math.abs(mx) < 0.3) return;                 // must be pressing sideways
+    const r1 = Math.floor((this.y + 8) / BLOCK_SIZE);
+    const r2 = Math.floor((this.y + this.height - 10) / BLOCK_SIZE);
+    const solidCol = (c) => { for (let r = r1; r <= r2; r++) if (level.isSolid(r, c)) return true; return false; };
+    if (mx < 0 && solidCol(Math.floor((this.x - 1) / BLOCK_SIZE))) {
+      this._wallSliding = true; this._wallSlideDir = -1;
+    } else if (mx > 0 && solidCol(Math.floor((this.x + this.width + 1) / BLOCK_SIZE))) {
+      this._wallSliding = true; this._wallSlideDir = 1;
+    }
+    if (this._wallSliding) { this.facing = this._wallSlideDir; this._ctrlLock = false; }
+  }
+
+  // ── Ledge hang ──────────────────────────────────────────────
+  // (a) grab an edge from the air while holding jump; (b) climb down from a ledge
+  // when standing and pressing down. Called after physics each frame.
+  _tryLedgeGrab(input, level) {
+    if (this._hangState || this._hangCooldown > 0) return;
+    if (!this._ledgeHangEnabled || this.flying || this.canPhaseThrough || this.srControlled) return;
+    const dir = this.facing || 1;
+    const BS = BLOCK_SIZE;
+
+    // (a) In the air, holding jump, moving toward a wall whose top edge is at hand
+    // height (solid block with air directly above it = a grabbable ledge).
+    if (!this.onGround && input.isJump() && this.vy > -3) {
+      const sideCol = dir > 0 ? Math.floor((this.x + this.width + 1) / BS)
+                              : Math.floor((this.x - 1) / BS);
+      const handRow = Math.floor((this.y + 12) / BS);
+      if (level.isSolid(handRow, sideCol) && !level.isSolid(handRow - 1, sideCol)) {
+        this._hangSide = dir;
+        this._hangX = dir > 0 ? sideCol * BS - this.width : (sideCol + 1) * BS;
+        this._hangY = handRow * BS - 14;
+        this._standX = sideCol * BS + Math.floor((BS - this.width) / 2);
+        this._standY = handRow * BS - this.height;
+        this._hangState = 'hang';
+        this.x = this._hangX; this.y = this._hangY;
+        this.vx = 0; this.vy = 0; this.onGround = false; this.crouching = false; this._ctrlLock = false;
+      }
+      return;
+    }
+
+    // (b) Standing at the top of a ledge, fresh down press → climb down to hang.
+    if (this.onGround) {
+      const downNow = input.isCrouch();
+      const downEdge = downNow && !this._downWas;
+      this._downWas = downNow;
+      if (!downEdge) return;
+      const footRow  = Math.floor((this.y + this.height) / BS);        // block row under the feet
+      const standCol = dir > 0 ? Math.floor((this.x + this.width - 2) / BS)
+                               : Math.floor((this.x + 2) / BS);
+      const fwdCol   = dir > 0 ? Math.floor((this.x + this.width + 2) / BS)
+                               : Math.floor((this.x - 2) / BS);
+      // Solid under the feet, but the forward-down is open (a drop to hang off).
+      if (level.isSolid(footRow, standCol) && !level.isSolid(footRow, fwdCol) && !level.isSolid(footRow - 1, fwdCol)) {
+        this._hangSide = dir;
+        this._standX = this.x; this._standY = this.y;
+        this._hangX = dir > 0 ? (standCol + 1) * BS : standCol * BS - this.width;
+        this._hangY = footRow * BS - 14;
+        this._hangState = 'down'; this._climbT = 0; this._climbDur = 16;
+      }
+    } else {
+      this._downWas = input.isCrouch();
+    }
+  }
+
+  // Runs the hang / climb states; fully owns the player's position while active.
+  _updateHang(input, level) {
+    this.vx = 0; this.vy = 0; this.onGround = false; this.crouching = false;
+    const s = this._hangState;
+    if (s === 'hang') {
+      this.x = this._hangX; this.y = this._hangY;
+      const jumpEdge = input.isJump() && !this._jumpPressed;
+      this._jumpPressed = input.isJump();
+      if (input.isCrouch()) {                  // down → drop off
+        this._hangState = null; this._hangCooldown = 12; this.vy = 2; this._downWas = true;
+      } else if (jumpEdge) {                    // up/jump → climb up
+        this._hangState = 'up'; this._climbT = 0; this._climbDur = 16;
+      }
+    } else if (s === 'up') {
+      this._climbT++;
+      const t = Math.min(1, this._climbT / this._climbDur);
+      this.x = this._hangX + (this._standX - this._hangX) * t;
+      this.y = this._hangY + (this._standY - this._hangY) * t;
+      this._jumpPressed = input.isJump();
+      if (t >= 1) { this._hangState = null; this._hangCooldown = 8; }
+    } else if (s === 'down') {
+      this._climbT++;
+      const t = Math.min(1, this._climbT / this._climbDur);
+      this.x = this._standX + (this._hangX - this._standX) * t;
+      this.y = this._standY + (this._hangY - this._standY) * t;
+      this._jumpPressed = input.isJump();
+      if (t >= 1) { this._hangState = 'hang'; this._downWas = true; }
+    }
   }
 
   _animate(input) {
@@ -642,25 +825,34 @@ class Player {
   }
 
   _drawSteve(ctx, sx, sy) {
-    const crouch  = this.crouching;
-    // Air-roll (double-jump): tuck the limbs in and spin the whole sprite once.
-    // Only while airborne; landing (or roll completion) snaps back to normal.
-    const rolling   = this._rollFrames > 0 && !this.onGround && !crouch;
+    const crouch    = this.crouching;
+    // Special animated poses (opt-in moves). Priority: hang > slide > wall-slide > roll.
+    const hanging   = !!this._hangState;
+    const sliding   = this._slideFrames > 0;
+    const wallSlide = this._wallSliding && !this.onGround && !hanging && !sliding;
+    const rolling   = this._rollFrames > 0 && !this.onGround && !crouch && !hanging && !sliding;
+    const special   = hanging || sliding || wallSlide || rolling;
+
     const rprog     = rolling ? 1 - (this._rollFrames / (this._rollTotal || 1)) : 0;
     const rollAngle = rolling ? (this._rollDir || 1) * rprog * Math.PI * 2 : 0;
     const tuck      = rolling ? Math.sin(rprog * Math.PI) : 0;   // ease in → peak → out
-    const swing   = rolling ? 0 : Math.sin(this.walkTimer) * (this.onGround ? 0.5 : 0.2);
-    const flipX   = this.facing === -1;
-    const squishY = rolling ? 1 : 1 - this.jumpSquish * 0.12;
-    const squishX = rolling ? 1 : 1 + this.jumpSquish * 0.08;
+    const armsUp    = hanging ? 1 : 0;                            // reach up to grip the ledge
+    const swing     = special ? 0 : Math.sin(this.walkTimer) * (this.onGround ? 0.5 : 0.2);
+    const flipX     = this.facing === -1;
+    const squishY   = special ? 1 : 1 - this.jumpSquish * 0.12;
+    const squishX   = special ? 1 : 1 + this.jumpSquish * 0.08;
+
+    // Whole-sprite lean for the ground slide / wall slide (roll has its own spin).
+    let leanAngle = 0, leanCX = sx + this.width / 2, leanCY = sy + this.height / 2;
+    if (sliding)        { leanAngle = this._slideDir * -0.6; leanCY = sy + this.height; }  // lean back, pivot at feet
+    else if (wallSlide) { leanAngle = -this._wallSlideDir * 0.22; }                        // lean away from the wall
 
     ctx.save();
-    // Air-roll spin about the sprite centre (composed outside the squish/flip).
     if (rolling) {
       const rcx = sx + this.width / 2, rcy = sy + this.height / 2;
-      ctx.translate(rcx, rcy);
-      ctx.rotate(rollAngle);
-      ctx.translate(-rcx, -rcy);
+      ctx.translate(rcx, rcy); ctx.rotate(rollAngle); ctx.translate(-rcx, -rcy);
+    } else if (leanAngle) {
+      ctx.translate(leanCX, leanCY); ctx.rotate(leanAngle); ctx.translate(-leanCX, -leanCY);
     }
     // Squish transform centred on bottom of player
     const pivotX = sx + this.width / 2;
@@ -676,25 +868,26 @@ class Player {
       ctx.translate(-(sx + this.width / 2), 0);
     }
 
-    if (crouch) {
+    const useCrouch = crouch && !sliding && !hanging;
+    if (useCrouch) {
       this._drawCrouch(ctx, sx, sy);
     } else {
-      this._drawStanding(ctx, sx, sy, swing, tuck);
+      this._drawStanding(ctx, sx, sy, swing, tuck, armsUp);
     }
 
-    this._drawArmorOverlay(ctx, sx, sy, crouch);
+    this._drawArmorOverlay(ctx, sx, sy, useCrouch);
 
     if (this.hasShield) {
-      this._drawShield(ctx, sx, sy, crouch);
+      this._drawShield(ctx, sx, sy, useCrouch);
     }
 
     ctx.restore();
 
-    // Weapon in hand (hidden during the air-roll — arms are tucked in)
-    if (!rolling) this._drawWeapon(ctx, sx, sy, swing, flipX, crouch);
+    // Weapon hidden during any special pose (arms are busy).
+    if (!special) this._drawWeapon(ctx, sx, sy, swing, flipX, crouch);
   }
 
-  _drawStanding(ctx, sx, sy, swing, tuck = 0) {
+  _drawStanding(ctx, sx, sy, swing, tuck = 0, armsUp = 0) {
     // ── Colors ──────────────────────────────────────────────
     const SKIN    = '#F4C78A';
     const HAIR    = '#7D4E1A';
@@ -759,7 +952,7 @@ class Player {
     // ── Left arm ────────────────────────────────────────────
     ctx.save();
     ctx.translate(sx + 2 + tuck * 5, sy + 18 - tuck * 2);
-    ctx.rotate(-legSwing);
+    ctx.rotate(armsUp ? Math.PI - 0.25 : -legSwing);   // armsUp → reach overhead to grip
     ctx.fillStyle = SHIRT;
     ctx.fillRect(-2, 0, 6, 12);
     ctx.fillStyle = SKIN;
@@ -776,7 +969,7 @@ class Player {
     // ── Right arm (holds pickaxe side) ───────────────────────
     ctx.save();
     ctx.translate(sx + 16 - tuck * 5, sy + 18 - tuck * 2);
-    ctx.rotate(legSwing);
+    ctx.rotate(armsUp ? -(Math.PI - 0.25) : legSwing);   // armsUp → reach overhead to grip
     ctx.fillStyle = SHIRT;
     ctx.fillRect(-2, 0, 6, 12);
     ctx.fillStyle = SKIN;

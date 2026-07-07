@@ -110,6 +110,14 @@ class Game {
       airJumpEnabled:            false,     // allow one mid-air (double) jump
       sprintEnabled:             true,      // Shift = 2× ground speed
       autoStepUp:                false,     // walk/run up 1-block ledges without jumping (universal, per-world)
+      // Optional movement moves (all per-world, default off)
+      wallSlideEnabled:          false,     // slow slide down a wall when pressing into it mid-air
+      wallJumpLockAway:          false,     // wall jump forces an arc away, no steering until land/wall/ledge
+      ledgeHangEnabled:          false,     // grab & hang from block edges (climb up / drop / climb down)
+      slideEnabled:              false,     // jump + down → ground slide
+      slideInvincible:           false,     // invincible during the slide
+      slideDurationFrames:       30,        // slide length (frames)
+      slideSpeedMult:            1.6,       // horizontal speed multiplier while sliding
       // Phase 3A.3 — universal per-world "prescribed" zoom (all modes). The
       // sandbox/God-mode Z key cycles 100/200/300/400% then back to this default.
       worldZoom:                 1.0,       // 0.5–2.0 base view zoom
@@ -4255,6 +4263,13 @@ class Game {
     p._sprintEnabled   = aws.sprintEnabled !== false;
     p._airJumpEnabled  = !!aws.airJumpEnabled;
     p._autoStepUp      = !!aws.autoStepUp;
+    p._wallSlideEnabled = !!aws.wallSlideEnabled;
+    p._wallJumpLockAway = !!aws.wallJumpLockAway;
+    p._ledgeHangEnabled = !!aws.ledgeHangEnabled;
+    p._slideEnabled     = !!aws.slideEnabled;
+    p._slideInvincible  = !!aws.slideInvincible;
+    p._slideDur         = Math.max(6, Math.min(120, aws.slideDurationFrames ?? 30));
+    p._slideMult        = Math.max(1, Math.min(3, aws.slideSpeedMult ?? 1.6));
     p._jumpVelocityOverride = aws.jumpHeightBlocks
       ? -Math.sqrt(2 * g * aws.jumpHeightBlocks * BLOCK_SIZE)
       : null;

@@ -28,6 +28,8 @@ const PAUSE_MENU = {
     sens:      [0.5, 0.75, 1.0, 1.25, 1.5, 2.0],
     deadzone:  [0.10, 0.15, 0.20, 0.25, 0.30],
     boss:      [0.5, 1.0, 1.5, 2.0, 3.0],
+    slideDur:  [15, 20, 30, 45, 60, 90],
+    slideMult: [1.2, 1.4, 1.6, 2.0, 2.5],
   },
 
   el(id) { return document.getElementById(id); },
@@ -389,8 +391,15 @@ const PAUSE_MENU = {
         this._row('Air Jump', this._toggle(() => aws.airJumpEnabled, v => { game._worldAdvSettings.airJumpEnabled = v; }, locked)),
         this._row('Sprint', this._toggle(() => aws.sprintEnabled !== false, v => { game._worldAdvSettings.sprintEnabled = v; }, locked)),
         this._row('Auto-Climb', this._toggle(() => !!aws.autoStepUp, v => { game._worldAdvSettings.autoStepUp = v; }, locked)),
+        this._row('Wall Slide', this._toggle(() => !!aws.wallSlideEnabled, v => { game._worldAdvSettings.wallSlideEnabled = v; }, locked), 'slow-slide down a wall you press into'),
+        this._row('Ledge Hang', this._toggle(() => !!aws.ledgeHangEnabled, v => { game._worldAdvSettings.ledgeHangEnabled = v; }, locked), 'grab/hang from block edges'),
+        this._row('Ground Slide', this._toggle(() => !!aws.slideEnabled, v => { game._worldAdvSettings.slideEnabled = v; }, locked), 'jump + down to slide'),
       ];
       if (game.gameMode === 'sandbox') {
+        rows.push(this._row('  ↳ Wall-Jump Lock-Away', this._toggle(() => !!aws.wallJumpLockAway, v => { game._worldAdvSettings.wallJumpLockAway = v; }, locked), 'wall jump forces away, no steering till land'));
+        rows.push(this._row('  ↳ Slide Invincible', this._toggle(() => !!aws.slideInvincible, v => { game._worldAdvSettings.slideInvincible = v; }, locked)));
+        rows.push(this._row('  ↳ Slide Length', this._cycle(this.OPT.slideDur, () => aws.slideDurationFrames ?? 30, v => { game._worldAdvSettings.slideDurationFrames = v; }, v => v + 'f', locked)));
+        rows.push(this._row('  ↳ Slide Speed', this._cycle(this.OPT.slideMult, () => aws.slideSpeedMult ?? 1.6, v => { game._worldAdvSettings.slideSpeedMult = v; }, v => v.toFixed(1) + 'x', locked)));
         rows.push(this._row('Disable XP Speed Boost', this._toggle(() => aws.disableXpSpeedBoost, v => { game._worldAdvSettings.disableXpSpeedBoost = v; }, locked)));
         rows.push(this._row('Jump Pad Force', this._cycle(this.OPT.jumpPad, () => aws.jumpPadVForce ?? -18, v => { game._worldAdvSettings.jumpPadVForce = v; }, v => String(v), locked)));
         rows.push(this._row('Default Zoom', this._cycle(this.OPT.zoom, () => aws.worldZoom ?? 1.0, v => { game._worldAdvSettings.worldZoom = v; }, v => v.toFixed(2) + 'x', locked)));
