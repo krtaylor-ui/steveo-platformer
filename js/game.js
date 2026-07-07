@@ -73,7 +73,9 @@ class Game {
       disableDragonHealing:      false,
       dayCycleMinutes:           DAY_CYCLE_DEFAULT_MINUTES,
       nightSpawnBoost:           true,
+      nightSpawnRate:            2,      // ×spawn rate at night when boost on (configurable)
       fullMoonHpBoost:           true,
+      fullMoonHpAmount:          1.5,    // mob HP × on full-moon nights (configurable)
       unlimitedArrows:           false,
       controllerSensitivity:     1.0,
       controllerAimSensitivity:  1.0,
@@ -2796,8 +2798,12 @@ class Game {
     // _isOnlineJoiner computed near top of _update(); reused here.
     if (!isSandbox) {
       const _dn = this._dayNight;
-      this.mobManager.nightSpawnMultiplier = (!_dn.isDay && this._worldAdvSettings.nightSpawnBoost) ? 0.5 : 1.0;
-      this.mobManager.fullMoonActive       = (!_dn.isDay && _dn.nightPhase === 3 && this._worldAdvSettings.fullMoonHpBoost);
+      const _aws = this._worldAdvSettings;
+      // Night spawn boost: timer multiplier = 1/rate (rate 2 ⇒ 0.5 = twice as often).
+      this.mobManager.nightSpawnMultiplier = (!_dn.isDay && _aws.nightSpawnBoost)
+        ? 1 / Math.max(1, _aws.nightSpawnRate || 2) : 1.0;
+      this.mobManager.fullMoonActive       = (!_dn.isDay && _dn.nightPhase === 3 && _aws.fullMoonHpBoost);
+      this.mobManager.fullMoonHpMult       = _aws.fullMoonHpAmount || 1.5;
       // Online host: give mob AI stubs for joiner positions so mobs chase all players
       if (this._onlineGameId && window.multiplayerManager?.isCreator) {
         this.mobManager.onlinePlayers = Object.entries(window.multiplayerManager.otherPlayers)

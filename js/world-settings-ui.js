@@ -59,9 +59,24 @@ const WORLD_SETTINGS = {
     { id: 'speedrun', label: 'Speed Run' },
     { id: 'arena',    label: 'Arena' },
     { id: 'combat',   label: 'Combat' },
-    { id: 'audio',    label: 'Audio' },
-    { id: 'controls', label: 'Controls' },
+    { id: 'mobs',     label: 'Mob Drops' },   // sandbox — special-rendered table
   ],
+
+  // Arena game types (which modes an arena world supports) → arenaEnabledTypes[].
+  ARENA_TYPES: [
+    ['MOB_HUNTER', 'Mob Hunter'], ['COLLECT_EMERALDS', 'Collect Emeralds'],
+    ['KING_OF_HILL', 'King of the Hill'], ['SURVIVAL_WAVES', 'Survival Waves'],
+    ['DEATHMATCH', 'Deathmatch'], ['CAPTURE_FLAG', 'Capture the Flag'],
+    ['DEFEND_TOWER', 'Defend the Tower'],
+  ],
+  // Mob-drops editor data
+  DROP_MOBS: [['zombie', 'Zombie'], ['skeleton', 'Skeleton'], ['creeper', 'Creeper'],
+    ['cave_spider', 'Cave Spider'], ['piglin', 'Piglin'], ['blaze', 'Blaze'],
+    ['wither_skeleton', 'Wither Skel.'], ['enderman', 'Enderman']],
+  DROP_ITEMS: [[0, '(none)'], [31, 'Apple'], [47, 'Arrow'], [30, 'String'], [8, 'Coal'],
+    [9, 'Iron Ore'], [17, 'Soul Sand'], [44, 'Blaze Rod'], [45, 'Ender Pearl'],
+    [52, 'Wither Skull'], [46, 'Dragon Egg']],
+  DROP_CHANCES: [0, 10, 25, 33, 50, 75, 100],
 
   // Which game modes each SETTING applies to. 'sandbox' is added everywhere so
   // the editor can configure worlds of any target mode.
@@ -84,15 +99,15 @@ const WORLD_SETTINGS = {
     const pct1 = (v) => v.toFixed(2), x1 = (v) => v.toFixed(1) + 'x', xf = (v) => v + 'x';
     return [
       // ── WORLD ───────────────────────────────────────────────
-      { key: 'dayCycleMinutes', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'cycle', opts: O.day, dflt: 10, label: 'Day Length', fmt: (v) => v + ' min', hint: 'full day+night cycle' },
-      { key: 'nightSpawnBoost', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'toggle', dflt: false, label: 'Night Spawn Boost' },
-      { key: 'fullMoonHpBoost', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'toggle', dflt: false, label: 'Full-Moon Mob HP', advanced: true },
+      { key: 'backgroundTheme', tab: 'world', group: 'Look', modes: M.display, type: 'cycle', opts: ['auto', 'sky', 'cave', 'nether', 'end'], dflt: 'auto', label: 'Background', fmt: this._cap, hint: 'force a biome backdrop everywhere, or Auto (by position)' },
+      { key: 'dayCycleMinutes', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'cycle', opts: O.day, dflt: 10, label: 'Day Length', fmt: (v) => v + ' min', hint: 'length of a full day+night cycle' },
+      { key: 'nightSpawnBoost', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'toggle', dflt: false, label: 'Night Spawn Boost', hint: 'more mobs spawn at night' },
+      { key: 'nightSpawnRate', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'cycle', opts: [1.5, 2, 3, 4], dflt: 2, label: 'Night Spawn Rate', fmt: (v) => v.toFixed(1) + 'x', sub: true, dependsOn: 'nightSpawnBoost', advanced: true, hint: 'how many more mobs at night' },
+      { key: 'fullMoonHpBoost', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'toggle', dflt: false, label: 'Full-Moon Mob HP', hint: 'tougher mobs on full-moon nights' },
+      { key: 'fullMoonHpAmount', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'cycle', opts: [1.25, 1.5, 2, 3], dflt: 1.5, label: 'Full-Moon HP Boost', fmt: (v) => v.toFixed(2) + 'x', sub: true, dependsOn: 'fullMoonHpBoost', advanced: true, hint: 'mob HP multiplier on a full moon' },
       { key: 'compactHotbar', tab: 'world', group: 'Display', modes: M.display, type: 'toggle', dflt: false, label: 'Compact Hotbar' },
-      { key: 'showOnlineHealthBars', tab: 'world', group: 'Display', modes: M.display, type: 'toggle', label: 'Show Player Health Bars',
-        get: (a) => a.showOnlineHealthBars !== false, set: (a, v) => { a.showOnlineHealthBars = v; } },
       { key: 'worldZoom', tab: 'world', group: 'Display', modes: M.display, type: 'cycle', opts: O.zoom, dflt: 1.0, label: 'Default Zoom', fmt: (v) => v.toFixed(2) + 'x' },
       { key: 'twoPlayerMode', tab: 'world', group: 'Players', modes: M.adventure, type: 'toggle', dflt: false, label: '2-Player Co-op', hint: 'P2 joins with a gamepad' },
-      { key: 'chatDisabled', tab: 'world', group: 'Players', modes: M.all, type: 'toggle', dflt: false, label: 'Disable Chat', showWhen: (g) => !!g._onlineGameId },
       { key: 'physicsLocked', tab: 'world', group: 'Designer Locks', modes: ['sandbox'], type: 'toggle', dflt: false, label: 'Lock Physics', advanced: true, hint: 'players can’t override movement/physics' },
       { key: 'bossScalingLocked', tab: 'world', group: 'Designer Locks', modes: ['sandbox'], type: 'toggle', dflt: false, label: 'Lock Boss Scaling', advanced: true },
 
@@ -133,6 +148,16 @@ const WORLD_SETTINGS = {
       { key: 'arenaPlayerMaxHealth', tab: 'arena', group: 'Match', modes: M.arena, type: 'cycle', opts: O.arenaHp, dflt: 20, label: 'Player Health', fmt: (v) => (v / 2) + ' ♥' },
       { key: 'arenaMobHealth', tab: 'arena', group: 'Match', modes: M.arena, type: 'cycle', opts: O.arenaMob, dflt: 'MEDIUM', label: 'Mob Difficulty', fmt: this._cap },
       { key: 'arenaRespawnTime', tab: 'arena', group: 'Match', modes: M.arena, type: 'cycle', opts: O.arenaResp, dflt: 2, label: 'Respawn Delay', fmt: (v) => v + 's' },
+      // Game types this arena world supports (→ arenaEnabledTypes[]).
+      ...this.ARENA_TYPES.map(([k, label]) => ({
+        key: 'arenaType_' + k, tab: 'arena', group: 'Game Types', modes: M.arena, type: 'toggle', label,
+        get: (a) => Array.isArray(a.arenaEnabledTypes) && a.arenaEnabledTypes.includes(k),
+        set: (a, v) => {
+          if (!Array.isArray(a.arenaEnabledTypes)) a.arenaEnabledTypes = [];
+          const i = a.arenaEnabledTypes.indexOf(k);
+          if (v && i < 0) a.arenaEnabledTypes.push(k); else if (!v && i >= 0) a.arenaEnabledTypes.splice(i, 1);
+        },
+      })),
 
       // ── COMBAT ──────────────────────────────────────────────
       { key: 'bossHealthMultiplier', tab: 'combat', group: 'Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Health', fmt: x1 },
@@ -140,14 +165,8 @@ const WORLD_SETTINGS = {
       { key: 'bossAttackRateMultiplier', tab: 'combat', group: 'Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Attack Rate', fmt: x1, advanced: true },
       { key: 'disableDragonHealing', tab: 'combat', group: 'Boss Scaling', modes: M.adventure, type: 'toggle', dflt: false, label: 'Disable Dragon Healing', advanced: true },
       { key: 'unlimitedArrows', tab: 'combat', group: 'Combat', modes: M.adventure, type: 'toggle', dflt: false, label: 'Unlimited Arrows', advanced: true },
-      { key: 'editMobDrops', tab: 'combat', group: 'Mobs', modes: ['sandbox'], type: 'button', label: 'Edit Mob Drops…', hint: 'per-mob loot tables',
-        act: (g) => { WORLD_SETTINGS.close(); g._worldSettingsOpen = true; g._wsTab = 'drops'; } },
-
-      // ── AUDIO ───────────────────────────────────────────────
-      { key: 'musicVolume', tab: 'audio', group: 'Volume', modes: M.all, type: 'slider', label: 'Music',
-        get: (a) => Math.round((a.musicVolume ?? 0.5) * 100), set: (a, v, g) => { a.musicVolume = v / 100; if (g._applyMusicVolume) g._applyMusicVolume(); } },
-      { key: 'sfxVolume', tab: 'audio', group: 'Volume', modes: M.all, type: 'slider', label: 'Sound Effects',
-        get: (a) => Math.round((a.sfxVolume ?? 0.5) * 100), set: (a, v) => { a.sfxVolume = v / 100; } },
+      // (Audio, Controls, Show-Health-Bars and Disable-Chat are PLAYER settings —
+      //  they live in the pause-menu Settings tab, not here. Mob Drops = its own tab.)
     ];
   },
 
@@ -197,6 +216,7 @@ const WORLD_SETTINGS = {
     return true;
   },
   _tabHasRows(tabId) {
+    if (tabId === 'mobs') return this._game.gameMode === 'sandbox';   // special table, sandbox only
     return this.SETTINGS.some((s) => s.tab === tabId && this._modeOK(s) && (!s.showWhen || s.showWhen(this._game)));
   },
 
@@ -227,15 +247,21 @@ const WORLD_SETTINGS = {
     const tabBar = tabs.map((t) =>
       `<button class="ws-tab${t.id === this._tab ? ' active' : ''}" data-tab="${t.id}">${esc(t.label)}</button>`).join('');
 
-    // Rows for the active tab, grouped by `group`, sub-config controls indented.
-    const rows = this.SETTINGS.filter((s) => s.tab === this._tab && this._visible(s));
+    // Body: the Mob Drops tab is a special table; everything else is schema rows
+    // grouped by `group`.
+    let rows = [];
     let body = '';
-    let lastGroup = null;
-    for (const s of rows) {
-      if (s.group !== lastGroup) { body += `<div class="ws-group">${esc(s.group)}</div>`; lastGroup = s.group; }
-      body += this._rowHtml(s, esc);
+    if (this._tab === 'mobs') {
+      body = this._mobDropsHtml(esc);
+    } else {
+      rows = this.SETTINGS.filter((s) => s.tab === this._tab && this._visible(s));
+      let lastGroup = null;
+      for (const s of rows) {
+        if (s.group !== lastGroup) { body += `<div class="ws-group">${esc(s.group)}</div>`; lastGroup = s.group; }
+        body += this._rowHtml(s, esc);
+      }
+      if (!rows.length) body = '<div class="ws-empty">No settings here for this mode.</div>';
     }
-    if (!rows.length) body = '<div class="ws-empty">No settings here for this mode.</div>';
 
     ov.innerHTML = `
       <div class="ws-panel" role="dialog" aria-label="World Settings">
@@ -250,10 +276,12 @@ const WORLD_SETTINGS = {
         <div class="ws-body">${body}</div>
       </div>`;
 
-    // Wire tab bar
+    // Wire tab bar + header
     ov.querySelectorAll('.ws-tab').forEach((b) => b.onclick = () => { this._tab = b.dataset.tab; this._render(); });
     document.getElementById('ws-close').onclick = () => this.close();
     document.getElementById('ws-adv').onchange = (e) => { this._advanced = e.target.checked; this._render(); };
+
+    if (this._tab === 'mobs') { this._wireMobDrops(ov); return; }
 
     // Wire each control
     for (const s of rows) {
@@ -272,9 +300,61 @@ const WORLD_SETTINGS = {
     }
   },
 
+  // ── Mob Drops table (HTML port of the canvas editor) ────────
+  _mobDropsHtml(esc) {
+    const cfg = this._game._mobDropSettings || {};
+    const itemName = (id) => (this.DROP_ITEMS.find(([i]) => i === id) || [0, '(none)'])[1];
+    const cyc = (val) => `<div class="ws-cyc"><button class="ws-cyc-prev" aria-label="Previous">‹</button><span class="ws-cyc-val">${esc(val)}</span><button class="ws-cyc-next" aria-label="Next">›</button></div>`;
+    let html = '<div class="ws-group">Per-mob drops — item + chance, two slots each</div>';
+    for (const [mk, mlabel] of this.DROP_MOBS) {
+      const slots = cfg[mk] || [{ item: 0, chance: 0 }, { item: 0, chance: 0 }];
+      let cells = '';
+      for (let si = 0; si < 2; si++) {
+        const slot = slots[si] || { item: 0, chance: 0 };
+        cells += `<div class="ws-drop-slot" data-mob="${mk}" data-slot="${si}">
+          <span class="ws-drop-cap">${si + 1}</span>
+          <span class="ws-drop-item">${cyc(itemName(slot.item))}</span>
+          <span class="ws-drop-chance">${cyc((slot.chance || 0) + '%')}</span></div>`;
+      }
+      html += `<div class="ws-drop-row"><div class="ws-drop-mob">${esc(mlabel)}</div><div class="ws-drop-slots">${cells}</div></div>`;
+    }
+    return html;
+  },
+  _wireMobDrops(ov) {
+    ov.querySelectorAll('.ws-drop-slot').forEach((slotEl) => {
+      const mk = slotEl.dataset.mob, si = +slotEl.dataset.slot;
+      const it = slotEl.querySelector('.ws-drop-item'), ch = slotEl.querySelector('.ws-drop-chance');
+      it.querySelector('.ws-cyc-next').onclick = () => this._cycleDropItem(mk, si, 1);
+      it.querySelector('.ws-cyc-prev').onclick = () => this._cycleDropItem(mk, si, -1);
+      ch.querySelector('.ws-cyc-next').onclick = () => this._cycleDropChance(mk, si, 1);
+      ch.querySelector('.ws-cyc-prev').onclick = () => this._cycleDropChance(mk, si, -1);
+    });
+  },
+  _dropSlot(mk, si) {
+    const g = this._game;
+    if (!g._mobDropSettings[mk]) g._mobDropSettings[mk] = [{ item: 0, chance: 0 }, { item: 0, chance: 0 }];
+    if (!g._mobDropSettings[mk][si]) g._mobDropSettings[mk][si] = { item: 0, chance: 0 };
+    return g._mobDropSettings[mk][si];
+  },
+  _cycleDropItem(mk, si, dir) {
+    const slot = this._dropSlot(mk, si), ids = this.DROP_ITEMS.map(([i]) => i);
+    let i = ids.indexOf(slot.item); if (i < 0) i = 0;
+    slot.item = ids[(i + dir + ids.length) % ids.length];
+    this._commitDrops(); this._render();
+  },
+  _cycleDropChance(mk, si, dir) {
+    const slot = this._dropSlot(mk, si), C = this.DROP_CHANCES;
+    let i = C.indexOf(slot.chance || 0); if (i < 0) i = 0;
+    slot.chance = C[(i + dir + C.length) % C.length];
+    this._commitDrops(); this._render();
+  },
+  _commitDrops() { const g = this._game; if (g.mobManager) g.mobManager.dropConfig = g._mobDropSettings; },
+
   _rowHtml(s, esc) {
-    const hint = s.hint ? `<span class="ws-hint">${esc(s.hint)}</span>` : '';
-    const label = `<div class="ws-label${s.sub ? ' ws-sub' : ''}"><span>${esc(s.label)}</span>${hint}</div>`;
+    // ⓘ tooltip icon (native title on hover/focus); advanced rows get a colour class.
+    const info = s.hint ? ` <span class="ws-info" tabindex="0" title="${esc(s.hint)}" aria-label="${esc(s.hint)}">ⓘ</span>` : '';
+    const cls = 'ws-label' + (s.sub ? ' ws-sub' : '') + (s.advanced ? ' ws-adv-row' : '');
+    const label = `<div class="${cls}"><span class="ws-lbl">${esc(s.label)}</span>${info}</div>`;
     if (s.type === 'toggle') {
       const on = !!this._get(s);
       return `<div class="ws-row">${label}<button class="ws-switch${on ? ' on' : ''}" data-key="${s.key}" role="switch" aria-checked="${on}"><span class="ws-knob"></span></button></div>`;

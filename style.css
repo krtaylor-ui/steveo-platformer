@@ -1178,11 +1178,23 @@ html[data-theme="retro"] {
 .ws-group { font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: #8b95c9; margin: 15px 0 4px; }
 .ws-group:first-child { margin-top: 6px; }
 .ws-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; min-height: 34px; }
-.ws-label { flex: 1; display: flex; flex-direction: column; }
-.ws-label > span { font-size: 0.92rem; }
+.ws-label { flex: 1; display: flex; align-items: center; gap: 6px; }
+.ws-lbl { font-size: 0.92rem; }
 .ws-label.ws-sub { padding-left: 14px; }
-.ws-label.ws-sub > span::before { content: "↳ "; color: #5b6178; }
-.ws-hint { font-size: 0.72rem; color: #828aa5; margin-top: 1px; }
+.ws-label.ws-sub .ws-lbl::before { content: "↳ "; color: #5b6178; }
+/* advanced settings + the header "Advanced" toggle share an amber accent */
+.ws-adv-row .ws-lbl { color: #f0b354; }
+.ws-adv { color: #f0b354 !important; }
+.ws-info { font-size: 0.78rem; color: #6f7690; cursor: help; }
+.ws-info:hover, .ws-info:focus-visible { color: var(--accent, #7c8cff); }
+/* Mob Drops table */
+.ws-drop-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid #23273a; flex-wrap: wrap; }
+.ws-drop-mob { flex: 0 0 92px; font-size: 0.9rem; }
+.ws-drop-slots { display: flex; gap: 10px; flex-wrap: wrap; }
+.ws-drop-slot { display: flex; align-items: center; gap: 4px; background: #1f2333; border: 1px solid #2a2e3e; border-radius: 7px; padding: 3px 6px; }
+.ws-drop-cap { font-size: 0.65rem; color: #7c8cff; width: 10px; text-align: center; }
+.ws-drop-item .ws-cyc-val { min-width: 72px; }
+.ws-drop-chance .ws-cyc-val { min-width: 40px; }
 .ws-switch { width: 44px; height: 24px; border-radius: 12px; border: none; background: #3a3f52; position: relative; cursor: pointer; flex: 0 0 auto; transition: background 0.15s; }
 .ws-switch.on { background: var(--accent, #7c8cff); }
 .ws-knob { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left 0.15s; }
@@ -1198,6 +1210,24 @@ html[data-theme="retro"] {
 .ws-btn:hover { background: #2f3446; }
 .ws-empty { color: #828aa5; padding: 20px 0; text-align: center; }
 #world-settings-overlay :focus-visible { outline: 2px solid var(--accent, #7c8cff); outline-offset: 2px; }
+
+/* Retro theme skin — matches the neon/monospace look (Konami classic stays canvas). */
+html[data-theme="retro"] .ws-panel {
+  background: #10102a; border: 3px solid #2f6f8f; border-radius: 6px;
+  font-family: 'Courier New', monospace; color: #cfe8f2;
+}
+html[data-theme="retro"] .ws-head, html[data-theme="retro"] .ws-tabs { border-bottom-color: #2f6f8f; }
+html[data-theme="retro"] .ws-head h2 { color: #7ee0ff; text-transform: uppercase; letter-spacing: 1px; }
+html[data-theme="retro"] .ws-group { color: #7ee0ff; }
+html[data-theme="retro"] .ws-tab { background: #16213e; color: #9fd6e8; border-radius: 4px; }
+html[data-theme="retro"] .ws-tab.active { background: #2f6f8f; color: #eaffff; }
+html[data-theme="retro"] .ws-cyc button,
+html[data-theme="retro"] .ws-btn,
+html[data-theme="retro"] .ws-drop-slot { background: #16213e; border-color: #2f6f8f; color: #cfe8f2; border-radius: 4px; }
+html[data-theme="retro"] .ws-switch { background: #2a3550; border-radius: 5px; }
+html[data-theme="retro"] .ws-knob { border-radius: 2px; }
+html[data-theme="retro"] .ws-adv-row .ws-lbl,
+html[data-theme="retro"] .ws-adv { color: #ffd166 !important; }
 
 /* Sandbox playtest controls — a small always-on-top bar while testing a level.
    Fixed top-centre so it's visible over any mode's canvas (unlike the old canvas

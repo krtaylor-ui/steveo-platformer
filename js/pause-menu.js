@@ -375,10 +375,17 @@ const PAUSE_MENU = {
     const ctrlRows = this._assignRows(game);
     if (ctrlRows.length) body.appendChild(this._section('Controls', ctrlRows));
 
+    // Player-scoped display / chat (each player's preference, not the world's).
+    const prows = [
+      this._row('Show Player Health Bars', this._toggle(() => aws.showOnlineHealthBars !== false, v => { game._worldAdvSettings.showOnlineHealthBars = v; })),
+    ];
+    if (game._onlineGameId) prows.push(this._row('Disable Chat', this._toggle(() => aws.chatDisabled, v => { game._worldAdvSettings.chatDisabled = v; })));
+    body.appendChild(this._section('Player', prows));
+
     // All per-world settings (movement, physics, speed run, arena, combat, day/
-    // night, audio, …) now live in the unified HTML World Settings panel. The
-    // pause menu keeps only quick runtime/device controls (Audio + Controls above)
-    // plus this launcher.
+    // night, background, …) now live in the unified HTML World Settings panel. The
+    // pause menu keeps only quick per-player / device controls (Audio, Controls,
+    // Player above) plus this launcher.
     {
       const btn = document.createElement('button');
       btn.className = 'btn btn-primary pause-btn';

@@ -1396,6 +1396,7 @@ class MobManager {
     this.dropConfig   = null;  // set by game.js to _mobDropSettings
     this.nightSpawnMultiplier = 1.0;
     this.fullMoonActive       = false;
+    this.fullMoonHpMult       = 1.5;
     this.onlinePlayers = []; // online player stubs for multi-target aggro (host only)
     this.soundCallback        = null;  // set by game.js: fn(file, volMult?)
     this.dropCallback         = null;  // set by game.js: fn(items) — called when mob drops items (used for online relay)
@@ -1507,8 +1508,9 @@ class MobManager {
     if (mob) {
       mob._mobManager = this;  // back-ref so mobs can trigger sounds
       if (this.fullMoonActive) {
-        mob.hp    = Math.ceil(mob.hp    * 1.5);
-        mob.maxHp = Math.ceil(mob.maxHp * 1.5);
+        const fm = this.fullMoonHpMult || 1.5;
+        mob.hp    = Math.ceil(mob.hp    * fm);
+        mob.maxHp = Math.ceil(mob.maxHp * fm);
       }
       // Arena mob-difficulty preset (Phase 3A.3): scale HP for every arena-created mob.
       if (this.arenaMobHpMult && this.arenaMobHpMult !== 1) {
