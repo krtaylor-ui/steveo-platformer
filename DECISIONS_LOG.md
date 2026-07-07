@@ -879,3 +879,32 @@ Files: js/game.js (Esc + `_srCheckGoals`), js/test-world.js (HUD + capture-once)
 (arena-test reroute), index.html (#test-hud + `?v=b57`), style.css (#test-hud), sw.js
 (`steveo-shell-v57`), js/constants.js (build 57), tools/gen-sample-worlds.js + sample-worlds/SR_*.json.
 Tests 182/182; `node -c` clean; structural check 9/9.
+
+---
+
+## Builds 59–63 (2026-07-07) — movement moves: wall slide, ledge hang, ground slide (+ climb animation)
+
+Merged the `ledge-wall-moves` branch to `main`. Three new **opt-in per-world** movement moves (default
+off, toggled in the pause-menu Physics section — the canvas World Settings panel is full; see
+FUTURE_ROADMAP "World Settings rebuild"). All live in `js/player.js`; settings via
+`worldAdvSettings` + `_applyMovementConfig`.
+
+- **Wall slide (59):** airborne + pressing into an adjacent wall → clamped fall (~2.6 px/f) + a lean
+  pose (leading hand on the wall). Wall jump = a normal jump. Optional **`wallJumpLockAway`** forces the
+  arc away and disables steering until you land / hit a wall / grab a ledge (`_ctrlLock`).
+- **Ledge hang (59–63):** grab an EXPOSED top-corner from the air while holding jump; up/jump = climb up,
+  down = drop; crawl to the lip + press into the drop = climb down to hang. **Crawl edge-guard** (always
+  on when crouching) stops you at the lip so you can reach the exact edge. Grab validated so it only
+  latches a genuinely exposed edge and never embeds the sprite (`_hangBoxClear`) — fixes the earlier
+  pass-through/tunneling glitch (61). Climb-up is an **articulated waist+hip animation** (`_drawHangFigure`
+  / `_drawFigureAt` / `_limbBar`): straight-leg pull-up with the waist+head bending forward (arms pivot on
+  the hands), flowing into the legs swinging up as the body straightens and rises, with a small end hop —
+  ~1.25s (62), drawn hard-edged to match the blocky sprite (63). Designed/approved via an HTML
+  side-by-side animation review tool.
+- **Ground slide (59):** jump + down → slide; adopts the crouch hitbox (fits 1-block gaps). Configs:
+  `slideDurationFrames`, `slideSpeedMult`, `slideInvincible`; cancel early by jumping (60).
+
+New `worldAdvSettings`: `wallSlideEnabled`, `wallJumpLockAway`, `ledgeHangEnabled`, `slideEnabled`,
+`slideInvincible`, `slideDurationFrames`, `slideSpeedMult`. Verified with headless harnesses (mechanics
++ grab-edge + climb/draw) and the full suite (**182/182**); browser-tested by Kevin on the branch.
+Also merged earlier: build 58 (double-jump air-roll).
