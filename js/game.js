@@ -12898,7 +12898,7 @@ class Game {
     else if (inp.isJustDown('KeyA')       || inp.p1JustDown('jump'))   tok = 'A';
     else if (inp.isJustDown('KeyB')       || inp.p1JustDown('crouch')) tok = 'B';
     if (!tok) return;
-    const SEQ = ['U', 'U', 'D', 'D', 'L', 'R', 'L', 'R', 'A', 'B'];
+    const SEQ = ['U', 'U', 'D', 'D', 'L', 'R', 'L', 'R', 'B', 'A'];
     const buf = this._konamiBuf;
     buf.push(tok);
     if (buf.length > SEQ.length) buf.shift();

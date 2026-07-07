@@ -236,11 +236,15 @@ class InputManager {
     return this.isDown('KeyD');
   }
   isJump()   {
-    if (this.dualInput) return this.isDown('KeyW') || this._anyGp().jump;
+    // Secondary keyboard jumps (Up Arrow + J) are safe unless a 2nd local player
+    // is sharing the keyboard (P2 on the arrow scheme) — then skip them.
+    const kbExtra = this.p2GpSlot >= 0;
+    const extra = kbExtra && (this.isDown('ArrowUp') || this.isDown('KeyJ'));
+    if (this.dualInput) return this.isDown('KeyW') || this.isDown('ArrowUp') || this.isDown('KeyJ') || this._anyGp().jump;
     const s = this.p1GpSlot;
     if (s >= 0)   return this._p1gp().jump;
-    if (s === -2) return this.isDown('ArrowUp');
-    return this.isDown('KeyW');
+    if (s === -2) return this.isDown('ArrowUp') || (kbExtra && this.isDown('KeyJ'));
+    return this.isDown('KeyW') || extra;
   }
   isCrouch() {
     if (this.dualInput) return this.isDown('KeyS') || this._anyGp().crouch;
