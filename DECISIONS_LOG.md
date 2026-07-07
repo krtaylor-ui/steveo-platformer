@@ -908,3 +908,25 @@ New `worldAdvSettings`: `wallSlideEnabled`, `wallJumpLockAway`, `ledgeHangEnable
 `slideInvincible`, `slideDurationFrames`, `slideSpeedMult`. Verified with headless harnesses (mechanics
 + grab-edge + climb/draw) and the full suite (**182/182**); browser-tested by Kevin on the branch.
 Also merged earlier: build 58 (double-jump air-roll).
+
+---
+
+## Builds 64–66 (2026-07-07) — unified HTML World Settings + input tweaks
+
+Merged `world-settings-html` → main.
+- **Unified HTML World Settings panel** (`js/world-settings-ui.js`): one tabbed screen for every
+  per-world setting, data-driven from a flat SETTINGS list (each tagged tab/group/advanced/modes/
+  dependsOn — re-tabbing or advanced-flagging is a one-line change). Tabs World / Movement / Speed Run /
+  Arena / Combat / Mob Drops; a tab shows only if it has rows for the mode (Sandbox sees all; SR-only and
+  Arena-only settings isolated). Sub-configs hide until their parent toggle is on; a master ⚙ Advanced
+  toggle reveals `advanced` settings (amber-coloured, matching the header toggle). ⓘ tooltips per setting.
+  Opens via sandbox **P** key and the pause-menu **⚙ World Settings** launcher; counts as an input
+  overlay (`_htmlSettingsOpen`), Esc closes. The classic canvas panel stays behind the Konami code.
+- **Mob Drops** ported to HTML (its own sandbox tab). **Arena Game Types** group (7 toggles →
+  `arenaEnabledTypes`). **Background** added to World tab. **Night Spawn Rate** + **Full-Moon HP Boost**
+  amount are configurable (advanced sub-settings; wired into the mob manager, `fullMoonHpMult`).
+- **Moved to the pause menu as player/device settings:** Show Player Health Bars, Disable Chat (+ Audio,
+  Controls already there).
+- **Input:** Up Arrow + J are secondary jump keys (guarded off when a 2nd local player shares the
+  keyboard). Konami ending flipped to the classic **B, A**.
+Schema/logic validated headlessly (55 settings); suite 182/182.
