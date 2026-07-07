@@ -972,7 +972,7 @@ class Player {
   _limbBar(ctx, x0, y0, x1, y1, w, color) {
     const dx = x1-x0, dy = y1-y0, len = Math.hypot(dx,dy) || 0.001, a = Math.atan2(dy,dx);
     ctx.save(); ctx.translate(x0,y0); ctx.rotate(a);
-    ctx.fillStyle = color; this._rr(ctx, 0, -w/2, len, w, Math.min(w/2, 5)); ctx.fill();
+    ctx.fillStyle = color; ctx.fillRect(0, -w/2, len, w);   // hard-edged, matches the blocky sprite
     ctx.restore();
   }
 
@@ -1030,8 +1030,8 @@ class Player {
     this._limbBar(ctx, shX-3*facing, shY, handX-3*facing, handY, 6, SHIRT);
     // head
     ctx.save(); ctx.translate(hdX, hdY); ctx.rotate(tA);
-    ctx.fillStyle=SKIN; this._rr(ctx,-HEAD/2,-HEAD/2,HEAD,HEAD,3); ctx.fill();
-    ctx.fillStyle=HAIR; this._rr(ctx,-HEAD/2,-HEAD/2,HEAD,HEAD*0.36,3); ctx.fill();
+    ctx.fillStyle=SKIN; ctx.fillRect(-HEAD/2,-HEAD/2,HEAD,HEAD);           // square head
+    ctx.fillStyle=HAIR; ctx.fillRect(-HEAD/2,-HEAD/2,HEAD,HEAD*0.36);
     ctx.fillStyle='#fff'; ctx.fillRect(2*facing,-2,4,4);
     ctx.fillStyle='#1A50C0'; ctx.fillRect(3*facing,-1,2,2);
     ctx.restore();
