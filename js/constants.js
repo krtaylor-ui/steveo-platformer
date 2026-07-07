@@ -5,11 +5,27 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 66 (unified HTML World Settings; Up+J jump; Konami B-A)';
+const GAME_VERSION = 'v3 · build 67 (platformer campaign-prep: multi-colour Goal Stars, emerald collect+count, score)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
+
+// Goal-star colours (campaign-prep). Index 0 = classic gold (the default look).
+// Up to 10 supported so future Campaign exits can route by colour. Each entry:
+// { name, hex } — hex used to tint the star, name shown in the sandbox picker.
+const GOAL_COLORS = [
+  { name: 'Gold',   hex: '#ffd700' },
+  { name: 'Red',    hex: '#ff4d4d' },
+  { name: 'Blue',   hex: '#4da6ff' },
+  { name: 'Green',  hex: '#4dff88' },
+  { name: 'Purple', hex: '#b366ff' },
+  { name: 'Orange', hex: '#ff9933' },
+  { name: 'Pink',   hex: '#ff66cc' },
+  { name: 'Cyan',   hex: '#33e6e6' },
+  { name: 'White',  hex: '#f2f2f2' },
+  { name: 'Lime',   hex: '#b3ff33' },
+];
 
 // Physics  (×1.5 speed increase applied 2026-04-24)
 const GRAVITY         = 0.66;

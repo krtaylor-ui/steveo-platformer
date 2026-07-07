@@ -26,8 +26,11 @@ const EMERALD_SYSTEM = {
   // game._arenaTemplateData.emeralds is the saved layout (arena skips _loadSandboxWorld).
   // Round count comes from the pre-launch config (arenaConfig.emeraldRounds), default 1.
   init(game) {
+    // Source is the arena template (arena mode) OR the loaded level's emeralds
+    // (platformer campaign-prep — game._levelEmeralds set by _loadPlatformerWorld).
     const src = (game && game._arenaTemplateData && Array.isArray(game._arenaTemplateData.emeralds))
-      ? game._arenaTemplateData.emeralds : [];
+      ? game._arenaTemplateData.emeralds
+      : (game && Array.isArray(game._levelEmeralds) ? game._levelEmeralds : []);
 
     this.groups = {};
     for (const e of src) {

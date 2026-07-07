@@ -12,6 +12,20 @@ const GAME_STATE = {
   // from the loaded world; stamps a fresh updatedAt each save. origin defaults to
   // 'cloud' (the local-worlds mode will set 'local'); copiedFrom/At are populated
   // by the future "copy to online/offline" flow.
+  // Serialize non-gold Goal-Star colours from game._goalColorMap ("r,c" -> idx).
+  _goalStars(game) {
+    const cm = game._goalColorMap;
+    if (!cm) return [];
+    const out = [];
+    for (const key in cm) {
+      const color = cm[key];
+      if (!color) continue;
+      const [row, col] = key.split(',').map(Number);
+      if (Number.isFinite(row) && Number.isFinite(col)) out.push({ row, col, color });
+    }
+    return out;
+  },
+
   _provenance(game) {
     const prev = game._loadedProvenance || {};
     const uid  = prev.uid || ('w-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8));
@@ -184,6 +198,8 @@ const GAME_STATE = {
       // Player spawn points (Phase 3) — where each player starts, tagged by slot 1–4.
       playerSpawns: game.sandbox ? game.sandbox.placedSpawnPoints.map(s => ({ ...s })) : [],
       arenaObjects: game.sandbox ? game.sandbox.placedArenaObjs.map(o => ({ ...o })) : [],
+      // Goal-star colours (campaign-prep) — [{row,col,color}] for coloured exits.
+      goalStars: GAME_STATE._goalStars(game),
       placedItems,
       portalLinks,
       sandboxLevers,

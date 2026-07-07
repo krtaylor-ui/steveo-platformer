@@ -80,6 +80,11 @@ class Game {
       controllerSensitivity:     1.0,
       controllerAimSensitivity:  1.0,
       twoPlayerMode:             options.twoPlayerMode ?? false,
+      // Platformer scoring (campaign-prep) — all default off / classic behaviour.
+      platformerEmeralds:        false,   // placed emeralds are collectible + counted
+      platformerScore:           false,   // track a running score
+      emeraldPoints:             100,     // score per emerald
+      goalClearPoints:           1000,    // score for reaching a Goal Star
       disableXpSpeedBoost:       false,
       musicVolume:               DEFAULT_MUSIC_VOLUME,
       sfxVolume:                 DEFAULT_SFX_VOLUME,
@@ -527,6 +532,11 @@ class Game {
     this._godModeUsed          = false; // true if god mode was ever enabled this session
     this._platformerStartMs    = null; // ms timestamp when play begins
     this._platformerFinishMs   = null; // ms elapsed at level completion
+    // Campaign-prep scoring state (platformer). Reset each level load.
+    this._score               = 0;    // running score (when platformerScore on)
+    this._emeraldsCollected   = 0;    // emeralds picked up this level
+    this._emeraldsActive      = false;// EMERALD_SYSTEM initialised for this platformer level
+    this._wonExitColor        = 0;    // goal-star colour index of the goal that ended the level (for future campaign routing)
     this._platformerCheckpoints = [];  // [{col, row, elapsedMs}] checkpoints hit
     this._platformerLevelName  = '';
     this._platformerCreator    = '';
@@ -2531,15 +2541,22 @@ class Game {
             if (this.sandbox.brushSize > 1 && this.sandbox.isBrushApplicable) {
               this._sandboxBrushPlace(hoverRow, hoverCol, sb);
             } else {
-            // Goal star: remove existing before placing new
-            if (sb === BLOCK.GOAL && this.level.goalCol >= 0) {
-              this.level.set(this.level.goalRow, this.level.goalCol, BLOCK.AIR);
-            }
+            // Goal star: MULTIPLE allowed (campaign-prep). Placing on an existing
+            // goal cycles its colour; a fresh cell adds a new (gold) goal.
+            const _wasGoal = (sb === BLOCK.GOAL && this.level.get(hoverRow, hoverCol) === BLOCK.GOAL);
             this.level.set(hoverRow, hoverCol, sb);
             this._playSound('sounds/placing-block.mp3', 0.6);
             if (sb === BLOCK.GOAL) {
               this.level.goalCol = hoverCol;
               this.level.goalRow = hoverRow;
+              if (_wasGoal) {
+                const _n = (typeof GOAL_COLORS !== 'undefined') ? GOAL_COLORS.length : 10;
+                this._setGoalColor(hoverRow, hoverCol, (this._goalColorAt(hoverRow, hoverCol) + 1) % _n);
+                const _cn = (typeof GOAL_COLORS !== 'undefined') ? GOAL_COLORS[this._goalColorAt(hoverRow, hoverCol)]?.name : '';
+                this._notify('Goal colour: ' + (_cn || ''), '#FFE066', 90);
+              } else {
+                this._invalidateGoalCells();
+              }
             }
             window.multiplayerManager?.placeBlock(hoverCol, hoverRow, sb);
             // Register lever/trapdoor/pressure_plate in redstone system
@@ -2778,6 +2795,7 @@ class Game {
         if (mineResult.blockType === BLOCK.GOAL) {
           this.level.goalCol = -1;
           this.level.goalRow = -1;
+          this._setGoalColor(hoverRow, hoverCol, 0);
         }
         const newOre = this.player.addBlock(mineResult.blockType);
         if (newOre !== null) {
@@ -3012,6 +3030,16 @@ class Game {
             this._collectPlatformerItem(it);
           }
         }
+      }
+
+      // ── Collect emeralds (campaign-prep, opt-in per world) ──
+      if (this._emeraldsActive && typeof EMERALD_SYSTEM !== 'undefined') {
+        const aws = this._worldAdvSettings;
+        const got = EMERALD_SYSTEM.checkPickup(this.player, () => {
+          this._emeraldsCollected++;
+          if (aws.platformerScore) this._score += (aws.emeraldPoints || 0);
+        });
+        if (got > 0) this._playSound('sounds/item-collected.mp3', 0.7);
       }
 
       // ── Auto-checkpoint: record time when player reaches a bed column ──
@@ -3262,11 +3290,13 @@ class Game {
       }
     }
 
-    // ── Win condition (not sandbox; goal star can be moved) ───
+    // ── Win condition (not sandbox) — supports MULTIPLE goal stars. Any goal
+    //    the player touches ends the level; its colour index is recorded on
+    //    _wonExitColor for the future Campaign layer to route on. ────────────
     if (this.state === 'playing' && this.gameMode !== 'sandbox' && this.gameMode !== 'speedrunner') {
-      const gc = this.level.goalCol, gr = this.level.goalRow;
-      if (gc >= 0 && this.level.get(gr, gc) === BLOCK.GOAL) {
-        const gx = gc * BLOCK_SIZE, gy = gr * BLOCK_SIZE;
+      for (const g of this._getGoalCells()) {
+        if (this.level.get(g.row, g.col) !== BLOCK.GOAL) continue; // stale (e.g. destroyed)
+        const gx = g.col * BLOCK_SIZE, gy = g.row * BLOCK_SIZE;
         if (this.player.x + this.player.width > gx &&
             this.player.x < gx + BLOCK_SIZE &&
             this.player.y + this.player.height > gy &&
@@ -3274,7 +3304,12 @@ class Game {
           if (this.gameMode === 'platformer' && this._platformerStartMs) {
             this._platformerFinishMs = Date.now() - this._platformerStartMs;
           }
+          this._wonExitColor = g.color || 0;
+          if (this._worldAdvSettings.platformerScore) {
+            this._score += (this._worldAdvSettings.goalClearPoints || 0);
+          }
           this.state = 'won';
+          break;
         }
       }
     }
@@ -4271,6 +4306,36 @@ class Game {
   // onto a player before its update(). Jump velocity is derived from gravity so
   // the configured apex (in blocks) holds regardless of the gravity setting:
   //   apex_px = v² / (2g)  →  v = √(2 · g · apex_blocks · BLOCK_SIZE)
+  // Cached list of every Goal Star cell in the grid, each tagged with its
+  // colour index (from _goalColorMap, default 0). Lazily built and cheap for
+  // played worlds (grid is static); sandbox edits call _invalidateGoalCells().
+  _getGoalCells() {
+    if (this._goalCells) return this._goalCells;
+    const cells = [];
+    const grid = this.level && this.level.grid;
+    if (grid) {
+      const cm = this._goalColorMap || {};
+      for (let r = 0; r < grid.length; r++) {
+        const row = grid[r];
+        if (!row) continue;
+        for (let c = 0; c < row.length; c++) {
+          if (row[c] === BLOCK.GOAL) cells.push({ row: r, col: c, color: cm[r + ',' + c] || 0 });
+        }
+      }
+    }
+    this._goalCells = cells;
+    return cells;
+  }
+  _invalidateGoalCells() { this._goalCells = null; }
+  // Colour index for a Goal Star at (row,col); 0 = classic gold.
+  _goalColorAt(r, c) { return (this._goalColorMap && this._goalColorMap[r + ',' + c]) || 0; }
+  _setGoalColor(r, c, color) {
+    if (!this._goalColorMap) this._goalColorMap = {};
+    if (color) this._goalColorMap[r + ',' + c] = color;
+    else delete this._goalColorMap[r + ',' + c];
+    this._invalidateGoalCells();
+  }
+
   _applyMovementConfig(p) {
     const aws = this._worldAdvSettings;
     const g   = aws.physicsGravity ?? GRAVITY;
@@ -4777,14 +4842,21 @@ class Game {
         blkY < this.player.y + this.player.height && blkY + BLOCK_SIZE > this.player.y) return false;
     const type = this.player.takeSelected();
     if (type !== null) {
-      // Goal star: only one allowed — remove existing before placing new
-      if (type === BLOCK.GOAL && this.level.goalCol >= 0) {
-        this.level.set(this.level.goalRow, this.level.goalCol, BLOCK.AIR);
-      }
+      // Goal star: MULTIPLE allowed (campaign-prep). Re-placing on a goal cycles
+      // its colour; a fresh cell adds a new (gold) goal.
+      const _wasGoal = (type === BLOCK.GOAL && this.level.get(row, col) === BLOCK.GOAL);
       this.level.set(row, col, type);
       if (type === BLOCK.GOAL) {
         this.level.goalCol = col;
         this.level.goalRow = row;
+        if (_wasGoal) {
+          const _n = (typeof GOAL_COLORS !== 'undefined') ? GOAL_COLORS.length : 10;
+          this._setGoalColor(row, col, (this._goalColorAt(row, col) + 1) % _n);
+          const _cn = (typeof GOAL_COLORS !== 'undefined') ? GOAL_COLORS[this._goalColorAt(row, col)]?.name : '';
+          this._notify('Goal colour: ' + (_cn || ''), '#FFE066', 90);
+        } else {
+          this._invalidateGoalCells();
+        }
       }
       return true;
     }
@@ -5400,6 +5472,11 @@ class Game {
 
     // Draw collectible placed items (platformer + normal mode)
     if (this.gameMode === 'platformer' || this.gameMode === 'normal') this._drawPlatformerItems(ctx);
+    // Emerald collectibles (campaign-prep, opt-in) — world-space draw.
+    if (this._emeraldsActive && typeof EMERALD_SYSTEM !== 'undefined' && EMERALD_SYSTEM.draw)
+      EMERALD_SYSTEM.draw(ctx, this.camera, this.frameCount);
+    // Colour tints for non-gold Goal Stars (play + sandbox editor).
+    if (this._goalColorMap) this._drawGoalColorOverlays(ctx);
     // Phase 16: Draw items dropped by other players
     if (window.multiplayerManager?.isConnected)
       window.multiplayerManager.drawDroppedItems(ctx, this.camera);
@@ -7653,6 +7730,7 @@ class Game {
       if (blockType === BLOCK.GOAL) {
         this.level.goalCol = -1;
         this.level.goalRow = -1;
+        this._setGoalColor(row, col, 0);
       }
       if (blockType === BLOCK.LEVER || blockType === BLOCK.TRAPDOOR ||
           blockType === BLOCK.PRESSURE_PLATE || blockType === BLOCK.TNT ||
@@ -10709,6 +10787,7 @@ class Game {
       ctx.fillText(label, CANVAS_W / 2, by + 9);
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     }
+    if (this.gameMode === 'platformer') this._drawPlatformerScoreHud(ctx);
     if (this._testMode) {
       const r = this._testExitRect();
       const mx = this.input.mouse.x, my = this.input.mouse.y;
@@ -13765,6 +13844,17 @@ class Game {
         }));
     }
 
+    // Restore Goal-Star colours (campaign-prep) for the editor.
+    this._goalColorMap = {};
+    if (Array.isArray(data.goalStars)) {
+      for (const g of data.goalStars) {
+        if (g && typeof g.row === 'number' && typeof g.col === 'number' && g.color) {
+          this._goalColorMap[g.row + ',' + g.col] = g.color;
+        }
+      }
+    }
+    this._invalidateGoalCells();
+
     // Restore arena collectibles (Phase 3A.2) + objectives (Phase 3A.3)
     if (this.sandbox) {
       this.sandbox.placedEmeralds = (Array.isArray(data.emeralds) ? data.emeralds : [])
@@ -14669,6 +14759,27 @@ class Game {
       if (typeof this._worldAdvSettings.dayCycleMinutes === 'number')
         this._dayNight.halfCycleMs = this._worldAdvSettings.dayCycleMinutes * 60 * 1000 / 2;
     }
+    // ── Campaign-prep: goal-star colours, scoring reset, emerald collectibles ──
+    this._goalColorMap = {};
+    if (Array.isArray(data.goalStars)) {
+      for (const g of data.goalStars) {
+        if (g && typeof g.row === 'number' && typeof g.col === 'number' && g.color) {
+          this._goalColorMap[g.row + ',' + g.col] = g.color;
+        }
+      }
+    }
+    this._invalidateGoalCells();
+    this._score = 0;
+    this._emeraldsCollected = 0;
+    this._wonExitColor = 0;
+    this._emeraldsActive = false;
+    if (this._worldAdvSettings.platformerEmeralds && Array.isArray(data.emeralds)
+        && data.emeralds.length && typeof EMERALD_SYSTEM !== 'undefined') {
+      this._levelEmeralds = data.emeralds;
+      EMERALD_SYSTEM.init(this);
+      this._emeraldsActive = EMERALD_SYSTEM.total > 0;
+    }
+
     // Restore music data (Phase 13.5)
     this._restoreMusicData(data);
     this._restoreWitherAltars(data.witherAltars);
@@ -14717,6 +14828,58 @@ class Game {
       this.player.hasFlintSteel = true;
       this._notify('Picked up Flint & Steel!', data.color, 200);
     }
+  }
+
+  // Tint any Goal Star whose colour index > 0 (0 = classic gold, drawn as-is by
+  // the block renderer). A translucent colour wash + a matching ring makes the
+  // exit's colour readable without touching the base star sprite.
+  _drawGoalColorOverlays(ctx) {
+    const cells = this._getGoalCells();
+    if (!cells.length) return;
+    const palette = (typeof GOAL_COLORS !== 'undefined') ? GOAL_COLORS : null;
+    if (!palette) return;
+    const s = BLOCK_SIZE;
+    for (const g of cells) {
+      if (!g.color) continue;
+      const entry = palette[g.color];
+      if (!entry) continue;
+      const sx = g.col * s - this.camera.x, sy = g.row * s - this.camera.y;
+      if (sx < -s || sx > CANVAS_W + s || sy < -s || sy > CANVAS_H + s) continue;
+      ctx.save();
+      ctx.globalAlpha = 0.38;
+      ctx.fillStyle = entry.hex;
+      ctx.fillRect(sx + 2, sy + 2, s - 4, s - 4);
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = entry.hex;
+      ctx.strokeRect(sx + 2.5, sy + 2.5, s - 5, s - 5);
+      ctx.restore();
+    }
+  }
+
+  // Compact top-centre pill: running score and/or emerald count (platformer,
+  // only when the world opts in via World Settings).
+  _drawPlatformerScoreHud(ctx) {
+    const aws = this._worldAdvSettings;
+    const parts = [];
+    if (aws.platformerScore) parts.push('★ ' + this._score);
+    if (this._emeraldsActive && typeof EMERALD_SYSTEM !== 'undefined')
+      parts.push('💎 ' + this._emeraldsCollected + '/' + EMERALD_SYSTEM.total);
+    if (!parts.length) return;
+    const label = parts.join('     ');
+    ctx.save();
+    ctx.font = 'bold 12px Courier New';
+    const lw = ctx.measureText(label).width;
+    const bx = CANVAS_W / 2 - lw / 2 - 12, by = 6;
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    _roundRect(ctx, bx, by, lw + 24, 20, 5); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,224,102,0.5)'; ctx.lineWidth = 1;
+    _roundRect(ctx, bx, by, lw + 24, 20, 5); ctx.stroke();
+    ctx.fillStyle = '#FFE066';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, CANVAS_W / 2, by + 10);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.restore();
   }
 
   _drawPlatformerItems(ctx) {

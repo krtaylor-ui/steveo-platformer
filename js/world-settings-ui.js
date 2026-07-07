@@ -84,6 +84,7 @@ const WORLD_SETTINGS = {
     physics:  ['normal', 'platformer', 'arena', 'sandbox'],
     adventure:['normal', 'platformer', 'sandbox'],
     speedrun: ['speedrunner', 'sandbox'],
+    platformer:['platformer', 'sandbox'],
     arena:    ['arena', 'sandbox'],
     display:  ['normal', 'platformer', 'arena', 'sandbox'],
     all:      ['normal', 'platformer', 'speedrunner', 'arena', 'sandbox'],
@@ -108,6 +109,10 @@ const WORLD_SETTINGS = {
       { key: 'compactHotbar', tab: 'world', group: 'Display', modes: M.display, type: 'toggle', dflt: false, label: 'Compact Hotbar' },
       { key: 'worldZoom', tab: 'world', group: 'Display', modes: M.display, type: 'cycle', opts: O.zoom, dflt: 1.0, label: 'Default Zoom', fmt: (v) => v.toFixed(2) + 'x' },
       { key: 'twoPlayerMode', tab: 'world', group: 'Players', modes: M.adventure, type: 'toggle', dflt: false, label: '2-Player Co-op', hint: 'P2 joins with a gamepad' },
+      { key: 'platformerEmeralds', tab: 'world', group: 'Scoring', modes: M.platformer, type: 'toggle', dflt: false, label: 'Collect Emeralds', hint: 'placed emeralds can be picked up and counted' },
+      { key: 'platformerScore', tab: 'world', group: 'Scoring', modes: M.platformer, type: 'toggle', dflt: false, label: 'Score / Points', hint: 'track a running score (emeralds + level-clear bonus)' },
+      { key: 'emeraldPoints', tab: 'world', group: 'Scoring', modes: M.platformer, type: 'cycle', opts: [50, 100, 200, 500], dflt: 100, label: 'Points / Emerald', fmt: (v) => v + ' pts', sub: true, dependsOn: 'platformerScore', advanced: true, hint: 'score awarded per emerald' },
+      { key: 'goalClearPoints', tab: 'world', group: 'Scoring', modes: M.platformer, type: 'cycle', opts: [0, 500, 1000, 2000], dflt: 1000, label: 'Level-Clear Bonus', fmt: (v) => v + ' pts', sub: true, dependsOn: 'platformerScore', advanced: true, hint: 'score awarded for reaching a Goal Star' },
       { key: 'physicsLocked', tab: 'world', group: 'Designer Locks', modes: ['sandbox'], type: 'toggle', dflt: false, label: 'Lock Physics', advanced: true, hint: 'players can’t override movement/physics' },
       { key: 'bossScalingLocked', tab: 'world', group: 'Designer Locks', modes: ['sandbox'], type: 'toggle', dflt: false, label: 'Lock Boss Scaling', advanced: true },
 
