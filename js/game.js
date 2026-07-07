@@ -461,6 +461,7 @@ class Game {
       enderman:        [{ item: BLOCK.ENDER_PEARL, chance: 100 }, { item: BLOCK.APPLE,       chance: 50  }],
     };
     this._worldSettingsOpen  = false;
+    this._htmlSettingsOpen   = false;   // unified HTML World Settings panel open
     this._wsHighlightMobKey  = null;   // mob key to scroll to when opening from egg right-click
 
     // T-key God Mode teleport menu
@@ -1281,7 +1282,7 @@ class Game {
     // Only applies to overlays (not gameplay) so A still jumps during normal play.
     const _p1GpConnected = this.input.p1GpSlot >= 0 && this.input.gamepads[this.input.p1GpSlot]?.connected;
     if (_p1GpConnected && this.input.p1JustDown('jump')) {
-      const inOverlay = this.inventoryOpen || this._worldSettingsOpen ||
+      const inOverlay = this.inventoryOpen || this._worldSettingsOpen || this._htmlSettingsOpen ||
                         this.state === 'paused' || this.state === 'confirmExit' ||
                         this.state === 'dead'   || this._tutorialOpen ||
                         this._saveDialog != null || this._musicPlayerUI != null ||
@@ -1803,8 +1804,16 @@ class Game {
     this.notifications = this.notifications.filter(n => { n.life--; return n.life > 0; });
 
     // ── World Settings toggle (sandbox only, P key) ──────────────
+    // Default: the unified HTML panel. Classic canvas panel stays behind the
+    // Konami "classic menu" (_useClassicPause) as a bonus.
     if (this.gameMode === 'sandbox' && this.input.isJustDown('KeyP')) {
-      this._worldSettingsOpen = !this._worldSettingsOpen;
+      if (this._useClassicPause || typeof WORLD_SETTINGS === 'undefined') {
+        this._worldSettingsOpen = !this._worldSettingsOpen;
+      } else if (WORLD_SETTINGS.isOpen()) {
+        WORLD_SETTINGS.close();
+      } else {
+        WORLD_SETTINGS.open(this);
+      }
     }
 
     // ── H key: hyper speed cycle — Normal → 3× → 6× → Normal (sandbox / god mode only) ──
@@ -5533,7 +5542,7 @@ class Game {
 
     // Controller cursor — drawn last so it sits on top of every overlay
     if (_p1GpConnected) {
-      const inOverlay = this.inventoryOpen || this._worldSettingsOpen ||
+      const inOverlay = this.inventoryOpen || this._worldSettingsOpen || this._htmlSettingsOpen ||
                         this.state === 'paused' || this.state === 'confirmExit' ||
                         this.state === 'dead'   || this._tutorialOpen ||
                         this._saveDialog != null || this._musicPlayerUI != null ||

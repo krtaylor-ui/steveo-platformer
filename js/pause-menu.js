@@ -134,7 +134,13 @@ const PAUSE_MENU = {
     else LEADERBOARD_SYSTEM.showModal();
   },
 
-  _openWorldSettings() { const g = this._game; if (!g) return; g.state = 'playing'; g._worldSettingsOpen = true; this.close(); },
+  _openWorldSettings() {
+    const g = this._game; if (!g) return;
+    g.state = 'playing'; this.close();
+    // Unified HTML panel by default; the classic canvas panel stays for Konami mode.
+    if (typeof WORLD_SETTINGS !== 'undefined' && !g._useClassicPause) WORLD_SETTINGS.open(g);
+    else g._worldSettingsOpen = true;
+  },
   _openFullTutorial() { const g = this._game; if (!g) return; g.state = 'playing'; g._tutorialOpen = true; g._tutorialScrollY = 0; this.close(); },
 
   // ── DOM builders ────────────────────────────────────────────────
@@ -369,77 +375,19 @@ const PAUSE_MENU = {
     const ctrlRows = this._assignRows(game);
     if (ctrlRows.length) body.appendChild(this._section('Controls', ctrlRows));
 
-    // Speed Run: live-tunable deceleration (× the accelerate rate). Temporary
-    // knob for dialing in the coast feel.
-    if (game.gameMode === 'speedrunner') {
-      body.appendChild(this._section('Speed Run', [
-        this._row('Acceleration',
-          this._cycle([0.2, 0.35, 0.5, 0.7, 1.0, 1.5], () => aws.srAccel ?? 0.5, v => { game._worldAdvSettings.srAccel = v; }, v => v.toFixed(2) + '/f'),
-          'how quickly you build up to max speed'),
-        this._row('Deceleration',
-          this._cycle([1, 1.5, 2, 3, 4, 5], () => aws.srDecel ?? 2, v => { game._worldAdvSettings.srDecel = v; }, v => v + '× accel'),
-          'how fast you slow when not accelerating'),
-      ]));
-    }
-
-    // Physics / World & Physics (normal, platformer, sandbox). Greyed if locked.
-    if (game.gameMode === 'normal' || game.gameMode === 'platformer' || game.gameMode === 'sandbox') {
-      const locked = !!aws.physicsLocked;
-      const rows = [
-        this._row('Gravity', this._cycle(this.OPT.gravity, () => aws.physicsGravity ?? 0.66, v => { game._worldAdvSettings.physicsGravity = v; }, v => v.toFixed(2), locked)),
-        this._row('Jump Height', this._cycle(this.OPT.jumpH, () => aws.jumpHeightBlocks ?? null, v => { game._worldAdvSettings.jumpHeightBlocks = v; }, v => v == null ? 'Default' : v + ' bl', locked)),
-        this._row('Air Jump', this._toggle(() => aws.airJumpEnabled, v => { game._worldAdvSettings.airJumpEnabled = v; }, locked)),
-        this._row('Sprint', this._toggle(() => aws.sprintEnabled !== false, v => { game._worldAdvSettings.sprintEnabled = v; }, locked)),
-        this._row('Auto-Climb', this._toggle(() => !!aws.autoStepUp, v => { game._worldAdvSettings.autoStepUp = v; }, locked)),
-        this._row('Wall Slide', this._toggle(() => !!aws.wallSlideEnabled, v => { game._worldAdvSettings.wallSlideEnabled = v; }, locked), 'slow-slide down a wall you press into'),
-        this._row('Ledge Hang', this._toggle(() => !!aws.ledgeHangEnabled, v => { game._worldAdvSettings.ledgeHangEnabled = v; }, locked), 'grab/hang from block edges'),
-        this._row('Ground Slide', this._toggle(() => !!aws.slideEnabled, v => { game._worldAdvSettings.slideEnabled = v; }, locked), 'jump + down to slide'),
-      ];
-      if (game.gameMode === 'sandbox') {
-        rows.push(this._row('  ↳ Wall-Jump Lock-Away', this._toggle(() => !!aws.wallJumpLockAway, v => { game._worldAdvSettings.wallJumpLockAway = v; }, locked), 'wall jump forces away, no steering till land'));
-        rows.push(this._row('  ↳ Slide Invincible', this._toggle(() => !!aws.slideInvincible, v => { game._worldAdvSettings.slideInvincible = v; }, locked)));
-        rows.push(this._row('  ↳ Slide Length', this._cycle(this.OPT.slideDur, () => aws.slideDurationFrames ?? 30, v => { game._worldAdvSettings.slideDurationFrames = v; }, v => v + 'f', locked)));
-        rows.push(this._row('  ↳ Slide Speed', this._cycle(this.OPT.slideMult, () => aws.slideSpeedMult ?? 1.6, v => { game._worldAdvSettings.slideSpeedMult = v; }, v => v.toFixed(1) + 'x', locked)));
-        rows.push(this._row('Disable XP Speed Boost', this._toggle(() => aws.disableXpSpeedBoost, v => { game._worldAdvSettings.disableXpSpeedBoost = v; }, locked)));
-        rows.push(this._row('Jump Pad Force', this._cycle(this.OPT.jumpPad, () => aws.jumpPadVForce ?? -18, v => { game._worldAdvSettings.jumpPadVForce = v; }, v => String(v), locked)));
-        rows.push(this._row('Default Zoom', this._cycle(this.OPT.zoom, () => aws.worldZoom ?? 1.0, v => { game._worldAdvSettings.worldZoom = v; }, v => v.toFixed(2) + 'x', locked)));
-        rows.push(this._row('Redstone Speed', this._cycle([0.5, 1, 2, 3, 4, 6, 8], () => aws.redstoneSpeed ?? 1.0, v => { game._worldAdvSettings.redstoneSpeed = v; }, v => v + 'x', locked), 'higher = faster pistons/traps'));
-      }
-      const sec = this._section(game.gameMode === 'sandbox' ? 'World & Physics' : 'Physics', rows);
-      if (locked) { const note = document.createElement('div'); note.className = 'pause-lock-note'; note.textContent = '🔒 Locked in World Settings'; sec.insertBefore(note, sec.children[1]); }
-      body.appendChild(sec);
-    }
-
-    // Display (normal / platformer)
-    if (game.gameMode === 'normal' || game.gameMode === 'platformer') {
-      body.appendChild(this._section('Display', [
-        this._row('Compact Hotbar', this._toggle(() => aws.compactHotbar, v => { game._worldAdvSettings.compactHotbar = v; })),
-        this._row('Show Player Health Bars', this._toggle(() => aws.showOnlineHealthBars !== false, v => { game._worldAdvSettings.showOnlineHealthBars = v; })),
-      ]));
-    }
-
-    // Online (only in an online game). Boss scaling greyed if locked.
-    if (game._onlineGameId) {
-      const bl = !!aws.bossScalingLocked;
-      const rows = [ this._row('Disable Chat', this._toggle(() => aws.chatDisabled, v => { game._worldAdvSettings.chatDisabled = v; })) ];
-      rows.push(this._row('Boss Health', this._cycle(this.OPT.boss, () => aws.bossHealthMultiplier ?? 1.0, v => { game._worldAdvSettings.bossHealthMultiplier = v; }, v => v.toFixed(1) + 'x', bl)));
-      rows.push(this._row('Boss Damage', this._cycle(this.OPT.boss, () => aws.bossDamageMultiplier ?? 1.0, v => { game._worldAdvSettings.bossDamageMultiplier = v; }, v => v.toFixed(1) + 'x', bl)));
-      rows.push(this._row('Boss Attack Rate', this._cycle(this.OPT.boss, () => aws.bossAttackRateMultiplier ?? 1.0, v => { game._worldAdvSettings.bossAttackRateMultiplier = v; }, v => v.toFixed(1) + 'x', bl)));
-      const sec = this._section('Online', rows);
-      if (bl) { const note = document.createElement('div'); note.className = 'pause-lock-note'; note.textContent = '🔒 Boss scaling locked in World Settings'; sec.appendChild(note); }
-      body.appendChild(sec);
-    }
-
-    // Sandbox: the deep world-creation settings live in the existing 9-tab panel.
-    if (game.gameMode === 'sandbox') {
+    // All per-world settings (movement, physics, speed run, arena, combat, day/
+    // night, audio, …) now live in the unified HTML World Settings panel. The
+    // pause menu keeps only quick runtime/device controls (Audio + Controls above)
+    // plus this launcher.
+    {
       const btn = document.createElement('button');
       btn.className = 'btn btn-primary pause-btn';
-      btn.textContent = '⚙  Advanced World Settings';
+      btn.textContent = '⚙  World Settings';
       btn.style.marginTop = '10px';
       btn.addEventListener('click', () => this._openWorldSettings());
-      const sec = this._section('World Creation', []);
+      const sec = this._section('World Settings', []);
       const hint = document.createElement('div'); hint.className = 'pause-row-sub'; hint.style.marginBottom = '6px';
-      hint.textContent = 'Mob drops · Day/Night · Boss scaling · Arena · Import/Export';
+      hint.textContent = 'Movement · Physics · Speed Run · Arena · Combat · Day/Night';
       sec.appendChild(hint); sec.appendChild(btn);
       body.appendChild(sec);
     }

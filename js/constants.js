@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 63 (ledge hang + wall slide + ground slide + climb animation)';
+const GAME_VERSION = 'v3 · build 64 (unified HTML World Settings panel — branch world-settings-html)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

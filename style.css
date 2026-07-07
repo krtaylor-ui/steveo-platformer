@@ -1153,6 +1153,52 @@ html[data-theme="retro"] {
   cursor: not-allowed;
 }
 
+/* ── Unified World Settings panel (js/world-settings-ui.js) ── */
+#world-settings-overlay {
+  position: fixed; inset: 0; z-index: 2500;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+.ws-panel {
+  width: min(560px, 94vw); max-height: 88vh; display: flex; flex-direction: column;
+  background: #1b1e2a; color: #e9ebf4; border: 1px solid #333a4d; border-radius: 12px;
+  box-shadow: 0 12px 44px rgba(0, 0, 0, 0.5); overflow: hidden;
+  font-family: var(--font, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+}
+.ws-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid #2a2e3e; }
+.ws-head h2 { margin: 0; font-size: 1.05rem; flex: 1; color: #fff; }
+.ws-adv { font-size: 0.8rem; color: #9aa0b8; display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+.ws-close { background: none; border: none; color: #9aa0b8; font-size: 1.15rem; cursor: pointer; padding: 2px 8px; line-height: 1; }
+.ws-close:hover { color: #fff; }
+.ws-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 12px; border-bottom: 1px solid #2a2e3e; }
+.ws-tab { font-size: 0.82rem; padding: 6px 12px; border-radius: 7px; border: none; background: #242838; color: #aeb4cc; cursor: pointer; }
+.ws-tab:hover { background: #2b3042; }
+.ws-tab.active { background: var(--accent, #7c8cff); color: #0f1320; font-weight: 600; }
+.ws-body { padding: 6px 16px 18px; overflow-y: auto; }
+.ws-group { font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: #8b95c9; margin: 15px 0 4px; }
+.ws-group:first-child { margin-top: 6px; }
+.ws-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; min-height: 34px; }
+.ws-label { flex: 1; display: flex; flex-direction: column; }
+.ws-label > span { font-size: 0.92rem; }
+.ws-label.ws-sub { padding-left: 14px; }
+.ws-label.ws-sub > span::before { content: "↳ "; color: #5b6178; }
+.ws-hint { font-size: 0.72rem; color: #828aa5; margin-top: 1px; }
+.ws-switch { width: 44px; height: 24px; border-radius: 12px; border: none; background: #3a3f52; position: relative; cursor: pointer; flex: 0 0 auto; transition: background 0.15s; }
+.ws-switch.on { background: var(--accent, #7c8cff); }
+.ws-knob { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left 0.15s; }
+.ws-switch.on .ws-knob { left: 23px; }
+.ws-cyc { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+.ws-cyc button { width: 26px; height: 26px; border-radius: 6px; border: 1px solid #3a3f52; background: #242838; color: #cfd3e6; cursor: pointer; font-size: 1rem; line-height: 1; }
+.ws-cyc button:hover { background: #2f3446; }
+.ws-cyc-val { min-width: 76px; text-align: center; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.ws-slwrap { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.ws-slider { accent-color: var(--accent, #7c8cff); cursor: pointer; }
+.ws-slval { font-size: 0.8rem; min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+.ws-btn { padding: 6px 14px; border-radius: 7px; border: 1px solid #3a3f52; background: #242838; color: #cfd3e6; cursor: pointer; font-size: 0.85rem; }
+.ws-btn:hover { background: #2f3446; }
+.ws-empty { color: #828aa5; padding: 20px 0; text-align: center; }
+#world-settings-overlay :focus-visible { outline: 2px solid var(--accent, #7c8cff); outline-offset: 2px; }
+
 /* Sandbox playtest controls — a small always-on-top bar while testing a level.
    Fixed top-centre so it's visible over any mode's canvas (unlike the old canvas
    ✕ button, which the Speed-Runner HUD skipped). */
