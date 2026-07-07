@@ -38,6 +38,10 @@ class Player {
     this.attackCooldown = 0;
     this.iframes        = 0;           // invincibility frames
     this.swingTimer     = 0;           // weapon swing visual (counts down)
+    // Air-roll (double-jump): frames remaining in the tuck-and-spin animation.
+    this._rollFrames    = 0;
+    this._rollTotal     = 0;
+    this._rollDir       = 1;           // spin direction (captured from facing at jump)
 
     // Bow state
     this.bowDrawing    = false;
@@ -206,6 +210,7 @@ class Player {
     if (this.attackCooldown > 0) this.attackCooldown--;
     if (this.iframes        > 0) this.iframes--;
     if (this.swingTimer     > 0) this.swingTimer--;
+    if (this._rollFrames    > 0) this._rollFrames--;
 
     this._handleInput(input);
     this._applyPhysics(level);
@@ -321,6 +326,10 @@ class Player {
       this._airJumpsUsed = (this._airJumpsUsed || 0) + 1;
       this._jumpBuffer   = 0;
       this.jumpSquish    = 1;
+      // Kick off the mid-air roll (tuck + one full spin). Single jump is untouched.
+      this._rollFrames   = 24;
+      this._rollTotal    = 24;
+      this._rollDir      = this.facing || 1;
     }
 
     if (this._jumpBuffer > 0) this._jumpBuffer--;
@@ -364,6 +373,7 @@ class Player {
           this.vy       = 0;
           this.onGround = true;
           this._airJumpsUsed = 0;                // landing refreshes the air jump
+          this._rollFrames   = 0;                // landing snaps the roll back to normal
           if (!wasOnGround) this.jumpSquish = 0.85;
           if (this.flying) this.flying = false;  // auto-land when touching ground
           stopped = true;
@@ -633,12 +643,25 @@ class Player {
 
   _drawSteve(ctx, sx, sy) {
     const crouch  = this.crouching;
-    const swing   = Math.sin(this.walkTimer) * (this.onGround ? 0.5 : 0.2);
+    // Air-roll (double-jump): tuck the limbs in and spin the whole sprite once.
+    // Only while airborne; landing (or roll completion) snaps back to normal.
+    const rolling   = this._rollFrames > 0 && !this.onGround && !crouch;
+    const rprog     = rolling ? 1 - (this._rollFrames / (this._rollTotal || 1)) : 0;
+    const rollAngle = rolling ? (this._rollDir || 1) * rprog * Math.PI * 2 : 0;
+    const tuck      = rolling ? Math.sin(rprog * Math.PI) : 0;   // ease in → peak → out
+    const swing   = rolling ? 0 : Math.sin(this.walkTimer) * (this.onGround ? 0.5 : 0.2);
     const flipX   = this.facing === -1;
-    const squishY = 1 - this.jumpSquish * 0.12;
-    const squishX = 1 + this.jumpSquish * 0.08;
+    const squishY = rolling ? 1 : 1 - this.jumpSquish * 0.12;
+    const squishX = rolling ? 1 : 1 + this.jumpSquish * 0.08;
 
     ctx.save();
+    // Air-roll spin about the sprite centre (composed outside the squish/flip).
+    if (rolling) {
+      const rcx = sx + this.width / 2, rcy = sy + this.height / 2;
+      ctx.translate(rcx, rcy);
+      ctx.rotate(rollAngle);
+      ctx.translate(-rcx, -rcy);
+    }
     // Squish transform centred on bottom of player
     const pivotX = sx + this.width / 2;
     const pivotY = sy + this.height;
@@ -656,7 +679,7 @@ class Player {
     if (crouch) {
       this._drawCrouch(ctx, sx, sy);
     } else {
-      this._drawStanding(ctx, sx, sy, swing);
+      this._drawStanding(ctx, sx, sy, swing, tuck);
     }
 
     this._drawArmorOverlay(ctx, sx, sy, crouch);
@@ -667,11 +690,11 @@ class Player {
 
     ctx.restore();
 
-    // Weapon in hand
-    this._drawWeapon(ctx, sx, sy, swing, flipX, crouch);
+    // Weapon in hand (hidden during the air-roll — arms are tucked in)
+    if (!rolling) this._drawWeapon(ctx, sx, sy, swing, flipX, crouch);
   }
 
-  _drawStanding(ctx, sx, sy, swing) {
+  _drawStanding(ctx, sx, sy, swing, tuck = 0) {
     // ── Colors ──────────────────────────────────────────────
     const SKIN    = '#F4C78A';
     const HAIR    = '#7D4E1A';
@@ -689,9 +712,9 @@ class Player {
     // ── Legs (animated) ─────────────────────────────────────
     const legSwing = swing * 10; // degrees effectively
 
-    // Left leg
+    // Left leg (tuck pulls it up + inward toward the torso during the air-roll)
     ctx.save();
-    ctx.translate(sx + 4, sy + 34);
+    ctx.translate(sx + 4 + tuck * 4, sy + 34 - tuck * 14);
     ctx.rotate(legSwing);
     ctx.fillStyle = PANTS;
     ctx.fillRect(-2, 0, 8, 14);
@@ -713,7 +736,7 @@ class Player {
 
     // Right leg
     ctx.save();
-    ctx.translate(sx + 12, sy + 34);
+    ctx.translate(sx + 12 - tuck * 4, sy + 34 - tuck * 14);
     ctx.rotate(-legSwing);
     ctx.fillStyle = PANTS;
     ctx.fillRect(-2, 0, 8, 14);
@@ -735,7 +758,7 @@ class Player {
 
     // ── Left arm ────────────────────────────────────────────
     ctx.save();
-    ctx.translate(sx + 2, sy + 18);
+    ctx.translate(sx + 2 + tuck * 5, sy + 18 - tuck * 2);
     ctx.rotate(-legSwing);
     ctx.fillStyle = SHIRT;
     ctx.fillRect(-2, 0, 6, 12);
@@ -752,7 +775,7 @@ class Player {
 
     // ── Right arm (holds pickaxe side) ───────────────────────
     ctx.save();
-    ctx.translate(sx + 16, sy + 18);
+    ctx.translate(sx + 16 - tuck * 5, sy + 18 - tuck * 2);
     ctx.rotate(legSwing);
     ctx.fillStyle = SHIRT;
     ctx.fillRect(-2, 0, 6, 12);
