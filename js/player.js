@@ -588,20 +588,31 @@ class Player {
     const dir = this.facing || 1;
     const BS = BLOCK_SIZE;
 
-    // (a) In the air, holding jump, moving toward a wall whose top edge is at hand
-    // height (solid block with air directly above it = a grabbable ledge).
+    // (a) In the air, holding jump, moving toward a genuinely EXPOSED top-corner
+    // (solid block; clear above for standing; open outward face + a clear body
+    // column beside it). This rejects interior blocks — grabbing one embedded the
+    // player and caused the tunneling / speed glitches.
     if (!this.onGround && input.isJump() && this.vy > -3) {
       const sideCol = dir > 0 ? Math.floor((this.x + this.width + 1) / BS)
                               : Math.floor((this.x - 1) / BS);
+      const outCol  = dir > 0 ? sideCol - 1 : sideCol + 1;   // the player's (dangle) column
       const handRow = Math.floor((this.y + 12) / BS);
-      if (level.isSolid(handRow, sideCol) && !level.isSolid(handRow - 1, sideCol)) {
+      const exposedEdge =
+        level.isSolid(handRow, sideCol) &&            // the ledge block
+        !level.isSolid(handRow - 1, sideCol) &&       // nothing on top of it (true top edge)
+        !level.isSolid(handRow - 2, sideCol) &&       // headroom to stand after climbing
+        !level.isSolid(handRow, outCol) &&            // exposed face (not a buried block)
+        !level.isSolid(handRow - 1, outCol) &&        // clear above the hands
+        !level.isSolid(handRow + 1, outCol);          // clear where the body dangles
+      const hx = dir > 0 ? sideCol * BS - this.width : (sideCol + 1) * BS;
+      const hy = handRow * BS - 14 + HANG_DROP;
+      if (exposedEdge && this._hangBoxClear(level, hx, hy)) {
         this._hangSide = dir;
-        this._hangX = dir > 0 ? sideCol * BS - this.width : (sideCol + 1) * BS;
-        this._hangY = handRow * BS - 14 + HANG_DROP;   // dangle ~1/5 block lower
+        this._hangX = hx; this._hangY = hy;
         this._standX = sideCol * BS + Math.floor((BS - this.width) / 2);
         this._standY = handRow * BS - this.height;
         this._hangState = 'hang';
-        this.x = this._hangX; this.y = this._hangY;
+        this.x = hx; this.y = hy;
         this.vx = 0; this.vy = 0; this.onGround = false; this.crouching = false; this._ctrlLock = false;
       }
       return;
@@ -618,15 +629,31 @@ class Player {
       const standCol = dir > 0 ? Math.floor((this.x + this.width - 2) / BS)
                                : Math.floor((this.x + 2) / BS);
       const fwdCol   = dir > 0 ? standCol + 1 : standCol - 1;
-      // Solid under the feet, but the forward column is open (a drop to hang off).
-      if (level.isSolid(footRow, standCol) && !level.isSolid(footRow, fwdCol) && !level.isSolid(footRow - 1, fwdCol)) {
+      const exposedEdge =
+        level.isSolid(footRow, standCol) &&           // ledge (the block you stood on)
+        !level.isSolid(footRow - 1, standCol) &&      // clear on top (where you stood)
+        !level.isSolid(footRow, fwdCol) &&            // the drop / exposed face
+        !level.isSolid(footRow - 1, fwdCol) &&        // clear above the hands
+        !level.isSolid(footRow + 1, fwdCol);          // clear where the body dangles
+      const hx = dir > 0 ? (standCol + 1) * BS : standCol * BS - this.width;
+      const hy = footRow * BS - 14 + HANG_DROP;
+      if (exposedEdge && this._hangBoxClear(level, hx, hy)) {
         this._hangSide = dir;
         this._standX = this.x; this._standY = this.y;
-        this._hangX = dir > 0 ? (standCol + 1) * BS : standCol * BS - this.width;
-        this._hangY = footRow * BS - 14 + HANG_DROP;
+        this._hangX = hx; this._hangY = hy;
         this._hangState = 'down'; this._climbT = 0; this._climbDur = 16;
       }
     }
+  }
+
+  // The player's bounding box at (hx,hy) overlaps no solid block — so a hang never
+  // embeds the sprite inside terrain (the root cause of the pass-through glitches).
+  _hangBoxClear(level, hx, hy) {
+    const BS = BLOCK_SIZE;
+    const c0 = Math.floor((hx + 2) / BS), c1 = Math.floor((hx + this.width - 2) / BS);
+    const r0 = Math.floor((hy + 2) / BS), r1 = Math.floor((hy + this.height - 2) / BS);
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) if (level.isSolid(r, c)) return false;
+    return true;
   }
 
   // Runs the hang / climb states; fully owns the player's position while active.
