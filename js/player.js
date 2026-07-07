@@ -59,6 +59,7 @@ class Player {
     this._hangX = 0; this._hangY = 0; this._hangSide = 0;
     this._standX = 0; this._standY = 0;   // on-ledge standing pos (climb target)
     this._climbT = 0; this._climbDur = 16; this._climbProg = 0;
+    this._gripX = 0; this._gripY = 0;  // world coords of the ledge corner the hands hold
     this._hangCooldown = 0;            // frames after a drop before re-grabbing
     this._downWas = false;             // edge-detect the down press for climb-down
     // Ground slide (jump + down)
@@ -611,6 +612,8 @@ class Player {
         this._hangX = hx; this._hangY = hy;
         this._standX = sideCol * BS + Math.floor((BS - this.width) / 2);
         this._standY = handRow * BS - this.height;
+        this._gripX = dir > 0 ? sideCol * BS : (sideCol + 1) * BS;   // ledge top corner (hands)
+        this._gripY = handRow * BS;
         this._hangState = 'hang';
         this.x = hx; this.y = hy;
         this.vx = 0; this.vy = 0; this.onGround = false; this.crouching = false; this._ctrlLock = false;
@@ -641,7 +644,9 @@ class Player {
         this._hangSide = dir;
         this._standX = this.x; this._standY = this.y;
         this._hangX = hx; this._hangY = hy;
-        this._hangState = 'down'; this._climbT = 0; this._climbDur = 16;
+        this._gripX = dir > 0 ? (standCol + 1) * BS : standCol * BS;   // ledge top corner (hands)
+        this._gripY = footRow * BS;
+        this._hangState = 'down'; this._climbT = 0; this._climbDur = 45;
       }
     }
   }
@@ -666,8 +671,8 @@ class Player {
       this._jumpPressed = input.isJump();
       if (input.isCrouch()) {                  // down → drop off
         this._hangState = null; this._hangCooldown = 12; this.vy = 2; this._downWas = true;
-      } else if (jumpEdge) {                    // up/jump → climb up
-        this._hangState = 'up'; this._climbT = 0; this._climbDur = 22;
+      } else if (jumpEdge) {                    // up/jump → climb up (≈1.25s at the chosen speed)
+        this._hangState = 'up'; this._climbT = 0; this._climbDur = 75;
       }
     } else if (s === 'up') {
       // Muscle-up: rise to the ledge (arms pivot from grip to perpendicular, legs
@@ -873,8 +878,10 @@ class Player {
 
   _drawSteve(ctx, sx, sy) {
     const crouch    = this.crouching;
-    // Special animated poses (opt-in moves). Priority: hang > slide > wall-slide > roll.
-    const hanging   = !!this._hangState;
+    // Ledge hang / climb uses an articulated figure (waist + hip hinges) — its own path.
+    if (this._hangState) { this._drawHangFigure(ctx, sx, sy); return; }
+    // Special animated poses (opt-in moves). Priority: slide > wall-slide > roll.
+    const hanging   = false;
     const sliding   = this._slideFrames > 0;
     const wallSlide = this._wallSliding && !this.onGround && !hanging && !sliding;
     const rolling   = this._rollFrames > 0 && !this.onGround && !crouch && !hanging && !sliding;
@@ -948,6 +955,89 @@ class Player {
 
     // Weapon hidden during any special pose (arms are busy).
     if (!special) this._drawWeapon(ctx, sx, sy, swing, flipX, crouch);
+  }
+
+  // ── Ledge hang / climb: articulated figure with waist + hip hinges ──────────
+  // Motion = the "FIX" climb (approved in the animation review): straight-leg
+  // pull-up with the waist+head bending forward (arms pivot on the hands), flowing
+  // into the legs swinging up as the body straightens and rises, with a small end
+  // hop. Anchors are stored world coords; joints are computed in world space and
+  // mapped to screen (the map cancels the tweening player.x/y, so it stays put).
+  _ease(t) { t = Math.max(0, Math.min(1, t)); return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2; }
+  _rr(ctx, x, y, w, h, r) {
+    r = Math.min(r, w/2, h/2);
+    ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+  }
+  _limbBar(ctx, x0, y0, x1, y1, w, color) {
+    const dx = x1-x0, dy = y1-y0, len = Math.hypot(dx,dy) || 0.001, a = Math.atan2(dy,dx);
+    ctx.save(); ctx.translate(x0,y0); ctx.rotate(a);
+    ctx.fillStyle = color; this._rr(ctx, 0, -w/2, len, w, Math.min(w/2, 5)); ctx.fill();
+    ctx.restore();
+  }
+
+  _drawHangFigure(ctx, sx, sy) {
+    const facing = this._hangSide || 1;
+    const SX = (wx) => wx - this.x + sx;   // world→screen (the this.x cancels the tween)
+    const SY = (wy) => wy - this.y + sy;
+
+    let prog = 0;
+    if (this._hangState === 'up') prog = this._climbProg;
+    else if (this._hangState === 'down') prog = 1 - this._climbProg;
+
+    // FIX curves — PREV's bend shape (correct arm pivot) with overlapped halves + hop.
+    const pa = this._ease(prog / 0.52);
+    const pb = this._ease((prog - 0.42) / 0.58);
+    const torso = 1.15 * pa * (1 - pb);                 // waist+head bend forward, then upright
+    const up = this._ease(pb / 0.6), settle = this._ease((pb - 0.6) / 0.4);
+    const leg = 1.7 * up * (1 - settle);                // straight → swing up to ledge → stand
+
+    const hangHipX = this._hangX + this.width/2, hangHipY = this._hangY + 34;
+    const standHipX = this._standX + this.width/2, standHipY = this._standY + 34;
+    const s1Y = hangHipY + (this._gripY - 2 - hangHipY) * pa;   // rise toward the ledge in step 1
+    let hipY  = s1Y + (standHipY - s1Y) * pb;
+    hipY -= 7 * Math.sin(Math.PI * Math.max(0, Math.min(1, (prog - 0.62) / 0.38)));   // end hop
+    const s1X = hangHipX + 4 * facing * pa;
+    const hipX = s1X + (standHipX - s1X) * pb;
+
+    // Hands glued to the ledge corner through the pull, easing to a natural rest.
+    const rel = this._ease((prog - 0.82) / 0.18);
+    const natX = hipX + Math.sin(torso*facing) * 15 + 4*facing, natY = hipY - 3;
+    const handX = this._gripX + (natX - this._gripX) * rel;
+    const handY = this._gripY + (natY - this._gripY) * rel;
+
+    this._drawFigureAt(ctx, SX(hipX), SY(hipY), torso, leg, SX(handX), SY(handY), facing);
+  }
+
+  // Draw the blocky figure from a hip point with a waist angle (torso+head) and a
+  // hip angle (legs), arms running shoulder→hand. Angles in radians; +toward facing.
+  _drawFigureAt(ctx, hipX, hipY, torso, leg, handX, handY, facing) {
+    const SKIN='#F4C78A', HAIR='#7D4E1A', SHIRT=this.shirtColor||'#4A8FD4', PANTS='#2C5F8A', SHOE='#3D1C02';
+    const TL=16, LL=17, HEAD=16;
+    const tA = torso * facing;
+    const shX = hipX + TL*Math.sin(tA),  shY = hipY - TL*Math.cos(tA);          // shoulders
+    const hdX = shX + (HEAD*0.55)*Math.sin(tA), hdY = shY - (HEAD*0.55)*Math.cos(tA); // head
+    const lA = leg * facing;
+    const ftX = hipX + LL*Math.sin(lA), ftY = hipY + LL*Math.cos(lA);           // feet
+    // legs (two) + shoes
+    this._limbBar(ctx, hipX-3*facing, hipY, ftX-3*facing, ftY, 8, PANTS);
+    this._limbBar(ctx, hipX+3*facing, hipY, ftX+3*facing, ftY, 8, PANTS);
+    this._limbBar(ctx, ftX-3*facing, ftY, ftX-3*facing+5*facing, ftY+2, 8, SHOE);
+    this._limbBar(ctx, ftX+3*facing, ftY, ftX+3*facing+5*facing, ftY+2, 8, SHOE);
+    // torso
+    this._limbBar(ctx, hipX, hipY, shX, shY, 12, SHIRT);
+    // back arm
+    this._limbBar(ctx, shX-3*facing, shY, handX-3*facing, handY, 6, SHIRT);
+    // head
+    ctx.save(); ctx.translate(hdX, hdY); ctx.rotate(tA);
+    ctx.fillStyle=SKIN; this._rr(ctx,-HEAD/2,-HEAD/2,HEAD,HEAD,3); ctx.fill();
+    ctx.fillStyle=HAIR; this._rr(ctx,-HEAD/2,-HEAD/2,HEAD,HEAD*0.36,3); ctx.fill();
+    ctx.fillStyle='#fff'; ctx.fillRect(2*facing,-2,4,4);
+    ctx.fillStyle='#1A50C0'; ctx.fillRect(3*facing,-1,2,2);
+    ctx.restore();
+    // front arm + hands
+    this._limbBar(ctx, shX+3*facing, shY, handX+3*facing, handY, 6, SHIRT);
+    this._limbBar(ctx, handX-3*facing, handY, handX+3*facing, handY, 6, SKIN);
   }
 
   _drawStanding(ctx, sx, sy, swing, tuck = 0, armAngleL = null, armAngleR = null) {
