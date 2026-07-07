@@ -2,6 +2,8 @@
 // player.js — Steve character: physics, controls, rendering
 // ============================================================
 
+const HANG_DROP = 6;   // px the sprite dangles below the ledge top while hanging (~1/5 block)
+
 class Player {
   constructor(startX, startY) {
     this.x         = startX;
@@ -56,7 +58,7 @@ class Player {
     this._hangState        = null;     // null | 'hang' | 'up' (climb up) | 'down' (climb down)
     this._hangX = 0; this._hangY = 0; this._hangSide = 0;
     this._standX = 0; this._standY = 0;   // on-ledge standing pos (climb target)
-    this._climbT = 0; this._climbDur = 16;
+    this._climbT = 0; this._climbDur = 16; this._climbProg = 0;
     this._hangCooldown = 0;            // frames after a drop before re-grabbing
     this._downWas = false;             // edge-detect the down press for climb-down
     // Ground slide (jump + down)
@@ -336,6 +338,8 @@ class Player {
 
     // ── Ground slide in progress (opt-in): jump+down started it. ──
     if (this._slideFrames > 0) {
+      // Keep the low (crouch) hitbox so the slide fits through 1-block gaps.
+      if (!this.crouching) { this.y += PLAYER_H - CROUCH_H; this.crouching = true; }
       this.vx = this._slideDir * this.moveSpeed * (this._slideMult || 1.6);
       this.facing = this._slideDir;
       if (this._slideInvincible) this.iframes = Math.max(this.iframes, 3);
@@ -518,6 +522,18 @@ class Player {
       if (!stopped) this.x = newX;
     }
 
+    // Crawl edge-guard: while crouching on the ground, don't walk off a ledge —
+    // clamp to the lip so you can reach the exact edge (and drop into a ledge hang).
+    if (this.crouching && wasOnGround && this.vx !== 0) {
+      const footRow = Math.floor((this.y + this.height + 1) / BLOCK_SIZE);
+      const leadCol = this.vx > 0 ? Math.floor((this.x + this.width - 1) / BLOCK_SIZE)
+                                  : Math.floor(this.x / BLOCK_SIZE);
+      if (!level.isSolid(footRow, leadCol)) {
+        this.x = this.vx > 0 ? leadCol * BLOCK_SIZE - this.width : (leadCol + 1) * BLOCK_SIZE;
+        this.vx = 0;
+      }
+    }
+
     // World bounds
     this.x = Math.max(0, this.x);
   }
@@ -581,7 +597,7 @@ class Player {
       if (level.isSolid(handRow, sideCol) && !level.isSolid(handRow - 1, sideCol)) {
         this._hangSide = dir;
         this._hangX = dir > 0 ? sideCol * BS - this.width : (sideCol + 1) * BS;
-        this._hangY = handRow * BS - 14;
+        this._hangY = handRow * BS - 14 + HANG_DROP;   // dangle ~1/5 block lower
         this._standX = sideCol * BS + Math.floor((BS - this.width) / 2);
         this._standY = handRow * BS - this.height;
         this._hangState = 'hang';
@@ -591,27 +607,25 @@ class Player {
       return;
     }
 
-    // (b) Standing at the top of a ledge, fresh down press → climb down to hang.
-    if (this.onGround) {
-      const downNow = input.isCrouch();
-      const downEdge = downNow && !this._downWas;
-      this._downWas = downNow;
-      if (!downEdge) return;
+    // (b) Crawl to the edge (the crouch edge-guard lets you reach the lip), then
+    // keep pressing toward the drop → climb down to hang off the forward edge.
+    if (this.onGround && this.crouching) {
+      const mx = typeof input.moveX === 'function' ? input.moveX()
+               : (input.isLeft() ? -1 : input.isRight() ? 1 : 0);
+      const pressingIntoDrop = dir > 0 ? mx > 0.3 : mx < -0.3;
+      if (!pressingIntoDrop) return;
       const footRow  = Math.floor((this.y + this.height) / BS);        // block row under the feet
       const standCol = dir > 0 ? Math.floor((this.x + this.width - 2) / BS)
                                : Math.floor((this.x + 2) / BS);
-      const fwdCol   = dir > 0 ? Math.floor((this.x + this.width + 2) / BS)
-                               : Math.floor((this.x - 2) / BS);
-      // Solid under the feet, but the forward-down is open (a drop to hang off).
+      const fwdCol   = dir > 0 ? standCol + 1 : standCol - 1;
+      // Solid under the feet, but the forward column is open (a drop to hang off).
       if (level.isSolid(footRow, standCol) && !level.isSolid(footRow, fwdCol) && !level.isSolid(footRow - 1, fwdCol)) {
         this._hangSide = dir;
         this._standX = this.x; this._standY = this.y;
         this._hangX = dir > 0 ? (standCol + 1) * BS : standCol * BS - this.width;
-        this._hangY = footRow * BS - 14;
+        this._hangY = footRow * BS - 14 + HANG_DROP;
         this._hangState = 'down'; this._climbT = 0; this._climbDur = 16;
       }
-    } else {
-      this._downWas = input.isCrouch();
     }
   }
 
@@ -626,22 +640,28 @@ class Player {
       if (input.isCrouch()) {                  // down → drop off
         this._hangState = null; this._hangCooldown = 12; this.vy = 2; this._downWas = true;
       } else if (jumpEdge) {                    // up/jump → climb up
-        this._hangState = 'up'; this._climbT = 0; this._climbDur = 16;
+        this._hangState = 'up'; this._climbT = 0; this._climbDur = 22;
       }
     } else if (s === 'up') {
+      // Muscle-up: rise to the ledge (arms pivot from grip to perpendicular, legs
+      // dangle) over phase A, then step onto the ledge (legs stand) over phase B.
       this._climbT++;
       const t = Math.min(1, this._climbT / this._climbDur);
-      this.x = this._hangX + (this._standX - this._hangX) * t;
-      this.y = this._hangY + (this._standY - this._hangY) * t;
+      this._climbProg = t;
+      const tA = Math.min(1, t / 0.65);
+      const tB = Math.max(0, (t - 0.65) / 0.35);
+      this.y = this._hangY + (this._standY - this._hangY) * tA;
+      this.x = this._hangX + (this._standX - this._hangX) * tB;
       this._jumpPressed = input.isJump();
-      if (t >= 1) { this._hangState = null; this._hangCooldown = 8; }
+      if (t >= 1) { this._hangState = null; this._hangCooldown = 8; this._climbProg = 0; }
     } else if (s === 'down') {
       this._climbT++;
       const t = Math.min(1, this._climbT / this._climbDur);
+      this._climbProg = t;
       this.x = this._standX + (this._hangX - this._standX) * t;
       this.y = this._standY + (this._hangY - this._standY) * t;
       this._jumpPressed = input.isJump();
-      if (t >= 1) { this._hangState = 'hang'; this._downWas = true; }
+      if (t >= 1) { this._hangState = 'hang'; this._climbProg = 0; }
     }
   }
 
@@ -836,15 +856,31 @@ class Player {
     const rprog     = rolling ? 1 - (this._rollFrames / (this._rollTotal || 1)) : 0;
     const rollAngle = rolling ? (this._rollDir || 1) * rprog * Math.PI * 2 : 0;
     const tuck      = rolling ? Math.sin(rprog * Math.PI) : 0;   // ease in → peak → out
-    const armsUp    = hanging ? 1 : 0;                            // reach up to grip the ledge
     const swing     = special ? 0 : Math.sin(this.walkTimer) * (this.onGround ? 0.5 : 0.2);
     const flipX     = this.facing === -1;
     const squishY   = special ? 1 : 1 - this.jumpSquish * 0.12;
     const squishX   = special ? 1 : 1 + this.jumpSquish * 0.08;
 
+    // ── Per-pose arm angles (local space; flipX mirrors toward facing). ──
+    // null = default swing. Forward (toward facing) ≈ -1.6; straight down = 0.
+    let armL = null, armR = null;
+    if (hanging) {
+      if (this._hangState === 'up') {
+        // Muscle-up: arms pivot from the forward grip down to perpendicular.
+        const tA = Math.min(1, (this._climbProg || 0) / 0.65);
+        armL = armR = -1.6 + 1.6 * tA;
+      } else {
+        armL = armR = -1.6;                 // both arms forward, gripping the ledge
+      }
+    } else if (wallSlide) {
+      armR = -1.5;                            // leading hand presses the wall
+    } else if (sliding) {
+      armL = 2.3;                             // trailing arm raised behind
+    }
+
     // Whole-sprite lean for the ground slide / wall slide (roll has its own spin).
     let leanAngle = 0, leanCX = sx + this.width / 2, leanCY = sy + this.height / 2;
-    if (sliding)        { leanAngle = this._slideDir * -0.6; leanCY = sy + this.height; }  // lean back, pivot at feet
+    if (sliding)        { leanAngle = this._slideDir * -0.85; leanCY = sy + this.height; } // lean back, pivot at feet
     else if (wallSlide) { leanAngle = -this._wallSlideDir * 0.22; }                        // lean away from the wall
 
     ctx.save();
@@ -872,7 +908,7 @@ class Player {
     if (useCrouch) {
       this._drawCrouch(ctx, sx, sy);
     } else {
-      this._drawStanding(ctx, sx, sy, swing, tuck, armsUp);
+      this._drawStanding(ctx, sx, sy, swing, tuck, armL, armR);
     }
 
     this._drawArmorOverlay(ctx, sx, sy, useCrouch);
@@ -887,7 +923,7 @@ class Player {
     if (!special) this._drawWeapon(ctx, sx, sy, swing, flipX, crouch);
   }
 
-  _drawStanding(ctx, sx, sy, swing, tuck = 0, armsUp = 0) {
+  _drawStanding(ctx, sx, sy, swing, tuck = 0, armAngleL = null, armAngleR = null) {
     // ── Colors ──────────────────────────────────────────────
     const SKIN    = '#F4C78A';
     const HAIR    = '#7D4E1A';
@@ -952,7 +988,7 @@ class Player {
     // ── Left arm ────────────────────────────────────────────
     ctx.save();
     ctx.translate(sx + 2 + tuck * 5, sy + 18 - tuck * 2);
-    ctx.rotate(armsUp ? Math.PI - 0.25 : -legSwing);   // armsUp → reach overhead to grip
+    ctx.rotate(armAngleL != null ? armAngleL : -legSwing);   // per-pose arm angle (hang/slide/wall)
     ctx.fillStyle = SHIRT;
     ctx.fillRect(-2, 0, 6, 12);
     ctx.fillStyle = SKIN;
@@ -969,7 +1005,7 @@ class Player {
     // ── Right arm (holds pickaxe side) ───────────────────────
     ctx.save();
     ctx.translate(sx + 16 - tuck * 5, sy + 18 - tuck * 2);
-    ctx.rotate(armsUp ? -(Math.PI - 0.25) : legSwing);   // armsUp → reach overhead to grip
+    ctx.rotate(armAngleR != null ? armAngleR : legSwing);   // per-pose arm angle (hang/slide/wall)
     ctx.fillStyle = SHIRT;
     ctx.fillRect(-2, 0, 6, 12);
     ctx.fillStyle = SKIN;
