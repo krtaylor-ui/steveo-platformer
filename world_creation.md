@@ -51,8 +51,10 @@ via the generator.
     `★` HUD pill. All Scoring settings are **opt-in** (default off → classic behaviour).
   - These are Phase 1 groundwork for **Campaign mode** (FUTURE_ROADMAP §12) — sequenced levels with coloured
     branch/secret/skip exits, an overworld map, and cross-level carry-over, all planned later.
-- **Redstone (works):** lever(grid 27)→orthogonally-adjacent dust chain(`dustBlocks`, overlay)→adjacent
-  trapdoor(23)/piston(24), OR-logic. Reference build = `saves/Platformer_-_V2_PLT_2026-07-04.json`.
+- **Redstone (works — verified 2026-07-07):** lever(grid 27)→orthogonally-adjacent dust chain(`dustBlocks`,
+  overlay)→adjacent trapdoor(23)/piston(24). **OR-logic, piston gates, and AND/NOT logic gates are all
+  fully tested and working** (Kevin browser-confirmed) — ambitious logic puzzles are greenlit, no need to
+  re-verify the primitives. Reference build = `saves/Platformer_-_V2_PLT_2026-07-04.json`.
 - **Regenerate:** `node tools/gen-sample-worlds.js` (writes files + runs the structural reachability check;
   non-zero exit = a broken map).
 
@@ -70,8 +72,9 @@ objective; arena spawn counts. **Does not** judge fun/fairness/pacing — that's
 - **Jump feel:** current arc is floaty/forgiving. Want a tighter global feel (~JUMP −11 / GRAVITY 0.72)? If so,
   say the word and all maps get regenerated with the new margins.
 - **Arena cover/verticality:** first-draft arenas are fairly open. More cover? More layers?
-- **Redstone ambition:** trapdoor-door primitive is proven. Greenlight a follow-up that tries piston gates +
-  AND/NOT logic puzzles (needs a browser test first).
+- **Redstone ambition:** ✅ RESOLVED (2026-07-07) — trapdoor-door, **piston gates, and AND/NOT logic are all
+  browser-tested and working**. Ambitious logic-puzzle worlds are greenlit; no re-verification of the
+  primitives needed. (Next idea: an actual puzzle-level content pass using these gates.)
 - **New blocks:** proposed palette-only **End Stone** for cleaner End reads (not built).
 
 ---
