@@ -243,6 +243,7 @@ class SandboxManager {
     // Palette panel
     this.paletteOpen = false;
     this.paletteTab  = 'overworld';  // 'overworld'|'nether'|'gear'|'other'
+    this.paletteScroll = 0;          // px scroll offset for the item grid (tabs can overflow)
 
     // Placed spawn eggs: [{col,row,wx,wy,mobType}]
     this.placedEggs = [];
@@ -851,22 +852,23 @@ class SandboxManager {
       const ty = py + 32;
       if (mx >= tx && mx <= tx + 87 && my >= ty && my <= ty + 26) {
         this.paletteTab = TABS[i];
+        this.paletteScroll = 0; // reset scroll when switching tabs
         return true;
       }
     }
 
-    // Block / egg / tool grid
-    const gridY  = py + 66;
-    const slotSz = 44;
-    const startX = px + 8;
+    // Block / egg / tool grid (scroll-aware — mirrors _drawPalette geometry)
+    const geom = this._paletteGridGeom();
+    const gridTop = geom.gridTop, gridBottom = geom.gridBottom, slotSz = geom.slotSz, startX = geom.startX, cols = geom.cols;
     const isSpecial = this.paletteTab === 'other' || this.paletteTab === 'gear';
-    const items  = this.paletteTab === 'other' ? OTHER_PALETTE_ITEMS
-                 : this.paletteTab === 'gear'  ? GEAR_PALETTE_ITEMS
-                 : (SANDBOX_PALETTE_BLOCKS[this.paletteTab] || []);
+    const items  = this._paletteItems();
+    const maxScroll = Math.max(0, Math.ceil(items.length / cols) * slotSz - (gridBottom - gridTop));
+    const scroll = Math.max(0, Math.min(this.paletteScroll, maxScroll));
 
     for (let i = 0; i < items.length; i++) {
-      const gx = startX + (i % 8) * slotSz;
-      const gy = gridY + Math.floor(i / 8) * slotSz;
+      const gx = startX + (i % cols) * slotSz;
+      const gy = gridTop + Math.floor(i / cols) * slotSz - scroll;
+      if (gy + slotSz - 2 < gridTop || gy > gridBottom) continue; // off-screen — not clickable
       if (mx >= gx && mx <= gx + slotSz - 2 && my >= gy && my <= gy + slotSz - 2) {
         if (isSpecial) {
           const item = items[i];
@@ -1092,6 +1094,30 @@ class SandboxManager {
   _paletteLayout() {
     const pw = 380, ph = 290;
     return { px: (CANVAS_W - pw) / 2, py: (CANVAS_H - ph) / 2 - 10, pw, ph };
+  }
+
+  // Item grid geometry shared by draw + click + scroll (single source of truth).
+  _paletteGridGeom() {
+    const { px, py, pw, ph } = this._paletteLayout();
+    const gridTop = py + 66, gridBottom = py + ph - 22; // leave room for the footer hint
+    return { px, py, pw, ph, gridTop, gridBottom, slotSz: 44, cols: 8, startX: px + 8, viewH: gridBottom - gridTop };
+  }
+
+  _paletteItems() {
+    return this.paletteTab === 'other' ? OTHER_PALETTE_ITEMS
+         : this.paletteTab === 'gear'  ? GEAR_PALETTE_ITEMS
+         : (SANDBOX_PALETTE_BLOCKS[this.paletteTab] || []);
+  }
+
+  _paletteMaxScroll() {
+    const g = this._paletteGridGeom();
+    const rows = Math.ceil(this._paletteItems().length / g.cols);
+    return Math.max(0, rows * g.slotSz - g.viewH);
+  }
+
+  // Wheel scroll while the palette is open (dir = +1 down / -1 up), one row per tick.
+  scrollPalette(dir) {
+    this.paletteScroll = Math.max(0, Math.min(this._paletteMaxScroll(), this.paletteScroll + dir * 44));
   }
 
   _popupLayout() {
@@ -1737,20 +1763,28 @@ class SandboxManager {
       ctx.fillText(tab.label, tx + 43, ty + 13);
     }
 
-    // Item grid
-    const gridY  = py + 66;
-    const slotSz = 44;
-    const startX = px + 8;
+    // Item grid (scrollable — a tab can hold more rows than the panel shows)
+    const geom = this._paletteGridGeom();
+    const gridTop = geom.gridTop, gridBottom = geom.gridBottom, slotSz = geom.slotSz, startX = geom.startX, cols = geom.cols;
     const isOther = this.paletteTab === 'other';
     const isGear  = this.paletteTab === 'gear';
     const items  = isOther ? OTHER_PALETTE_ITEMS
                  : isGear  ? GEAR_PALETTE_ITEMS
                  : (SANDBOX_PALETTE_BLOCKS[this.paletteTab] || []);
+    const maxScroll = Math.max(0, Math.ceil(items.length / cols) * slotSz - (gridBottom - gridTop));
+    this.paletteScroll = Math.max(0, Math.min(this.paletteScroll, maxScroll));
+    const scroll = this.paletteScroll;
+    // Clip the grid to the viewport (extend up a little so hover labels aren't cut).
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(px, gridTop - 12, pw, (gridBottom - gridTop) + 12);
+    ctx.clip();
 
     for (let i = 0; i < items.length; i++) {
-      const gx  = startX + (i % 8) * slotSz;
-      const gy  = gridY + Math.floor(i / 8) * slotSz;
-      const hov = mx >= gx && mx <= gx + slotSz - 2 && my >= gy && my <= gy + slotSz - 2;
+      const gx  = startX + (i % cols) * slotSz;
+      const gy  = gridTop + Math.floor(i / cols) * slotSz - scroll;
+      if (gy + slotSz - 2 < gridTop || gy > gridBottom) continue; // cull off-screen rows
+      const hov = mx >= gx && mx <= gx + slotSz - 2 && my >= gy && my <= gy + slotSz - 2 && my >= gridTop && my <= gridBottom;
       const isSpecialTab = isOther || isGear;
       const itm = isSpecialTab ? items[i] : null;
 
@@ -1940,11 +1974,25 @@ class SandboxManager {
       }
     }
 
+    ctx.restore(); // end grid clip
+
+    // Scrollbar (only when the grid overflows the viewport)
+    if (maxScroll > 0) {
+      const trackX = px + pw - 9, trackY = gridTop, trackH = gridBottom - gridTop;
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      _roundRect(ctx, trackX, trackY, 5, trackH, 2); ctx.fill();
+      const contentH = Math.ceil(items.length / cols) * slotSz;
+      const thumbH   = Math.max(24, trackH * (trackH / contentH));
+      const thumbY   = trackY + (trackH - thumbH) * (scroll / maxScroll);
+      ctx.fillStyle = '#FF9800';
+      _roundRect(ctx, trackX, thumbY, 5, thumbH, 2); ctx.fill();
+    }
+
     ctx.fillStyle    = 'rgba(100,100,120,0.5)';
     ctx.font         = '8px Courier New';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText('Select item → click a hotbar slot below to assign  •  right-click slot to clear', CANVAS_W / 2, py + ph - 8);
+    ctx.fillText('Select item → slot below to assign  •  scroll to see more', CANVAS_W / 2, py + ph - 8);
     ctx.textAlign = 'left';
     ctx.restore();
   }

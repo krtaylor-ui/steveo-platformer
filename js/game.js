@@ -1256,27 +1256,35 @@ class Game {
   }
 
   destroy() {
+    // Stop the loop FIRST so the frame is never left half-rendered. Everything
+    // after is best-effort cleanup wrapped so a single failure can't throw out of
+    // destroy() — otherwise the caller's return-to-menu callback never fires and
+    // the last game frame stays frozen on screen (the Sandbox test-exit freeze).
     this._running = false;
-    // Back to the menus → re-enable menu-only retro FX.
-    if (typeof document !== 'undefined' && document.body) document.body.classList.remove('in-game');
-    // Ensure the HTML pause overlay never lingers past teardown.
-    if (typeof PAUSE_MENU !== 'undefined') PAUSE_MENU.close();
-    this._closeSaveDialog();
-    // Clean up AFK document event listeners
-    if (this._afkListenerCleanup) { this._afkListenerCleanup(); this._afkListenerCleanup = null; }
-    // Remove chat DOM overlay if present
-    if (this._chatDomElement) { this._chatDomElement.remove(); this._chatDomElement = null; }
-    // Fade out game audio so it doesn't bleed into the menu
-    const bg = this._musicSystem?.bgAudio;
-    if (bg && !bg.paused) {
-      const startVol = bg.volume;
-      const steps = 40;
-      let count = 0;
-      const iv = setInterval(() => {
-        count++;
-        bg.volume = Math.max(0, startVol - count * (startVol / steps));
-        if (count >= steps) { clearInterval(iv); bg.pause(); }
-      }, 50);
+    try {
+      // Back to the menus → re-enable menu-only retro FX.
+      if (typeof document !== 'undefined' && document.body) document.body.classList.remove('in-game');
+      // Ensure the HTML pause overlay never lingers past teardown.
+      if (typeof PAUSE_MENU !== 'undefined') PAUSE_MENU.close();
+      this._closeSaveDialog();
+      // Clean up AFK document event listeners
+      if (this._afkListenerCleanup) { this._afkListenerCleanup(); this._afkListenerCleanup = null; }
+      // Remove chat DOM overlay if present
+      if (this._chatDomElement) { this._chatDomElement.remove(); this._chatDomElement = null; }
+      // Fade out game audio so it doesn't bleed into the menu
+      const bg = this._musicSystem?.bgAudio;
+      if (bg && !bg.paused) {
+        const startVol = bg.volume;
+        const steps = 40;
+        let count = 0;
+        const iv = setInterval(() => {
+          count++;
+          bg.volume = Math.max(0, startVol - count * (startVol / steps));
+          if (count >= steps) { clearInterval(iv); bg.pause(); }
+        }, 50);
+      }
+    } catch (e) {
+      if (typeof console !== 'undefined') console.error('Game.destroy cleanup error (ignored):', e);
     }
   }
 
@@ -1717,12 +1725,8 @@ class Game {
     // Sandbox palette/popup: handle clicks and freeze gameplay
     if (this.gameMode === 'sandbox' && this.sandbox) {
       if (this.sandbox.paletteOpen) {
-        // Scroll wheel still switches active hotbar slot while palette is open
-        if (this.input.scrollDelta !== 0) {
-          this.sandbox.selectHotbarSlot(
-            (this.sandbox.sbHotbarSel + this.input.scrollDelta + 8) % 8
-          );
-        }
+        // Scroll wheel scrolls the (possibly overflowing) item grid while open.
+        if (this.input.scrollDelta !== 0) this.sandbox.scrollPalette(this.input.scrollDelta);
         this.sandbox.handlePaletteClick(this.input.mouse.x, this.input.mouse.y, this.input.mouse.clicked);
         return;
       }
@@ -2541,22 +2545,17 @@ class Game {
             if (this.sandbox.brushSize > 1 && this.sandbox.isBrushApplicable) {
               this._sandboxBrushPlace(hoverRow, hoverCol, sb);
             } else {
-            // Goal star: MULTIPLE allowed (campaign-prep). Placing on an existing
-            // goal cycles its colour; a fresh cell adds a new (gold) goal.
-            const _wasGoal = (sb === BLOCK.GOAL && this.level.get(hoverRow, hoverCol) === BLOCK.GOAL);
+            // Goal star: MULTIPLE allowed (campaign-prep). A fresh goal joins the
+            // colour of any goal it touches (keeps a stack/line uniform); click a
+            // placed goal WITH the Goal tool to cycle the whole group's colour
+            // (handled in the non-air branch below).
             this.level.set(hoverRow, hoverCol, sb);
             this._playSound('sounds/placing-block.mp3', 0.6);
             if (sb === BLOCK.GOAL) {
               this.level.goalCol = hoverCol;
               this.level.goalRow = hoverRow;
-              if (_wasGoal) {
-                const _n = (typeof GOAL_COLORS !== 'undefined') ? GOAL_COLORS.length : 10;
-                this._setGoalColor(hoverRow, hoverCol, (this._goalColorAt(hoverRow, hoverCol) + 1) % _n);
-                const _cn = (typeof GOAL_COLORS !== 'undefined') ? GOAL_COLORS[this._goalColorAt(hoverRow, hoverCol)]?.name : '';
-                this._notify('Goal colour: ' + (_cn || ''), '#FFE066', 90);
-              } else {
-                this._invalidateGoalCells();
-              }
+              this._setGoalColor(hoverRow, hoverCol, this._adjacentGoalColor(hoverRow, hoverCol));
+              this._invalidateGoalCells();
             }
             window.multiplayerManager?.placeBlock(hoverCol, hoverRow, sb);
             // Register lever/trapdoor/pressure_plate in redstone system
@@ -2692,6 +2691,11 @@ class Game {
                    this.sandbox.selectedBlock === BLOCK.EYE_OF_ENDER) {
           // Eye of Ender selected + click on frame block → place eye
           this._tryPlaceEye(hoverRow, hoverCol);
+        } else if (target === BLOCK.GOAL && this.sandbox.selectedBlock === BLOCK.GOAL &&
+                   this.sandbox.selectedItem && this.sandbox.selectedItem.kind === 'block') {
+          // Goal Star selected + click a placed goal → cycle the whole touching
+          // group's colour (select a DIFFERENT block/tool, then click, to remove).
+          this._cycleGoalGroupColor(hoverRow, hoverCol);
         } else {
           // Non-air block → instant remove (connected removal for beds/portals)
           if (this.sandbox.brushSize > 1 && this.sandbox.isBrushApplicable) {
@@ -4335,6 +4339,46 @@ class Game {
     else delete this._goalColorMap[r + ',' + c];
     this._invalidateGoalCells();
   }
+  // All 4-connected Goal Star cells reachable from (row,col) — a "touching" group
+  // (a stack or line of goals). Used so one colour change repaints the whole group.
+  _connectedGoalCells(row, col) {
+    const grid = this.level && this.level.grid;
+    if (!grid || !grid[row] || grid[row][col] !== BLOCK.GOAL) return [];
+    const seen = new Set([row + ',' + col]);
+    const out = [], stack = [[row, col]];
+    while (stack.length) {
+      const [r, c] = stack.pop();
+      out.push({ row: r, col: c });
+      for (const [nr, nc] of [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]]) {
+        if (nr < 0 || nc < 0 || nr >= grid.length || !grid[nr] || nc >= grid[nr].length) continue;
+        const k = nr + ',' + nc;
+        if (grid[nr][nc] === BLOCK.GOAL && !seen.has(k)) { seen.add(k); stack.push([nr, nc]); }
+      }
+    }
+    return out;
+  }
+  // Colour of the first Goal Star touching (row,col), else 0 — a new goal joins its
+  // neighbours' colour so a stack/line stays uniform as you build it.
+  _adjacentGoalColor(row, col) {
+    const grid = this.level && this.level.grid;
+    if (!grid) return 0;
+    for (const [nr, nc] of [[row - 1, col], [row + 1, col], [row, col - 1], [row, col + 1]]) {
+      if (nr < 0 || nc < 0 || nr >= grid.length || !grid[nr] || nc >= grid[nr].length) continue;
+      if (grid[nr][nc] === BLOCK.GOAL) { const c = this._goalColorAt(nr, nc); if (c) return c; }
+    }
+    return 0;
+  }
+  // Cycle the colour of the whole connected goal group containing (row,col).
+  _cycleGoalGroupColor(row, col) {
+    const group = this._connectedGoalCells(row, col);
+    if (!group.length) return;
+    const n    = (typeof GOAL_COLORS !== 'undefined') ? GOAL_COLORS.length : 10;
+    const next = (this._goalColorAt(row, col) + 1) % n;
+    for (const g of group) this._setGoalColor(g.row, g.col, next);
+    this._invalidateGoalCells();
+    const nm = (typeof GOAL_COLORS !== 'undefined') ? (GOAL_COLORS[next]?.name || '') : '';
+    this._notify(`Goal colour: ${nm}${group.length > 1 ? ` (×${group.length})` : ''}`, '#FFE066', 100);
+  }
 
   _applyMovementConfig(p) {
     const aws = this._worldAdvSettings;
@@ -4842,21 +4886,14 @@ class Game {
         blkY < this.player.y + this.player.height && blkY + BLOCK_SIZE > this.player.y) return false;
     const type = this.player.takeSelected();
     if (type !== null) {
-      // Goal star: MULTIPLE allowed (campaign-prep). Re-placing on a goal cycles
-      // its colour; a fresh cell adds a new (gold) goal.
-      const _wasGoal = (type === BLOCK.GOAL && this.level.get(row, col) === BLOCK.GOAL);
+      // Goal star: MULTIPLE allowed (campaign-prep). A fresh goal joins the colour
+      // of any goal it touches (colour cycling is done in the sandbox editor).
       this.level.set(row, col, type);
       if (type === BLOCK.GOAL) {
         this.level.goalCol = col;
         this.level.goalRow = row;
-        if (_wasGoal) {
-          const _n = (typeof GOAL_COLORS !== 'undefined') ? GOAL_COLORS.length : 10;
-          this._setGoalColor(row, col, (this._goalColorAt(row, col) + 1) % _n);
-          const _cn = (typeof GOAL_COLORS !== 'undefined') ? GOAL_COLORS[this._goalColorAt(row, col)]?.name : '';
-          this._notify('Goal colour: ' + (_cn || ''), '#FFE066', 90);
-        } else {
-          this._invalidateGoalCells();
-        }
+        this._setGoalColor(row, col, this._adjacentGoalColor(row, col));
+        this._invalidateGoalCells();
       }
       return true;
     }
@@ -6200,6 +6237,15 @@ class Game {
     if (this.sandbox.isEggSelected)       return;
     if (this.sandbox.isToolSelected)      return;
     if (this.sandbox.isBlockItemSelected) return;
+    // Non-block placeables draw their own markers (or none) — never fall through
+    // to the block-ghost, which would wrongly show the last selectedBlock (e.g. a
+    // Goal Star) as the cursor preview while an emerald/spawn item is selected.
+    if (this.sandbox.isEmeraldSelected)    return;
+    if (this.sandbox.isPowerupSelected)    return;
+    if (this.sandbox.isHillSelected)       return;
+    if (this.sandbox.isSpawnLineSelected)  return;
+    if (this.sandbox.isSpawnPointSelected) return;
+    if (this.sandbox.isArenaObjSelected)   return;
     if (this.sandbox.isDustSelected) {
       const target = this.level.get(hoverRow, hoverCol);
       if (target !== BLOCK.AIR && this._isDustValidTarget(target)) {
