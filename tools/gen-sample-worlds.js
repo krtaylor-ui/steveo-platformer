@@ -168,7 +168,10 @@ function dropTo(gr, c, r) {
 function key(c, r) { return c + ',' + r; }
 
 // BFS over standable cells honoring the jump envelope. Returns reachable Set of "c,r".
-function reachable(gr, startC, startR) {
+function reachable(gr, startC, startR, opts = {}) {
+  // Per-world jump envelope (e.g. double-jump raises the up/across reach).
+  const baseUp = opts.maxUp || MAX_JUMP_UP;
+  const baseDx = opts.maxDx || MAX_JUMP_DX;
   // snap start down to ground
   let sr = standable(gr, startC, startR) ? startR : dropTo(gr, startC, startR);
   if (sr < 0) return new Set();
@@ -186,11 +189,11 @@ function reachable(gr, startC, startR) {
         if (lr >= 0) nbrs.push([nc, lr]);
       }
     }
-    // jumps: up to MAX_JUMP_UP up, MAX_DROP down, MAX_JUMP_DX across.
+    // jumps: up to baseUp up, MAX_DROP down, baseDx across.
     // Standing on a JUMP_PAD launches much higher/farther (vy≈-18 → ~7 up, ~10 across).
     const onPad = get(gr, c, r + 1) === B.JUMP_PAD;
-    const jUp = onPad ? PAD_JUMP_UP : MAX_JUMP_UP;
-    const jDx = onPad ? PAD_JUMP_DX : MAX_JUMP_DX;
+    const jUp = onPad ? Math.max(PAD_JUMP_UP, baseUp) : baseUp;
+    const jDx = onPad ? Math.max(PAD_JUMP_DX, baseDx) : baseDx;
     for (let dc = -jDx; dc <= jDx; dc++) {
       for (let dr = -jUp; dr <= MAX_DROP; dr++) {
         if (dc === 0 && dr === 0) continue;
@@ -221,7 +224,7 @@ function poiCell(gr, c, r, label, problems) {
   return null;
 }
 
-function validate(name, gr, pois, startCR) {
+function validate(name, gr, pois, startCR, opts = {}) {
   const problems = [];
   const cells = [];
   for (const p of pois) {
@@ -230,7 +233,7 @@ function validate(name, gr, pois, startCR) {
   }
   // reachability from the given start (or first POI)
   const [scRaw, srRaw] = startCR || [cells[0]?.cell[0], cells[0]?.cell[1]];
-  const reach = reachable(gr, scRaw, srRaw);
+  const reach = reachable(gr, scRaw, srRaw, opts);
   for (const c of cells) {
     if (!reach.has(key(c.cell[0], c.cell[1]))) {
       problems.push(`${c.label} @ (${c.cell[0]},${c.cell[1]}) is UNREACHABLE from start (${scRaw},${srRaw})`);
@@ -243,8 +246,8 @@ function validate(name, gr, pois, startCR) {
 // WORLD BUILDERS
 // ============================================================
 const worlds = [];
-function emit(payload, pois, startCR, gr) {
-  const res = validate(payload.worldName, gr, pois, startCR);
+function emit(payload, pois, startCR, gr, opts = {}) {
+  const res = validate(payload.worldName, gr, pois, startCR, opts);
   worlds.push({ payload, res });
 }
 
@@ -642,9 +645,71 @@ function buildCreative() {
   emit(payload, pois, [3, floor - 2], gr);
 }
 
+// ==== PLATFORMER — First Steps Redux (original "1-1"-style homage) ==========
+// A friendly opening level built around the new moves (double jump, ledge hang,
+// ground slide, auto-climb) — original layout, Steveo's own tiles, no enemies.
+// Solid earth throughout (no bottomless pits); higher platforms need a double
+// jump; a tall ledge rewards an edge-grab; an optional slide tunnel skips a hop.
+function buildHomage() {
+  const W = 720, H = 44, base = 34, gr = makeGrid(W, H);
+  const GR = B.GRASS, DIRT = B.DIRT, LOG = B.OAK_LOG, STONE = B.STONE;
+  // Friendly terrain: solid earth everywhere so a missed jump is never fatal.
+  rect(gr, 0, base + 1, W - 1, H - 2, DIRT);
+  rect(gr, 0, base, W - 1, base, GR);
+  rect(gr, 0, H - 1, W - 1, H - 1, B.BEDROCK);
+  // Raised platform (grass cap + 2 dirt) at `top`, cols c0..c1.
+  const plat3 = (c0, c1, top) => { for (let c = c0; c <= c1; c++) { set(gr, c, top, GR); set(gr, c, top + 1, DIRT); set(gr, c, top + 2, DIRT); } };
+  const colFill = (c0, c1, r0, r1, blk) => rect(gr, c0, r0, c1, r1, blk);
+
+  // 1) Opening runway 0–58 (flat, teaches movement).
+  // 2) Tube hop — a 3-tall log column to jump over.
+  colFill(60, 61, base - 3, base - 1, LOG);
+  // 3) Another tube pair with a 1-block SLIDE gap between them at ground level:
+  //    hop both (main) or slide the gap (flavor). Ceiling bar forces a low profile.
+  colFill(96, 97, base - 3, base - 1, LOG);
+  set(gr, 98, base - 1, LOG); set(gr, 99, base - 1, LOG);   // low bar → slide under, or jump the pair
+  // 4) Forced DOUBLE-JUMP: a wall blocks the ground; go up onto a high platform.
+  colFill(150, 154, base - 8, base, STONE);                 // impassable wall at ground
+  plat3(146, 168, base - 6);                                // double-jump up (6) at the wall's left edge
+  // 5) DOUBLE-JUMP climb — a short stack of tall steps (≈5 up each).
+  plat3(176, 188, base - 6);
+  plat3(190, 202, base - 11);
+  // 6) Tall LEDGE (edge-grab reward, also double-jump reachable ≈5 up).
+  plat3(205, 220, base - 16);
+  // 7) Bridge right, then descend back toward ground (drops are always safe).
+  plat3(224, 250, base - 12);
+  plat3(254, 276, base - 7);
+  // 8) Optional SLIDE tunnel: a 2-thick platform with a 1-block gap beneath —
+  //    slide through at ground (shortcut) or take the top (jump on, walk over).
+  colFill(300, 312, base - 3, base - 2, STONE);             // roof: bottom at base-2 → base-1 slide gap
+  plat3(296, 299, base - 4);                                // step up onto the roof top (over-route)
+  // 9) Final ascending staircase (1-block steps → auto-climb) up to the goal.
+  let s = base;
+  for (let i = 0; i < 6; i++) { s -= 1; plat3(360 + i * 4, 363 + i * 4, s); }
+  plat3(384, W - 1, s);                                     // finish plateau
+  const goalC = W - 8;
+  for (let rr = 0; rr <= s - 1; rr++) set(gr, goalC, rr, B.GOAL);  // full-height finish banner
+
+  const startC = 4, startR = base - 1;
+  const payload = world({
+    name: '[Sample] First Steps Redux', mode: 'PLT', gr, playerPx: startC * BS, playerPy: (startR - 2) * BS,
+    description: 'Original beginner platformer built for the new moves — double-jump up the tall platforms, edge-grab the high ledge, slide the tunnel. No enemies. (Set Mode: Platformer.)',
+    adv: { backgroundTheme: 'sky', airJumpEnabled: true, ledgeHangEnabled: true, slideEnabled: true, autoStepUp: true },
+  });
+  // Double jump ≈6 up / a bit more across; validate the critical path with that envelope.
+  emit(payload, [
+    { c: startC, r: startR, label: 'start' },
+    { c: 157, r: base - 7, label: 'double-jump-plateau' },
+    { c: 196, r: base - 12, label: 'climb-top' },
+    { c: 212, r: base - 17, label: 'high-ledge' },
+    { c: goalC, r: s - 1, label: 'GOAL' },
+  ], [startC, startR], gr, { maxUp: 6, maxDx: 8 });
+}
+
 // ── Run all ──────────────────────────────────────────────────
 buildSR1(); buildSR2(); buildSR3();
 buildFFA(); buildTeam(); buildCTF(); buildKOTH(); buildDefend(); buildCreative();
+buildHomage();
 
 if (!fs.existsSync(OUT)) fs.mkdirSync(OUT, { recursive: true });
 let allOk = true;

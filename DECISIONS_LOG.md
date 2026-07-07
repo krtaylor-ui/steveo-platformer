@@ -930,3 +930,16 @@ Merged `world-settings-html` → main.
 - **Input:** Up Arrow + J are secondary jump keys (guarded off when a 2nd local player shares the
   keyboard). Konami ending flipped to the classic **B, A**.
 Schema/logic validated headlessly (55 settings); suite 182/182.
+
+---
+
+## Sample world: "First Steps Redux" (2026-07-07) — new-moves platformer homage
+
+Added an original beginner Platformer level (`sample-worlds/First_Steps_Redux.json`) built to showcase
+the new moves — NOT a copy of any existing game's level. Solid earth throughout (no bottomless pits);
+a tube hop, a forced **double-jump** onto a high platform (wall blocks the ground route), a short
+double-jump climb, a tall **edge-grab** ledge, an optional **slide** tunnel (shortcut under a jump-over
+roof), auto-climb staircase to a full-height goal. Ships with airJump/ledgeHang/slide/autoStepUp enabled.
+Generator (`tools/gen-sample-worlds.js`): `buildHomage()` + the reachability validator now takes a
+per-world `{maxUp,maxDx}` envelope so double-jump platforms verify honestly (validated 10/10). No app
+code changed.
