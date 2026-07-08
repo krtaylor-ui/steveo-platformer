@@ -57,6 +57,7 @@ const TEST_WORLD = {
     // Sandbox editor, so you appear "stuck" in the mode you were playing.
     let _exited = false;
     const exit = () => {
+      console.log('[EXIT] exit() invoked; _exited=', _exited, 'wid=', this._wid, 'game=', !!window.game);
       if (_exited) return; // guard against double-exit (button + Game handler)
       _exited = true;
       this._hideControls();
@@ -64,8 +65,15 @@ const TEST_WORLD = {
         try { window.game.destroy(); } catch (e) { if (typeof console !== 'undefined') console.error('test-world exit destroy error (ignored):', e); }
       }
       window.game = null;
-      if (this._wid && typeof SANDBOX_UI !== 'undefined' && SANDBOX_UI.editWorld) SANDBOX_UI.editWorld(this._wid);
-      else if (typeof SANDBOX_UI !== 'undefined' && SANDBOX_UI._returnToBrowser) SANDBOX_UI._returnToBrowser();
+      if (this._wid && typeof SANDBOX_UI !== 'undefined' && SANDBOX_UI.editWorld) {
+        console.log('[EXIT] → SANDBOX_UI.editWorld(', this._wid, ')');
+        SANDBOX_UI.editWorld(this._wid);
+      } else if (typeof SANDBOX_UI !== 'undefined' && SANDBOX_UI._returnToBrowser) {
+        console.log('[EXIT] → SANDBOX_UI._returnToBrowser() (no wid)');
+        SANDBOX_UI._returnToBrowser();
+      } else {
+        console.warn('[EXIT] no SANDBOX_UI exit path available!');
+      }
     };
     window.game = new Game(mode, options, exit);
     // Restart = relaunch the same test from scratch (fresh timer / clean state).
@@ -78,8 +86,9 @@ const TEST_WORLD = {
     hud.style.display = 'flex';
     const r = document.getElementById('test-hud-restart');
     const x = document.getElementById('test-hud-exit');
-    if (r) r.onclick = () => onRestart();
-    if (x) x.onclick = () => onExit();
+    console.log('[EXIT] _showControls wiring — restart btn:', !!r, 'exit btn:', !!x);
+    if (r) r.onclick = () => { console.log('[EXIT] ↺ Restart button clicked'); onRestart(); };
+    if (x) x.onclick = () => { console.log('[EXIT] ← Return to Sandbox button clicked'); onExit(); };
   },
 
   _hideControls() {

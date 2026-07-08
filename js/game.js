@@ -1377,6 +1377,7 @@ class Game {
       const r = this._testExitRect();
       const mx = this.input.mouse.x, my = this.input.mouse.y;
       if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) {
+        console.log('[EXIT] canvas ✕ EXIT TEST clicked; _onReturnToMenu=', !!this._onReturnToMenu);
         this.destroy();
         if (this._onReturnToMenu) this._onReturnToMenu();
         return;
@@ -1394,6 +1395,7 @@ class Game {
       // _onReturnToMenu (the launcher's callback). The on-screen ↺ Restart /
       // ← Sandbox buttons (#test-hud) are the primary controls; no pause-freeze.
       if (this._testMode) {
+        console.log('[EXIT] Esc in test mode; _onReturnToMenu=', !!this._onReturnToMenu);
         this.destroy();
         if (this._onReturnToMenu) this._onReturnToMenu();
         return;
