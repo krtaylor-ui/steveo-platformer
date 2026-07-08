@@ -1725,8 +1725,13 @@ class Game {
     // Sandbox palette/popup: handle clicks and freeze gameplay
     if (this.gameMode === 'sandbox' && this.sandbox) {
       if (this.sandbox.paletteOpen) {
-        // Scroll wheel scrolls the (possibly overflowing) item grid while open.
-        if (this.input.scrollDelta !== 0) this.sandbox.scrollPalette(this.input.scrollDelta);
+        // Scroll wheel switches the active hotbar slot while the palette is open
+        // (the palette itself is sized to show every item without scrolling).
+        if (this.input.scrollDelta !== 0) {
+          this.sandbox.selectHotbarSlot(
+            (this.sandbox.sbHotbarSel + this.input.scrollDelta + 8) % 8
+          );
+        }
         this.sandbox.handlePaletteClick(this.input.mouse.x, this.input.mouse.y, this.input.mouse.clicked);
         return;
       }
@@ -2692,7 +2697,12 @@ class Game {
           // Eye of Ender selected + click on frame block → place eye
           this._tryPlaceEye(hoverRow, hoverCol);
         } else if (target === BLOCK.GOAL && this.sandbox.selectedBlock === BLOCK.GOAL &&
-                   this.sandbox.selectedItem && this.sandbox.selectedItem.kind === 'block') {
+                   !this.sandbox.isEggSelected && !this.sandbox.isToolSelected &&
+                   !this.sandbox.isEmeraldSelected && !this.sandbox.isPowerupSelected &&
+                   !this.sandbox.isDustSelected && !this.sandbox.isGateSelected &&
+                   !this.sandbox.isBlockItemSelected && !this.sandbox.isHillSelected &&
+                   !this.sandbox.isSpawnLineSelected && !this.sandbox.isSpawnPointSelected &&
+                   !this.sandbox.isArenaObjSelected) {
           // Goal Star selected + click a placed goal → cycle the whole touching
           // group's colour (select a DIFFERENT block/tool, then click, to remove).
           this._cycleGoalGroupColor(hoverRow, hoverCol);
@@ -6237,15 +6247,21 @@ class Game {
     if (this.sandbox.isEggSelected)       return;
     if (this.sandbox.isToolSelected)      return;
     if (this.sandbox.isBlockItemSelected) return;
-    // Non-block placeables draw their own markers (or none) — never fall through
-    // to the block-ghost, which would wrongly show the last selectedBlock (e.g. a
-    // Goal Star) as the cursor preview while an emerald/spawn item is selected.
-    if (this.sandbox.isEmeraldSelected)    return;
-    if (this.sandbox.isPowerupSelected)    return;
-    if (this.sandbox.isHillSelected)       return;
-    if (this.sandbox.isSpawnLineSelected)  return;
-    if (this.sandbox.isSpawnPointSelected) return;
-    if (this.sandbox.isArenaObjSelected)   return;
+    // Non-block placeables: preview THEIR own icon (translucent) at the cursor —
+    // never fall through to the block-ghost, which would wrongly show the last
+    // selectedBlock (e.g. a Goal Star) while an emerald/spawn item is selected.
+    {
+      const pcx = hoverCol * BLOCK_SIZE - this.camera.x + BLOCK_SIZE / 2;
+      const pcy = hoverRow * BLOCK_SIZE - this.camera.y + BLOCK_SIZE / 2;
+      const fc  = this.frameCount;
+      const drawGhost = (fn) => { ctx.save(); ctx.globalAlpha = 0.5; try { fn(); } catch (e) {} ctx.restore(); };
+      if (this.sandbox.isEmeraldSelected)    { drawGhost(() => _drawEmeraldIcon(ctx, pcx, pcy, fc, false)); return; }
+      if (this.sandbox.isPowerupSelected)    { drawGhost(() => _drawPowerupIcon(ctx, pcx, pcy, 'HEALTH', fc, false)); return; }
+      if (this.sandbox.isSpawnPointSelected) { drawGhost(() => _drawSpawnPointMarker(ctx, pcx, pcy, 1, fc)); return; }
+      if (this.sandbox.isSpawnLineSelected)  { drawGhost(() => _drawSpawnLineMarker(ctx, pcx, pcy, 1, fc)); return; }
+      if (this.sandbox.isArenaObjSelected)   { drawGhost(() => _drawArenaObjMarker(ctx, pcx, pcy, { type: this.sandbox.selectedArenaObj, team: 0, slot: 1 }, fc, true)); return; }
+      if (this.sandbox.isHillSelected)       { drawGhost(() => { ctx.fillStyle = '#f1c40f'; ctx.fillRect(pcx - 11, pcy + 2, 22, 5); ctx.fillStyle = '#fff7c0'; ctx.font = 'bold 13px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('★', pcx, pcy - 4); }); return; }
+    }
     if (this.sandbox.isDustSelected) {
       const target = this.level.get(hoverRow, hoverCol);
       if (target !== BLOCK.AIR && this._isDustValidTarget(target)) {

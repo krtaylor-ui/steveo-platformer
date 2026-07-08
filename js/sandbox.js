@@ -847,10 +847,10 @@ class SandboxManager {
 
     // Tab row
     const TABS = ['overworld', 'nether', 'gear', 'other'];
+    const tg = this._paletteTabGeom();
     for (let i = 0; i < TABS.length; i++) {
-      const tx = px + 8 + i * 91;
-      const ty = py + 32;
-      if (mx >= tx && mx <= tx + 87 && my >= ty && my <= ty + 26) {
+      const tx = tg.x0 + i * tg.tabW;
+      if (mx >= tx && mx <= tx + (tg.tabW - tg.gap) && my >= tg.y && my <= tg.y + tg.h) {
         this.paletteTab = TABS[i];
         this.paletteScroll = 0; // reset scroll when switching tabs
         return true;
@@ -1092,15 +1092,23 @@ class SandboxManager {
   // ── Layouts ──────────────────────────────────────────────────
 
   _paletteLayout() {
-    const pw = 380, ph = 290;
+    // Wide enough to show every item in a tab without scrolling (10 cols × ~4 rows).
+    const pw = 470, ph = 290;
     return { px: (CANVAS_W - pw) / 2, py: (CANVAS_H - ph) / 2 - 10, pw, ph };
+  }
+
+  // Tab-row geometry shared by draw + click (4 tabs filling the panel width).
+  _paletteTabGeom() {
+    const { px, py, pw } = this._paletteLayout();
+    const tabW = (pw - 16) / 4;
+    return { tabW, gap: 4, y: py + 32, h: 26, x0: px + 8 };
   }
 
   // Item grid geometry shared by draw + click + scroll (single source of truth).
   _paletteGridGeom() {
     const { px, py, pw, ph } = this._paletteLayout();
     const gridTop = py + 66, gridBottom = py + ph - 22; // leave room for the footer hint
-    return { px, py, pw, ph, gridTop, gridBottom, slotSz: 44, cols: 8, startX: px + 8, viewH: gridBottom - gridTop };
+    return { px, py, pw, ph, gridTop, gridBottom, slotSz: 44, cols: 10, startX: px + 8, viewH: gridBottom - gridTop };
   }
 
   _paletteItems() {
@@ -1662,6 +1670,20 @@ class SandboxManager {
     } else if (this.isGateSelected) {
       selName  = this.selectedGateType === 'not' ? 'NOT Gate' : 'AND Gate';
       selColor = this.selectedGateType === 'not' ? '#00AAAA' : '#CC7700';
+    } else if (this.isEmeraldSelected) {
+      selName = 'Emerald';        selColor = '#2ecc71';
+    } else if (this.isPowerupSelected) {
+      selName = 'Power-Up';       selColor = '#e67e22';
+    } else if (this.isHillSelected) {
+      selName = 'Hill Zone';      selColor = '#f1c40f';
+    } else if (this.isSpawnLineSelected) {
+      selName = 'Spawn Line';     selColor = '#9b59b6';
+    } else if (this.isSpawnPointSelected) {
+      selName = 'Player Spawn';   selColor = '#4aa3ff';
+    } else if (this.isArenaObjSelected) {
+      const t = this.selectedArenaObj;
+      selName  = t === 'base' ? 'Base' : t === 'tower' ? 'Tower' : t === 'heal' ? 'Heal Pad' : 'Arena Object';
+      selColor = t === 'base' ? '#e74c3c' : t === 'tower' ? '#f5d142' : '#2ecc71';
     } else {
       selName  = BLOCK_DATA[this.selectedBlock]?.name ?? '?';
       selColor = '#FFD700';
@@ -1747,20 +1769,22 @@ class SandboxManager {
       { key: 'gear',      label: 'Gear',      color: '#FFD700' },
       { key: 'other',     label: 'Other',     color: '#FF9800' },
     ];
+    const tg = this._paletteTabGeom();
     for (let i = 0; i < TABS.length; i++) {
-      const tx  = px + 8 + i * 91;
-      const ty  = py + 32;
+      const tw  = tg.tabW - tg.gap;
+      const tx  = tg.x0 + i * tg.tabW;
+      const ty  = tg.y;
       const tab = TABS[i];
       const act = this.paletteTab === tab.key;
-      const hov = mx >= tx && mx <= tx + 87 && my >= ty && my <= ty + 26;
+      const hov = mx >= tx && mx <= tx + tw && my >= ty && my <= ty + tg.h;
       ctx.fillStyle   = act ? `${tab.color}33` : (hov ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.3)');
-      _roundRect(ctx, tx, ty, 87, 26, 4); ctx.fill();
+      _roundRect(ctx, tx, ty, tw, tg.h, 4); ctx.fill();
       ctx.strokeStyle = act ? tab.color : (hov ? '#888' : '#333');
       ctx.lineWidth   = act ? 2 : 1;
-      _roundRect(ctx, tx, ty, 87, 26, 4); ctx.stroke();
+      _roundRect(ctx, tx, ty, tw, tg.h, 4); ctx.stroke();
       ctx.fillStyle = act ? tab.color : (hov ? '#ccc' : '#666');
       ctx.font      = act ? 'bold 10px Courier New' : '10px Courier New';
-      ctx.fillText(tab.label, tx + 43, ty + 13);
+      ctx.fillText(tab.label, tx + tw / 2, ty + tg.h / 2);
     }
 
     // Item grid (scrollable — a tab can hold more rows than the panel shows)
@@ -1992,7 +2016,7 @@ class SandboxManager {
     ctx.font         = '8px Courier New';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText('Select item → slot below to assign  •  scroll to see more', CANVAS_W / 2, py + ph - 8);
+    ctx.fillText('Select item → click a hotbar slot below to assign  •  right-click slot to clear', CANVAS_W / 2, py + ph - 8);
     ctx.textAlign = 'left';
     ctx.restore();
   }
