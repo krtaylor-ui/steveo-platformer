@@ -32,8 +32,9 @@
 - **Unified HTML World Settings panel** — DONE (builds 64–66): data‑driven `world-settings-ui.js`
   replacing the canvas panel (kept as a Konami bonus); mob drops/arena types/background/tooltips/retro;
   **Up‑Arrow + J secondary jump**; Konami ending flipped to **B‑then‑A**. (See "World Settings rebuild" below.)
-- **Platformer campaign‑prep** — §12 below, Phase 1. SHIPPED build 67 (on branch, pending browser test):
-  multiple + multi‑colour Goal Stars, emerald collect+count, opt‑in score — groundwork for Campaign mode.
+- **Platformer campaign‑prep** — §12 below, Phase 1. ✅ SHIPPED to main (builds 67–72, browser‑verified):
+  multiple + multi‑colour Goal Stars (click‑to‑cycle a touching group), emerald collect+count, opt‑in score
+  — groundwork for Campaign mode. Builds 68–72 = editor fixes + the Return‑to‑Sandbox playtest‑exit fix.
 
 ## 🔜 Still planned (not built)
 - **User Guide** — §1 below (not started).
@@ -552,7 +553,7 @@ Movement config keys to fold in: `airJumpEnabled`, `autoStepUp`, `wallSlideEnabl
 
 ---
 
-## 12. Campaign mode — sequenced levels with branching exits  *(vision agreed 2026‑07‑07; Phase 1 SHIPPED build 67)*
+## 12. Campaign mode — sequenced levels with branching exits  *(vision agreed 2026‑07‑07; Phase 1 SHIPPED to main, builds 67–72)*
 
 Kevin's vision: a playable **sequence of levels** (Mario-Bros-style) where each level leads to the next,
 with **secret levels** and **skip paths** — the different coloured Goal Stars are the branch exits. This is
@@ -564,7 +565,7 @@ mode**. Individual levels stay **Platformer** levels (all in-level tech already 
 **progression**. This keeps complexity in one well-scoped place instead of forking gameplay.
 
 **Build order (Kevin's chosen cut):**
-- **Phase 1 — make levels campaign-ready — ✅ SHIPPED build 67.** Multiple Goal Stars end the level;
+- **Phase 1 — make levels campaign-ready — ✅ SHIPPED to main (builds 67–72).** Multiple Goal Stars end the level;
   10-colour palette (`GOAL_COLORS`, re-click to cycle in editor, serialized as `world_data.goalStars`);
   `game._wonExitColor` records which coloured exit was taken; emerald collect+count + a rough score system,
   all opt-in via the **Scoring** World-Settings group. See DECISIONS 2026‑07‑07 + CONTEXT_SUMMARY build 67.

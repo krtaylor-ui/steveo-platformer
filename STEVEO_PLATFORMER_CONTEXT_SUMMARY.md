@@ -1,29 +1,50 @@
 # Steveo Platformer — Context Summary
 
-**Updated:** 2026-07-07. See the **CURRENT STATE** section immediately below for
+**Updated:** 2026-07-08. See the **CURRENT STATE** section immediately below for
 the latest; the Phase-3 sections further down are the historical record.
 `DECISIONS_LOG.md` = every decision; `FUTURE_ROADMAP.md` = planned work (User
-Guide, **Campaign mode** §10, Tower Defense/bots, world cleanup, itch/Tauri).
+Guide, **Campaign mode** §12, Tower Defense/bots, world cleanup, itch/Tauri).
 
-## CURRENT STATE (2026-07-07) — build 67 (on branch, pending browser test)
+## CURRENT STATE (2026-07-08) — build 72 (SHIPPED to main + origin)
 
-**Where things are:** `main` and `origin/main` are at **build 66** (`5353a14`).
-**Build 67 is committed on branch `platformer-campaign-prep` only** —
-headless-verified (**182/182**) but **browser-UNTESTED and NOT merged**. Merge to
-`main` waits on Kevin's in-browser confirmation. There are **no live users yet**.
-Version bumps this build: `GAME_VERSION` = `v3 · build 67`; cache-buster `?v=b67`;
-SW `CACHE_VERSION = steveo-shell-v67` (bump ALL THREE every commit).
+**Where things are:** `main` and `origin/main` are both at **build 72** (`6c3b562`),
+fast-forwarded from build 66. Builds **67–72 are shipped and browser-verified by
+Kevin** (the `platformer-campaign-prep` branch is merged; safe to delete). Test
+suite **182/182**. There are **no live users yet**. `GAME_VERSION` = `v3 · build
+72`; cache-buster `?v=b72`; SW `CACHE_VERSION = steveo-shell-v72` (bump ALL THREE
+every commit).
 
-**Build 67 — platformer campaign-prep (groundwork for FUTURE_ROADMAP §10 Campaign
+**Builds 67–72 = the platformer campaign-prep feature set (FUTURE_ROADMAP §12
+Campaign mode, Phase 1) + its fixes.** Opt-in additions to Platformer levels; no
+new physics mode. Summary of what changed across the run:
+- **67** — the core (detailed below): multi-colour Goal Stars, emerald collect+count, score.
+- **68–69** — fixes from Kevin's first test: goal-colour **click-to-cycle** (see the
+  corrected authoring note below), placeable **ghost icons** in the editor (emerald/
+  powerup/spawn no longer show a stale Goal-Star ghost), correct **hotbar selection
+  labels** for every placeable kind, and the block palette **widened to 10 columns**
+  (pw 470) so the 34-item "Other" tab fits with no scrollbar (wheel still cycles the
+  hotbar). `_paletteGridGeom` / `_paletteTabGeom` are the shared draw+click geometry.
+- **70–72** — fixed the **"Return to Sandbox" playtest-exit freeze**. Root cause
+  (found via [EXIT] console tracing): `js/test-world.js` referenced the sandbox-UI
+  singleton as `SANDBOX_UI`, but it is `const SANDBOX` (js/sandbox-ui.js). The
+  undefined global made `choose()` capture `_wid = null` and `exit()` reach no
+  return path → the test game was destroyed with nothing reopened → frozen. Fixed to
+  `SANDBOX` (all 8 refs). exit() also now destroys the live game before reopening
+  (Game._loop re-schedules off its own instance; nulling window.game doesn't stop it).
+
+**Build 67 — platformer campaign-prep (groundwork for FUTURE_ROADMAP §12 Campaign
 mode).** Opt-in additions to Platformer levels; no new physics mode.
 - **Multiple Goal Stars.** Any goal the player touches ends the level (was a single
   tracked `level.goalCol/goalRow`). Win scans a cached `_getGoalCells()` list;
   the colour index of the goal hit is recorded on `game._wonExitColor` — the hook
   the future Campaign layer will route branch/secret/skip exits on.
 - **Goal-Star colours.** 10-colour palette (`GOAL_COLORS` in constants.js; index
-  0 = classic gold). In the editor, **re-placing on an existing goal cycles its
-  colour**; colours live in `game._goalColorMap` ("r,c"→idx), serialize as
-  `world_data.goalStars [{row,col,color}]` (via `GAME_STATE._goalStars`), restore
+  0 = classic gold). In the editor (build 69), **click a placed goal with the Goal
+  Star tool selected to cycle its colour**, and the whole **4-connected touching
+  group** (a stack/line) recolours together (`_cycleGoalGroupColor` /
+  `_connectedGoalCells`); a new goal inherits an adjacent goal's colour
+  (`_adjacentGoalColor`). Colours live in `game._goalColorMap` ("r,c"→idx), serialize
+  as `world_data.goalStars [{row,col,color}]` (via `GAME_STATE._goalStars`), restore
   in both `_loadPlatformerWorld` + `_loadSandboxWorld`, and render as a colour
   wash + ring overlay (`_drawGoalColorOverlays`, play + sandbox).
 - **Emeralds in platformer.** `EMERALD_SYSTEM.init` now also reads
