@@ -49,10 +49,20 @@ const TEST_WORLD = {
     if (arenaGameMode) options.arenaGameMode = arenaGameMode;
 
     // Exit → back to the editor on the same world (nothing from the test persists).
-    // Used by the ← Return button, Esc, the pause menu, and natural end screens
-    // (all route through the Game's _onReturnToMenu callback).
+    // Used by the ← Return button, Esc, the pause menu, and natural end screens.
+    // CRITICAL: destroy the running test game first. The ← Return button calls this
+    // directly (not via a Game handler that already destroyed), and Game._loop keeps
+    // re-scheduling itself off `this` — nulling window.game does NOT stop it. Without
+    // the destroy() the old test game keeps looping and rendering ON TOP of the new
+    // Sandbox editor, so you appear "stuck" in the mode you were playing.
+    let _exited = false;
     const exit = () => {
+      if (_exited) return; // guard against double-exit (button + Game handler)
+      _exited = true;
       this._hideControls();
+      if (window.game && typeof window.game.destroy === 'function') {
+        try { window.game.destroy(); } catch (e) { if (typeof console !== 'undefined') console.error('test-world exit destroy error (ignored):', e); }
+      }
       window.game = null;
       if (this._wid && typeof SANDBOX_UI !== 'undefined' && SANDBOX_UI.editWorld) SANDBOX_UI.editWorld(this._wid);
       else if (typeof SANDBOX_UI !== 'undefined' && SANDBOX_UI._returnToBrowser) SANDBOX_UI._returnToBrowser();
