@@ -728,7 +728,6 @@ const SANDBOX = {
 
   // ── Editor: open a world in sandbox mode ───────────────────────
   async editWorld(worldId) {
-    console.log('[EXIT] editWorld() start, worldId=', worldId);
     try {
       const local = this._isLocalWorld(worldId);
       let world;
