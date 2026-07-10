@@ -1,9 +1,47 @@
 # Steveo Platformer — Context Summary
 
-**Updated:** 2026-07-08. See the **CURRENT STATE** section immediately below for
+**Updated:** 2026-07-10. See the **CURRENT STATE** section immediately below for
 the latest; the Phase-3 sections further down are the historical record.
 `DECISIONS_LOG.md` = every decision; `FUTURE_ROADMAP.md` = planned work (User
-Guide, **Campaign mode** §12, Tower Defense/bots, world cleanup, itch/Tauri).
+Guide, **Campaign mode** §12, Tower Defense/bots, world cleanup, itch/Tauri,
+plus new §13–§18: Ladders, Trampolines, Online/MP UX, Mob-config engine,
+Enchantments, Suspicion meter).
+
+## IN PROGRESS (2026-07-10) — Smart Mobs build on branch `smart-mobs`
+
+Working through the **"Bug Fixes + Smart Mobs brief"** (10 sections). Branch
+`smart-mobs` (off build 72), **NOT merged to main, browser-UNTESTED** (headless
+**196/196** — added `test/test-weapons.js`). Kevin chose a full build; sections
+are being committed as checkpoints. **Shipped to the branch so far:**
+- **§1 — build 73:** World Settings routing. Sandbox ⚙ Arena Settings now opens
+  the HTML panel (Arena tab); new ⚙ World Settings button for all non-arena
+  modes (Speed Run → SR tab). `WORLD_SETTINGS.open(game, tab)` gained a tab arg.
+- **§2 — build 74:** composable **weapon-trait system** — `WEAPON_TRAITS`
+  registry (constants.js) + `Game._meleeTraits/_rangedTraits` resolver +
+  trait-driven `MobManager.playerAttack(player, owner, traits)`. TOOL_DATA gains
+  `weaponClass` (type still routes the slot). Sword cleave-by-tier (1/2/3),
+  Spear (65° cone, 3 hits, 0.7×), Axe (heavy knockback, slow), Crossbow
+  (piercing arrows), **Trident** (thrust + throwable auto-return, Q/right-click/
+  R3). World Settings → **Combat → Weapons**: startingMelee/Ranged selectors +
+  per-weapon Damage/Attack-Speed/Knockback/Hit-All/Piercing/Throwable config.
+  Enchantment foundation for FUTURE_ROADMAP §17.
+- **§3 — build 75:** crouch confirmed as the **sneak state** (reused, no new
+  binding — decision §11.3); exposes `player.isSneaking` for §4 sound detection.
+
+**REMAINING (not started) — the mob-intelligence cluster + foliage:** §4
+Detection (line-of-sight/frontal, sound tiers Gravel=Loud/Grass=Quiet/Normal,
+action detection), §5 Pack behaviour (alert propagation + surround positioning),
+§6 Wayfinding & ambush-from-above (**biggest — no pathfinding exists today**),
+§7 Sprint w/ telegraph, §8 Flee-at-low-HP (per-mob Retreating toggle), §9 Spider
+webs (slow + stacking), §10 Leaves/Bushes (front/back variants, reuse the
+End-Portal foreground draw pass at `game.js` `_drawEndPortalForeground`). §4a's
+foliage occlusion depends on §10. These are pervasive mob-AI changes + heavily
+playtest-sensitive (detection ranges, sprint timing, pack feel) — recommended as
+a focused follow-up with a browser playtest loop, after Kevin playtests 73–75.
+
+**Ship path (unchanged):** `node test/run.js` (196/196) → bump the THREE version
+markers → commit on `smart-mobs` → Kevin browser-tests → `git checkout main &&
+git merge --ff-only smart-mobs` → `git push origin main`.
 
 ## CURRENT STATE (2026-07-08) — build 72 (SHIPPED to main + origin)
 
