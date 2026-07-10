@@ -35,6 +35,9 @@ const WORLD_SETTINGS = {
     slideDur:  [15, 20, 30, 45, 60, 90],
     slideMult: [1.2, 1.4, 1.6, 2.0, 2.5],
     boss:      [0.5, 1.0, 1.5, 2.0, 3.0],
+    wdmg:      [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0],   // weapon damage ×
+    wspd:      [0.5, 0.75, 1.0, 1.25, 1.5, 2.0],              // attack speed ×
+    wknock:    [0, 0.5, 1.0, 1.5, 1.9, 2.5, 3.5],             // knockback ×
     day:       [2, 5, 10, 15, 20, 30],
     srBase:    [0.5, 0.75, 1, 1.25, 1.5, 2],
     srMax:     [1.5, 2, 2.5, 3, 4],
@@ -170,9 +173,53 @@ const WORLD_SETTINGS = {
       { key: 'bossAttackRateMultiplier', tab: 'combat', group: 'Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Attack Rate', fmt: x1, advanced: true },
       { key: 'disableDragonHealing', tab: 'combat', group: 'Boss Scaling', modes: M.adventure, type: 'toggle', dflt: false, label: 'Disable Dragon Healing', advanced: true },
       { key: 'unlimitedArrows', tab: 'combat', group: 'Combat', modes: M.adventure, type: 'toggle', dflt: false, label: 'Unlimited Arrows', advanced: true },
+      // ── Weapons (Smart Mobs §2) — starting weapon + per-weapon trait config ──
+      ...this._weaponRows(M, O, x1),
       // (Audio, Controls, Show-Health-Bars and Disable-Chat are PLAYER settings —
       //  they live in the pause-menu Settings tab, not here. Mob Drops = its own tab.)
     ];
+  },
+
+  // Smart Mobs §2 — generate the Combat-tab Weapons rows. Starting-weapon
+  // selectors set what the player spawns holding; per-weapon rows write trait
+  // overrides into _worldAdvSettings.weapons[class] (read by Game._meleeTraits /
+  // _rangedTraits). Each row carries a unique synthetic `key` for DOM wiring but
+  // stores via get/set, so nothing lands in _worldAdvSettings[key] directly.
+  _weaponRows(M, O, x1) {
+    const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+    const modes = M.physics; // normal / platformer / arena / sandbox
+    const gW = (cls, field, dflt) => (a) => {
+      const w = a.weapons && a.weapons[cls];
+      return (w && w[field] != null) ? w[field] : dflt;
+    };
+    const sW = (cls, field) => (a, v) => {
+      if (!a.weapons) a.weapons = {};
+      if (!a.weapons[cls]) a.weapons[cls] = {};
+      a.weapons[cls][field] = v;
+    };
+    const rows = [
+      { key: 'startingMelee',  tab: 'combat', group: 'Weapons', modes, type: 'cycle', opts: ['sword', 'spear', 'axe', 'trident'], dflt: 'sword', label: 'Melee Weapon', fmt: cap, hint: 'weapon the player starts holding (melee slot)' },
+      { key: 'startingRanged', tab: 'combat', group: 'Weapons', modes, type: 'cycle', opts: ['bow', 'crossbow'], dflt: 'bow', label: 'Ranged Weapon', fmt: cap, hint: 'weapon in the ranged slot (once acquired)' },
+    ];
+    // [field, label, opts|null(→toggle), dflt, fmt] per weapon class.
+    const spec = {
+      sword:    [['dmgMult', 'Damage', O.wdmg, 1.0, x1], ['atkSpeed', 'Attack Speed', O.wspd, 1.0, x1], ['hitAll', 'Hit All Mobs', null, false]],
+      spear:    [['dmgMult', 'Damage', O.wdmg, 0.7, x1], ['atkSpeed', 'Attack Speed', O.wspd, 1.0, x1], ['hitAll', 'Hit All Mobs', null, false]],
+      axe:      [['dmgMult', 'Damage', O.wdmg, 1.45, x1], ['atkSpeed', 'Attack Speed', O.wspd, 1.0, x1], ['knockback', 'Knockback', O.wknock, 1.9, x1]],
+      trident:  [['dmgMult', 'Damage', O.wdmg, 1.1, x1], ['atkSpeed', 'Attack Speed', O.wspd, 1.0, x1], ['throwable', 'Throwable', null, true]],
+      bow:      [['dmgMult', 'Damage', O.wdmg, 1.0, x1], ['pierce', 'Piercing', null, false]],
+      crossbow: [['dmgMult', 'Damage', O.wdmg, 1.25, x1], ['pierce', 'Piercing', null, true]],
+    };
+    for (const cls of ['sword', 'spear', 'axe', 'trident', 'bow', 'crossbow']) {
+      for (const [field, label, opts, dflt, fmt] of spec[cls]) {
+        const row = { key: `wpn_${cls}_${field}`, tab: 'combat', group: `Weapon · ${cap(cls)}`,
+          modes, advanced: true, label, get: gW(cls, field, dflt), set: sW(cls, field) };
+        if (opts) { row.type = 'cycle'; row.opts = opts; row.dflt = dflt; row.fmt = fmt; }
+        else { row.type = 'toggle'; row.dflt = dflt; }
+        rows.push(row);
+      }
+    }
+    return rows;
   },
 
   // ── Lifecycle ───────────────────────────────────────────────

@@ -118,15 +118,16 @@ class Mob {
     };
   }
 
-  // Returns true if damage was applied
-  takeDamage(amount, knockDir = 0) {
+  // Returns true if damage was applied. kbMult scales knockback (Smart Mobs §2 —
+  // e.g. the Axe's heavy knockback trait); defaults to 1 for all existing callers.
+  takeDamage(amount, knockDir = 0, kbMult = 1) {
     if (this.hitCooldown > 0) return false;
     this.hp -= amount;
     this.hitCooldown    = IFRAMES;
     this.knockbackTimer = 12;
     if (knockDir !== 0) {
-      this.vx = knockDir * KNOCKBACK_FORCE;
-      this.vy = -3.5;
+      this.vx = knockDir * KNOCKBACK_FORCE * kbMult;
+      this.vy = -3.5 * (kbMult >= 1 ? Math.min(kbMult, 1.6) : 1);
     }
     if (this.hp <= 0) { this.hp = 0; this.alive = false; }
     return true;
@@ -669,18 +670,29 @@ class Arrow {
     ctx.save();
     ctx.translate(Math.floor(sx), Math.floor(sy));
     ctx.rotate(angle);
-    // Shaft
-    ctx.fillStyle = '#8B5A18';
-    ctx.fillRect(-9, -1, 18, 2);
-    // Head
-    ctx.fillStyle = '#BBBBBB';
-    ctx.beginPath();
-    ctx.moveTo(9, 0); ctx.lineTo(5, -3); ctx.lineTo(5, 3);
-    ctx.closePath(); ctx.fill();
-    // Fletching
-    ctx.fillStyle = '#EEEEEE';
-    ctx.fillRect(-9, -3, 5, 2);
-    ctx.fillRect(-9,  1, 5, 2);
+    if (this.isTrident) {
+      // Thrown Trident (Smart Mobs §2) — spinning cyan shaft + 3-prong head.
+      ctx.rotate((this.age % 20) / 20 * Math.PI * 2); // slow spin
+      ctx.fillStyle = '#3FB8C0';
+      ctx.fillRect(-13, -1.5, 22, 3);
+      ctx.beginPath();
+      ctx.moveTo(9, -5); ctx.lineTo(15, -5); ctx.lineTo(15, 5); ctx.lineTo(9, 5);
+      ctx.moveTo(15, -5); ctx.lineTo(18, -5); ctx.moveTo(15, 0); ctx.lineTo(19, 0); ctx.moveTo(15, 5); ctx.lineTo(18, 5);
+      ctx.lineWidth = 2; ctx.strokeStyle = '#8FE8EE'; ctx.stroke();
+    } else {
+      // Shaft
+      ctx.fillStyle = '#8B5A18';
+      ctx.fillRect(-9, -1, 18, 2);
+      // Head
+      ctx.fillStyle = '#BBBBBB';
+      ctx.beginPath();
+      ctx.moveTo(9, 0); ctx.lineTo(5, -3); ctx.lineTo(5, 3);
+      ctx.closePath(); ctx.fill();
+      // Fletching
+      ctx.fillStyle = '#EEEEEE';
+      ctx.fillRect(-9, -3, 5, 2);
+      ctx.fillRect(-9,  1, 5, 2);
+    }
     ctx.restore();
   }
 }
@@ -1548,10 +1560,13 @@ class MobManager {
     if (maxId > Mob._nextId) Mob._nextId = maxId;
   }
 
-  addPlayerArrow(x, y, vx, vy, damage, owner = 'p1') {
+  addPlayerArrow(x, y, vx, vy, damage, owner = 'p1', opts = null) {
     const a = new Arrow(x, y, vx, vy, damage, BOW_GRAVITY, true);
     a.owner = owner; // arena kill attribution ('p1' | 'p2')
+    if (opts && opts.pierce)  a.pierce   = true; // Smart Mobs §2 — Crossbow trait
+    if (opts && opts.trident) a.isTrident = true; // Smart Mobs §2 — thrown Trident (visual)
     this.playerArrows.push(a);
+    return a; // caller may hold the ref (Trident recovery watches a.alive)
   }
 
   // Owner-tagged list of live local players for PvP hit detection (Phase 3B).
@@ -1650,6 +1665,8 @@ class MobManager {
       if (!pa.alive) continue;
       for (const mob of this.mobs) {
         if (!mob.alive) continue;
+        // Piercing arrows (Crossbow) pass through, hitting each mob at most once.
+        if (pa.pierce && pa._hitMobs && pa._hitMobs.has(mob)) continue;
         if (pa.x > mob.x && pa.x < mob.x + mob.width &&
             pa.y > mob.y && pa.y < mob.y + mob.height) {
           const dir = Math.sign(pa.vx);
@@ -1657,8 +1674,13 @@ class MobManager {
             this.damageNums.push(new DamageNumber(mob.cx, mob.y - 8, pa.damage, '#00EEFF'));
           }
           if (!mob.alive) this.onKill?.(pa.owner || 'p1', mob); // arena scoring
-          pa.alive = false;
-          break;
+          if (pa.pierce) {
+            (pa._hitMobs || (pa._hitMobs = new Set())).add(mob);
+            // keep flying — no break, so it can strike mobs behind this one
+          } else {
+            pa.alive = false;
+            break;
+          }
         }
       }
       // PvP: an un-consumed player arrow can strike a player other than its owner.
@@ -1761,24 +1783,47 @@ class MobManager {
     return hits;
   }
 
-  playerAttack(player, owner = 'p1') {
-    const damage = player.weaponDamage;
-    let anyHit   = false;
+  // Smart Mobs §2 — trait-driven melee. `traits` (from WEAPON_TRAITS merged with
+  // per-world overrides; resolved by the Game) shapes reach, hit-cone, cleave
+  // cap, knockback and damage. Called with no traits → legacy behaviour (hit
+  // every mob in ATTACK_REACH), so P2-P4 / remote paths stay working unchanged.
+  playerAttack(player, owner = 'p1', traits = null) {
+    const t       = traits || {};
+    const reach   = ATTACK_REACH * (t.reachMult || 1);
+    const arcRad  = (((t.arcDeg == null ? 360 : t.arcDeg)) * Math.PI / 180) / 2;
+    const kbMult  = t.knockback == null ? 1 : t.knockback;
+    const dmgMult = t.dmgMult == null ? 1 : t.dmgMult;
+    const damage  = Math.max(1, Math.round(player.weaponDamage * dmgMult));
+    // cleave: 0/null/Infinity = unlimited; otherwise the max mobs one swing hits.
+    const cleave  = (t.cleave == null || t.cleave <= 0) ? Infinity : t.cleave;
+    const faceAng = player.facing > 0 ? 0 : Math.PI;
 
+    // Gather candidates within reach (and the hit-cone, if narrower than 360°),
+    // nearest first, so a capped cleave hits the closest mobs.
+    const cand = [];
     for (const mob of this.mobs) {
       if (!mob.alive) continue;
-      const dist = Math.hypot(mob.cx - player.cx, mob.cy - player.cy);
-      if (dist > ATTACK_REACH) continue;
+      const dx = mob.cx - player.cx, dy = mob.cy - player.cy;
+      const dist = Math.hypot(dx, dy);
+      if (dist > reach) continue;
+      if (arcRad < Math.PI - 1e-3) {
+        let ad = Math.abs(Math.atan2(dy, dx) - faceAng);
+        if (ad > Math.PI) ad = 2 * Math.PI - ad;
+        if (ad > arcRad) continue;
+      }
+      cand.push({ mob, dist, dir: Math.sign(dx) || player.facing });
+    }
+    cand.sort((a, b) => a.dist - b.dist);
 
-      const dir = Math.sign(mob.cx - player.cx);
-      if (mob.takeDamage(damage, dir)) {
-        this.damageNums.push(
-          new DamageNumber(mob.cx, mob.y - 8, damage, '#FFE040')
-        );
+    let anyHit = false, hits = 0;
+    for (const c of cand) {
+      if (hits >= cleave) break;
+      hits++;
+      if (c.mob.takeDamage(damage, c.dir, kbMult)) {
+        this.damageNums.push(new DamageNumber(c.mob.cx, c.mob.y - 8, damage, '#FFE040'));
         anyHit = true;
-        // Arena kill attribution for melee blows (arrows are credited in update()).
-        // Death FX/drops still handled in the update() loop via _onMobDeath.
-        if (!mob.alive) this.onKill?.(owner, mob);
+        // Arena kill attribution for melee blows (arrows credited in update()).
+        if (!c.mob.alive) this.onKill?.(owner, c.mob);
       }
     }
     return anyHit;

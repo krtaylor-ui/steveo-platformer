@@ -123,6 +123,17 @@ class Player {
   // Backward-compat: 'pickaxe' or 'sword' string for draw code
   get weapon()       { return this.weaponMode; }
 
+  // Smart Mobs §2 — the WEAPON_TRAITS class of the weapon in each slot.
+  // Melee slot (this.sword) may hold a sword/spear/axe/trident; ranged slot
+  // (this.bow) a bow/crossbow. Falls back to the generic class if untagged.
+  get meleeClass()   { return (TOOL_DATA[this.sword] && TOOL_DATA[this.sword].weaponClass) || 'sword'; }
+  get rangedClass()  { return (this.bow && TOOL_DATA[this.bow] && TOOL_DATA[this.bow].weaponClass) || 'bow'; }
+  get weaponClass()  {
+    if (this.weaponMode === 'bow')   return this.rangedClass;
+    if (this.weaponMode === 'sword') return this.meleeClass;
+    return null;
+  }
+
   // Currently active tool key and its data
   get _activeTool()  {
     if (this.weaponMode === 'pickaxe') return this.pickaxe;

@@ -1,7 +1,10 @@
 # Steveo Platformer — Future Roadmap & Design Notes
 
-> **Status:** Living doc. Updated 2026‑07‑03 at **build 51** (merged to `main`).
+> **Status:** Living doc. Updated 2026‑07‑10 at **build 72** (merged to `main`).
 > Records *intent, approach, effort, reuse, and open decisions* — not final specs.
+> Latest additions: §13 Ladders, §14 Trampolines/Slime, §15 Online/MP UX direction,
+> §16 Mob Variety/Config engine, §17 Item Enchantments, §18 Suspicion meter — plus the
+> Smart Mobs line under "Still planned" (specced 2026‑07‑08, not yet built).
 
 ## ✅ Shipped since this doc was written (builds 24–67)
 - **Installable version (PWA)** — §2 below. DONE (build 27): `manifest.json` + `sw.js`
@@ -37,6 +40,11 @@
   — groundwork for Campaign mode. Builds 68–72 = editor fixes + the Return‑to‑Sandbox playtest‑exit fix.
 
 ## 🔜 Still planned (not built)
+- **Smart Mobs** — mob intelligence pass (wayfinding, line-of-sight + sound + action detection,
+  pack behaviour, sprint-telegraph, flee-at-low-HP, spider webs) + a trait-based weapon system,
+  a crouch/sneak movement state, and Leaves/Bushes concealment blocks. **Fully specced** in the
+  *Bug Fixes + Smart Mobs brief* (2026‑07‑08) but **not yet built** — it's the direct foundation
+  several items below cross‑reference (§16 mob config, §17 enchantments, §18 suspicion meter).
 - **User Guide** — §1 below (not started).
 - **Offline providers for Normal / Platformer / Arena** — extend the §6 local provider
   beyond Sandbox (only Sandbox works offline today).
@@ -596,3 +604,105 @@ renderer/navigation — but shareable with §11 TD). Phase 5 SMALL once the grap
 **Open decisions (for when we start Phase 2):** ordered-list-plus-skip vs. explicit per-exit graph (Kevin
 leans flexible/graph); how a campaign is stored + shared (one object referencing world `uid`s); checkpoints
 within/between levels; lives count + game-over behaviour.
+
+---
+
+## 13. Ladders  *(idea captured 2026‑07‑08)*
+
+New climbable block — player can climb up/down with a dedicated climbing animation.
+Note for whoever builds this: the codebase already has **wall‑slide and ledge‑hang** (builds 59–61,
+per‑world toggles `wallSlideEnabled` / `ledgeHangEnabled`) — ladder input needs to clearly take
+**priority** over those when a player is adjacent to both, rather than the two systems fighting for
+control of the same up/down input. (The new **crouch/sneak** state from the Smart Mobs brief also
+claims an up/down‑adjacent binding — settle the input‑precedence order across ladder / wall‑slide /
+ledge‑hang / crouch as one decision, not four.)
+
+**Effort:** MODERATE.
+
+---
+
+## 14. Trampolines / Slime Blocks  *(idea captured 2026‑07‑08)*
+
+Distinct from the existing **jump pad** (which gives a fixed impulse — see the Speed Run `JUMP_PAD`
+launch envelope the reachability validator already models). This needs to take the player's incoming
+vertical speed and **invert it with a small added bounce**, so consecutive bounces escalate (jump
+higher each time). Proposed advanced settings: a **boost** amount added per bounce, and a **max
+height** cap at which boost tapers to 0. Open implementation question for later: is boost additive
+per‑bounce, and is max‑height a per‑bounce ceiling or a cap on accumulated velocity? Not resolved —
+decide when this is actually scoped.
+
+**Effort:** MODERATE — genuinely new physics interaction, not a jump‑pad reskin.
+
+---
+
+## 15. Online / Multiplayer UX direction  *(discussion captured 2026‑07‑08 — not yet built)*
+
+Current "Online Play" hub is one UI serving two different needs. Direction agreed:
+- **Public matchmaking** (find a match with strangers) → this is what Arena's eventual online
+  rework should become. Keep "Online Play" as this hub, once Arena's online engine is reworked.
+- **Private co‑op with friends** (Campaign, Normal, Platformer) → doesn't need a hub. An
+  **"Allow friends to join"** toggle directly on the game‑creation/continue screen is the right
+  spot, since the player is already there deciding to start that specific save.
+
+World Selection redesign (Sandbox "Made by" filter + search, Arena quickplay → "Random Map") are
+low‑risk wins that don't depend on this — do those independent of timing. The bigger nav
+restructure (Campaign becoming the flagship first button, Tower Defense's own campaign + Arena
+mode) is intentionally **deferred until Campaign mode (§12) is real enough to design the menu
+around** — redesigning navigation now risks redoing it once Campaign actually exists.
+
+Three‑campaign‑slot idea (Main / Private / System Add‑on, swap loses progress) — no concerns,
+reasonable tradeoff for a later feature.
+
+Campaign's Phase 4 overworld map (§12) and Tower Defense's proposed top‑down secondary view (§11/§4)
+are both low‑res top‑down renderers — build one shared substrate if/when both happen, don't
+duplicate.
+
+---
+
+## 16. Mob Variety / Configuration Engine  *(idea captured 2026‑07‑08 — explicitly NOT part of the Smart Mobs build)*
+
+A more sophisticated mob engine allowing Sandbox designers to pick which mobs are supported in a
+world and configure basic parameters per mob. Selected mobs become available in the mob
+configuration tool and as spawn eggs. Longer‑term payoff: enables alternate game modes/worlds
+built around non‑Minecraft mobs, not just the fixed default roster.
+
+**Relationship to the Smart Mobs work (specced 2026‑07‑08, not yet built — see the *Bug Fixes +
+Smart Mobs brief*):** Smart Mobs adds intelligence (wayfinding, detection, pack behavior, etc.) to
+the *existing* mob roster. This item is a separate, later effort — a designer‑facing mob
+*roster/config* system. Smart Mobs' per‑mob‑type behavior parameters (aggression, retreat
+threshold, etc.) are a natural fit to eventually expose through this engine's configuration UI,
+once both exist.
+
+**Effort:** LARGE — new Sandbox tooling, spawn egg system extension, config schema per mob.
+
+---
+
+## 17. Item Enchantment System  *(idea captured 2026‑07‑08)*
+
+Captured directly from the trait‑based weapon system in the Smart Mobs brief (specced 2026‑07‑08,
+not yet built): the Crossbow's piercing/multi‑hit trait is to be built as a generic, **composable
+attack trait** rather than a Crossbow‑only special case, specifically so it can later be granted to
+other weapons (e.g. a Bow) via an enchantment rather than being hardcoded. This item is the
+enchantment system itself — a general mechanism for granting/upgrading weapon traits (piercing,
+damage, cleave count, etc.) independent of base weapon type.
+
+**Reuse:** the weapon‑trait architecture from the Smart Mobs build is the direct foundation —
+enchantments should read as "grant/modify a trait," not introduce a parallel system.
+
+**Effort:** MODERATE‑LARGE, depends heavily on how many enchantment types are in scope for v1.
+
+---
+
+## 18. Suspicion / Alert Threshold Detection Meter  *(idea captured 2026‑07‑08 — fast‑follow to Smart Mobs' detection system)*
+
+The Smart Mobs build (specced 2026‑07‑08, not yet built) uses **instant per‑axis detection** —
+sight, sound, or action triggers alert immediately, whichever axis fires. A more forgiving and
+skill‑expressive alternative: an accumulating **suspicion meter** per mob that fills based on
+detection signals (partial sight, faint sound, proximity) and decays over time if the player breaks
+contact, only triggering a full alert once it crosses a threshold. This rewards partial stealth (a
+near‑miss doesn't instantly fail the player) in a way instant detection can't.
+
+Deliberately deferred rather than built alongside instant detection — it's a genuine refinement,
+not a requirement, and doubling up on both detection models in one pass isn't worth the risk.
+
+**Effort:** MODERATE — builds directly on the detection‑signal plumbing from Smart Mobs.

@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 73 (Smart Mobs §1: World Settings routing — Arena Settings + new all-mode World Settings quick button open the HTML panel)';
+const GAME_VERSION = 'v3 · build 74 (Smart Mobs §2: composable weapon-trait system — Sword cleave-by-tier, Spear cone, Axe knockback, Crossbow pierce, throwable Trident + Combat-tab per-weapon config)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
@@ -49,6 +49,31 @@ const ATTACK_COOLDOWN       = 30;   // frames (0.5 s at 60 fps)
 const ATTACK_REACH          = 80;   // px from player centre for melee
 const IFRAMES               = 40;   // invincibility frames after being hit
 const KNOCKBACK_FORCE       = 9;    // vx applied on knockback
+
+// ── Weapon traits (Smart Mobs §2) ──────────────────────────────────
+// Composable attack traits per weapon CLASS. The attack resolver reads these
+// (merged with per-world overrides in _worldAdvSettings.weapons) rather than
+// hardcoding behaviour per weapon — so the future Enchantment system
+// (FUTURE_ROADMAP §17) can grant/modify a single trait onto any weapon.
+//   kind         'melee' | 'ranged'
+//   reachMult    × ATTACK_REACH (melee radius / thrust range)
+//   arcDeg       hit-cone width centred on facing (360 = all around)
+//   cleave       max mobs one hit damages; 'tier' = by sword tier; 0 = unlimited
+//   knockback    × KNOCKBACK_FORCE
+//   cooldownMult × ATTACK_COOLDOWN (swing speed; >1 = slower)
+//   dmgMult      × the weapon's base TOOL_DATA damage
+//   pierce       (ranged) arrow passes through mobs instead of stopping
+//   throwable    (melee) can be thrown as a recoverable projectile (Trident)
+const WEAPON_TRAITS = {
+  sword:    { kind: 'melee',  reachMult: 1.0,  arcDeg: 360, cleave: 'tier', knockback: 1.0, cooldownMult: 1.0,  dmgMult: 1.0 },
+  spear:    { kind: 'melee',  reachMult: 1.55, arcDeg: 65,  cleave: 3,      knockback: 0.7, cooldownMult: 1.15, dmgMult: 0.7 },
+  axe:      { kind: 'melee',  reachMult: 0.95, arcDeg: 200, cleave: 1,      knockback: 1.9, cooldownMult: 1.7,  dmgMult: 1.45 },
+  trident:  { kind: 'melee',  reachMult: 1.45, arcDeg: 90,  cleave: 1,      knockback: 1.2, cooldownMult: 1.35, dmgMult: 1.1, throwable: true },
+  bow:      { kind: 'ranged', pierce: false, dmgMult: 1.0 },
+  crossbow: { kind: 'ranged', pierce: true,  dmgMult: 1.25 },
+};
+// Sword cleave count by tier: Wood/Stone=1, Iron/Diamond=2, Netherite=3.
+function swordCleaveForTier(tier) { return tier >= 4 ? 3 : tier >= 2 ? 2 : 1; }
 
 // XP
 const PLAYER_MAX_XP         = 5;    // max XP level

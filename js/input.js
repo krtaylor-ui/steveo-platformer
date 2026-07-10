@@ -106,6 +106,7 @@ class InputManager {
         place:     btn(3),   // Y
         prevSlot:  btn(4),   // LB
         context:   btn(5),   // RB
+        throwBtn:  btn(11),  // R3 (right-stick click) — Trident throw (Smart Mobs §2)
         triggerL:  val(6) > GP_DEADZONE_TRIGGER ? val(6) : 0,
         triggerR:  val(7) > GP_DEADZONE_TRIGGER ? val(7) : 0,
         menu:      btn(9),   // Start
@@ -264,6 +265,11 @@ class InputManager {
     if (s >= 0)   return this._p1gp().attack || this._p1gp().triggerR > 0.5;
     if (s === -2) return this.isDown('Insert');
     return this.isDown('Space');  // KB1 — mouse button handled separately in game.js
+  }
+  // Smart Mobs §2 — Trident throw (P1): one-shot. Keyboard 'Q' or right-click;
+  // gamepad R3 (right-stick click). Mouse right-click flag is cleared each flush.
+  isThrow() {
+    return this.isJustDown('KeyQ') || this.mouse.rightClicked || this.p1JustDown('throwBtn');
   }
   moveX() {
     if (this.dualInput) {

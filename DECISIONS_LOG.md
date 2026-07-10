@@ -978,3 +978,54 @@ Answered Kevin's design questions about coloured goals / emeralds / a Campaign m
 
 Headless suite 182/182 + targeted smoke test (goalStars serialize round-trip, emerald init from
 `_levelEmeralds`, palette size). Browser-UNTESTED; on branch `platformer-campaign-prep`, not merged.
+
+---
+
+## 2026-07-10 — Smart Mobs + weapons build (see the "Bug Fixes + Smart Mobs brief")
+
+Kevin greenlit the FULL build ("Full build, checkpoint per section"). Recon (3 agents) first
+mapped mob AI, weapons/combat, and rendering/movement/settings. Key up-front findings that shaped
+the work: **no pathfinding exists** (straight-line + 1-block step/jump), **detection is
+omnidirectional/through-walls**, **no pack/alert/flee infra**, mobs are **non-solid**, per-mob
+stats are **hardcoded in constructors**, **melee already hits every mob in an 80px radius** (so
+cleave/arc are constraints to ADD), **arrows hard-stop on first hit** (one pierce insertion point),
+and a **crouch input already exists** (S / gamepad B, used by shield-deflect + slides).
+
+### §1 — World Settings routing (build 73, SHIPPED to branch)
+- Bug #1: sandbox editor ⚙ Arena Settings opened the retired **canvas** menu; now opens the HTML
+  `WORLD_SETTINGS` panel on the **Arena tab** (`WORLD_SETTINGS.open(game, tab)` gained a landing-tab arg).
+- Bug #2: added a top-right **⚙ World Settings** button in the sandbox editor for **all non-arena
+  modes** (Arena keeps its own button). Single click vs the old Esc→Settings→World Settings (3 clicks).
+  **Speed Runner worlds land on the Speed Run tab**; others on the World tab. Per Kevin's answer.
+
+### §2 — Weapon trait system (build 74)
+- **Architecture (answers Q11.0):** composable `WEAPON_TRAITS` registry keyed by weapon *class*
+  (constants.js), merged with per-world overrides in `_worldAdvSettings.weapons[class]`. A single
+  trait resolver (`Game._meleeTraits` / `_rangedTraits`) feeds `MobManager.playerAttack(player,
+  owner, traits)`. This is the enchantment foundation (FUTURE_ROADMAP §17) — piercing etc. are
+  generic traits, NOT weapon-specific code.
+- **Integration decision:** TOOL_DATA `type` still routes a crafted tool to its slot
+  ('sword'→melee, 'bow'→ranged); a new **`weaponClass`** field selects the trait set. So Spear/Axe/
+  Trident ride the existing melee-slot plumbing and Crossbow the bow slot, with zero changes to the
+  slot/hotbar/draw model. Low-risk.
+- **Sword** cleave scales by tier (Wood/Stone=1, Iron/Diamond=2, Netherite=3) — `swordCleaveForTier`.
+- **Spear (Q11.2):** reachMult 1.55, a **narrow 65° cone**, hits up to **3** mobs, 0.7× damage.
+  (Documented choice: longer thrust, lower damage, multi-hit in a line — vs the sword's all-around single-ish hit.)
+- **Axe:** 1.45× damage, 1.9× knockback, 1.7× swing cooldown (heavy/slow). Single-target.
+- **Crossbow:** piercing arrows (arrow no longer `break`s on first mob; tracks hit mobs to hit each
+  once), 1.25× damage. **Piercing is the generic trait, defaulted on** — grantable to a Bow later.
+- **Trident (Q11.1):** melee thrust + **throwable, auto-return (loyalty-style)** projectile.
+  Throw input = **Q / right-click / gamepad R3 (btn11)**. Chose R3 because both shoulders were taken
+  (LB=prevSlot, RB=context); documented deviation from the brief's "shoulder button" preference.
+  Recovery model = **auto-return when the thrown projectile lands/hits/expires** (a physical
+  pick-up-to-recover is a follow-up). P2–P4 throw parity is a follow-up (P1 only this pass).
+- **Config (Kevin's ask):** World Settings → **Combat → Weapons** — a `startingMelee`/`startingRanged`
+  selector (equips the weapon on spawn; makes all six testable in Sandbox) + per-weapon advanced
+  rows: Damage, Attack Speed, Knockback, Hit-All-Mobs (melee), Piercing (ranged), Throwable (trident).
+  "Piercing" and "Hit all mobs" implemented as distinct traits (ranged vs melee) per Kevin's defer.
+- **Acquisition:** only Swords tier-up (cleave-by-tier). Spear/Axe/Trident/Crossbow are single
+  craftable recipes + the starting-weapon selector. Avoids bloating the crafting menu with 5 tiers each.
+- New headless test `test/test-weapons.js` (14 assertions: cleave-by-tier, cleave cap, hit-cone,
+  knockback/damage forwarding, pierce + throwable flags). Suite now **196/196**.
+- **Test-harness note:** the vm sandbox proxies unknown globals to `1`; `Infinity` must be stubbed
+  or `cleave: 0 → Infinity` collapses to 1. Real browser is unaffected. Stubbed in the new test.

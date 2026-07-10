@@ -2,18 +2,39 @@
 // crafting.js — Tool data, crafting recipes, and crafting menu
 // ============================================================
 
+// `type` routes a crafted tool to its hotbar slot (sword→melee slot 0,
+// bow→ranged slot 1, pickaxe→always-on mining). `weaponClass` (Smart Mobs §2)
+// selects the WEAPON_TRAITS behaviour set — so a Spear/Axe/Trident ride the
+// existing melee-slot plumbing while behaving differently, and a Crossbow rides
+// the bow slot but pierces. Weapons with no weaponClass default to sword/bow.
 const TOOL_DATA = {
   WOODEN_PICKAXE:    { name: 'Wooden Pickaxe',   type: 'pickaxe', tier: 0, damage: 1,  mineSpeed: 1.0, color: '#C8A55A' },
-  WOODEN_SWORD:      { name: 'Wooden Sword',      type: 'sword',   tier: 0, damage: 2,  mineSpeed: 0,   color: '#C8A55A' },
+  WOODEN_SWORD:      { name: 'Wooden Sword',      type: 'sword',   weaponClass: 'sword', tier: 0, damage: 2,  mineSpeed: 0,   color: '#C8A55A' },
   STONE_PICKAXE:     { name: 'Stone Pickaxe',     type: 'pickaxe', tier: 1, damage: 2,  mineSpeed: 1.8, color: '#8A8A8A' },
-  STONE_SWORD:       { name: 'Stone Sword',       type: 'sword',   tier: 1, damage: 4,  mineSpeed: 0,   color: '#8A8A8A' },
+  STONE_SWORD:       { name: 'Stone Sword',       type: 'sword',   weaponClass: 'sword', tier: 1, damage: 4,  mineSpeed: 0,   color: '#8A8A8A' },
   IRON_PICKAXE:      { name: 'Iron Pickaxe',      type: 'pickaxe', tier: 2, damage: 3,  mineSpeed: 3.2, color: '#D0D0D0' },
-  IRON_SWORD:        { name: 'Iron Sword',        type: 'sword',   tier: 2, damage: 6,  mineSpeed: 0,   color: '#D0D0D0' },
+  IRON_SWORD:        { name: 'Iron Sword',        type: 'sword',   weaponClass: 'sword', tier: 2, damage: 6,  mineSpeed: 0,   color: '#D0D0D0' },
   DIAMOND_PICKAXE:   { name: 'Diamond Pickaxe',   type: 'pickaxe', tier: 3, damage: 4,  mineSpeed: 5.5, color: '#44DDFF' },
-  DIAMOND_SWORD:     { name: 'Diamond Sword',     type: 'sword',   tier: 3, damage: 8,  mineSpeed: 0,   color: '#44DDFF' },
+  DIAMOND_SWORD:     { name: 'Diamond Sword',     type: 'sword',   weaponClass: 'sword', tier: 3, damage: 8,  mineSpeed: 0,   color: '#44DDFF' },
   NETHERITE_PICKAXE: { name: 'Netherite Pickaxe', type: 'pickaxe', tier: 4, damage: 5,  mineSpeed: 8.0, color: '#A09070' },
-  NETHERITE_SWORD:   { name: 'Netherite Sword',   type: 'sword',   tier: 4, damage: 10, mineSpeed: 0,   color: '#A09070' },
-  BOW:               { name: 'Bow',               type: 'bow',         tier: 0, damage: PLAYER_ARROW_DAMAGE, mineSpeed: 0, color: '#C8A55A' },
+  NETHERITE_SWORD:   { name: 'Netherite Sword',   type: 'sword',   weaponClass: 'sword', tier: 4, damage: 10, mineSpeed: 0,   color: '#A09070' },
+  // ── Spear (multi-hit thrust; lower damage, longer narrow reach) ──
+  WOODEN_SPEAR:      { name: 'Wooden Spear',      type: 'sword', weaponClass: 'spear', tier: 0, damage: 2,  mineSpeed: 0, color: '#B89050' },
+  STONE_SPEAR:       { name: 'Stone Spear',       type: 'sword', weaponClass: 'spear', tier: 1, damage: 4,  mineSpeed: 0, color: '#7E7E7E' },
+  IRON_SPEAR:        { name: 'Iron Spear',        type: 'sword', weaponClass: 'spear', tier: 2, damage: 6,  mineSpeed: 0, color: '#C4C4C4' },
+  DIAMOND_SPEAR:     { name: 'Diamond Spear',     type: 'sword', weaponClass: 'spear', tier: 3, damage: 8,  mineSpeed: 0, color: '#3FD0F0' },
+  NETHERITE_SPEAR:   { name: 'Netherite Spear',   type: 'sword', weaponClass: 'spear', tier: 4, damage: 10, mineSpeed: 0, color: '#948668' },
+  // ── Axe (heavy single-target; big knockback, slow swing) ──
+  WOODEN_AXE:        { name: 'Wooden Axe',        type: 'sword', weaponClass: 'axe', tier: 0, damage: 2,  mineSpeed: 0, color: '#C89A4A' },
+  STONE_AXE:         { name: 'Stone Axe',         type: 'sword', weaponClass: 'axe', tier: 1, damage: 4,  mineSpeed: 0, color: '#8A8A8A' },
+  IRON_AXE:          { name: 'Iron Axe',          type: 'sword', weaponClass: 'axe', tier: 2, damage: 6,  mineSpeed: 0, color: '#D0D0D0' },
+  DIAMOND_AXE:       { name: 'Diamond Axe',       type: 'sword', weaponClass: 'axe', tier: 3, damage: 8,  mineSpeed: 0, color: '#44DDFF' },
+  NETHERITE_AXE:     { name: 'Netherite Axe',     type: 'sword', weaponClass: 'axe', tier: 4, damage: 10, mineSpeed: 0, color: '#A09070' },
+  // ── Trident (throwable + melee thrust; recoverable) ──
+  TRIDENT:           { name: 'Trident',           type: 'sword', weaponClass: 'trident', tier: 2, damage: 7, mineSpeed: 0, color: '#3FB8C0' },
+  BOW:               { name: 'Bow',               type: 'bow',   weaponClass: 'bow',      tier: 0, damage: PLAYER_ARROW_DAMAGE, mineSpeed: 0, color: '#C8A55A' },
+  // ── Crossbow (piercing arrows; +damage) ──
+  CROSSBOW:          { name: 'Crossbow',          type: 'bow',   weaponClass: 'crossbow', tier: 0, damage: PLAYER_ARROW_DAMAGE, mineSpeed: 0, color: '#9A7B4F' },
   SHIELD:            { name: 'Shield',            type: 'shield',      tier: 0, damage: 0,                  mineSpeed: 0, color: '#6B9DB8' },
   FLINT_AND_STEEL:   { name: 'Flint & Steel',     type: 'flint_steel', tier: 0, damage: 0,                  mineSpeed: 0, color: '#CC8833' },
 };
@@ -104,6 +125,39 @@ const RECIPES = [
     materials: [
       { block: BLOCK.OAK_LOG, count: 3, label: 'Oak Log' },
       { block: BLOCK.STRING,  count: 3, label: 'String'  },
+    ],
+  },
+  // ── New weapons (Smart Mobs §2). Only Swords tier-up (cleave scales by tier);
+  //    Spear/Axe/Trident/Crossbow are single-acquisition here. A per-world
+  //    "Starting Weapon" selector (World Settings → Combat) also equips them
+  //    directly, so they're testable in Sandbox without crafting. ──
+  {
+    id: 'spear', result: 'IRON_SPEAR', unlockOre: null,
+    materials: [
+      { block: BLOCK.OAK_LOG,  count: 2, label: 'Oak Log'  },
+      { block: BLOCK.IRON_ORE, count: 1, label: 'Iron Ore' },
+    ],
+  },
+  {
+    id: 'axe', result: 'IRON_AXE', unlockOre: BLOCK.IRON_ORE,
+    materials: [
+      { block: BLOCK.IRON_ORE, count: 3, label: 'Iron Ore' },
+      { block: BLOCK.OAK_LOG,  count: 2, label: 'Oak Log'  },
+    ],
+  },
+  {
+    id: 'crossbow', result: 'CROSSBOW', unlockOre: BLOCK.IRON_ORE,
+    materials: [
+      { block: BLOCK.OAK_LOG,  count: 3, label: 'Oak Log'  },
+      { block: BLOCK.STRING,   count: 2, label: 'String'   },
+      { block: BLOCK.IRON_ORE, count: 1, label: 'Iron Ore' },
+    ],
+  },
+  {
+    id: 'trident', result: 'TRIDENT', unlockOre: BLOCK.DIAMOND_ORE,
+    materials: [
+      { block: BLOCK.DIAMOND_ORE, count: 2, label: 'Diamond Ore' },
+      { block: BLOCK.OAK_LOG,     count: 2, label: 'Oak Log'     },
     ],
   },
   {

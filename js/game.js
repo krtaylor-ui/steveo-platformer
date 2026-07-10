@@ -1293,6 +1293,13 @@ class Game {
   }
 
   _update(deltaMs = 16.67) {
+    // Smart Mobs §2 — apply the world's chosen starting weapons once, on the
+    // first update (after world load + any saved-progress deserialize).
+    if (!this._startWeaponsApplied) { this._startWeaponsApplied = true; this._applyStartingWeapons(); }
+    // Trident returns to hand once the thrown projectile lands/hits/expires.
+    if (this.player && this.player._tridentOut && (!this.player._tridentArrow || !this.player._tridentArrow.alive)) {
+      this.player._tridentOut = false; this.player._tridentArrow = null;
+    }
     // ── Poll gamepad state first (Phase 11K-1) ──────────────
     this.input.updateGamepad();
     // Right stick moves the cursor every frame — before any early returns so it works
@@ -2175,12 +2182,14 @@ class Game {
         const angle = freeAim
           ? Math.atan2(world.y - this.player.cy, world.x - this.player.cx)
           : this._snapAimAngle(this.player, this.input.isJump(), this.input.isCrouch());
+        const rt = this._rangedTraits(this.player);   // Smart Mobs §2 (Crossbow = pierce)
         this.mobManager.addPlayerArrow(
           this.player.cx, this.player.cy,
           Math.cos(angle) * speed,
           Math.sin(angle) * speed,
-          PLAYER_ARROW_DAMAGE,
-          'p1'
+          Math.max(1, Math.round(PLAYER_ARROW_DAMAGE * (rt.dmgMult || 1))),
+          'p1',
+          { pierce: rt.pierce }
         );
         this._playSound('sounds/bow-fire.mp3');
         if (!this._worldAdvSettings.unlimitedArrows) this._consumeArrow();
@@ -2188,9 +2197,29 @@ class Game {
         this.player.drawProgress = 0;
       }
     } else if (this._p1RespawnTimer === 0 && !p1CarryingFlag && this.player.weaponMode === 'sword') {
-      // ── Sword: Space always attacks; left-click attacks unless it's a mine ──
-      if ((this.input.isAttack() || (this.input.mouse.clicked && !p1OverMineable)) && this.player.attackCooldown === 0) {
-        this.mobManager.playerAttack(this.player);
+      // ── Melee (sword/spear/axe/trident) ──
+      const traits = this._meleeTraits(this.player);   // Smart Mobs §2
+      // Trident throw (Q / right-click / gamepad R3): fly out, damage, auto-return
+      // (loyalty-style). While it's out the melee thrust is disabled until it returns.
+      if (this.player.meleeClass === 'trident' && traits.throwable && !this.player._tridentOut &&
+          this.player.attackCooldown === 0 && this.input.isThrow()) {
+        let angle;
+        if (this.input.p1GpSlot >= 0) {
+          const gp = this.input.gamepads[this.input.p1GpSlot], m = Math.hypot(gp.aimX, gp.aimY);
+          angle = m > 0.2 ? Math.atan2(gp.aimY, gp.aimX) : (this.player.facing > 0 ? 0 : Math.PI);
+        } else {
+          angle = Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
+        }
+        const dmg = Math.max(1, Math.round(this.player.weaponDamage * (traits.dmgMult || 1) * 1.3));
+        this.player._tridentArrow = this.mobManager.addPlayerArrow(
+          this.player.cx, this.player.cy, Math.cos(angle) * 18, Math.sin(angle) * 18, dmg, 'p1', { trident: true });
+        this.player._tridentOut = true;
+        this.player.attackCooldown = Math.round(ATTACK_COOLDOWN * (traits.cooldownMult || 1));
+        this.player.swingTimer = 15;
+        this._playSound('sounds/bow-fire.mp3');
+      } else if (!this.player._tridentOut &&
+          (this.input.isAttack() || (this.input.mouse.clicked && !p1OverMineable)) && this.player.attackCooldown === 0) {
+        this.mobManager.playerAttack(this.player, 'p1', traits);
         this._playerAttackDragon();
         this._playerMeleeWither();
         // Joiner: also attack remote mobs via event
@@ -2198,7 +2227,7 @@ class Game {
           for (const hit of this.mobManager.playerAttackRemoteCheck(this.player, window.multiplayerManager.remoteMobs))
             window.multiplayerManager.sendMobDamage(hit.mobId, hit.damage, hit.knockDir);
         }
-        this.player.attackCooldown = ATTACK_COOLDOWN;
+        this.player.attackCooldown = Math.round(ATTACK_COOLDOWN * (traits.cooldownMult || 1));
         this.player.swingTimer     = 15;
         this._playSound('sounds/attack-sword.mp3');
       }
@@ -10357,6 +10386,58 @@ class Game {
     // Left / right: narrower (1 block wide)
     const cx = w.x + WITHER_BODY_W / 2;
     return { x: cx - WITHER_SIDE_W / 2, y: w.y, w: WITHER_SIDE_W, h: WITHER_BODY_H };
+  }
+
+  // Smart Mobs §2 — resolve a weapon's active traits: WEAPON_TRAITS[class] base,
+  // merged with any per-world overrides in _worldAdvSettings.weapons[class]
+  // (set in World Settings → Combat → Weapons). Sword cleave resolves by tier.
+  _meleeTraits(player) {
+    const cls = player.meleeClass || 'sword';
+    const base = (typeof WEAPON_TRAITS !== 'undefined' && WEAPON_TRAITS[cls]) || WEAPON_TRAITS.sword;
+    const t = Object.assign({}, base);
+    if (t.cleave === 'tier') {
+      const tier = (TOOL_DATA[player.sword] && TOOL_DATA[player.sword].tier) || 0;
+      t.cleave = swordCleaveForTier(tier);
+    }
+    const ov = this._worldAdvSettings.weapons && this._worldAdvSettings.weapons[cls];
+    if (ov) {
+      if (ov.hitAll === true) t.cleave = 0;             // 0 = unlimited (hit all)
+      else if (ov.hitAll === false && (t.cleave === 0 || t.cleave === Infinity)) t.cleave = 1;
+      if (ov.dmgMult    != null) t.dmgMult      = ov.dmgMult;
+      if (ov.knockback  != null) t.knockback    = ov.knockback;
+      if (ov.cooldownMult != null) t.cooldownMult = ov.cooldownMult;
+      // Attack Speed (higher = faster) divides the base swing cooldown.
+      if (ov.atkSpeed   != null && ov.atkSpeed > 0) t.cooldownMult = (t.cooldownMult || 1) / ov.atkSpeed;
+      if (ov.throwable  != null) t.throwable    = !!ov.throwable;
+    }
+    return t;
+  }
+  _rangedTraits(player) {
+    const cls = player.rangedClass || 'bow';
+    const base = (typeof WEAPON_TRAITS !== 'undefined' && WEAPON_TRAITS[cls]) || WEAPON_TRAITS.bow;
+    const t = Object.assign({}, base);
+    const ov = this._worldAdvSettings.weapons && this._worldAdvSettings.weapons[cls];
+    if (ov) {
+      if (ov.pierce  != null) t.pierce  = !!ov.pierce;
+      if (ov.dmgMult != null) t.dmgMult = ov.dmgMult;
+    }
+    return t;
+  }
+
+  // Smart Mobs §2 — equip the world's chosen starting weapons (World Settings →
+  // Combat → Weapons). Melee 'sword' is left alone so normal tier progression
+  // still works; spear/axe/trident replace the melee slot. Crossbow replaces the
+  // bow slot when the player has (or, in sandbox/god mode, is granted) a ranged
+  // weapon. Idempotent — safe to call on every world load.
+  _applyStartingWeapons() {
+    const s = this._worldAdvSettings || {};
+    const MELEE  = { spear: 'IRON_SPEAR', axe: 'IRON_AXE', trident: 'TRIDENT' };
+    const creative = this.gameMode === 'sandbox';
+    for (const pl of (this.players || [this.player])) {
+      if (!pl) continue;
+      if (s.startingMelee && MELEE[s.startingMelee]) pl.sword = MELEE[s.startingMelee];
+      if (s.startingRanged === 'crossbow' && (pl.bow || pl.godMode || creative)) pl.bow = 'CROSSBOW';
+    }
   }
 
   _playerMeleeWither() {
