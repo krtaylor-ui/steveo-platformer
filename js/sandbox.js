@@ -28,13 +28,23 @@ const SPAWN_EGG_DEFS = [
 ];
 
 // "Gear" palette tab: weapons, tools, and armor
+// Gear palette groups tools BY TYPE (all pickaxes, then all swords, spears, axes,
+// tridents, bows, crossbows, …), tiers ascending within each group — instead of
+// TOOL_DATA's tier-interleaved insertion order. weaponClass distinguishes the
+// melee families that share type 'sword' (sword/spear/axe/trident) and the ranged
+// families that share type 'bow' (bow/crossbow); non-weapons fall back to `type`.
+const _GEAR_GROUP_ORDER = ['pickaxe', 'sword', 'spear', 'axe', 'trident', 'bow', 'crossbow', 'shield', 'flint_steel'];
+const _gearGroup = (key) => (TOOL_DATA[key].weaponClass || TOOL_DATA[key].type);
+const _gearRank  = (key) => { const i = _GEAR_GROUP_ORDER.indexOf(_gearGroup(key)); return i < 0 ? 99 : i; };
 const GEAR_PALETTE_ITEMS = [
-  ...Object.keys(TOOL_DATA).map(key => ({
-    kind: 'tool', key,
-    name:  TOOL_DATA[key].name,
-    type:  TOOL_DATA[key].type,
-    color: TOOL_DATA[key].color,
-  })),
+  ...Object.keys(TOOL_DATA)
+    .sort((a, b) => (_gearRank(a) - _gearRank(b)) || ((TOOL_DATA[a].tier || 0) - (TOOL_DATA[b].tier || 0)))
+    .map(key => ({
+      kind: 'tool', key,
+      name:  TOOL_DATA[key].name,
+      type:  TOOL_DATA[key].type,
+      color: TOOL_DATA[key].color,
+    })),
   ...Object.keys(ARMOR_DATA).map(key => ({
     kind: 'tool', key,
     name:  ARMOR_DATA[key].name,

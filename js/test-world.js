@@ -24,12 +24,35 @@ const TEST_WORLD = {
     if (modal) modal.style.display = 'none';
   },
 
+  // Snapshot/restore the editor player's loadout so a test round-trip doesn't
+  // wipe the hotbar. Deep-copies slot objects so the live arrays aren't shared.
+  _captureLoadout(p) {
+    if (!p) return null;
+    return {
+      hotbar:    (p.hotbar    || []).map((s) => (s ? { ...s } : null)),
+      inventory: (p.inventory || []).map((s) => (s ? { ...s } : null)),
+      selectedSlot: p.selectedSlot,
+      sword: p.sword, bow: p.bow, pickaxe: p.pickaxe,
+      hasShield: p.hasShield, hasFlintSteel: p.hasFlintSteel,
+    };
+  },
+  _restoreLoadout(p, L) {
+    if (!p || !L) return;
+    p.hotbar    = L.hotbar.map((s) => (s ? { ...s } : null));
+    p.inventory = L.inventory.map((s) => (s ? { ...s } : null));
+    p.selectedSlot = L.selectedSlot ?? 0;
+    p.sword = L.sword; p.bow = L.bow; p.pickaxe = L.pickaxe;
+    p.hasShield = L.hasShield; p.hasFlintSteel = L.hasFlintSteel;
+  },
+
   // mode: 'normal' | 'platformer' | 'speedrunner' | 'arena'
   choose(mode) {
     this.hide();
     // Capture the edited world ONCE (from the live editor) so Restart replays it.
     this._wid  = (typeof SANDBOX !== 'undefined') ? SANDBOX.selectedWorldId : null;
     this._data = (typeof GAME_STATE !== 'undefined' && window.game) ? GAME_STATE.serialize(window.game) : null;
+    // Preserve the editor player's hotbar/inventory across the test round-trip.
+    this._loadout = this._captureLoadout(window.game && window.game.player);
     if (mode === 'arena' && typeof ARENA_SELECT !== 'undefined' && ARENA_SELECT.chooseMode) {
       // Arena also needs a game type — reuse the picker, then launch.
       ARENA_SELECT.chooseMode((gameMode) => this._launch('arena', gameMode));
@@ -67,8 +90,15 @@ const TEST_WORLD = {
       // Reopen the editor on the same world; fall back to the world browser if the
       // id wasn't captured. (The object is `SANDBOX` — referencing the old wrong
       // name SANDBOX_UI here silently no-op'd both paths and froze the exit.)
-      if (this._wid && typeof SANDBOX !== 'undefined' && SANDBOX.editWorld) SANDBOX.editWorld(this._wid);
-      else if (typeof SANDBOX !== 'undefined' && SANDBOX._returnToBrowser) SANDBOX._returnToBrowser();
+      const loadout = this._loadout;
+      if (this._wid && typeof SANDBOX !== 'undefined' && SANDBOX.editWorld) {
+        // editWorld is async — restore the pre-test hotbar once the editor reloads.
+        Promise.resolve(SANDBOX.editWorld(this._wid)).then(() => {
+          this._restoreLoadout(window.game && window.game.player, loadout);
+        }).catch(() => {});
+      } else if (typeof SANDBOX !== 'undefined' && SANDBOX._returnToBrowser) {
+        SANDBOX._returnToBrowser();
+      }
     };
     window.game = new Game(mode, options, exit);
     // Restart = relaunch the same test from scratch (fresh timer / clean state).

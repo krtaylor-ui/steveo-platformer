@@ -14,6 +14,12 @@ class Player {
     this.crouching = false;
     this.facing    = 1;       // 1 = right, -1 = left
     this.running   = false;
+    // Smart Mobs §4 — per-frame movement "noise events" (footstep cadence + land
+    // impact). The game reads these to play footstep/landing SFX, and the §4
+    // sound-detection system will reuse them. Cleared by the consumer each frame.
+    this._stepTimer   = 0;    // frames until the next footstep
+    this._sfxFootstep = false; // a footstep occurred this frame
+    this._sfxLand     = 0;     // >0 = landed this frame; value = fall speed on impact
 
     // Animation
     this.walkTimer  = 0;
@@ -462,6 +468,7 @@ class Player {
     const bLeft  = Math.floor((this.x + 2)              / BLOCK_SIZE);
     const bRight = Math.floor((this.x + this.width - 2) / BLOCK_SIZE);
     const newY   = this.y + this.vy;
+    const landingVy = this.vy;   // impact speed before landing zeroes it (§4 land SFX)
 
     if (this.vy >= 0) {
       // Falling / standing — sweep downward through every block row crossed
@@ -476,7 +483,7 @@ class Player {
           this._airJumpsUsed = 0;                // landing refreshes the air jump
           this._rollFrames   = 0;                // landing snaps the roll back to normal
           this._ctrlLock     = false;            // landing returns control (lock-away wall jump)
-          if (!wasOnGround) this.jumpSquish = 0.85;
+          if (!wasOnGround) { this.jumpSquish = 0.85; if (landingVy > 5) this._sfxLand = landingVy; }
           if (this.flying) this.flying = false;  // auto-land when touching ground
           stopped = true;
           break;
@@ -720,8 +727,15 @@ class Player {
     const moving = Math.abs(this.vx) > 0.5;
     if (moving && this.onGround) {
       this.walkTimer += this.crouching ? 0.10 : 0.18;
-    } else if (!this.onGround) {
-      this.walkTimer += 0.05;
+      // Footstep cadence (Smart Mobs §4): step interval scales with gait —
+      // running steps faster, crouch-walking slower. Sound played by the game.
+      if (--this._stepTimer <= 0) {
+        this._sfxFootstep = true;
+        this._stepTimer = this.crouching ? 26 : (this.running && Math.abs(this.vx) > MOVE_SPEED * 0.9 ? 12 : 17);
+      }
+    } else {
+      this._stepTimer = 0; // next step fires promptly when movement resumes
+      if (!this.onGround) this.walkTimer += 0.05;
     }
     // Decay squish
     if (this.jumpSquish > 0) this.jumpSquish = Math.max(0, this.jumpSquish - 0.06);

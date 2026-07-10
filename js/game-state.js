@@ -102,19 +102,26 @@ const GAME_STATE = {
           .map(c => ({ col: c.col, row: c.row, dir: c.dir || 'right', inverted: !!c.inverted, extended: !!c.extended }))
       : [];
 
-    // World items (uncollected platformer / normal drops)
+    // World items (single items placed on the ground). BUGFIX: in the SANDBOX
+    // EDITOR these live in game.sandbox.placedItems; game._platformerItems is only
+    // populated during platformer/normal PLAY (empty while editing). This field
+    // used to read _platformerItems unconditionally, so every editor save/test/
+    // auto-save emitted placedItems:[] and re-saving an older world STRIPPED all
+    // its placed items. Now prefers the editor array (mirrors emeralds/powerups/
+    // spawnEggs above), falling back to the play array for mid-play progress saves.
     const bs = (typeof BLOCK_SIZE !== 'undefined') ? BLOCK_SIZE : 32;
-    const placedItems = Array.isArray(game._platformerItems)
-      ? game._platformerItems
-          .filter(it => !it.collected)
-          .map(it => ({
-            col: Math.floor(it.wx / bs),
-            row: Math.floor(it.wy / bs),
-            toolKey:   it.toolKey   ?? null,
-            blockType: it.blockType ?? null,
-            count:     it.count     ?? null,
-          }))
-      : [];
+    const _itemSrc = (game.sandbox && Array.isArray(game.sandbox.placedItems))
+      ? game.sandbox.placedItems
+      : (Array.isArray(game._platformerItems) ? game._platformerItems : []);
+    const placedItems = _itemSrc
+      .filter(it => !it.collected)
+      .map(it => ({
+        col: (it.col != null) ? it.col : Math.floor(it.wx / bs),
+        row: (it.row != null) ? it.row : Math.floor(it.wy / bs),
+        toolKey:   it.toolKey   ?? null,
+        blockType: it.blockType ?? null,
+        count:     it.count     ?? null,
+      }));
 
     // Portal links. In the SANDBOX EDITOR portals live in sandbox.sandboxPortals
     // (with destId routing); in normal/platformer play they live in

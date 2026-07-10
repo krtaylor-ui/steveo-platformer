@@ -1029,3 +1029,29 @@ and a **crouch input already exists** (S / gamepad B, used by shield-deflect + s
   knockback/damage forwarding, pierce + throwable flags). Suite now **196/196**.
 - **Test-harness note:** the vm sandbox proxies unknown globals to `1`; `Infinity` must be stubbed
   or `cleave: 0 → Infinity` collapses to 1. Real browser is unaffected. Stubbed in the new test.
+
+### 2026-07-10 — Playtest fixes from Kevin (build 76, on `smart-mobs`)
+Four quick items from Kevin's first playtest of the branch:
+1. **Placed-items serializer regression (root-caused via a recon agent).** `GAME_STATE.serialize`
+   read `game._platformerItems` for `placedItems` — but that array is only populated during
+   platformer/normal PLAY; in the sandbox EDITOR it's `[]` while `game.sandbox.placedItems` holds
+   the design. So every editor save/test/auto-save emitted `placedItems:[]` and re-saving an older
+   world **stripped all its placed items**. NOT a smart-mobs regression — surfaced when persistence
+   moved from `SandboxSaves.save` (read the right array) to `GAME_STATE.serialize`. Fix: prefer
+   `game.sandbox.placedItems` in the editor, fall back to `_platformerItems` for mid-play progress
+   saves (mirrors the emeralds/powerups/spawnEggs fields right beside it). `js/game-state.js`.
+2. **Hotbar kept across the test round-trip.** `TEST_WORLD.choose()` now snapshots the editor
+   player's hotbar/inventory/equipped tools; `exit()` restores them after the async `editWorld`
+   reopens the editor (deep-copied slots). `js/test-world.js`.
+3. **Gear palette grouped by type.** `GEAR_PALETTE_ITEMS` was in TOOL_DATA insertion order
+   (pickaxe/sword interleaved per tier). Now sorted by weapon class — pickaxes, swords, spears,
+   axes, tridents, bows, crossbows, shield, flint — tiers ascending within each group. Uses
+   `weaponClass` (falls back to `type`) so the new melee weapons that share type 'sword' still get
+   their own groups. `js/sandbox.js`.
+4. **Footstep + landing SFX** (Kevin uploading mp3s). Files: **`sounds/footstep.mp3`** and
+   **`sounds/land.mp3`**. Player emits per-frame noise events (`_sfxFootstep` on a gait-scaled
+   cadence, `_sfxLand` = impact speed on landing after a real fall); `Game._playMovementSfx` plays
+   them. **Per-sound volume: yes** — `_playSound(file, volMult)` already supports it; footsteps at
+   0.4× (0.18× while sneaking), landing scales 0.35→0.7× with impact. Tunable master consts
+   `FOOTSTEP_SFX_VOL` / `LAND_SFX_VOL` (constants.js) — can be promoted to World-Settings sliders.
+   Gated off in the sandbox editor. These noise events are the hook §4b sound-detection will reuse.

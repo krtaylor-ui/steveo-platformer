@@ -2026,6 +2026,7 @@ class Game {
       this._applyMovementConfig(this.player);
       this.player.update(this.input, this.level);
     }
+    this._playMovementSfx(this.player);   // Smart Mobs §4 — footstep + landing SFX
 
     // Phase 17: Speed Runner post-update (boost multipliers, collision, ghost)
     if (this.gameMode === 'speedrunner') this._updateSpeedRunner();
@@ -16316,6 +16317,28 @@ class Game {
         a.src = f;
         this._audioCache[f] = a;
       } catch (_) {}
+    }
+  }
+
+  // Smart Mobs §4 — play the player's footstep / landing SFX from the per-frame
+  // movement noise events. Quiet by design (Kevin's ask); volumes are separate
+  // multipliers so they can be tuned independently of other SFX. Crouch-walking
+  // (sneaking) is quieter still. Files are expected at sounds/footstep.mp3 and
+  // sounds/land.mp3 — missing files fail silently (see _playSound).
+  _playMovementSfx(p) {
+    if (!p) return;
+    // No footsteps while building in the sandbox editor (test worlds run as their
+    // real mode, so those still get them). Clear pending flags so they don't queue.
+    if (this.gameMode === 'sandbox') { p._sfxFootstep = false; p._sfxLand = 0; return; }
+    if (p._sfxFootstep) {
+      p._sfxFootstep = false;
+      this._playSound('sounds/footstep.mp3', (p.isSneaking ? 0.18 : 0.4) * (FOOTSTEP_SFX_VOL ?? 1));
+    }
+    if (p._sfxLand > 0) {
+      // Scale volume with impact speed (soft hop → firmer thud), capped.
+      const vm = Math.min(0.7, 0.35 + p._sfxLand / MAX_FALL_SPEED * 0.5) * (LAND_SFX_VOL ?? 1);
+      p._sfxLand = 0;
+      this._playSound('sounds/land.mp3', vm);
     }
   }
 

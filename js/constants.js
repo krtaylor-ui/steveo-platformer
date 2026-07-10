@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 75 (Smart Mobs §3: crouch confirmed as the sneak state — reduced speed + low profile + isSneaking signal for sound detection)';
+const GAME_VERSION = 'v3 · build 76 (Smart Mobs playtest fixes: placed-items serializer regression, hotbar kept across test round-trip, gear palette grouped by type, footstep/landing SFX)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
@@ -154,6 +154,11 @@ const SUN_ARC_PEAK_ROW   =  5.0;  // world row at zenith (top of arc)
 const MAX_AUDIO_VOLUME     = 0.10;  // hard ceiling: 100% slider = 10% actual browser volume
 const DEFAULT_MUSIC_VOLUME = 0.5;   // slider value (0–1); actual volume = this × MAX_AUDIO_VOLUME
 const DEFAULT_SFX_VOLUME   = 0.5;   // slider value (0–1); actual volume = this × MAX_AUDIO_VOLUME
+// Smart Mobs §4 — per-sound multipliers for the quiet movement SFX, tunable
+// independently of the master SFX slider (final vol = sfxVolume × MAX_AUDIO_VOLUME
+// × these). Bump/drop to taste, or expose as World-Settings sliders later.
+const FOOTSTEP_SFX_VOL     = 1.0;
+const LAND_SFX_VOL         = 1.0;
 const VICTORY_MUSIC_FILE   = 'music/boss/victory.mp3';  // ~20s fanfare after Ender Dragon defeat
 
 // Music disc registry — each entry maps a disc key to its audio file and display name.
