@@ -112,6 +112,8 @@ const SANDBOX = {
 
     // Arena Settings modal (Phase 3A.2)
     document.getElementById('sb-arena-settings-btn')?.addEventListener('click', () => this.openArenaSettings());
+    // World Settings quick button (non-arena modes)
+    document.getElementById('sb-world-settings-btn')?.addEventListener('click', () => this.openWorldSettings());
     document.getElementById('as-cancel-btn')?.addEventListener('click', () => this.hideArenaSettings());
     document.getElementById('as-apply-btn')?.addEventListener('click', () => this.applyArenaSettings());
     document.getElementById('as-health')?.addEventListener('input', (e) => {
@@ -127,13 +129,35 @@ const SANDBOX = {
   },
 
   // ── Arena Settings (Phase 3A.3) ────────────────────────────────
-  // Consolidated into the canvas World Settings modal as the "Arena" tab
-  // (retired the separate HTML modal). The editor button just opens it there.
+  // The editor's ⚙ Arena Settings button jumps straight to the Arena tab.
+  // Now opens the modern HTML World Settings panel (bug fix: it used to force
+  // the retired canvas menu); falls back to canvas only under the Konami flag.
   openArenaSettings() {
     const g = window.game;
     if (!g || !g._worldAdvSettings) { alert('Open a world first.'); return; }
-    g._worldSettingsOpen = true;
-    g._wsTab = 'arena';
+    if (typeof WORLD_SETTINGS !== 'undefined' && !g._useClassicPause) {
+      WORLD_SETTINGS.open(g, 'arena');
+    } else {
+      g._worldSettingsOpen = true;
+      g._wsTab = 'arena';
+    }
+  },
+
+  // ── World Settings quick button (all non-arena modes) ──────────
+  // Single-click into the HTML World Settings panel from the Sandbox editor
+  // (previously Esc → Settings tab → World Settings = three clicks). Arena
+  // worlds use the ⚙ Arena Settings button instead. Speed-Run worlds land on
+  // the Speed Run tab; everything else on the World tab.
+  openWorldSettings() {
+    const g = window.game;
+    if (!g || !g._worldAdvSettings) { alert('Open a world first.'); return; }
+    const tab = this._editorWorldMode === 'RUN' ? 'speedrun' : 'world';
+    if (typeof WORLD_SETTINGS !== 'undefined' && !g._useClassicPause) {
+      WORLD_SETTINGS.open(g, tab);
+    } else {
+      g._worldSettingsOpen = true;
+      g._wsTab = tab === 'speedrun' ? 'speedrun' : 'world';
+    }
   },
 
   hideArenaSettings() {
@@ -763,9 +787,13 @@ const SANDBOX = {
       const data = world.world_data || {};
       const hasGrid = Array.isArray(data.grid) && data.grid.length > 0;
       const isArena = data.gameModeDefault === 'ARN';
+      this._editorWorldMode = data.gameModeDefault || 'NRM';
       // ⚙ Arena Settings button is only meaningful for arena worlds.
       const asBtn = document.getElementById('sb-arena-settings-btn');
       if (asBtn) asBtn.style.display = isArena ? '' : 'none';
+      // ⚙ World Settings quick button appears for every non-arena mode.
+      const wsBtn = document.getElementById('sb-world-settings-btn');
+      if (wsBtn) wsBtn.style.display = isArena ? 'none' : '';
       const options = hasGrid
         ? { templateData: data }
         // Fresh ARN world: open the editor on a starter arena shell at the world's

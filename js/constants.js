@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 72 (FIX Return-to-Sandbox: test-world.js referenced SANDBOX_UI, the object is SANDBOX)';
+const GAME_VERSION = 'v3 · build 73 (Smart Mobs §1: World Settings routing — Arena Settings + new all-mode World Settings quick button open the HTML panel)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

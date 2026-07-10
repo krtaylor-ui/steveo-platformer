@@ -178,11 +178,14 @@ const WORLD_SETTINGS = {
   // ── Lifecycle ───────────────────────────────────────────────
   isOpen() { return !!this._game; },
 
-  open(game) {
+  open(game, tab) {
     this._game = game;
     const modeTabs = this.TABS.filter((t) => this._tabHasRows(t.id));
     if (!modeTabs.length) { this._game = null; return; }
-    if (!this._tab || !modeTabs.some((t) => t.id === this._tab)) this._tab = modeTabs[0].id;
+    // Caller may request a landing tab (e.g. ⚙ Arena Settings → 'arena',
+    // the Sandbox World-Settings quick button → 'speedrun' for RUN worlds).
+    if (tab && modeTabs.some((t) => t.id === tab)) this._tab = tab;
+    else if (!this._tab || !modeTabs.some((t) => t.id === this._tab)) this._tab = modeTabs[0].id;
     const ov = document.getElementById('world-settings-overlay');
     if (!ov) { this._game = null; return; }
     game._htmlSettingsOpen = true;          // game treats this as an overlay (blocks gameplay input)
