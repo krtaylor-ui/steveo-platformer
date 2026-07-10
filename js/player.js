@@ -233,6 +233,14 @@ class Player {
   get width()  { return PLAYER_W; }
   get height() { return this.crouching ? CROUCH_H : PLAYER_H; }
 
+  // Smart Mobs §3 — the existing crouch state IS the sneak state: it already has
+  // its own binding (S / gamepad B), a distinct low profile (CROUCH_H) and
+  // reduced move speed (crouchSpeed). No new binding was added (it would collide
+  // with the 5 existing crouch uses: shield-deflect, ground-slide, ledge
+  // climb-down, fly up/down). The §4 sound system treats sneaking as silent on
+  // Normal-rated blocks. Sneaking requires being on the ground.
+  get isSneaking() { return this.crouching && this.onGround; }
+
   // Axis-aligned bounding box (world coords)
   get bounds() {
     return { x: this.x, y: this.y, w: this.width, h: this.height };

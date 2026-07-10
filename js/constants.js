@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 74 (Smart Mobs §2: composable weapon-trait system — Sword cleave-by-tier, Spear cone, Axe knockback, Crossbow pierce, throwable Trident + Combat-tab per-weapon config)';
+const GAME_VERSION = 'v3 · build 75 (Smart Mobs §3: crouch confirmed as the sneak state — reduced speed + low profile + isSneaking signal for sound detection)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
