@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 81 (Smart Mobs: controller presets — Xbox default + Nintendo Switch face-button layout, picker in pause Settings)';
+const GAME_VERSION = 'v3 · build 82 (FIX black screen: isSandbox referenced before its const declaration in the build-78 combat refactor crashed the game loop every frame; + guard online-ui keydown)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

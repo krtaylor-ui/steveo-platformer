@@ -26,7 +26,8 @@ const SERVER = '';
   // ── DOGS admin unlock (works even when menu is shown) ──────
   let _dogsSeq = [];
   document.addEventListener('keydown', e => {
-    const ch = e.key.toLowerCase();
+    const ch = (e.key || '').toLowerCase();   // guard: some events (IME/synthetic) have no key
+    if (!ch) { _dogsSeq = []; return; }
     if ('dogs'.indexOf(ch) >= 0) {
       _dogsSeq.push(ch);
       if (_dogsSeq.length > 4) _dogsSeq.shift();

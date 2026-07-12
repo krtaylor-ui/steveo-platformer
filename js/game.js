@@ -2166,8 +2166,10 @@ class Game {
     const _ownsRanged = !!this.player.bow;
     const rangedDown  = this.input.isRangedAttackDown();
     // Left-click melee only outside the sandbox editor (there a click = build).
+    // NB: use the mode check directly — `isSandbox` is declared later in _update,
+    // so referencing it here would hit the const temporal-dead-zone and crash.
     const meleeNow    = this.input.isMeleeAttack() ||
-                        (!isSandbox && this.input.mouse.clicked && !p1OverMineable && !_p1Shift);
+                        (this.gameMode !== 'sandbox' && this.input.mouse.clicked && !p1OverMineable && !_p1Shift);
 
     // Cancel any in-progress bow draw when it can't continue.
     if ((p1CarryingFlag || !_ownsRanged) && this.player.bowDrawing) {
