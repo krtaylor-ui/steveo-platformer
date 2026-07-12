@@ -1112,3 +1112,11 @@ spear launches nearby mobs into the air, spinning. Built GENERICALLY for future 
 - Settings: Combat → **Special Moves** → `slideAttack` toggle (default off) + advanced
   `slideAttackDmg` mult (dependsOn slideAttack). test-weapons.js +6 (launch/lethal-toss/dedup);
   suite 213/213. Browser-UNTESTED — watch the launch feel + toss-death timing.
+
+**Build 80 — distinct weapon visuals + attack motions.** `_drawWeapon` now branches on the active
+melee class: swords/axes **swipe** (the rotational lunge), spears/tridents **stab** (held near-
+horizontal, thrust out+back via translation). New head shapes `_drawSpearHead` (long shaft + leaf
+tip), `_drawAxeHead` (offset blade wedge), `_drawTridentHead` (3 prongs + crossbar), tinted by the
+weapon's tier colour. Sword/bow/pickaxe unchanged. The slide-attack reuses the thrust pose.
+Crossbow still draws as a bow for now (HUD icon + name toast distinguish it) — a crossbow-specific
+sprite is a polish follow-up. Canvas visuals are browser-UNTESTED (can't verify headless).

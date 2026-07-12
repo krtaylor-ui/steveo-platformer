@@ -1310,35 +1310,72 @@ class Player {
     const hy = crouch ? (sy + 22) : (sy + 26 + Math.sin(this.walkTimer) * 4);
     ctx.translate(hx, hy);
 
-    // Swing arc: weapon lunges forward when swingTimer is high, returns to rest
-    let angle;
-    if (this.swingTimer > 0) {
-      const t          = this.swingTimer / 15;  // 1 → 0
-      const attackAngle = flipX ? 0.9 : -0.9;
-      const restAngle   = flipX ? (-0.4 + swing * 0.3) : (0.4 - swing * 0.3);
-      angle = attackAngle + (restAngle - attackAngle) * (1 - t);
-    } else {
-      angle = flipX ? (-0.4 + swing * 0.3) : (0.4 - swing * 0.3);
-    }
-    ctx.rotate(angle);
+    // Motion by weapon (Smart Mobs §2): swords/axes SWIPE (rotational lunge),
+    // spears/tridents STAB (near-horizontal jab that thrusts out and back). The
+    // rest/swing arc below is the swipe; stab uses a translation instead.
+    const cls   = this.meleeClass;
+    const stab  = this.weapon === 'sword' && (cls === 'spear' || cls === 'trident');
+    const metal = (typeof TOOL_DATA !== 'undefined' && TOOL_DATA[this.sword] && TOOL_DATA[this.sword].color) || '#CCCCCC';
+    const swipeAngle = () => {
+      if (this.swingTimer > 0) {
+        const t           = this.swingTimer / 15;  // 1 → 0
+        const attackAngle = flipX ? 0.9 : -0.9;
+        const restAngle   = flipX ? (-0.4 + swing * 0.3) : (0.4 - swing * 0.3);
+        return attackAngle + (restAngle - attackAngle) * (1 - t);
+      }
+      return flipX ? (-0.4 + swing * 0.3) : (0.4 - swing * 0.3);
+    };
 
     if (this._mining) {
+      ctx.rotate(swipeAngle());
       this._drawPickaxeHead(ctx); // always-active mining shows the pickaxe in-hand
     } else if (this.weapon === 'item') {
       ctx.restore();
       return; // nothing to draw for plain item slots
-    } else if (this.weapon === 'sword') {
-      this._drawSwordHead(ctx);
     } else if (this.weapon === 'bow') {
-      ctx.rotate(0); // override angle for bow
       ctx.restore();
       this._drawBow(ctx, sx, sy, flipX);
       return;
+    } else if (stab) {
+      // Hold the shaft near-horizontal (pointing where you face); jab out+back.
+      ctx.rotate(flipX ? -1.25 : 1.25);
+      const t = this.swingTimer > 0 ? (1 - this.swingTimer / 15) : 0;
+      ctx.translate(0, -Math.sin(t * Math.PI) * 16);
+      if (cls === 'trident') this._drawTridentHead(ctx, metal);
+      else                   this._drawSpearHead(ctx, metal);
     } else {
-      this._drawPickaxeHead(ctx);
+      ctx.rotate(swipeAngle());
+      if (cls === 'axe') this._drawAxeHead(ctx, metal);
+      else               this._drawSwordHead(ctx);
     }
 
     ctx.restore();
+  }
+
+  // Distinct melee heads (Smart Mobs §2). Drawn in the shared "blade points up
+  // from the grip at origin" convention; `metal` tints by weapon tier colour.
+  _drawSpearHead(ctx, metal) {
+    ctx.fillStyle = '#6B4A1A'; ctx.fillRect(-1, -4, 2, 12);      // lower shaft
+    ctx.fillStyle = '#7A5520'; ctx.fillRect(-1, -22, 2, 18);     // upper shaft (long)
+    ctx.fillStyle = metal || '#CCCCCC';                          // leaf tip
+    ctx.beginPath(); ctx.moveTo(0, -31); ctx.lineTo(-3, -22); ctx.lineTo(3, -22); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#EEEEEE'; ctx.fillRect(-1, -28, 1, 6);      // glint
+  }
+  _drawAxeHead(ctx, metal) {
+    ctx.fillStyle = '#6B4A1A'; ctx.fillRect(-1.5, -14, 3, 22);   // handle
+    ctx.fillStyle = metal || '#C8C8C8';                          // blade wedge (offset to one side)
+    ctx.beginPath(); ctx.moveTo(1, -16); ctx.lineTo(11, -18); ctx.lineTo(12, -7); ctx.lineTo(1, -5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#EEEEEE'; ctx.fillRect(1, -16, 2, 11);      // inner-edge highlight
+  }
+  _drawTridentHead(ctx, metal) {
+    const c = metal || '#3FB8C0';
+    ctx.fillStyle = '#5A6B20'; ctx.fillRect(-1, -6, 2, 14);      // shaft
+    ctx.fillStyle = c;
+    ctx.fillRect(-1, -24, 2, 18);                                // centre prong
+    ctx.fillRect(-6, -24, 2, 11);                                // left prong
+    ctx.fillRect( 4, -24, 2, 11);                                // right prong
+    ctx.fillRect(-6, -14, 12, 2);                                // crossbar
+    ctx.fillStyle = '#EAFFFF'; ctx.fillRect(-1, -24, 1, 10);     // glint
   }
 
   _drawBow(ctx, sx, sy, flipX) {
