@@ -1081,3 +1081,20 @@ slot 1) now holds a COLLECTION cycled through, so N weapons cost only 2 hotbar s
   held-state, `input.isMeleeAttack()` / `isRangedAttackDown()`; `isThrow()` dropped right-click
   (reserved for the ranged attack in 78), keeps Q / gamepad R3.
 - test-weapons.js +11 assertions (collection acquire/upgrade/cycle/normalize). Suite 207/207.
+
+**Build 78 — melee/ranged/place input split ("Minecraft Dungeons" style).** Melee and ranged are
+now SEPARATE, always-live inputs (not gated by the selected slot), so both weapons are instantly
+usable and you rarely switch slots. Per Kevin's Shift+Left-click decision, place moved off left-
+click so right-click is a consistent ranged attack in every mode.
+- Defaults: **melee** = Space / gamepad X / plain left-click (when not mining or Shift-placing);
+  **ranged** = right-mouse held / gamepad RT (hold to charge, release to fire); **place** (Normal)
+  = **Shift+Left-click**; trident throw = Q / gamepad R3.
+- Refactored the P1 `if(bow) else if(sword) else if(pickaxe)` exclusive chain into independent
+  ranged + melee blocks (game.js). Dead pickaxe-melee branch removed (weaponMode never returns
+  'pickaxe'). Bow now cursor/right-stick aimed always (dropped keyboard snap-aim for P1).
+  Left-click melee is suppressed in the sandbox editor (a click there = build).
+- Inputs go through `input.isMeleeAttack()` / `isRangedAttackDown()` + `mouse.rightDown` — the
+  remappable seam build 79's controls UI will drive.
+- **Known gaps for playtest:** keyboard-only-no-mouse players can't fire ranged until the rebind
+  UI (build 79) — right-mouse/RT only for now. P2-P4 still use their existing selected-slot attack
+  (pAttack) path — the two-button model is P1-only this pass. Browser-UNTESTED.

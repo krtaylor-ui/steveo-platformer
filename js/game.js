@@ -2154,54 +2154,53 @@ class Game {
     const p1OverMineable = this._miningEnabled && target !== BLOCK.AIR &&
                            !(hoverCol >= 285 && hoverCol <= 314) &&
                            !this._portalObsidianCells.has(`${hoverCol},${hoverRow}`);
-    // Cancel bow draw if player switched off bow slot (or is carrying a flag)
-    if ((this.player.weaponMode !== 'bow' || p1CarryingFlag) && this.player.bowDrawing) {
-      this.player.bowDrawing   = false;
-      this.player.drawProgress = 0;
+    // ── Combat: melee + ranged are SEPARATE, always-live inputs (Smart Mobs §2,
+    //    "Minecraft Dungeons" style — not gated by the selected hotbar slot).
+    //    Melee = Space / gamepad X / plain left-click (when not mining/placing).
+    //    Ranged = right-mouse / gamepad RT (hold to charge, release to fire).
+    //    Place-a-block is Shift+Left-click (below) so plain left-click = attack.
+    //    Inputs are remappable via input.isMeleeAttack()/isRangedAttackDown()
+    //    (build 79 adds a rebinding UI). ──
+    const _p1Shift    = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight');
+    const _ownsRanged = !!this.player.bow;
+    const rangedDown  = this.input.isRangedAttackDown();
+    // Left-click melee only outside the sandbox editor (there a click = build).
+    const meleeNow    = this.input.isMeleeAttack() ||
+                        (!isSandbox && this.input.mouse.clicked && !p1OverMineable && !_p1Shift);
+
+    // Cancel any in-progress bow draw when it can't continue.
+    if ((p1CarryingFlag || !_ownsRanged) && this.player.bowDrawing) {
+      this.player.bowDrawing = false; this.player.drawProgress = 0;
     }
-    if (this._p1RespawnTimer === 0 && !p1CarryingFlag && this.player.weaponMode === 'bow') {
-      // Hold click/Space to charge; release to fire
+
+    // ── Ranged (bow / crossbow) — available whenever a ranged weapon is owned ──
+    if (this._p1RespawnTimer === 0 && !p1CarryingFlag && _ownsRanged) {
       const hasArrows = this._worldAdvSettings.unlimitedArrows || this.player.countItem(BLOCK.ARROW) > 0;
-      const aimDown = this.input.isAttack() || this.input.mouse.down;
-      if (aimDown && hasArrows) {
+      if (rangedDown && hasArrows) {
         this.player.bowDrawing   = true;
-        // Track whether this draw is mouse-aimed (mouse held) vs keyboard (Space).
-        if (this.input.mouse.down) this.player.bowMouseAim = true;
-        else if (this.input.isAttack()) this.player.bowMouseAim = false;
-        // Phase 3A.2 — FIRE_RATE power-up charges the bow faster (_fireRateMult).
+        this.player.bowMouseAim  = true;  // cursor/right-stick aimed
         this.player.drawProgress = Math.min(1, this.player.drawProgress + (1 / BOW_CHARGE_FRAMES) * (this.player._fireRateMult || 1));
-      } else if (aimDown && !hasArrows) {
-        // Cancel any in-progress draw — no arrows
-        this.player.bowDrawing   = false;
-        this.player.drawProgress = 0;
+      } else if (rangedDown && !hasArrows) {
+        this.player.bowDrawing = false; this.player.drawProgress = 0;
       } else if (this.player.bowDrawing) {
         const charge = this.player.drawProgress;
         const speed  = BOW_MIN_SPEED + (BOW_MAX_SPEED - BOW_MIN_SPEED) * charge;
-        // Free-aim toward the cursor when aiming with the mouse (or a gamepad);
-        // pure-keyboard draws (Space, no mouse) snap-aim from the movement keys.
-        const freeAim = this.player.bowMouseAim || this.input.p1GpSlot >= 0;
-        const angle = freeAim
-          ? Math.atan2(world.y - this.player.cy, world.x - this.player.cx)
-          : this._snapAimAngle(this.player, this.input.isJump(), this.input.isCrouch());
-        const rt = this._rangedTraits(this.player);   // Smart Mobs §2 (Crossbow = pierce)
+        const angle  = Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
+        const rt = this._rangedTraits(this.player);   // Crossbow = pierce
         this.mobManager.addPlayerArrow(
-          this.player.cx, this.player.cy,
-          Math.cos(angle) * speed,
-          Math.sin(angle) * speed,
-          Math.max(1, Math.round(PLAYER_ARROW_DAMAGE * (rt.dmgMult || 1))),
-          'p1',
-          { pierce: rt.pierce }
-        );
+          this.player.cx, this.player.cy, Math.cos(angle) * speed, Math.sin(angle) * speed,
+          Math.max(1, Math.round(PLAYER_ARROW_DAMAGE * (rt.dmgMult || 1))), 'p1', { pierce: rt.pierce });
         this._playSound('sounds/bow-fire.mp3');
         if (!this._worldAdvSettings.unlimitedArrows) this._consumeArrow();
-        this.player.bowDrawing   = false;
-        this.player.drawProgress = 0;
+        this.player.bowDrawing = false; this.player.drawProgress = 0;
       }
-    } else if (this._p1RespawnTimer === 0 && !p1CarryingFlag && this.player.weaponMode === 'sword') {
-      // ── Melee (sword/spear/axe/trident) ──
-      const traits = this._meleeTraits(this.player);   // Smart Mobs §2
-      // Trident throw (Q / right-click / gamepad R3): fly out, damage, auto-return
-      // (loyalty-style). While it's out the melee thrust is disabled until it returns.
+    }
+
+    // ── Melee (sword / spear / axe / trident) — always available ──
+    if (this._p1RespawnTimer === 0 && !p1CarryingFlag) {
+      const traits = this._meleeTraits(this.player);
+      // Trident throw (Q / gamepad R3): flies out, auto-returns; melee thrust is
+      // disabled while it's out.
       if (this.player.meleeClass === 'trident' && traits.throwable && !this.player._tridentOut &&
           this.player.attackCooldown === 0 && this.input.isThrow()) {
         let angle;
@@ -2218,12 +2217,10 @@ class Game {
         this.player.attackCooldown = Math.round(ATTACK_COOLDOWN * (traits.cooldownMult || 1));
         this.player.swingTimer = 15;
         this._playSound('sounds/bow-fire.mp3');
-      } else if (!this.player._tridentOut &&
-          (this.input.isAttack() || (this.input.mouse.clicked && !p1OverMineable)) && this.player.attackCooldown === 0) {
+      } else if (!this.player._tridentOut && meleeNow && this.player.attackCooldown === 0) {
         this.mobManager.playerAttack(this.player, 'p1', traits);
         this._playerAttackDragon();
         this._playerMeleeWither();
-        // Joiner: also attack remote mobs via event
         if (_isOnlineJoiner) {
           for (const hit of this.mobManager.playerAttackRemoteCheck(this.player, window.multiplayerManager.remoteMobs))
             window.multiplayerManager.sendMobDamage(hit.mobId, hit.damage, hit.knockDir);
@@ -2231,20 +2228,6 @@ class Game {
         this.player.attackCooldown = Math.round(ATTACK_COOLDOWN * (traits.cooldownMult || 1));
         this.player.swingTimer     = 15;
         this._playSound('sounds/attack-sword.mp3');
-      }
-    } else if (this._p1RespawnTimer === 0 && !p1CarryingFlag && this.player.weaponMode === 'pickaxe') {
-      // ── Pickaxe: Space/click also attacks mobs; mouse-hold mines (below) ──
-      if ((this.input.isAttack() || this.input.mouse.clicked) && this.player.attackCooldown === 0) {
-        this.mobManager.playerAttack(this.player);
-        this._playerAttackDragon();
-        this._playerMeleeWither();
-        // Joiner: also attack remote mobs via event
-        if (_isOnlineJoiner) {
-          for (const hit of this.mobManager.playerAttackRemoteCheck(this.player, window.multiplayerManager.remoteMobs))
-            window.multiplayerManager.sendMobDamage(hit.mobId, hit.damage, hit.knockDir);
-        }
-        this.player.attackCooldown = ATTACK_COOLDOWN;
-        this.player.swingTimer     = 15;
       }
     }
 
@@ -2800,8 +2783,10 @@ class Game {
       if (this._sbSelStart && !this.input.mouse.down) this._sbSelStart = null;
     }
 
-    // ── Normal mode: click to place block (disabled in platformer) ─────────
-    if (!isSandbox && this.gameMode !== 'platformer' && this.input.mouse.clicked && target === BLOCK.AIR) {
+    // ── Normal mode: Shift+Left-click to place a block (Smart Mobs §2 — plain
+    //    left-click is now the melee attack; holding Shift places). Disabled in
+    //    platformer. ─────────
+    if (!isSandbox && this.gameMode !== 'platformer' && this.input.mouse.clicked && _p1Shift && target === BLOCK.AIR) {
       const _itemBeforePlace = this.player.selectedItem;
       const placed = this._tryPlace(hoverRow, hoverCol);
       if (placed) {
