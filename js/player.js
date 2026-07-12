@@ -40,8 +40,17 @@ class Player {
     this.maxHp          = PLAYER_MAX_HP;
     // weaponMode is now a getter derived from selectedSlot (no instance variable)
     this.pickaxe        = 'WOODEN_PICKAXE';       // key into TOOL_DATA
-    this.sword          = 'WOODEN_SWORD';         // key into TOOL_DATA
-    this.bow            = null;                   // set to 'BOW' when crafted
+    this.sword          = 'WOODEN_SWORD';         // ACTIVE melee weapon (key into TOOL_DATA)
+    this.bow            = null;                   // ACTIVE ranged weapon (null until acquired)
+    // Smart Mobs §2 — weapon collection. Two "slots" (melee, ranged); each holds a
+    // COLLECTION the player cycles through (Sword▸Spear▸Axe▸Trident / Bow▸Crossbow)
+    // so many weapons still cost only two hotbar slots. One entry per weapon CLASS
+    // (best tier of each). this.sword / this.bow mirror the active entry so all
+    // existing code keeps working. Populated via acquireWeapon().
+    this.meleeOwned  = ['WOODEN_SWORD'];
+    this.meleeIndex  = 0;
+    this.rangedOwned = [];
+    this.rangedIndex = 0;
     this.discoveredOres = new Set();              // BLOCK ids of ores ever mined
     this.attackCooldown = 0;
     this.iframes        = 0;           // invincibility frames
@@ -138,6 +147,62 @@ class Player {
     if (this.weaponMode === 'bow')   return this.rangedClass;
     if (this.weaponMode === 'sword') return this.meleeClass;
     return null;
+  }
+
+  // ── Weapon collection (Smart Mobs §2) ───────────────────────
+  _weaponClassOf(key) { const d = TOOL_DATA[key]; return d ? (d.weaponClass || d.type) : null; }
+
+  // Add a melee (type 'sword') or ranged (type 'bow') weapon to its slot's
+  // collection. One entry per weapon CLASS: acquiring a higher tier of a class
+  // you own upgrades it in place; a new class is appended. Returns the outcome:
+  //   'added' | 'upgraded' | 'have-better' | null(not a cyclable weapon).
+  // The just-acquired weapon becomes the slot's active one.
+  acquireWeapon(key) {
+    const d = TOOL_DATA[key]; if (!d) return null;
+    const slot = d.type === 'bow' ? 'ranged' : d.type === 'sword' ? 'melee' : null;
+    if (!slot) return null;                       // pickaxe / shield / flint aren't cyclable
+    const list = slot === 'melee' ? this.meleeOwned : this.rangedOwned;
+    const cls  = this._weaponClassOf(key);
+    const at   = list.findIndex((k) => this._weaponClassOf(k) === cls);
+    let outcome;
+    if (at >= 0) {
+      if ((TOOL_DATA[list[at]].tier ?? 0) >= (d.tier ?? 0)) { outcome = 'have-better'; }
+      else { list[at] = key; outcome = 'upgraded'; }
+      if (slot === 'melee') this.meleeIndex = at; else this.rangedIndex = at;
+    } else {
+      list.push(key);
+      if (slot === 'melee') this.meleeIndex = list.length - 1; else this.rangedIndex = list.length - 1;
+      outcome = 'added';
+    }
+    this._syncActiveWeapon(slot);
+    return outcome;
+  }
+
+  // Cycle to the next weapon in a slot's collection ('melee' | 'ranged').
+  // Returns the newly-active TOOL_DATA key, or null if there's nothing to cycle.
+  cycleWeapon(slot) {
+    const list = slot === 'ranged' ? this.rangedOwned : this.meleeOwned;
+    if (list.length <= 1) return null;
+    if (slot === 'ranged') this.rangedIndex = (this.rangedIndex + 1) % list.length;
+    else                   this.meleeIndex  = (this.meleeIndex  + 1) % list.length;
+    this._syncActiveWeapon(slot);
+    return slot === 'ranged' ? this.bow : this.sword;
+  }
+
+  _syncActiveWeapon(slot) {
+    if (slot === 'melee') {
+      if (this.meleeOwned.length) this.sword = this.meleeOwned[Math.min(this.meleeIndex, this.meleeOwned.length - 1)];
+    } else {
+      this.bow = this.rangedOwned.length ? this.rangedOwned[Math.min(this.rangedIndex, this.rangedOwned.length - 1)] : null;
+    }
+  }
+
+  // Ensure the collections contain the current active weapons (call after a load/
+  // deserialize that set this.sword / this.bow directly).
+  normalizeWeapons() {
+    if (this.sword && !this.meleeOwned.includes(this.sword)) { this.meleeOwned = [this.sword]; this.meleeIndex = 0; }
+    else if (this.sword) this.meleeIndex = Math.max(0, this.meleeOwned.indexOf(this.sword));
+    if (this.bow) { if (!this.rangedOwned.includes(this.bow)) { this.rangedOwned = [this.bow]; this.rangedIndex = 0; } else this.rangedIndex = this.rangedOwned.indexOf(this.bow); }
   }
 
   // Currently active tool key and its data
@@ -851,14 +916,12 @@ class Player {
     const data = TOOL_DATA[recipe.result];
     if (data.type === 'pickaxe') {
       this.pickaxe = recipe.result;
-    } else if (data.type === 'bow') {
-      this.bow = recipe.result;
+    } else if (data.type === 'bow' || data.type === 'sword') {
+      this.acquireWeapon(recipe.result);  // Smart Mobs §2 — add to the slot's collection
     } else if (data.type === 'shield') {
       this.hasShield = true;  // no inventory slot — appears on player
     } else if (data.type === 'flint_steel') {
       this.hasFlintSteel = true; // no inventory slot — used via U near portal
-    } else {
-      this.sword = recipe.result;
     }
   }
 

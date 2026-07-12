@@ -14,7 +14,7 @@ class InputManager {
   constructor(canvas) {
     this.keys         = {};
     this._justPressed = {};  // cleared each flush; use isJustDown for one-shot checks
-    this.mouse        = { x: 0, y: 0, down: false, clicked: false, rightClicked: false, altClicked: false };
+    this.mouse        = { x: 0, y: 0, down: false, clicked: false, rightClicked: false, rightDown: false, altClicked: false };
     this.scrollDelta  = 0;
     this._canvas      = canvas;
 
@@ -183,13 +183,14 @@ class InputManager {
         this.mouse.clicked    = true;
         this.mouse.altClicked = e.altKey;
       }
-      if (e.button === 2) { this.mouse.rightClicked = true; }
+      if (e.button === 2) { this.mouse.rightClicked = true; this.mouse.rightDown = true; }
     });
     this._canvas.addEventListener('mouseup', e => {
       if (e.button === 0) this.mouse.down = false;
+      if (e.button === 2) this.mouse.rightDown = false;   // held-state for ranged attack
     });
     this._canvas.addEventListener('contextmenu', e => e.preventDefault());
-    this._canvas.addEventListener('mouseleave', () => { this.mouse.down = false; });
+    this._canvas.addEventListener('mouseleave', () => { this.mouse.down = false; this.mouse.rightDown = false; });
     this._canvas.addEventListener('wheel', e => {
       e.preventDefault();
       this.scrollDelta += e.deltaY > 0 ? 1 : -1;
@@ -266,10 +267,30 @@ class InputManager {
     if (s === -2) return this.isDown('Insert');
     return this.isDown('Space');  // KB1 — mouse button handled separately in game.js
   }
-  // Smart Mobs §2 — Trident throw (P1): one-shot. Keyboard 'Q' or right-click;
-  // gamepad R3 (right-stick click). Mouse right-click flag is cleared each flush.
+  // Smart Mobs §2 — Trident throw (P1): one-shot. Keyboard 'Q' or gamepad R3.
+  // (Right-click is now the ranged attack, so it's no longer a throw trigger.)
   isThrow() {
-    return this.isJustDown('KeyQ') || this.mouse.rightClicked || this.p1JustDown('throwBtn');
+    return this.isJustDown('KeyQ') || this.p1JustDown('throwBtn');
+  }
+
+  // ── Dedicated combat inputs (Smart Mobs §2) ─────────────────
+  // Melee and ranged are separate actions so they can be mapped independently
+  // (build 78 adds a rebinding UI over these). Defaults: melee = Space / gamepad X
+  // (+ left-click, guarded in game.js against mining/placing); ranged = right-mouse
+  // held / gamepad RT. Left/right-click keep working for mouse players; keyboard-
+  // only players get Space (melee) and can bind a ranged key in the config later.
+  isMeleeAttack() {
+    if (this.dualInput) return this.isDown('Space') || this._anyGp().attack;
+    const s = this.p1GpSlot;
+    if (s >= 0)   return this._p1gp().attack;
+    if (s === -2) return this.isDown('Insert');
+    return this.isDown('Space');
+  }
+  // Held state (for charging a bow). Right-mouse or gamepad right trigger.
+  isRangedAttackDown() {
+    const rt = this.dualInput ? (this._anyGp().triggerR > 0.5)
+             : (this.p1GpSlot >= 0 ? this._p1gp().triggerR > 0.5 : false);
+    return this.mouse.rightDown || rt;
   }
   moveX() {
     if (this.dualInput) {

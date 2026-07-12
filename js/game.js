@@ -1945,14 +1945,14 @@ class Game {
       }
     } else {
       const hk = this.input.hotbarKey();
-      if (hk >= 0) this.player.selectedSlot = hk;
+      if (hk >= 0) this._selectOrCycleSlot(hk);   // Smart Mobs §2 — tap an active weapon slot again to cycle
       if (this.input.scrollDelta !== 0) {
         this.player.selectedSlot =
           (this.player.selectedSlot + this.input.scrollDelta + 9) % 9;
       }
-      // D-Pad: quick-select hotbar slots 0–3
-      if (this.input.p1JustDown('dpad0')) this.player.selectedSlot = 0;
-      if (this.input.p1JustDown('dpad1')) this.player.selectedSlot = 1;
+      // D-Pad: quick-select hotbar slots 0–3 (re-press a weapon slot to cycle it)
+      if (this.input.p1JustDown('dpad0')) this._selectOrCycleSlot(0);
+      if (this.input.p1JustDown('dpad1')) this._selectOrCycleSlot(1);
       if (this.input.p1JustDown('dpad2')) this.player.selectedSlot = 2;
       if (this.input.p1JustDown('dpad3')) this.player.selectedSlot = 3;
       // LB: previous hotbar slot
@@ -3423,9 +3423,9 @@ class Game {
     if (!data) return;
     if (data.type === 'pickaxe') {
       if ((TOOL_DATA[this.player.pickaxe]?.tier ?? -1) < data.tier) this.player.pickaxe = toolKey;
-    } else if (data.type === 'sword') {
-      if ((TOOL_DATA[this.player.sword]?.tier ?? -1) < data.tier) this.player.sword = toolKey;
-    } else if (data.type === 'bow')    { this.player.bow      = toolKey; }
+    } else if (data.type === 'sword' || data.type === 'bow') {
+      this.player.acquireWeapon(toolKey);   // Smart Mobs §2 — collect into the slot
+    }
     else if (data.type === 'shield')      { this.player.hasShield     = true; }
     else if (data.type === 'flint_steel') { this.player.hasFlintSteel = true; }
     this._notify(`Equipped ${data.name}!`, data.color, 180);
@@ -3456,17 +3456,20 @@ class Game {
         this._notify(`Equipped ${td.name}!`, td.color ?? '#aaffaa', 180);
         return true;
       }
-      if (td.type === 'sword') {
-        const curKey  = player.sword;
-        const curTier = curKey ? (TOOL_DATA[curKey]?.tier ?? -1) : -1;
-        if (td.tier <= curTier) return false;
-        if (curKey) this.mobManager.dropItems([{ x: dropX, y: dropY, itemKey: curKey, amount: 1, pickupDelay: 90 }]);
-        player.sword = itemKey;
+      // Smart Mobs §2 — weapons collect into their slot. A NEW weapon class is
+      // always picked up; a HIGHER tier of a class you own upgrades it (and drops
+      // the displaced one); an equal/lower tier of an owned class is rejected.
+      if (td.type === 'sword' || td.type === 'bow') {
+        const list = td.type === 'bow' ? player.rangedOwned : player.meleeOwned;
+        const cls  = td.weaponClass || td.type;
+        const exKey = list.find(k => ((TOOL_DATA[k].weaponClass || TOOL_DATA[k].type) === cls));
+        if (exKey && (TOOL_DATA[exKey].tier ?? 0) >= (td.tier ?? 0)) return false;
+        if (exKey) this.mobManager.dropItems([{ x: dropX, y: dropY, itemKey: exKey, amount: 1, pickupDelay: 90 }]);
+        player.acquireWeapon(itemKey);
         this._notify(`Equipped ${td.name}!`, td.color ?? '#aaffaa', 180);
         return true;
       }
-      if (td.type === 'bow')         { if (player.bow)          return false; player.bow = itemKey; }
-      else if (td.type === 'shield') { if (player.hasShield)    return false; player.hasShield = true; }
+      if (td.type === 'shield')      { if (player.hasShield)    return false; player.hasShield = true; }
       else if (td.type === 'flint_steel') { if (player.hasFlintSteel) return false; player.hasFlintSteel = true; }
       else return false;
       this._notify(`Equipped ${td.name}!`, td.color ?? '#aaffaa', 180);
@@ -10389,6 +10392,20 @@ class Game {
     return { x: cx - WITHER_SIDE_W / 2, y: w.y, w: WITHER_SIDE_W, h: WITHER_BODY_H };
   }
 
+  // Smart Mobs §2 — select a hotbar slot, but re-pressing an already-active
+  // WEAPON slot (0 = melee, 1 = ranged) cycles to the next weapon collected in
+  // that slot (Sword▸Spear▸Axe▸Trident / Bow▸Crossbow) with a name toast.
+  _selectOrCycleSlot(hk) {
+    const p = this.player;
+    const kind = hk === 0 ? 'melee' : hk === 1 ? 'ranged' : null;
+    if (kind && p.selectedSlot === hk) {
+      const key = p.cycleWeapon(kind);
+      if (key && TOOL_DATA[key]) this._notify(TOOL_DATA[key].name, TOOL_DATA[key].color || '#ffffff', 90);
+    } else {
+      p.selectedSlot = hk;
+    }
+  }
+
   // Smart Mobs §2 — resolve a weapon's active traits: WEAPON_TRAITS[class] base,
   // merged with any per-world overrides in _worldAdvSettings.weapons[class]
   // (set in World Settings → Combat → Weapons). Sword cleave resolves by tier.
@@ -10436,8 +10453,9 @@ class Game {
     const creative = this.gameMode === 'sandbox';
     for (const pl of (this.players || [this.player])) {
       if (!pl) continue;
-      if (s.startingMelee && MELEE[s.startingMelee]) pl.sword = MELEE[s.startingMelee];
-      if (s.startingRanged === 'crossbow' && (pl.bow || pl.godMode || creative)) pl.bow = 'CROSSBOW';
+      if (pl.normalizeWeapons) pl.normalizeWeapons();   // fold any deserialized sword/bow into the collections
+      if (s.startingMelee && MELEE[s.startingMelee] && pl.acquireWeapon) pl.acquireWeapon(MELEE[s.startingMelee]);
+      if (s.startingRanged === 'crossbow' && (pl.bow || pl.godMode || creative) && pl.acquireWeapon) pl.acquireWeapon('CROSSBOW');
     }
   }
 
@@ -11341,8 +11359,20 @@ class Game {
       // Weapon slots 0-1: sword (0), bow (1). Pickaxe removed (mining always-active).
       if (i <= 1) {
         const toolKey  = i === 0 ? p.sword : p.bow;
-        const toolIcon = i === 0 ? '⚔' : '🏹';
+        // Icon by weapon class (Smart Mobs §2) so a Spear/Axe/Trident/Crossbow
+        // reads distinctly in its slot; falls back to the slot's default.
+        const _wcls    = toolKey && TOOL_DATA[toolKey] ? (TOOL_DATA[toolKey].weaponClass || TOOL_DATA[toolKey].type) : null;
+        const _ICONS   = { sword: '⚔', spear: '🗡', axe: '🪓', trident: '🔱', bow: '🏹', crossbow: '🏹' };
+        const toolIcon = (_wcls && _ICONS[_wcls]) || (i === 0 ? '⚔' : '🏹');
         const toolData = toolKey ? TOOL_DATA[toolKey] : null;
+        // Collected-count badge: "▸N" top-right when the slot holds >1 weapon.
+        const _owned = i === 0 ? p.meleeOwned.length : p.rangedOwned.length;
+        if (_owned > 1) {
+          ctx.fillStyle = '#FFD54A'; ctx.font = 'bold 8px Courier New';
+          ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+          ctx.fillText('▸' + _owned, sx + SLOT_SIZE - 2, sy + 2);
+          ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        }
         if (toolData) {
           ctx.fillStyle    = toolData.color;
           ctx.font         = `${SLOT_SIZE * 0.52}px serif`;

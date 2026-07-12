@@ -90,5 +90,47 @@ mm.mobs = [stubMob(320, 300)];
 mm.playerAttack(player, 'p1', { reachMult: 1, arcDeg: 360, cleave: 1, knockback: 1, dmgMult: 0.7 });
 ok(mm.mobs[0].hp === 96, 'dmgMult scales & rounds damage (5×0.7→4)');
 
+// ── Weapon collection model (acquire / cycle) ──
+console.log('Weapon collection:');
+const TD = {
+  WOODEN_SWORD: { type: 'sword', weaponClass: 'sword', tier: 0 },
+  IRON_SWORD:   { type: 'sword', weaponClass: 'sword', tier: 2 },
+  DIAMOND_SWORD:{ type: 'sword', weaponClass: 'sword', tier: 3 },
+  IRON_SPEAR:   { type: 'sword', weaponClass: 'spear', tier: 2 },
+  IRON_AXE:     { type: 'sword', weaponClass: 'axe',   tier: 2 },
+  TRIDENT:      { type: 'sword', weaponClass: 'trident', tier: 2 },
+  BOW:          { type: 'bow',   weaponClass: 'bow',   tier: 0 },
+  CROSSBOW:     { type: 'bow',   weaponClass: 'crossbow', tier: 0 },
+};
+const pReal = { window: {}, Math, console, Set, Map, Array, Object, JSON, Number, String, Boolean, Infinity, TOOL_DATA: TD };
+const pSandbox = new Proxy(pReal, {
+  has: () => true, get: (t, k) => (k in t ? t[k] : (typeof k === 'symbol' ? undefined : 1)), set: (t, k, v) => { t[k] = v; return true; },
+});
+vm.createContext(pSandbox);
+vm.runInContext(fs.readFileSync(`${jsDir}/player.js`, 'utf8') + '\n;this.Player = Player;', pSandbox, { filename: 'player.js' });
+const Player = pSandbox.Player;
+
+const pl = new Player(0, 0);
+ok(pl.meleeOwned.length === 1 && pl.sword === 'WOODEN_SWORD', 'starts with just a wooden sword');
+pl.acquireWeapon('IRON_SPEAR');
+ok(pl.meleeOwned.length === 2 && pl.sword === 'IRON_SPEAR', 'new class (spear) is collected + equipped');
+pl.acquireWeapon('IRON_SWORD');
+ok(pl.meleeOwned.length === 2 && pl.meleeOwned[0] === 'IRON_SWORD', 'higher tier upgrades the sword in place (no dupe)');
+pl.acquireWeapon('DIAMOND_SWORD');
+ok(pl.meleeOwned.includes('DIAMOND_SWORD') && !pl.meleeOwned.includes('IRON_SWORD'), 'even-higher tier replaces the class entry');
+const beforeIdx = pl.meleeIndex; pl.acquireWeapon('IRON_SWORD');  // lower than diamond
+ok(pl.meleeOwned.includes('DIAMOND_SWORD') && pl.meleeOwned.length === 2, 'lower tier of an owned class is not added');
+pl.acquireWeapon('IRON_AXE'); pl.acquireWeapon('TRIDENT');
+ok(pl.meleeOwned.length === 4, 'sword + spear + axe + trident all collected (4 distinct classes)');
+const seen = new Set(); for (let i = 0; i < 4; i++) { seen.add(pl.cycleWeapon('melee')); }
+ok(seen.size === 4, 'cycling melee visits all 4 weapons and wraps');
+ok(pl.acquireWeapon('WOODEN_PICKAXE') === null, 'pickaxe is not a cyclable weapon (returns null)');
+pl.acquireWeapon('BOW'); pl.acquireWeapon('CROSSBOW');
+ok(pl.rangedOwned.length === 2 && pl.bow, 'bow + crossbow collected in the ranged slot');
+ok(pl.cycleWeapon('melee') !== null && pl.cycleWeapon('ranged') !== null, 'both slots cycle independently');
+// normalizeWeapons folds a directly-set active weapon into the collection
+const pl2 = new Player(0, 0); pl2.bow = 'CROSSBOW'; pl2.normalizeWeapons();
+ok(pl2.rangedOwned.includes('CROSSBOW'), 'normalizeWeapons folds a deserialized bow into the collection');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -1055,3 +1055,29 @@ Four quick items from Kevin's first playtest of the branch:
    0.4× (0.18× while sneaking), landing scales 0.35→0.7× with impact. Tunable master consts
    `FOOTSTEP_SFX_VOL` / `LAND_SFX_VOL` (constants.js) — can be promoted to World-Settings sliders.
    Gated off in the sandbox editor. These noise events are the hook §4b sound-detection will reuse.
+
+### 2026-07-10/11 — Weapon collection UX (Kevin: two slots, collect & cycle, remappable attacks)
+Kevin's direction after playtest: player should collect all weapons and switch between them, but
+weapons must stay compact in the hotbar (platformer needs item space). Also wants distinct weapon
+visuals + attack motions (sword/axe swipe, spear/trident stab), a melee-vs-ranged split (Minecraft
+Dungeons style, "only one at a time"), place→Shift+Left-Click so right-click is a consistent ranged
+attack, and eventually a FULL user-configurable key/button remap (Xbox + Switch out of the box).
+Agreed sequencing (not over-engineering IF phased): 77 collection/cycle → 78 input split →
+79 controls-config UI + presets → 80 distinct visuals. Building each as its own commit for rollback.
+
+**Build 77 — weapon collection + cycle (two slots).** Each weapon "slot" (melee slot 0, ranged
+slot 1) now holds a COLLECTION cycled through, so N weapons cost only 2 hotbar slots.
+- `player.meleeOwned`/`rangedOwned` (one entry per weapon CLASS, best tier of each) +
+  `acquireWeapon(key)` (new class → append+equip; higher tier of owned class → upgrade in place;
+  equal/lower → keep). `this.sword`/`this.bow` mirror the active pick so all existing code works.
+  `cycleWeapon(slot)` rotates; `normalizeWeapons()` folds a deserialized active weapon back in.
+- All acquisition routed through it: `craftTool` (player), `_autoEquipTool` + `_platEquipItem` +
+  `_applyStartingWeapons` (game). Platformer pickup now ACCEPTS a new weapon class (doesn't reject
+  because you hold a sword) and only drops the displaced weapon on a same-class upgrade.
+- Cycle input: **re-press an already-active weapon slot** (number key / d-pad 0-1) →
+  `_selectOrCycleSlot` cycles that slot's weapon + name toast. HUD shows a `▸N` collected-count
+  badge + per-class icon on the weapon slots.
+- Added input plumbing for build 78 (non-breaking, not yet wired into dispatch): `mouse.rightDown`
+  held-state, `input.isMeleeAttack()` / `isRangedAttackDown()`; `isThrow()` dropped right-click
+  (reserved for the ranged attack in 78), keeps Q / gamepad R3.
+- test-weapons.js +11 assertions (collection acquire/upgrade/cycle/normalize). Suite 207/207.

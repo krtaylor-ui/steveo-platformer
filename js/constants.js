@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 76 (Smart Mobs playtest fixes: placed-items serializer regression, hotbar kept across test round-trip, gear palette grouped by type, footstep/landing SFX)';
+const GAME_VERSION = 'v3 · build 77 (Smart Mobs: weapon collection + cycle — collect all weapons, two slots, re-press a slot to cycle; HUD count badge)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
