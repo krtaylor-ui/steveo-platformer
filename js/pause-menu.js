@@ -333,6 +333,14 @@ const PAUSE_MENU = {
     ];
     const P = ['#4FC3F7', '#FF8A65', '#81C784', '#FFD54F'];
     const rows = [];
+    // Controller layout preset (Smart Mobs §2) — Switch swaps the mirrored face
+    // buttons; Default/Xbox is identity. Applies to all pads.
+    if (game.input && game.input.setControllerPreset) {
+      rows.push(this._row('Controller Layout', this._select(
+        [{ v: 'default', label: 'Xbox / Default' }, { v: 'switch', label: 'Nintendo Switch' }],
+        () => game.input.controllerPreset(),
+        v => { game.input.setControllerPreset(v); this._buildSettings(game); })));
+    }
     for (let p = 1; p <= n; p++) {
       const sel = this._select(OPTS, () => ControllerConfig.getAssignment(p),
         v => { ControllerConfig.setAssignment(p, parseInt(v, 10)); this._buildSettings(game); });

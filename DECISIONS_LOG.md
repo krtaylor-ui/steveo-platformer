@@ -1120,3 +1120,16 @@ tip), `_drawAxeHead` (offset blade wedge), `_drawTridentHead` (3 prongs + crossb
 weapon's tier colour. Sword/bow/pickaxe unchanged. The slide-attack reuses the thrust pose.
 Crossbow still draws as a bow for now (HUD icon + name toast distinguish it) — a crossbow-specific
 sprite is a polish follow-up. Canvas visuals are browser-UNTESTED (can't verify headless).
+
+**Build 81 — controller presets (Xbox / Switch out of the box).** A SAFE, additive slice of the
+full controls-config ask. The gamepad face buttons (A/B/X/Y = indices 0-3) now pass through a
+`_faceRemap` in `input.updateGamepad`; **identity by default = zero regression**. `setControllerPreset
+('switch')` mirrors the face buttons (A↔B, X↔Y) for Switch Pro/Joy-Con; 'default'/'xbox' = identity.
+Persists to localStorage, reloads on boot. Surfaced as a **Controller Layout** dropdown in the pause
+menu Settings tab (top of the controls section). test-weapons.js +6 (identity default, Switch swap,
+persistence, fallback). Suite 219/219.
+- **DEFERRED (needs a live-testing session): the full arbitrary-key/button rebind UI.** The input
+  layer is already remap-ready (named actions: isMeleeAttack/isRangedAttackDown/isThrow + the face
+  remap). The remaining work is a capture grid ("click an action → press a key/button") + a
+  Minecraft keyboard preset (right-click=place). Spec added to FUTURE_ROADMAP. Not shipped overnight
+  because live key/button capture can't be verified headless and a bad map would break all input.

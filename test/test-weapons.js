@@ -153,5 +153,33 @@ const vyBefore = strong.vy; strong.vy = 0;
 mm3.slideLaunch(slider, 5, hitSet);
 ok(strong.vy === 0, 'already-hit mob is not launched again in the same slide');
 
+// ── Controller preset (face-button remap) ──
+console.log('Controller preset:');
+const _store = {};
+const noop = () => {};
+const iReal = {
+  window: { addEventListener: noop },
+  document: { addEventListener: noop, activeElement: null },
+  navigator: { getGamepads: () => [] },
+  localStorage: { getItem: (k) => (k in _store ? _store[k] : null), setItem: (k, v) => { _store[k] = String(v); } },
+  Math, console, Set, Map, Array, Object, JSON, Number, String, Boolean, Infinity,
+};
+const iSandbox = new Proxy(iReal, {
+  has: () => true, get: (t, k) => (k in t ? t[k] : (typeof k === 'symbol' ? undefined : 1)), set: (t, k, v) => { t[k] = v; return true; },
+});
+vm.createContext(iSandbox);
+vm.runInContext(fs.readFileSync(`${jsDir}/input.js`, 'utf8') + '\n;this.InputManager = InputManager;', iSandbox, { filename: 'input.js' });
+const stubCanvas = { addEventListener: noop, getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 500 }), width: 800, height: 500 };
+const im = new iSandbox.InputManager(stubCanvas);
+ok(im.controllerPreset() === 'default', 'default controller preset on fresh input');
+ok(JSON.stringify(im._faceRemap) === '[0,1,2,3]', 'default face remap is identity (zero regression)');
+im.setControllerPreset('switch');
+ok(im.controllerPreset() === 'switch' && JSON.stringify(im._faceRemap) === '[1,0,3,2]', 'Switch preset swaps A/B and X/Y');
+ok(_store['steveo_controls_preset'] === 'switch', 'preset persists to localStorage');
+im.setControllerPreset('bogus');
+ok(im.controllerPreset() === 'default', 'unknown preset falls back to default');
+const im2 = new iSandbox.InputManager(stubCanvas);
+ok(im2.controllerPreset() === 'default', 'saved preset (default here) reloads on a new input manager');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

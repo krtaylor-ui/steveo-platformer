@@ -18,6 +18,19 @@ class InputManager {
     this.scrollDelta  = 0;
     this._canvas      = canvas;
 
+    // Smart Mobs §2 — controller preset (Xbox / Switch out of the box). Remaps
+    // ONLY the face buttons (A/B/X/Y = indices 0-3); shoulders/triggers/d-pad are
+    // untouched. Default is identity, so unless a Switch preset is chosen behaviour
+    // is byte-for-byte unchanged. A Switch Pro's face buttons are physically
+    // mirrored vs Xbox, so 'switch' swaps A↔B and X↔Y. (Arbitrary key rebinding is
+    // a follow-up — see the controls-config UI spec in FUTURE_ROADMAP.)
+    this._faceRemap = [0, 1, 2, 3];
+    this._controllerPreset = 'default';
+    try {
+      const saved = localStorage.getItem('steveo_controls_preset');
+      if (saved) this.setControllerPreset(saved, true);
+    } catch (e) { /* localStorage unavailable — keep identity */ }
+
     // Gamepad state — 4 slots
     this.gamepads  = [0, 1, 2, 3].map(i => this._emptyGamepad(i));
     this._gpPrev   = [0, 1, 2, 3].map(i => this._emptyGamepad(i));
@@ -94,7 +107,9 @@ class InputManager {
       }
       const b   = gp.buttons;
       const a   = gp.axes;
-      const btn = (idx) => (b[idx] ? b[idx].pressed : false);
+      // Face buttons (0-3) go through the controller-preset remap; everything
+      // else is read directly. Identity map by default = no behaviour change.
+      const btn = (idx) => { const m = (idx >= 0 && idx <= 3) ? this._faceRemap[idx] : idx; return b[m] ? b[m].pressed : false; };
       const val = (idx) => (b[idx] ? b[idx].value   : 0);
       this.gamepads[i] = {
         id:        i,
@@ -144,6 +159,18 @@ class InputManager {
     }
     return false;
   }
+
+  // Controller presets (Smart Mobs §2). 'switch' mirrors the face buttons so a
+  // Switch Pro/Joy-Con feels right; 'default'/'xbox' are identity. `quiet` skips
+  // persisting (used on load). Returns the applied preset name.
+  setControllerPreset(name, quiet) {
+    const FACE = { default: [0, 1, 2, 3], xbox: [0, 1, 2, 3], switch: [1, 0, 3, 2] };
+    this._controllerPreset = FACE[name] ? name : 'default';
+    this._faceRemap = FACE[this._controllerPreset].slice();
+    if (!quiet) { try { localStorage.setItem('steveo_controls_preset', this._controllerPreset); } catch (e) { /* ignore */ } }
+    return this._controllerPreset;
+  }
+  controllerPreset() { return this._controllerPreset; }
 
   // Slot-aware just-pressed helpers — use these instead of gpJustDown(0,…)
   p1JustDown(btn) {
