@@ -9,39 +9,55 @@ Enchantments, Suspicion meter).
 
 ## IN PROGRESS (2026-07-10) — Smart Mobs build on branch `smart-mobs`
 
-Working through the **"Bug Fixes + Smart Mobs brief"** (10 sections). Branch
-`smart-mobs` (off build 72), **NOT merged to main, browser-UNTESTED** (headless
-**196/196** — added `test/test-weapons.js`). Kevin chose a full build; sections
-are being committed as checkpoints. **Shipped to the branch so far:**
-- **§1 — build 73:** World Settings routing. Sandbox ⚙ Arena Settings now opens
-  the HTML panel (Arena tab); new ⚙ World Settings button for all non-arena
-  modes (Speed Run → SR tab). `WORLD_SETTINGS.open(game, tab)` gained a tab arg.
-- **§2 — build 74:** composable **weapon-trait system** — `WEAPON_TRAITS`
-  registry (constants.js) + `Game._meleeTraits/_rangedTraits` resolver +
-  trait-driven `MobManager.playerAttack(player, owner, traits)`. TOOL_DATA gains
-  `weaponClass` (type still routes the slot). Sword cleave-by-tier (1/2/3),
-  Spear (65° cone, 3 hits, 0.7×), Axe (heavy knockback, slow), Crossbow
-  (piercing arrows), **Trident** (thrust + throwable auto-return, Q/right-click/
-  R3). World Settings → **Combat → Weapons**: startingMelee/Ranged selectors +
-  per-weapon Damage/Attack-Speed/Knockback/Hit-All/Piercing/Throwable config.
-  Enchantment foundation for FUTURE_ROADMAP §17.
-- **§3 — build 75:** crouch confirmed as the **sneak state** (reused, no new
-  binding — decision §11.3); exposes `player.isSneaking` for §4 sound detection.
+Working through the **"Bug Fixes + Smart Mobs brief"** + a follow-on **weapon-UX
+redesign** Kevin requested mid-stream. Branch `smart-mobs` (off build 72), **NOT
+merged to main, browser-UNTESTED** (headless **219/219** — `test/test-weapons.js`).
+Committed per build for rollback. **Shipped to the branch so far:**
+- **§1 — build 73:** World Settings routing (Arena Settings + new all-mode ⚙ World
+  Settings button open the HTML panel; `WORLD_SETTINGS.open(game, tab)`).
+- **§2 — build 74:** composable **weapon-trait system** (`WEAPON_TRAITS` +
+  `Game._meleeTraits/_rangedTraits` + trait-driven `playerAttack`). Sword
+  cleave-by-tier, Spear cone, Axe knockback, Crossbow pierce, Trident throw +
+  Combat→Weapons config. Enchantment foundation (§17).
+- **§3 — build 75:** crouch = the **sneak state** (`player.isSneaking` for §4).
+- **build 76:** playtest fixes — placed-items serializer regression (was reading
+  the play-mode array in the editor → stripped placed items on save/test), hotbar
+  kept across the test round-trip, gear palette grouped by type, footstep/landing
+  SFX (`sounds/footstep.mp3` + `sounds/land.mp3`, per-sound volume).
+- **builds 77–81 = weapon-UX redesign** (Kevin: collect+switch all weapons, but
+  compact; Minecraft-Dungeons two-button combat; distinct visuals; controller config):
+  - **77** collection + cycle: `player.meleeOwned/rangedOwned` (one per class,
+    best tier) + `acquireWeapon`/`cycleWeapon`; re-press a weapon slot to cycle;
+    HUD `▸N` badge. All acquisition routed through it.
+  - **78** separate **melee/ranged/place inputs**: LMB melee, RMB ranged, **Shift+LMB
+    place** (Normal), gamepad X melee / RT ranged; both weapons always live.
+    Remappable via `input.isMeleeAttack()/isRangedAttackDown()`.
+  - **79** spear **slide-attack** (opt-in Combat→Special Moves): ground-slide launches
+    mobs spinning into the air; generic on a `WEAPON_TRAITS.slide` trait.
+  - **80** distinct weapon visuals: sword/axe **swipe**, spear/trident **stab** +
+    per-class head shapes.
+  - **81** controller presets: gamepad face-button remap (identity default; **Nintendo
+    Switch** swap) + Controller-Layout picker in pause Settings.
 
-**REMAINING (not started) — the mob-intelligence cluster + foliage:** §4
-Detection (line-of-sight/frontal, sound tiers Gravel=Loud/Grass=Quiet/Normal,
-action detection), §5 Pack behaviour (alert propagation + surround positioning),
-§6 Wayfinding & ambush-from-above (**biggest — no pathfinding exists today**),
-§7 Sprint w/ telegraph, §8 Flee-at-low-HP (per-mob Retreating toggle), §9 Spider
-webs (slow + stacking), §10 Leaves/Bushes (front/back variants, reuse the
-End-Portal foreground draw pass at `game.js` `_drawEndPortalForeground`). §4a's
-foliage occlusion depends on §10. These are pervasive mob-AI changes + heavily
-playtest-sensitive (detection ranges, sprint timing, pack feel) — recommended as
-a focused follow-up with a browser playtest loop, after Kevin playtests 73–75.
+**REMAINING — two tracks:**
+1. **The mob-intelligence cluster (§4–§10, NOT started):** §4 Detection (LoS/frontal +
+   sound tiers Gravel=Loud/Grass=Quiet/Normal + action), §5 Pack (alert propagation +
+   surround), §6 Wayfinding & ambush-from-above (**biggest — no pathfinding today**),
+   §7 Sprint w/ telegraph, §8 Flee-at-low-HP, §9 Spider webs, §10 Leaves/Bushes (reuse
+   `_drawEndPortalForeground`; §4a foliage occlusion depends on §10). Pervasive,
+   playtest-sensitive mob-AI — a focused follow-up with a browser loop.
+2. **Full controls-config UI (FUTURE_ROADMAP §19):** arbitrary key/button capture grid +
+   Minecraft/Xbox/Switch presets. Foundation shipped (81); the capture UI needs a
+   live-testing session.
 
-**Ship path (unchanged):** `node test/run.js` (196/196) → bump the THREE version
-markers → commit on `smart-mobs` → Kevin browser-tests → `git checkout main &&
-git merge --ff-only smart-mobs` → `git push origin main`.
+**Playtest watch-items for builds 73–81:** weapon feel (cleave/cone/knockback), the
+**Shift+Left-click place** change in Normal, RMB-ranged, trident throw + auto-return,
+slide-attack launch feel, distinct swipe/stab motions, and the Switch controller preset.
+Drop `sounds/footstep.mp3` + `sounds/land.mp3` in to hear the movement SFX.
+
+**Ship path:** `node test/run.js` (219/219) → bump the THREE version markers → commit on
+`smart-mobs` → Kevin browser-tests → `git checkout main && git merge --ff-only smart-mobs`
+→ `git push origin main`.
 
 ## CURRENT STATE (2026-07-08) — build 72 (SHIPPED to main + origin)
 

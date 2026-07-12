@@ -693,6 +693,25 @@ enchantments should read as "grant/modify a trait," not introduce a parallel sys
 
 ---
 
+## 19. Full controls‑config UI (arbitrary key/button rebinding)  *(spec 2026‑07‑12 — foundation shipped, capture UI deferred)*
+
+**Shipped (Smart Mobs builds 77–81):** the input layer is now remap‑ready — combat routes through
+named actions (`input.isMeleeAttack()` / `isRangedAttackDown()` / `isThrow()`), and gamepad **face
+buttons pass through `_faceRemap`** with **controller presets** (Xbox/Default identity, **Nintendo
+Switch** face‑swap) selectable in the pause‑menu Settings tab and persisted to localStorage.
+
+**Deferred (needs a live‑testing session — key/button *capture* can't be verified headless):**
+- **Rebind grid:** a Controls settings panel listing every action (jump, move L/R, crouch, melee,
+  ranged, place, throw, hotbar slots, inventory, …) with a "click → press a key / press a button"
+  capture flow, per‑player (up to 4). Store overrides in localStorage; migrate the currently‑
+  hardcoded `input.js` helpers (jump/move/crouch/hotbar) to read the binding map (combat + face
+  remap already do).
+- **Presets:** Default, **Minecraft** (right‑click = place, left = attack/mine — i.e. undo the
+  Shift+Left‑click place default), Xbox, Switch. Auto‑suggest a controller preset from `gamepad.id`.
+- **Conflict detection** (warn when two actions share a binding) + reset‑to‑preset.
+- **Effort:** MODERATE. The seams exist; the bulk is the capture UI + the full action‑map migration
+  + browser/gamepad testing. Do it in a session where the app can be driven live.
+
 ## 18. Suspicion / Alert Threshold Detection Meter  *(idea captured 2026‑07‑08 — fast‑follow to Smart Mobs' detection system)*
 
 The Smart Mobs build (specced 2026‑07‑08, not yet built) uses **instant per‑axis detection** —
