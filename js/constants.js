@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 78 (Smart Mobs: separate melee/ranged/place inputs — LMB melee, RMB ranged, Shift+LMB place; two weapons always live)';
+const GAME_VERSION = 'v3 · build 79 (Smart Mobs: spear slide-attack — ground-slide launches mobs spinning into the air; opt-in Combat setting + damage mult)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
@@ -66,7 +66,10 @@ const KNOCKBACK_FORCE       = 9;    // vx applied on knockback
 //   throwable    (melee) can be thrown as a recoverable projectile (Trident)
 const WEAPON_TRAITS = {
   sword:    { kind: 'melee',  reachMult: 1.0,  arcDeg: 360, cleave: 'tier', knockback: 1.0, cooldownMult: 1.0,  dmgMult: 1.0 },
-  spear:    { kind: 'melee',  reachMult: 1.55, arcDeg: 65,  cleave: 3,      knockback: 0.7, cooldownMult: 1.15, dmgMult: 0.7 },
+  // `slide: 'launch'` = the weapon's special move when triggered from a ground
+  // slide (Smart Mobs §2). Generic hook so other weapons can define their own
+  // slide/context specials later; only 'launch' (AoE upward toss) is implemented.
+  spear:    { kind: 'melee',  reachMult: 1.55, arcDeg: 65,  cleave: 3,      knockback: 0.7, cooldownMult: 1.15, dmgMult: 0.7, slide: 'launch' },
   axe:      { kind: 'melee',  reachMult: 0.95, arcDeg: 200, cleave: 1,      knockback: 1.9, cooldownMult: 1.7,  dmgMult: 1.45 },
   trident:  { kind: 'melee',  reachMult: 1.45, arcDeg: 90,  cleave: 1,      knockback: 1.2, cooldownMult: 1.35, dmgMult: 1.1, throwable: true },
   bow:      { kind: 'ranged', pierce: false, dmgMult: 1.0 },

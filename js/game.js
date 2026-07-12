@@ -2027,6 +2027,7 @@ class Game {
       this.player.update(this.input, this.level);
     }
     this._playMovementSfx(this.player);   // Smart Mobs §4 — footstep + landing SFX
+    this._updateSlideAttack();            // Smart Mobs §2 — spear slide-attack
 
     // Phase 17: Speed Runner post-update (boost multipliers, collision, ghost)
     if (this.gameMode === 'speedrunner') this._updateSpeedRunner();
@@ -10375,6 +10376,27 @@ class Game {
     // Left / right: narrower (1 block wide)
     const cx = w.x + WITHER_BODY_W / 2;
     return { x: cx - WITHER_SIDE_W / 2, y: w.y, w: WITHER_SIDE_W, h: WITHER_BODY_H };
+  }
+
+  // Smart Mobs §2 — spear slide-attack (opt-in via World Settings → Combat).
+  // While ground-sliding with a weapon whose trait defines `slide: 'launch'`
+  // (spear today), launch mobs in the slide path into the air. Generic on the
+  // trait so other weapons can get their own slide specials later. Damage =
+  // the weapon's resolved melee damage × the slide-attack multiplier.
+  _updateSlideAttack() {
+    const p = this.player;
+    if (!p) return;
+    const sliding = p._slideFrames > 0;
+    const sp = (typeof WEAPON_TRAITS !== 'undefined') ? WEAPON_TRAITS[p.meleeClass] : null;
+    if (this._worldAdvSettings.slideAttack && sliding && sp && sp.slide === 'launch') {
+      if (!this._slideHitSet) this._slideHitSet = new Set();
+      const traits = this._meleeTraits(p);
+      const base = Math.max(1, Math.round(p.weaponDamage * (traits.dmgMult || 1)));
+      const dmg  = Math.max(1, Math.round(base * (this._worldAdvSettings.slideAttackDmg ?? 1)));
+      if (this.mobManager.slideLaunch(p, dmg, this._slideHitSet)) p.swingTimer = 15; // attack pose
+    } else if (!sliding && this._slideHitSet) {
+      this._slideHitSet = null;   // slide ended — reset the per-slide hit set
+    }
   }
 
   // Smart Mobs §2 — select a hotbar slot, but re-pressing an already-active

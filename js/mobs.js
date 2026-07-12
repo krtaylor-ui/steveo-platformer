@@ -1606,6 +1606,16 @@ class MobManager {
     // Mob AI — each mob targets the nearest active player
     for (const mob of this.mobs) {
       if (!mob.alive) continue;
+      // Smart Mobs §2 — slide-attack launch: spin in the air (AI already suppressed
+      // via knockbackTimer, which we keep topped up), then resume AI, or vanish if
+      // this was a killing toss. Physics (gravity) still runs via the mob's update.
+      if (mob._launched) {
+        mob._spinAngle = (mob._spinAngle || 0) + (mob._launchSpin || 0.3);
+        if (mob._tossDeath > 0) { mob.knockbackTimer = 3; if (--mob._tossDeath <= 0) mob.alive = false; }
+        else if (--mob._launchFrames <= 0) { mob._launched = false; mob._spinAngle = 0; }
+        else { mob.knockbackTimer = Math.max(mob.knockbackTimer, 3); }
+        if (!mob.alive) continue;   // toss-death expired this frame → let the filter reap it
+      }
       const target = this._nearestPlayer(mob.cx, mob.cy, player, player2);
       if (mob instanceof Skeleton) {
         mob.update(target, level, this.arrows);
@@ -1829,6 +1839,35 @@ class MobManager {
     return anyHit;
   }
 
+  // Smart Mobs §2 — spear slide-attack. Launch every mob overlapping the sliding
+  // player up into the air (spinning), dealing `dmg`. `alreadyHit` (a Set) stops a
+  // mob being hit twice in one slide. Killed mobs are tossed, then vanish (their
+  // death — drops/score — resolves when _tossDeath flips alive=false). Generic
+  // enough that other weapons can trigger their own launch specials later.
+  slideLaunch(player, dmg, alreadyHit, owner = 'p1') {
+    let any = false;
+    for (const mob of this.mobs) {
+      if (!mob.alive || (alreadyHit && alreadyHit.has(mob))) continue;
+      const overlap = player.x < mob.x + mob.width && player.x + player.width > mob.x &&
+                      player.y < mob.y + mob.height && player.y + player.height > mob.y;
+      if (!overlap) continue;
+      if (alreadyHit) alreadyHit.add(mob);
+      any = true;
+      const lethal = (mob.hp - dmg) <= 0;
+      mob.hp -= dmg;
+      this.damageNums.push(new DamageNumber(mob.cx, mob.y - 8, dmg, '#FFEE55'));
+      mob.vy = -13;                                   // launch upward
+      mob.vx = Math.random() * 8 - 4;                 // random horizontal scatter
+      mob.knockbackTimer = 46;                        // suppress AI while airborne
+      mob._launched     = true;
+      mob._launchFrames = 42;
+      mob._launchSpin   = (Math.random() < 0.5 ? -1 : 1) * (0.18 + Math.random() * 0.22);
+      mob._spinAngle    = 0;
+      if (lethal) { mob.hp = 0; mob._tossDeath = 46; this.onKill?.(owner, mob); } // fly + spin, then disappear
+    }
+    return any;
+  }
+
   // Collect dropped items near player; returns array of {itemKey, amount}
   collectDropsNear(player) {
     const pcx = player.x + player.width / 2;
@@ -2000,8 +2039,20 @@ class MobManager {
     for (const a of this.playerArrows) a.draw(ctx, camera);
     // Blaze shots
     for (const bs of this.blazeShots)  bs.draw(ctx, camera);
-    // Mobs
-    for (const mob of this.mobs)       mob.draw(ctx, camera);
+    // Mobs — slide-launched mobs spin about their centre (and fade while being
+    // tossed to death). Wrapping here avoids touching all 8 per-mob draw methods.
+    for (const mob of this.mobs) {
+      if (mob._launched && mob._spinAngle) {
+        const sx = mob.cx - camera.x, sy = mob.cy - camera.y;
+        ctx.save();
+        if (mob._tossDeath > 0) ctx.globalAlpha = Math.max(0, mob._tossDeath / 46);
+        ctx.translate(sx, sy); ctx.rotate(mob._spinAngle); ctx.translate(-sx, -sy);
+        mob.draw(ctx, camera);
+        ctx.restore();
+      } else {
+        mob.draw(ctx, camera);
+      }
+    }
     // Floating numbers on top
     for (const d of this.damageNums)   d.draw(ctx, camera);
   }

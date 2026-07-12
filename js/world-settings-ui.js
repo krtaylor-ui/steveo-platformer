@@ -173,6 +173,9 @@ const WORLD_SETTINGS = {
       { key: 'bossAttackRateMultiplier', tab: 'combat', group: 'Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Attack Rate', fmt: x1, advanced: true },
       { key: 'disableDragonHealing', tab: 'combat', group: 'Boss Scaling', modes: M.adventure, type: 'toggle', dflt: false, label: 'Disable Dragon Healing', advanced: true },
       { key: 'unlimitedArrows', tab: 'combat', group: 'Combat', modes: M.adventure, type: 'toggle', dflt: false, label: 'Unlimited Arrows', advanced: true },
+      // ── Special moves (Smart Mobs §2) — per-weapon context attacks ──
+      { key: 'slideAttack', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Slide Attack (Spear)', hint: 'ground-slide with a spear launches nearby mobs into the air' },
+      { key: 'slideAttackDmg', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'cycle', opts: O.wdmg, dflt: 1.0, label: 'Slide Attack Damage', fmt: x1, advanced: true, dependsOn: 'slideAttack' },
       // ── Weapons (Smart Mobs §2) — starting weapon + per-weapon trait config ──
       ...this._weaponRows(M, O, x1),
       // (Audio, Controls, Show-Health-Bars and Disable-Chat are PLAYER settings —

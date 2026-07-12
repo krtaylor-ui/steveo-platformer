@@ -132,5 +132,26 @@ ok(pl.cycleWeapon('melee') !== null && pl.cycleWeapon('ranged') !== null, 'both 
 const pl2 = new Player(0, 0); pl2.bow = 'CROSSBOW'; pl2.normalizeWeapons();
 ok(pl2.rangedOwned.includes('CROSSBOW'), 'normalizeWeapons folds a deserialized bow into the collection');
 
+// ── Spear slide-attack launch ──
+console.log('Slide-attack launch:');
+function stubBox(cx, cy, hp) {
+  return { alive: true, cx, cy, x: cx - 10, y: cy - 10, width: 20, height: 20, hp,
+           vx: 0, vy: 0, knockbackTimer: 0 };
+}
+const mm3 = new MobManager();
+const strong = stubBox(300, 300, 100), weak = stubBox(305, 300, 3), far = stubBox(900, 300, 100);
+mm3.mobs = [strong, weak, far];
+const slider = { x: 290, y: 290, width: 30, height: 30 };
+const hitSet = new Set();
+const did = mm3.slideLaunch(slider, 5, hitSet);
+ok(did === true, 'slideLaunch reports a hit when mobs overlap');
+ok(strong._launched && strong.vy < 0, 'overlapping mob is launched upward');
+ok(far._launched !== true, 'a mob outside the slide path is not launched');
+ok(weak._tossDeath > 0 && weak.alive === true, 'a lethal launch tosses the mob (dies later, not instantly)');
+ok(strong._tossDeath === undefined && strong.hp === 95, 'a survivor takes damage and will land');
+const vyBefore = strong.vy; strong.vy = 0;
+mm3.slideLaunch(slider, 5, hitSet);
+ok(strong.vy === 0, 'already-hit mob is not launched again in the same slide');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

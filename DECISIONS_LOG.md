@@ -1098,3 +1098,17 @@ click so right-click is a consistent ranged attack in every mode.
 - **Known gaps for playtest:** keyboard-only-no-mouse players can't fire ranged until the rebind
   UI (build 79) — right-mouse/RT only for now. P2-P4 still use their existing selected-slot attack
   (pAttack) path — the two-button model is P1-only this pass. Browser-UNTESTED.
+
+**Build 79 — spear slide-attack (Kevin's son's idea).** Opt-in Combat setting: ground-slide with a
+spear launches nearby mobs into the air, spinning. Built GENERICALLY for future weapon specials.
+- Trigger keys off a trait, not the class name: `WEAPON_TRAITS.spear.slide = 'launch'`. `Game.
+  _updateSlideAttack()` fires while `_slideFrames > 0` + the active weapon's `slide === 'launch'` +
+  the `slideAttack` setting; a per-slide Set stops double-hitting a mob.
+- `MobManager.slideLaunch(player, dmg, hitSet)`: mobs overlapping the sliding player take
+  `weaponDamage × dmgMult × slideAttackDmg`, get vy=-13 + random vx + a random spin; AI suppressed
+  via knockbackTimer. Survivors land and resume; lethal hits set `_tossDeath` so the mob flies +
+  spins + fades, THEN vanishes (death/drops resolve when it flips alive=false). Spin/fade done by
+  wrapping the mob draw loop (no per-subclass draw edits). Sprite uses the swing/thrust pose.
+- Settings: Combat → **Special Moves** → `slideAttack` toggle (default off) + advanced
+  `slideAttackDmg` mult (dependsOn slideAttack). test-weapons.js +6 (launch/lethal-toss/dedup);
+  suite 213/213. Browser-UNTESTED — watch the launch feel + toss-death timing.
