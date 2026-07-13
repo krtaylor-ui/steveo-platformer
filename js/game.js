@@ -11368,14 +11368,16 @@ class Game {
       // Weapon slots 0-1 (sword, bow); pickaxe removed (mining is always-active).
       if (i <= 1) {
         const toolKey  = i === 0 ? player.sword : player.bow;
-        const toolIcon = i === 0 ? '⚔' : '🏹';
         const toolData = toolKey ? TOOL_DATA[toolKey] : null;
+        const cls = toolData ? (toolData.weaponClass || toolData.type) : (i === 0 ? 'sword' : 'bow');
+        const col = toolData ? toolData.color : 'rgba(180,140,80,0.6)';
         ctx.save();
         if (!toolData) ctx.globalAlpha = 0.35;
-        ctx.fillStyle = toolData ? toolData.color : 'rgba(180,140,80,0.6)';
-        ctx.font = `${SZ * 0.65}px serif`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(toolIcon, sx + SZ / 2, sy + SZ / 2);
+        if (!drawWeaponIcon(ctx, cls, sx + SZ / 2, sy + SZ / 2, SZ * 0.72, col)) {
+          ctx.fillStyle = col; ctx.font = `${SZ * 0.65}px serif`;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(i === 0 ? '⚔' : '🏹', sx + SZ / 2, sy + SZ / 2);
+        }
         ctx.restore();
         ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
       } else if (slot) {
@@ -11429,11 +11431,14 @@ class Game {
           ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
         }
         if (toolData) {
-          ctx.fillStyle    = toolData.color;
-          ctx.font         = `${SLOT_SIZE * 0.52}px serif`;
-          ctx.textAlign    = 'center'; ctx.textBaseline = 'middle';
-          ctx.fillText(toolIcon, sx + SLOT_SIZE / 2, sy + SLOT_SIZE / 2);
-          ctx.textAlign    = 'left'; ctx.textBaseline = 'alphabetic';
+          const _cls = toolData.weaponClass || toolData.type;
+          if (!drawWeaponIcon(ctx, _cls, sx + SLOT_SIZE / 2, sy + SLOT_SIZE / 2, SLOT_SIZE * 0.62, toolData.color)) {
+            ctx.fillStyle    = toolData.color;
+            ctx.font         = `${SLOT_SIZE * 0.52}px serif`;
+            ctx.textAlign    = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(toolIcon, sx + SLOT_SIZE / 2, sy + SLOT_SIZE / 2);
+            ctx.textAlign    = 'left'; ctx.textBaseline = 'alphabetic';
+          }
           if (i === 0) { // sword tier label
             ctx.fillStyle    = 'rgba(255,255,255,0.55)'; ctx.font = '7px Courier New';
             ctx.textAlign    = 'right'; ctx.textBaseline = 'bottom';
@@ -15146,15 +15151,20 @@ class Game {
       const armorData = ARMOR_DATA[it.toolKey];
       const data = TOOL_DATA[it.toolKey] || armorData;
       if (!data) continue;
-      const sym = armorData ? (armorIcons[armorData.piece] ?? '🛡') : (icons[data.type] ?? '?');
       // Glow halo
       ctx.save();
       ctx.shadowColor = data.color;
       ctx.shadowBlur  = 12;
-      ctx.font         = '20px serif';
-      ctx.textAlign    = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(sym, sx, sy);
+      // Drawn weapon icon (Smart Mobs §2 #2) so the player sees what they're about
+      // to pick up; armour / other tools fall back to an emoji glyph.
+      const wcls = data.weaponClass || data.type;
+      if (armorData || !drawWeaponIcon(ctx, wcls, sx, sy, 24, data.color)) {
+        const sym = armorData ? (armorIcons[armorData.piece] ?? '🛡') : (icons[data.type] ?? '?');
+        ctx.font = '20px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(sym, sx, sy);
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      }
       ctx.shadowBlur   = 0;
       ctx.restore();
     }

@@ -50,6 +50,49 @@ function weaponIconFor(d) {
   return WEAPON_CLASS_ICON[cls] || (d.type === 'pickaxe' ? '⛏' : d.type === 'flint_steel' ? '🔥' : d.type === 'shield' ? '🛡' : '⚔');
 }
 
+// Draw a compact pixel-art weapon icon centred at (cx,cy) in a `size` box, tinted
+// by `color` (Smart Mobs §2 #1/#3 — so a spear reads as a spear, a crossbow as a
+// crossbow, not all as swords). Returns true if it drew a shape, false for classes
+// it doesn't handle (caller then falls back to an emoji glyph).
+function drawWeaponIcon(ctx, cls, cx, cy, size, color) {
+  const steel = color || '#d2d6dd', wood = '#8B5A18', str = '#e8e8e8';
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(size / 32, size / 32);
+  ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (cls === 'sword') {
+    ctx.strokeStyle = steel; ctx.beginPath(); ctx.moveTo(-8, 9); ctx.lineTo(9, -10); ctx.stroke();
+    ctx.strokeStyle = '#caa24a'; ctx.beginPath(); ctx.moveTo(-11, 4); ctx.lineTo(-3, 11); ctx.stroke();
+    ctx.strokeStyle = wood; ctx.beginPath(); ctx.moveTo(-12, 12); ctx.lineTo(-8, 8); ctx.stroke();
+  } else if (cls === 'spear') {
+    ctx.strokeStyle = wood; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-12, 12); ctx.lineTo(7, -7); ctx.stroke();
+    ctx.fillStyle = steel; ctx.beginPath(); ctx.moveTo(13, -13); ctx.lineTo(3.5, -8.5); ctx.lineTo(8.5, -3.5); ctx.closePath(); ctx.fill();
+  } else if (cls === 'axe') {
+    ctx.strokeStyle = wood; ctx.beginPath(); ctx.moveTo(-9, 12); ctx.lineTo(7, -10); ctx.stroke();
+    ctx.fillStyle = steel; ctx.beginPath(); ctx.moveTo(3, -12); ctx.lineTo(13, -9); ctx.lineTo(10, -1); ctx.lineTo(1, -4); ctx.closePath(); ctx.fill();
+  } else if (cls === 'trident') {
+    ctx.strokeStyle = steel; ctx.beginPath(); ctx.moveTo(-10, 12); ctx.lineTo(5, -3); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(1, -1); ctx.lineTo(12, -12);   // centre prong
+    ctx.moveTo(5, -3); ctx.lineTo(13, -5);    // right prong
+    ctx.moveTo(2.5, 0.5); ctx.lineTo(13, 1);  // left prong
+    ctx.moveTo(9, -9); ctx.lineTo(11, 0);     // crossbar
+    ctx.stroke();
+  } else if (cls === 'bow') {
+    ctx.strokeStyle = wood; ctx.beginPath(); ctx.arc(-2, 0, 12, -Math.PI * 0.55, Math.PI * 0.55); ctx.stroke();
+    ctx.strokeStyle = str; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(8, -10); ctx.lineTo(8, 10); ctx.stroke();
+  } else if (cls === 'crossbow') {
+    ctx.strokeStyle = wood; ctx.beginPath(); ctx.moveTo(-11, 6); ctx.lineTo(11, -6); ctx.stroke();           // stock
+    ctx.strokeStyle = steel; ctx.beginPath(); ctx.moveTo(4, -13); ctx.lineTo(10, -5); ctx.lineTo(15, -12); ctx.stroke(); // limbs (V)
+    ctx.strokeStyle = str; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(4, -13); ctx.lineTo(15, -12); ctx.stroke();  // string
+  } else if (cls === 'pickaxe') {
+    ctx.strokeStyle = wood; ctx.beginPath(); ctx.moveTo(-8, 12); ctx.lineTo(5, -7); ctx.stroke();
+    ctx.strokeStyle = steel; ctx.beginPath(); ctx.arc(5, -8, 10, Math.PI * 0.75, Math.PI * 1.75); ctx.stroke();
+  } else { ctx.restore(); return false; }
+  ctx.restore();
+  return true;
+}
+
 const ARMOR_DATA = {
   WOOD_HELMET:          { name: 'Wood Helmet',          tier: 0, piece: 'head',  protection: 0.5, color: '#C8A55A', unlockOre: null },
   WOOD_CHESTPLATE:      { name: 'Wood Chestplate',      tier: 0, piece: 'chest', protection: 0.5, color: '#C8A55A', unlockOre: null },

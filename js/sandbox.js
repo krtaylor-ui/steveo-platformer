@@ -1243,7 +1243,7 @@ class SandboxManager {
         ctx.font         = '16px serif';
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(sym, cx, cy);
+        if (!(data?.weaponClass && drawWeaponIcon(ctx, data.weaponClass, cx, cy, 22, data.color))) ctx.fillText(sym, cx, cy);
       }
       ctx.restore();
     }
@@ -1601,7 +1601,7 @@ class SandboxManager {
           ctx.font         = '20px serif';
           ctx.textAlign    = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(sym, ecx, ecy);
+          if (!(data?.weaponClass && drawWeaponIcon(ctx, data.weaponClass, ecx, ecy, 22, data.color))) ctx.fillText(sym, ecx, ecy);
           ctx.textAlign    = 'left';
           ctx.textBaseline = 'alphabetic';
         } else if (entry.kind === 'blockItem') {
@@ -1872,7 +1872,7 @@ class SandboxManager {
                   : itm.type === 'flint_steel' ? '🔥'
                   : itm.type === 'pickaxe' ? '⛏'
                   : (itm.type === 'sword' || itm.type === 'bow') ? weaponIconFor(itm) : '🛡';
-        ctx.fillText(sym, cxc, cyc + 9);
+        if (!(itm.weaponClass && drawWeaponIcon(ctx, itm.weaponClass, cxc, cyc + 9, 22, itm.color))) ctx.fillText(sym, cxc, cyc + 9);
         if (hov) {
           ctx.fillStyle    = itm.color;
           ctx.font         = '7px Courier New';

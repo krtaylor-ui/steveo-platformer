@@ -1361,7 +1361,8 @@ class Player {
       this._drawPickaxeHead(ctx); // always-active mining shows the pickaxe in-hand
     } else if (rangedActive) {
       ctx.restore();
-      this._drawBow(ctx, sx, sy, flipX);
+      if (this.rangedClass === 'crossbow') this._drawCrossbow(ctx, sx, sy, flipX);
+      else                                 this._drawBow(ctx, sx, sy, flipX);
       return;
     } else if (stab) {
       // Hold the shaft near-horizontal (pointing where you face); jab out+back.
@@ -1403,6 +1404,28 @@ class Player {
     ctx.fillRect( 4, -24, 2, 11);                                // right prong
     ctx.fillRect(-6, -14, 12, 2);                                // crossbar
     ctx.fillStyle = '#EAFFFF'; ctx.fillRect(-1, -24, 1, 10);     // glint
+  }
+
+  // Crossbow held sprite (Smart Mobs §2 #3) — a horizontal stock with front
+  // cross-limbs, distinct from the bow; bolt appears while charging.
+  _drawCrossbow(ctx, sx, sy, flipX) {
+    const charge = this.drawProgress;
+    const pull   = -4 * charge;
+    ctx.save();
+    ctx.translate(flipX ? sx - 2 : sx + 14, sy + 15);
+    if (flipX) ctx.scale(-1, 1);
+    ctx.fillStyle = '#7A5520'; ctx.fillRect(-6, -1.5, 20, 3);          // stock
+    ctx.strokeStyle = '#9A9A9A'; ctx.lineWidth = 2.5;                  // front limbs
+    ctx.beginPath(); ctx.moveTo(11, -8); ctx.lineTo(16, 0); ctx.lineTo(11, 8); ctx.stroke();
+    ctx.strokeStyle = '#DDDDDD'; ctx.lineWidth = 1;                    // string
+    ctx.beginPath(); ctx.moveTo(11, -8); ctx.lineTo(6 + pull, 0); ctx.lineTo(11, 8); ctx.stroke();
+    if (charge > 0.1) {                                               // loaded bolt
+      ctx.fillStyle = '#8B5C1A'; ctx.fillRect(2 + pull, -1, 14, 2);
+      ctx.fillStyle = '#AAAAAA'; ctx.beginPath();
+      ctx.moveTo(16 + pull, 0); ctx.lineTo(12 + pull, -2.5); ctx.lineTo(12 + pull, 2.5); ctx.closePath(); ctx.fill();
+    }
+    ctx.fillStyle = '#5A3A10'; ctx.fillRect(-4, 1, 3, 6);             // grip
+    ctx.restore();
   }
 
   _drawBow(ctx, sx, sy, flipX) {

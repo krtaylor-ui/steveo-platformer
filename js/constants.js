@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 89 (FIX weapon switching spun wildly on held number key; trident throw now gated on the Throwable setting so bow shots keep the trident)';
+const GAME_VERSION = 'v3 · build 90 (Smart Mobs: drawn weapon icons (spear/axe/trident/crossbow) in hotbar + placed items + palette; crossbow held sprite)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
