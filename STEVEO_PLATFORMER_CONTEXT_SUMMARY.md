@@ -7,13 +7,13 @@ Guide, **Campaign mode** §12, Tower Defense/bots, world cleanup, itch/Tauri,
 plus new §13–§18: Ladders, Trampolines, Online/MP UX, Mob-config engine,
 Enchantments, Suspicion meter).
 
-## IN PROGRESS (2026-07-13) — Smart Mobs build on branch `smart-mobs`
+## CURRENT STATE (2026-07-13) — build 99, SHIPPED to main + origin
 
-Working through the **"Bug Fixes + Smart Mobs brief"** + a follow-on **weapon-UX
-redesign** Kevin requested mid-stream. Branch `smart-mobs` (off build 72), **NOT
-merged to main** (headless **233/233**). Builds 73–81 browser-untested; **82–95
-have been through Kevin's playtest loop** (weapon switching + trident throw/recall
-confirmed working). Committed per build for rollback. **Shipped to the branch:**
+**Builds 73–99 (the weapon/UX half of the Smart Mobs work) are MERGED to `main`
+and pushed**, browser-verified by Kevin across many playtest rounds. Test suite
+**233/233**. `GAME_VERSION` = build 99; bump all THREE markers each commit.
+The **mob-intelligence half of the brief (§4–§10) is the next batch — NOT started**
+(see REMAINING below). What shipped in 73–99:
 - **§1 — build 73:** World Settings routing (Arena Settings + new all-mode ⚙ World
   Settings button open the HTML panel; `WORLD_SETTINGS.open(game, tab)`).
 - **§2 — build 74:** composable **weapon-trait system** (`WEAPON_TRAITS` +
@@ -60,27 +60,32 @@ confirmed working). Committed per build for rollback. **Shipped to the branch:**
     right-click recalls); **stay crouched** when a slide ends in a 1-block-high tunnel.
   - **95** equipped **armour now shows during the ledge climb** (`_drawFigureAt` overlays).
 
-**REMAINING — two tracks:**
-1. **The mob-intelligence cluster (§4–§10, NOT started):** §4 Detection (LoS/frontal +
-   sound tiers Gravel=Loud/Grass=Quiet/Normal + action), §5 Pack (alert propagation +
-   surround), §6 Wayfinding & ambush-from-above (**biggest — no pathfinding today**),
-   §7 Sprint w/ telegraph, §8 Flee-at-low-HP, §9 Spider webs, §10 Leaves/Bushes (reuse
-   `_drawEndPortalForeground`; §4a foliage occlusion depends on §10). Pervasive,
-   playtest-sensitive mob-AI — a focused follow-up with a browser loop.
-2. **Full controls-config UI (FUTURE_ROADMAP §19):** arbitrary key/button capture grid +
-   Minecraft/Xbox/Switch presets. Foundation shipped (81); the capture UI needs a
-   live-testing session.
+**NEXT BATCH — the actual mob intelligence (§4–§10 of the brief, NOT started).**
+Everything shipped so far was weapons/UX/bugs; the "Smart Mobs" AI itself is untouched.
+Recommended playtest-friendly slice order (each its own build+playtest loop, since these
+pervasively rewrite mob aggro/pathing across all 8 mob classes):
+1. **§10 Leaves/Bushes** first — isolated (new non-solid block + a front/back render pass
+   reusing `_drawEndPortalForeground`); unblocks §4a foliage line-of-sight. Low risk.
+2. **§4 Detection** (the core) — directional/frontal line-of-sight (raycast, occluded by
+   blocks + leaves), sound tiers (Gravel=Loud / Grass=Quiet / Normal, keyed off the §3
+   `isSneaking` + the movement noise events already emitted), action detection (attack/jump).
+   Add per-world tuning knobs; keep additive/opt-in to avoid breaking current aggro.
+3. **§5 Pack** (alert propagation + surround positioning) → **§7 Sprint w/ telegraph** →
+   **§8 Flee-at-low-HP** (per-mob Retreating toggle) → **§9 Spider webs**.
+4. **§6 Wayfinding & ambush-from-above** — biggest (no pathfinding exists today; wants a
+   tile A*/navmesh). Do last or as its own mini-project.
 
-**Playtest watch-items for builds 73–81:** weapon feel (cleave/cone/knockback), the
-**Shift+Left-click place** change in Normal, RMB-ranged, trident throw + auto-return,
-slide-attack launch feel, distinct swipe/stab motions, and the Switch controller preset.
-Drop `sounds/footstep.mp3` + `sounds/land.mp3` in to hear the movement SFX.
+**Other queued (not next):** full **controls-config UI** (arbitrary rebind grid + Minecraft
+preset — FUTURE_ROADMAP §19; foundation shipped build 81); a **boomerang** (reuses the generic
+`guided`/`steerGuided` substrate from build 96); FUTURE_ROADMAP §13–§18 (ladders, trampolines,
+enchantments, etc.). Drop real `sounds/footstep.mp3` + `sounds/land.mp3` in anytime (synth
+fallback covers it meanwhile).
 
-**Ship path:** `node test/run.js` (233/233) → bump the THREE version markers → commit on
-`smart-mobs` → Kevin browser-tests → `git checkout main && git merge --ff-only smart-mobs`
-→ `git push origin main`.
+**Ship path:** `node test/run.js` → bump the THREE version markers (`GAME_VERSION`,
+`?v=bN` in index.html, `CACHE_VERSION` in sw.js) → commit → Kevin browser-tests →
+`git checkout main && git merge --ff-only <branch>` → `git push origin main`.
 
-## CURRENT STATE (2026-07-08) — build 72 (SHIPPED to main + origin)
+## PRIOR STATE (2026-07-08) — build 72 (superseded by build 99 above)
 
 **Where things are:** `main` and `origin/main` are both at **build 72** (`6c3b562`),
 fast-forwarded from build 66. Builds **67–72 are shipped and browser-verified by
