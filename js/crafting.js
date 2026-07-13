@@ -39,6 +39,17 @@ const TOOL_DATA = {
   FLINT_AND_STEEL:   { name: 'Flint & Steel',     type: 'flint_steel', tier: 0, damage: 0,                  mineSpeed: 0, color: '#CC8833' },
 };
 
+// Emoji icon per weapon CLASS (Smart Mobs §2) so spear/axe/trident/crossbow read
+// distinctly in the hotbar, sandbox palette and drops — not all as swords.
+// (No true crossbow emoji exists; 🎯 stands in — a drawn sprite is a follow-up.)
+const WEAPON_CLASS_ICON = { sword: '⚔', spear: '🗡', axe: '🪓', trident: '🔱', bow: '🏹', crossbow: '🎯' };
+// Icon for a TOOL_DATA entry (or palette item) by weapon class, falling back to type.
+function weaponIconFor(d) {
+  if (!d) return '⚔';
+  const cls = d.weaponClass || d.type;
+  return WEAPON_CLASS_ICON[cls] || (d.type === 'pickaxe' ? '⛏' : d.type === 'flint_steel' ? '🔥' : d.type === 'shield' ? '🛡' : '⚔');
+}
+
 const ARMOR_DATA = {
   WOOD_HELMET:          { name: 'Wood Helmet',          tier: 0, piece: 'head',  protection: 0.5, color: '#C8A55A', unlockOre: null },
   WOOD_CHESTPLATE:      { name: 'Wood Chestplate',      tier: 0, piece: 'chest', protection: 0.5, color: '#C8A55A', unlockOre: null },

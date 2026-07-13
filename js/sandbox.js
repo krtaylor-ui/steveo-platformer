@@ -43,6 +43,7 @@ const GEAR_PALETTE_ITEMS = [
       kind: 'tool', key,
       name:  TOOL_DATA[key].name,
       type:  TOOL_DATA[key].type,
+      weaponClass: TOOL_DATA[key].weaponClass,   // for per-weapon palette icons (Smart Mobs §2)
       color: TOOL_DATA[key].color,
     })),
   ...Object.keys(ARMOR_DATA).map(key => ({
@@ -1230,8 +1231,7 @@ class SandboxManager {
                     : data?.piece === 'feet'  ? '👟'
                     : data?.type === 'flint_steel' ? '🔥'
                     : data?.type === 'pickaxe' ? '⛏'
-                    : data?.type === 'sword'   ? '⚔'
-                    : data?.type === 'bow'     ? '🏹'
+                    : (data?.type === 'sword' || data?.type === 'bow') ? weaponIconFor(data)
                     : '🛡';
         ctx.shadowColor = color; ctx.shadowBlur = 10;
         ctx.fillStyle   = 'rgba(0,0,0,0.72)';
@@ -1594,8 +1594,8 @@ class SandboxManager {
           const sym   = data?.piece === 'head' ? '⛑' : data?.piece === 'chest' ? '🛡'
                       : data?.piece === 'legs' ? 'L' : data?.piece === 'feet' ? '👟'
                       : data?.type === 'flint_steel' ? '🔥'
-                      : data?.type === 'pickaxe' ? '⛏' : data?.type === 'sword' ? '⚔'
-                      : data?.type === 'bow' ? '🏹' : '🛡';
+                      : data?.type === 'pickaxe' ? '⛏'
+                      : (data?.type === 'sword' || data?.type === 'bow') ? weaponIconFor(data) : '🛡';
           const ecx = sx + SB_SLOT_SIZE / 2, ecy = sy + SB_SLOT_SIZE / 2;
           ctx.fillStyle    = color;
           ctx.font         = '20px serif';
@@ -1870,7 +1870,8 @@ class SandboxManager {
         const sym = itm.piece === 'head' ? '⛑' : itm.piece === 'chest' ? '🛡'
                   : itm.piece === 'legs' ? 'L' : itm.piece === 'feet' ? '👟'
                   : itm.type === 'flint_steel' ? '🔥'
-                  : itm.type === 'pickaxe' ? '⛏' : itm.type === 'sword' ? '⚔' : itm.type === 'bow' ? '🏹' : '🛡';
+                  : itm.type === 'pickaxe' ? '⛏'
+                  : (itm.type === 'sword' || itm.type === 'bow') ? weaponIconFor(itm) : '🛡';
         ctx.fillText(sym, cxc, cyc + 9);
         if (hov) {
           ctx.fillStyle    = itm.color;

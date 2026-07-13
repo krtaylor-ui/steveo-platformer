@@ -11370,10 +11370,8 @@ class Game {
         const toolKey  = i === 0 ? p.sword : p.bow;
         // Icon by weapon class (Smart Mobs §2) so a Spear/Axe/Trident/Crossbow
         // reads distinctly in its slot; falls back to the slot's default.
-        const _wcls    = toolKey && TOOL_DATA[toolKey] ? (TOOL_DATA[toolKey].weaponClass || TOOL_DATA[toolKey].type) : null;
-        const _ICONS   = { sword: '⚔', spear: '🗡', axe: '🪓', trident: '🔱', bow: '🏹', crossbow: '🏹' };
-        const toolIcon = (_wcls && _ICONS[_wcls]) || (i === 0 ? '⚔' : '🏹');
         const toolData = toolKey ? TOOL_DATA[toolKey] : null;
+        const toolIcon = toolData ? weaponIconFor(toolData) : (i === 0 ? '⚔' : '🏹');
         // Collected-count badge: "▸N" top-right when the slot holds >1 weapon.
         const _owned = i === 0 ? p.meleeOwned.length : p.rangedOwned.length;
         if (_owned > 1) {
