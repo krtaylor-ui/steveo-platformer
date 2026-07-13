@@ -2044,11 +2044,6 @@ class Game {
       if (this.player._tridentOut && this.player._tridentArrow && !this.player._tridentArrow.alive) {
         this.player.recoverTrident(); this.player._tridentArrow = null;
       }
-      // Auto-Return (§6, opt-in): a stuck trident flies back on its own after a beat.
-      const _ta = this.player._tridentArrow;
-      if (this._worldAdvSettings.tridentAutoReturn && this.player._tridentOut && _ta && _ta.stuck && (_ta._stuckAge || 0) > 40) {
-        _ta.returning = true;
-      }
     }
 
     // Phase 17: Speed Runner post-update (boost multipliers, collision, ghost)
@@ -2213,15 +2208,20 @@ class Game {
     // fires. The active hand drives which weapon the sprite shows.
     let _meleeFired = false;
 
-    // Q (or gamepad R3) recalls a thrown Trident — it homes back and re-equips (§6).
-    if (this.input.isThrow() && this.player._tridentOut && this.player._tridentArrow && this.player._tridentArrow.alive) {
+    // Trident Recall (§6): when enabled, a second right-click recalls the thrown
+    // trident (homes back) and the throw does NOT switch to the next weapon — the
+    // trident stays "yours", boomerang-style. Q / gamepad R3 always recall too.
+    const _tridentRecall = !!this._worldAdvSettings.tridentAutoReturn;
+    const _tridentIsOut  = this.player.meleeClass === 'trident' && this.player._tridentOut;
+    if ((this.input.isThrow() || (_tridentRecall && this.input.mouse.rightClicked)) &&
+        this.player._tridentOut && this.player._tridentArrow && this.player._tridentArrow.alive) {
       this.player._tridentArrow.returning = true;
     }
 
     // ── Melee (sword / spear / axe / trident thrust) — checked FIRST ──
     if (this._p1RespawnTimer === 0 && !p1CarryingFlag) {
       const traits = this._meleeTraits(this.player);
-      if (meleeNow && this.player.attackCooldown === 0 && !this.player.bowDrawing) {
+      if (meleeNow && this.player.attackCooldown === 0 && !this.player.bowDrawing && !_tridentIsOut) {
         this.mobManager.playerAttack(this.player, 'p1', traits);
         this._playerAttackDragon();
         this._playerMeleeWither();
@@ -2239,7 +2239,7 @@ class Game {
 
     // ── Ranged: Trident throw (if equipped) else bow/crossbow — right-click,
     //    hold to charge, release to fire. Skipped the frame melee fires. ──
-    if (this._p1RespawnTimer === 0 && !p1CarryingFlag && !_meleeFired && (_ownsRanged || _tridentActive)) {
+    if (this._p1RespawnTimer === 0 && !p1CarryingFlag && !_meleeFired && (_ownsRanged || _tridentActive) && !_tridentIsOut) {
       if (_tridentActive) {
         if (rangedDown) {
           this.player.bowDrawing   = true;   // reuse the charge/aim plumbing
@@ -2255,7 +2255,10 @@ class Game {
           this.player._tridentArrow = this.mobManager.addPlayerArrow(
             this.player.cx, this.player.cy, Math.cos(angle) * speed, Math.sin(angle) * speed,
             dmg, 'p1', { trident: true, gravity: 0.10 });
-          this.player.throwActiveTrident();          // equip the next melee weapon
+          // Recall mode keeps the trident "yours" (no weapon switch); otherwise it
+          // auto-equips the next melee weapon and you recover it by walking over it.
+          if (_tridentRecall) this.player._tridentOut = true;
+          else                this.player.throwActiveTrident();
           this.player.bowDrawing = false; this.player.drawProgress = 0;
           this.player.swingTimer = 12;               // small throw animation
           this._playSound('sounds/bow-fire.mp3');

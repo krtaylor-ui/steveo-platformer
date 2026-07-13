@@ -180,9 +180,11 @@ const WORLD_SETTINGS = {
       // ── Special moves (Smart Mobs §2) — per-weapon context attacks ──
       { key: 'slideAttack', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Slide Attack (Spear)', hint: 'ground-slide with a spear launches nearby mobs into the air' },
       { key: 'slideAttackDmg', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'cycle', opts: O.wdmg, dflt: 1.0, label: 'Slide Attack Damage', fmt: x1, advanced: true, dependsOn: 'slideAttack' },
-      // Smart Mobs §6 — a thrown Trident flies back to the player on its own shortly
-      // after it lands (the "loyalty" enchantment). Q always recalls it manually.
-      { key: 'tridentAutoReturn', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Trident Auto-Return' },
+      // Smart Mobs §6 — when on, the thrown Trident stays "yours" (throw doesn't
+      // switch weapons) and a second right-click recalls it (boomerang). When off,
+      // a throw auto-equips the next weapon and you recover the trident by walking
+      // over where it stuck. Q / gamepad R3 also recall in either mode.
+      { key: 'tridentAutoReturn', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Trident Recall (right-click)' },
       // ── Weapons (Smart Mobs §2) — starting weapon + per-weapon trait config ──
       ...this._weaponRows(M, O, x1),
       // (Audio, Controls, Show-Health-Bars and Disable-Chat are PLAYER settings —

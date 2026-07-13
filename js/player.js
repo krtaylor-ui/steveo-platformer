@@ -359,13 +359,28 @@ class Player {
     if (this._hangState) { this._updateHang(input, level); this._animate(input); return; }
 
     this._detectWallSlide(input, level);   // sets _wallSliding (used by jump + physics)
-    this._handleInput(input);
+    this._handleInput(input, level);
     this._applyPhysics(level);
     this._tryLedgeGrab(input, level);      // grab from air / climb down from a ledge
     this._animate(input);
   }
 
-  _handleInput(input) {
+  // Can the player stand up from a crouch here, or is there a low ceiling? Checks
+  // the rows the standing body would newly occupy above the crouch box are clear.
+  _canStand(level) {
+    if (!level) return true;
+    const bLeft  = Math.floor((this.x + 2)              / BLOCK_SIZE);
+    const bRight = Math.floor((this.x + this.width - 2) / BLOCK_SIZE);
+    const newTop = this.y - (PLAYER_H - CROUCH_H);   // head position when standing
+    const rTop   = Math.floor(newTop / BLOCK_SIZE);
+    const rCur   = Math.floor((this.y + 1) / BLOCK_SIZE);   // current crouch top row
+    for (let r = rTop; r < rCur; r++) {
+      for (let c = bLeft; c <= bRight; c++) if (level.isSolid(r, c)) return false;
+    }
+    return true;
+  }
+
+  _handleInput(input, level) {
     // Existing hyper speed stays 3×; speedMultiplier (1 or 2) stacks on top → 6× at level 2.
     const hsMult = (this.hyperSpeed ? 3 : 1) * (this.speedMultiplier || 1);
     // Sprint (Shift / isRun) doubles ground speed when enabled per-world.
@@ -443,8 +458,12 @@ class Player {
       this.y += PLAYER_H - CROUCH_H;
       this.crouching = true;
     } else if (!wantCrouch && this.crouching) {
-      this.y -= PLAYER_H - CROUCH_H;
-      this.crouching = false;
+      // Only stand if there's headroom; in a 1-block-high tunnel (e.g. sliding
+      // under a low branch) stay crouched instead of clipping up through the block.
+      if (this._canStand(level)) {
+        this.y -= PLAYER_H - CROUCH_H;
+        this.crouching = false;
+      }
     }
 
     // Jump (with coyote time + jump buffer)
@@ -1360,7 +1379,9 @@ class Player {
       return flipX ? (-0.4 + swing * 0.3) : (0.4 - swing * 0.3);
     };
 
-    if (this._mining) {
+    if (this._tridentOut && cls === 'trident' && !rangedActive) {
+      ctx.restore(); return; // trident is thrown (recall mode) → empty hand until it returns
+    } else if (this._mining) {
       ctx.rotate(swipeAngle());
       this._drawPickaxeHead(ctx); // always-active mining shows the pickaxe in-hand
     } else if (rangedActive) {
