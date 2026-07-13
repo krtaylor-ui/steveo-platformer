@@ -51,6 +51,11 @@ class Player {
     this.meleeIndex  = 0;
     this.rangedOwned = [];
     this.rangedIndex = 0;
+    // Smart Mobs §2 — which hand is "live": set by the last attack (melee = left,
+    // ranged = right) so the on-sprite weapon reflects what you're actually using,
+    // independent of the selected hotbar slot. Melee/ranged are mutually exclusive
+    // per frame (melee wins ties).
+    this.activeHand  = 'melee';
     this.discoveredOres = new Set();              // BLOCK ids of ores ever mined
     this.attackCooldown = 0;
     this.iframes        = 0;           // invincibility frames
@@ -1313,11 +1318,13 @@ class Player {
     const hy = crouch ? (sy + 22) : (sy + 26 + Math.sin(this.walkTimer) * 4);
     ctx.translate(hx, hy);
 
-    // Motion by weapon (Smart Mobs §2): swords/axes SWIPE (rotational lunge),
-    // spears/tridents STAB (near-horizontal jab that thrusts out and back). The
-    // rest/swing arc below is the swipe; stab uses a translation instead.
+    // Which weapon shows is driven by the ACTIVE HAND (last attack), not the
+    // selected slot (Smart Mobs §2 #5) — left-click melee → melee weapon shows,
+    // right-click ranged → bow/crossbow shows. Motion by weapon: swords/axes SWIPE
+    // (rotational lunge), spears/tridents STAB (near-horizontal thrust out+back).
+    const rangedActive = this.activeHand === 'ranged' && !!this.bow;
     const cls   = this.meleeClass;
-    const stab  = this.weapon === 'sword' && (cls === 'spear' || cls === 'trident');
+    const stab  = !rangedActive && (cls === 'spear' || cls === 'trident');
     const metal = (typeof TOOL_DATA !== 'undefined' && TOOL_DATA[this.sword] && TOOL_DATA[this.sword].color) || '#CCCCCC';
     const swipeAngle = () => {
       if (this.swingTimer > 0) {
@@ -1332,10 +1339,7 @@ class Player {
     if (this._mining) {
       ctx.rotate(swipeAngle());
       this._drawPickaxeHead(ctx); // always-active mining shows the pickaxe in-hand
-    } else if (this.weapon === 'item') {
-      ctx.restore();
-      return; // nothing to draw for plain item slots
-    } else if (this.weapon === 'bow') {
+    } else if (rangedActive) {
       ctx.restore();
       this._drawBow(ctx, sx, sy, flipX);
       return;

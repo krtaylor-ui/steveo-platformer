@@ -2176,30 +2176,13 @@ class Game {
       this.player.bowDrawing = false; this.player.drawProgress = 0;
     }
 
-    // ── Ranged (bow / crossbow) — available whenever a ranged weapon is owned ──
-    if (this._p1RespawnTimer === 0 && !p1CarryingFlag && _ownsRanged) {
-      const hasArrows = this._worldAdvSettings.unlimitedArrows || this.player.countItem(BLOCK.ARROW) > 0;
-      if (rangedDown && hasArrows) {
-        this.player.bowDrawing   = true;
-        this.player.bowMouseAim  = true;  // cursor/right-stick aimed
-        this.player.drawProgress = Math.min(1, this.player.drawProgress + (1 / BOW_CHARGE_FRAMES) * (this.player._fireRateMult || 1));
-      } else if (rangedDown && !hasArrows) {
-        this.player.bowDrawing = false; this.player.drawProgress = 0;
-      } else if (this.player.bowDrawing) {
-        const charge = this.player.drawProgress;
-        const speed  = BOW_MIN_SPEED + (BOW_MAX_SPEED - BOW_MIN_SPEED) * charge;
-        const angle  = Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
-        const rt = this._rangedTraits(this.player);   // Crossbow = pierce
-        this.mobManager.addPlayerArrow(
-          this.player.cx, this.player.cy, Math.cos(angle) * speed, Math.sin(angle) * speed,
-          Math.max(1, Math.round(PLAYER_ARROW_DAMAGE * (rt.dmgMult || 1))), 'p1', { pierce: rt.pierce });
-        this._playSound('sounds/bow-fire.mp3');
-        if (!this._worldAdvSettings.unlimitedArrows) this._consumeArrow();
-        this.player.bowDrawing = false; this.player.drawProgress = 0;
-      }
-    }
+    // Melee + ranged are MUTUALLY EXCLUSIVE per frame (Smart Mobs §2 #5): melee
+    // wins ties, and a bow already charging keeps priority (first-press wins) — so
+    // melee is blocked while bowDrawing, and ranged is skipped the frame melee
+    // fires. The active hand drives which weapon the sprite shows.
+    let _meleeFired = false;
 
-    // ── Melee (sword / spear / axe / trident) — always available ──
+    // ── Melee (sword / spear / axe / trident) — checked FIRST ──
     if (this._p1RespawnTimer === 0 && !p1CarryingFlag) {
       const traits = this._meleeTraits(this.player);
       // Trident throw (Q / gamepad R3): flies out, auto-returns; melee thrust is
@@ -2217,10 +2200,11 @@ class Game {
         this.player._tridentArrow = this.mobManager.addPlayerArrow(
           this.player.cx, this.player.cy, Math.cos(angle) * 18, Math.sin(angle) * 18, dmg, 'p1', { trident: true });
         this.player._tridentOut = true;
+        this.player.activeHand = 'melee';
         this.player.attackCooldown = Math.round(ATTACK_COOLDOWN * (traits.cooldownMult || 1));
         this.player.swingTimer = 15;
         this._playSound('sounds/bow-fire.mp3');
-      } else if (!this.player._tridentOut && meleeNow && this.player.attackCooldown === 0) {
+      } else if (!this.player._tridentOut && meleeNow && this.player.attackCooldown === 0 && !this.player.bowDrawing) {
         this.mobManager.playerAttack(this.player, 'p1', traits);
         this._playerAttackDragon();
         this._playerMeleeWither();
@@ -2228,9 +2212,36 @@ class Game {
           for (const hit of this.mobManager.playerAttackRemoteCheck(this.player, window.multiplayerManager.remoteMobs))
             window.multiplayerManager.sendMobDamage(hit.mobId, hit.damage, hit.knockDir);
         }
+        this.player.activeHand = 'melee';
+        _meleeFired = true;
         this.player.attackCooldown = Math.round(ATTACK_COOLDOWN * (traits.cooldownMult || 1));
         this.player.swingTimer     = 15;
         this._playSound('sounds/attack-sword.mp3');
+      }
+    }
+
+    // ── Ranged (bow / crossbow) — skipped the frame melee fires ──
+    if (this._p1RespawnTimer === 0 && !p1CarryingFlag && _ownsRanged && !_meleeFired) {
+      const hasArrows = this._worldAdvSettings.unlimitedArrows || this.player.countItem(BLOCK.ARROW) > 0;
+      if (rangedDown && hasArrows) {
+        this.player.bowDrawing   = true;
+        this.player.bowMouseAim  = true;  // cursor/right-stick aimed
+        this.player.activeHand   = 'ranged';
+        this.player.drawProgress = Math.min(1, this.player.drawProgress + (1 / BOW_CHARGE_FRAMES) * (this.player._fireRateMult || 1));
+      } else if (rangedDown && !hasArrows) {
+        this.player.bowDrawing = false; this.player.drawProgress = 0;
+      } else if (this.player.bowDrawing) {
+        const charge = this.player.drawProgress;
+        const speed  = BOW_MIN_SPEED + (BOW_MAX_SPEED - BOW_MIN_SPEED) * charge;
+        const angle  = Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
+        const rt = this._rangedTraits(this.player);   // Crossbow = pierce
+        this.mobManager.addPlayerArrow(
+          this.player.cx, this.player.cy, Math.cos(angle) * speed, Math.sin(angle) * speed,
+          Math.max(1, Math.round(PLAYER_ARROW_DAMAGE * (rt.dmgMult || 1))), 'p1', { pierce: rt.pierce });
+        this.player.activeHand = 'ranged';
+        this._playSound('sounds/bow-fire.mp3');
+        if (!this._worldAdvSettings.unlimitedArrows) this._consumeArrow();
+        this.player.bowDrawing = false; this.player.drawProgress = 0;
       }
     }
 
@@ -10407,6 +10418,9 @@ class Game {
   _selectOrCycleSlot(hk) {
     const p = this.player;
     const kind = hk === 0 ? 'melee' : hk === 1 ? 'ranged' : null;
+    // Selecting/cycling a weapon slot also makes that hand active, so the cycled
+    // weapon immediately shows on the sprite (Smart Mobs §2 #5).
+    if (kind && (kind === 'melee' || p.bow)) p.activeHand = kind;
     if (kind && p.selectedSlot === hk) {
       const key = p.cycleWeapon(kind);
       if (key && TOOL_DATA[key]) this._notify(TOOL_DATA[key].name, TOOL_DATA[key].color || '#ffffff', 90);
