@@ -243,6 +243,16 @@ const NormalProgress = {
       hotbar:        player.hotbar.map(s => s ? { type: s.type, count: s.count, armorKey: s.armorKey } : null),
       inventory:     player.inventory.map(s => s ? { type: s.type, count: s.count, armorKey: s.armorKey } : null),
       equippedArmor: { ...player.equippedArmor },
+      // Weapons: active tools + full collection (Smart Mobs §2) so collected
+      // weapons survive leave→continue, not just the active one.
+      pickaxe:       player.pickaxe,
+      sword:         player.sword,
+      bow:           player.bow,
+      meleeOwned:    Array.isArray(player.meleeOwned)  ? [...player.meleeOwned]  : undefined,
+      meleeIndex:    player.meleeIndex,
+      rangedOwned:   Array.isArray(player.rangedOwned) ? [...player.rangedOwned] : undefined,
+      rangedIndex:   player.rangedIndex,
+      hasShield:     !!player.hasShield,
       px:          Math.floor(player.x),
       py:          Math.floor(player.y),
       bedCol:      bedPos ? bedPos.col : null,

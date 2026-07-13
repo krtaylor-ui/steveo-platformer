@@ -14647,6 +14647,25 @@ class Game {
           }
         }
         if (progress.hasFlintSteel) this.player.hasFlintSteel = true;
+        if (progress.hasShield)     this.player.hasShield     = true;
+        if (progress.pickaxe)       this.player.pickaxe       = progress.pickaxe;
+        // Restore the weapon COLLECTION (Smart Mobs §2), collection is source of
+        // truth; fall back to the legacy single active weapon for older saves.
+        if (Array.isArray(progress.meleeOwned) && progress.meleeOwned.length) {
+          this.player.meleeOwned = progress.meleeOwned.slice();
+          this.player.meleeIndex = Math.min(progress.meleeIndex || 0, this.player.meleeOwned.length - 1);
+          this.player._syncActiveWeapon('melee');
+          this._startWeaponsApplied = true;   // don't let the starting-weapon default clobber the resume
+        } else if (progress.sword) {
+          this.player.sword = progress.sword; this.player.normalizeWeapons();
+        }
+        if (Array.isArray(progress.rangedOwned)) {
+          this.player.rangedOwned = progress.rangedOwned.slice();
+          this.player.rangedIndex = Math.min(progress.rangedIndex || 0, Math.max(0, this.player.rangedOwned.length - 1));
+          this.player._syncActiveWeapon('ranged');
+        } else if ('bow' in progress) {
+          this.player.bow = progress.bow;
+        }
         if (Array.isArray(progress.discoveredOres)) {
           for (const ore of progress.discoveredOres) this.player.discoveredOres.add(ore);
         }

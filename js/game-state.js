@@ -240,6 +240,14 @@ const GAME_STATE = {
         hotbar:       p.hotbar    ? p.hotbar.map(s => s ? { ...s } : null)    : [],
         inventory:    p.inventory ? p.inventory.map(s => s ? { ...s } : null) : [],
         equippedArmor:  { ...(p.equippedArmor  || {}) },
+        // Weapons: active tools + the full collection (Smart Mobs §2) so collected
+        // weapons survive leave→continue, not just the active one.
+        pickaxe:      p.pickaxe,
+        meleeOwned:   Array.isArray(p.meleeOwned)  ? [...p.meleeOwned]  : undefined,
+        meleeIndex:   p.meleeIndex,
+        rangedOwned:  Array.isArray(p.rangedOwned) ? [...p.rangedOwned] : undefined,
+        rangedIndex:  p.rangedIndex,
+        hasShield:      !!p.hasShield,
         hasFlintSteel:  !!p.hasFlintSteel,
         discoveredOres: p.discoveredOres ? [...p.discoveredOres] : [],
       },
@@ -271,6 +279,29 @@ const GAME_STATE = {
         }
       }
       if (prog.hasFlintSteel) p.hasFlintSteel = true;
+      if (prog.hasShield)     p.hasShield     = true;
+      if (prog.pickaxe)       p.pickaxe       = prog.pickaxe;
+      // Restore the weapon COLLECTION (Smart Mobs §2); the collection is the source
+      // of truth, so derive the active sword/bow from it. Fall back to the legacy
+      // single active weapon for older saves.
+      if (Array.isArray(prog.meleeOwned) && prog.meleeOwned.length) {
+        p.meleeOwned = prog.meleeOwned.slice();
+        p.meleeIndex = Math.min(prog.meleeIndex || 0, p.meleeOwned.length - 1);
+        if (p._syncActiveWeapon) p._syncActiveWeapon('melee');
+      } else if (prog.sword) {
+        p.sword = prog.sword;
+        if (p.normalizeWeapons) p.normalizeWeapons();
+      }
+      if (Array.isArray(prog.rangedOwned)) {
+        p.rangedOwned = prog.rangedOwned.slice();
+        p.rangedIndex = Math.min(prog.rangedIndex || 0, Math.max(0, p.rangedOwned.length - 1));
+        if (p._syncActiveWeapon) p._syncActiveWeapon('ranged');
+      } else if ('bow' in prog) {
+        p.bow = prog.bow;
+      }
+      // Weapons were restored → don't let the world's starting-weapon default
+      // re-apply on the first update and clobber the resumed loadout.
+      if (Array.isArray(prog.meleeOwned)) game._startWeaponsApplied = true;
       if (Array.isArray(prog.discoveredOres)) {
         for (const ore of prog.discoveredOres) p.discoveredOres.add(ore);
       }
