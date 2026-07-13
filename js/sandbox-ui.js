@@ -481,7 +481,7 @@ const SANDBOX = {
     } else {
       sendWidth = worldWidth; sendHeight = worldHeight;
       if (!(worldWidth >= 25 && worldWidth <= 2000)) { alert('Width must be 25-2000'); return; }
-      if (!(worldHeight >= 30 && worldHeight <= 500)) { alert('Height must be 30-500'); return; }
+      if (!(worldHeight >= 15 && worldHeight <= 500)) { alert('Height must be 15-500'); return; }
     }
 
     if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {

@@ -2188,8 +2188,17 @@ class Game {
     const meleeNow    = this.input.isMeleeAttack() ||
                         (this.gameMode !== 'sandbox' && this.input.mouse.clicked && !p1OverMineable && !_p1Shift);
 
-    // Cancel any in-progress bow draw when it can't continue.
-    if ((p1CarryingFlag || !_ownsRanged) && this.player.bowDrawing) {
+    // A Trident equipped as the melee weapon THROWS on right-click (its ranged
+    // action) — but ONLY when its Throwable trait is on (World Settings → Combat →
+    // Weapon · Trident). When Throwable is off, right-click fires the bow instead
+    // and the Trident stays equipped.
+    const _tridentActive = this.player.meleeClass === 'trident' && !this.player._tridentOut &&
+                           !!this._meleeTraits(this.player).throwable;
+
+    // Cancel an in-progress charge only when NEITHER a bow nor a trident-throw can
+    // continue. BUGFIX #5: this previously fired whenever the player owned no bow,
+    // wiping the Trident's charge every frame so the throw never fired.
+    if ((p1CarryingFlag || (!_ownsRanged && !_tridentActive)) && this.player.bowDrawing) {
       this.player.bowDrawing = false; this.player.drawProgress = 0;
     }
 
@@ -2203,12 +2212,6 @@ class Game {
     if (this.input.isThrow() && this.player._tridentOut && this.player._tridentArrow && this.player._tridentArrow.alive) {
       this.player._tridentArrow.returning = true;
     }
-    // A Trident equipped as the melee weapon THROWS on right-click (its ranged
-    // action) — but ONLY when its Throwable trait is on (World Settings → Combat →
-    // Weapon · Trident). When Throwable is off, right-click fires the bow instead
-    // and the Trident stays equipped (Smart Mobs §6 fix).
-    const _tridentActive = this.player.meleeClass === 'trident' && !this.player._tridentOut &&
-                           !!this._meleeTraits(this.player).throwable;
 
     // ── Melee (sword / spear / axe / trident thrust) — checked FIRST ──
     if (this._p1RespawnTimer === 0 && !p1CarryingFlag) {
@@ -10452,15 +10455,15 @@ class Game {
   _selectOrCycleSlot(hk) {
     const p = this.player;
     const kind = hk === 0 ? 'melee' : hk === 1 ? 'ranged' : null;
-    // Selecting/cycling a weapon slot also makes that hand active, so the cycled
-    // weapon immediately shows on the sprite (Smart Mobs §2 #5).
-    if (kind && (kind === 'melee' || p.bow)) p.activeHand = kind;
-    if (kind && p.selectedSlot === hk) {
-      const key = p.cycleWeapon(kind);
-      if (key && TOOL_DATA[key]) this._notify(TOOL_DATA[key].name, TOOL_DATA[key].color || '#ffffff', 90);
-    } else {
-      p.selectedSlot = hk;
-    }
+    if (!kind) { p.selectedSlot = hk; return; }
+    // A weapon slot (0 = melee, 1 = ranged): each press selects it, makes that
+    // hand active (so the sprite shows it), AND cycles to the next weapon of that
+    // type if you own more than one — so every press visibly swaps (Smart Mobs §2
+    // #4/#5). No two-step "select then re-press" (that read as 'switching broken').
+    p.selectedSlot = hk;
+    if (kind === 'melee' || p.bow) p.activeHand = kind;
+    const key = p.cycleWeapon(kind);
+    if (key && TOOL_DATA[key]) this._notify(TOOL_DATA[key].name, TOOL_DATA[key].color || '#ffffff', 90);
   }
 
   // Smart Mobs §2 — resolve a weapon's active traits: WEAPON_TRAITS[class] base,
