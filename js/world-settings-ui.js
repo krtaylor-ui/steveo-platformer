@@ -173,6 +173,10 @@ const WORLD_SETTINGS = {
       { key: 'bossAttackRateMultiplier', tab: 'combat', group: 'Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Attack Rate', fmt: x1, advanced: true },
       { key: 'disableDragonHealing', tab: 'combat', group: 'Boss Scaling', modes: M.adventure, type: 'toggle', dflt: false, label: 'Disable Dragon Healing', advanced: true },
       { key: 'unlimitedArrows', tab: 'combat', group: 'Combat', modes: M.adventure, type: 'toggle', dflt: false, label: 'Unlimited Arrows', advanced: true },
+      // Smart Mobs §6 — arrows that miss every mob stick where they land and can be
+      // walked over to recover. Only meaningful when arrows are finite (hidden when
+      // Unlimited Arrows is on).
+      { key: 'recoverableArrows', tab: 'combat', group: 'Combat', modes: M.adventure, type: 'toggle', dflt: false, label: 'Recoverable Arrows', advanced: true, showWhen: (g) => !g._worldAdvSettings.unlimitedArrows },
       // ── Special moves (Smart Mobs §2) — per-weapon context attacks ──
       { key: 'slideAttack', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Slide Attack (Spear)', hint: 'ground-slide with a spear launches nearby mobs into the air' },
       { key: 'slideAttackDmg', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'cycle', opts: O.wdmg, dflt: 1.0, label: 'Slide Attack Damage', fmt: x1, advanced: true, dependsOn: 'slideAttack' },

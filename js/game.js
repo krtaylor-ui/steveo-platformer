@@ -2028,6 +2028,16 @@ class Game {
     }
     this._playMovementSfx(this.player);   // Smart Mobs §4 — footstep + landing SFX
     this._updateSlideAttack();            // Smart Mobs §2 — spear slide-attack
+    // Smart Mobs §6 — pick up stuck/recalled projectiles the player walks over.
+    if (this.player) {
+      const _picked = this.mobManager.collectStuckArrows(this.player);
+      if (_picked.trident) { this.player.recoverTrident(); this.player._tridentArrow = null; this._notify('Trident recovered', '#3FB8C0', 90); }
+      for (let i = 0; i < _picked.arrows; i++) this.player.addBlock(BLOCK.ARROW);
+      // Never permanently lose a thrown Trident: if it expired/flew off, return it.
+      if (this.player._tridentOut && this.player._tridentArrow && !this.player._tridentArrow.alive) {
+        this.player.recoverTrident(); this.player._tridentArrow = null;
+      }
+    }
 
     // Phase 17: Speed Runner post-update (boost multipliers, collision, ghost)
     if (this.gameMode === 'speedrunner') this._updateSpeedRunner();
@@ -2182,29 +2192,18 @@ class Game {
     // fires. The active hand drives which weapon the sprite shows.
     let _meleeFired = false;
 
-    // ── Melee (sword / spear / axe / trident) — checked FIRST ──
+    // Q (or gamepad R3) recalls a thrown Trident — it homes back and re-equips (§6).
+    if (this.input.isThrow() && this.player._tridentOut && this.player._tridentArrow && this.player._tridentArrow.alive) {
+      this.player._tridentArrow.returning = true;
+    }
+    // A Trident equipped as the melee weapon THROWS on right-click (its ranged
+    // action); otherwise right-click fires the bow/crossbow.
+    const _tridentActive = this.player.meleeClass === 'trident' && !this.player._tridentOut;
+
+    // ── Melee (sword / spear / axe / trident thrust) — checked FIRST ──
     if (this._p1RespawnTimer === 0 && !p1CarryingFlag) {
       const traits = this._meleeTraits(this.player);
-      // Trident throw (Q / gamepad R3): flies out, auto-returns; melee thrust is
-      // disabled while it's out.
-      if (this.player.meleeClass === 'trident' && traits.throwable && !this.player._tridentOut &&
-          this.player.attackCooldown === 0 && this.input.isThrow()) {
-        let angle;
-        if (this.input.p1GpSlot >= 0) {
-          const gp = this.input.gamepads[this.input.p1GpSlot], m = Math.hypot(gp.aimX, gp.aimY);
-          angle = m > 0.2 ? Math.atan2(gp.aimY, gp.aimX) : (this.player.facing > 0 ? 0 : Math.PI);
-        } else {
-          angle = Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
-        }
-        const dmg = Math.max(1, Math.round(this.player.weaponDamage * (traits.dmgMult || 1) * 1.3));
-        this.player._tridentArrow = this.mobManager.addPlayerArrow(
-          this.player.cx, this.player.cy, Math.cos(angle) * 18, Math.sin(angle) * 18, dmg, 'p1', { trident: true });
-        this.player._tridentOut = true;
-        this.player.activeHand = 'melee';
-        this.player.attackCooldown = Math.round(ATTACK_COOLDOWN * (traits.cooldownMult || 1));
-        this.player.swingTimer = 15;
-        this._playSound('sounds/bow-fire.mp3');
-      } else if (!this.player._tridentOut && meleeNow && this.player.attackCooldown === 0 && !this.player.bowDrawing) {
+      if (meleeNow && this.player.attackCooldown === 0 && !this.player.bowDrawing) {
         this.mobManager.playerAttack(this.player, 'p1', traits);
         this._playerAttackDragon();
         this._playerMeleeWither();
@@ -2220,28 +2219,53 @@ class Game {
       }
     }
 
-    // ── Ranged (bow / crossbow) — skipped the frame melee fires ──
-    if (this._p1RespawnTimer === 0 && !p1CarryingFlag && _ownsRanged && !_meleeFired) {
-      const hasArrows = this._worldAdvSettings.unlimitedArrows || this.player.countItem(BLOCK.ARROW) > 0;
-      if (rangedDown && hasArrows) {
-        this.player.bowDrawing   = true;
-        this.player.bowMouseAim  = true;  // cursor/right-stick aimed
-        this.player.activeHand   = 'ranged';
-        this.player.drawProgress = Math.min(1, this.player.drawProgress + (1 / BOW_CHARGE_FRAMES) * (this.player._fireRateMult || 1));
-      } else if (rangedDown && !hasArrows) {
-        this.player.bowDrawing = false; this.player.drawProgress = 0;
-      } else if (this.player.bowDrawing) {
-        const charge = this.player.drawProgress;
-        const speed  = BOW_MIN_SPEED + (BOW_MAX_SPEED - BOW_MIN_SPEED) * charge;
-        const angle  = Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
-        const rt = this._rangedTraits(this.player);   // Crossbow = pierce
-        this.mobManager.addPlayerArrow(
-          this.player.cx, this.player.cy, Math.cos(angle) * speed, Math.sin(angle) * speed,
-          Math.max(1, Math.round(PLAYER_ARROW_DAMAGE * (rt.dmgMult || 1))), 'p1', { pierce: rt.pierce });
-        this.player.activeHand = 'ranged';
-        this._playSound('sounds/bow-fire.mp3');
-        if (!this._worldAdvSettings.unlimitedArrows) this._consumeArrow();
-        this.player.bowDrawing = false; this.player.drawProgress = 0;
+    // ── Ranged: Trident throw (if equipped) else bow/crossbow — right-click,
+    //    hold to charge, release to fire. Skipped the frame melee fires. ──
+    if (this._p1RespawnTimer === 0 && !p1CarryingFlag && !_meleeFired && (_ownsRanged || _tridentActive)) {
+      if (_tridentActive) {
+        if (rangedDown) {
+          this.player.bowDrawing   = true;   // reuse the charge/aim plumbing
+          this.player.activeHand   = 'melee'; // still holding the trident (cocked)
+          this.player.drawProgress = Math.min(1, this.player.drawProgress + (1 / BOW_CHARGE_FRAMES));
+        } else if (this.player.bowDrawing) {
+          const charge = this.player.drawProgress;
+          const speed  = 14 + 12 * charge;   // charge → faster/farther
+          const angle  = Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
+          const traits = this._meleeTraits(this.player);
+          const dmg    = Math.max(1, Math.round(this.player.weaponDamage * (traits.dmgMult || 1) * 1.3));
+          // Straight throw (low gravity), sticks where it lands / hits.
+          this.player._tridentArrow = this.mobManager.addPlayerArrow(
+            this.player.cx, this.player.cy, Math.cos(angle) * speed, Math.sin(angle) * speed,
+            dmg, 'p1', { trident: true, gravity: 0.10 });
+          this.player.throwActiveTrident();          // equip the next melee weapon
+          this.player.bowDrawing = false; this.player.drawProgress = 0;
+          this.player.swingTimer = 12;               // small throw animation
+          this._playSound('sounds/bow-fire.mp3');
+        }
+      } else if (_ownsRanged) {
+        const hasArrows = this._worldAdvSettings.unlimitedArrows || this.player.countItem(BLOCK.ARROW) > 0;
+        if (rangedDown && hasArrows) {
+          this.player.bowDrawing   = true;
+          this.player.bowMouseAim  = true;
+          this.player.activeHand   = 'ranged';
+          this.player.drawProgress = Math.min(1, this.player.drawProgress + (1 / BOW_CHARGE_FRAMES) * (this.player._fireRateMult || 1));
+        } else if (rangedDown && !hasArrows) {
+          this.player.bowDrawing = false; this.player.drawProgress = 0;
+        } else if (this.player.bowDrawing) {
+          const charge = this.player.drawProgress;
+          const speed  = BOW_MIN_SPEED + (BOW_MAX_SPEED - BOW_MIN_SPEED) * charge;
+          const angle  = Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
+          const rt = this._rangedTraits(this.player);   // Crossbow = pierce
+          // Recoverable when not unlimited + the world setting is on (§6).
+          const recoverable = !this._worldAdvSettings.unlimitedArrows && !!this._worldAdvSettings.recoverableArrows;
+          this.mobManager.addPlayerArrow(
+            this.player.cx, this.player.cy, Math.cos(angle) * speed, Math.sin(angle) * speed,
+            Math.max(1, Math.round(PLAYER_ARROW_DAMAGE * (rt.dmgMult || 1))), 'p1', { pierce: rt.pierce, recoverable });
+          this.player.activeHand = 'ranged';
+          this._playSound('sounds/bow-fire.mp3');
+          if (!this._worldAdvSettings.unlimitedArrows) this._consumeArrow();
+          this.player.bowDrawing = false; this.player.drawProgress = 0;
+        }
       }
     }
 

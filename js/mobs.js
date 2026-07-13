@@ -623,20 +623,42 @@ class Arrow {
     this.age          = 0;
   }
 
+  // Smart Mobs §2 #6 — a stuck projectile rests in place (in ground / where it
+  // hit) until the player walks over it and picks it up.
+  _stick() { this._angle = Math.atan2(this.vy, this.vx); this.stuck = true; this.vx = 0; this.vy = 0; }
+
   // players: array of live players (P1-P4) or a single player (normalized).
   update(players, level) {
-    if (!this.alive) return;
+    if (!this.alive || this.stuck) return;   // stuck projectiles don't move/age
+    // Smart Mobs §6 — a recalled Trident (Q) homes back to the owner, ignoring
+    // gravity/terrain; the pickup check consumes it when it reaches the player.
+    if (this.returning) {
+      const tgt = Array.isArray(players) ? players[0] : players;
+      if (tgt) {
+        const dx = (tgt.x + tgt.width / 2) - this.x, dy = (tgt.y + tgt.height / 2) - this.y;
+        const d = Math.hypot(dx, dy) || 1;
+        this.vx = dx / d * 17; this.vy = dy / d * 17;
+        this._angle = Math.atan2(this.vy, this.vx);
+        this.x += this.vx; this.y += this.vy;
+      }
+      return;
+    }
     this.age++;
-    if (this.age > 280) { this.alive = false; return; }
+    // Tridents get a longer life so they can arc and land; normal arrows expire.
+    if (this.age > (this.isTrident ? 600 : 280)) { this.alive = false; return; }
 
     this.vy += this.gravity;
     this.x  += this.vx;
     this.y  += this.vy;
 
-    // Block collision
+    // Block collision — a Trident, or a recoverable player arrow that hasn't hit
+    // any mob, STICKS in the block (collectable); otherwise it dies.
     const col = Math.floor(this.x / BLOCK_SIZE);
     const row = Math.floor(this.y / BLOCK_SIZE);
-    if (level.isSolid(row, col)) { this.alive = false; return; }
+    if (level.isSolid(row, col)) {
+      if (this.isTrident || (this.isPlayerArrow && this.recoverable && !this._hitAnyMob)) { this._stick(); return; }
+      this.alive = false; return;
+    }
 
     if (this.isPlayerArrow) return; // deflected/player arrows don't hurt player
 
@@ -665,14 +687,14 @@ class Arrow {
     const sx    = this.x - camera.x;
     const sy    = this.y - camera.y;
     if (sx < camera.viewMinX() - 20 || sx > camera.viewMaxX() + 20) return;
-    const angle = Math.atan2(this.vy, this.vx);
+    // Fly (and stick) pointing along travel — straight like an arrow, no spin (§6).
+    const angle = this.stuck ? (this._angle || 0) : Math.atan2(this.vy, this.vx);
 
     ctx.save();
     ctx.translate(Math.floor(sx), Math.floor(sy));
     ctx.rotate(angle);
     if (this.isTrident) {
-      // Thrown Trident (Smart Mobs §2) — spinning cyan shaft + 3-prong head.
-      ctx.rotate((this.age % 20) / 20 * Math.PI * 2); // slow spin
+      // Trident — cyan shaft + 3-prong head, oriented along flight (sticks straight).
       ctx.fillStyle = '#3FB8C0';
       ctx.fillRect(-13, -1.5, 22, 3);
       ctx.beginPath();
@@ -1590,10 +1612,12 @@ class MobManager {
   addPlayerArrow(x, y, vx, vy, damage, owner = 'p1', opts = null) {
     const a = new Arrow(x, y, vx, vy, damage, BOW_GRAVITY, true);
     a.owner = owner; // arena kill attribution ('p1' | 'p2')
-    if (opts && opts.pierce)  a.pierce   = true; // Smart Mobs §2 — Crossbow trait
-    if (opts && opts.trident) a.isTrident = true; // Smart Mobs §2 — thrown Trident (visual)
+    if (opts && opts.pierce)      a.pierce      = true; // Smart Mobs §2 — Crossbow trait
+    if (opts && opts.trident)     a.isTrident   = true; // Smart Mobs §2 — thrown Trident
+    if (opts && opts.recoverable) a.recoverable = true; // Smart Mobs §6 — sticks + collectable on a clean miss
+    if (opts && opts.gravity != null) a.gravity = opts.gravity; // Trident throw = straight (low gravity)
     this.playerArrows.push(a);
-    return a; // caller may hold the ref (Trident recovery watches a.alive)
+    return a; // caller may hold the ref (Trident recovery / stick tracking)
   }
 
   // Owner-tagged list of live local players for PvP hit detection (Phase 3B).
@@ -1699,7 +1723,7 @@ class MobManager {
     if (pvpTargets) for (const [id, p] of pvpTargets) teamOf[id] = p ? p.teamId : null;
     for (const pa of this.playerArrows) {
       pa.update(player, level);
-      if (!pa.alive) continue;
+      if (!pa.alive || pa.stuck) continue;   // stuck projectiles rest until picked up
       for (const mob of this.mobs) {
         if (!mob.alive) continue;
         // Piercing arrows (Crossbow) pass through, hitting each mob at most once.
@@ -1711,7 +1735,11 @@ class MobManager {
             this.damageNums.push(new DamageNumber(mob.cx, mob.y - 8, pa.damage, '#00EEFF'));
           }
           if (!mob.alive) this.onKill?.(pa.owner || 'p1', mob); // arena scoring
-          if (pa.pierce) {
+          pa._hitAnyMob = true;   // an arrow that hit a mob is NOT recoverable (§6)
+          if (pa.isTrident) {
+            pa._stick();          // a Trident sticks into whatever it hits
+            break;
+          } else if (pa.pierce) {
             (pa._hitMobs || (pa._hitMobs = new Set())).add(mob);
             // keep flying — no break, so it can strike mobs behind this one
           } else {
@@ -1720,6 +1748,7 @@ class MobManager {
           }
         }
       }
+      if (pa.stuck) continue;   // trident stuck into a mob — skip PvP + keep it around
       // PvP: an un-consumed player arrow can strike a player other than its owner.
       if (pa.alive && pvpTargets) {
         for (const [id, p] of pvpTargets) {
@@ -1893,6 +1922,23 @@ class MobManager {
       if (lethal) { mob.hp = 0; mob._tossDeath = 46; this.onKill?.(owner, mob); } // fly + spin, then disappear
     }
     return any;
+  }
+
+  // Smart Mobs §6 — the player walking over a stuck (or a recalled, returning)
+  // projectile picks it up. Returns { trident, arrows } for the game to apply
+  // (re-equip the Trident / add recovered arrows to the quiver).
+  collectStuckArrows(player) {
+    let trident = false, arrows = 0;
+    for (const pa of this.playerArrows) {
+      if (!pa.alive || (!pa.stuck && !pa.returning)) continue;
+      if (pa.x > player.x - 5 && pa.x < player.x + player.width + 5 &&
+          pa.y > player.y - 5 && pa.y < player.y + player.height + 5) {
+        if (pa.isTrident) trident = true; else arrows++;
+        pa.alive = false;   // consumed → filtered out next update
+      }
+    }
+    if (trident || arrows) this.playerArrows = this.playerArrows.filter((a) => a.alive);
+    return { trident, arrows };
   }
 
   // Collect dropped items near player; returns array of {itemKey, amount}

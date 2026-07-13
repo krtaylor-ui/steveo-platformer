@@ -153,6 +153,34 @@ const vyBefore = strong.vy; strong.vy = 0;
 mm3.slideLaunch(slider, 5, hitSet);
 ok(strong.vy === 0, 'already-hit mob is not launched again in the same slide');
 
+// ── Arrow/Trident recovery (§6) ──
+console.log('Projectile recovery:');
+const solid = { isSolid: () => true, height: 20 };
+const mmA = new MobManager();
+const recArrow = mmA.addPlayerArrow(100, 100, 5, 0, 3, 'p1', { recoverable: true });
+recArrow.update(null, solid);
+ok(recArrow.stuck && recArrow.alive, 'recoverable arrow sticks on a clean block hit');
+const plainArrow = mmA.addPlayerArrow(100, 100, 5, 0, 3, 'p1', {});
+plainArrow.update(null, solid);
+ok(!plainArrow.alive && !plainArrow.stuck, 'non-recoverable arrow dies on block hit');
+const hitArrow = mmA.addPlayerArrow(100, 100, 5, 0, 3, 'p1', { recoverable: true });
+hitArrow._hitAnyMob = true;
+hitArrow.update(null, solid);
+ok(!hitArrow.alive, 'a recoverable arrow that already hit a mob is NOT recoverable');
+const trid = mmA.addPlayerArrow(100, 100, 5, 0, 7, 'p1', { trident: true });
+trid.update(null, solid);
+ok(trid.stuck && trid.isTrident, 'a Trident sticks on a block hit');
+
+const mmP = new MobManager();
+const s1 = mmP.addPlayerArrow(50, 50, 0, 0, 3, 'p1', {}); s1._stick();
+const s2 = mmP.addPlayerArrow(55, 55, 0, 0, 7, 'p1', { trident: true }); s2._stick();
+const picked = mmP.collectStuckArrows({ x: 40, y: 40, width: 20, height: 20 });
+ok(picked.trident === true && picked.arrows === 1, 'walking over stuck projectiles collects the arrow + trident');
+const rc = mmP.addPlayerArrow(200, 100, 0, 0, 7, 'p1', { trident: true });
+rc._stick(); rc.stuck = false; rc.returning = true;
+rc.update({ x: 50, y: 100, width: 20, height: 20 }, solid);
+ok(rc.x < 200, 'a recalled (returning) trident homes back toward the player');
+
 // ── Controller preset (face-button remap) ──
 console.log('Controller preset:');
 const _store = {};

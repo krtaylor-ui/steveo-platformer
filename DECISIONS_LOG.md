@@ -1133,3 +1133,31 @@ persistence, fallback). Suite 219/219.
   remap). The remaining work is a capture grid ("click an action → press a key/button") + a
   Minecraft keyboard preset (right-click=place). Spec added to FUTURE_ROADMAP. Not shipped overnight
   because live key/button capture can't be verified headless and a bad map would break all input.
+
+### 2026-07-13 — Playtest batch #2 (Kevin's 8 items → builds 84–88, on `smart-mobs`)
+- **#7 redstone-on-resume (build 84):** platformer/normal/speedrun loaders created lever/trapdoor/
+  pressure_plate/tnt WITHOUT `sandboxPlaced:true`, so the save serializer dropped their state. Added
+  the flag (matches `_loadSandboxWorld`). State round-trips now.
+- **#8 spawn burst (build 84):** clustered eggs near start were suppressed by the min-dist/on-screen/
+  200px gates. `MobManager.spawnInitialBurst(level, startCx)` fires once on a fresh (non-resumed)
+  level, spawning every egg within activation range of the START, bypassing those gates; far eggs
+  still ambient-gated; arena unaffected; resume suppressed via `adoptSerializedMobs`.
+- **#3 icons (build 85):** shared `weaponIconFor()`/`WEAPON_CLASS_ICON` by weaponClass — spear/axe/
+  trident/crossbow read distinctly in hotbar + palette. Crossbow = 🎯 placeholder (no emoji exists).
+- **#2 wall-slide (build 86):** `_detectWallSlide` now needs a wall ≥2 blocks tall (counts solid
+  cells in the column) — a lone 1-block ledge no longer triggers a slide.
+- **#1 synth SFX (build 86):** `_movementSound` plays the mp3 if present, else a synthesized WebAudio
+  tick/thud (low-pass noise burst); mp3 wins once dropped in; per-file 'missing' flag.
+- **#4/#5 active-hand (build 87):** the on-sprite weapon follows `player.activeHand` (last attack),
+  not the selected slot — LMB melee shows the melee weapon, RMB shows bow/crossbow. Melee/ranged are
+  mutually exclusive per frame (melee wins ties; blocked while bow charging). Cycle sets the hand
+  active so the swap is visible.
+- **#6 trident/arrow recovery (build 88):** per Kevin's answers — **throw the trident** (RMB when
+  trident equipped, else RMB fires the bow), **hold-to-charge**, **Q recalls now**. Trident throws
+  straight (low gravity, no spin), sticks where it lands/hits; on throw the next melee weapon auto-
+  equips (`throwActiveTrident`); walk over it to pick up (`collectStuckArrows` → `recoverTrident`);
+  Q sets the thrown trident `returning` (homes back). A lost/expired thrown trident auto-returns so
+  it's never permanently lost. **Recoverable Arrows** Combat setting (hidden when Unlimited Arrows):
+  arrows that miss every mob stick + are collectable; arrows that hit a mob are NOT recoverable
+  (crossbow pierces the full path then isn't recoverable). Arrow gains stuck/returning/recoverable/
+  _hitAnyMob. test-weapons/-mobs +14; suite 233/233. Automatic auto-return is a later enchant.

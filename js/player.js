@@ -188,10 +188,30 @@ class Player {
   cycleWeapon(slot) {
     const list = slot === 'ranged' ? this.rangedOwned : this.meleeOwned;
     if (list.length <= 1) return null;
-    if (slot === 'ranged') this.rangedIndex = (this.rangedIndex + 1) % list.length;
-    else                   this.meleeIndex  = (this.meleeIndex  + 1) % list.length;
+    for (let step = 0; step < list.length; step++) {
+      if (slot === 'ranged') this.rangedIndex = (this.rangedIndex + 1) % list.length;
+      else                   this.meleeIndex  = (this.meleeIndex  + 1) % list.length;
+      // Skip a thrown Trident while it's out (§6) — can't wield what you've thrown.
+      const k = list[slot === 'ranged' ? this.rangedIndex : this.meleeIndex];
+      if (!(slot === 'melee' && this._tridentOut && this._weaponClassOf(k) === 'trident')) break;
+    }
     this._syncActiveWeapon(slot);
     return slot === 'ranged' ? this.bow : this.sword;
+  }
+
+  // Smart Mobs §6 — Trident thrown: keep it in the collection but point the melee
+  // slot at the next non-trident weapon so you keep fighting; recover puts it back.
+  _tridentIndex() { return this.meleeOwned.findIndex((k) => this._weaponClassOf(k) === 'trident'); }
+  throwActiveTrident() {
+    const other = this.meleeOwned.findIndex((k) => this._weaponClassOf(k) !== 'trident');
+    if (other >= 0) { this.meleeIndex = other; this._syncActiveWeapon('melee'); }
+    this._tridentOut = true;
+    this.activeHand  = 'melee';
+  }
+  recoverTrident() {
+    this._tridentOut = false;
+    const idx = this._tridentIndex();
+    if (idx >= 0) { this.meleeIndex = idx; this._syncActiveWeapon('melee'); this.activeHand = 'melee'; }
   }
 
   _syncActiveWeapon(slot) {
