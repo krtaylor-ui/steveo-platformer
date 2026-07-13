@@ -662,10 +662,13 @@ class Player {
     if (Math.abs(mx) < 0.3) return;                 // must be pressing sideways
     const r1 = Math.floor((this.y + 8) / BLOCK_SIZE);
     const r2 = Math.floor((this.y + this.height - 10) / BLOCK_SIZE);
-    const solidCol = (c) => { for (let r = r1; r <= r2; r++) if (level.isSolid(r, c)) return true; return false; };
-    if (mx < 0 && solidCol(Math.floor((this.x - 1) / BLOCK_SIZE))) {
+    // Smart Mobs #2 — only wall-slide against a wall at least 2 blocks tall: count
+    // the solid cells in the column across the player's span (+1 above/below), so
+    // a lone 1-block ledge (count 1) no longer triggers a slide.
+    const wallCells = (c) => { let n = 0; for (let r = r1 - 1; r <= r2 + 1; r++) if (level.isSolid(r, c)) n++; return n; };
+    if (mx < 0 && wallCells(Math.floor((this.x - 1) / BLOCK_SIZE)) >= 2) {
       this._wallSliding = true; this._wallSlideDir = -1;
-    } else if (mx > 0 && solidCol(Math.floor((this.x + this.width + 1) / BLOCK_SIZE))) {
+    } else if (mx > 0 && wallCells(Math.floor((this.x + this.width + 1) / BLOCK_SIZE)) >= 2) {
       this._wallSliding = true; this._wallSlideDir = 1;
     }
     if (this._wallSliding) { this.facing = this._wallSlideDir; this._ctrlLock = false; }

@@ -16358,10 +16358,10 @@ class Game {
   }
 
   // Smart Mobs §4 — play the player's footstep / landing SFX from the per-frame
-  // movement noise events. Quiet by design (Kevin's ask); volumes are separate
-  // multipliers so they can be tuned independently of other SFX. Crouch-walking
-  // (sneaking) is quieter still. Files are expected at sounds/footstep.mp3 and
-  // sounds/land.mp3 — missing files fail silently (see _playSound).
+  // movement noise events. Quiet by design; per-sound volume multipliers.
+  // If sounds/footstep.mp3 / sounds/land.mp3 aren't present, fall back to a subtle
+  // synthesized WebAudio tick/thud (Kevin's ask) — so it's audible before he adds
+  // real mp3s, and the mp3 wins automatically once dropped in.
   _playMovementSfx(p) {
     if (!p) return;
     // No footsteps while building in the sandbox editor (test worlds run as their
@@ -16369,14 +16369,63 @@ class Game {
     if (this.gameMode === 'sandbox') { p._sfxFootstep = false; p._sfxLand = 0; return; }
     if (p._sfxFootstep) {
       p._sfxFootstep = false;
-      this._playSound('sounds/footstep.mp3', (p.isSneaking ? 0.18 : 0.4) * (FOOTSTEP_SFX_VOL ?? 1));
+      this._movementSound('sounds/footstep.mp3', (p.isSneaking ? 0.18 : 0.4) * (FOOTSTEP_SFX_VOL ?? 1), 'step');
     }
     if (p._sfxLand > 0) {
       // Scale volume with impact speed (soft hop → firmer thud), capped.
       const vm = Math.min(0.7, 0.35 + p._sfxLand / MAX_FALL_SPEED * 0.5) * (LAND_SFX_VOL ?? 1);
       p._sfxLand = 0;
-      this._playSound('sounds/land.mp3', vm);
+      this._movementSound('sounds/land.mp3', vm, 'land');
     }
+  }
+
+  // Play an mp3 if present; if it's missing/404s, fall back to a synth (Smart Mobs
+  // #1). Tracks a per-file "missing" flag so once we know the mp3 isn't there we
+  // go straight to the synth (no repeated failed network hits).
+  _movementSound(file, volMult, kind) {
+    this._sfxMissing = this._sfxMissing || {};
+    if (this._sfxMissing[file]) { this._synthMoveSfx(kind, volMult); return; }
+    const vol = (this._worldAdvSettings.sfxVolume ?? DEFAULT_SFX_VOLUME) * MAX_AUDIO_VOLUME * Math.max(0, volMult);
+    if (vol <= 0) return;
+    try {
+      let a = this._audioCache[file];
+      if (!a) {
+        a = new Audio(file);
+        a.addEventListener('error', () => { this._sfxMissing[file] = true; }); // 404 → synth from now on
+        this._audioCache[file] = a;
+      }
+      if (!a.paused && a.currentTime > 0) {
+        const c = a.cloneNode(); c.volume = Math.min(1, vol); c.play().catch(() => {});
+      } else {
+        a.currentTime = 0; a.volume = Math.min(1, vol);
+        a.play().catch(() => { this._sfxMissing[file] = true; this._synthMoveSfx(kind, volMult); });
+      }
+    } catch (_) { this._sfxMissing[file] = true; this._synthMoveSfx(kind, volMult); }
+  }
+
+  // Subtle synthesized footstep ('step') / landing ('land') — a short low-pass
+  // filtered noise burst. Quiet: scaled by the same SFX volume as everything else.
+  _synthMoveSfx(kind, volMult) {
+    try {
+      if (!this._moveActx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        this._moveActx = AC ? new AC() : null;
+      }
+      const ac = this._moveActx; if (!ac) return;
+      if (ac.state === 'suspended') ac.resume().catch(() => {});
+      const master = (this._worldAdvSettings.sfxVolume ?? DEFAULT_SFX_VOLUME) * MAX_AUDIO_VOLUME * Math.max(0, volMult);
+      if (master <= 0) return;
+      const land = kind === 'land';
+      const dur  = land ? 0.14 : 0.055;
+      const buf  = ac.createBuffer(1, Math.max(1, Math.floor(ac.sampleRate * dur)), ac.sampleRate);
+      const d    = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) { const t = i / d.length; d[i] = (Math.random() * 2 - 1) * (1 - t) * (1 - t); }
+      const src = ac.createBufferSource(); src.buffer = buf;
+      const lp  = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = land ? 300 : 750;
+      const g   = ac.createGain(); g.gain.value = Math.min(1, master) * (land ? 1.0 : 0.65);
+      src.connect(lp); lp.connect(g); g.connect(ac.destination);
+      src.start();
+    } catch (_) {}
   }
 
   _playSound(file, volMult = 1.0) {
