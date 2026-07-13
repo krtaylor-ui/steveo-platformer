@@ -2220,7 +2220,9 @@ class Game {
     // Steer any in-flight GUIDED projectile (Guided Trident; a future boomerang)
     // toward the cursor — runs before mobManager.update so the new heading is used
     // for this frame's move + swept collision. No-op when nothing is guided.
-    this.mobManager.steerGuided(world.x, world.y, 0.13);
+    // Turn rate from the Guided Turn Speed slider (0-100% → up to 0.20 rad/frame).
+    const _turnPct = this._worldAdvSettings.tridentTurn ?? 30;
+    this.mobManager.steerGuided(world.x, world.y, Math.max(0.01, _turnPct / 100 * 0.20));
 
     // ── Melee (sword / spear / axe / trident thrust) — checked FIRST ──
     if (this._p1RespawnTimer === 0 && !p1CarryingFlag) {

@@ -180,15 +180,8 @@ const WORLD_SETTINGS = {
       // ── Special moves (Smart Mobs §2) — per-weapon context attacks ──
       { key: 'slideAttack', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Slide Attack (Spear)', hint: 'ground-slide with a spear launches nearby mobs into the air' },
       { key: 'slideAttackDmg', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'cycle', opts: O.wdmg, dflt: 1.0, label: 'Slide Attack Damage', fmt: x1, advanced: true, dependsOn: 'slideAttack' },
-      // Smart Mobs §6 — when on, the thrown Trident stays "yours" (throw doesn't
-      // switch weapons) and a second right-click recalls it (boomerang). When off,
-      // a throw auto-equips the next weapon and you recover the trident by walking
-      // over where it stuck. Q / gamepad R3 also recall in either mode.
-      { key: 'tridentAutoReturn', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Trident Recall (right-click)' },
-      // Smart Mobs §6 — a thrown trident curves toward the cursor in flight (keeps
-      // its speed, but the path bends toward where you point). No gravity drop.
-      { key: 'guidedTrident', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Guided Trident (steer to cursor)', advanced: true },
-      // ── Weapons (Smart Mobs §2) — starting weapon + per-weapon trait config ──
+      // ── Weapons (Smart Mobs §2) — starting weapon + per-weapon trait config;
+      //    the Trident's recall/guided/turn-speed live under Weapon · Trident. ──
       ...this._weaponRows(M, O, x1),
       // (Audio, Controls, Show-Health-Bars and Disable-Chat are PLAYER settings —
       //  they live in the pause-menu Settings tab, not here. Mob Drops = its own tab.)
@@ -226,12 +219,19 @@ const WORLD_SETTINGS = {
       crossbow: [['dmgMult', 'Damage', O.wdmg, 1.25, x1], ['pierce', 'Piercing', null, true]],
     };
     for (const cls of ['sword', 'spear', 'axe', 'trident', 'bow', 'crossbow']) {
+      const g = `Weapon · ${cap(cls)}`;
       for (const [field, label, opts, dflt, fmt] of spec[cls]) {
-        const row = { key: `wpn_${cls}_${field}`, tab: 'combat', group: `Weapon · ${cap(cls)}`,
+        const row = { key: `wpn_${cls}_${field}`, tab: 'combat', group: g,
           modes, advanced: true, label, get: gW(cls, field, dflt), set: sW(cls, field) };
         if (opts) { row.type = 'cycle'; row.opts = opts; row.dflt = dflt; row.fmt = fmt; }
         else { row.type = 'toggle'; row.dflt = dflt; }
         rows.push(row);
+      }
+      // Trident-specific throw behaviour lives under its own weapon group (Smart Mobs §6).
+      if (cls === 'trident') {
+        rows.push({ key: 'tridentAutoReturn', tab: 'combat', group: g, modes, type: 'toggle', dflt: false, label: 'Recall (right-click)' });
+        rows.push({ key: 'guidedTrident',     tab: 'combat', group: g, modes, type: 'toggle', dflt: false, label: 'Guided (steer to cursor)', advanced: true });
+        rows.push({ key: 'tridentTurn',        tab: 'combat', group: g, modes, type: 'slider', dflt: 30, label: 'Guided Turn Speed', advanced: true, dependsOn: 'guidedTrident' });
       }
     }
     return rows;
