@@ -108,6 +108,41 @@ function drawWeaponIcon(ctx, cls, cx, cy, size, color) {
   return true;
 }
 
+// Draw a pixel-art armour icon (helmet/chestplate/leggings/boots) centred at
+// (cx,cy) in a `size` box, tinted by `color` (Smart Mobs §2). Returns true if
+// drawn, false to fall back to an emoji glyph.
+function drawArmorIcon(ctx, piece, cx, cy, size, color) {
+  const c = color || '#B0B4BC';
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(size / 32, size / 32);
+  ctx.fillStyle = c; ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1;
+  if (piece === 'head') {                                   // helmet: dome + brim + visor
+    ctx.beginPath(); ctx.arc(0, -1, 9, Math.PI, 0); ctx.lineTo(9, 4); ctx.lineTo(-9, 4); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(0,0,0,0.30)'; ctx.fillRect(-9, 4, 18, 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(-4, -3, 8, 5);
+  } else if (piece === 'chest') {                           // chestplate: shoulders + torso
+    ctx.beginPath();
+    ctx.moveTo(-11, -8); ctx.lineTo(11, -8); ctx.lineTo(11, -3); ctx.lineTo(6, -1);
+    ctx.lineTo(7, 9); ctx.lineTo(-7, 9); ctx.lineTo(-6, -1); ctx.lineTo(-11, -3); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.moveTo(0, -1); ctx.lineTo(0, 9); ctx.stroke();
+  } else if (piece === 'legs') {                            // leggings: waist + two legs
+    ctx.fillRect(-8, -9, 16, 5); ctx.strokeRect(-8, -9, 16, 5);
+    ctx.fillRect(-8, -4, 6, 13); ctx.strokeRect(-8, -4, 6, 13);
+    ctx.fillRect(2, -4, 6, 13);  ctx.strokeRect(2, -4, 6, 13);
+  } else if (piece === 'feet') {                            // boots: two L-shaped boots
+    for (const dx of [-8, 2]) {
+      ctx.beginPath();
+      ctx.moveTo(dx, -4); ctx.lineTo(dx + 6, -4); ctx.lineTo(dx + 6, 4);
+      ctx.lineTo(dx + 9, 4); ctx.lineTo(dx + 9, 9); ctx.lineTo(dx, 9); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+    }
+  } else { ctx.restore(); return false; }
+  ctx.restore();
+  return true;
+}
+
 const ARMOR_DATA = {
   WOOD_HELMET:          { name: 'Wood Helmet',          tier: 0, piece: 'head',  protection: 0.5, color: '#C8A55A', unlockOre: null },
   WOOD_CHESTPLATE:      { name: 'Wood Chestplate',      tier: 0, piece: 'chest', protection: 0.5, color: '#C8A55A', unlockOre: null },

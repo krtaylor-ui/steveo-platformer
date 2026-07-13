@@ -15170,7 +15170,9 @@ class Game {
       // Drawn weapon icon (Smart Mobs §2 #2) so the player sees what they're about
       // to pick up; armour / other tools fall back to an emoji glyph.
       const wcls = data.weaponClass || data.type;
-      if (armorData || !drawWeaponIcon(ctx, wcls, sx, sy, 24, data.color)) {
+      const drawn = armorData ? drawArmorIcon(ctx, armorData.piece, sx, sy, 26, data.color)
+                              : drawWeaponIcon(ctx, wcls, sx, sy, 24, data.color);
+      if (!drawn) {
         const sym = armorData ? (armorIcons[armorData.piece] ?? '🛡') : (icons[data.type] ?? '?');
         ctx.font = '20px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillStyle = '#ffffff';
