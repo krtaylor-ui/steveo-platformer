@@ -1857,7 +1857,7 @@ class MobManager {
 
   // Joiner-side: find remote mobs in attack range and return damage events to send
   playerAttackRemoteCheck(player, remoteMobs) {
-    const damage = player.weaponDamage;
+    const damage = player.meleeDamage != null ? player.meleeDamage : player.weaponDamage;
     const hits = [];
     for (const m of remoteMobs.values()) {
       if (!m.alive) continue;
@@ -1878,7 +1878,7 @@ class MobManager {
     const arcRad  = (((t.arcDeg == null ? 360 : t.arcDeg)) * Math.PI / 180) / 2;
     const kbMult  = t.knockback == null ? 1 : t.knockback;
     const dmgMult = t.dmgMult == null ? 1 : t.dmgMult;
-    const damage  = Math.max(1, Math.round(player.weaponDamage * dmgMult));
+    const damage  = Math.max(1, Math.round((player.meleeDamage != null ? player.meleeDamage : player.weaponDamage) * dmgMult));
     // cleave: 0/null/Infinity = unlimited; otherwise the max mobs one swing hits.
     const cleave  = (t.cleave == null || t.cleave <= 0) ? Infinity : t.cleave;
     const faceAng = player.facing > 0 ? 0 : Math.PI;

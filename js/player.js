@@ -146,6 +146,10 @@ class Player {
   // Smart Mobs §2 — the WEAPON_TRAITS class of the weapon in each slot.
   // Melee slot (this.sword) may hold a sword/spear/axe/trident; ranged slot
   // (this.bow) a bow/crossbow. Falls back to the generic class if untagged.
+  // Damage of the ACTIVE melee weapon, independent of the selected hotbar slot
+  // (Smart Mobs §2 — two-button combat means melee fires from any slot; weaponDamage
+  // is slot-gated and returns 0 on a non-weapon slot, which zeroed melee damage).
+  get meleeDamage()  { const d = TOOL_DATA[this.sword]; return d ? d.damage : 1; }
   get meleeClass()   { return (TOOL_DATA[this.sword] && TOOL_DATA[this.sword].weaponClass) || 'sword'; }
   get rangedClass()  { return (this.bow && TOOL_DATA[this.bow] && TOOL_DATA[this.bow].weaponClass) || 'bow'; }
   get weaponClass()  {

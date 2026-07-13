@@ -2256,7 +2256,7 @@ class Game {
           const speed  = 14 + 12 * charge;   // charge → faster/farther
           const angle  = Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
           const traits = this._meleeTraits(this.player);
-          const dmg    = Math.max(1, Math.round(this.player.weaponDamage * (traits.dmgMult || 1) * 1.3));
+          const dmg    = Math.max(1, Math.round(this.player.meleeDamage * (traits.dmgMult || 1) * 1.3));
           // Straight throw (low gravity), sticks where it lands / hits. Guided
           // Trident (opt-in) steers to the cursor in flight, so no gravity drop.
           const _guided = !!this._worldAdvSettings.guidedTrident;
@@ -8164,7 +8164,7 @@ class Game {
       const bodyDist = Math.hypot(bodyCx - p.cx, bodyCy - p.cy);
       const headDist = Math.hypot(headCx - p.cx, headCy - p.cy);
       if (bodyDist <= ATTACK_REACH || headDist <= ATTACK_REACH) {
-        const dmg = p.weaponDamage;
+        const dmg = p.meleeDamage;
         if (dmg > 0) {
           d.hp = Math.max(0, d.hp - dmg);
           this.mobManager.damageNums.push(
@@ -10457,7 +10457,7 @@ class Game {
     if (this._worldAdvSettings.slideAttack && sliding && sp && sp.slide === 'launch') {
       if (!this._slideHitSet) this._slideHitSet = new Set();
       const traits = this._meleeTraits(p);
-      const base = Math.max(1, Math.round(p.weaponDamage * (traits.dmgMult || 1)));
+      const base = Math.max(1, Math.round(p.meleeDamage * (traits.dmgMult || 1)));
       const dmg  = Math.max(1, Math.round(base * (this._worldAdvSettings.slideAttackDmg ?? 1)));
       if (this.mobManager.slideLaunch(p, dmg, this._slideHitSet)) p.swingTimer = 15; // attack pose
     } else if (!sliding && this._slideHitSet) {
@@ -10543,7 +10543,7 @@ class Game {
     const p = this.player;
     const dist = Math.hypot((hb.x + hb.w / 2) - p.cx, (hb.y + hb.h / 2) - p.cy);
     if (dist > ATTACK_REACH) return;
-    const dmg = p.weaponDamage || 1;
+    const dmg = p.meleeDamage || 1;
     w.hp = Math.max(0, w.hp - dmg);
     this.mobManager.damageNums.push(new DamageNumber(p.cx, w.y - 8, dmg, '#FFAA22'));
     w.hitFlash = 8;

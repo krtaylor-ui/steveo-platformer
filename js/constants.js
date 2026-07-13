@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 98 (Smart Mobs: Guided Turn Speed slider; moved trident recall/guided/turn under Weapon · Trident)';
+const GAME_VERSION = 'v3 · build 99 (FIX all melee damage dropped to 1 — used slot-gated weaponDamage (0 on a non-weapon slot) instead of the active melee weapon)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
