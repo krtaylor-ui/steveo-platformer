@@ -185,6 +185,9 @@ const WORLD_SETTINGS = {
       // a throw auto-equips the next weapon and you recover the trident by walking
       // over where it stuck. Q / gamepad R3 also recall in either mode.
       { key: 'tridentAutoReturn', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Trident Recall (right-click)' },
+      // Smart Mobs §6 — a thrown trident curves toward the cursor in flight (keeps
+      // its speed, but the path bends toward where you point). No gravity drop.
+      { key: 'guidedTrident', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Guided Trident (steer to cursor)', advanced: true },
       // ── Weapons (Smart Mobs §2) — starting weapon + per-weapon trait config ──
       ...this._weaponRows(M, O, x1),
       // (Audio, Controls, Show-Health-Bars and Disable-Chat are PLAYER settings —

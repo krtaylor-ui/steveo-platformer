@@ -2217,6 +2217,10 @@ class Game {
         this.player._tridentOut && this.player._tridentArrow && this.player._tridentArrow.alive) {
       this.player._tridentArrow.returning = true;
     }
+    // Steer any in-flight GUIDED projectile (Guided Trident; a future boomerang)
+    // toward the cursor — runs before mobManager.update so the new heading is used
+    // for this frame's move + swept collision. No-op when nothing is guided.
+    this.mobManager.steerGuided(world.x, world.y, 0.13);
 
     // ── Melee (sword / spear / axe / trident thrust) — checked FIRST ──
     if (this._p1RespawnTimer === 0 && !p1CarryingFlag) {
@@ -2251,10 +2255,12 @@ class Game {
           const angle  = Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
           const traits = this._meleeTraits(this.player);
           const dmg    = Math.max(1, Math.round(this.player.weaponDamage * (traits.dmgMult || 1) * 1.3));
-          // Straight throw (low gravity), sticks where it lands / hits.
+          // Straight throw (low gravity), sticks where it lands / hits. Guided
+          // Trident (opt-in) steers to the cursor in flight, so no gravity drop.
+          const _guided = !!this._worldAdvSettings.guidedTrident;
           this.player._tridentArrow = this.mobManager.addPlayerArrow(
             this.player.cx, this.player.cy, Math.cos(angle) * speed, Math.sin(angle) * speed,
-            dmg, 'p1', { trident: true, gravity: 0.10 });
+            dmg, 'p1', { trident: true, guided: _guided, gravity: _guided ? 0 : 0.10 });
           // Recall mode keeps the trident "yours" (no weapon switch); otherwise it
           // auto-equips the next melee weapon and you recover it by walking over it.
           if (_tridentRecall) this.player._tridentOut = true;

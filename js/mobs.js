@@ -1633,6 +1633,7 @@ class MobManager {
     if (opts && opts.pierce)      a.pierce      = true; // Smart Mobs §2 — Crossbow trait
     if (opts && opts.trident)     a.isTrident   = true; // Smart Mobs §2 — thrown Trident
     if (opts && opts.recoverable) a.recoverable = true; // Smart Mobs §6 — sticks + collectable on a clean miss
+    if (opts && opts.guided)      a.guided      = true; // Smart Mobs §6 — steerable in flight (trident, future boomerang)
     if (opts && opts.gravity != null) a.gravity = opts.gravity; // Trident throw = straight (low gravity)
     this.playerArrows.push(a);
     return a; // caller may hold the ref (Trident recovery / stick tracking)
@@ -1940,6 +1941,26 @@ class MobManager {
       if (lethal) { mob.hp = 0; mob._tossDeath = 46; this.onKill?.(owner, mob); } // fly + spin, then disappear
     }
     return any;
+  }
+
+  // Smart Mobs §6 — steer every in-flight GUIDED player projectile toward a target
+  // (the cursor), turning at most `turnRate` rad/frame while keeping its speed
+  // (momentum). Generic: any projectile flagged `guided` uses it — the Trident now,
+  // a boomerang later. No-op on stuck/returning projectiles.
+  steerGuided(tx, ty, turnRate) {
+    for (const pa of this.playerArrows) {
+      if (!pa.alive || !pa.guided || pa.stuck || pa.returning) continue;
+      const desired = Math.atan2(ty - pa.y, tx - pa.x);
+      const cur     = Math.atan2(pa.vy, pa.vx);
+      let d = desired - cur;
+      while (d >  Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      const na  = cur + Math.max(-turnRate, Math.min(turnRate, d));
+      const spd = Math.hypot(pa.vx, pa.vy) || 1;
+      pa.vx = Math.cos(na) * spd;
+      pa.vy = Math.sin(na) * spd;
+      pa._angle = na;
+    }
   }
 
   // Smart Mobs §6 — the player walking over a stuck (or a recalled, returning)
