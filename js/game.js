@@ -1944,8 +1944,15 @@ class Game {
         }
       }
     } else {
+      // Number keys: EDGE-triggered so re-pressing a weapon slot cycles ONCE per
+      // press (hotbarKey() is held-state — calling _selectOrCycleSlot every frame
+      // spun the cycle wildly, which is why switching "didn't work"). Smart Mobs §2.
       const hk = this.input.hotbarKey();
-      if (hk >= 0) this._selectOrCycleSlot(hk);   // Smart Mobs §2 — tap an active weapon slot again to cycle
+      if (hk >= 0) {
+        if (hk !== this._lastHotbarKey) { this._selectOrCycleSlot(hk); this._lastHotbarKey = hk; }
+      } else {
+        this._lastHotbarKey = -1;
+      }
       if (this.input.scrollDelta !== 0) {
         this.player.selectedSlot =
           (this.player.selectedSlot + this.input.scrollDelta + 9) % 9;
@@ -2197,8 +2204,11 @@ class Game {
       this.player._tridentArrow.returning = true;
     }
     // A Trident equipped as the melee weapon THROWS on right-click (its ranged
-    // action); otherwise right-click fires the bow/crossbow.
-    const _tridentActive = this.player.meleeClass === 'trident' && !this.player._tridentOut;
+    // action) — but ONLY when its Throwable trait is on (World Settings → Combat →
+    // Weapon · Trident). When Throwable is off, right-click fires the bow instead
+    // and the Trident stays equipped (Smart Mobs §6 fix).
+    const _tridentActive = this.player.meleeClass === 'trident' && !this.player._tridentOut &&
+                           !!this._meleeTraits(this.player).throwable;
 
     // ── Melee (sword / spear / axe / trident thrust) — checked FIRST ──
     if (this._p1RespawnTimer === 0 && !p1CarryingFlag) {
