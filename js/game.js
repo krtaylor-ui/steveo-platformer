@@ -2044,6 +2044,11 @@ class Game {
       if (this.player._tridentOut && this.player._tridentArrow && !this.player._tridentArrow.alive) {
         this.player.recoverTrident(); this.player._tridentArrow = null;
       }
+      // Auto-Return (§6, opt-in): a stuck trident flies back on its own after a beat.
+      const _ta = this.player._tridentArrow;
+      if (this._worldAdvSettings.tridentAutoReturn && this.player._tridentOut && _ta && _ta.stuck && (_ta._stuckAge || 0) > 40) {
+        _ta.returning = true;
+      }
     }
 
     // Phase 17: Speed Runner post-update (boost multipliers, collision, ghost)
@@ -3046,9 +3051,9 @@ class Game {
             this.player.addArmorItem(itemKey);
           } else if (TOOL_DATA[itemKey]) {
             const td = TOOL_DATA[itemKey];
-            if (td.type === 'pickaxe')    this.player.pickaxe = itemKey;
-            else if (td.type === 'bow')   this.player.bow     = itemKey;
-            else                          this.player.sword   = itemKey;
+            if (td.type === 'pickaxe')                          this.player.pickaxe = itemKey;
+            else if (td.type === 'bow' || td.type === 'sword')  this.player.acquireWeapon(itemKey); // collect (Smart Mobs §2)
+            else                                                this.player.sword   = itemKey;
           }
         } else {
           for (let i = 0; i < amount; i++) this.player.addBlock(itemKey);
@@ -10509,13 +10514,14 @@ class Game {
   // weapon. Idempotent — safe to call on every world load.
   _applyStartingWeapons() {
     const s = this._worldAdvSettings || {};
+    // 'sword'/'none' keep just the base wooden sword; others add that weapon.
     const MELEE  = { spear: 'IRON_SPEAR', axe: 'IRON_AXE', trident: 'TRIDENT' };
-    const creative = this.gameMode === 'sandbox';
+    const RANGED = { bow: 'BOW', crossbow: 'CROSSBOW' };   // 'none' → no starting ranged
     for (const pl of (this.players || [this.player])) {
       if (!pl) continue;
       if (pl.normalizeWeapons) pl.normalizeWeapons();   // fold any deserialized sword/bow into the collections
-      if (s.startingMelee && MELEE[s.startingMelee] && pl.acquireWeapon) pl.acquireWeapon(MELEE[s.startingMelee]);
-      if (s.startingRanged === 'crossbow' && (pl.bow || pl.godMode || creative) && pl.acquireWeapon) pl.acquireWeapon('CROSSBOW');
+      if (s.startingMelee  && MELEE[s.startingMelee]   && pl.acquireWeapon) pl.acquireWeapon(MELEE[s.startingMelee]);
+      if (s.startingRanged && RANGED[s.startingRanged] && pl.acquireWeapon) pl.acquireWeapon(RANGED[s.startingRanged]);
     }
   }
 
@@ -15049,15 +15055,18 @@ class Game {
         this.player.pickaxe = item.toolKey;
         this._notify(`Picked up ${data.name}!`, data.color, 200);
       }
-    } else if (data.type === 'sword') {
-      const cur = TOOL_DATA[this.player.sword];
-      if (!cur || data.tier > cur.tier) {
-        this.player.sword = item.toolKey;
+    } else if (data.type === 'sword' || data.type === 'bow') {
+      // Smart Mobs §2 — COLLECT into the slot (this was the switching bug: it set
+      // this.player.sword directly, so the collection never grew and a spear was
+      // rejected if you held a higher-tier sword). New class → collected; higher
+      // tier of an owned class → upgraded; equal/lower of an owned class → ignored.
+      const list = data.type === 'bow' ? this.player.rangedOwned : this.player.meleeOwned;
+      const cls  = data.weaponClass || data.type;
+      const exKey = list.find(k => ((TOOL_DATA[k].weaponClass || TOOL_DATA[k].type) === cls));
+      if (!(exKey && (TOOL_DATA[exKey].tier ?? 0) >= (data.tier ?? 0))) {
+        this.player.acquireWeapon(item.toolKey);
         this._notify(`Picked up ${data.name}!`, data.color, 200);
       }
-    } else if (data.type === 'bow') {
-      this.player.bow = item.toolKey;
-      this._notify('Picked up Bow!', data.color, 200);
     } else if (data.type === 'shield') {
       this.player.hasShield = true;
       this._notify('Picked up Shield!', data.color, 200);

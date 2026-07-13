@@ -599,9 +599,13 @@ class Player {
     // Coyote time: stay jump-eligible for a few frames after walking off edge
     if (this.onGround) this._coyoteTime = 8;
 
-    // Resolve X movement — sweep horizontally through every block column crossed
+    // Resolve X movement — sweep horizontally through every block column crossed.
     const bRowT = Math.floor((this.y + 2)               / BLOCK_SIZE);
     const bRowB = Math.floor((this.y + this.height - 2) / BLOCK_SIZE);
+    // Check EVERY row the hitbox spans, not just head+feet — the 48px standing span
+    // can straddle 3 rows, and testing only bRowT/bRowB missed a torso-height
+    // 1-block wall, letting the player tunnel through it (Smart Mobs bugfix).
+    const colBlocked = (c) => { for (let r = bRowT; r <= bRowB; r++) if (level.isSolid(r, c)) return true; return false; };
 
     if (this.vx > 0) {
       const newX    = this.x + this.vx;
@@ -609,7 +613,7 @@ class Player {
       const colEnd  = Math.floor((newX     + this.width) / BLOCK_SIZE);
       let stopped = false;
       for (let c = colStart; c <= colEnd; c++) {
-        if (level.isSolid(bRowT, c) || level.isSolid(bRowB, c)) {
+        if (colBlocked(c)) {
           // Auto-climb: if the obstacle is a single block with clear headroom,
           // step up onto it and keep moving instead of stopping (opt-in per world).
           if (this._tryAutoStep(level, c, bRowT, bRowB)) { this.x = newX; stopped = true; break; }
@@ -627,7 +631,7 @@ class Player {
       const colEnd  = Math.floor(newX    / BLOCK_SIZE);
       let stopped = false;
       for (let c = colStart; c >= colEnd; c--) {
-        if (level.isSolid(bRowT, c) || level.isSolid(bRowB, c)) {
+        if (colBlocked(c)) {
           if (this._tryAutoStep(level, c, bRowT, bRowB)) { this.x = newX; stopped = true; break; }
           this.x  = (c + 1) * BLOCK_SIZE;
           this.vx = 0;

@@ -180,6 +180,9 @@ const WORLD_SETTINGS = {
       // ── Special moves (Smart Mobs §2) — per-weapon context attacks ──
       { key: 'slideAttack', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Slide Attack (Spear)', hint: 'ground-slide with a spear launches nearby mobs into the air' },
       { key: 'slideAttackDmg', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'cycle', opts: O.wdmg, dflt: 1.0, label: 'Slide Attack Damage', fmt: x1, advanced: true, dependsOn: 'slideAttack' },
+      // Smart Mobs §6 — a thrown Trident flies back to the player on its own shortly
+      // after it lands (the "loyalty" enchantment). Q always recalls it manually.
+      { key: 'tridentAutoReturn', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Trident Auto-Return' },
       // ── Weapons (Smart Mobs §2) — starting weapon + per-weapon trait config ──
       ...this._weaponRows(M, O, x1),
       // (Audio, Controls, Show-Health-Bars and Disable-Chat are PLAYER settings —
@@ -205,8 +208,8 @@ const WORLD_SETTINGS = {
       a.weapons[cls][field] = v;
     };
     const rows = [
-      { key: 'startingMelee',  tab: 'combat', group: 'Weapons', modes, type: 'cycle', opts: ['sword', 'spear', 'axe', 'trident'], dflt: 'sword', label: 'Melee Weapon', fmt: cap, hint: 'weapon the player starts holding (melee slot)' },
-      { key: 'startingRanged', tab: 'combat', group: 'Weapons', modes, type: 'cycle', opts: ['bow', 'crossbow'], dflt: 'bow', label: 'Ranged Weapon', fmt: cap, hint: 'weapon in the ranged slot (once acquired)' },
+      { key: 'startingMelee',  tab: 'combat', group: 'Weapons', modes, type: 'cycle', opts: ['sword', 'spear', 'axe', 'trident', 'none'], dflt: 'sword', label: 'Melee Weapon', fmt: cap, hint: 'weapon the player starts holding (None = base wooden sword only)' },
+      { key: 'startingRanged', tab: 'combat', group: 'Weapons', modes, type: 'cycle', opts: ['none', 'bow', 'crossbow'], dflt: 'none', label: 'Ranged Weapon', fmt: cap, hint: 'ranged weapon the player starts with (None = none until found/crafted)' },
     ];
     // [field, label, opts|null(→toggle), dflt, fmt] per weapon class.
     const spec = {

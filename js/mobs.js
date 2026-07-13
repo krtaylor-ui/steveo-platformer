@@ -629,10 +629,12 @@ class Arrow {
 
   // players: array of live players (P1-P4) or a single player (normalized).
   update(players, level) {
-    if (!this.alive || this.stuck) return;   // stuck projectiles don't move/age
-    // Smart Mobs §6 — a recalled Trident (Q) homes back to the owner, ignoring
-    // gravity/terrain; the pickup check consumes it when it reaches the player.
+    if (!this.alive) return;
+    // Smart Mobs §6 — a recalled/auto-returning Trident homes back to the owner,
+    // ignoring gravity/terrain (checked BEFORE `stuck` so a recalled stuck trident
+    // un-sticks and flies back). The pickup check consumes it at the player.
     if (this.returning) {
+      this.stuck = false;
       const tgt = Array.isArray(players) ? players[0] : players;
       if (tgt) {
         const dx = (tgt.x + tgt.width / 2) - this.x, dy = (tgt.y + tgt.height / 2) - this.y;
@@ -643,19 +645,35 @@ class Arrow {
       }
       return;
     }
+    if (this.stuck) { this._stuckAge = (this._stuckAge || 0) + 1; return; }  // rests until picked up
     this.age++;
     // Tridents get a longer life so they can arc and land; normal arrows expire.
     if (this.age > (this.isTrident ? 600 : 280)) { this.alive = false; return; }
 
     this.vy += this.gravity;
-    this.x  += this.vx;
-    this.y  += this.vy;
-
-    // Block collision — a Trident, or a recoverable player arrow that hasn't hit
-    // any mob, STICKS in the block (collectable); otherwise it dies.
-    const col = Math.floor(this.x / BLOCK_SIZE);
-    const row = Math.floor(this.y / BLOCK_SIZE);
-    if (level.isSolid(row, col)) {
+    // SWEPT block collision (bugfix): at 9-26 px/frame a projectile could jump a
+    // 32px wall in one step and sample a cell PAST the first solid block — sticking
+    // the (unrecoverable) trident behind the wall. Step along the path in ≤16px
+    // increments and stop at the FIRST solid cell entered.
+    const px = this.x, py = this.y;
+    const nx = this.x + this.vx, ny = this.y + this.vy;
+    const steps = Math.max(1, Math.ceil(Math.hypot(nx - px, ny - py) / (BLOCK_SIZE * 0.5)));
+    let hit = false;
+    for (let s = 1; s <= steps; s++) {
+      const t  = s / steps;
+      const cx = px + (nx - px) * t, cy = py + (ny - py) * t;
+      if (level.isSolid(Math.floor(cy / BLOCK_SIZE), Math.floor(cx / BLOCK_SIZE))) {
+        const pt = (s - 1) / steps;            // back up to the last free sub-step
+        this.x = px + (nx - px) * pt;
+        this.y = py + (ny - py) * pt;
+        hit = true;
+        break;
+      }
+    }
+    if (!hit) { this.x = nx; this.y = ny; }
+    // A Trident, or a recoverable player arrow that hasn't hit any mob, STICKS in
+    // the block (collectable); otherwise it dies.
+    if (hit) {
       if (this.isTrident || (this.isPlayerArrow && this.recoverable && !this._hitAnyMob)) { this._stick(); return; }
       this.alive = false; return;
     }
