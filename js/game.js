@@ -14421,13 +14421,13 @@ class Game {
       for (let c = 0; c < this.level.width; c++) {
         const b = this.level.grid[r][c];
         if (b === BLOCK.LEVER && !this.redstone.getAt(c, r)) {
-          this.redstone.addComponent({type: 'lever', col: c, row: r, on: false, links: []});
+          this.redstone.addComponent({type: 'lever', col: c, row: r, on: false, links: [], sandboxPlaced: true});
         } else if (b === BLOCK.TRAPDOOR && !this.redstone.getAt(c, r)) {
-          this.redstone.addComponent({type: 'trapdoor', col: c, row: r, open: false, links: []});
+          this.redstone.addComponent({type: 'trapdoor', col: c, row: r, open: false, links: [], sandboxPlaced: true});
         } else if (b === BLOCK.PRESSURE_PLATE && !this.redstone.getAt(c, r)) {
-          this.redstone.addComponent({type: 'pressure_plate', col: c, row: r, on: false, links: []});
+          this.redstone.addComponent({type: 'pressure_plate', col: c, row: r, on: false, links: [], sandboxPlaced: true});
         } else if (b === BLOCK.TNT && !this.redstone.getAt(c, r)) {
-          this.redstone.addComponent({type: 'tnt', col: c, row: r, fuse: 0, links: []});
+          this.redstone.addComponent({type: 'tnt', col: c, row: r, fuse: 0, links: [], sandboxPlaced: true});
         }
       }
     }
@@ -14795,13 +14795,13 @@ class Game {
       for (let c = 0; c < this.level.width; c++) {
         const b = this.level.grid[r][c];
         if (b === BLOCK.LEVER && !this.redstone.getAt(c, r)) {
-          this.redstone.addComponent({type: 'lever', col: c, row: r, on: false, links: []});
+          this.redstone.addComponent({type: 'lever', col: c, row: r, on: false, links: [], sandboxPlaced: true});
         } else if (b === BLOCK.TRAPDOOR && !this.redstone.getAt(c, r)) {
-          this.redstone.addComponent({type: 'trapdoor', col: c, row: r, open: false, links: []});
+          this.redstone.addComponent({type: 'trapdoor', col: c, row: r, open: false, links: [], sandboxPlaced: true});
         } else if (b === BLOCK.PRESSURE_PLATE && !this.redstone.getAt(c, r)) {
-          this.redstone.addComponent({type: 'pressure_plate', col: c, row: r, on: false, links: []});
+          this.redstone.addComponent({type: 'pressure_plate', col: c, row: r, on: false, links: [], sandboxPlaced: true});
         } else if (b === BLOCK.TNT && !this.redstone.getAt(c, r)) {
-          this.redstone.addComponent({type: 'tnt', col: c, row: r, fuse: 0, links: []});
+          this.redstone.addComponent({type: 'tnt', col: c, row: r, fuse: 0, links: [], sandboxPlaced: true});
         }
       }
     }
@@ -15270,9 +15270,9 @@ class Game {
       for (let c = 0; c < this.level.width; c++) {
         const b = this.level.grid[r][c];
         if (b === BLOCK.LEVER && !this.redstone.getAt(c, r)) {
-          this.redstone.addComponent({ type: 'lever', col: c, row: r, on: false, links: [] });
+          this.redstone.addComponent({ type: 'lever', col: c, row: r, on: false, links: [], sandboxPlaced: true });
         } else if (b === BLOCK.TRAPDOOR && !this.redstone.getAt(c, r)) {
-          this.redstone.addComponent({ type: 'trapdoor', col: c, row: r, open: false, links: [] });
+          this.redstone.addComponent({ type: 'trapdoor', col: c, row: r, open: false, links: [], sandboxPlaced: true });
         }
       }
     }

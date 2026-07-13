@@ -1429,6 +1429,11 @@ class MobManager {
     // global proximity rule. Phase 3A.2.
     if (this.arenaMode) { this._updateArenaSpawnPoints(level); return; }
 
+    // Smart Mobs — one-time initial burst: on the first update of a freshly
+    // started (not resumed) level, populate every egg within range of the START
+    // position at once, regardless of the player's position.
+    if (!this._initialBurstDone) this.spawnInitialBurst(level, player.x + player.width / 2);
+
     // Collect all player centers: host + online joiners
     const playerCenters = [player.x + player.width / 2];
     for (const op of this.onlinePlayers || []) {
@@ -1475,6 +1480,27 @@ class MobManager {
       const isSurfaceMob = sp.mobTypeName === 'Zombie' || sp.mobTypeName === 'Skeleton' || sp.mobTypeName === 'Creeper';
       const timerMult = isSurfaceMob ? this.nightSpawnMultiplier : 1.0;
       sp.timer = Math.round(MOB_RESPAWN_FRAMES * timerMult);
+    }
+  }
+
+  // Smart Mobs — spawn every non-arena spawn point within activation range of the
+  // START position ONCE, bypassing the min-distance / on-screen / clustering gates
+  // that normally suppress ambient spawning (so a dense cluster of eggs by the
+  // start all populate on load). Far-away eggs still wait for ambient spawning.
+  // Fires once per fresh level load (suppressed on resume via adoptSerializedMobs).
+  spawnInitialBurst(level, startCx) {
+    this._initialBurstDone = true;
+    if (this.arenaMode) return;
+    for (const sp of this.spawnPoints) {
+      if (sp.active === false) continue;
+      if (Math.abs(sp.col * BLOCK_SIZE - startCx) > MOB_ACTIVATION_RANGE) continue;  // far eggs still gated
+      if (sp.timer > 0) continue;
+      let gr = sp.row;
+      while (gr < level.height - 1 && !level.isSolid(gr, sp.col)) gr++;
+      const mob = this._createMob(sp.mobTypeName, sp.col * BLOCK_SIZE, gr * BLOCK_SIZE);
+      if (mob) this.mobs.push(mob);
+      const isSurfaceMob = sp.mobTypeName === 'Zombie' || sp.mobTypeName === 'Skeleton' || sp.mobTypeName === 'Creeper';
+      sp.timer = Math.round(MOB_RESPAWN_FRAMES * (isSurfaceMob ? this.nightSpawnMultiplier : 1.0));
     }
   }
 
@@ -1539,6 +1565,7 @@ class MobManager {
   // to host so the SAME mobs (type/position/hp/id) persist and keep simulating,
   // rather than despawning and respawning fresh under the new host.
   adoptSerializedMobs(snapshots) {
+    this._initialBurstDone = true;   // resuming a save restores mobs → skip the fresh-load spawn burst
     let maxId = 0;
     for (const m of snapshots || []) {
       if (!m || m.alive === false) continue;

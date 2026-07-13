@@ -88,5 +88,25 @@ const mm4 = new MobManager();
 mm4.restoreDroppedItems([null, { x: 1 }, { x: 1, y: 2, itemKey: 'bone', amount: 1, life: 100 }]);
 ok(mm4.droppedItems.length === 1, `malformed drop entries are skipped (got ${mm4.droppedItems.length})`);
 
+// ---- Initial spawn burst (Smart Mobs) ----
+console.log('Initial spawn burst:');
+const level = { height: 20, isSolid: () => true };   // solid at sp.row so it spawns there
+const mmB = new MobManager();
+// 3 eggs clustered near start (cols 2,3,4 → 64/96/128px) + 1 far away (col 100 → 3200px).
+mmB.setupSpawnPoints([
+  { col: 2, row: 5, mobTypeName: 'Zombie' }, { col: 3, row: 5, mobTypeName: 'Zombie' },
+  { col: 4, row: 5, mobTypeName: 'Zombie' }, { col: 100, row: 5, mobTypeName: 'Zombie' },
+]);
+mmB.spawnInitialBurst(level, 96);   // start at ~col 3
+ok(mmB.mobs.length === 3, `burst spawns all 3 clustered eggs (bypasses the 200px clustering gate) — got ${mmB.mobs.length}`);
+ok(mmB._initialBurstDone === true, 'burst marks itself done');
+mmB.spawnInitialBurst(level, 96);
+ok(mmB.mobs.length === 3, 'burst is idempotent (eggs on cooldown, no double-spawn)');
+// A resumed save (adoptSerializedMobs) suppresses the burst.
+const mmR = new MobManager();
+mmR.setupSpawnPoints([{ col: 2, row: 5, mobTypeName: 'Zombie' }]);
+mmR.adoptSerializedMobs([]);
+ok(mmR._initialBurstDone === true, 'resuming a save suppresses the fresh-load burst');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

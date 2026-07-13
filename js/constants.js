@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 83 (dev: skip + auto-clean the service worker on localhost so it never masks a dropped WSL2 localhost forward or serves a stale build; PWA unchanged in production)';
+const GAME_VERSION = 'v3 · build 84 (FIX redstone state lost on platformer/normal resume; spawn eggs near start now all fire on load via an initial burst)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
