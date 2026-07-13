@@ -7,12 +7,13 @@ Guide, **Campaign mode** §12, Tower Defense/bots, world cleanup, itch/Tauri,
 plus new §13–§18: Ladders, Trampolines, Online/MP UX, Mob-config engine,
 Enchantments, Suspicion meter).
 
-## IN PROGRESS (2026-07-10) — Smart Mobs build on branch `smart-mobs`
+## IN PROGRESS (2026-07-13) — Smart Mobs build on branch `smart-mobs`
 
 Working through the **"Bug Fixes + Smart Mobs brief"** + a follow-on **weapon-UX
 redesign** Kevin requested mid-stream. Branch `smart-mobs` (off build 72), **NOT
-merged to main, browser-UNTESTED** (headless **219/219** — `test/test-weapons.js`).
-Committed per build for rollback. **Shipped to the branch so far:**
+merged to main** (headless **233/233**). Builds 73–81 browser-untested; **82–95
+have been through Kevin's playtest loop** (weapon switching + trident throw/recall
+confirmed working). Committed per build for rollback. **Shipped to the branch:**
 - **§1 — build 73:** World Settings routing (Arena Settings + new all-mode ⚙ World
   Settings button open the HTML panel; `WORLD_SETTINGS.open(game, tab)`).
 - **§2 — build 74:** composable **weapon-trait system** (`WEAPON_TRAITS` +
@@ -38,6 +39,26 @@ Committed per build for rollback. **Shipped to the branch so far:**
     per-class head shapes.
   - **81** controller presets: gamepad face-button remap (identity default; **Nintendo
     Switch** swap) + Controller-Layout picker in pause Settings.
+- **builds 82–95 = playtest fixes + polish** (Kevin's rounds 2–4):
+  - **82** FIX black screen (isSandbox temporal-dead-zone crash in the build-78 combat refactor).
+  - **83** dev: skip/auto-clean the service worker on localhost/LAN IPs (WSL2 localhost-forward
+    drops were masked by a stale SW cache — this made local dev reliable).
+  - **84** FIX redstone state lost on platformer/normal resume (missing `sandboxPlaced`);
+    spawn-egg **initial burst** so clustered eggs near start all fire on load.
+  - **85/90/91/93** weapon + armour **icons** — drawn pixel art per class (spear/axe/trident/
+    crossbow + helmet/chest/legs/boots), matching the held sprites; in hotbar/palette/placed items.
+  - **86** wall-slide only on 2+ block walls; synth footstep/land fallback when mp3s absent.
+  - **87** active-hand weapon sprite (shows what you last attacked with) + melee/ranged mutual
+    exclusion (melee wins ties).
+  - **88/89/91/92** trident throw + arrow recovery: throw (RMB, hold-charge, straight, sticks),
+    **swept projectile collision** (no more tunnelling → tridents recoverable), pickup + recall;
+    **Recoverable Arrows** setting; and the real **weapon-switching fix** (pickups now COLLECT via
+    `acquireWeapon` — `_collectPlatformerItem` had bypassed it; tap 1/2 cycles).
+  - **92** FIX player block-tunnelling at speed/slide (horizontal collision now checks every
+    spanned row, not just head+feet); starting-weapon **None** option.
+  - **94** trident **recall on right-click** (boomerang: throw doesn't switch weapons; 2nd
+    right-click recalls); **stay crouched** when a slide ends in a 1-block-high tunnel.
+  - **95** equipped **armour now shows during the ledge climb** (`_drawFigureAt` overlays).
 
 **REMAINING — two tracks:**
 1. **The mob-intelligence cluster (§4–§10, NOT started):** §4 Detection (LoS/frontal +
@@ -55,7 +76,7 @@ Committed per build for rollback. **Shipped to the branch so far:**
 slide-attack launch feel, distinct swipe/stab motions, and the Switch controller preset.
 Drop `sounds/footstep.mp3` + `sounds/land.mp3` in to hear the movement SFX.
 
-**Ship path:** `node test/run.js` (219/219) → bump the THREE version markers → commit on
+**Ship path:** `node test/run.js` (233/233) → bump the THREE version markers → commit on
 `smart-mobs` → Kevin browser-tests → `git checkout main && git merge --ff-only smart-mobs`
 → `git push origin main`.
 
