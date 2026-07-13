@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 94 (Smart Mobs: trident recall on right-click (no weapon switch); stay crouched when a slide ends in a 1-block tunnel)';
+const GAME_VERSION = 'v3 · build 95 (Smart Mobs: equipped armour now shows on the sprite during the ledge climb too)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

@@ -1166,24 +1166,42 @@ class Player {
     const hdX = shX + (HEAD*0.55)*Math.sin(tA), hdY = shY - (HEAD*0.55)*Math.cos(tA); // head
     const lA = leg * facing;
     const ftX = hipX + LL*Math.sin(lA), ftY = hipY + LL*Math.cos(lA);           // feet
-    // legs (two) + shoes
+    // Armour tints (Smart Mobs) — overlay the matching parts using the SAME joints
+    // as the base figure, so equipped gear shows during the climb too (not just in
+    // the standing/crouch poses which use _drawArmorOverlay).
+    const AR = this.equippedArmor || {};
+    const acol = (slot) => (AR[slot] ? this._armorColors(AR[slot]).base : null);
+    const legArm = acol('legs'), footArm = acol('feet'), chestArm = acol('chest'), headArm = acol('head');
+    const armSleeve = chestArm || SHIRT;
+    // legs (two) + leggings overlay
     this._limbBar(ctx, hipX-3*facing, hipY, ftX-3*facing, ftY, 8, PANTS);
     this._limbBar(ctx, hipX+3*facing, hipY, ftX+3*facing, ftY, 8, PANTS);
-    this._limbBar(ctx, ftX-3*facing, ftY, ftX-3*facing+5*facing, ftY+2, 8, SHOE);
-    this._limbBar(ctx, ftX+3*facing, ftY, ftX+3*facing+5*facing, ftY+2, 8, SHOE);
-    // torso
-    this._limbBar(ctx, hipX, hipY, shX, shY, 12, SHIRT);
+    if (legArm) {
+      this._limbBar(ctx, hipX-3*facing, hipY, ftX-3*facing, ftY, 9, legArm);
+      this._limbBar(ctx, hipX+3*facing, hipY, ftX+3*facing, ftY, 9, legArm);
+    }
+    // shoes / boots
+    this._limbBar(ctx, ftX-3*facing, ftY, ftX-3*facing+5*facing, ftY+2, footArm ? 9 : 8, footArm || SHOE);
+    this._limbBar(ctx, ftX+3*facing, ftY, ftX+3*facing+5*facing, ftY+2, footArm ? 9 : 8, footArm || SHOE);
+    // torso (+ chestplate)
+    this._limbBar(ctx, hipX, hipY, shX, shY, chestArm ? 13 : 12, chestArm || SHIRT);
     // back arm
-    this._limbBar(ctx, shX-3*facing, shY, handX-3*facing, handY, 6, SHIRT);
-    // head
+    this._limbBar(ctx, shX-3*facing, shY, handX-3*facing, handY, 6, armSleeve);
+    // head (+ helmet)
     ctx.save(); ctx.translate(hdX, hdY); ctx.rotate(tA);
     ctx.fillStyle=SKIN; ctx.fillRect(-HEAD/2,-HEAD/2,HEAD,HEAD);           // square head
     ctx.fillStyle=HAIR; ctx.fillRect(-HEAD/2,-HEAD/2,HEAD,HEAD*0.36);
+    if (headArm) {                                                        // helmet: cap + side strips
+      ctx.fillStyle = headArm;
+      ctx.fillRect(-HEAD/2-1, -HEAD/2-1, HEAD+2, HEAD*0.5);
+      ctx.fillRect(-HEAD/2-1, -HEAD/2-1, 2, HEAD);
+      ctx.fillRect(HEAD/2-1,  -HEAD/2-1, 2, HEAD);
+    }
     ctx.fillStyle='#fff'; ctx.fillRect(2*facing,-2,4,4);
     ctx.fillStyle='#1A50C0'; ctx.fillRect(3*facing,-1,2,2);
     ctx.restore();
     // front arm + hands
-    this._limbBar(ctx, shX+3*facing, shY, handX+3*facing, handY, 6, SHIRT);
+    this._limbBar(ctx, shX+3*facing, shY, handX+3*facing, handY, 6, armSleeve);
     this._limbBar(ctx, handX-3*facing, handY, handX+3*facing, handY, 6, SKIN);
   }
 
