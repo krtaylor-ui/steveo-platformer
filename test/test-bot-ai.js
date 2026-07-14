@@ -23,7 +23,14 @@ const real = {
   Math, console, Set, Map, Array, Object, JSON, Number, String, Boolean, Infinity, isFinite,
   // Mocked engine singletons the bot references:
   Game: { ownerId: (i) => 'p' + (i + 1) },
-  ARENA_RULES: { rulesetForMode: () => ({ elements: { pvp: true } }) },
+  // Mode-aware so _think dispatches to the right element strategy (mirrors the
+  // real ARENA_RULES preset elements closely enough for the bot's dispatch).
+  ARENA_RULES: { rulesetForMode: (mode) => ({ elements: ({
+    CAPTURE_FLAG: { flags: true }, DEFEND_TOWER: { tower: true },
+    COLLECT_EMERALDS: { emeralds: true }, SURVIVAL_WAVES: { waves: true },
+    MOB_HUNTER: { waves: true }, KING_OF_HILL: { hill: true },
+    DEATHMATCH: { pvp: true },
+  })[mode] || { pvp: true } }) },
 };
 const sandbox = new Proxy(real, {
   has: () => true,
@@ -363,14 +370,100 @@ console.log('Phase 2 — _think element dispatch:');
   const bot = mkPlayer(5, 2, { owner: 'p2' });
   const game = mkGame(level, [mkPlayer(9, 2, { owner: 'p1' }), bot]);
   const ctrl = new BotController(game, 1, 'competitive', 'MEDIUM');
+  const savedRules = sandbox.ARENA_RULES;
   const dispatch = (elements) => { sandbox.ARENA_RULES = { rulesetForMode: () => ({ elements }) }; ctrl._think(); return ctrl.goal.kind; };
   ok(dispatch({ pvp: true }).startsWith('engage') || dispatch({ pvp: true }) === 'hunt', 'pvp elements → kills strategy');
   sandbox.EMERALD_SYSTEM = { _activeEmeralds: () => [{ wx: 8 * B, wy: 2 * B, collected: false }] };
   ok(dispatch({ emeralds: true }) === 'emerald', 'emeralds element → emerald strategy');
   sandbox.EMERALD_SYSTEM = undefined;
   ok(dispatch({ waves: true }) === 'idle' || dispatch({ waves: true }) === 'mob', 'waves element → wave strategy (mob or idle when none)');
-  // restore default mock
-  sandbox.ARENA_RULES = { rulesetForMode: () => ({ elements: { pvp: true } }) };
+  sandbox.ARENA_RULES = savedRules;   // restore the mode-aware mock for Phase 3
+}
+
+// ════════════════════════════════════════════════════════════
+// Phase 3 — co-op team coordination (complementary roles)
+// ════════════════════════════════════════════════════════════
+// Build a game with two team-0 bots + an enemy, wire game._botControllers so the
+// bots can read each other's live goals.
+function mkCoop(level, extra, botCols) {
+  const enemy = mkPlayer(28, 2, { owner: 'p1', teamId: 1 });
+  const a = mkPlayer(botCols[0], 2, { owner: 'p2', teamId: 0 });
+  const b = mkPlayer(botCols[1], 2, { owner: 'p3', teamId: 0 });
+  const game = mkGame(level, [enemy, a, b], extra);
+  const ca = new BotController(game, 1, 'coop', 'MEDIUM');
+  const cb = new BotController(game, 2, 'coop', 'MEDIUM');
+  game._botControllers = [ca, cb];
+  return { game, ca, cb, a, b, enemy };
+}
+
+console.log('Phase 3 — CTF split (grab vs defend):');
+{
+  const level = flatLevel();
+  const flags = [
+    { team: 0, x: 3 * B, y: 2 * B, homeX: 3 * B, homeY: 2 * B, carriedBy: null, dropped: false },
+    { team: 1, x: 10 * B, y: 2 * B, homeX: 10 * B, homeY: 2 * B, carriedBy: null, dropped: false },
+  ];
+  sandbox.CTF_SYSTEM = { flags, bases: [{ x: 3 * B, y: 2 * B }, { x: 27 * B, y: 2 * B }], isCarrying: (p) => flags.some(f => f.carriedBy === p) };
+  // Bot A at col 8 (closer to the enemy flag at col 10), Bot B at col 5 (farther).
+  const { ca, cb } = mkCoop(level, { arenaConfig: { arenaGameMode: 'CAPTURE_FLAG' } }, [8, 5]);
+  ca._think(); cb._think();
+  ok(ca.goal.kind === 'flag-grab', `closer bot goes for the flag (got ${ca.goal.kind})`);
+  ok(cb.goal.kind === 'flag-escort', `farther bot takes the complementary defend role (got ${cb.goal.kind})`);
+  sandbox.CTF_SYSTEM = undefined;
+}
+
+console.log('Phase 3 — Tower split (attack vs defend):');
+{
+  const level = flatLevel();
+  const towers = [
+    { ownerId: 'p2', x: 4 * B, y: 1 * B, w: B, h: 2 * B, maxHp: 9, hp: 9 },   // team-0 (ours)
+    { ownerId: 'p1', x: 26 * B, y: 1 * B, w: B, h: 2 * B, maxHp: 9, hp: 9 },  // enemy
+  ];
+  sandbox.TOWER_SYSTEM = { towers };
+  const { ca, cb } = mkCoop(level, { arenaConfig: { arenaGameMode: 'DEFEND_TOWER' } }, [10, 6]);
+  ca._think(); cb._think();
+  ok(ca.goal.kind === 'tower-attack', `first bot attacks the enemy tower (got ${ca.goal.kind})`);
+  ok(cb.goal.kind === 'tower-defend', `second bot defends our tower (got ${cb.goal.kind})`);
+  sandbox.TOWER_SYSTEM = undefined;
+}
+
+console.log('Phase 3 — Emerald split (different clusters):');
+{
+  const level = flatLevel();
+  const ems = [{ wx: 12 * B, wy: 2 * B, collected: false }, { wx: 24 * B, wy: 2 * B, collected: false }];
+  sandbox.EMERALD_SYSTEM = { _activeEmeralds: () => ems };
+  // Both bots near col 9/10 → both nearest to the col-12 gem; coop splits them.
+  const { ca, cb } = mkCoop(level, { arenaConfig: { arenaGameMode: 'COLLECT_EMERALDS' } }, [9, 10]);
+  ca._think(); cb._think();
+  ok(ca.goal.cell[0] === 12, 'first bot takes the nearest emerald');
+  ok(cb.goal.cell[0] === 24, 'second bot takes the OTHER emerald (no dogpile)');
+  sandbox.EMERALD_SYSTEM = undefined;
+}
+
+console.log('Phase 3 — Mob split (different mobs):');
+{
+  const level = flatLevel();
+  const mk = (id, col) => ({ id, alive: true, hp: 5, x: col * B, y: 2 * B, width: 22, height: 48, get cx() { return this.x + 11; }, get cy() { return this.y + 24; } });
+  const m1 = mk(1, 12), m2 = mk(2, 15);
+  const { ca, cb } = mkCoop(level, { arenaConfig: { arenaGameMode: 'SURVIVAL_WAVES' }, mobManager: { mobs: [m1, m2] } }, [9, 10]);
+  ca._think(); cb._think();
+  ok(ca.goal.targetRef === m1, 'first bot takes the nearest mob');
+  ok(cb.goal.targetRef === m2, 'second bot takes a different mob (no dogpile)');
+}
+
+console.log('Phase 3 — FFA (no team) → no coordination:');
+{
+  const level = flatLevel();
+  const ems = [{ wx: 12 * B, wy: 2 * B, collected: false }, { wx: 24 * B, wy: 2 * B, collected: false }];
+  sandbox.EMERALD_SYSTEM = { _activeEmeralds: () => ems };
+  // Two FFA bots (teamId null) both go for the nearest gem — coordination is off.
+  const a = mkPlayer(9, 2, { owner: 'p2' }), b = mkPlayer(10, 2, { owner: 'p3' });
+  const game = mkGame(level, [mkPlayer(1, 2, { owner: 'p1' }), a, b], { arenaConfig: { arenaGameMode: 'COLLECT_EMERALDS' } });
+  const ca = new BotController(game, 1, 'competitive', 'MEDIUM'), cb = new BotController(game, 2, 'competitive', 'MEDIUM');
+  game._botControllers = [ca, cb];
+  ca._think(); cb._think();
+  ok(ca.goal.cell[0] === 12 && cb.goal.cell[0] === 12, 'FFA bots both chase the nearest gem (no complementary split)');
+  sandbox.EMERALD_SYSTEM = undefined;
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

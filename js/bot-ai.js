@@ -183,6 +183,10 @@ class BotController {
     if (!goal && (el.pvp || el.kills !== false)) goal = this._goalKills(el);
     if (!goal) goal = this._goalIdle();
 
+    // Phase 3 — co-op coordination: bias to a COMPLEMENTARY role so teammates
+    // (bot OR human) don't all do the identical thing. Simple heuristics only.
+    goal = this._coopAdjust(goal, el);
+
     // Record a compact decision-trace sample (Phase 7).
     this.goal = goal;
     this.telemetry.goalCounts[goal.kind] = (this.telemetry.goalCounts[goal.kind] || 0) + 1;
@@ -345,6 +349,119 @@ class BotController {
     const myCol = Math.floor(p.cx / BLOCK_SIZE);
     const cell = [myCol + Math.sign(midCol - myCol) * 4, Math.floor((p.y + p.height - 1) / BLOCK_SIZE)];
     return { kind: 'idle', cell, targetId: null, targetRef: null, action: null, reason: 'no target — recentre' };
+  }
+
+  // ── Phase 3: co-op coordination (simple heuristics; NOT deep planning) ──
+  // Reads teammate state the same way for bots (their live goal) and humans
+  // (inferred from CTF/tower/position state). Only avoids DUPLICATE effort and
+  // nudges toward a complementary role — no comms protocol, no counter-strategy.
+  _coopAdjust(goal, el) {
+    const me = this.player;
+    if (me.teamId == null) return goal;             // FFA — every bot for itself
+    const mates = this._teammates();
+    if (!mates.length) return goal;
+
+    // CTF: don't both chase the same free enemy flag — the farther bot defends.
+    if (goal.kind === 'flag-grab') {
+      const ef = (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.flags) ? CTF_SYSTEM.flags.find(f => f.team !== me.teamId) : null;
+      if (ef) {
+        const myD = Math.hypot(ef.x - me.cx, ef.y - me.cy);
+        const someoneBetter = mates.some(t => {
+          const c = this._peerController(t);
+          const committed = c ? (c.goal && (c.goal.kind === 'flag-grab' || c.goal.kind === 'flag-capture'))
+                              : (typeof CTF_SYSTEM !== 'undefined' && CTF_SYSTEM.isCarrying && CTF_SYSTEM.isCarrying(t)); // human carrying
+          return committed && Math.hypot(ef.x - t.cx, ef.y - t.cy) <= myD;
+        });
+        if (someoneBetter && CTF_SYSTEM.bases && CTF_SYSTEM.bases[me.teamId]) {
+          const b = CTF_SYSTEM.bases[me.teamId];
+          return { kind: 'flag-escort', cell: this._cellAtPx(b.x, b.y), approach: 'reach',
+                   targetRef: this._nearestOpponentInRange(), action: 'combat', targetId: 'defend',
+                   reason: 'teammate on the flag — defending base' };
+        }
+      }
+    }
+
+    // Tower: split attack/defend. If a teammate is already attacking the enemy
+    // tower (bot goal, or human standing near it) and we own a tower → defend it.
+    if (goal.kind === 'tower-attack' && typeof TOWER_SYSTEM !== 'undefined' && TOWER_SYSTEM.towers) {
+      const enemyTower = TOWER_SYSTEM.towers.find(t => !this._ownsTower(t) && t.hp > 0);
+      const mine = TOWER_SYSTEM.towers.find(t => this._ownsTower(t) && t.hp > 0);
+      const someoneAttacking = mates.some(t => {
+        const c = this._peerController(t);
+        if (c) return c.goal && c.goal.kind === 'tower-attack';
+        return enemyTower && Math.hypot(enemyTower.x + enemyTower.w / 2 - t.cx, enemyTower.y + enemyTower.h / 2 - t.cy) < 6 * BLOCK_SIZE;
+      });
+      if (someoneAttacking && mine) {
+        const threat = this._nearestOpponentNearPx(mine.x + mine.w / 2, mine.y + mine.h / 2, 14);
+        return { kind: 'tower-defend', cell: threat ? BOT_AI.cellOf(threat) : this._cellAtPx(mine.x + mine.w / 2, mine.y + mine.h),
+                 approach: threat ? 'range' : 'reach', targetRef: threat, action: threat ? 'combat' : null,
+                 targetId: 'defend', reason: 'teammate attacking — defending our tower' };
+      }
+    }
+
+    // Hill: if a teammate already holds it (and the sub-mode doesn't reward extra
+    // bodies), intercept approaching enemies instead of crowding the zone.
+    if (goal.kind === 'hill-approach') {
+      const submode = ((this.game.arenaConfig && this.game.arenaConfig.kothScoring) || 'STICKY').toUpperCase();
+      const h = this._hillInfo();
+      const mateHolding = h && mates.some(t => this._onHill(h, t));
+      if (submode !== 'ALL' && mateHolding) {
+        const threat = this._nearestOpponentInRange();
+        if (threat) return { kind: 'hill-intercept', cell: BOT_AI.cellOf(threat), approach: 'range',
+                             targetRef: threat, action: 'combat', targetId: threat._ownerId,
+                             reason: 'teammate holds the hill — intercepting' };
+      }
+    }
+
+    // Emeralds: don't both beeline the same gem — take one a closer teammate isn't.
+    if (goal.kind === 'emerald') {
+      const claimed = this._claimedCells(['emerald']);          // peer bots' emerald targets
+      const alt = this._nearestLiveEmeraldExcluding(claimed);
+      if (alt) return { kind: 'emerald', cell: this._cellAtPx(alt.wx, alt.wy), approach: 'reach',
+                        targetRef: null, action: null, targetId: 'emerald', reason: 'splitting emeralds with teammate' };
+    }
+
+    // Mobs: don't both dogpile one mob — pick one a teammate isn't already on.
+    if (goal.kind === 'mob') {
+      const claimedMobs = new Set();
+      for (const t of mates) { const c = this._peerController(t); if (c && c.goal && c.goal.kind === 'mob' && c.goal.targetRef) claimedMobs.add(c.goal.targetRef); }
+      if (goal.targetRef && claimedMobs.has(goal.targetRef)) {
+        const alt = this._nearestMobExcluding(claimedMobs);
+        if (alt) return { kind: 'mob', cell: BOT_AI.cellOf(alt), approach: 'range', targetRef: alt,
+                          action: 'combat', targetId: 'mob' + alt.id, reason: 'splitting mobs with teammate' };
+      }
+    }
+    return goal;
+  }
+
+  _teammates() {
+    const me = this.player;
+    return this.game.activePlayers().filter(p => p !== me && p.hp > 0 && p.teamId != null && p.teamId === me.teamId);
+  }
+  _peerController(p) {
+    const cs = this.game._botControllers || [];
+    return cs.find(c => c !== this && c.player === p) || null;
+  }
+  _claimedCells(kinds) {
+    const out = [];
+    for (const t of this._teammates()) { const c = this._peerController(t); if (c && c.goal && kinds.includes(c.goal.kind) && c.goal.cell) out.push(c.goal.cell); }
+    return out;
+  }
+  _nearestLiveEmeraldExcluding(cells) {
+    const me = this.player; let best = null, bd = Infinity;
+    for (const e of this._liveEmeralds()) {
+      const ec = this._cellAtPx(e.wx, e.wy);
+      if (cells.some(c => c[0] === ec[0] && c[1] === ec[1])) continue;
+      const d = Math.hypot(e.wx - me.cx, e.wy - me.cy);
+      if (d < bd) { bd = d; best = e; }
+    }
+    return best;
+  }
+  _nearestMobExcluding(set) {
+    const mm = this.game.mobManager; if (!mm || !mm.mobs) return null;
+    const me = this.player; let best = null, bd = Infinity;
+    for (const m of mm.mobs) { if (!m.alive || m.hp <= 0 || set.has(m)) continue; const d = Math.hypot(m.cx - me.cx, m.cy - me.cy); if (d < bd) { bd = d; best = m; } }
+    return best;
   }
 
   // ── ACT: translate goal → virtual input every frame ─────────

@@ -1705,3 +1705,21 @@ pursuing an objective (independent combat + movement blocks in `_act`).
 - Tests: test-bot-ai.js +17 (hill approach/hold/SOLE-displace, flag grab/capture/
   defend, tower attack/defend, nearest-emerald, nearest-mob, element dispatch).
   **Suite 418.** Browser-UNTESTED.
+
+## Phase 3 — co-op team coordination (build 119, DONE, headless-verified)
+Simple complementary-role heuristics (NOT deep planning — no comms, no counter-
+strategy, per the brief's explicit scope). Applied in `_coopAdjust(goal)` at the
+end of `_think`, AFTER the element strategy picks a goal. Reads teammate state the
+SAME way for bots (their live `goal`, via `game._botControllers`) and humans
+(inferred from CTF/tower/position state). FFA (teamId null) → no coordination.
+- **CTF:** two teammates don't both chase the same free enemy flag — the farther
+  one switches to `flag-escort` (defend base). A human teammate carrying the flag
+  counts as "committed" (read via `CTF_SYSTEM.isCarrying`).
+- **Tower:** if a teammate is already attacking the enemy tower (bot goal, or a
+  human standing near it) and we own a tower → `tower-defend` instead of piling on.
+- **Hill:** if a teammate already holds the hill and the sub-mode isn't ALL →
+  `hill-intercept` approaching enemies rather than crowding the zone.
+- **Emeralds / Mobs:** don't dogpile — a bot whose nearest target is already
+  claimed by a teammate bot picks the next-nearest unclaimed one.
+- Tests: test-bot-ai.js +9 (CTF/Tower/Emerald/Mob splits + FFA-no-coordination).
+  **Suite 427.** Browser-UNTESTED.
