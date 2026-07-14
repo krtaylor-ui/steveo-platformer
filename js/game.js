@@ -1204,6 +1204,39 @@ class Game {
   // Arena world-space overlays (emeralds, power-ups), drawn inside the zoom ctx so
   // they scale with the world. Systems are populated in Parts 4/6; guarded so this
   // is a no-op until they load.
+  // Bot AI debug overlay (World Settings → Advanced → "Show Bot Paths"): draws each
+  // bot's current A* route (green dots/line), its goal cell (magenta ring), and a red
+  // ✕ if it currently has NO path. Lets Kevin SEE whether the planner is mapping.
+  _drawBotDebug(ctx) {
+    const cam = this.camera, S = BLOCK_SIZE;
+    ctx.save();
+    for (const b of this._botControllers) {
+      if (!b || !b.player) continue;
+      const path = b._path;
+      if (path && path.length) {
+        ctx.strokeStyle = 'rgba(60,220,90,0.9)'; ctx.lineWidth = 2; ctx.beginPath();
+        for (let i = 0; i < path.length; i++) {
+          const s = cam.toScreen((path[i][0] + 0.5) * S, (path[i][1] + 0.5) * S);
+          if (i === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+        }
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(60,220,90,0.9)';
+        for (const c of path) { const s = cam.toScreen((c[0] + 0.5) * S, (c[1] + 0.5) * S); ctx.fillRect(s.x - 2, s.y - 2, 4, 4); }
+      }
+      const g = b.goal && b.goal.cell;
+      if (g) {
+        const s = cam.toScreen((g[0] + 0.5) * S, (g[1] + 0.5) * S);
+        ctx.strokeStyle = '#FF3AF0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s.x, s.y, 7, 0, Math.PI * 2); ctx.stroke();
+      }
+      if (!path) {   // no route right now → red ✕ over the bot (planner failed / unreachable)
+        const s = cam.toScreen(b.player.x + b.player.width / 2, b.player.y - 12);
+        ctx.strokeStyle = '#FF4040'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(s.x - 5, s.y - 5); ctx.lineTo(s.x + 5, s.y + 5); ctx.moveTo(s.x + 5, s.y - 5); ctx.lineTo(s.x - 5, s.y + 5); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   _drawArenaWorldOverlay(ctx) {
     if (typeof EMERALD_SYSTEM !== 'undefined' && EMERALD_SYSTEM.draw) EMERALD_SYSTEM.draw(ctx, this.camera, this.frameCount);
     if (typeof POWERUP_SYSTEM !== 'undefined' && POWERUP_SYSTEM.draw) POWERUP_SYSTEM.draw(ctx, this.camera, this.frameCount);
@@ -5864,6 +5897,8 @@ class Game {
     }
     // Arena world-space overlays (emeralds, power-ups) drawn inside the zoom context
     if (this.isArena) this._drawArenaWorldOverlay(ctx);
+    // Bot AI debug: draw each bot's planned route + goal (World Setting, off by default).
+    if (this._worldAdvSettings.showBotPaths && this._botControllers && this._botControllers.length) this._drawBotDebug(ctx);
     // Sandbox WORLD overlays (placed eggs/emeralds/power-ups/hill/spawn-lines/items
     // + portal labels) must scale with the zoom too — draw them inside the transform.
     if (this.gameMode === 'sandbox' && this.sandbox && this.sandbox.drawWorld) {

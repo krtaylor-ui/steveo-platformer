@@ -203,6 +203,23 @@ console.log('Wall-jump climb (bot-gated) — scales a tall wall only when wallCl
   ok(findMobPath(nav, start, goal, { maxRadius: 20, wallClimb: 4 }) !== null, 'wallClimb scales the wall (bot with Wall Slide)');
 }
 
+console.log('Partial path — get as close as possible when the goal is unreachable:');
+{
+  const nav = mkNav([
+    '                    ',
+    '                    ',
+    '######              ',   // start floor cols 0-5 (stand on row1)
+    '                    ',
+    '                    ',
+    '              ######',   // island floor cols 14-19 (across a bottomless void → unreachable)
+  ]);
+  const s = standCell(nav, 1), g = standCell(nav, 17, 4);
+  ok(findMobPath(nav, s, g, { maxRadius: 40 }) === null, 'unreachable goal → null by default');
+  const part = findMobPath(nav, s, g, { maxRadius: 40, partial: true });
+  ok(part !== null && part.partial === true, 'partial:true → a best-effort route (flagged partial)');
+  ok(part && part.path[part.path.length - 1][0] > s[0], 'partial route heads TOWARD the goal (navigates around, not giving up)');
+}
+
 console.log('vBias heuristic (bot maze/vertical focus) — still solves a vertical climb:');
 {
   const nav = mkNav(['      ', '      ', '   ###', '      ', '######']);

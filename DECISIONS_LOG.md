@@ -2063,3 +2063,24 @@ Prep for Kevin's maze test — the two fixes agreed + a maze heuristic.
 - Tests: test-pathfinding +3 (vBias solves a vertical climb; default still works),
   test-bot-ai +2 (teleport-ON no early warp, but stuck-fallback warps after a stall).
   Suite 508. Browser-UNTESTED.
+
+## Bot pathing — partial "get close" routes + debug overlay (build 134)
+Kevin: companion "just hops" directly below the player and can't route around a
+platform ("doesn't seem to be mapping"). Two fixes + observability:
+- **Partial path (`opts.partial`, bots pass true):** `findMobPath` now tracks the
+  reachable cell with the best heuristic; if the exact goal is unreachable within
+  budget, it returns a route to that closest cell (flagged `partial:true`) instead of
+  null. So the bot navigates AROUND an obstacle TOWARD the player even when it can't
+  reach the player's exact cell — vs. giving up / hopping in place. Requires real
+  progress (best h < start h) else still null. Default off → mobs/tests unchanged.
+- **Debug overlay (`showBotPaths` World Setting, Display, advanced):** `_drawBotDebug`
+  draws each bot's planned A* route (green dots+line), its goal cell (magenta ring),
+  and a red ✕ over the bot when it has NO path. Turns "it's not mapping" into
+  something we can watch — Kevin can see whether the planner finds a route, and where.
+- Likely root cause of the report (to confirm with the overlay): the exact-goal route
+  onto the player's platform exceeded the envelope/budget, so it returned null and the
+  actuator hopped. Partial path should make it route around/toward now; the overlay
+  will show if the plan is right but the ACTUATOR fails to execute a specific climb
+  (the next thing to fix if so).
+- Tests: test-pathfinding +3 (partial returns a toward-goal route on an unreachable
+  island; null by default). Suite 511. Browser-UNTESTED.

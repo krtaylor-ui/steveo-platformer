@@ -224,19 +224,36 @@ function findMobPath(nav, start, goal, opts) {
   open.push(h(sc, sr), [sc, sr]);
   const nbrs = [];
   let expansions = 0;
+  // Best-so-far toward the goal (for opts.partial): the reachable cell with the
+  // lowest heuristic. Lets a bot "get as close as it can" — navigate AROUND an
+  // obstacle toward the goal even when the exact goal is unreachable within budget,
+  // instead of giving up and standing still. reconstruct() builds the route to a key.
+  const startKey = _navKey(sc, sr);
+  const startH = h(sc, sr);
+  let bestKey = startKey, bestH = startH;
+  const reconstruct = (endKey, endCell) => {
+    const path = [endCell]; let cur = endKey;
+    while (cameFrom.has(cur)) { const p = cameFrom.get(cur); path.push([p[0], p[1]]); cur = _navKey(p[0], p[1]); }
+    path.reverse();
+    return path;
+  };
+  // Return a partial route to the closest reachable cell, or null if no meaningful
+  // progress toward the goal was possible (so the caller falls back cleanly).
+  const partialResult = () => {
+    if (opts.partial && bestKey !== startKey && bestH < startH - 0.5) {
+      const [bc, br] = bestKey.split(',').map(Number);
+      return { path: reconstruct(bestKey, [bc, br]), cost: gScore.get(bestKey), partial: true };
+    }
+    return null;
+  };
 
   while (open.size) {
     const [c, r] = open.pop();
     const k = _navKey(c, r);
-    if (k === goalKey) {
-      // reconstruct
-      const path = [[c, r]];
-      let cur = k;
-      while (cameFrom.has(cur)) { const p = cameFrom.get(cur); path.push([p[0], p[1]]); cur = _navKey(p[0], p[1]); }
-      path.reverse();
-      return { path, cost: gScore.get(goalKey) };
-    }
-    if (++expansions > maxExpansions) return null;
+    if (k === goalKey) return { path: reconstruct(k, [c, r]), cost: gScore.get(goalKey) };
+    const hc = h(c, r);
+    if (hc < bestH) { bestH = hc; bestKey = k; }
+    if (++expansions > maxExpansions) return partialResult();
     const gCur = gScore.get(k);
     navNeighbors(nav, c, r, baseUp, baseDx, nbrs, wallClimb);
     for (const n of nbrs) {
@@ -252,7 +269,7 @@ function findMobPath(nav, start, goal, opts) {
       }
     }
   }
-  return null;
+  return partialResult();   // goal unreachable → best-effort partial (if requested), else null
 }
 
 // Export for Node (the generator + headless tests require this); in the browser

@@ -743,7 +743,7 @@ class BotController {
       const radius = Math.min(BOT_PATH_MAX_RADIUS, Math.max(30, this.diff.detectRange + 12));  // room for winding corridors
       const env = this._jumpEnvelope();   // reachability reflects the world's enabled moves
       const res = (typeof findMobPath === 'function')
-        ? findMobPath(this._nav(), [cc, cr], [gc, gr], { maxRadius: radius, maxExpansions: BOT_PATH_MAX_EXPANSIONS, maxUp: env.maxUp, maxDx: env.maxDx, wallClimb: env.wallClimb, vBias: BOT_PATH_VBIAS })
+        ? findMobPath(this._nav(), [cc, cr], [gc, gr], { maxRadius: radius, maxExpansions: BOT_PATH_MAX_EXPANSIONS, maxUp: env.maxUp, maxDx: env.maxDx, wallClimb: env.wallClimb, vBias: BOT_PATH_VBIAS, partial: true })
         : null;
       this._pathTimer = this.diff.navRecompute;
       this._pathGoalCell = [gc, gr];
