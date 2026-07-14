@@ -203,6 +203,25 @@ console.log('Wall-jump climb (bot-gated) — scales a tall wall only when wallCl
   ok(findMobPath(nav, start, goal, { maxRadius: 20, wallClimb: 4 }) !== null, 'wallClimb scales the wall (bot with Wall Slide)');
 }
 
+console.log('Maze walls — a jump cannot pass THROUGH a solid wall (the maze bug):');
+{
+  // Two rooms separated by a floor-to-ceiling wall (roofed) → NO legal route. Before
+  // the arc-clearance fix, A* jumped straight through the wall (far side standable).
+  const sealed = mkNav([
+    '##########',   // ceiling
+    '#    #   #',   // wall col5
+    '#S   #  G#',   // floor level; wall col5
+    '##########',   // floor
+  ]);
+  ok(findMobPath(sealed, [1, 2], [8, 2], { maxRadius: 30 }) === null, 'floor-to-ceiling wall → no route (no jump-through)');
+  // Control: remove the wall → the walk route exists.
+  const open = mkNav(['##########', '#        #', '#S      G#', '##########']);
+  ok(findMobPath(open, [1, 2], [8, 2], { maxRadius: 30 }) !== null, 'without the wall, the route exists');
+  // A SHORT wall open above is still hoppable (arc clears it) — not over-strict.
+  const shortWall = mkNav(['          ', '          ', '     #    ', '#########']);
+  ok(findMobPath(shortWall, [1, 2], [8, 2], { maxRadius: 30 }) !== null, 'a short wall (open above) is still hoppable');
+}
+
 console.log('Partial path — get as close as possible when the goal is unreachable:');
 {
   const nav = mkNav([

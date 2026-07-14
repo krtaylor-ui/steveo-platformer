@@ -179,7 +179,10 @@ function key(c, r) { return c + ',' + r; }
 function reachable(gr, startC, startR, opts = {}) {
   const nav = {
     W: gr.W, H: gr.H,
-    solid:  (c, r) => SOLID.has(get(gr, c, r)),
+    // Redstone-openable doors (TRAPDOOR / PISTON) count as PASSABLE for reachability
+    // — the puzzle is to open them, so a gated area IS reachable once opened. (Before
+    // the jump-arc fix this "passed" only because jumps illegally cut through walls.)
+    solid:  (c, r) => { const b = get(gr, c, r); return SOLID.has(b) && b !== B.TRAPDOOR && b !== B.PISTON; },
     hazard: (c, r) => HAZARD.has(get(gr, c, r)),
     pad:    (c, r) => get(gr, c, r) === B.JUMP_PAD,
   };

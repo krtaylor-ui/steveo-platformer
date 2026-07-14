@@ -50,6 +50,28 @@ function navStandable(nav, c, r) {
 
 function navPassable(nav, c, r) { return !nav.solid(c, r) && !nav.hazard(c, r); }
 
+// Is a JUMP from (c,r) to (nc,nr) actually clear of terrain in between? The jump
+// envelope only checks the DESTINATION, so without this a jump can pass straight
+// THROUGH a wall as long as the far side is standable (the "maze walls ignored" bug).
+// Model: for every intermediate column, require a 2-tall passable gap somewhere the
+// arc could pass — between the peak the jump can reach (min row − jUp) and the lower
+// endpoint. A floor-to-ceiling wall has no gap → jump rejected (route around); a short
+// wall open above has a gap → hop allowed. Per-column (cheap; slightly permissive).
+function navJumpClear(nav, c, r, nc, nr, jUp) {
+  const stepC = nc > c ? 1 : (nc < c ? -1 : 0);
+  if (stepC === 0) return true;                 // vertical/adjacent — no columns to cross
+  const top = Math.min(r, nr) - jUp;            // highest the arc could reach
+  const bot = Math.max(r, nr);                  // lower endpoint (larger row)
+  for (let x = c + stepC; x !== nc; x += stepC) {
+    let gap = false;
+    for (let y = top; y <= bot; y++) {
+      if (!nav.solid(x, y) && !nav.solid(x, y - 1)) { gap = true; break; }  // 2-tall clearance
+    }
+    if (!gap) return false;                     // solid all the way → can't jump through
+  }
+  return true;
+}
+
 // Nearest standable at/below (c,r) within NAV_MAX_DROP — models a walk-off-ledge
 // fall (and is used to snap an airborne start/goal down to the ground).
 function navDropTo(nav, c, r) {
@@ -100,6 +122,9 @@ function navNeighbors(nav, c, r, baseUp, baseDx, out, wallClimb) {
       const upCost = dr < 0 ? -dr : 0;
       const budget = jDx - upCost;
       if (Math.abs(dc) > Math.max(1, budget)) continue;
+      // Reject jumps that pass THROUGH terrain (e.g. straight through a maze wall) —
+      // the far side being standable isn't enough; the arc must actually clear.
+      if ((Math.abs(dc) > 1 || Math.abs(dr) > 1) && !navJumpClear(nav, c, r, nc, nr, jUp)) continue;
       out.push([nc, nr, dc, dr]);
     }
   }

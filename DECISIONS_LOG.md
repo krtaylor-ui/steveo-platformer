@@ -2105,3 +2105,31 @@ IS solid (hence "knows where to stand").
   eventually live in the Platformer START menu + the continue-game screen, NOT World
   Settings — recorded as a TODO in FUTURE_ROADMAP.)
 - Suite 511. Browser-UNTESTED.
+
+## MAZE BUG — jumps passed through solid walls (build 136) — real root-cause fix
+Kevin's maze test: the planned path ran straight THROUGH solid dirt/grass walls (the
+same block it stood on it also passed through), and adding a block didn't reroute it —
+"the path is being calculated incorrectly." Confirmed by a repro: two rooms separated
+by a floor-to-ceiling wall returned path `[[1,2],[2,2],[8,2]]` — A* jumped from col2 to
+col8 straight through the col5 wall into a sealed room.
+- **ROOT CAUSE (`navNeighbors` jump model):** the jump envelope only checked that the
+  DESTINATION cell was standable + within arc budget — it never checked the cells
+  BETWEEN takeoff and landing. So a horizontal/diagonal jump could pass straight through
+  a wall as long as the far side was valid. Invisible in open terrain; fatal in a maze
+  (walls between corridors) — the planner "solved" mazes by jumping through the walls.
+- **FIX (`navJumpClear`):** a multi-cell jump is now rejected unless every intermediate
+  column has a 2-tall passable gap within the arc's vertical reach (min-row − jUp .. lower
+  endpoint). A floor-to-ceiling wall → no gap → jump rejected (route around / through an
+  opening); a SHORT wall open above → gap exists → hop still allowed (not over-strict).
+  Applied to all jumps with |dc|>1 or |dr|>1; walk/drop/wall-climb neighbours unaffected.
+  This is in the SHARED pathfinder, so **mobs get the fix too** (they no longer path
+  through walls either).
+- **Impact check:** all headless tests pass (suite 514; test-pathfinding +3 maze cases —
+  sealed wall → null, open control → route, short wall → still hoppable). 8/9 sample
+  worlds still validate. The 9th ("Switch & Sever" redstone puzzle) now flags its
+  gated chambers as statically-unreachable — it had been a FALSE PASS (the validator was
+  jumping through the chamber walls via this very bug). Also made the generator's
+  reachability treat TRAPDOOR/PISTON as passable (redstone-openable doors), but that one
+  puzzle world's authored geometry still relies on more than the door — a known
+  redstone-validator limitation, not a gameplay problem (the world plays fine; you open
+  the doors). Content-only; doesn't affect the test suite or real play.
