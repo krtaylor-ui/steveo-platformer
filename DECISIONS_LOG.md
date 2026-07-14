@@ -2133,3 +2133,27 @@ col8 straight through the col5 wall into a sealed room.
   puzzle world's authored geometry still relies on more than the door — a known
   redstone-validator limitation, not a gameplay problem (the world plays fine; you open
   the doors). Content-only; doesn't affect the test suite or real play.
+
+## MAZE BUG pt.2 — vertical jumps through platforms (build 137)
+Kevin (with the debug overlay): the orange overlay confirmed the platform IS solid,
+but a YELLOW (jump) line ran straight UP through it to the player directly above —
+even when adjacent. Build 136 only checked HORIZONTAL clearance (intermediate
+columns); a VERTICAL jump (dc=0) has no columns, so it skipped the check and jumped
+straight up through a platform (when there's air between the bot and the platform, so
+the headroom check doesn't fire).
+- **FIX:** `navJumpClear` now does an EXISTENCE-OF-ARC check — it sweeps a tent arc
+  (peaking at `hiRow − arch`) for arch = 0..jUp and accepts the jump iff SOME arc keeps
+  the 2-tall body clear of terrain. Low arcs (arch 0) clear ceilings / cross flat gaps;
+  high arcs clear tall walls. A platform directly overhead or a floor-to-ceiling wall
+  has NO clear arc → rejected → route around (verified: bot now steps to the side and
+  jumps onto a 1-wide platform edge instead of through it). `arch` starts at 0 so flat
+  gap-crossings/hops aren't wrongly lifted out of bounds (that regressed 6 tests mid-fix;
+  fixed).
+- Handles vertical, horizontal, AND diagonal jumps. Shared pathfinder → mobs too.
+- Tests: test-pathfinding maze cases green; **suite 514**. 8/9 sample worlds validate
+  (the redstone puzzle's gated chambers still flag — validator limitation, was a
+  false-pass before; content-only).
+- **DEFERRED nav features Kevin flagged (recorded in FUTURE_ROADMAP §21):**
+  (1) pathing through TRAPDOOR / PISTON doors (dynamic openable obstacles — treat as
+  passable-when-openable + trigger the lever); (2) crawling through 1-tall gaps (the
+  crouch state — a shorter body profile in the nav for reachability).

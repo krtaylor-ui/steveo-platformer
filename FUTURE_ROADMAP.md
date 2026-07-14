@@ -743,3 +743,17 @@ play choice, not a world property. World Settings can keep the advanced knobs
 (teleport range, stuck behavior) but the "play with a companion? which character?"
 choice belongs at game-start. Low effort once there's a platformer start/continue
 screen to hang it on. Until then, `companionBot = Off` removes it.
+
+## 21. Bot navigation — openable doors & crawl gaps  *(flagged 2026-07-14, deferred)*
+Kevin flagged two nav capabilities to add after the core maze pathing is solid:
+- **Redstone doors (trapdoor / piston):** the bot should treat an openable door as a
+  passable route and actually operate it (path to the lever, toggle, go through). Today
+  closed trapdoors/pistons are solid to the nav (the Speed-Run generator's *validator*
+  now treats them as passable for reachability, but the live bot doesn't open them).
+  Needs: nav "conditionally-passable" edges + an actuator step to trigger the linked
+  lever/plate. Ties into the redstone graph (`redstone.js`).
+- **Crawl through 1-tall gaps:** a 2-tall bot can't fit a 1-tall opening, but with the
+  crouch/sneak state it could crawl. Needs a shorter body profile in `navStandable`/
+  `navJumpClear` (1-tall) for cells the bot can only pass while crouched, and the
+  actuator holding crouch through them. Reuses the Smart-Mobs crouch state.
+Both are MODERATE; do after maze/platform nav feels right.

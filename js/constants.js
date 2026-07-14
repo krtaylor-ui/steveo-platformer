@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 136 (MAZE BUG FIX: the pathfinder was letting jumps pass straight THROUGH solid walls (it only checked the landing cell, not the space between) — so bots plotted routes through maze walls. Jumps now require actual clearance along the arc, so bots route AROUND walls / through openings. Fixes mobs too. + build 135 debug overlay.)';
+const GAME_VERSION = 'v3 · build 137 (MAZE BUG FIX pt.2 — VERTICAL: jumps also no longer pass straight UP through a platform directly overhead (build 136 fixed horizontal-through-wall; this catches vertical/diagonal too). Jump clearance now sweeps the real arc — a jump is allowed only if some arc within jump height threads the terrain — so bots route around platforms and up their edges, and flat gap-hops still work. + build 136.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

@@ -52,22 +52,41 @@ function navPassable(nav, c, r) { return !nav.solid(c, r) && !nav.hazard(c, r); 
 
 // Is a JUMP from (c,r) to (nc,nr) actually clear of terrain in between? The jump
 // envelope only checks the DESTINATION, so without this a jump can pass straight
-// THROUGH a wall as long as the far side is standable (the "maze walls ignored" bug).
-// Model: for every intermediate column, require a 2-tall passable gap somewhere the
-// arc could pass — between the peak the jump can reach (min row − jUp) and the lower
-// endpoint. A floor-to-ceiling wall has no gap → jump rejected (route around); a short
-// wall open above has a gap → hop allowed. Per-column (cheap; slightly permissive).
+// THROUGH terrain as long as the far side is standable — horizontally through a maze
+// wall, OR VERTICALLY straight up through a platform directly overhead (the reported
+// bug). We sweep the PARABOLIC arc the actor would fly and require its 2-tall body
+// (feet + head) to be clear at every intermediate cell. The arc peaks above the higher
+// endpoint (bounded by jUp), so hopping OVER a short wall stays valid while jumping
+// THROUGH a solid platform/wall (no room on the arc) is rejected → route around.
 function navJumpClear(nav, c, r, nc, nr, jUp) {
-  const stepC = nc > c ? 1 : (nc < c ? -1 : 0);
-  if (stepC === 0) return true;                 // vertical/adjacent — no columns to cross
-  const top = Math.min(r, nr) - jUp;            // highest the arc could reach
-  const bot = Math.max(r, nr);                  // lower endpoint (larger row)
-  for (let x = c + stepC; x !== nc; x += stepC) {
-    let gap = false;
-    for (let y = top; y <= bot; y++) {
-      if (!nav.solid(x, y) && !nav.solid(x, y - 1)) { gap = true; break; }  // 2-tall clearance
-    }
-    if (!gap) return false;                     // solid all the way → can't jump through
+  const dist = Math.max(Math.abs(nc - c), Math.abs(nr - r));
+  if (dist <= 1) return true;                       // adjacent — nothing between
+  const hiRow = Math.min(r, nr);
+  // Existence check: the actor may choose its arc height from level (arch 0 — a flat
+  // gap-crossing) up to jUp above the higher endpoint. Try low→high (low clears
+  // ceilings / a flat gap; high clears tall walls); the jump is valid if ANY arc
+  // threads the terrain. A floor-to-ceiling wall or a platform directly overhead has
+  // NO clear arc → jump rejected → route around.
+  for (let arch = 0; arch <= jUp; arch++) {
+    if (_navArcClears(nav, c, r, nc, nr, hiRow - arch)) return true;
+  }
+  return false;
+}
+// Does a tent arc (peaking at `peakRow` at the midpoint, endpoints r and nr) keep the
+// actor's 2-tall body clear of terrain the whole way? Endpoints' own body cells are
+// skipped (they're the standable start/goal).
+function _navArcClears(nav, c, r, nc, nr, peakRow) {
+  const dc = nc - c;
+  const dist = Math.max(Math.abs(dc), Math.abs(nr - r));
+  const steps = dist * 3;
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const x = Math.round(c + dc * t);
+    const y = t < 0.5 ? Math.round(r + (peakRow - r) * (t / 0.5))
+                      : Math.round(peakRow + (nr - peakRow) * ((t - 0.5) / 0.5));
+    if (x === c && y >= r - 1) continue;             // still leaving the takeoff body
+    if (x === nc && y <= nr) continue;               // arriving into the landing body
+    if (nav.solid(x, y) || nav.solid(x, y - 1)) return false;   // feet+head hit terrain
   }
   return true;
 }
