@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 112 (World Settings: preserve scroll position when changing a setting — no more snapping back to the top after each adjustment; tab switches still start at top)';
+const GAME_VERSION = 'v3 · build 113 (Fix: End Portal — Eye of Ender is consumed only when actually placed (no more wasted eyes), and the portal anchor is derived from the grid when unregistered, so any 5-in-a-row frame set activates)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

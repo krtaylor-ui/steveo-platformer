@@ -8234,52 +8234,82 @@ class Game {
       for (let dc = -2; dc <= 2; dc++) {
         const r = pRow + dr, c = pCol + dc;
         if (this.level.get(r, c) === BLOCK.END_PORTAL_FRAME) {
-          this._tryPlaceEye(r, c);
-          this.player.takeFromSlot(this.player.selectedSlot);
-          return;
+          // Consume the eye ONLY if it was actually placed; otherwise keep scanning for
+          // a frame that can take it (a stray frame no longer wastes the eye).
+          if (this._tryPlaceEye(r, c)) { this.player.takeFromSlot(this.player.selectedSlot); return; }
         }
       }
     }
   }
 
+  // Horizontal extent of a contiguous End-Portal-frame run (empty or eyed) on `row`
+  // around `col`. Lets us derive a portal anchor straight from the grid when the anchor
+  // map is missing/stale (imported worlds, hand-placed frames, older saves).
+  _endPortalFrameRun(row, col) {
+    const isFrame = (c) => {
+      const b = this.level.get(row, c);
+      return b === BLOCK.END_PORTAL_FRAME || b === BLOCK.END_PORTAL_FRAME_FULL;
+    };
+    if (!isFrame(col)) return null;
+    let left = col, right = col;
+    while (isFrame(left - 1))  left--;
+    while (isFrame(right + 1)) right++;
+    return { left, right, width: right - left + 1 };
+  }
+
+  // Place an Eye of Ender into the empty frame at (row,col). Returns TRUE only if an eye
+  // was actually placed (the caller consumes the item only on success — no more wasted
+  // eyes when there's "nowhere to put them").
   _tryPlaceEye(row, col) {
-    if (this.level.get(row, col) !== BLOCK.END_PORTAL_FRAME) return;
-    // Find the anchor whose top frame row contains this cell
-    for (const [key, anchor] of this._endPortalAnchors) {
-      if (anchor.active) continue;
-      if (row !== anchor.row) continue;
-      if (col < anchor.col || col > anchor.col + 4) continue;
-      // Place eye in this frame block
-      this.level.set(row, col, BLOCK.END_PORTAL_FRAME_FULL);
-      anchor.eyeCount++;
-      if (anchor.eyeCount >= 5) {
-        // All 5 eyes — activate portal: fill inner 3 cols across all 3 rows (9 blocks)
-        for (let dr = 0; dr <= 2; dr++) {
-          for (let dc = 1; dc <= 3; dc++) {
-            this.level.set(anchor.row + dr, anchor.col + dc, BLOCK.END_PORTAL);
-          }
-        }
-        anchor.active = true;
-        this._playSound('sounds/enable-end-portal.mp3');
-        this._notify('The End Portal activates! Press U inside to enter The End.', '#AA44FF', 360);
-      } else {
-        this._playSound('sounds/placing-eye-of-ender.mp3');
-        this._notify(`Eye of Ender placed! (${anchor.eyeCount}/5)`, '#AA44FF', 140);
-      }
-      if (this._onlineGameId && window.multiplayerManager?.isCreator) {
-        const changes = [{ row, col, block: BLOCK.END_PORTAL_FRAME_FULL }];
-        if (anchor.eyeCount >= 5) {
-          for (let dr = 0; dr <= 2; dr++)
-            for (let dc = 1; dc <= 3; dc++)
-              changes.push({ row: anchor.row + dr, col: anchor.col + dc, block: BLOCK.END_PORTAL });
-        }
-        window.multiplayerManager.sendBlockChanged(changes, {
-          endPortalAnchor: { col: anchor.col, row: anchor.row, eyeCount: anchor.eyeCount, active: anchor.active },
-        });
-      }
-      return;
+    if (this.level.get(row, col) !== BLOCK.END_PORTAL_FRAME) return false;  // not an empty frame
+
+    // 1) A stored inactive anchor whose 5-frame span covers this cell.
+    let anchor = null;
+    for (const [, a] of this._endPortalAnchors) {
+      if (!a.active && row === a.row && col >= a.col && col <= a.col + 4) { anchor = a; break; }
     }
-    this._notify('No inactive portal frame here', '#888888', 80);
+    // 2) Otherwise derive one from the grid: the frame must sit in a run of ≥5 frame
+    //    blocks. This makes the portal work even if no anchor was ever registered.
+    if (!anchor) {
+      const run = this._endPortalFrameRun(row, col);
+      if (!run || run.width < 5) {
+        this._notify('End Portal needs 5 frame blocks in a row', '#AA44FF', 120);
+        return false;
+      }
+      const anchorCol = Math.max(run.left, Math.min(col, run.right - 4));  // 5-span containing col
+      let eyeCount = 0;
+      for (let dc = 0; dc <= 4; dc++)
+        if (this.level.get(row, anchorCol + dc) === BLOCK.END_PORTAL_FRAME_FULL) eyeCount++;
+      anchor = { col: anchorCol, row, eyeCount, active: false };
+      this._endPortalAnchors.set(`${anchorCol},${row}`, anchor);
+    }
+
+    // 3) Place the eye + (at 5) activate the portal.
+    this.level.set(row, col, BLOCK.END_PORTAL_FRAME_FULL);
+    anchor.eyeCount++;
+    if (anchor.eyeCount >= 5) {
+      for (let dr = 0; dr <= 2; dr++)
+        for (let dc = 1; dc <= 3; dc++)
+          this.level.set(anchor.row + dr, anchor.col + dc, BLOCK.END_PORTAL);
+      anchor.active = true;
+      this._playSound('sounds/enable-end-portal.mp3');
+      this._notify('The End Portal activates! Press U inside to enter The End.', '#AA44FF', 360);
+    } else {
+      this._playSound('sounds/placing-eye-of-ender.mp3');
+      this._notify(`Eye of Ender placed! (${anchor.eyeCount}/5)`, '#AA44FF', 140);
+    }
+    if (this._onlineGameId && window.multiplayerManager?.isCreator) {
+      const changes = [{ row, col, block: BLOCK.END_PORTAL_FRAME_FULL }];
+      if (anchor.eyeCount >= 5) {
+        for (let dr = 0; dr <= 2; dr++)
+          for (let dc = 1; dc <= 3; dc++)
+            changes.push({ row: anchor.row + dr, col: anchor.col + dc, block: BLOCK.END_PORTAL });
+      }
+      window.multiplayerManager.sendBlockChanged(changes, {
+        endPortalAnchor: { col: anchor.col, row: anchor.row, eyeCount: anchor.eyeCount, active: anchor.active },
+      });
+    }
+    return true;
   }
 
   // ── Ender Dragon (Phase 11A-2) ────────────────────────────

@@ -1403,3 +1403,20 @@ captures the `.ws-body` scrollTop before the rebuild and restores it after — b
 for SAME-tab re-renders (tracked via `_lastRenderedTab`), so switching tabs still starts
 at the top. Rows can change height when a toggle reveals/hides sub-settings, but the same
 pixel offset keeps the user essentially in place. Suite 295.
+
+## Build 113 (Kevin bug) — End Portal: wasted eyes + won't activate
+Symptom: using Eyes of Ender said "nowhere to put them" but consumed the eye and the
+portal never activated. Two root causes (both PRE-EXISTING, not from the Smart Mobs work):
+1. **Consume-on-failure:** `_tryPlaceEyeFromHotbar` found a frame, called `_tryPlaceEye`,
+   then consumed the eye UNCONDITIONALLY — even when `_tryPlaceEye` failed. Fixed:
+   `_tryPlaceEye` now returns a boolean; the caller consumes only on success and keeps
+   scanning other frames otherwise.
+2. **Anchor-map dependency:** `_tryPlaceEye` placed an eye only if a matching entry existed
+   in `_endPortalAnchors`. Frames present in the grid with no registered anchor (imported
+   worlds, hand-placed frames, or a serialize gap) failed every time → "No inactive portal
+   frame here". Fixed: when no stored anchor matches, derive one from the grid via
+   `_endPortalFrameRun` (a contiguous run of ≥5 frame blocks on the row), counting existing
+   eyed frames, and register it — so ANY 5-in-a-row frame set activates.
+Both `_tryPlaceEye` callers checked (hotbar consumes on success; sandbox palette ignores
+the return). Suite 295. Browser-UNTESTED — can't drive the canvas headlessly; if a
+specific world still won't activate, need to know how its portal was authored.
