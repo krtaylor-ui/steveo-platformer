@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 102 (Smart Mobs §10: decorative foliage — new "Decor" palette tab with Bush + Leaves blocks, front/back layers + green/yellow/orange colours; bushes conceal mob line-of-sight)';
+const GAME_VERSION = 'v3 · build 103 (Smart Mobs §4: DETECTION core — opt-in Smart Detection with frontal line-of-sight (blocked by walls + bushes), sound tiers (gravel loud / grass silent), and attack/jump action detection; per-axis toggles + tuning in World Settings → Combat)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
@@ -162,6 +162,16 @@ const DEFAULT_SFX_VOLUME   = 0.5;   // slider value (0–1); actual volume = thi
 // × these). Bump/drop to taste, or expose as World-Settings sliders later.
 const FOOTSTEP_SFX_VOL     = 1.0;
 const LAND_SFX_VOL         = 1.0;
+
+// Smart Mobs §4 — DETECTION default tuning (per-world overridable in World Settings →
+// Combat → Detection). Ranges are in BLOCKS (converted to px in game._detectionConfig).
+const DETECT_SIGHT_RANGE_DEF = 9;    // how far a mob can SEE the player (blocks)
+const DETECT_SIGHT_ARC_DEF   = 120;  // frontal vision cone (degrees) — sneak up from behind
+const DETECT_SOUND_WALK_DEF  = 5;    // radius a WALKING footstep is heard (blocks)
+const DETECT_SOUND_RUN_DEF   = 9;    // radius a RUNNING footstep is heard (blocks)
+const DETECT_SOUND_LOUD_DEF  = 14;   // radius when touching a LOUD block (gravel), blocks
+const DETECT_ACTION_RANGE_DEF = 8;   // radius an attack/jump is heard (blocks)
+const DETECT_PACK_RADIUS_DEF = 7;    // §5 — alert-propagation radius between mobs (blocks)
 const VICTORY_MUSIC_FILE   = 'music/boss/victory.mp3';  // ~20s fanfare after Ender Dragon defeat
 
 // Music disc registry — each entry maps a disc key to its audio file and display name.

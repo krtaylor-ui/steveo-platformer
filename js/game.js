@@ -2240,6 +2240,7 @@ class Game {
         this.player.attackCooldown = Math.round(ATTACK_COOLDOWN * (traits.cooldownMult || 1));
         this.player.swingTimer     = 15;
         this._playSound('sounds/attack-sword.mp3');
+        this._emitActionNoise(this.player);   // §4c — attacking alerts nearby mobs
       }
     }
 
@@ -2270,6 +2271,7 @@ class Game {
           this.player.bowDrawing = false; this.player.drawProgress = 0;
           this.player.swingTimer = 12;               // small throw animation
           this._playSound('sounds/bow-fire.mp3');
+          this._emitActionNoise(this.player);        // §4c
         }
       } else if (_ownsRanged) {
         const hasArrows = this._worldAdvSettings.unlimitedArrows || this.player.countItem(BLOCK.ARROW) > 0;
@@ -2292,6 +2294,7 @@ class Game {
             Math.max(1, Math.round(PLAYER_ARROW_DAMAGE * (rt.dmgMult || 1))), 'p1', { pierce: rt.pierce, recoverable });
           this.player.activeHand = 'ranged';
           this._playSound('sounds/bow-fire.mp3');
+          this._emitActionNoise(this.player);        // §4c
           if (!this._worldAdvSettings.unlimitedArrows) this._consumeArrow();
           this.player.bowDrawing = false; this.player.drawProgress = 0;
         }
@@ -2948,6 +2951,9 @@ class Game {
         this.mobManager.onlinePlayers = [];
       }
       const hpBefore = this.player.hp;
+      // Smart Mobs §4 — hand the mob manager this world's detection config (default
+      // off → legacy aggro). Cheap; recomputed each frame so live setting changes apply.
+      this.mobManager.detectCfg = this._detectionConfig();
       if (!_onlineNonHost) {
         this.mobManager.update(this.player, this.level, this.player2 || null, this.players.slice(2).filter(Boolean));
       } else {
@@ -16582,11 +16588,80 @@ class Game {
   // If sounds/footstep.mp3 / sounds/land.mp3 aren't present, fall back to a subtle
   // synthesized WebAudio tick/thud (Kevin's ask) — so it's audible before he adds
   // real mp3s, and the mp3 wins automatically once dropped in.
+  // Smart Mobs §4 — build this world's detection config from World Settings (Combat →
+  // Detection). Ranges convert blocks→px here. `enabled` false → the mob manager keeps
+  // its legacy aggro, so existing worlds are unchanged.
+  _detectionConfig() {
+    const aws = this._worldAdvSettings || {};
+    const B   = BLOCK_SIZE;
+    const bl  = (v, d) => (v == null ? d : v) * B;
+    return {
+      enabled:     !!aws.smartDetection,
+      sight:       aws.detectSight  !== false,   // per-axis sub-toggles default ON when master on
+      sound:       aws.detectSound  !== false,
+      action:      aws.detectAction !== false,
+      sightRange:  bl(aws.detectSightRange,  DETECT_SIGHT_RANGE_DEF),
+      sightArcDeg: aws.detectSightArc == null ? DETECT_SIGHT_ARC_DEF : aws.detectSightArc,
+      soundWalk:   bl(aws.detectSoundWalk,   DETECT_SOUND_WALK_DEF),
+      soundRun:    bl(aws.detectSoundRun,    DETECT_SOUND_RUN_DEF),
+      soundLoud:   bl(aws.detectSoundLoud,   DETECT_SOUND_LOUD_DEF),
+      actionRange: bl(aws.detectActionRange, DETECT_ACTION_RANGE_DEF),
+      // §5 pack behavior (read by the manager's alert-propagation pass).
+      packAlert:   !!aws.packAlert,
+      packRadius:  bl(aws.packRadius, DETECT_PACK_RADIUS_DEF),
+    };
+  }
+
+  // Smart Mobs §4b/§4c — translate the player's per-frame movement events into mob
+  // NOISE, keyed off the block sound tier + movement state. Reuses the same footstep/
+  // landing/jump flags the SFX system already emits (no parallel movement system).
+  _emitMovementNoise(p) {
+    const mgr = this.mobManager;
+    const cfg = mgr && mgr.detectCfg;
+    if (!cfg || !cfg.enabled) return;
+    const footCol = Math.floor(p.cx / BLOCK_SIZE);
+    const footRow = Math.floor((p.y + p.height + 2) / BLOCK_SIZE);
+    const under   = this.level && this.level.grid && this.level.grid[footRow]
+                    ? this.level.grid[footRow][footCol] : undefined;
+    const tier    = (under !== undefined && typeof blockSoundTier === 'function')
+                    ? blockSoundTier(under) : 'normal';
+    // Footsteps.
+    if (p._sfxFootstep) {
+      let radius = 0;
+      if (tier === 'loud')       radius = cfg.soundLoud;   // gravel: loud even while crouching
+      else if (tier === 'quiet') radius = 0;               // grass: always silent
+      else if (p.isSneaking)     radius = 0;               // normal + crouch/still: silent
+      else if (p.sprinting)      radius = cfg.soundRun;     // running: louder/wider
+      else                       radius = cfg.soundWalk;    // walking: normal
+      if (radius > 0) mgr.emitNoise(p.cx, p.cy, radius, 'sound');
+    }
+    // Fall landing: any block except Quiet, if the fall exceeded 2 blocks (derived
+    // physics-honestly from the impact speed + this world's gravity).
+    if (p._sfxLand > 0 && tier !== 'quiet') {
+      const g          = this._worldAdvSettings.physicsGravity ?? GRAVITY;
+      const twoBlockV  = Math.sqrt(2 * g * 2 * BLOCK_SIZE);
+      if (p._sfxLand > twoBlockV) {
+        mgr.emitNoise(p.cx, p.cy, tier === 'loud' ? cfg.soundLoud : cfg.soundWalk, 'sound');
+      }
+    }
+    // Jump = an action-tier noise (§4c).
+    if (p._sfxJump) mgr.emitNoise(p.cx, p.cy, cfg.actionRange, 'action');
+  }
+
+  // Smart Mobs §4c — an attack (melee / ranged / throw) is an action-tier noise from
+  // the player's position. No-op unless smart detection + the action axis are on.
+  _emitActionNoise(p) {
+    const who = p || this.player;
+    const mgr = this.mobManager, cfg = mgr && mgr.detectCfg;
+    if (who && cfg && cfg.enabled) mgr.emitNoise(who.cx, who.cy, cfg.actionRange, 'action');
+  }
+
   _playMovementSfx(p) {
     if (!p) return;
     // No footsteps while building in the sandbox editor (test worlds run as their
     // real mode, so those still get them). Clear pending flags so they don't queue.
-    if (this.gameMode === 'sandbox') { p._sfxFootstep = false; p._sfxLand = 0; return; }
+    if (this.gameMode === 'sandbox') { p._sfxFootstep = false; p._sfxLand = 0; p._sfxJump = false; return; }
+    this._emitMovementNoise(p);   // §4 — read movement flags for detection before they're consumed
     if (p._sfxFootstep) {
       p._sfxFootstep = false;
       this._movementSound('sounds/footstep.mp3', (p.isSneaking ? 0.18 : 0.4) * (FOOTSTEP_SFX_VOL ?? 1), 'step');
@@ -16597,6 +16672,7 @@ class Game {
       p._sfxLand = 0;
       this._movementSound('sounds/land.mp3', vm, 'land');
     }
+    p._sfxJump = false;   // consume the jump event (§4c noise already emitted above)
   }
 
   // Play an mp3 if present; if it's missing/404s, fall back to a synth (Smart Mobs

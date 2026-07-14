@@ -1208,3 +1208,38 @@ brief: §10 → §4 → §5 → §7 → §8 → §9. Up-front Q&A with Kevin res
   `test/test-foliage.js` (16 assertions: block flags, occlusion helpers, colour
   serialize round-trip). Suite green. Browser-UNTESTED (canvas rendering + the editor
   front/back cue + colour cycle warrant Kevin's look).
+
+## §4 — Detection core (build 103)
+- **Additive gate:** every mob's chase decision now routes through `Mob._shouldChase()`
+  — when `_detect` is null/disabled (default) it returns the legacy "chase whenever in
+  range" behavior, so existing worlds are byte-for-byte unchanged. When Smart Detection
+  is ON, a mob only chases once `_alerted` latches (instant per-axis model; the decaying
+  Suspicion Meter stays deferred §18). Applied to all mob classes: the wander/chase
+  state-machine mobs (Zombie/Skeleton/Creeper) gate the state line; the always-chase
+  mobs (CaveSpider/Piglin/WitherSkeleton) wander until alerted; Enderman gates its
+  `aggro`; Blaze gates approach + fireball; leash/idle otherwise.
+- **Sight (§4a):** `MobManager._updateDetection` — target must be within `sightRange`,
+  inside the mob's **frontal cone** (`sightArcDeg` around `mob.facing`, so you can sneak
+  up from behind), and on an **unobstructed line** (`_lineBlocked` samples every ½ block;
+  occluded by solids **and bushes** via `foliageOccludesSight` — the §10 dependency).
+- **Sound (§4b):** `blockSoundTier(id)` — real 3-tier rating (Gravel=loud, Grass=quiet,
+  else normal). Player-side `game._emitMovementNoise` reuses the EXISTING footstep/
+  landing flags (no parallel movement system): gravel = wide alert even while crouching;
+  grass = zero sound always; normal = silent when still/crouching, walk vs run radius
+  otherwise. Fall landings emit unless on grass, gated by a **physics-honest 2-block**
+  threshold (derived from impact speed + this world's gravity). `emitNoise` alerts mobs
+  in radius through walls (no LoS) — correct for hearing.
+- **Action (§4c):** attacks (`_emitActionNoise` at the melee-fire + bow/trident-release
+  sites) and jumps (`player._sfxJump` → `_emitMovementNoise`) emit an action-tier noise,
+  hooked into the existing named-action combat paths per brief §8.0.
+- **Config (§4d):** World Settings → Combat → **Detection** group — master `smartDetection`
+  toggle (default OFF) + advanced per-axis Sight/Sound/Action sub-toggles + ranges (Sight
+  Range/Cone, Walk/Run/Loud sound radii, Attack/Jump radius). Defaults in constants.js
+  (`DETECT_*`), ranges authored in BLOCKS, converted to px in `game._detectionConfig()`.
+- **Known limitations (flagged for playtest + the §6 Wayfinding session):** alerting is
+  **sticky** (once seen/heard, a mob stays aggro — no de-aggro this build; the leash only
+  applies while wandering). Sight uses a single eye-ray to the player's upper body. No
+  pathfinding, so an alerted mob still can't route around terrain (as designed — §6). New
+  `test/test-detection.js` (18 assertions). Suite 263. Browser-UNTESTED — **detection
+  range/radius FEEL is Kevin's playtest call** (the "technically correct vs. feels right"
+  bar from world_creation.md).

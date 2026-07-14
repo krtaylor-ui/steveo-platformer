@@ -94,6 +94,16 @@ class Mob {
     this.stuckCheckX       = x + w / 2;
     this.spawnCX           = x + w / 2;
     this.spawnY            = y;
+
+    // Smart Mobs §4 — detection. `_detect` = the shared detection config (set by the
+    // MobManager each frame from world settings; null/disabled = legacy behavior).
+    // `_alerted` latches true once this mob has detected the player via any enabled
+    // axis (sight/sound/action); the instant-per-axis model keeps it sticky (the
+    // decaying Suspicion Meter is the separate, deferred §18). §5 pack behavior reads
+    // `_alerted` + `_alertSource` to propagate alerts to nearby mobs.
+    this._detect      = null;
+    this._alerted     = false;
+    this._alertSource = null;
   }
 
   get cx() { return this.x + this.width  / 2; }
@@ -215,6 +225,15 @@ class Mob {
     this.facing = this.wanderDir;
   }
 
+  // Smart Mobs §4 — detection gate. When smart detection is OFF (or unset) a mob uses
+  // its legacy distance aggro (chase whenever the player is in range) — so existing
+  // worlds are unchanged. When ON, a mob only chases once it has DETECTED the player
+  // (`_alerted`); until then it wanders. Every mob's chase decision routes through this.
+  _shouldChase() {
+    const d = this._detect;
+    return !d || !d.enabled || this._alerted;
+  }
+
   _flashAlpha(ctx) {
     // Flash white-ish when recently hit
     if (this.hitCooldown > 0 && Math.floor(this.hitCooldown / 4) % 2 === 0) {
@@ -242,7 +261,7 @@ class Zombie extends Mob {
     const dx   = player.cx - this.cx;
     const dist = Math.abs(dx);
 
-    this.state = dist < CANVAS_W / 3 ? 'chase' : 'wander';
+    this.state = (this._shouldChase() && dist < CANVAS_W / 3) ? 'chase' : 'wander';
 
     if (this.knockbackTimer > 0) {
       // knockback — let physics handle it
@@ -349,7 +368,7 @@ class Skeleton extends Mob {
     const dx   = player.cx - this.cx;
     const dist = Math.abs(dx);
 
-    this.state = dist < CANVAS_W / 3 ? 'chase' : 'wander';
+    this.state = (this._shouldChase() && dist < CANVAS_W / 3) ? 'chase' : 'wander';
 
     if (this.knockbackTimer > 0) {
       // knockback — let physics handle it
@@ -508,7 +527,7 @@ class Creeper extends Mob {
     const dx   = player.cx - this.cx;
     const dist = Math.abs(dx);
 
-    this.state = dist < CANVAS_W / 3 ? 'chase' : 'wander';
+    this.state = (this._shouldChase() && dist < CANVAS_W / 3) ? 'chase' : 'wander';
 
     if (this.knockbackTimer > 0) {
       // knockback — let physics handle it
@@ -903,6 +922,8 @@ class CaveSpider extends Mob {
   update(player, level) {
     this._tickTimers();
     if (this.knockbackTimer > 0) { _mobPhysics(this, level); return; }
+    // Smart Mobs §4 — undetected mobs wander instead of beelining the player.
+    if (!this._shouldChase()) { this._wanderUpdate(level, 0.8); _mobPhysics(this, level); return; }
 
     // Chase player horizontally, jump to reach
     const dir = Math.sign(player.cx - this.cx);
@@ -968,6 +989,8 @@ class Piglin extends Mob {
     this._tickTimers();
     if (this.attackTimer > 0) this.attackTimer--;
     if (this.knockbackTimer > 0) { _mobPhysics(this, level); return; }
+    // Smart Mobs §4 — undetected mobs wander instead of beelining the player.
+    if (!this._shouldChase()) { this._wanderUpdate(level, 0.8); _mobPhysics(this, level); return; }
 
     const dir = Math.sign(player.cx - this.cx);
     this.vx = dir * this.speed;
@@ -1098,10 +1121,17 @@ class Blaze extends Mob {
     const dir = Math.sign(player.cx - this.cx);
     this.facing = dir;
 
-    // Float toward player vertically, drift horizontally
-    const targetY = player.y - 40;
-    this.vy = Math.max(-3, Math.min(3, (targetY - this.y) * 0.05));
-    this.vx = dir * this.speed;
+    // Smart Mobs §4 — only home in on the player once detected; otherwise hover/drift.
+    const _chasing = this._shouldChase();
+    if (_chasing) {
+      // Float toward player vertically, drift horizontally
+      const targetY = player.y - 40;
+      this.vy = Math.max(-3, Math.min(3, (targetY - this.y) * 0.05));
+      this.vx = dir * this.speed;
+    } else {
+      this.vy = Math.max(-3, Math.min(3, this.vy * 0.9));
+      this.vx = this.vx * 0.9;
+    }
 
     // X movement with block collision (bounce off walls)
     const newX  = this.x + this.vx;
@@ -1132,9 +1162,9 @@ class Blaze extends Mob {
     // Clamp to world bounds
     if (this.y < 0) { this.y = 0; this.vy = Math.abs(this.vy); }
 
-    // Shoot fireball
+    // Shoot fireball (only once the player is detected)
     const dist = Math.hypot(player.cx - this.cx, player.cy - this.cy);
-    if (this.shootTimer === 0 && dist < 400) {
+    if (_chasing && this.shootTimer === 0 && dist < 400) {
       const angle = Math.atan2(player.cy - this.cy, player.cx - this.cx);
       blazeShots.push(new BlazeShot(
         this.cx, this.cy,
@@ -1191,6 +1221,8 @@ class WitherSkeleton extends Mob {
     this._tickTimers();
     if (this.attackTimer > 0) this.attackTimer--;
     if (this.knockbackTimer > 0) { _mobPhysics(this, level); return; }
+    // Smart Mobs §4 — undetected mobs wander instead of beelining the player.
+    if (!this._shouldChase()) { this._wanderUpdate(level, 0.8); _mobPhysics(this, level); return; }
 
     const dir = Math.sign(player.cx - this.cx);
     this.vx = dir * this.speed;
@@ -1265,7 +1297,7 @@ class Enderman extends Mob {
     if (this.knockbackTimer   > 0) { _mobPhysics(this, level); return; }
 
     const dist = Math.hypot(player.cx - this.cx, player.cy - this.cy);
-    const aggro = dist < this.aggroRange;
+    const aggro = this._shouldChase() && dist < this.aggroRange;  // Smart Mobs §4 gate
 
     if (aggro) {
       const dir = Math.sign(player.cx - this.cx);
@@ -1455,6 +1487,11 @@ class MobManager {
     this.onKill               = null;  // set by game.js (arena): fn(ownerId, mob) — a player arrow killed a mob
     this._camera              = null;  // set by game.js after Camera is created
     this.arenaMode            = false; // Phase 3A.2: arena spawners (on-screen, per-spawner freq/cap)
+    // Smart Mobs §4 — detection config (set by game.js each frame from world settings;
+    // null/disabled = legacy behavior). Shape: { enabled, sight, sound, action,
+    // sightRange, sightArcDeg, packAlert, packRadius }. Noise radii are computed on the
+    // player side (game._emitMovementNoise / action noise) and fed via emitNoise().
+    this.detectCfg            = null;
   }
 
   // Set up spawn points from world data
@@ -1646,6 +1683,69 @@ class MobManager {
     return (allPlayers || []).map((p, k) => [p._ownerId || ('p' + (k + 1)), p]);
   }
 
+  // ── Smart Mobs §4 — detection ─────────────────────────────────────────────
+  // Hand the shared config to the mob (drives its `_shouldChase()` gate) and run the
+  // SIGHT axis: a mob sees the player only within range, inside its FRONTAL arc (so you
+  // can sneak up from behind), and with an unobstructed line (solid blocks + bushes
+  // occlude — game._blocksSight / foliageOccludesSight). Sound + action axes alert via
+  // emitNoise() from the player side. Alerting is sticky (instant per-axis model, §4).
+  _updateDetection(mob, target, level) {
+    const cfg = this.detectCfg;
+    mob._detect = cfg;
+    if (!cfg || !cfg.enabled || mob._alerted || !cfg.sight || !target || !level) return;
+    const ex = mob.cx,       ey = mob.y + mob.height * 0.3;
+    const tx = target.cx,    ty = target.y + target.height * 0.3;
+    const dist = Math.hypot(tx - ex, ty - ey);
+    if (dist > (cfg.sightRange || 0)) return;
+    // Frontal arc around the mob's facing (±half the configured cone).
+    const ang     = Math.atan2(ty - ey, tx - ex);
+    const faceAng = mob.facing >= 0 ? 0 : Math.PI;
+    let diff = Math.abs(ang - faceAng);
+    if (diff > Math.PI) diff = 2 * Math.PI - diff;
+    if (diff > ((cfg.sightArcDeg || 360) * Math.PI / 180) / 2) return;
+    if (this._lineBlocked(level, ex, ey, tx, ty)) return;
+    this._alert(mob, 'sight');
+  }
+
+  // Sample the segment (mob→player) every half-block; any solid block OR bush occludes.
+  _lineBlocked(level, x0, y0, x1, y1) {
+    const dx = x1 - x0, dy = y1 - y0;
+    const dist  = Math.hypot(dx, dy);
+    const steps = Math.max(1, Math.ceil(dist / (BLOCK_SIZE * 0.5)));
+    for (let i = 1; i < steps; i++) {      // skip the endpoints (mob + player cells)
+      const t   = i / steps;
+      const col = Math.floor((x0 + dx * t) / BLOCK_SIZE);
+      const row = Math.floor((y0 + dy * t) / BLOCK_SIZE);
+      if (level.isSolid(row, col)) return true;
+      const b = level.grid && level.grid[row] ? level.grid[row][col] : undefined;
+      if (b !== undefined && typeof foliageOccludesSight === 'function' && foliageOccludesSight(b)) return true;
+    }
+    return false;
+  }
+
+  // Latch a mob to alerted. `_alertSource` records the origin for §5 pack propagation.
+  _alert(mob, source) {
+    if (!mob || mob._alerted) return;
+    mob._alerted     = true;
+    mob._alertSource = source || 'unknown';
+  }
+
+  // A noise at (x,y) reaches every un-alerted mob within `radius`. `axis` = 'sound'
+  // (footsteps/landings/loud blocks) or 'action' (attacks/jumps) — each gated by its
+  // own toggle. Sound is NOT line-of-sight limited (you hear through walls). Called
+  // from the player side (game._emitMovementNoise / action noise).
+  emitNoise(x, y, radius, axis) {
+    const cfg = this.detectCfg;
+    if (!cfg || !cfg.enabled || !(radius > 0)) return;
+    if (axis === 'action' ? !cfg.action : !cfg.sound) return;
+    const r2 = radius * radius;
+    for (const mob of this.mobs) {
+      if (!mob.alive || mob._alerted) continue;
+      const dx = mob.cx - x, dy = mob.cy - y;
+      if (dx * dx + dy * dy <= r2) this._alert(mob, axis || 'sound');
+    }
+  }
+
   // Returns the closest live player to (cx, cy) among all local players (P1-P4)
   // + online players. Falls back to the passed p1/p2 if the target list isn't
   // set yet. Dead players (hp <= 0) are skipped unless none are alive.
@@ -1687,6 +1787,7 @@ class MobManager {
         if (!mob.alive) continue;   // toss-death expired this frame → let the filter reap it
       }
       const target = this._nearestPlayer(mob.cx, mob.cy, player, player2);
+      this._updateDetection(mob, target, level);   // Smart Mobs §4 — sight axis + gate
       if (mob instanceof Skeleton) {
         mob.update(target, level, this.arrows);
       } else if (mob instanceof Blaze) {

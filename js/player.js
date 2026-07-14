@@ -20,6 +20,8 @@ class Player {
     this._stepTimer   = 0;    // frames until the next footstep
     this._sfxFootstep = false; // a footstep occurred this frame
     this._sfxLand     = 0;     // >0 = landed this frame; value = fall speed on impact
+    this._sfxJump     = false; // a ground jump fired this frame (§4c action detection)
+    this.sprinting    = false; // true while actually sprinting (for §4b sound radius)
 
     // Animation
     this.walkTimer  = 0;
@@ -391,6 +393,7 @@ class Player {
     const sprinting = this._sprintEnabled && !this.crouching &&
                       typeof input.isRun === 'function' && input.isRun();
     const sprintMult = sprinting ? 2 : 1;
+    this.sprinting = sprinting && Math.abs(input.moveX ? input.moveX() : 0) > 0.01;  // §4b sound radius
     const speed  = (this.crouching ? this.crouchSpeed : this.moveSpeed) * hsMult * sprintMult;
     this.running = !this.crouching;
 
@@ -524,6 +527,7 @@ class Player {
       this._coyoteTime = 0;
       this.onGround    = false;
       this.jumpSquish  = 1;
+      this._sfxJump    = true;   // §4c — a ground jump makes noise
     } else if (jumpEdge && this._wallSliding) {
       // Wall jump — a normal jump off the wall. Optional lock-away forces the arc
       // away from the wall and disables steering until you land / hit a wall / hang.

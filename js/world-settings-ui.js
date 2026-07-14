@@ -177,6 +177,19 @@ const WORLD_SETTINGS = {
       // walked over to recover. Only meaningful when arrows are finite (hidden when
       // Unlimited Arrows is on).
       { key: 'recoverableArrows', tab: 'combat', group: 'Combat', modes: M.adventure, type: 'toggle', dflt: false, label: 'Recoverable Arrows', advanced: true, showWhen: (g) => !g._worldAdvSettings.unlimitedArrows },
+      // ── Detection (Smart Mobs §4) — additive/opt-in. Master OFF (default) keeps the
+      //    classic distance aggro; ON makes mobs detect via sight/sound/action. Per-
+      //    axis toggles + ranges are advanced. Ranges are in BLOCKS. ──
+      { key: 'smartDetection', tab: 'combat', group: 'Detection', modes: M.physics, type: 'toggle', dflt: false, label: 'Smart Detection', hint: 'mobs detect the player by sight, sound & actions (default off = classic aggro)' },
+      { key: 'detectSight',  tab: 'combat', group: 'Detection', modes: M.physics, type: 'toggle', get: (a) => a.detectSight  !== false, set: (a, v) => { a.detectSight  = v; }, label: 'Axis · Line of Sight', sub: true, dependsOn: 'smartDetection', advanced: true, hint: 'see the player in a frontal cone (blocked by walls & bushes)' },
+      { key: 'detectSound',  tab: 'combat', group: 'Detection', modes: M.physics, type: 'toggle', get: (a) => a.detectSound  !== false, set: (a, v) => { a.detectSound  = v; }, label: 'Axis · Sound', sub: true, dependsOn: 'smartDetection', advanced: true, hint: 'hear footsteps/landings (gravel = loud, grass = silent)' },
+      { key: 'detectAction', tab: 'combat', group: 'Detection', modes: M.physics, type: 'toggle', get: (a) => a.detectAction !== false, set: (a, v) => { a.detectAction = v; }, label: 'Axis · Attacks/Jumps', sub: true, dependsOn: 'smartDetection', advanced: true, hint: 'attacking or jumping is heard' },
+      { key: 'detectSightRange',  tab: 'combat', group: 'Detection', modes: M.physics, type: 'cycle', opts: [6, 9, 12, 16], dflt: DETECT_SIGHT_RANGE_DEF, label: 'Sight Range', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection' },
+      { key: 'detectSightArc',    tab: 'combat', group: 'Detection', modes: M.physics, type: 'cycle', opts: [90, 120, 160, 220, 360], dflt: DETECT_SIGHT_ARC_DEF, label: 'Sight Cone', fmt: (v) => v + '°', sub: true, dependsOn: 'smartDetection', advanced: true, hint: '360° = eyes in the back of the head' },
+      { key: 'detectSoundWalk',   tab: 'combat', group: 'Detection', modes: M.physics, type: 'cycle', opts: [3, 5, 7, 10], dflt: DETECT_SOUND_WALK_DEF, label: 'Walk Sound', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection', advanced: true },
+      { key: 'detectSoundRun',    tab: 'combat', group: 'Detection', modes: M.physics, type: 'cycle', opts: [6, 9, 12, 16], dflt: DETECT_SOUND_RUN_DEF, label: 'Run Sound', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection', advanced: true },
+      { key: 'detectSoundLoud',   tab: 'combat', group: 'Detection', modes: M.physics, type: 'cycle', opts: [10, 14, 18, 24], dflt: DETECT_SOUND_LOUD_DEF, label: 'Loud-Block Sound', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection', advanced: true, hint: 'gravel radius' },
+      { key: 'detectActionRange', tab: 'combat', group: 'Detection', modes: M.physics, type: 'cycle', opts: [5, 8, 12, 16], dflt: DETECT_ACTION_RANGE_DEF, label: 'Attack/Jump Sound', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection', advanced: true },
       // ── Special moves (Smart Mobs §2) — per-weapon context attacks ──
       { key: 'slideAttack', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Slide Attack (Spear)', hint: 'ground-slide with a spear launches nearby mobs into the air' },
       { key: 'slideAttackDmg', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'cycle', opts: O.wdmg, dflt: 1.0, label: 'Slide Attack Damage', fmt: x1, advanced: true, dependsOn: 'slideAttack' },

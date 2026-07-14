@@ -82,6 +82,18 @@ const FOLIAGE_COLORS = [
   { name: 'Yellow', base: '#c8a52a', light: '#e2c44c', dark: '#9a7d18' },
   { name: 'Orange', base: '#c56a20', light: '#e18b3a', dark: '#964c12' },
 ];
+// Smart Mobs §4b — a block's SOUND rating: 'loud' | 'quiet' | 'normal'. Kept as a real
+// 3-tier internal rating (not a 2-value hack) so more blocks can be rated later without
+// rework. This build explicitly rates Gravel = loud and Grass = quiet; all else normal.
+//   loud   → touching/moving on it is heard broadly, even while crouching.
+//   quiet  → moving/landing on it makes ZERO sound.
+//   normal → sound depends on movement state (still/crouch = silent, walk/run scale up).
+function blockSoundTier(id) {
+  if (id === BLOCK.GRAVEL) return 'loud';
+  if (id === BLOCK.GRASS)  return 'quiet';
+  return 'normal';
+}
+
 // True if a block id is one of the decorative-foliage ids.
 function isFoliageBlock(id) {
   return id === BLOCK.BUSH_BACK  || id === BLOCK.BUSH_FRONT ||
