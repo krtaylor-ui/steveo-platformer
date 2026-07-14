@@ -62,7 +62,7 @@ const WORLD_SETTINGS = {
     { id: 'speedrun', label: 'Speed Run' },
     { id: 'arena',    label: 'Arena' },
     { id: 'combat',   label: 'Combat' },
-    { id: 'mobs',     label: 'Mob Drops' },   // sandbox — special-rendered table
+    { id: 'mobs',     label: 'Mob Settings' },  // mob behavior (schema rows) + the special drops table (sandbox)
   ],
 
   // Arena game types (which modes an arena world supports) → arenaEnabledTypes[].
@@ -180,32 +180,34 @@ const WORLD_SETTINGS = {
       // ── Detection (Smart Mobs §4) — additive/opt-in. Master OFF (default) keeps the
       //    classic distance aggro; ON makes mobs detect via sight/sound/action. Per-
       //    axis toggles + ranges are advanced. Ranges are in BLOCKS. ──
-      { key: 'smartDetection', tab: 'combat', group: 'Detection', modes: M.physics, type: 'toggle', dflt: false, label: 'Smart Detection', hint: 'mobs detect the player by sight, sound & actions (default off = classic aggro)' },
-      { key: 'detectSight',  tab: 'combat', group: 'Detection', modes: M.physics, type: 'toggle', get: (a) => a.detectSight  !== false, set: (a, v) => { a.detectSight  = v; }, label: 'Axis · Line of Sight', sub: true, dependsOn: 'smartDetection', advanced: true, hint: 'see the player in a frontal cone (blocked by walls & bushes)' },
-      { key: 'detectSound',  tab: 'combat', group: 'Detection', modes: M.physics, type: 'toggle', get: (a) => a.detectSound  !== false, set: (a, v) => { a.detectSound  = v; }, label: 'Axis · Sound', sub: true, dependsOn: 'smartDetection', advanced: true, hint: 'hear footsteps/landings (gravel = loud, grass = silent)' },
-      { key: 'detectAction', tab: 'combat', group: 'Detection', modes: M.physics, type: 'toggle', get: (a) => a.detectAction !== false, set: (a, v) => { a.detectAction = v; }, label: 'Axis · Attacks/Jumps', sub: true, dependsOn: 'smartDetection', advanced: true, hint: 'attacking or jumping is heard' },
-      { key: 'detectSightRange',  tab: 'combat', group: 'Detection', modes: M.physics, type: 'cycle', opts: [6, 9, 12, 16], dflt: DETECT_SIGHT_RANGE_DEF, label: 'Sight Range', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection' },
-      { key: 'detectSightArc',    tab: 'combat', group: 'Detection', modes: M.physics, type: 'cycle', opts: [90, 120, 160, 220, 360], dflt: DETECT_SIGHT_ARC_DEF, label: 'Sight Cone', fmt: (v) => v + '°', sub: true, dependsOn: 'smartDetection', advanced: true, hint: '360° = eyes in the back of the head' },
-      { key: 'detectSoundWalk',   tab: 'combat', group: 'Detection', modes: M.physics, type: 'cycle', opts: [3, 5, 7, 10], dflt: DETECT_SOUND_WALK_DEF, label: 'Walk Sound', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection', advanced: true },
-      { key: 'detectSoundRun',    tab: 'combat', group: 'Detection', modes: M.physics, type: 'cycle', opts: [6, 9, 12, 16], dflt: DETECT_SOUND_RUN_DEF, label: 'Run Sound', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection', advanced: true },
-      { key: 'detectSoundLoud',   tab: 'combat', group: 'Detection', modes: M.physics, type: 'cycle', opts: [10, 14, 18, 24], dflt: DETECT_SOUND_LOUD_DEF, label: 'Loud-Block Sound', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection', advanced: true, hint: 'gravel radius' },
-      { key: 'detectActionRange', tab: 'combat', group: 'Detection', modes: M.physics, type: 'cycle', opts: [5, 8, 12, 16], dflt: DETECT_ACTION_RANGE_DEF, label: 'Attack/Jump Sound', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection', advanced: true },
+      // NOTE: the mob-BEHAVIOR settings below live on the 'mobs' (Mob Settings) tab, not
+      // 'combat' — Combat keeps player-facing gear (Weapons/Special Moves/Boss/Arrows).
+      { key: 'smartDetection', tab: 'mobs', group: 'Detection', modes: M.physics, type: 'toggle', dflt: false, label: 'Smart Detection', hint: 'mobs detect the player by sight, sound & actions (default off = classic aggro)' },
+      { key: 'detectSight',  tab: 'mobs', group: 'Detection', modes: M.physics, type: 'toggle', get: (a) => a.detectSight  !== false, set: (a, v) => { a.detectSight  = v; }, label: 'Axis · Line of Sight', sub: true, dependsOn: 'smartDetection', advanced: true, hint: 'see the player in a frontal cone (blocked by walls & bushes)' },
+      { key: 'detectSound',  tab: 'mobs', group: 'Detection', modes: M.physics, type: 'toggle', get: (a) => a.detectSound  !== false, set: (a, v) => { a.detectSound  = v; }, label: 'Axis · Sound', sub: true, dependsOn: 'smartDetection', advanced: true, hint: 'hear footsteps/landings (gravel = loud, grass = silent)' },
+      { key: 'detectAction', tab: 'mobs', group: 'Detection', modes: M.physics, type: 'toggle', get: (a) => a.detectAction !== false, set: (a, v) => { a.detectAction = v; }, label: 'Axis · Attacks/Jumps', sub: true, dependsOn: 'smartDetection', advanced: true, hint: 'attacking or jumping is heard' },
+      { key: 'detectSightRange',  tab: 'mobs', group: 'Detection', modes: M.physics, type: 'cycle', opts: [6, 9, 12, 16], dflt: DETECT_SIGHT_RANGE_DEF, label: 'Sight Range', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection' },
+      { key: 'detectSightArc',    tab: 'mobs', group: 'Detection', modes: M.physics, type: 'cycle', opts: [90, 120, 160, 220, 360], dflt: DETECT_SIGHT_ARC_DEF, label: 'Sight Cone', fmt: (v) => v + '°', sub: true, dependsOn: 'smartDetection', advanced: true, hint: '360° = eyes in the back of the head' },
+      { key: 'detectSoundWalk',   tab: 'mobs', group: 'Detection', modes: M.physics, type: 'cycle', opts: [3, 5, 7, 10], dflt: DETECT_SOUND_WALK_DEF, label: 'Walk Sound', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection', advanced: true },
+      { key: 'detectSoundRun',    tab: 'mobs', group: 'Detection', modes: M.physics, type: 'cycle', opts: [6, 9, 12, 16], dflt: DETECT_SOUND_RUN_DEF, label: 'Run Sound', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection', advanced: true },
+      { key: 'detectSoundLoud',   tab: 'mobs', group: 'Detection', modes: M.physics, type: 'cycle', opts: [10, 14, 18, 24], dflt: DETECT_SOUND_LOUD_DEF, label: 'Loud-Block Sound', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection', advanced: true, hint: 'gravel radius' },
+      { key: 'detectActionRange', tab: 'mobs', group: 'Detection', modes: M.physics, type: 'cycle', opts: [5, 8, 12, 16], dflt: DETECT_ACTION_RANGE_DEF, label: 'Attack/Jump Sound', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection', advanced: true },
       // ── Pack behavior (Smart Mobs §5) — one toggle: alerted mobs rouse nearby mobs,
       //    and melee attackers flank to opposite sides instead of stacking. ──
-      { key: 'packAlert',  tab: 'combat', group: 'Pack', modes: M.physics, type: 'toggle', dflt: false, label: 'Pack Behavior', hint: 'one mob spotting you alerts nearby mobs; attackers surround from both sides' },
-      { key: 'packRadius', tab: 'combat', group: 'Pack', modes: M.physics, type: 'cycle', opts: [4, 7, 10, 14], dflt: DETECT_PACK_RADIUS_DEF, label: 'Alert Spread Range', fmt: (v) => v + ' bl', sub: true, dependsOn: 'packAlert', advanced: true },
+      { key: 'packAlert',  tab: 'mobs', group: 'Pack', modes: M.physics, type: 'toggle', dflt: false, label: 'Pack Behavior', hint: 'one mob spotting you alerts nearby mobs; attackers surround from both sides' },
+      { key: 'packRadius', tab: 'mobs', group: 'Pack', modes: M.physics, type: 'cycle', opts: [4, 7, 10, 14], dflt: DETECT_PACK_RADIUS_DEF, label: 'Alert Spread Range', fmt: (v) => v + ' bl', sub: true, dependsOn: 'packAlert', advanced: true },
       // ── Sprint (Smart Mobs §7) — melee mobs occasionally sprint to close distance;
       //    always telegraphed (a wind-up cue precedes the burst). Own opt-in toggle. ──
-      { key: 'sprintingMobs', tab: 'combat', group: 'Sprint', modes: M.physics, type: 'toggle', dflt: false, label: 'Sprinting Mobs', hint: 'melee mobs occasionally sprint at you — telegraphed by a wind-up cue' },
+      { key: 'sprintingMobs', tab: 'mobs', group: 'Sprint', modes: M.physics, type: 'toggle', dflt: false, label: 'Sprinting Mobs', hint: 'melee mobs occasionally sprint at you — telegraphed by a wind-up cue' },
       // ── Retreating mobs (Smart Mobs §8) — per mob type: flee at low HP (+ advanced
       //    HP-% threshold). Coexists with Skeleton kiting. ──
       ...this._fleeRows(M),
       // ── Spider webs (Smart Mobs §9) — Cave Spiders spit slowing webs. Opt-in;
       //    slowness / duration / stacking are advanced. ──
-      { key: 'spiderWebs',     tab: 'combat', group: 'Spider Webs', modes: M.physics, type: 'toggle', dflt: false, label: 'Spider Webs', hint: 'Cave Spiders spit webs that slow you (webbing shows while slowed)' },
-      { key: 'webSlowPct',     tab: 'combat', group: 'Spider Webs', modes: M.physics, type: 'cycle', opts: [20, 33, 50, 67], dflt: 33, label: 'Slowness', fmt: (v) => v + '%', sub: true, dependsOn: 'spiderWebs', advanced: true, hint: 'speed removed per web (33% → 67% speed)' },
-      { key: 'webDurationSec', tab: 'combat', group: 'Spider Webs', modes: M.physics, type: 'cycle', opts: [2, 3, 5, 8], dflt: 3, label: 'Duration', fmt: (v) => v + 's', sub: true, dependsOn: 'spiderWebs', advanced: true },
-      { key: 'webStacking',    tab: 'combat', group: 'Spider Webs', modes: M.physics, type: 'toggle', dflt: false, label: 'Stacking', sub: true, dependsOn: 'spiderWebs', advanced: true, hint: 'a second web compounds the slow + resets the timer' },
+      { key: 'spiderWebs',     tab: 'mobs', group: 'Spider Webs', modes: M.physics, type: 'toggle', dflt: false, label: 'Spider Webs', hint: 'Cave Spiders spit webs that slow you (webbing shows while slowed)' },
+      { key: 'webSlowPct',     tab: 'mobs', group: 'Spider Webs', modes: M.physics, type: 'cycle', opts: [20, 33, 50, 67], dflt: 33, label: 'Slowness', fmt: (v) => v + '%', sub: true, dependsOn: 'spiderWebs', advanced: true, hint: 'speed removed per web (33% → 67% speed)' },
+      { key: 'webDurationSec', tab: 'mobs', group: 'Spider Webs', modes: M.physics, type: 'cycle', opts: [2, 3, 5, 8], dflt: 3, label: 'Duration', fmt: (v) => v + 's', sub: true, dependsOn: 'spiderWebs', advanced: true },
+      { key: 'webStacking',    tab: 'mobs', group: 'Spider Webs', modes: M.physics, type: 'toggle', dflt: false, label: 'Stacking', sub: true, dependsOn: 'spiderWebs', advanced: true, hint: 'a second web compounds the slow + resets the timer' },
       // ── Special moves (Smart Mobs §2) — per-weapon context attacks ──
       { key: 'slideAttack', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Slide Attack (Spear)', hint: 'ground-slide with a spear launches nearby mobs into the air' },
       { key: 'slideAttackDmg', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'cycle', opts: O.wdmg, dflt: 1.0, label: 'Slide Attack Damage', fmt: x1, advanced: true, dependsOn: 'slideAttack' },
@@ -278,9 +280,9 @@ const WORLD_SETTINGS = {
       ['piglin', 'Piglin'], ['wither_skeleton', 'Wither Skel.']];
     const rows = [];
     for (const [key, name] of MOBS) {
-      rows.push({ key: `lowHpAction_${key}`, tab: 'combat', group: 'Retreating Mobs', modes, type: 'cycle',
+      rows.push({ key: `lowHpAction_${key}`, tab: 'mobs', group: 'Retreating Mobs', modes, type: 'cycle',
         opts: ['none', 'flee'], dflt: 'none', label: name, fmt: cap, hint: `what ${name} does at low HP` });
-      rows.push({ key: `lowHpThreshold_${key}`, tab: 'combat', group: 'Retreating Mobs', modes, type: 'cycle',
+      rows.push({ key: `lowHpThreshold_${key}`, tab: 'mobs', group: 'Retreating Mobs', modes, type: 'cycle',
         opts: [10, 20, 35, 50], dflt: 20, label: `${name} · Flee Below`, fmt: (v) => v + '%', sub: true, advanced: true,
         dependsOn: (a) => (a[`lowHpAction_${key}`] || 'none') !== 'none' });
     }
@@ -336,7 +338,9 @@ const WORLD_SETTINGS = {
     return true;
   },
   _tabHasRows(tabId) {
-    if (tabId === 'mobs') return this._game.gameMode === 'sandbox';   // special table, sandbox only
+    // Mob Settings shows if it has any mob-behavior rows for this mode OR (in sandbox)
+    // the special mob-drops table.
+    if (tabId === 'mobs' && this._game.gameMode === 'sandbox') return true;
     return this.SETTINGS.some((s) => s.tab === tabId && this._modeOK(s) && (!s.showWhen || s.showWhen(this._game)));
   },
 
@@ -369,19 +373,17 @@ const WORLD_SETTINGS = {
 
     // Body: the Mob Drops tab is a special table; everything else is schema rows
     // grouped by `group`.
-    let rows = [];
+    let rows = this.SETTINGS.filter((s) => s.tab === this._tab && this._visible(s));
     let body = '';
-    if (this._tab === 'mobs') {
-      body = this._mobDropsHtml(esc);
-    } else {
-      rows = this.SETTINGS.filter((s) => s.tab === this._tab && this._visible(s));
-      let lastGroup = null;
-      for (const s of rows) {
-        if (s.group !== lastGroup) { body += `<div class="ws-group">${esc(s.group)}</div>`; lastGroup = s.group; }
-        body += this._rowHtml(s, esc);
-      }
-      if (!rows.length) body = '<div class="ws-empty">No settings here for this mode.</div>';
+    let lastGroup = null;
+    for (const s of rows) {
+      if (s.group !== lastGroup) { body += `<div class="ws-group">${esc(s.group)}</div>`; lastGroup = s.group; }
+      body += this._rowHtml(s, esc);
     }
+    // Mob Settings tab also hosts the special mob-drops table (sandbox only), below
+    // the mob-behavior switches.
+    if (this._tab === 'mobs' && this._game.gameMode === 'sandbox') body += this._mobDropsHtml(esc);
+    if (!body) body = '<div class="ws-empty">No settings here for this mode.</div>';
 
     ov.innerHTML = `
       <div class="ws-panel" role="dialog" aria-label="World Settings">
@@ -401,9 +403,7 @@ const WORLD_SETTINGS = {
     document.getElementById('ws-close').onclick = () => this.close();
     document.getElementById('ws-adv').onchange = (e) => { this._advanced = e.target.checked; this._render(); };
 
-    if (this._tab === 'mobs') { this._wireMobDrops(ov); return; }
-
-    // Wire each control
+    // Wire each schema control (both regular tabs and the Mob Settings behavior rows)
     for (const s of rows) {
       const el = ov.querySelector(`[data-key="${s.key}"]`);
       if (!el) continue;
@@ -418,6 +418,8 @@ const WORLD_SETTINGS = {
         el.onclick = () => s.act(this._game);
       }
     }
+    // Mob Settings tab: also wire the special drops table (sandbox only).
+    if (this._tab === 'mobs' && this._game.gameMode === 'sandbox') this._wireMobDrops(ov);
   },
 
   // ── Mob Drops table (HTML port of the canvas editor) ────────

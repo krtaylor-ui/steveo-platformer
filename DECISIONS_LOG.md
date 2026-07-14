@@ -1356,3 +1356,25 @@ version"). Added:
   placements use the Decor Solid Leaves). Decor tab now: Bush / Leaves (semi) / Solid Leaves,
   each front/back + colours (6 tiles).
 - test-foliage.js +2 (solid-leaves ids non-occluding + flags); suite 295.
+
+## Build 110 (Kevin) — consolidate mob settings into a "Mob Settings" tab
+Kevin wanted all mob switches grouped in one place (was worried about mess; resolved by
+the existing progressive-disclosure pattern). Decision: **all mob behavior**, not just
+flee+sprint.
+- **Renamed the 'mobs' tab label "Mob Drops" → "Mob Settings"** and made it host schema
+  rows too (it was special-render-only). Retagged **Detection, Pack, Sprint, Retreating
+  (`_fleeRows`), Spider Webs** from `tab:'combat'` → `tab:'mobs'`. The **Combat** tab now
+  holds only player-facing gear (Boss Scaling, Combat/arrows, Special Moves, Weapons).
+- **Render/visibility:** `_render` now draws the mobs tab's schema rows (master-switch
+  order: Detection → Pack → Sprint → Retreating → Spider Webs) and, **in sandbox only**,
+  appends the special mob-drops table below them; wiring wires both. `_tabHasRows('mobs')`
+  = true in sandbox (drops) OR when it has visible behavior rows (so it now also appears
+  in Normal/Platformer/Arena, where those settings used to live under Combat).
+- **Mess worry addressed by the existing schema**: masters are plain toggles; every knob
+  is `sub`+`dependsOn` (hidden until its master is on) and the fine-tuning is `advanced`
+  (hidden behind the ⚙ Advanced toggle) — so the tab shows ~5 clean switches by default.
+- No behavior/logic change — pure settings-surface reorg. Suite 295.
+
+## Build 109 (Kevin) — min world height 15
+Server `HEIGHT_MIN` 30 → 15 for non-arena create-world (client input/validation, arena,
+and the offline path already allowed 15). Server-only.
