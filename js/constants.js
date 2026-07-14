@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 111 (Sandbox: items (eggs/emeralds/power-ups/spawns/arena-objs/tools) can be placed on decorative-foliage cells to hide behind front leaves/bushes; create-world height hint fixed 30->15)';
+const GAME_VERSION = 'v3 · build 112 (World Settings: preserve scroll position when changing a setting — no more snapping back to the top after each adjustment; tab switches still start at top)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

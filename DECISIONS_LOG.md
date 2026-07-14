@@ -1394,3 +1394,12 @@ and the offline path already allowed 15). Server-only.
   "15-500". (The input min + client JS + server floor already allow 15 as of build 109 —
   but note the **server change needs a Railway deploy** to take effect for ONLINE world
   creation, and the SW-cached index.html may need a reload cycle to pick up the client.)
+
+## Build 112 (Kevin) — World Settings: keep scroll position on setting change
+Every setting change calls `WORLD_SETTINGS._render()`, which rebuilds the panel's
+innerHTML → a fresh `.ws-body` with scrollTop 0, so the view snapped back to the top
+after each adjustment (very noticeable on the Mob Drops table). Fix: `_render` now
+captures the `.ws-body` scrollTop before the rebuild and restores it after — but only
+for SAME-tab re-renders (tracked via `_lastRenderedTab`), so switching tabs still starts
+at the top. Rows can change height when a toggle reveals/hides sub-settings, but the same
+pixel offset keeps the user essentially in place. Suite 295.

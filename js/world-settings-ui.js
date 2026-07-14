@@ -385,6 +385,13 @@ const WORLD_SETTINGS = {
     if (this._tab === 'mobs' && this._game.gameMode === 'sandbox') body += this._mobDropsHtml(esc);
     if (!body) body = '<div class="ws-empty">No settings here for this mode.</div>';
 
+    // Every setting change re-renders (rebuilds innerHTML), which would reset the body
+    // scroll to the top and force the user to scroll back down for each edit. Capture
+    // the current scroll offset so we can restore it after the rebuild.
+    const sameTab    = this._tab === this._lastRenderedTab;
+    this._lastRenderedTab = this._tab;
+    const prevScroll = sameTab ? (ov.querySelector('.ws-body')?.scrollTop || 0) : 0;
+
     ov.innerHTML = `
       <div class="ws-panel" role="dialog" aria-label="World Settings">
         <div class="ws-head">
@@ -397,6 +404,11 @@ const WORLD_SETTINGS = {
         <div class="ws-tabs">${tabBar}</div>
         <div class="ws-body">${body}</div>
       </div>`;
+
+    // Restore the scroll position (rows can change height when toggles reveal/hide
+    // sub-settings, but the same pixel offset keeps the user in essentially the same spot).
+    const newBody = ov.querySelector('.ws-body');
+    if (newBody) newBody.scrollTop = prevScroll;
 
     // Wire tab bar + header
     ov.querySelectorAll('.ws-tab').forEach((b) => b.onclick = () => { this._tab = b.dataset.tab; this._render(); });
