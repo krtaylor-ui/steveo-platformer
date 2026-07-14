@@ -1052,6 +1052,18 @@ class Player {
 
     // Smart Mobs §9 — visible webbing over the player while a spider web is active.
     if (this._webSlowTimer > 0) this._drawWebOverlay(ctx, sx, sy);
+
+    // Bot AI — a bobbing yellow "!" over a companion bot that's stuck (mirrors the
+    // mob sprint-telegraph style). Signals "come help me" for Follow mode.
+    if (this._stuckMark) {
+      const cx = sx + this.width / 2;
+      const by = sy - 6 - ((this._stuckMarkT = (this._stuckMarkT || 0) + 1) % 30 < 15 ? 2 : 0);
+      ctx.save();
+      ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillText('!', cx + 1, by + 1);
+      ctx.fillStyle = '#FFE23A'; ctx.fillText('!', cx, by);
+      ctx.restore();
+    }
   }
 
   // A translucent net of web strands across the player's bounding box (fades out as

@@ -702,10 +702,58 @@ console.log('Wayfinding fix — companion warps to the leader when it cannot rea
   ok(Math.hypot(leader.cx - comp.cx, leader.cy - comp.cy) / B <= 4, 'companion ends up beside the leader');
   // Teleport World Setting OFF → no warp (nav must handle it).
   const comp2 = mkPlayer(2, 2, { owner: 'p2' });
-  const game2 = mkGame(level, [mkPlayer(25, 2, { owner: 'p1' }), comp2], { gameMode: 'platformer', _worldAdvSettings: { companionTeleport: false } });
+  const game2 = mkGame(level, [mkPlayer(25, 2, { owner: 'p1' }), comp2], { gameMode: 'platformer', _worldAdvSettings: { companionTeleport: false, companionStuckBehavior: 'none' } });
   const ctrl2 = new BotController(game2, 1, 'companion', 'MEDIUM');
   const bx2 = comp2.x; ctrl2.tick();
   ok(comp2.x === bx2, 'companionTeleport:false disables the warp (for nav stress-testing)');
+  // Direct (Euclidean) distance: a leader far ABOVE (vertical) also triggers teleport.
+  const compV = mkPlayer(5, 40, { owner: 'p2' });
+  const leadV = mkPlayer(5, 40, { owner: 'p1' }); leadV.y = 2 * B;   // ~38 blocks straight up
+  const gameV = mkGame(level, [leadV, compV], { gameMode: 'platformer', _worldAdvSettings: { companionTeleport: true, companionTeleportRange: 18 } });
+  const ctrlV = new BotController(gameV, 1, 'companion', 'MEDIUM');
+  const byV = compV.y; ctrlV.tick();
+  ok(compV.y !== byV, 'vertical distance beyond range triggers teleport (direct distance, not horizontal-only)');
+}
+
+console.log('Companion stuck behaviors (Teleport OFF):');
+{
+  const level = flatLevel();
+  const mk = (beh, leaderCol) => {
+    const leader = mkPlayer(leaderCol == null ? 25 : leaderCol, 2, { owner: 'p1' });
+    const comp = mkPlayer(2, 2, { owner: 'p2' });
+    const game = mkGame(level, [leader, comp], { gameMode: 'platformer', _worldAdvSettings: { companionTeleport: false, companionStuckBehavior: beh } });
+    return { ctrl: new BotController(game, 1, 'companion', 'MEDIUM'), comp, leader };
+  };
+  // 'none' → shows the ! mark, never warps (stress-test).
+  { const { ctrl, comp } = mk('none'); const bx = comp.x; for (let f = 0; f < 200; f++) ctrl._companionAssist(); ok(comp._stuckMark === true, 'none: shows the ! mark when stuck'); ok(comp.x === bx, 'none: never warps'); }
+  // 'teleport' → after the stuck delay, warps.
+  { const { ctrl, comp } = mk('teleport'); const bx = comp.x; for (let f = 0; f < 200; f++) ctrl._companionAssist(); ok(comp.x !== bx, 'teleport: warps after the stuck delay'); }
+  // 'follow' → latches stuck while far; engages mirror once the player comes near.
+  { const { ctrl, comp, leader } = mk('follow');
+    for (let f = 0; f < 80; f++) ctrl._companionAssist();
+    ok(comp._stuckMark === true && (ctrl._mirrorTimer || 0) === 0, 'follow: shows ! and waits (not mirroring) while the player is far');
+    leader.x = 6 * B;                                   // player comes near (4 blocks: within mirror range, not yet reunited)
+    ctrl._companionAssist();
+    ok(ctrl._mirrorTimer > 0, 'follow: mirrors once the player is near');
+  }
+}
+
+console.log('Warp stays on the leader\'s level (no cave-drop below):');
+{
+  // Leader on a platform (row 3) with a cave floor far below (row 12). The warp must
+  // land the bot beside the leader (row ~3), never drop into the cave.
+  const rows = [];
+  for (let r = 0; r < 13; r++) rows.push(' '.repeat(20));
+  rows[4] = '####      ##########';   // leader's platform (cols 0-3 and 10-19) at row4 (feet row3)
+  rows[12] = '#'.repeat(20);          // cave floor far below
+  const level = withPixels(mkLevel(rows));
+  const leader = mkPlayer(1, 3, { owner: 'p1' });       // on the platform (feet row3, floor row4)
+  const comp = mkPlayer(15, 3, { owner: 'p2' });
+  const game = mkGame(level, [leader, comp], { gameMode: 'platformer', _worldAdvSettings: { companionTeleport: true, companionTeleportRange: 5 } });
+  const ctrl = new BotController(game, 1, 'companion', 'MEDIUM');
+  ctrl.tick();   // far (14 blocks) → warp
+  const compRow = Math.floor((comp.y + comp.height - 1) / B);
+  ok(compRow <= 4, `warp lands beside the leader (row ${compRow}), NOT in the cave below (row 11)`);
 }
 
 console.log('Wayfinding — jump envelope reflects enabled moves + double-jump pulse:');

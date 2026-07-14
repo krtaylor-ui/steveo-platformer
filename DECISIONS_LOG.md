@@ -1968,3 +1968,38 @@ section for Platformer/Normal (full customization later).
 - Browser-UNTESTED (canvas pixel-art — no headless render check). Suite 492.
 - **NOTE:** full sprite customization (colours, per-account skins) remains a future
   arena feature per Kevin; this is the male/female first pass he asked for.
+
+## Companion tuning: responsiveness, teleport range, stuck-behaviors, wall-jump (build 130)
+Kevin's co-op tuning pass:
+- **Responsiveness:** tighter follow band (`BOT_FOLLOW_FAR` 9→5, `NEAR` 3→2) + a fast
+  companion decision cadence (`BOT_COMPANION_BRAINTICK` 6, regardless of difficulty)
+  so it starts following almost immediately instead of lagging.
+- **Teleport = DIRECT distance + configurable Range.** `_companionAssist` warps on
+  Euclidean `hypot(dx,dy)` (so VERTICAL levels count, not just horizontal) once past
+  `companionTeleportRange` (World Setting, default 20 blocks). It was firing too early;
+  now it's predictable + tunable.
+- **Warp stays on the leader's LEVEL (cave-drop bug fixed).** `_warpNearLeader` no
+  longer uses `navDropTo` (which could fall ~40 blocks into a cave below the player);
+  it searches the leader's row first, then a ±1 step, then places exactly on the
+  leader. Never a cave-drop.
+- **"If Companion Gets Stuck" (World Setting, used when Teleport is OFF)** —
+  `companionStuckBehavior`: **Do nothing** (stress-test: shows "!", keeps trying, no
+  warp) / **Teleport to you** (shows "!" briefly → warp) / **Follow mode** (DEFAULT):
+  shows a bobbing yellow "!" over the bot (`player._stuckMark`, drawn in player.js like
+  the mob sprint telegraph), waits for the player to come within `BOT_MIRROR_RANGE`,
+  then MIRRORS the player's live inputs (`_mirrorAct` copies P1 moveX/jump/crouch) to
+  thread the same route; warps as a last resort if it drags on. Stuck is LATCHED so
+  the player approaching (to guide it) doesn't read as "un-stuck" before mirroring.
+- **Wall-jump-aware pathing.** `navNeighbors` gains a bot-gated `wallClimb` param: from
+  a wall-adjacent cell it can reach standable cells up to N blocks up along the wall —
+  only UPWARD, wall-backed edges (never an open-gap crossing, so no false plans). Fed
+  by `_jumpEnvelope` when `wallSlideEnabled`. Mobs + the sample-world generator pass 0
+  → unaffected (verified: 9/9 sample worlds still pass). Honest limit: the actuator's
+  wall-jump EXECUTION is best-effort (works best in chimneys); if it can't, the
+  escape + teleport/stuck safety nets catch it.
+- Tests: test-pathfinding +2 (wall-climb reachability), test-bot-ai +7 (vertical-
+  distance teleport, none/teleport/follow behaviors, mirror engage, level-safe warp).
+  Suite 503. Browser-UNTESTED.
+- **STILL FLAGGED for next:** wall-jump actuator reliability (chimney execution); and
+  Kevin's note — possibly drop the "Teleport" option from the stuck-behavior list once
+  fast response + range prove enough.

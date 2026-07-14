@@ -66,7 +66,7 @@ function _navKey(c, r) { return c + ',' + r; }
 // Standing on a JUMP_PAD swaps in the larger pad envelope. Verbatim port of the
 // generator's reachable() inner loop; `out` is filled with [c, r, dc, dr] so
 // callers can cost each edge by how it was traversed (dr<0 = climb, dr>0 = drop).
-function navNeighbors(nav, c, r, baseUp, baseDx, out) {
+function navNeighbors(nav, c, r, baseUp, baseDx, out, wallClimb) {
   out.length = 0;
   // walk left/right (same row) or drop off a ledge
   for (const dc of [-1, 1]) {
@@ -101,6 +101,22 @@ function navNeighbors(nav, c, r, baseUp, baseDx, out) {
       const budget = jDx - upCost;
       if (Math.abs(dc) > Math.max(1, budget)) continue;
       out.push([nc, nr, dc, dr]);
+    }
+  }
+  // Wall-jump climb (bots only — passed via opts.wallClimb; mobs + the generator
+  // pass 0). Pressed against a wall you can scrabble UPWARD (wall-slide + wall-jump),
+  // so from a wall-adjacent cell reach standable cells up to `wallClimb` blocks higher
+  // where a wall persists. Only adds UPWARD, wall-backed edges — never an open-gap
+  // crossing — so it can't make the planner think it can cross a gap it can't.
+  if (wallClimb > 0) {
+    for (const wd of [-1, 1]) {
+      if (!nav.solid(c + wd, r) && !nav.solid(c + wd, r - 1)) continue;  // need a wall beside (body height)
+      for (let up = 1; up <= wallClimb; up++) {
+        for (const nc of [c, c + wd]) {                   // top out ON the wall, or up the shaft
+          const nr = r - up;
+          if (navStandable(nav, nc, nr)) out.push([nc, nr, nc - c, -up]);
+        }
+      }
     }
   }
   return out;
@@ -175,6 +191,7 @@ function findMobPath(nav, start, goal, opts) {
   opts = opts || {};
   const baseUp = opts.maxUp || NAV_MAX_JUMP_UP;
   const baseDx = opts.maxDx || NAV_MAX_JUMP_DX;
+  const wallClimb = opts.wallClimb || 0;   // bots pass this when Wall Slide is enabled
   const maxRadius = opts.maxRadius || 40;
   const maxExpansions = opts.maxExpansions || 6000;
 
@@ -216,7 +233,7 @@ function findMobPath(nav, start, goal, opts) {
     }
     if (++expansions > maxExpansions) return null;
     const gCur = gScore.get(k);
-    navNeighbors(nav, c, r, baseUp, baseDx, nbrs);
+    navNeighbors(nav, c, r, baseUp, baseDx, nbrs, wallClimb);
     for (const n of nbrs) {
       const [nc, nr, dc, dr] = n;
       if (Math.abs(nc - sc) + Math.abs(nr - sr) > maxRadius * 2) continue; // stay inside the budget

@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 129 (Female character option: pick Steve (♂) or an Alex-style female sprite (♀ ginger hair + ponytail, green shirt). Choose per-slot in the Arena pre-launch screen, and via World Settings → Players (P1 / P2·Companion) for Platformer/Normal. Cosmetic; CTF team colours still override the shirt. + build 128 movement-aware wayfinding.)';
+const GAME_VERSION = 'v3 · build 130 (Companion tuning: snappier following; Teleport now warps on DIRECT distance (vertical counts) at a configurable Range, and lands on YOUR level (no more cave-drops). When Teleport is OFF, an "If Companion Gets Stuck" setting — Do nothing / Teleport / FOLLOW mode (default): the bot shows a yellow "!", waits for you, then MIRRORS your moves through the spot. Wall Slide now feeds wall-jump climbs into the bot\'s pathing. + build 129 female sprite.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
@@ -277,19 +277,28 @@ const BOT_ARCHER_RANGE_BLOCKS = 9;    // archer bot approaches to ~this, then ho
 const BOT_OBJECTIVE_REACH_BLOCKS = 1.4; // "arrived at objective cell" tolerance
 
 // Phase 4 companion (friendly follower in Platformer/Normal/Campaign):
-const BOT_FOLLOW_NEAR = 3;    // blocks: closer than this → stop crowding the player
-const BOT_FOLLOW_FAR  = 9;    // blocks: farther than this → catch up
+const BOT_FOLLOW_NEAR = 2;    // blocks: closer than this → stop crowding the player
+const BOT_FOLLOW_FAR  = 5;    // blocks: farther than this → catch up (tighter = more responsive)
+const BOT_COMPANION_BRAINTICK = 6;   // companion re-decides follow/fight fast (~10/sec) regardless of difficulty
 const BOT_COMPANION_LOOT_DELAY = 150; // frames an unclaimed pickup waits before the
                                       // companion may grab it (~2.5s) — player gets first pick
-// Companion teleport catch-up (standard co-op follower behaviour): when the
-// companion genuinely can't reach the player — a too-tall tree/wall it can't jump,
-// a pit, a platform it can't path to — warp it beside the player rather than let it
-// pace forever. Fires when it's way behind OR has made no progress for a while.
-const BOT_COMPANION_WARP_DIST  = 22;  // blocks behind the leader → warp (off-screen-ish)
-const BOT_COMPANION_WARP_STUCK = 90;  // frames of no closing progress (while beyond FOLLOW_FAR) → warp
+// Companion teleport (fast-pace catch-up): when ON, warp beside the player once the
+// DIRECT (Euclidean, so vertical levels count) distance exceeds the configured range.
+// Predictable + never makes the player wait. Kevin tunes the range per level.
+const BOT_COMPANION_WARP_DIST  = 18;  // default teleport range (blocks) — configurable
+const BOT_COMPANION_WARP_STUCK = 45;  // frames of no closing progress → "stuck" (~0.75s; teleport-OFF path)
 // Stuck-escape: after this many consecutive fruitless escapes on one goal, stop
 // escaping (it's a genuine dead-end) and re-decide, so a bot never paces endlessly.
 const BOT_ESCAPE_MAX = 2;
+// Wall-jump-aware reachability: with Wall Slide on, a bot can scrabble UP a wall it's
+// pressed against (wall-jump), so the planner grants extra reachable height beside a
+// wall (approximate — a true chimney climb is iterative). Gated to wall-adjacent cells.
+const BOT_WALLJUMP_UP_BONUS = 4;      // extra blocks of climb allowed alongside a wall
+// Stuck → Follow ("mirror") mode: show a "!", wait for the player to come near, then
+// copy their inputs for a stretch to thread the same route; warp as a last resort.
+const BOT_MIRROR_RANGE  = 5;    // blocks: player must be at least this close to start mirroring
+const BOT_MIRROR_FRAMES = 210;  // how long to mirror the player before giving up → warp (~3.5s)
+const BOT_STUCK_WARP_DELAY = 30; // "!" shown this long before a stuck-teleport warp (~0.5s)
 
 const VICTORY_MUSIC_FILE   = 'music/boss/victory.mp3';  // ~20s fanfare after Ender Dragon defeat
 

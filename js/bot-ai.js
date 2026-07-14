@@ -175,18 +175,36 @@ class BotController {
     this._hpWas = p.hp;
     if (this._threatenedTimer > 0 && --this._threatenedTimer === 0) this._threatenedBy = null;
 
-    // Companion catch-up: if it genuinely can't reach the leader (too-tall tree/
-    // wall, pit, unreachable platform), warp beside them instead of pacing forever.
-    if (this.role === 'companion') this._companionCatchUp();
+    // Companion assist: teleport (fast pace) OR, when teleport is off, a stuck
+    // response (do-nothing / teleport / follow-mirror). May engage mirror mode.
+    if (this.role === 'companion') this._companionAssist();
 
-    // BRAIN — periodic decision.
+    // Stuck → Follow ("mirror") mode: copy the player's inputs to thread the route,
+    // skipping normal AI. (Cleared when we get unstuck or the timer runs out.)
+    if (this._mirrorTimer > 0) {
+      this._mirrorTimer--;
+      this._mirrorAct();
+      g.input.setBotInput(this.index, this._input);
+      return;
+    }
+
+    // BRAIN — periodic decision. Companions re-decide fast (responsive following).
+    const tickN = this.role === 'companion' ? Math.min(this.diff.brainTick, BOT_COMPANION_BRAINTICK) : this.diff.brainTick;
     if (--this._brainTimer <= 0) {
-      this._brainTimer = this.diff.brainTick;
+      this._brainTimer = tickN;
       this._think();
     }
     // ACT — every frame.
     this._act();
     g.input.setBotInput(this.index, this._input);
+  }
+
+  // Copy the human's live inputs (Stuck → Follow mode) so the companion retraces the
+  // exact route the player is taking through a tricky tunnel.
+  _mirrorAct() {
+    const inp = this.game.input, i = this._input;
+    i.moveX = inp.pMoveX(0); i.jump = inp.pJump(0); i.crouch = inp.pCrouch(0);
+    i.attack = false; i.aimX = 0; i.aimY = 0; i.buttons = {};
   }
 
   _neutral() {
@@ -397,39 +415,76 @@ class BotController {
     }
     return { kind: 'companion-idle', cell: null, targetRef: null, action: null, targetId: null, reason: 'staying near the player' };
   }
-  // Warp the companion beside the leader when it can't path there. Tracks
-  // "closing progress"; fires when way behind, or after a stretch of no progress
-  // while still far. Standard co-op-follower behaviour (Mario-style catch-up).
-  _companionCatchUp() {
+  // Companion assist. Teleport ON → warp on DIRECT distance past the range (fast
+  // pace). Teleport OFF → detect "stuck" and run the configured response (do-nothing
+  // / teleport / follow-mirror), showing a yellow "!" over the bot's head.
+  _companionAssist() {
     const leader = this.game.getPlayer(0), me = this.player;
-    if (!leader || !me || me.hp <= 0) return;
-    const distB = Math.hypot(leader.cx - me.cx, leader.cy - me.cy) / BLOCK_SIZE;
+    if (!leader || !me || me.hp <= 0) { this._clearStuck(); return; }
+    const aws = this.game._worldAdvSettings || {};
+    const distB = Math.hypot(leader.cx - me.cx, leader.cy - me.cy) / BLOCK_SIZE;  // DIRECT (vertical counts)
+
+    // ── Fast-pace teleport: warp purely on distance (predictable; never waits). ──
+    if (aws.companionTeleport !== false) {
+      this._clearStuck();
+      const range = aws.companionTeleportRange || BOT_COMPANION_WARP_DIST;
+      if (distB > range) this._doWarp(leader);
+      return;
+    }
+
+    // ── Teleport OFF ──
+    // Reunited → clear any stuck state (the bot made it / the player came to it).
+    if (distB < BOT_FOLLOW_NEAR + 1) { this._clearStuck(); this._ccStuck = 0; this._ccBest = distB; return; }
+    // Progress tracking: "stuck" = can't close the gap for a while while still far.
     if (this._ccBest == null || distB < this._ccBest - 0.5) { this._ccBest = distB; this._ccStuck = 0; }
     else this._ccStuck = (this._ccStuck || 0) + 1;
-    // Teleport is a World Setting (default ON) — Kevin turns it OFF to stress-test
-    // the nav (so the bot must genuinely path instead of warping out of trouble).
-    const allowed = !this.game._worldAdvSettings || this.game._worldAdvSettings.companionTeleport !== false;
-    const warp = distB > BOT_COMPANION_WARP_DIST || (this._ccStuck > BOT_COMPANION_WARP_STUCK && distB > BOT_FOLLOW_FAR);
-    if (allowed && warp && this._warpNearLeader(leader)) {
-      this._ccStuck = 0; this._ccBest = null; this._path = null; this._pathTimer = 0;
+    if (!this._stuckState && this._ccStuck > BOT_COMPANION_WARP_STUCK && distB > BOT_FOLLOW_FAR) this._stuckState = 'stuck';
+    if (!this._stuckState) return;                      // following fine
+
+    // LATCHED stuck (stays set even as the player approaches — so Follow mode can
+    // engage when the player comes near, which would otherwise read as "not stuck").
+    me._stuckMark = true;                               // yellow "!" over the head
+    const beh = aws.companionStuckBehavior || 'follow';
+    if (beh === 'none') return;                         // stress-test: keep trying, no warp/mirror
+    if (beh === 'teleport') {                           // "!" briefly, then warp
+      if ((this._stuckTimer = (this._stuckTimer || 0) + 1) > BOT_STUCK_WARP_DELAY) this._doWarp(leader);
+      return;
+    }
+    // 'follow' (mirror): once the player is near, copy their inputs to thread the
+    // route; if the ordeal drags on without recovery, warp as a last resort.
+    this._followStuck = (this._followStuck || 0) + 1;
+    if (distB <= BOT_MIRROR_RANGE) this._mirrorTimer = Math.max(this._mirrorTimer || 0, 30);  // keep mirroring while near
+    if (this._followStuck > BOT_MIRROR_FRAMES * 2) this._doWarp(leader);
+  }
+
+  _doWarp(leader) {
+    if (this._warpNearLeader(leader)) {
+      this._ccStuck = 0; this._ccBest = null;
+      this._clearStuck();
       if (this.game._notify) this.game._notify('Companion caught up', '#9fddff', 90);
     }
   }
+  _clearStuck() {
+    if (this.player) this.player._stuckMark = false;
+    this._stuckState = null; this._stuckTimer = 0; this._followStuck = 0; this._mirrorTimer = 0;
+  }
+  // Warp beside the leader on THEIR level — never navDropTo (that can fall many
+  // blocks into a cave below the player, the reported bug). Same row first, then a
+  // one-block step up/down, then exactly on the leader (guaranteed standable).
   _warpNearLeader(leader) {
-    if (typeof navStandable !== 'function') return false;
+    if (typeof navStandable !== 'function') { this._placeAt(...BOT_AI.cellOf(leader)); return true; }
     const nav = this._nav();
     const [lc, lr] = BOT_AI.cellOf(leader);
-    for (const dc of [1, -1, 2, -2, 3, -3, 0]) {   // prefer a spot beside the leader
-      let rr = navStandable(nav, lc + dc, lr) ? lr
-             : (typeof navDropTo === 'function' ? navDropTo(nav, lc + dc, lr) : -1);
-      if (rr >= 0) {
-        this.player.x = (lc + dc) * BLOCK_SIZE + (BLOCK_SIZE - this.player.width) / 2;
-        this.player.y = (rr + 1) * BLOCK_SIZE - this.player.height;
-        this.player.vx = 0; this.player.vy = 0;
-        return true;
-      }
-    }
-    return false;
+    for (const dc of [1, -1, 2, -2, 3, -3]) if (navStandable(nav, lc + dc, lr)) { this._placeAt(lc + dc, lr); return true; }
+    for (const dr of [1, -1]) for (const dc of [0, 1, -1]) if (navStandable(nav, lc + dc, lr + dr)) { this._placeAt(lc + dc, lr + dr); return true; }
+    this._placeAt(lc, lr);   // on the leader — resolves via player-collision; never a cave drop
+    return true;
+  }
+  _placeAt(c, r) {
+    this.player.x = c * BLOCK_SIZE + (BLOCK_SIZE - this.player.width) / 2;
+    this.player.y = (r + 1) * BLOCK_SIZE - this.player.height;
+    this.player.vx = 0; this.player.vy = 0;
+    this._path = null; this._pathTimer = 0;
   }
 
   _nearestMobInRange() {
@@ -681,7 +736,7 @@ class BotController {
       const radius = Math.min(BOT_PATH_MAX_RADIUS, Math.max(16, this.diff.detectRange + 8));
       const env = this._jumpEnvelope();   // reachability reflects the world's enabled moves
       const res = (typeof findMobPath === 'function')
-        ? findMobPath(this._nav(), [cc, cr], [gc, gr], { maxRadius: radius, maxExpansions: BOT_PATH_MAX_EXPANSIONS, maxUp: env.maxUp, maxDx: env.maxDx })
+        ? findMobPath(this._nav(), [cc, cr], [gc, gr], { maxRadius: radius, maxExpansions: BOT_PATH_MAX_EXPANSIONS, maxUp: env.maxUp, maxDx: env.maxDx, wallClimb: env.wallClimb })
         : null;
       this._pathTimer = this.diff.navRecompute;
       this._pathGoalCell = [gc, gr];
@@ -702,7 +757,9 @@ class BotController {
     this._envUp = up;
     if (aws.airJumpEnabled)   { up += Math.max(2, up - 1); dx += 3; }  // 2nd jump ≈ +another jump + airtime
     if (aws.ledgeHangEnabled) { up += 1; }                            // grab a ledge at the apex + pull up
-    return { maxUp: Math.min(up, 8), maxDx: Math.min(dx, 10) };
+    // Wall Slide → wall-jump climb: the planner may scale walls (bot-gated wallClimb).
+    const wallClimb = aws.wallSlideEnabled ? BOT_WALLJUMP_UP_BONUS : 0;
+    return { maxUp: Math.min(up, 8), maxDx: Math.min(dx, 10), wallClimb };
   }
 
   // Combat: aim at target (+ difficulty aim error) and fire the bow (charge to

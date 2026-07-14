@@ -183,6 +183,26 @@ console.log('Overhang — findMobPath routes OUT from under the canopy, not stra
   ok(res && res.path[res.path.length - 1][0] === 5, 'route reaches the ledge');
 }
 
+console.log('Wall-jump climb (bot-gated) — scales a tall wall only when wallClimb is set:');
+{
+  //           col: 01234
+  const nav = mkNav([
+    '     ',
+    '     ',
+    '     ',   // (3,2) tops out on the wall
+    '   # ',   // wall col3 (rows 3-6), 4 tall
+    '   # ',
+    '   # ',
+    '   # ',
+    '#####',   // floor
+  ]);
+  const start = [2, 6], goal = [3, 2];
+  ok(navStandable(nav, 2, 6), 'start beside the wall base is standable');
+  ok(navStandable(nav, 3, 2), 'goal on top of the wall is standable');
+  ok(findMobPath(nav, start, goal, { maxRadius: 20 }) === null, 'without wall-climb the 4-tall wall is unreachable (jump maxes at 3)');
+  ok(findMobPath(nav, start, goal, { maxRadius: 20, wallClimb: 4 }) !== null, 'wallClimb scales the wall (bot with Wall Slide)');
+}
+
 console.log('Pad — a jump pad extends reach across a wide gap:');
 {
   // An 8-wide gap (beyond the 6 normal jump) but a pad on the take-off lip.
