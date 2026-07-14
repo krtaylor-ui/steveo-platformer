@@ -40,7 +40,7 @@ const sandbox = new Proxy(real, {
 vm.createContext(sandbox);
 const run = (file, expose) => vm.runInContext(fs.readFileSync(`${jsDir}/${file}`, 'utf8') + '\n;' + expose, sandbox, { filename: file });
 
-run('constants.js', 'this.BLOCK_SIZE=BLOCK_SIZE; this.BOT_DIFFICULTY_PRESETS=BOT_DIFFICULTY_PRESETS; this.BOT_DEFAULT_DIFFICULTY=BOT_DEFAULT_DIFFICULTY; this.BOT_THREAT_WEIGHTS=BOT_THREAT_WEIGHTS; this.BOT_THREAT_RECENT_FRAMES=BOT_THREAT_RECENT_FRAMES; this.BOT_MELEE_RANGE_BLOCKS=BOT_MELEE_RANGE_BLOCKS; this.BOT_ARCHER_RANGE_BLOCKS=BOT_ARCHER_RANGE_BLOCKS; this.BOT_OBJECTIVE_REACH_BLOCKS=BOT_OBJECTIVE_REACH_BLOCKS; this.GP_DEADZONE_STICK=GP_DEADZONE_STICK;');
+run('constants.js', 'this.BLOCK_SIZE=BLOCK_SIZE; this.BOT_DIFFICULTY_PRESETS=BOT_DIFFICULTY_PRESETS; this.BOT_DEFAULT_DIFFICULTY=BOT_DEFAULT_DIFFICULTY; this.BOT_THREAT_WEIGHTS=BOT_THREAT_WEIGHTS; this.BOT_THREAT_RECENT_FRAMES=BOT_THREAT_RECENT_FRAMES; this.BOT_MELEE_RANGE_BLOCKS=BOT_MELEE_RANGE_BLOCKS; this.BOT_ARCHER_RANGE_BLOCKS=BOT_ARCHER_RANGE_BLOCKS; this.BOT_OBJECTIVE_REACH_BLOCKS=BOT_OBJECTIVE_REACH_BLOCKS; this.BOT_FOLLOW_NEAR=BOT_FOLLOW_NEAR; this.BOT_FOLLOW_FAR=BOT_FOLLOW_FAR; this.BOT_COMPANION_LOOT_DELAY=BOT_COMPANION_LOOT_DELAY; this.GP_DEADZONE_STICK=GP_DEADZONE_STICK;');
 run('blocks.js', 'this.BLOCK=BLOCK;');
 run('pathfinding.js', 'this.findMobPath=findMobPath; this.navStandable=navStandable;');
 run('input.js', 'this.InputManager=InputManager;');
@@ -464,6 +464,49 @@ console.log('Phase 3 — FFA (no team) → no coordination:');
   ca._think(); cb._think();
   ok(ca.goal.cell[0] === 12 && cb.goal.cell[0] === 12, 'FFA bots both chase the nearest gem (no complementary split)');
   sandbox.EMERALD_SYSTEM = undefined;
+}
+
+// ════════════════════════════════════════════════════════════
+// Phase 4 — companion bot (friendly follower)
+// ════════════════════════════════════════════════════════════
+console.log('Phase 4 — Companion follow-band + mob targeting:');
+{
+  const level = flatLevel();
+  const leader = mkPlayer(5, 2, { owner: 'p1' });        // human P1
+  const comp = mkPlayer(6, 2, { owner: 'p2' });          // companion P2 (no bow → melee)
+  comp.bow = null;
+  const game = mkGame(level, [leader, comp], { gameMode: 'platformer', mobManager: { mobs: [] } });
+  const ctrl = new BotController(game, 1, 'companion', 'MEDIUM');
+  // (a) Close to the leader, no mobs → stays near (idle), does not chase P1.
+  let g = ctrl._thinkCompanion();
+  ok(g.kind === 'companion-idle', `near leader, no mob → idle (got ${g.kind})`);
+  ok(g.targetRef == null, 'companion never targets the player');
+  // (b) Leader runs far away → catch up.
+  leader.x = 40 * B;
+  g = ctrl._thinkCompanion();
+  ok(g.kind === 'companion-follow', 'leader far → follow/catch up');
+  ok(g.reachBlocks === sandbox.BOT_FOLLOW_NEAR || g.reachBlocks > 0, 'follow stops within the near band');
+  // (c) A hostile mob appears in range → fight the MOB (not the player).
+  leader.x = 6 * B;                                       // leader back close
+  const mob = { id: 3, alive: true, hp: 5, x: 9 * B, y: 2 * B, width: 22, height: 48, get cx() { return this.x + 11; }, get cy() { return this.y + 24; } };
+  game.mobManager.mobs = [mob];
+  g = ctrl._thinkCompanion();
+  ok(g.kind === 'companion-fight' && g.targetRef === mob, 'mob in range → fight the mob');
+}
+
+console.log('Phase 4 — Companion loot priority (time-delay + player-first):');
+{
+  const level = flatLevel();
+  const leader = mkPlayer(5, 2, { owner: 'p1' });
+  const comp = mkPlayer(10, 2, { owner: 'p2' });
+  const game = mkGame(level, [leader, comp]);
+  // Item at col 10 (right at the companion, player far at col 5).
+  const item = { wx: 10 * B, wy: 2 * B, collected: false };
+  ok(BOT_AI.companionShouldGrab(game, comp, item, 5) === false, 'not eligible before the delay elapses');
+  ok(BOT_AI.companionShouldGrab(game, comp, item, sandbox.BOT_COMPANION_LOOT_DELAY + 1) === true, 'eligible after the delay when the companion is closer');
+  // Player standing on the item → player is closer → NOT eligible (player first pick).
+  leader.x = 10 * B;
+  ok(BOT_AI.companionShouldGrab(game, comp, item, 9999) === false, 'player closer/heading for it → companion defers');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

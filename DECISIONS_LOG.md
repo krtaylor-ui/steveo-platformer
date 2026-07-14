@@ -1723,3 +1723,32 @@ SAME way for bots (their live `goal`, via `game._botControllers`) and humans
   claimed by a teammate bot picks the next-nearest unclaimed one.
 - Tests: test-bot-ai.js +9 (CTF/Tower/Emerald/Mob splits + FFA-no-coordination).
   **Suite 427.** Browser-UNTESTED.
+
+## Phase 4 — companion bot (build 120, DONE, headless-verified; browser-UNTESTED)
+A FRIENDLY follower for Platformer/Normal/Campaign — a distinct role from arena
+bots. Occupies the P2 slot; drives the same P2 input/combat path (so it works with
+zero new combat code). Opt-in via `_worldAdvSettings.companionBot` = EASY|MEDIUM|
+HARD; `_maybeSetupCompanion()` (lazy, offline, non-arena) creates P2 + a
+`role:'companion'` controller and arms it with a sword.
+- **Follow band:** `_thinkCompanion` follows P1 within [BOT_FOLLOW_NEAR=3,
+  BOT_FOLLOW_FAR=9] blocks with hysteresis (catch up past FAR, stop within NEAR) —
+  "not glued, not left behind."
+- **Inverted targeting:** engages the nearest hostile MOB in range; NEVER targets
+  the player (companion goals never pick a player as targetRef).
+- **Hazard safety:** inherent — the pathfinder never routes through lava/void
+  (same reachability model as the Speed-Run validator), so the companion won't path
+  itself into an avoidable death.
+- **Loot priority (Q3 — BOTH mechanisms):**
+  1. *Time-delayed leftover pickup* — `BOT_AI.companionShouldGrab` lets the
+     companion grab a placed item only after it's been available near it for
+     BOT_COMPANION_LOOT_DELAY (150f ~2.5s) AND the player is farther from it. The
+     player always gets first pick.
+  2. *Redundant-downgrade handoff* — `_collectPlatformerItem` now takes a
+     `collector`; when P1 picks up a weapon/tool that is equal/worse than what they
+     have equipped (previously it just vanished), `_handToCompanion` gives it to the
+     companion instead (best-tier gated).
+- Tests: test-bot-ai.js +8 (follow-band idle/catch-up, mob-not-player targeting,
+  loot delay + player-first). **Suite 435.** Browser-UNTESTED — natural check is a
+  Platformer world with `companionBot:'MEDIUM'` set. NOTE: no pre-launch UI toggle
+  yet for the companion (set via world settings/flag) — a small follow-up; the
+  mechanism is complete.

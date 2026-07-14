@@ -2038,6 +2038,8 @@ class Game {
     // Sync XP speed boost flag to all local players
     for (const p of this.activePlayers()) p.xpSpeedDisabled = !!this._worldAdvSettings.disableXpSpeedBoost;
 
+    // ── Bot AI: lazily create a companion bot (non-arena) on first update.
+    if (!this._companionInit) this._maybeSetupCompanion();
     // ── Bot AI tick — decide + write synthetic input BEFORE players/combat
     // consume it this frame. Each controller self-guards on dead/respawning/
     // not-playing (writes a neutral no-op). (Bot AI brief, Phase 1.)
@@ -3180,6 +3182,24 @@ class Game {
             window.multiplayerManager.claimPlacedItem(i);
           } else {
             this._collectPlatformerItem(it);
+          }
+        }
+      }
+
+      // ── Bot AI Phase 4: companion collects LEFTOVERS (time-delayed; the player
+      //    always gets first pick). Only grabs an item that's been available near
+      //    the companion for a delay AND that the player isn't closer to. ──
+      if (this._companionController && !_online) {
+        const comp = this._companionPlayer();
+        if (comp && comp.hp > 0) {
+          for (const it of this._platformerItems) {
+            if (it.collected || it._claimPending) continue;
+            const dC = Math.hypot(comp.cx - it.wx, (comp.y + comp.height / 2) - it.wy);
+            if (dC < BLOCK_SIZE * 4) it._compExposed = (it._compExposed || 0) + 1;
+            if (dC < BLOCK_SIZE * 1.5 && typeof BOT_AI !== 'undefined' &&
+                BOT_AI.companionShouldGrab(this, comp, it, it._compExposed || 0)) {
+              this._collectPlatformerItem(it, comp);
+            }
           }
         }
       }
@@ -15252,48 +15272,97 @@ class Game {
     this.camera.y = Math.max(0, Math.min(this.level.pixelHeight - CANVAS_H, this.player.y - CANVAS_H * 0.55));
   }
 
-  _collectPlatformerItem(item) {
+  // `collector` defaults to P1. Bot AI Phase 4: when P1 picks up a weapon/tool
+  // that is REDUNDANT (equal or worse than what they already have), it is handed
+  // to the companion bot instead of vanishing (Kevin's Q3 alt) — the companion
+  // never competes for something the player benefits from, but salvages leftovers.
+  _collectPlatformerItem(item, collector = this.player) {
     item.collected = true;
+    const isP1 = collector === this.player;
     if (item.blockType) {
       const count = item.count || 1;
-      for (let i = 0; i < count; i++) this.player.addBlock(item.blockType);
+      for (let i = 0; i < count; i++) collector.addBlock(item.blockType);
       const bname = BLOCK_DATA[item.blockType]?.name ?? 'item';
-      this._notify(`Picked up ${count > 1 ? count + ' ' : ''}${bname}${count > 1 ? 's' : ''}!`, '#A07840', 200);
+      this._notify(`${isP1 ? 'Picked up' : 'Companion took'} ${count > 1 ? count + ' ' : ''}${bname}${count > 1 ? 's' : ''}!`, '#A07840', 200);
       return;
     }
     const armorData = ARMOR_DATA[item.toolKey];
     if (armorData) {
-      this.player.addArmorItem(item.toolKey);
-      this._notify(`Picked up ${armorData.name}!`, armorData.color, 200);
+      collector.addArmorItem(item.toolKey);
+      this._notify(`${isP1 ? 'Picked up' : 'Companion took'} ${armorData.name}!`, armorData.color, 200);
       return;
     }
     const data = TOOL_DATA[item.toolKey];
     if (!data) return;
     if (data.type === 'pickaxe') {
-      const cur = TOOL_DATA[this.player.pickaxe];
+      const cur = TOOL_DATA[collector.pickaxe];
       if (!cur || data.tier > cur.tier) {
-        this.player.pickaxe = item.toolKey;
-        this._notify(`Picked up ${data.name}!`, data.color, 200);
-      }
+        collector.pickaxe = item.toolKey;
+        this._notify(`${isP1 ? 'Picked up' : 'Companion took'} ${data.name}!`, data.color, 200);
+      } else if (isP1) { this._handToCompanion(item); }
     } else if (data.type === 'sword' || data.type === 'bow') {
-      // Smart Mobs §2 — COLLECT into the slot (this was the switching bug: it set
-      // this.player.sword directly, so the collection never grew and a spear was
-      // rejected if you held a higher-tier sword). New class → collected; higher
-      // tier of an owned class → upgraded; equal/lower of an owned class → ignored.
-      const list = data.type === 'bow' ? this.player.rangedOwned : this.player.meleeOwned;
+      // Smart Mobs §2 — COLLECT into the slot. New class → collected; higher tier
+      // of an owned class → upgraded; equal/lower of an owned class → redundant.
+      const list = data.type === 'bow' ? collector.rangedOwned : collector.meleeOwned;
       const cls  = data.weaponClass || data.type;
       const exKey = list.find(k => ((TOOL_DATA[k].weaponClass || TOOL_DATA[k].type) === cls));
       if (!(exKey && (TOOL_DATA[exKey].tier ?? 0) >= (data.tier ?? 0))) {
-        this.player.acquireWeapon(item.toolKey);
-        this._notify(`Picked up ${data.name}!`, data.color, 200);
-      }
+        collector.acquireWeapon(item.toolKey);
+        this._notify(`${isP1 ? 'Picked up' : 'Companion took'} ${data.name}!`, data.color, 200);
+      } else if (isP1) { this._handToCompanion(item); }   // redundant for the player → companion
     } else if (data.type === 'shield') {
-      this.player.hasShield = true;
-      this._notify('Picked up Shield!', data.color, 200);
+      if (!collector.hasShield) { collector.hasShield = true; this._notify(`${isP1 ? 'Picked up' : 'Companion took'} Shield!`, data.color, 200); }
+      else if (isP1) { this._handToCompanion(item); }
     } else if (data.type === 'flint_steel') {
-      this.player.hasFlintSteel = true;
-      this._notify('Picked up Flint & Steel!', data.color, 200);
+      if (!collector.hasFlintSteel) { collector.hasFlintSteel = true; this._notify(`${isP1 ? 'Picked up' : 'Companion took'} Flint & Steel!`, data.color, 200); }
+      else if (isP1) { this._handToCompanion(item); }
     }
+  }
+
+  // Bot AI Phase 4 — the companion Player (null if no companion bot this game).
+  _companionPlayer() { return this._companionController ? this._companionController.player : null; }
+
+  // Give a redundant-for-P1 item to the companion (best-tier logic; no-op if the
+  // companion already has something at least as good). Returns true if taken.
+  _handToCompanion(item) {
+    const comp = this._companionPlayer();
+    if (!comp) return false;
+    const armor = ARMOR_DATA[item.toolKey], data = TOOL_DATA[item.toolKey];
+    if (armor) { comp.addArmorItem(item.toolKey); }
+    else if (data && (data.type === 'sword' || data.type === 'bow')) {
+      const list = data.type === 'bow' ? comp.rangedOwned : comp.meleeOwned;
+      const cls  = data.weaponClass || data.type;
+      const exKey = list.find(k => ((TOOL_DATA[k].weaponClass || TOOL_DATA[k].type) === cls));
+      if (exKey && (TOOL_DATA[exKey].tier ?? 0) >= (data.tier ?? 0)) return false;
+      comp.acquireWeapon(item.toolKey);
+    } else if (data && data.type === 'pickaxe') {
+      const c = TOOL_DATA[comp.pickaxe]; if (c && (c.tier ?? 0) >= (data.tier ?? 0)) return false; comp.pickaxe = item.toolKey;
+    } else if (data && data.type === 'shield') { if (comp.hasShield) return false; comp.hasShield = true; }
+    else if (data && data.type === 'flint_steel') { if (comp.hasFlintSteel) return false; comp.hasFlintSteel = true; }
+    else return false;
+    this._notify(`Companion took the ${(data || armor).name}`, '#9fddff', 150);
+    return true;
+  }
+
+  // Bot AI Phase 4 — create a companion bot for P2 when configured (non-arena
+  // Platformer/Normal/Campaign, offline). Opt-in via _worldAdvSettings.companionBot
+  // = 'EASY'|'MEDIUM'|'HARD'. Idempotent (guarded by _companionInit).
+  _maybeSetupCompanion() {
+    if (this._companionInit) return;
+    this._companionInit = true;
+    const diff = this._worldAdvSettings && this._worldAdvSettings.companionBot;
+    if (!diff || typeof BotController !== 'function' || !BOT_DIFFICULTY_PRESETS[diff]) return;
+    if (this.isArena || this._onlineGameId) return;
+    if (!['platformer', 'normal', 'sandbox'].includes(this.gameMode)) return;
+    if (!this.player2) this._applyTwoPlayerMode(true, true);   // ensure P2 exists
+    const comp = this.getPlayer(1);
+    if (!comp) return;
+    comp.acquireWeapon('WOODEN_SWORD');                        // give it something to fight mobs with
+    comp._isBot = true; comp._botDifficulty = diff; comp._isCompanion = true;
+    this._botControllers = this._botControllers || [];
+    this._companionController = new BotController(this, 1, 'companion', diff);
+    this._botControllers.push(this._companionController);
+    this._notify('Companion joined!', '#9fddff', 150);
   }
 
   // Tint any Goal Star whose colour index > 0 (0 = classic gold, drawn as-is by

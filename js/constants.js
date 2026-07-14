@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 119 (Bot AI Phase 3 — co-op team coordination: teammate bots (or a bot + human) avoid duplicate effort and take complementary roles — CTF grab-vs-defend, Tower attack-vs-defend, Hill hold-vs-intercept, and splitting emeralds/mobs so they don not dogpile one target. Simple heuristics; reads a bot teammate live goal + a human teammate state. + builds 117-118 Bot AI Phases 1-2.)';
+const GAME_VERSION = 'v3 · build 120 (Bot AI Phase 4 — companion bot for Platformer/Normal/Campaign: a friendly follower that stays in a proximity band of the player, fights hostile MOBS (never the player), avoids hazards via the pathfinder, and respects loot priority — the player gets first pick (time-delayed leftover pickup) and any item the player picks up that is redundant/worse than what they have equipped is auto-handed to the companion. Opt-in via _worldAdvSettings.companionBot. + builds 117-119 Bot AI Phases 1-3.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

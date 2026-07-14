@@ -79,6 +79,25 @@ const BOT_AI = {
     return { dir, jump };
   },
 
+  // Companion loot priority (Q3): the PLAYER always gets first pick. A placed item
+  // is companion-eligible only after it has been AVAILABLE (uncollected, with the
+  // companion nearby) for BOT_COMPANION_LOOT_DELAY frames AND the player is not the
+  // closer one (i.e. the player passed it / isn't heading for it). This guarantees
+  // "the player never loses an item to the bot that they wanted." (The second half
+  // of Q3 — auto-handing a REDUNDANT pickup to the companion — lives in game.js's
+  // _collectPlatformerItem, where the player's would-be pickup is evaluated.)
+  companionShouldGrab(game, companion, item, framesExposed) {
+    if (!companion || !item || item.collected) return false;
+    if ((framesExposed || 0) < BOT_COMPANION_LOOT_DELAY) return false;
+    const leader = game.getPlayer(0);
+    if (leader) {
+      const dL = Math.hypot(leader.cx - item.wx, (leader.y + leader.height / 2) - item.wy);
+      const dC = Math.hypot(companion.cx - item.wx, (companion.y + companion.height / 2) - item.wy);
+      if (dL <= dC) return false;            // player is closer / heading for it → theirs
+    }
+    return true;
+  },
+
   // Which arena ELEMENTS are active for this match (the same ruleset a mode is
   // defined by — the roadmap's "the system that defines modes tells a bot how to
   // play them"). Falls back to a permissive default so a bot is never inert.
@@ -169,23 +188,26 @@ class BotController {
 
   // ── BRAIN: pick a goal keyed on the active ruleset elements ──
   _think() {
-    const el = BOT_AI.elementsFor(this.game);
-    let goal = null;
-
-    // Element-priority dispatch. Phase 1 implements the pvp/kills strategy + a
-    // hunt fallback; Phase 2 fills in hill/flags/tower/emeralds/waves. Ordering
-    // is by "what wins the match": objective elements first, then kills.
-    if (el.flags)         goal = this._goalFlags(el);
-    else if (el.hill)     goal = this._goalHill(el);
-    else if (el.tower)    goal = this._goalTower(el);
-    else if (el.emeralds) goal = this._goalEmeralds(el);
-    else if (el.waves)    goal = this._goalWaves(el);
-    if (!goal && (el.pvp || el.kills !== false)) goal = this._goalKills(el);
-    if (!goal) goal = this._goalIdle();
-
-    // Phase 3 — co-op coordination: bias to a COMPLEMENTARY role so teammates
-    // (bot OR human) don't all do the identical thing. Simple heuristics only.
-    goal = this._coopAdjust(goal, el);
+    let goal;
+    if (this.role === 'companion') {
+      // Phase 4 — friendly follower (Platformer/Normal/Campaign). Fights MOBS,
+      // never the player; follows within a proximity band.
+      goal = this._thinkCompanion();
+    } else {
+      const el = BOT_AI.elementsFor(this.game);
+      // Element-priority dispatch — objective elements first, then kills. Bots
+      // read the SAME ruleset that DEFINES the mode (Custom Rules → free support).
+      goal = null;
+      if (el.flags)         goal = this._goalFlags(el);
+      else if (el.hill)     goal = this._goalHill(el);
+      else if (el.tower)    goal = this._goalTower(el);
+      else if (el.emeralds) goal = this._goalEmeralds(el);
+      else if (el.waves)    goal = this._goalWaves(el);
+      if (!goal && (el.pvp || el.kills !== false)) goal = this._goalKills(el);
+      if (!goal) goal = this._goalIdle();
+      // Phase 3 — co-op coordination: complementary roles (simple heuristics).
+      goal = this._coopAdjust(goal, el);
+    }
 
     // Record a compact decision-trace sample (Phase 7).
     this.goal = goal;
@@ -341,6 +363,36 @@ class BotController {
              action: 'combat', targetId: 'mob' + mob.id, reason: 'engaging nearest mob' };
   }
 
+  // ── Phase 4: COMPANION (friendly follower) ──────────────────
+  // Fights hostile MOBS (never the player), and follows the human within a
+  // proximity band. Hazard-safety is inherent — the pathfinder never routes
+  // through lava/void (same reachability model as the Speed-Run validator).
+  _thinkCompanion() {
+    const leader = this.game.getPlayer(0);            // the human is always P1
+    // 1) Threat: nearest hostile mob in detect range → engage it.
+    const mob = this._nearestMobInRange();
+    if (mob) return { kind: 'companion-fight', cell: BOT_AI.cellOf(mob), approach: 'range',
+                      targetRef: mob, action: 'combat', targetId: 'mob' + mob.id, reason: 'defending against a mob' };
+    // 2) Follow the leader within a band (hysteresis so it doesn't jitter at the edge).
+    if (!leader) return this._goalIdle();
+    const dist = Math.hypot(leader.cx - this.player.cx, leader.cy - this.player.cy) / BLOCK_SIZE;
+    if (dist > BOT_FOLLOW_FAR) this._catchingUp = true;
+    else if (dist < BOT_FOLLOW_NEAR) this._catchingUp = false;
+    if (this._catchingUp) {
+      return { kind: 'companion-follow', cell: BOT_AI.cellOf(leader), approach: 'range',
+               reachBlocks: BOT_FOLLOW_NEAR, targetRef: null, action: null, targetId: 'leader',
+               reason: 'catching up to the player' };
+    }
+    return { kind: 'companion-idle', cell: null, targetRef: null, action: null, targetId: null, reason: 'staying near the player' };
+  }
+  _nearestMobInRange() {
+    const mm = this.game.mobManager; if (!mm || !mm.mobs) return null;
+    const me = this.player, r = this.diff.detectRange;
+    let best = null, bd = Infinity;
+    for (const m of mm.mobs) { if (!m.alive || m.hp <= 0) continue; const d = Math.hypot(m.cx - me.cx, m.cy - me.cy) / BLOCK_SIZE; if (d <= r && d < bd) { bd = d; best = m; } }
+    return best;
+  }
+
   _goalIdle() {
     // Drift toward the arena centre so idle bots don't clump at a wall.
     const W = this.game.level.width;
@@ -487,7 +539,9 @@ class BotController {
       const distBlocks = Math.abs(gc - myCol) + Math.abs(gr - myRow);
       // 'range' goals (combat-primary: kills / tower / mob) stop at firing range;
       // 'reach' goals (occupy: hill / flag / emerald) go all the way to the cell.
-      const reach = (goal.approach === 'range') ? this._preferredRange(tgt) : BOT_OBJECTIVE_REACH_BLOCKS;
+      // goal.reachBlocks overrides (companion follow-band).
+      const reach = (goal.reachBlocks != null) ? goal.reachBlocks
+                  : (goal.approach === 'range') ? this._preferredRange(tgt) : BOT_OBJECTIVE_REACH_BLOCKS;
       if (distBlocks > reach) {
         this._pathToward(gc, gr);
         const nav = this._nav();
