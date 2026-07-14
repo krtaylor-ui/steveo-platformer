@@ -81,7 +81,7 @@ const BOT_AI = {
     } else if (nav && !nav.solid(cc + dir, cr + 1) && tr <= cr + 1 && nearCol && canRise) {
       jump = true;                            // gap directly ahead → hop it
     }
-    return { dir, jump, rise: Math.max(0, rise) };
+    return { dir, jump, rise: Math.max(0, rise), tx };   // tx = target cell centre (air-control landing)
   },
 
   // Companion loot priority (Q3): the PLAYER always gets first pick. A placed item
@@ -652,7 +652,9 @@ class BotController {
       const reach = (goal.reachBlocks != null) ? goal.reachBlocks
                   : (goal.approach === 'range') ? this._preferredRange(tgt) : BOT_OBJECTIVE_REACH_BLOCKS;
       if (distBlocks > reach) {
-        this._pathToward(gc, gr);
+        // Commit the jump: only (re)plan while on the ground, so a mid-air replan
+        // can't flip the bot's direction and make it miss a small platform.
+        if (p.onGround) this._pathToward(gc, gr);
         const nav = this._nav();
         const step = BOT_AI.navFollow(p, this._path, nav);
         this._applyMove(step);
@@ -677,6 +679,22 @@ class BotController {
       i.jump = true;
       if (this._escapeTimer === 0) { this._path = null; this._pathTimer = 0; this._noProgress = 0; this._brainTimer = 0; }
       this._lastX = p.cx;
+      return;
+    }
+    // ── AIRBORNE: air-control to LAND on the target cell's column (the player has
+    // full mid-air horizontal control), easing off as we near it so we settle onto a
+    // small/single-block platform instead of overshooting. Precise jumps live here. ──
+    if (!p.onGround) {
+      if (step.tx != null) {
+        const dx = step.tx - p.cx;
+        // near the column → cut horizontal so we drop straight down onto it; far → seek it.
+        const seek = Math.abs(dx) < 3 ? 0 : Math.sign(dx) * Math.min(1, Math.abs(dx) / (0.8 * BLOCK_SIZE));
+        i.moveX = seek * (0.65 + 0.35 * this.diff.navPrecision);   // skill = landing accuracy
+      } else {
+        i.moveX = (step.dir || 0) * (this.diff.alwaysRun ? 1 : 0.8);
+      }
+      i.jump = this._jumpControl(!!step.jump, step.rise || 0);
+      this._lastX = p.cx;                 // don't run ground stuck-detection while flying
       return;
     }
     let dir = step.dir || 0;

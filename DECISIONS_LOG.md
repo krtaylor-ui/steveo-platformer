@@ -2157,3 +2157,24 @@ the headroom check doesn't fire).
   (1) pathing through TRAPDOOR / PISTON doors (dynamic openable obstacles — treat as
   passable-when-openable + trigger the lever); (2) crawling through 1-tall gaps (the
   crouch state — a shorter body profile in the nav for reachability).
+
+## Precise-jump execution — air control + jump commitment (build 138)
+Kevin: winding path now correct, but the bot gets "tied up" on a tight jumping path
+(single-block platform 3-left/2-up, then another 3-left/2-up) — "!" stuck. Diagnosis:
+the PLAN is fine (jumps within envelope); it's an EXECUTION problem — a reactive
+actuator overshoots single blocks and waffles mid-air. (Confirmed the player has FULL
+mid-air horizontal control: `vx = speed * moveX` every frame.)
+- **Air-control landing (`_applyMove` airborne branch):** while airborne, steer moveX
+  toward the TARGET cell's column (`navFollow` now returns `tx`) and EASE to 0 as we
+  near it, so the bot settles onto a small/single-block platform instead of flying past.
+  Accuracy scales with `navPrecision` (skill).
+- **Jump commitment (`_act`):** only (re)plan the path while ON THE GROUND — a mid-air
+  replan could flip direction and miss the landing. The plan is frozen through the jump.
+- Ground stuck-detection no longer counts while airborne (apex ≠ "wedged").
+- Tests: test-bot-ai +2 (airborne seeks the column when far, eases to 0 when over it);
+  suite 516. Browser-UNTESTED.
+- **Honest note for Kevin:** pixel-precise single-block platforming is the hardest part
+  of platformer AI. This should markedly improve it, but the very tightest chains may
+  still occasionally miss — the Follow-mode mirror + teleport safety nets cover those.
+  If a specific chain still fails, the next lever is TAKEOFF-speed control (launch
+  slower for short hops) — easy to add once we see it.

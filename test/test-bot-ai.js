@@ -95,6 +95,7 @@ function mkPlayer(col, row, opts = {}) {
   return {
     id: _pid++, x, y, width, height,
     hp: opts.hp ?? 6, maxHp: opts.maxHp ?? 6,
+    onGround: opts.onGround ?? true, vy: opts.vy ?? 0,   // grounded by default (planner runs on ground)
     facing: 1, selectedSlot: 2, bow: opts.bow ?? 'BOW', drawProgress: opts.drawProgress ?? 0,
     teamId: opts.teamId ?? null, _ownerId: opts.owner || null,
     get cx() { return this.x + this.width / 2; },
@@ -674,6 +675,20 @@ console.log('Wayfinding fix — stuck bot triggers a back-up-and-jump escape:');
   ok(escapeMove !== null, 'a wedged bot enters an escape maneuver (not endless vibration)');
   ok(escapeMove.moveX < 0 && escapeMove.jump === true, 'escape backs up (reverse dir) AND jumps to clear the obstacle');
 }
+console.log('Air control — airborne bot steers toward the landing column and eases in:');
+{
+  const level = flatLevel();
+  const bot = mkPlayer(5, 2, { owner: 'p2', onGround: false });   // airborne
+  const game = mkGame(level, [mkPlayer(9, 2, { owner: 'p1' }), bot]);
+  const ctrl = new BotController(game, 1, 'competitive', 'HARD');
+  // Target column far to the right → seek it (moveX > 0).
+  ctrl._applyMove({ dir: 1, jump: false, rise: 0, tx: bot.cx + 5 * B });
+  ok(ctrl._input.moveX > 0.3, 'far from the landing column → steers toward it');
+  // Target column basically under us → cut horizontal so we drop onto it (no overshoot).
+  ctrl._applyMove({ dir: 1, jump: false, rise: 0, tx: bot.cx + 1 });
+  ok(Math.abs(ctrl._input.moveX) < 0.01, 'over the landing column → eases to 0 (drops on, not past)');
+}
+
 console.log('Wayfinding fix — repeated fruitless escapes stop pacing (re-decide):');
 {
   const level = mkLevel(['     ', '     ', '#####']);
