@@ -1824,3 +1824,30 @@ not a leaderboard entry).
   telemetry not logged yet — arena bots only; flagged in the schema doc.)
 - Tests: test-bot-ai.js +11 (record fields, trace collapse, batch wrapper,
   summarize). **Suite 468. Bot AI brief COMPLETE (Phases 0–7).**
+
+## Bot AI — SESSION WRAP-UP (2026-07-14): shipped / partial / blockers, phase by phase
+The whole brief (Phases 0–7) landed in one run on branch `bot-ai`. Suite **468**,
+all green. **Everything is browser-UNTESTED** (no browser in this env) and the branch
+is **NOT merged** — it stacks on the un-merged wayfinding branch, so it merges only
+after Kevin validates wayfinding, then Bot AI.
+
+| Phase | Status | Notes |
+|---|---|---|
+| 0 Wayfinding retest | ✅ shipped | 371/371 + 27/27 static-objective smoke; greenlit, no pathfinder change. |
+| 1 Foundation | ✅ shipped | slot + synthetic input, brain/act, goal executor, per-slot difficulty UI. |
+| 2 Element strategies | ✅ shipped | kills/hill(3 submodes)/ctf/tower/emeralds/waves. |
+| 3 Co-op | ✅ shipped | complementary roles; reads bot + human teammate state. |
+| 4 Companion | 🟡 shipped, one gap | controller + loot logic complete; **no pre-launch UI toggle** (set via `_worldAdvSettings.companionBot`); companion not in telemetry yet. |
+| 5 Difficulty | ✅ shipped | real wired params; **Medium calibrated, Easy/Hard need playtest tuning**. |
+| 6 Custom Rules | ✅ shipped | verified vs real engine; best-effort on mixed/multi-stage customs (flagged). |
+| 7 Telemetry | ✅ shipped | logs + trace + schema doc + 36 sample records. Companion telemetry TODO. |
+
+**Blockers / needs-Kevin:** none hard. All browser-untested — first real check =
+Deathmatch with 1–3 Medium bots; then KOTH/CTF/Tower/Emeralds/Mob-Hunter; then a
+Custom ruleset. **NEXT session pick-ups:** (1) companion pre-launch UI toggle; (2)
+calibrate EASY/HARD from real-match telemetry (play several matches/mode, export via
+`BOT_TELEMETRY.download()`, review against `BOT_TELEMETRY_SCHEMA.md`); (3) optionally
+log companion telemetry; (4) P1-as-bot (needs the P1 mouse-aim/combat path overridden)
+if Kevin ever wants bot-vs-bot spectating. **Watch-items (feel/tuning levers in
+`constants.js`):** `BOT_DIFFICULTY_PRESETS`, `BOT_THREAT_WEIGHTS`, `BOT_ARCHER_RANGE_
+BLOCKS`, `BOT_FOLLOW_NEAR/FAR`, `BOT_COMPANION_LOOT_DELAY`.

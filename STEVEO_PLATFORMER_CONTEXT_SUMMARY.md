@@ -7,7 +7,55 @@ Guide, **Campaign mode** §12, Tower Defense/bots, world cleanup, itch/Tauri,
 plus new §13–§18: Ladders, Trampolines, Online/MP UX, Mob-config engine,
 Enchantments, Suspicion meter).
 
-## CURRENT STATE (2026-07-14) — build 116, on branch `smart-mobs-wayfinding` (NOT merged)
+## CURRENT STATE (2026-07-14) — build 122, on branch `bot-ai` (off `smart-mobs-wayfinding`; NOT merged)
+
+**BOT AI (Competitive + Cooperative) — the full mega-session brief is BUILT, Phases 0–7.**
+Branch `bot-ai` sits on top of the un-merged wayfinding work (Bot AI depends on the
+pathfinder), so it inherits wayfinding's "browser-UNTESTED, awaiting Kevin's playtest"
+status. Headless suite **468** (`node test/run.js`; new `test/test-bot-ai.js` = 97
+assertions). Everything is **additive/opt-in** — no bots unless a match is configured
+with them, so human-only play is byte-identical. Full detail in `DECISIONS_LOG.md`
+("Bot AI" section) + `BOT_TELEMETRY_SCHEMA.md`.
+
+Core idea: **a bot occupies a real player SLOT (P2–P4) and drives SYNTHETIC input**
+through the same `input.pXxx(i)` pipeline a human uses (`input.js botInput`) — so CTF
+carry, KOTH zone-standing, Tower damage, weapon traits, friendly-fire, and scoring all
+work for a bot automatically (no parallel bot-entity type). New files: `js/bot-ai.js`
+(BotController: brain-tick + goal executor + nav actuator), `js/bot-telemetry.js`.
+
+- **Phase 0 (wayfinding retest):** pathfinder suite 371/371 + a static-objective smoke
+  test 27/27 → greenlit; no pathfinder changes.
+- **Phase 1 (foundation, build 117):** slot + synthetic input; brain/act loops; goal
+  executor (path to a cell + context action); highest-threat-blend PvP; per-slot
+  Human/Easy/Medium/Hard picker in the arena pre-launch modal.
+- **Phase 2 (element strategies, 118):** strategies keyed to Arena Rules ELEMENTS (not
+  mode names) — kills, KOTH (Sticky/Sole/All), CTF, Defend-the-Tower, Emeralds,
+  Waves/Mob-Hunter.
+- **Phase 3 (co-op, 119):** complementary-role heuristics (grab-vs-defend, attack-vs-
+  defend, hold-vs-intercept, split emeralds/mobs); reads bot + human teammate state.
+- **Phase 4 (companion, 120):** friendly follower for Platformer/Normal/Campaign —
+  follow-band, fights mobs not the player, loot priority (time-delay + redundant
+  handoff). Opt-in via `_worldAdvSettings.companionBot`; no pre-launch UI toggle yet.
+- **Phase 5 (difficulty, arch in P1):** real wired params (`BOT_DIFFICULTY_PRESETS`);
+  Medium calibrated, Easy/Hard flagged for playtest.
+- **Phase 6 (Custom Rules, 121):** dispatch verified against the REAL `arena-rules.js`
+  — **fixed a key mismatch** (engine uses ctf/towers/waveSpawns, not flags/tower/waves)
+  that would have made CTF/Tower/Waves bots fall back to plain kills.
+- **Phase 7 (telemetry, 122):** per-bot-per-match logs + sampled decision trace,
+  accumulated + exportable (`BOT_TELEMETRY.download()`); `BOT_TELEMETRY_SCHEMA.md` data
+  dictionary; `saves/bot-telemetry-samples.json` (36 sample records) via
+  `tools/gen-bot-telemetry-samples.js`.
+
+**Bump all THREE markers each commit** (GAME_VERSION build 122, `?v=b122`,
+`steveo-shell-v122`). **Ship path:** `node test/run.js` (468) → **Kevin browser-tests
+a Deathmatch with 1–3 bots** (the natural first check) → then this branch merges
+*after* wayfinding is validated (Bot AI is stacked on it). **NEXT / watch-items:** see
+the wrap-up at the end of the `DECISIONS_LOG.md` Bot AI section — companion pre-launch
+UI toggle, and per-tier EASY/HARD calibration from real-match telemetry.
+
+---
+
+## PRIOR STATE (2026-07-14) — build 116, on branch `smart-mobs-wayfinding` (NOT merged)
 
 **Build 116 — wayfinding playtest polish (Kevin tested 114, "looks great").** (1) Short
 mobs (Cave Spider, 16px) now HOP a 1-block obstacle instead of hanging — they can't
