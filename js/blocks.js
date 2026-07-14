@@ -74,6 +74,12 @@ const BLOCK = Object.freeze({
   BUSH_FRONT:             60,
   DECO_LEAVES_BACK:       61,
   DECO_LEAVES_FRONT:      62,
+  // Opaque ("solid"-look) decorative leaves — the classic full-cell leaves art, now
+  // available front/back + coloured (repurposed from the original Oak Leaves look).
+  // Non-collision + non-occluding, like the original; the FRONT variant renders over
+  // the player so it can partly hide them.
+  LEAF_SOLID_BACK:        63,
+  LEAF_SOLID_FRONT:       64,
 });
 
 // Colour palette for decorative foliage (§10). Index 0 = green (default).
@@ -97,7 +103,8 @@ function blockSoundTier(id) {
 // True if a block id is one of the decorative-foliage ids.
 function isFoliageBlock(id) {
   return id === BLOCK.BUSH_BACK  || id === BLOCK.BUSH_FRONT ||
-         id === BLOCK.DECO_LEAVES_BACK || id === BLOCK.DECO_LEAVES_FRONT;
+         id === BLOCK.DECO_LEAVES_BACK || id === BLOCK.DECO_LEAVES_FRONT ||
+         id === BLOCK.LEAF_SOLID_BACK  || id === BLOCK.LEAF_SOLID_FRONT;
 }
 // True if the block id occludes a mob's line of sight (§4a). Solid blocks always do;
 // among foliage, only bushes conceal — leaves are see-through cosmetic cover.
@@ -179,6 +186,8 @@ const BLOCK_DATA = {
   [BLOCK.BUSH_FRONT]:        { name: 'Bush (Front)',    hardness: 15, mineable: true, solid: false, mineTier: 0, isFoliage: true, foliageShape: 'bush',   foliageFront: true,  occludes: true },
   [BLOCK.DECO_LEAVES_BACK]:  { name: 'Leaves (Behind)', hardness: 15, mineable: true, solid: false, mineTier: 0, isFoliage: true, foliageShape: 'leaves', foliageFront: false },
   [BLOCK.DECO_LEAVES_FRONT]: { name: 'Leaves (Front)',  hardness: 15, mineable: true, solid: false, mineTier: 0, isFoliage: true, foliageShape: 'leaves', foliageFront: true  },
+  [BLOCK.LEAF_SOLID_BACK]:   { name: 'Solid Leaves (Behind)', hardness: 15, mineable: true, solid: false, mineTier: 0, isFoliage: true, foliageShape: 'leaves_solid', foliageFront: false },
+  [BLOCK.LEAF_SOLID_FRONT]:  { name: 'Solid Leaves (Front)',  hardness: 15, mineable: true, solid: false, mineTier: 0, isFoliage: true, foliageShape: 'leaves_solid', foliageFront: true  },
 };
 
 // ── Pixel-art block renderers ────────────────────────────────
@@ -199,6 +208,8 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.BUSH_FRONT:        _drawFoliage(ctx, px, py, s, 'bush',   state.foliageColor ?? 0); break;
     case BLOCK.DECO_LEAVES_BACK:
     case BLOCK.DECO_LEAVES_FRONT: _drawFoliage(ctx, px, py, s, 'leaves', state.foliageColor ?? 0); break;
+    case BLOCK.LEAF_SOLID_BACK:
+    case BLOCK.LEAF_SOLID_FRONT:  _drawFoliage(ctx, px, py, s, 'leaves_solid', state.foliageColor ?? 0); break;
     case BLOCK.BEDROCK:           _drawBedrock(ctx, px, py, s);                        break;
     case BLOCK.OAK_PLANKS:        _drawPlanks(ctx, px, py, s);                         break;
     case BLOCK.COAL_ORE:          _drawOre(ctx, px, py, s, '#111');                    break;
@@ -380,6 +391,27 @@ function _drawFoliage(ctx, px, py, s, shape, colorIdx) {
     ctx.fillStyle = col;
     ctx.fillRect(px + bx, py + by, bw, bh);
   };
+  if (shape === 'leaves_solid') {
+    // Opaque full-cell leaves. Green (index 0) = the exact classic Oak-Leaves look so
+    // the "repurposed" block matches the original; other colours tint the same pattern.
+    if (colorIdx === 0) { _drawLeaves(ctx, px, py, s); return; }
+    ctx.fillStyle = pal.dark;  ctx.fillRect(px, py, s, s);
+    ctx.fillStyle = pal.base;
+    ctx.fillRect(px + 2,  py + 2,  9, 9);
+    ctx.fillRect(px + 18, py + 4,  7, 7);
+    ctx.fillRect(px + 8,  py + 18, 9, 9);
+    ctx.fillRect(px + 22, py + 20, 7, 7);
+    ctx.fillRect(px + 2,  py + 12, 8, 8);
+    ctx.fillRect(px + 13, py + 9,  8, 8);
+    ctx.fillStyle = pal.light;
+    ctx.fillRect(px + 4,  py + 4,  4, 4);
+    ctx.fillRect(px + 20, py + 6,  3, 3);
+    ctx.fillRect(px + 10, py + 20, 4, 4);
+    ctx.fillStyle = pal.dark;
+    ctx.fillRect(px + 12, py + 14, 6, 6);
+    ctx.fillRect(px + 2,  py + 22, 7, 5);
+    return;
+  }
   if (shape === 'bush') {
     // Rounded mound sitting on the cell floor.
     blob(4,  10, s - 8, s - 12, pal.dark);

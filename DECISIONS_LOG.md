@@ -1338,3 +1338,21 @@ brief: §10 → §4 → §5 → §7 → §8 → §9. Up-front Q&A with Kevin res
   sound radii; sprint telegraph timing (~0.7s enough warning?); foliage front/back editor
   cue + colour cycle; surround readability (mobs are non-solid, so flankers overlap the
   player); web slow strength/stacking feel.
+
+## Build 108 (Kevin feedback) — opaque "Solid Leaves" decor block
+Kevin liked the new bushes/leaves but wanted the ORIGINAL opaque leaves look available
+front/back + coloured too ("both the original fully solid and the new semi-transparent
+version"). Added:
+- **`LEAF_SOLID_BACK`(63) / `LEAF_SOLID_FRONT`(64)** — opaque full-cell leaves (`_drawFoliage`
+  shape `'leaves_solid'`: green/index-0 reuses the exact classic `_drawLeaves` so it matches
+  the original; yellow/orange tint the same pattern). Front/back layers + the shared 3-colour
+  re-click cycle, in the **Decor** tab.
+- **Non-collision + non-occluding** (matches the original leaves — Kevin: existing leaves are
+  non-blocking and should stay so). Only **Bushes** occlude mob sight; all leaves (semi + solid)
+  are cosmetic. The FRONT variant renders over the player so it can partly hide them.
+- **Oak Leaves palette tile MOVED** from Overworld → Decor (the Solid Leaves is its
+  repurposed front/back/coloured replacement). **Block id 5 is untouched** — existing worlds +
+  world-gen (trees) render exactly as before; it's just no longer a palette tile (new
+  placements use the Decor Solid Leaves). Decor tab now: Bush / Leaves (semi) / Solid Leaves,
+  each front/back + colours (6 tiles).
+- test-foliage.js +2 (solid-leaves ids non-occluding + flags); suite 295.

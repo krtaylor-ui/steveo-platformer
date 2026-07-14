@@ -25,8 +25,9 @@ vm.runInContext(
 const { BLOCK, BLOCK_DATA, FOLIAGE_COLORS, isFoliageBlock, foliageOccludesSight } = bSandbox;
 
 console.log('Foliage block ids + data:');
-const ids = [BLOCK.BUSH_BACK, BLOCK.BUSH_FRONT, BLOCK.DECO_LEAVES_BACK, BLOCK.DECO_LEAVES_FRONT];
-ok(ids.every(id => typeof id === 'number'), 'all four foliage ids defined');
+const ids = [BLOCK.BUSH_BACK, BLOCK.BUSH_FRONT, BLOCK.DECO_LEAVES_BACK, BLOCK.DECO_LEAVES_FRONT,
+             BLOCK.LEAF_SOLID_BACK, BLOCK.LEAF_SOLID_FRONT];
+ok(ids.every(id => typeof id === 'number'), 'all six foliage ids defined');
 ok(ids.every(id => BLOCK_DATA[id] && BLOCK_DATA[id].solid === false), 'foliage is non-solid');
 ok(ids.every(id => BLOCK_DATA[id].isFoliage === true), 'foliage carries isFoliage flag');
 ok(BLOCK_DATA[BLOCK.BUSH_FRONT].foliageFront === true && BLOCK_DATA[BLOCK.BUSH_BACK].foliageFront === false, 'front/back layer flag encoded per id');
@@ -36,8 +37,10 @@ console.log('Helpers:');
 ok(ids.every(id => isFoliageBlock(id)), 'isFoliageBlock true for foliage');
 ok(!isFoliageBlock(BLOCK.GRASS) && !isFoliageBlock(BLOCK.OAK_LEAVES), 'isFoliageBlock false for grass + decorative oak leaves');
 ok(foliageOccludesSight(BLOCK.BUSH_BACK) && foliageOccludesSight(BLOCK.BUSH_FRONT), 'bushes occlude sight');
-ok(!foliageOccludesSight(BLOCK.DECO_LEAVES_BACK) && !foliageOccludesSight(BLOCK.DECO_LEAVES_FRONT), 'leaves do NOT occlude sight');
+ok(!foliageOccludesSight(BLOCK.DECO_LEAVES_BACK) && !foliageOccludesSight(BLOCK.DECO_LEAVES_FRONT), 'semi leaves do NOT occlude sight');
+ok(!foliageOccludesSight(BLOCK.LEAF_SOLID_BACK) && !foliageOccludesSight(BLOCK.LEAF_SOLID_FRONT), 'solid (opaque) leaves are cosmetic — do NOT occlude sight');
 ok(!foliageOccludesSight(BLOCK.OAK_LEAVES), 'existing oak leaves do NOT occlude sight');
+ok(BLOCK_DATA[BLOCK.LEAF_SOLID_FRONT].foliageShape === 'leaves_solid' && BLOCK_DATA[BLOCK.LEAF_SOLID_FRONT].foliageFront === true, 'solid leaves front variant carries the right flags');
 
 console.log('Palette:');
 ok(Array.isArray(FOLIAGE_COLORS) && FOLIAGE_COLORS.length === 3, 'three foliage colours');

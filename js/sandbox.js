@@ -3,9 +3,11 @@
 // ============================================================
 
 const SANDBOX_PALETTE_BLOCKS = {
+  // Oak Leaves moved to the Decorative tab as "Solid Leaves" (front/back + colours);
+  // the id-5 block still exists for existing worlds, it's just placed via Decor now.
   overworld: [
     BLOCK.GRASS, BLOCK.DIRT, BLOCK.STONE, BLOCK.OAK_LOG,
-    BLOCK.OAK_LEAVES, BLOCK.OAK_PLANKS, BLOCK.GRAVEL,
+    BLOCK.OAK_PLANKS, BLOCK.GRAVEL,
     BLOCK.COAL_ORE, BLOCK.IRON_ORE, BLOCK.GOLD_ORE,
     BLOCK.DIAMOND_ORE, BLOCK.NETHERITE_ORE,
     BLOCK.OBSIDIAN, BLOCK.DEEPSLATE, BLOCK.BEDROCK,
@@ -20,6 +22,7 @@ const SANDBOX_PALETTE_BLOCKS = {
   decorative: [
     BLOCK.BUSH_BACK, BLOCK.BUSH_FRONT,
     BLOCK.DECO_LEAVES_BACK, BLOCK.DECO_LEAVES_FRONT,
+    BLOCK.LEAF_SOLID_BACK, BLOCK.LEAF_SOLID_FRONT,
   ],
 };
 
