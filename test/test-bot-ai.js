@@ -644,5 +644,36 @@ console.log('Phase 7 — telemetry records + batch + summarize:');
   ok(sum.length === 1 && sum[0].mode === 'DEATHMATCH' && sum[0].difficulty === 'HARD' && sum[0].matches === 2 && sum[0].winRate === 1, 'summarize aggregates per mode×difficulty');
 }
 
+// ════════════════════════════════════════════════════════════
+// Wayfinding hardening — overhang / stuck handling (companion trap fix)
+// ════════════════════════════════════════════════════════════
+console.log('Wayfinding fix — actuator does not jump into a ceiling:');
+{
+  const nav = BOT_AI.buildNav(mkLevel(['      ', '  #   ', '      ', '      ', '######']));
+  const actor = mkPlayer(2, 3);                       // feet row3, head row2 clear, cell above head (row1 col2) solid
+  const step = BOT_AI.navFollow(actor, [[2, 3], [3, 1]], nav);  // path wants to rise
+  ok(step.jump === false, 'no jump when a ceiling sits directly above the head (no wasted bonk)');
+  ok(step.dir === 1, 'still steers horizontally to get out from under the canopy');
+  const navOpen = BOT_AI.buildNav(mkLevel(['      ', '      ', '      ', '      ', '######']));
+  ok(BOT_AI.navFollow(actor, [[2, 3], [3, 1]], navOpen).jump === true, 'DOES jump for the same rise when headroom is clear');
+}
+console.log('Wayfinding fix — stuck bot triggers a back-up-and-jump escape:');
+{
+  const level = mkLevel(['     ', '     ', '#####']);
+  const bot = mkPlayer(2, 1, { owner: 'p2' });
+  const game = mkGame(level, [mkPlayer(1, 1, { owner: 'p1' }), bot]);
+  const ctrl = new BotController(game, 1, 'competitive', 'HARD');   // navPrecision 1 → stuck limit 18
+  let escapeMove = null;
+  for (let f = 0; f < 30; f++) {
+    game.frameCount = f;
+    const wasEscaping = ctrl._escapeTimer > 0;       // escape override applies during the call
+    ctrl._input.moveX = 0; ctrl._input.jump = false;
+    ctrl._applyMove({ dir: 1, jump: false });        // "always trying right" but cx never moves → wedged
+    if (wasEscaping && escapeMove === null) escapeMove = { moveX: ctrl._input.moveX, jump: ctrl._input.jump };
+  }
+  ok(escapeMove !== null, 'a wedged bot enters an escape maneuver (not endless vibration)');
+  ok(escapeMove.moveX < 0 && escapeMove.jump === true, 'escape backs up (reverse dir) AND jumps to clear the obstacle');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

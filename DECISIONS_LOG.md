@@ -1861,3 +1861,31 @@ the level, and P2 becomes the companion. NOTE: takes effect at level start (not 
 mid-match); if `twoPlayerMode` is also on, the companion claims the P2 slot. Suite
 468 (settings entry is data-only). Browser-UNTESTED — the companion combat/loot path
 gets its first real exercise here.
+
+## Wayfinding fix — companion trapped "vibrating" under a one-block overhang (build 125)
+Kevin (2-player platformer companion co-op): the companion got stuck under a ledge
+with a one-block overhang, vibrating instead of backing up to jump over it.
+- **ROOT CAUSE (shared pathfinder `navNeighbors`):** the A* jump loop offered an
+  UPWARD jump to any standable destination without checking whether the actor could
+  physically rise — i.e. whether a ceiling sat directly on its head. From under an
+  overhang it therefore generated a cheap "jump straight up onto the ledge" edge that
+  is impossible to follow; being cheaper than going around, A* returned it, the bot
+  bonked the canopy every recompute → vibration.
+- **FIX:** in `navNeighbors`, drop all upward jumps (dr<0) when the cell above the
+  head (`nav.solid(c, r-2)`, a 2-tall body's head is r-1) is solid. A* now routes OUT
+  sideways/back to a spot with headroom and jumps from there ("back up and jump over").
+  This is in the SHARED subsystem, so **mobs benefit too**. Verified: test-pathfinding
+  (+8: navNeighbors offers no up-jump under a ceiling but keeps walk neighbours;
+  findMobPath's first move steps out, not up), full suite **481**, and the 9 sample
+  worlds STILL pass the reachability validator (no over-restriction of real geometry).
+- **Actuator hardening (`bot-ai.js`, belt-and-suspenders):** (1) `navFollow` won't
+  issue a jump when a ceiling is directly above the head (no wasted bonk if momentarily
+  under a canopy) — keeps walking so the route carries it out; (2) a **stuck-escape**:
+  when the bot intends to move but makes ~no horizontal progress for a short window
+  (scaled by skill: HARD ~18f → EASY ~33f), it backs away from the target and jumps
+  for 16 frames, then re-paths — a general safety net for local traps the coarse path
+  model can't express (wedged on a wall, shallow pit, path flip-flop). Tests +4.
+- **Edge cases still coarse (honest):** the jump model is an envelope, not a swept
+  arc, so extremely tight diagonal squeezes could still mislead; the escape reverses
+  "away from the target," which is usually but not always the exit — but it guarantees
+  the bot won't sit and vibrate forever. Suite 481. Browser-UNTESTED.

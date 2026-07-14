@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 124 (Fix: right-click (hold-to-charge a bow) no longer pops the browser context menu during gameplay — a long right-hold could fire contextmenu on a HUD overlay/canvas-wrap, which the canvas-only handler missed; now suppressed at the window level while in-game (menus keep their native menu). + build 123 Companion toggle + builds 117-122 full Bot AI brief.)';
+const GAME_VERSION = 'v3 · build 125 (Wayfinding fix: bots/mobs no longer get trapped "vibrating" under a one-block overhang. Root cause — the A* neighbour model offered an impossible straight-up jump through a ceiling on the actor\'s head; now it forbids rising through an overhang, so the route goes OUT sideways then up ("back up and jump over"). Plus actuator hardening: never jump into a ceiling, and a back-up-and-jump ESCAPE when wedged. + build 124 right-click fix + Bot AI brief.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

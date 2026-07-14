@@ -70,10 +70,15 @@ const BOT_AI = {
     const cr = Math.floor((actor.y + actor.height - 1) / BLOCK_SIZE);
     const rise = cr - tr;                     // >0 = target cell is above us
     const nearCol = Math.abs(tx - actor.cx) < 1.9 * BLOCK_SIZE;
+    // Can't rise with a ceiling on the head (a 2-tall body's head is at cr-1; it
+    // rises into cr-2). Don't jump into an overhang — keep walking so the route can
+    // carry us out from under it. (The pathfinder already avoids routing UP from
+    // here; this stops a wasted bonk if we're momentarily under the canopy.)
+    const canRise = !nav || !nav.solid(cc, cr - 2);
     let jump = false;
-    if (rise >= 1 && nearCol) {
+    if (rise >= 1 && nearCol && canRise) {
       jump = true;                            // climb a step/ledge ahead
-    } else if (nav && !nav.solid(cc + dir, cr + 1) && tr <= cr + 1 && nearCol) {
+    } else if (nav && !nav.solid(cc + dir, cr + 1) && tr <= cr + 1 && nearCol && canRise) {
       jump = true;                            // gap directly ahead → hop it
     }
     return { dir, jump };
@@ -561,6 +566,18 @@ class BotController {
 
   _applyMove(step) {
     const i = this._input;
+    const p = this.player;
+    // Stuck-escape: while ACTIVELY escaping, back away from the target and jump for
+    // a few frames to break a local trap (wedged against a wall / under an overhang
+    // the route couldn't express — "back up and jump over it"), then force a re-path.
+    if (this._escapeTimer > 0) {
+      this._escapeTimer--;
+      i.moveX = this._escapeDir * (this.diff.alwaysRun ? 1 : 0.85);
+      i.jump = true;
+      if (this._escapeTimer === 0) { this._path = null; this._pathTimer = 0; this._noProgress = 0; this._brainTimer = 0; }
+      this._lastX = p.cx;
+      return;
+    }
     let dir = step.dir || 0;
     // navPrecision: Easy bots occasionally drop an input frame / ease off full
     // speed, so movement looks less robotic and is a touch less effective.
@@ -568,11 +585,19 @@ class BotController {
     if (!this.diff.alwaysRun && this._frac() > this.diff.navPrecision) mag *= 0.4;
     i.moveX = dir * mag;
     if (step.jump) i.jump = true;
-    // Track progress to detect being stuck (drives loseInterest re-decide).
-    if (this._lastX != null && Math.abs(this.player.cx - this._lastX) < 0.4) {
-      if (++this._noProgress > this.diff.loseInterest) { this._path = null; this._pathTimer = 0; this._noProgress = 0; this._brainTimer = 0; }
+    // Stuck detection: intending to move but no horizontal progress → wedged.
+    // After a short window (scaled by skill so Easy dithers a touch longer), kick
+    // off a reverse-and-jump escape. Far cheaper than waiting out loseInterest, and
+    // it actually gets the bot out instead of re-deciding into the same wall.
+    if (dir !== 0 && this._lastX != null && Math.abs(p.cx - this._lastX) < 0.4) {
+      const limit = Math.round(18 / Math.max(0.4, this.diff.navPrecision));  // HARD 18 → EASY ~33
+      if (++this._noProgress > limit) {
+        this._escapeDir = -Math.sign(dir || (p.facing || 1));   // away from the target
+        this._escapeTimer = 16;
+        this._noProgress = 0;
+      }
     } else this._noProgress = 0;
-    this._lastX = this.player.cx;
+    this._lastX = p.cx;
   }
 
   // Path to (gc,gr), cached + recomputed on the difficulty cadence, invalidated

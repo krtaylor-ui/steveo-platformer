@@ -82,9 +82,18 @@ function navNeighbors(nav, c, r, baseUp, baseDx, out) {
   const onPad = nav.pad(c, r + 1);
   const jUp = onPad ? Math.max(NAV_PAD_JUMP_UP, baseUp) : baseUp;
   const jDx = onPad ? Math.max(NAV_PAD_JUMP_DX, baseDx) : baseDx;
+  // Can't gain height with a ceiling directly on your head. A 2-cell body's head
+  // sits at r-1; to RISE, the cell it moves into (r-2) must be clear. Under a
+  // one-block overhang r-2 is solid, so ALL upward jumps from here are impossible
+  // — dropping them forces A* to route out sideways/back to a spot with headroom
+  // and jump from there ("back up and jump over the canopy") instead of returning
+  // a shorter but un-followable straight-up jump (the "vibrate under the overhang"
+  // bug). Horizontal jumps + drops are unaffected.
+  const headBlocked = nav.solid(c, r - 2);
   for (let dc = -jDx; dc <= jDx; dc++) {
     for (let dr = -jUp; dr <= NAV_MAX_DROP; dr++) {
       if (dc === 0 && dr === 0) continue;
+      if (dr < 0 && headBlocked) continue;   // overhang overhead → no upward jump from this cell
       const nc = c + dc, nr = r + dr;
       if (!navStandable(nav, nc, nr)) continue;
       // horizontal reach shrinks the higher you go (rough arc gate)

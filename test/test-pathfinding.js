@@ -5,7 +5,7 @@
 // A nav is built from an ASCII map: '#' solid, 'L' lava (hazard), 'P' jump pad,
 // anything else = air. (c,r) = (col,row). A mob "stands" in an air cell whose
 // cell below is solid.
-const { findMobPath, navReachable, navStandable } = require('../js/pathfinding.js');
+const { findMobPath, navReachable, navStandable, navNeighbors } = require('../js/pathfinding.js');
 
 let pass = 0, fail = 0;
 const ok = (cond, msg) => { if (cond) { pass++; } else { fail++; console.log('  FAIL:', msg); } };
@@ -132,6 +132,55 @@ console.log('Bound — goal beyond search radius returns null (mob falls back to
   const start = standCell(nav, 1), goal = standCell(nav, 55);
   ok(findMobPath(nav, start, goal, { maxRadius: 10 }) === null, 'goal 54 blocks away, radius 10 -> null');
   ok(findMobPath(nav, start, goal, { maxRadius: 60 }) !== null, 'same goal, radius 60 -> found');
+}
+
+console.log('Overhang — no upward jump through a ceiling on the head (routes around instead):');
+{
+  //           col: 0123456
+  // Actor stands at (3,4). A platform at (5,3) makes (5,2) a standable ledge above.
+  // With a ceiling block at (3,2) — directly above the actor's head (head row3,
+  // rises into row2) — every UPWARD jump must be dropped; walk neighbours remain.
+  const rowsBlocked = [
+    '       ',
+    '       ',
+    '   #   ',   // row2 col3 = ceiling directly above the head
+    '     # ',   // row3 col5 = platform → (5,2) standable
+    '       ',
+    '#######',
+  ];
+  const rowsOpen = rowsBlocked.slice(); rowsOpen[2] = '       ';   // same, ceiling removed
+  const navB = mkNav(rowsBlocked), navO = mkNav(rowsOpen);
+  const out = [];
+  navNeighbors(navB, 3, 4, 3, 6, out);
+  ok(out.length > 0, 'blocked: still has neighbours (can walk)');
+  ok(out.every(n => n[3] >= 0), 'blocked: NO upward-jump neighbours (dr<0) under the canopy');
+  ok(out.some(n => n[2] !== 0 && n[3] === 0), 'blocked: horizontal walk neighbours remain (can step out)');
+  navNeighbors(navO, 3, 4, 3, 6, out);
+  ok(out.some(n => n[3] < 0), 'open (no ceiling): an upward jump onto the ledge IS offered');
+}
+
+console.log('Overhang — findMobPath routes OUT from under the canopy, not straight up:');
+{
+  // Actor stands UNDER a one-block canopy at col2 (head clear, but the cell above
+  // the head is solid). A ledge is up-and-right. The only legal route is to step
+  // RIGHT out from under the canopy, then jump onto the ledge — so the FIRST move
+  // must be sideways, never a straight-up bonk.
+  //           col: 0123456
+  const nav = mkNav([
+    '       ',
+    '       ',
+    '  #    ',   // row2 col2 = one-block canopy directly above the head
+    '     # ',   // row3 col5 = platform → (5,2) standable ledge
+    '       ',   // row4 = feet row
+    '#######',   // row5 floor
+  ]);
+  const start = [2, 4];             // tucked under the canopy (head at row3 clear)
+  const goal = [5, 2];             // on the ledge, up and to the right
+  ok(navStandable(nav, 2, 4), 'the under-canopy start cell is standable (head clear)');
+  const res = findMobPath(nav, start, goal, { maxRadius: 40 });
+  ok(res !== null, 'a route onto the ledge exists (step out + up)');
+  ok(res && res.path.length >= 2 && res.path[1][0] > 2, 'first move steps OUT sideways (not a straight-up jump through the canopy)');
+  ok(res && res.path[res.path.length - 1][0] === 5, 'route reaches the ledge');
 }
 
 console.log('Pad — a jump pad extends reach across a wide gap:');
