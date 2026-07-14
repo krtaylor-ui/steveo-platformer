@@ -92,18 +92,21 @@ function mkPlayer(col, row, opts = {}) {
     get cy() { return this.y + this.height / 2; },
   };
 }
-function mkGame(level, players) {
+function mkGame(level, players, extra = {}) {
   const bots = [null, null, null, null];
-  return {
+  return Object.assign({
     level, frameCount: 0, state: 'playing',
     _respawnTimers: [0, 0, 0, 0],
     players,
+    mobManager: { mobs: [] },
     getPlayer(i) { return this.players[i] || null; },
     activePlayers() { return this.players.filter(Boolean); },
     arenaConfig: { arenaGameMode: 'DEATHMATCH' },
     input: { setBotInput: (i, o) => { bots[i] = o; }, clearBotInput: (i) => { bots[i] = null; }, _bots: bots },
-  };
+  }, extra);
 }
+// pixelWidth/Height helpers for the hill-less KOTH fallback.
+function withPixels(level) { level.pixelWidth = level.width * B; level.pixelHeight = level.height * B; return level; }
 
 // ── 2. navFollow / cellOf ────────────────────────────────────
 console.log('BOT_AI.navFollow + cellOf:');
@@ -225,6 +228,149 @@ console.log('Goal executor paths around a wall:');
   ok(ctrl._path != null, 'a route to the opponent was found around/over the wall');
   const inp = game.input._bots[1];
   ok(inp.moveX > 0.1, 'bot advances toward the opponent along the route');
+}
+
+// ════════════════════════════════════════════════════════════
+// Phase 2 — ruleset-element strategies
+// ════════════════════════════════════════════════════════════
+const flatLevel = () => withPixels(mkLevel(['                              ', '                              ', '                              ', '##############################']));
+
+// ── HILL (KOTH) — approach / hold / SOLE displacement ───────
+console.log('Phase 2 — Hill (KOTH):');
+{
+  const level = flatLevel();
+  // Hill zone spans cols 12..17 (pixels).
+  const hill = { x: 12 * B, y: 2 * B, w: 6 * B, h: 1 * B };
+  sandbox.ARENA_MODES = { _onHill: (game, p) => { const h = game._arenaHill; return !!h && p.cx >= h.x && p.cx <= h.x + h.w; } };
+  // (a) Off the hill → approach it.
+  {
+    const bot = mkPlayer(3, 2, { owner: 'p2' });
+    const game = mkGame(level, [mkPlayer(25, 2, { owner: 'p1' }), bot], { _arenaHill: hill, arenaConfig: { arenaGameMode: 'KING_OF_HILL', kothScoring: 'SOLE' } });
+    const ctrl = new BotController(game, 1, 'competitive', 'MEDIUM');
+    const g = ctrl._goalHill({ hill: true });
+    ok(g.kind === 'hill-approach', `off hill → approach (got ${g.kind})`);
+    ok(g.approach === 'reach' && g.cell[0] >= 12 && g.cell[0] <= 18, 'approach targets the hill cell (reach)');
+  }
+  // (b) On the hill, SOLE, an enemy also on it → displace that enemy.
+  {
+    const bot = mkPlayer(14, 2, { owner: 'p2' });          // on the hill
+    const enemyOn = mkPlayer(16, 2, { owner: 'p1' });      // also on the hill
+    const game = mkGame(level, [enemyOn, bot], { _arenaHill: hill, arenaConfig: { arenaGameMode: 'KING_OF_HILL', kothScoring: 'SOLE' } });
+    const ctrl = new BotController(game, 1, 'competitive', 'MEDIUM');
+    const g = ctrl._goalHill({ hill: true });
+    ok(g.kind === 'hill-hold' && g.targetRef === enemyOn, 'SOLE + contested → hold & displace the occupant');
+    ok(g.reason.indexOf('displac') >= 0, 'reason notes displacement');
+  }
+  // (c) On the hill, ALL, alone → just be present (hold, no forced target).
+  {
+    const bot = mkPlayer(14, 2, { owner: 'p2' });
+    const game = mkGame(level, [mkPlayer(28, 2, { owner: 'p1' }), bot], { _arenaHill: hill, arenaConfig: { arenaGameMode: 'KING_OF_HILL', kothScoring: 'ALL' } });
+    const ctrl = new BotController(game, 1, 'competitive', 'MEDIUM');
+    const g = ctrl._goalHill({ hill: true });
+    ok(g.kind === 'hill-hold' && g.approach === 'reach', 'ALL + alone → hold present on the hill');
+  }
+  sandbox.ARENA_MODES = undefined;
+}
+
+// ── FLAGS (CTF) — grab / capture / defend ───────────────────
+console.log('Phase 2 — Flags (CTF):');
+{
+  const level = flatLevel();
+  const bot = mkPlayer(5, 2, { owner: 'p2', teamId: 0 });
+  const opp = mkPlayer(25, 2, { owner: 'p1', teamId: 1 });
+  const flags = [
+    { team: 0, x: 3 * B, y: 2 * B, homeX: 3 * B, homeY: 2 * B, carriedBy: null, dropped: false },
+    { team: 1, x: 27 * B, y: 2 * B, homeX: 27 * B, homeY: 2 * B, carriedBy: null, dropped: false },
+  ];
+  const bases = [{ x: 3 * B, y: 2 * B }, { x: 27 * B, y: 2 * B }];
+  sandbox.CTF_SYSTEM = { flags, bases, isCarrying: (p) => flags.some(f => f.carriedBy === p) };
+  const game = mkGame(level, [opp, bot], { arenaConfig: { arenaGameMode: 'CAPTURE_FLAG' } });
+  const ctrl = new BotController(game, 1, 'competitive', 'MEDIUM');
+  // (a) Enemy flag free → go grab it (team 1's flag at col 27).
+  let g = ctrl._goalFlags({ flags: true });
+  ok(g.kind === 'flag-grab' && g.cell[0] === 27, `enemy flag free → grab (got ${g.kind} @${g.cell && g.cell[0]})`);
+  // (b) Carrying the enemy flag → capture at own base (col 3).
+  flags[1].carriedBy = bot;
+  g = ctrl._goalFlags({ flags: true });
+  ok(g.kind === 'flag-capture' && g.cell[0] === 3, 'carrying → run to own base to capture');
+  // (c) A teammate already carries the enemy flag (offense covered) AND an enemy
+  //     stole our flag → don't duplicate; chase the carrier to recover ours.
+  const mate = mkPlayer(20, 2, { owner: 'p3', teamId: 0 });
+  game.players.push(mate);                 // team 0 teammate
+  flags[1].carriedBy = mate;               // teammate has the enemy flag (not free)
+  flags[0].carriedBy = opp;                // enemy carrying OUR flag
+  g = ctrl._goalFlags({ flags: true });
+  ok(g.kind === 'flag-defend' && g.targetRef === opp, 'teammate has enemy flag + ours stolen → chase the carrier');
+  sandbox.CTF_SYSTEM = undefined;
+}
+
+// ── TOWER (Defend the Tower) — attack / defend ──────────────
+console.log('Phase 2 — Tower:');
+{
+  const level = flatLevel();
+  const bot = mkPlayer(5, 2, { owner: 'p2' });
+  const opp = mkPlayer(25, 2, { owner: 'p1' });
+  const towers = [
+    { ownerId: 'p2', x: 4 * B, y: 1 * B, w: B, h: 2 * B, maxHp: 9, hp: 9 },   // mine
+    { ownerId: 'p1', x: 26 * B, y: 1 * B, w: B, h: 2 * B, maxHp: 9, hp: 9 },  // enemy
+  ];
+  sandbox.TOWER_SYSTEM = { towers };
+  const game = mkGame(level, [opp, bot], { arenaConfig: { arenaGameMode: 'DEFEND_TOWER' } });
+  const ctrl = new BotController(game, 1, 'competitive', 'MEDIUM');
+  // (a) Attack the nearest enemy tower.
+  let g = ctrl._goalTower({ tower: true });
+  ok(g.kind === 'tower-attack' && Math.abs(g.targetRef.cx - (26 * B + B / 2)) < 1, 'attacks the enemy tower (aim at its centre)');
+  ok(g.targetRef.hp === 9, 'tower target carries hp (combat can damage it)');
+  // (b) My tower badly hurt + an enemy near it → defend.
+  towers[0].hp = 2;                         // <= maxHp/3
+  opp.x = (5) * B;                          // move opponent next to my tower (col ~4)
+  g = ctrl._goalTower({ tower: true });
+  ok(g.kind === 'tower-defend' && g.targetRef === opp, 'own tower low + enemy near → defend');
+  sandbox.TOWER_SYSTEM = undefined;
+}
+
+// ── EMERALDS ────────────────────────────────────────────────
+console.log('Phase 2 — Emeralds:');
+{
+  const level = flatLevel();
+  const bot = mkPlayer(5, 2, { owner: 'p2' });
+  const ems = [{ wx: 20 * B, wy: 2 * B, collected: false }, { wx: 8 * B, wy: 2 * B, collected: false }];
+  sandbox.EMERALD_SYSTEM = { _activeEmeralds: () => ems };
+  const game = mkGame(level, [mkPlayer(1, 2, { owner: 'p1' }), bot], { arenaConfig: { arenaGameMode: 'COLLECT_EMERALDS' } });
+  const ctrl = new BotController(game, 1, 'competitive', 'MEDIUM');
+  const g = ctrl._goalEmeralds({ emeralds: true });
+  ok(g.kind === 'emerald' && g.cell[0] === 8, `heads to the NEAREST emerald (col 8, got ${g.cell && g.cell[0]})`);
+  sandbox.EMERALD_SYSTEM = undefined;
+}
+
+// ── WAVES / MOBS ────────────────────────────────────────────
+console.log('Phase 2 — Waves / Mob Hunter:');
+{
+  const level = flatLevel();
+  const bot = mkPlayer(5, 2, { owner: 'p2' });
+  const mob = { id: 7, alive: true, hp: 5, x: 10 * B, y: 2 * B, width: 22, height: 48, get cx() { return this.x + 11; }, get cy() { return this.y + 24; } };
+  const game = mkGame(level, [mkPlayer(1, 2, { owner: 'p1' }), bot], { arenaConfig: { arenaGameMode: 'MOB_HUNTER' }, mobManager: { mobs: [mob] } });
+  const ctrl = new BotController(game, 1, 'competitive', 'MEDIUM');
+  const g = ctrl._goalWaves({ waves: true });
+  ok(g.kind === 'mob' && g.targetRef === mob, 'engages the nearest live mob');
+  ok(g.action === 'combat', 'mob goal is a combat goal');
+}
+
+// ── _think dispatch picks the right strategy per elements ───
+console.log('Phase 2 — _think element dispatch:');
+{
+  const level = flatLevel();
+  const bot = mkPlayer(5, 2, { owner: 'p2' });
+  const game = mkGame(level, [mkPlayer(9, 2, { owner: 'p1' }), bot]);
+  const ctrl = new BotController(game, 1, 'competitive', 'MEDIUM');
+  const dispatch = (elements) => { sandbox.ARENA_RULES = { rulesetForMode: () => ({ elements }) }; ctrl._think(); return ctrl.goal.kind; };
+  ok(dispatch({ pvp: true }).startsWith('engage') || dispatch({ pvp: true }) === 'hunt', 'pvp elements → kills strategy');
+  sandbox.EMERALD_SYSTEM = { _activeEmeralds: () => [{ wx: 8 * B, wy: 2 * B, collected: false }] };
+  ok(dispatch({ emeralds: true }) === 'emerald', 'emeralds element → emerald strategy');
+  sandbox.EMERALD_SYSTEM = undefined;
+  ok(dispatch({ waves: true }) === 'idle' || dispatch({ waves: true }) === 'mob', 'waves element → wave strategy (mob or idle when none)');
+  // restore default mock
+  sandbox.ARENA_RULES = { rulesetForMode: () => ({ elements: { pvp: true } }) };
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

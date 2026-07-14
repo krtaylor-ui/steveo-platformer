@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 117 (Bot AI Phase 1 — a bot occupies a real player slot (P2–P4) and drives SYNTHETIC input through the same input pipeline a human uses: brain-tick decision loop + goal executor that paths to a point via the wayfinding A* and does a context action. Highest-threat-blend PvP targeting, per-bot difficulty (Easy/Med/Hard = real wired params). Opt-in via the arena pre-launch modal; human-only play unchanged. + build 116 Wayfinding polish.)';
+const GAME_VERSION = 'v3 · build 118 (Bot AI Phase 2 — ruleset-element strategies: bots read the Arena Rules Engine ELEMENTS (not mode names) to play the objective — highest-threat-blend kills, sub-mode-aware King of the Hill (Sticky/Sole/All), Capture the Flag grab/capture/defend, Defend-the-Tower attack/defend, Collect-Emeralds, and Mob-Hunter/Waves (compete for mob kills, not PvP). + build 117 Bot AI Phase 1 (slot + synthetic-input foundation).)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

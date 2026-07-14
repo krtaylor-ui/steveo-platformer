@@ -1672,3 +1672,36 @@ is byte-identical.
   target), dead→neutral, and the goal executor routing around a wall. **Suite now
   401** (`node test/run.js`). Browser-UNTESTED (no browser here) — the natural first
   real-world check is a Deathmatch with 1–3 Medium bots.
+
+## Phase 2 — ruleset-element strategies (build 118, DONE, headless-verified)
+Strategies are keyed to the Arena Rules Engine's declared ELEMENTS (via
+`ARENA_RULES.rulesetForMode(mode,cfg).elements`), NOT mode names — so Custom Rules
+get bot support for free (Phase 6). `_think` dispatch order: flags -> hill -> tower
+-> emeralds -> waves -> kills -> idle. Every objective goal carries an `approach`:
+**'reach'** (occupy the cell — hill/flag/emerald) vs **'range'** (stop at firing
+distance — kills/tower/mob); the actuator uses it to decide when to stop moving,
+and a separate opportunistic `targetRef` lets the bot shoot nearby enemies WHILE
+pursuing an objective (independent combat + movement blocks in `_act`).
+- **Kills/PvP:** highest-threat blend (Q2) engage in range; hunt nearest when none
+  in range; idle/recentre when no opponents.
+- **Hill (KOTH) — sub-mode-aware (brief 2):** off-hill -> approach; on-hill:
+  **SOLE** displaces the current occupant (targets the enemy standing on the hill),
+  **STICKY** holds + fights off challengers, **ALL** just stays present. Reuses
+  `ARENA_MODES._onHill` for the exact occupancy test (no drift). Hill-less KOTH
+  worlds fall back to the arena-centre.
+- **Flags (CTF):** carrying -> run to own base to capture; else grab a FREE enemy
+  flag (offense priority per brief); else if a teammate already has the enemy flag
+  AND an enemy stole ours -> chase that carrier; else defend own base. Grab/capture
+  are proximity-automatic in CTF_SYSTEM, so the bot just needs to REACH the cell.
+- **Tower (Defend the Tower):** attack the nearest live enemy tower (aim + fire
+  arrows at its centre — the tower is wrapped as a {cx,cy,hp} combat target); if
+  our tower <=1/3 HP AND an enemy is near it -> switch to defend. Co-op attack/defend
+  SPLIT is Phase 3. `_ownsTower` treats a teammate's tower as ours in team modes.
+- **Emeralds:** navigate to the nearest uncollected live emerald
+  (`EMERALD_SYSTEM._activeEmeralds`); pickup is proximity-automatic.
+- **Waves / Mob Hunter (Q4 confirmed):** engage the nearest live mob; higher
+  `aggression` biases toward mobs an OPPONENT is also near (race to steal the kill)
+  — NOT toward attacking players (Mob Hunter isn't PvP).
+- Tests: test-bot-ai.js +17 (hill approach/hold/SOLE-displace, flag grab/capture/
+  defend, tower attack/defend, nearest-emerald, nearest-mob, element dispatch).
+  **Suite 418.** Browser-UNTESTED.

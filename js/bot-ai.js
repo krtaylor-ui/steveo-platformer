@@ -204,24 +204,138 @@ class BotController {
     const target = this._pickThreatTarget();
     if (target) {
       const cell = BOT_AI.cellOf(target);
-      return { kind: 'engage', cell, targetId: target._ownerId || ('mob' + target.id),
+      return { kind: 'engage', cell, approach: 'range', targetId: target._ownerId,
                targetRef: target, action: 'combat', reason: 'highest-threat opponent' };
     }
     const hunt = this._nearestOpponent();
     if (hunt) {
-      return { kind: 'hunt', cell: BOT_AI.cellOf(hunt), targetId: hunt._ownerId,
+      return { kind: 'hunt', cell: BOT_AI.cellOf(hunt), approach: 'range', targetId: hunt._ownerId,
                targetRef: hunt, action: 'combat', reason: 'closing on nearest opponent' };
     }
-    // No living opponents (all respawning) → also hunt mobs if this mode scores them.
     return this._goalIdle();
   }
 
-  // ── Phase 2 element strategies (stubs filled in Phase 2) ──
-  _goalHill(el)     { return null; }
-  _goalFlags(el)    { return null; }
-  _goalTower(el)    { return null; }
-  _goalEmeralds(el) { return null; }
-  _goalWaves(el)    { return null; }
+  // ── Phase 2: HILL (King of the Hill — 3 scoring sub-modes) ──
+  // The three sub-modes want DIFFERENT tactics (brief §2):
+  //   ALL     — everyone present scores → just BE on the hill (presence).
+  //   STICKY  — hold ground once captured, even contested → stay ON + fight off.
+  //   SOLE    — only the sole occupant scores → DISPLACE the current occupant.
+  _goalHill(el) {
+    const h = this._hillInfo();
+    if (!h) return this._goalKills(el);
+    const me = this.player;
+    const onHill = this._onHill(h, me);
+    const submode = ((this.game.arenaConfig && this.game.arenaConfig.kothScoring) || 'STICKY').toUpperCase();
+    const occupants = this._hillOccupants(h);
+    const enemiesOnHill = occupants.filter(p => p !== me && !(me.teamId != null && p.teamId === me.teamId));
+
+    if (!onHill) {
+      // Approach the hill; shoot opportunistically at whoever's in the way.
+      return { kind: 'hill-approach', cell: h.cell, approach: 'reach',
+               targetRef: this._nearestOpponentInRange(), action: 'combat',
+               targetId: 'hill', reason: 'moving to the hill' };
+    }
+    // On the hill. SOLE must drive off any contester; STICKY holds + fights;
+    // ALL just stays present (still defends if shot at).
+    let tref = null, why = 'holding the hill';
+    if (submode === 'SOLE' && enemiesOnHill.length) { tref = this._nearest(enemiesOnHill); why = 'displacing the hill occupant'; }
+    else { tref = this._nearestOpponentInRange(); why = submode === 'ALL' ? 'present on the hill' : 'holding the hill'; }
+    return { kind: 'hill-hold', cell: h.cell, approach: 'reach', targetRef: tref,
+             action: tref ? 'combat' : null, targetId: 'hill', reason: why };
+  }
+
+  // ── Phase 2: FLAGS (Capture the Flag) ──
+  // Carrying → run it home; else grab a free enemy flag; else (teammate has it,
+  // or our flag is out) defend/recover. Grab + capture are proximity-automatic in
+  // CTF_SYSTEM, so the bot just needs to REACH the right cell. Co-op refinement of
+  // "who does what" is Phase 3 — this is the solo-correct baseline.
+  _goalFlags(el) {
+    if (typeof CTF_SYSTEM === 'undefined' || !CTF_SYSTEM.flags) return this._goalKills(el);
+    const me = this.player;
+    if (me.teamId == null) return this._goalKills(el);
+    const myFlag    = CTF_SYSTEM.flags.find(f => f.team === me.teamId);
+    const enemyFlag = CTF_SYSTEM.flags.find(f => f.team !== me.teamId);
+
+    // 1) I'm carrying the enemy flag → capture at my base.
+    if (CTF_SYSTEM.isCarrying(me) && CTF_SYSTEM.bases && CTF_SYSTEM.bases[me.teamId]) {
+      const b = CTF_SYSTEM.bases[me.teamId];
+      return { kind: 'flag-capture', cell: this._cellAtPx(b.x, b.y), approach: 'reach',
+               targetRef: null, action: null, targetId: 'base', reason: 'carrying flag home' };
+    }
+    // 2) Enemy flag free (home/dropped, not carried by anyone) → go grab it.
+    if (enemyFlag && !enemyFlag.carriedBy) {
+      return { kind: 'flag-grab', cell: this._cellAtPx(enemyFlag.x, enemyFlag.y), approach: 'reach',
+               targetRef: this._nearestOpponentInRange(), action: 'combat', targetId: 'enemyFlag',
+               reason: 'going for the enemy flag' };
+    }
+    // 3) A teammate has the enemy flag, or our flag is out. If an ENEMY is carrying
+    //    our flag → hunt that carrier to drop it; else defend near our base.
+    if (myFlag && myFlag.carriedBy && !(me.teamId != null && myFlag.carriedBy.teamId === me.teamId)) {
+      const carrier = myFlag.carriedBy;
+      return { kind: 'flag-defend', cell: BOT_AI.cellOf(carrier), approach: 'range',
+               targetRef: carrier, action: 'combat', targetId: carrier._ownerId, reason: 'chasing our flag carrier' };
+    }
+    if (CTF_SYSTEM.bases && CTF_SYSTEM.bases[me.teamId]) {
+      const b = CTF_SYSTEM.bases[me.teamId];
+      return { kind: 'flag-escort', cell: this._cellAtPx(b.x, b.y), approach: 'reach',
+               targetRef: this._nearestOpponentInRange(), action: 'combat', targetId: 'defend', reason: 'defending base (teammate has the flag)' };
+    }
+    return this._goalKills(el);
+  }
+
+  // ── Phase 2: TOWER (Defend the Tower) ──
+  // Balance attacking the nearest enemy tower against defending our own. Baseline
+  // solo: attack the nearest live enemy tower; but if our tower is badly hurt AND
+  // an enemy is near it, switch to defend. Co-op splits attack/defend in Phase 3.
+  _goalTower(el) {
+    if (typeof TOWER_SYSTEM === 'undefined' || !TOWER_SYSTEM.towers) return this._goalKills(el);
+    const me = this.player;
+    const mine  = TOWER_SYSTEM.towers.filter(t => this._ownsTower(t) && t.hp > 0);
+    const enemy = TOWER_SYSTEM.towers.filter(t => !this._ownsTower(t) && t.hp > 0);
+
+    // Defend trigger: our tower is <=1/3 and an enemy stands near it.
+    for (const t of mine) {
+      if (t.hp <= Math.max(1, t.maxHp / 3)) {
+        const threat = this._nearestOpponentNearPx(t.x + t.w / 2, t.y + t.h / 2, 8);
+        if (threat) return { kind: 'tower-defend', cell: BOT_AI.cellOf(threat), approach: 'range',
+                             targetRef: threat, action: 'combat', targetId: threat._ownerId, reason: 'defending our tower' };
+      }
+    }
+    // Attack: nearest enemy tower (aim + fire arrows at it).
+    if (enemy.length) {
+      const t = this._nearestPx(enemy.map(t => ({ ref: t, x: t.x + t.w / 2, y: t.y + t.h / 2 })));
+      const tower = t.ref;
+      return { kind: 'tower-attack', cell: this._cellAtPx(tower.x + tower.w / 2, tower.y + tower.h / 2),
+               approach: 'range', targetRef: { cx: tower.x + tower.w / 2, cy: tower.y + tower.h / 2, hp: tower.hp },
+               action: 'combat', targetId: 'tower:' + tower.ownerId, reason: 'attacking enemy tower' };
+    }
+    return this._goalKills(el);
+  }
+
+  // ── Phase 2: EMERALDS (Collect Emeralds) ──
+  // Navigate to the nearest uncollected emerald (pickup is proximity-automatic).
+  // Difficulty scaling (imprecise nav / smaller detect on Easy) is Phase 5.
+  _goalEmeralds(el) {
+    const live = this._liveEmeralds();
+    if (!live.length) return this._goalKills(el);
+    const me = this.player;
+    let best = null, bd = Infinity;
+    for (const e of live) { const d = Math.hypot(e.wx - me.cx, e.wy - me.cy); if (d < bd) { bd = d; best = e; } }
+    if (!best) return this._goalIdle();
+    return { kind: 'emerald', cell: this._cellAtPx(best.wx, best.wy), approach: 'reach',
+             targetRef: null, action: null, targetId: 'emerald', reason: 'nearest emerald' };
+  }
+
+  // ── Phase 2: WAVES / MOBS (Survival Waves, Mob Hunter) ──
+  // Engage the nearest live mob. Mob Hunter (Q4): higher aggression makes the bot
+  // COMPETE for kills — bias toward mobs an opponent is also close to (race to the
+  // kill), NOT toward attacking players (Mob Hunter is not PvP).
+  _goalWaves(el) {
+    const mob = this._pickMob();
+    if (!mob) return this._goalIdle();
+    return { kind: 'mob', cell: BOT_AI.cellOf(mob), approach: 'range', targetRef: mob,
+             action: 'combat', targetId: 'mob' + mob.id, reason: 'engaging nearest mob' };
+  }
 
   _goalIdle() {
     // Drift toward the arena centre so idle bots don't clump at a wall.
@@ -254,7 +368,9 @@ class BotController {
       const myCol = Math.floor(p.cx / BLOCK_SIZE);
       const myRow = Math.floor((p.y + p.height - 1) / BLOCK_SIZE);
       const distBlocks = Math.abs(gc - myCol) + Math.abs(gr - myRow);
-      const reach = goal.action === 'combat' ? this._preferredRange(tgt) : BOT_OBJECTIVE_REACH_BLOCKS;
+      // 'range' goals (combat-primary: kills / tower / mob) stop at firing range;
+      // 'reach' goals (occupy: hill / flag / emerald) go all the way to the cell.
+      const reach = (goal.approach === 'range') ? this._preferredRange(tgt) : BOT_OBJECTIVE_REACH_BLOCKS;
       if (distBlocks > reach) {
         this._pathToward(gc, gr);
         const nav = this._nav();
@@ -357,12 +473,95 @@ class BotController {
     return out;
   }
 
-  _nearestOpponent() {
+  _nearestOpponent() { return this._nearest(this._opponents()); }
+  _nearest(list) {
     const me = this.player; let best = null, bd = Infinity;
-    for (const o of this._opponents()) {
-      const d = Math.hypot(o.cx - me.cx, o.cy - me.cy);
-      if (d < bd) { bd = d; best = o; }
+    for (const o of list) { const d = Math.hypot(o.cx - me.cx, o.cy - me.cy); if (d < bd) { bd = d; best = o; } }
+    return best;
+  }
+  // Nearest opponent within detect range (opportunistic combat while pursuing an
+  // objective) — null when none, so objective goals stop firing when nobody's near.
+  _nearestOpponentInRange() {
+    const me = this.player, r = this.diff.detectRange * BLOCK_SIZE;
+    let best = null, bd = Infinity;
+    for (const o of this._opponents()) { const d = Math.hypot(o.cx - me.cx, o.cy - me.cy); if (d <= r && d < bd) { bd = d; best = o; } }
+    return best;
+  }
+  _nearestOpponentNearPx(px, py, blocks) {
+    const r = blocks * BLOCK_SIZE; let best = null, bd = Infinity;
+    for (const o of this._opponents()) { const d = Math.hypot(o.cx - px, o.cy - py); if (d <= r && d < bd) { bd = d; best = o; } }
+    return best;
+  }
+  // Nearest of a list of {ref,x,y} points to the bot; returns the chosen entry.
+  _nearestPx(pts) {
+    const me = this.player; let best = null, bd = Infinity;
+    for (const p of pts) { const d = Math.hypot(p.x - me.cx, p.y - me.cy); if (d < bd) { bd = d; best = p; } }
+    return best;
+  }
+  _cellAtPx(px, py) { return [Math.floor(px / BLOCK_SIZE), Math.floor(py / BLOCK_SIZE)]; }
+
+  // ── Hill helpers (KOTH) ──────────────────────────────────
+  _hillInfo() {
+    const h = this.game._arenaHill;
+    if (h && typeof h.x === 'number') {
+      const cx = h.x + h.w / 2, cy = h.y + h.h / 2;
+      return { x: h.x, y: h.y, w: h.w, h: h.h, cx, cy, cell: this._cellAtPx(cx, h.y) };
     }
+    // Hill-less world: KOTH uses an arena-centre radius — path to the centre.
+    const L = this.game.level;
+    const pw = L.pixelWidth || (L.width * BLOCK_SIZE), ph = L.pixelHeight || (L.height * BLOCK_SIZE);
+    return { x: pw / 2, y: ph / 2, w: 0, h: 0, cx: pw / 2, cy: ph / 2, cell: this._cellAtPx(pw / 2, ph / 2) };
+  }
+  _onHill(h, p) { return (typeof ARENA_MODES !== 'undefined' && ARENA_MODES._onHill) ? ARENA_MODES._onHill(this.game, p) : false; }
+  _hillOccupants(h) { return this.game.activePlayers().filter(p => p.hp > 0 && this._onHill(h, p)); }
+
+  // ── Tower helpers ────────────────────────────────────────
+  // A bot "owns" a tower if it's tagged with its ownerId or (in a team match) a
+  // teammate's ownerId. Defending a teammate's tower is correct in team modes.
+  _ownsTower(t) {
+    if (t.ownerId === this.ownerId) return true;
+    const me = this.player;
+    if (me && me.teamId != null) {
+      const owner = this.game.activePlayers().find(p => p._ownerId === t.ownerId);
+      if (owner && owner.teamId === me.teamId) return true;
+    }
+    return false;
+  }
+
+  // ── Emerald helpers ──────────────────────────────────────
+  _liveEmeralds() {
+    if (typeof EMERALD_SYSTEM === 'undefined') return [];
+    const live = EMERALD_SYSTEM._activeEmeralds ? EMERALD_SYSTEM._activeEmeralds() : [];
+    return live.filter(e => e && !e.collected);
+  }
+
+  // ── Mob helpers (waves / Mob Hunter) ─────────────────────
+  // Nearest live mob, but Mob Hunter competition (Q4): higher aggression biases
+  // toward mobs an opponent is ALSO close to (race to steal the kill) — NOT PvP.
+  _pickMob() {
+    const mm = this.game.mobManager;
+    if (!mm || !mm.mobs) return null;
+    const me = this.player;
+    let best = null, bestScore = Infinity;
+    for (const m of mm.mobs) {
+      if (!m.alive || m.hp <= 0) continue;
+      const d = Math.hypot(m.cx - me.cx, m.cy - me.cy) / BLOCK_SIZE;
+      if (d > this.diff.detectRange * 1.5) continue;    // ignore far mobs
+      // contest bonus: subtract when an opponent is near this mob (want it first).
+      let contest = 0;
+      for (const o of this._opponents()) {
+        const od = Math.hypot(m.cx - o.cx, m.cy - o.cy) / BLOCK_SIZE;
+        if (od < 8) contest = Math.max(contest, (8 - od));
+      }
+      const score = d - this.diff.aggression * contest;  // lower = more attractive
+      if (score < bestScore) { bestScore = score; best = m; }
+    }
+    return best || this._nearestMobAny();
+  }
+  _nearestMobAny() {
+    const mm = this.game.mobManager; if (!mm || !mm.mobs) return null;
+    const me = this.player; let best = null, bd = Infinity;
+    for (const m of mm.mobs) { if (!m.alive || m.hp <= 0) continue; const d = Math.hypot(m.cx - me.cx, m.cy - me.cy); if (d < bd) { bd = d; best = m; } }
     return best;
   }
 
