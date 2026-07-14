@@ -668,7 +668,10 @@ class BotController {
         // can't flip the bot's direction and make it miss a small platform.
         if (p.onGround) this._pathToward(gc, gr);
         const nav = this._nav();
-        const step = BOT_AI.navFollow(p, this._path, nav);
+        // Node-by-node follow: target ONE node and only advance once we've LANDED on
+        // it — so the bot completes each jump instead of flying past a node toward the
+        // next (Kevin: "it's not landing on the first dot before transitioning").
+        const step = this._followStep(nav);
         this._applyMove(step);
       } else {
         // Arrived: hold position (or strafe a touch during combat — kept simple).
@@ -766,6 +769,41 @@ class BotController {
     return this._jHeld < 8;   // single jump: hold briefly for full height, then release
   }
 
+  // Node-by-node path follower (replaces the nearest-cell scan). Targets ONE node and
+  // only advances to the next once the bot has LANDED on the current one — so it
+  // completes each jump/step instead of flying past a node toward the next. Returns
+  // the same {dir,jump,rise,tx,tr} shape the actuator/air-control consume.
+  _followStep(nav) {
+    const p = this.player, path = this._path;
+    if (!path || path.length < 2) return { dir: 0, jump: false, rise: 0, tx: null, tr: null };
+    if (this._pathIdx == null || this._pathIdx < 1 || this._pathIdx >= path.length) this._pathIdx = 1;
+    // Advance past every node we've already reached (only counts while ON GROUND, so a
+    // jump node is only "reached" once we actually land on it).
+    while (this._pathIdx < path.length - 1 && this._reachedNode(path[this._pathIdx])) this._pathIdx++;
+    const [tc, tr] = path[this._pathIdx];
+    const tx = (tc + 0.5) * BLOCK_SIZE;
+    const cc = Math.floor(p.cx / BLOCK_SIZE), cr = Math.floor((p.y + p.height - 1) / BLOCK_SIZE);
+    let dir = Math.sign(tx - p.cx) || (p.facing || 1);
+    const rise = cr - tr;
+    const nearCol = Math.abs(tx - p.cx) < 1.9 * BLOCK_SIZE;
+    const canRise = !nav.solid(cc, cr - 2);
+    let jump = false;
+    if (p.onGround) {                                   // only INITIATE a jump from the ground
+      if (rise >= 1 && nearCol && canRise) jump = true;                                   // climb up to the node
+      else if (!nav.solid(cc + dir, cr + 1) && tr <= cr + 1 && nearCol && canRise) jump = true;  // hop a gap
+    }
+    return { dir, jump, rise: Math.max(0, rise), tx, tr };
+  }
+  // "Reached" a node = standing (on the ground) roughly over its cell. Requiring
+  // onGround forces the bot to LAND on a jump node before the next one is targeted.
+  _reachedNode(cell) {
+    const p = this.player;
+    if (!p.onGround) return false;
+    const cx = (cell[0] + 0.5) * BLOCK_SIZE;
+    const cr = Math.floor((p.y + p.height - 1) / BLOCK_SIZE);
+    return Math.abs(p.cx - cx) < 0.7 * BLOCK_SIZE && Math.abs(cr - cell[1]) <= 1;
+  }
+
   // Path to (gc,gr), cached + recomputed on the difficulty cadence, invalidated
   // when the goal cell moves. Graceful null → no move (bot holds) rather than a
   // beeline into a wall.
@@ -783,6 +821,7 @@ class BotController {
       this._pathTimer = this.diff.navRecompute;
       this._pathGoalCell = [gc, gr];
       this._path = res ? res.path : null;
+      this._pathIdx = 1;   // restart node-by-node following on a fresh route
     }
   }
 

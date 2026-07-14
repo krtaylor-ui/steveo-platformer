@@ -2238,3 +2238,25 @@ for wayfinding best practices.
    possible future safety).
 8. **Difficulty = knobs, not different code:** reaction/precision/detrange/aggression.
    ✅ BOT_DIFFICULTY_PRESETS.
+
+## Node-by-node path following (build 141)
+Kevin (both scenarios): the bot wasn't LANDING on the first path node before moving to
+the next — it flew past node A toward node B (in double-jump range) as if A were a
+fly-by waypoint, and missed both. Asked to "mandate it follow the path."
+- **Root cause:** the follower (`BOT_AI.navFollow`) used a nearest-cell + look-ahead
+  scan, so mid-jump the target advanced from A→B before landing on A.
+- **FIX — `_followStep` (replaces navFollow in the controller):** track `_pathIdx` and
+  target ONE node; only advance to the next once `_reachedNode` is true, which REQUIRES
+  `onGround` (so a jump node counts as reached only after the bot lands on it). Jumps
+  are only INITIATED from the ground. `_pathIdx` resets to 1 on every replan. This makes
+  the bot complete each jump/step and land on each node — including walking fully OUT to
+  a takeoff node before jumping (Kevin's Scenario 2 "not coming out far enough").
+- `BOT_AI.navFollow` kept (pure helper, still unit-tested); the controller now uses
+  `_followStep`. Air-control + jumpControl + stuck-escape unchanged.
+- **On Kevin's telegraph question:** the dots ARE single A*-MOVE targets (each reachable
+  from the previous in one move). A double-jump is ONE edge (up to ~6 up), so a dot CAN
+  require a double-jump — we can't add a mid-air dot (nothing to stand on there), but
+  node-commitment + the two-phase/apex double-jump handles executing that one edge. A*
+  now also prefers staircases (build 140), so double-jump edges appear only when needed.
+- Tests: test-bot-ai +2 (airborne-over-node does NOT advance; landed → advances).
+  Suite 521. Browser-UNTESTED.

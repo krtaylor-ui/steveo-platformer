@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 140 (Bot climbing fixes: (1) no longer STUCK HANGING from a ledge — it now pulses jump to climb up (grabbing holds jump; climbing needs a fresh press); (2) the planner PREFERS a staircase of small jumps over one tall risky climb (cost penalty); (3) double-jump fires near the APEX for max height. + build 139 two-phase air control.)';
+const GAME_VERSION = 'v3 · build 141 (Node-by-node path following: the bot now COMMITS to each path node and only advances to the next once it has actually LANDED on the current one — so it completes each jump instead of flying past a node toward the next (the "not landing on the first dot before transitioning" bug). + build 140 climbing fixes.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

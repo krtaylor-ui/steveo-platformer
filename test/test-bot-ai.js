@@ -692,6 +692,22 @@ console.log('Air control — two-phase (rise beside a ledge, then land on the co
   ok(Math.abs(ctrl._input.moveX) < 0.01, 'over the column → eases to 0 (drops on, not past)');
 }
 
+console.log('Node-by-node — advances only after LANDING on a node (no fly-past):');
+{
+  const level = flatLevel();
+  const bot = mkPlayer(8, 2, { owner: 'p2' });          // sitting over node [8,2]
+  const game = mkGame(level, [mkPlayer(20, 2, { owner: 'p1' }), bot]);
+  const ctrl = new BotController(game, 1, 'competitive', 'HARD');
+  const nav = BOT_AI.buildNav(level);
+  ctrl._path = [[3, 2], [8, 2], [12, 2]]; ctrl._pathIdx = 1;
+  bot.onGround = false;                                 // airborne over the node
+  ctrl._followStep(nav);
+  ok(ctrl._pathIdx === 1, 'airborne over a node → does NOT advance (must land on it first)');
+  bot.onGround = true;                                  // landed
+  ctrl._followStep(nav);
+  ok(ctrl._pathIdx === 2, 'landed on the node → advances to the next');
+}
+
 console.log('Ledge-hang — bot pulses jump to climb up (not stuck hanging):');
 {
   const level = flatLevel();
