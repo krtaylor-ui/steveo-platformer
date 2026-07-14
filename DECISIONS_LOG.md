@@ -2426,3 +2426,26 @@ engaged the mobs." He suspected detection/speed/flee checks. Profiled each:
   10 mobs (was effectively unbounded — hundreds of ms with unreachable retreats).
 - Tests: +flee-cap regression in test-wayfinding (10 fleeing mobs → ≤2 A*/frame). Suite
   543, all green. Browser-UNTESTED.
+
+## Perf profiler — locate the real slowdown (build 149)
+Kevin: builds 147 AND 148 didn't fix it — platformer still "still slow" when mobs engage.
+Since the mob AI is provably cheap headless (full mobManager.update = ~0.66 ms/frame for
+10 mobs, incl. detection/sprint/flee/physics), the bottleneck is NOT the mob AI. I'd been
+benching only `mobManager.update()` — not the full game loop (render, bot AI, redstone,
+draw). Rather than guess a third time, this build INSTRUMENTS the real frame:
+- `_loop` times `_update` vs `_render`; subsystem calls stamp `this._prof` (mobs / bot /
+  redstone / mobDraw). A rolling frame-time avg is kept.
+- Slow frames (>24 ms) `console.warn` a one-line breakdown (throttled).
+- An on-screen HUD auto-appears when the rolling avg > 18 ms (or `window._perfHud=true`),
+  showing FPS + update/render + mobs/bot/redstone/mobDraw + mob/arrow counts.
+- Zero behaviour change; near-zero cost when frames are fast.
+- Ruled OUT along the way: the monkey-patched `level.isSolid` (calls `isPistonHeadAt`,
+  which iterates all redstone components, on every call) — benchmarked at only +10-30% on
+  A*, not the culprit. Detection stops once a mob is alerted (early-return), so it's not
+  the post-engagement cost either.
+- STRONGEST untested hypothesis: the COMPANION BOT. Its A* envelope is far larger than a
+  mob's (maxExpansions 12000, radius 64 vs 2500/24) and it is NOT subject to the mob
+  per-frame cap; if a companion is fighting 8-10 mobs it may replan every few frames at
+  ~25-100 ms each. The HUD's `bot` bucket will confirm or clear this.
+- Next: Kevin reproduces, reads the HUD, reports which bucket dominates → targeted fix.
+- Suite 543 green (game.js syntax-checked; profiler is browser-only).

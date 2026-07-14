@@ -1324,8 +1324,25 @@ class Game {
     const deltaMs = this._lastTs !== undefined ? ts - this._lastTs : 16.67;
     this._lastTs = ts;
     this.frameCount++;
-    this._update(deltaMs);
-    this._render();
+    // ── Frame profiler (perf triage). `this._prof` sub-timings are stamped by the
+    // subsystem calls (mobs/redstone/draw); here we time update vs render and, when a
+    // frame runs long, log the breakdown so a real slowdown can be located instead of
+    // guessed. Near-zero cost when frames are fast. Toggle verbose with window._perfLog.
+    const _pnow = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : () => Date.now();
+    this._prof = { mobs: 0, mobDraw: 0, redstone: 0, bot: 0 };
+    const _t0 = _pnow(); this._update(deltaMs);
+    const _t1 = _pnow(); this._render();
+    const _t2 = _pnow();
+    const upd = _t1 - _t0, ren = _t2 - _t1, tot = _t2 - _t0;
+    this._profFrame = { upd, ren, tot, ...this._prof };
+    this._profAvg = this._profAvg == null ? tot : this._profAvg * 0.9 + tot * 0.1;   // rolling frame time
+    if (tot > 24 || (typeof window !== 'undefined' && window._perfLog)) {
+      this._profSlow = (this._profSlow || 0) + 1;
+      if (this._profSlow % 15 === 1) {   // throttle the log so a sustained slowdown doesn't spam
+        const n = this.mobManager ? this.mobManager.mobs.filter(m => m.alive).length : 0;
+        console.warn(`[perf] frame ${tot.toFixed(1)}ms = update ${upd.toFixed(1)} (mobs ${this._prof.mobs.toFixed(1)}, bot ${this._prof.bot.toFixed(1)}, redstone ${this._prof.redstone.toFixed(1)}) + render ${ren.toFixed(1)} (mobDraw ${this._prof.mobDraw.toFixed(1)}) | mobs=${n} arrows=${this.mobManager ? (this.mobManager.arrows || []).length : '?'} particles=${this._deathParts ? this._deathParts.length : '?'}`);
+      }
+    }
     this.input.flush();
   }
 
@@ -2107,7 +2124,9 @@ class Game {
     // consume it this frame. Each controller self-guards on dead/respawning/
     // not-playing (writes a neutral no-op). (Bot AI brief, Phase 1.)
     if (this._botControllers && this._botControllers.length) {
+      const _bt = (this._prof && typeof performance !== 'undefined') ? performance.now() : 0;
       for (const b of this._botControllers) b.tick();
+      if (this._prof && _bt) this._prof.bot = (this._prof.bot || 0) + (performance.now() - _bt);
     }
 
     // ── P1 respawn timer (2P co-op / arena) ────────────────
@@ -2532,7 +2551,9 @@ class Game {
       const _rsExtraOn = (this._onlineGameId && window.multiplayerManager?.isCreator)
         ? (col, row) => window.multiplayerManager.joinersOnPlates?.has(`${col},${row}`) ?? false
         : null;
+      const _rt = (this._prof && typeof performance !== 'undefined') ? performance.now() : 0;
       this.redstone.update(this.level, this.player, this.input, _rsExtraOn);
+      if (this._prof && _rt) this._prof.redstone += performance.now() - _rt;
     }
     this.redstone.updatePistonAnimations(this._rsRate());
     this._applyPistonKnockback();
@@ -3056,7 +3077,9 @@ class Game {
       this.mobManager.webCfg    = this._webConfig();    // §9 — spider web slow
       this.mobManager.pathCfg   = this._pathConfig();   // §6 — path-aware pursuit
       if (!_onlineNonHost) {
+        const _mt = (this._prof && typeof performance !== 'undefined') ? performance.now() : 0;
         this.mobManager.update(this.player, this.level, this.player2 || null, this.players.slice(2).filter(Boolean));
+        if (this._prof && _mt) this._prof.mobs += performance.now() - _mt;
       } else {
         // Joiners skip mob AI but still need item physics so drops settle and stay visible.
         this.mobManager.droppedItems = this.mobManager.droppedItems.filter(item => {
@@ -5854,7 +5877,11 @@ class Game {
       window.multiplayerManager.drawDroppedItems(ctx, this.camera);
 
     // Mobs, arrows, damage numbers, explosions (suppressed in sandbox)
-    if (this.gameMode !== 'sandbox') this.mobManager.draw(ctx, this.camera);
+    if (this.gameMode !== 'sandbox') {
+      const _dt = (this._prof && typeof performance !== 'undefined') ? performance.now() : 0;
+      this.mobManager.draw(ctx, this.camera);
+      if (this._prof && _dt) this._prof.mobDraw += performance.now() - _dt;
+    }
 
     this._renderEndCrystalGlow(ctx);
     this._renderDragon(ctx);
@@ -6010,6 +6037,27 @@ class Game {
     }
 
     ctx.restore(); // matches screen-shake save at top of _render
+
+    // ── Perf HUD (triage). Auto-shows when frames run slow (rolling avg > 18 ms);
+    // force it on any time with `window._perfHud = true` in the console. Reads the
+    // per-frame sub-timings stamped by the profiler in _loop. Zero cost when hidden.
+    if (this._profFrame && ((this._profAvg || 0) > 18 || (typeof window !== 'undefined' && window._perfHud))) {
+      const f = this._profFrame;
+      const nMobs = this.mobManager ? this.mobManager.mobs.filter(m => m.alive).length : 0;
+      const nArr  = this.mobManager ? (this.mobManager.arrows || []).length : 0;
+      const lines = [
+        `FPS ~${(1000 / Math.max(1, this._profAvg || 16)).toFixed(0)}  frame ${(this._profAvg || 0).toFixed(1)}ms`,
+        `update ${f.upd.toFixed(1)}  render ${f.ren.toFixed(1)}`,
+        `mobs ${f.mobs.toFixed(1)}  bot ${(f.bot || 0).toFixed(1)}  redstone ${f.redstone.toFixed(1)}`,
+        `mobDraw ${f.mobDraw.toFixed(1)}  |  mobs ${nMobs}  arrows ${nArr}`,
+      ];
+      ctx.save();
+      ctx.font = '11px monospace'; ctx.textBaseline = 'top';
+      ctx.fillStyle = 'rgba(0,0,0,0.72)'; ctx.fillRect(4, 4, 232, lines.length * 14 + 8);
+      ctx.fillStyle = (this._profAvg || 0) > 24 ? '#ff8080' : '#9fddff';
+      lines.forEach((ln, i) => ctx.fillText(ln, 10, 9 + i * 14));
+      ctx.restore();
+    }
   }
 
   _drawControllerCursor(ctx) {
