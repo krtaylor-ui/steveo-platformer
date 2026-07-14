@@ -2178,3 +2178,22 @@ mid-air horizontal control: `vx = speed * moveX` every frame.)
   still occasionally miss — the Follow-mode mirror + teleport safety nets cover those.
   If a specific chain still fails, the next lever is TAKEOFF-speed control (launch
   slower for short hops) — easy to add once we see it.
+
+## Jumping onto high platforms — two-phase air control (build 139)
+Kevin: bot stuck UNDER a platform edge (platform 4 up, on flat ground), "bouncing
+under the edge, can't move out far enough to jump." Repro confirmed PLANNING is fine —
+from under the platform the path is [[5,6],[3,6],[4,1],[5,1]]: walk OUT to the edge
+(col3), then jump up onto the platform. So it's the ACTUATOR: build-138's air control
+steered toward the target column IMMEDIATELY, so on a tall jump it dove UNDER the
+overhang and bonked the underside before gaining height.
+- **FIX — two-phase air control (`_applyMove` airborne):** `navFollow` now returns the
+  target ROW (`tr`) too. While the landing is ABOVE us (feet row > tr): mostly RISE,
+  only a gentle drift (0.2) toward the target — so it goes up BESIDE the edge (clears
+  the platform top / lets Ledge-Grab catch the edge) instead of diving under. Once at/
+  above the landing row: TRAVERSE onto the column + ease (the build-138 precise land).
+- Tests: test-bot-ai air-control test now covers both phases (below-ledge → gentle
+  rise; at-row → traverse; over-column → ease to 0). Suite 517. Browser-UNTESTED.
+- **Honest note:** if the tightest high-ledge jumps STILL bonce under the edge, the next
+  levers are (a) pure-vertical rise (drift 0.2→0) so it rises dead-straight beside the
+  edge and relies on edge-grab/apex-traverse, and (b) softer takeoff horizontal for
+  steep (rise≥4) jumps so it launches more vertically. Easy follow-ups once observed.

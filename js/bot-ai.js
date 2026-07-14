@@ -81,7 +81,7 @@ const BOT_AI = {
     } else if (nav && !nav.solid(cc + dir, cr + 1) && tr <= cr + 1 && nearCol && canRise) {
       jump = true;                            // gap directly ahead → hop it
     }
-    return { dir, jump, rise: Math.max(0, rise), tx };   // tx = target cell centre (air-control landing)
+    return { dir, jump, rise: Math.max(0, rise), tx, tr };   // tx/tr = target cell centre-x / row (air-control)
   },
 
   // Companion loot priority (Q3): the PLAYER always gets first pick. A placed item
@@ -681,15 +681,19 @@ class BotController {
       this._lastX = p.cx;
       return;
     }
-    // ── AIRBORNE: air-control to LAND on the target cell's column (the player has
-    // full mid-air horizontal control), easing off as we near it so we settle onto a
-    // small/single-block platform instead of overshooting. Precise jumps live here. ──
+    // ── AIRBORNE: two-phase air control (the player has full mid-air control). ──
+    // Landing is ABOVE us (jumping ONTO a ledge/platform) → RISE beside the edge
+    // first (only a gentle drift toward it), so we clear the platform top / let
+    // ledge-grab catch it, instead of diving under the overhang and bonking. Once we
+    // reach the landing row, TRAVERSE onto the column and ease in (precise landing).
     if (!p.onGround) {
-      if (step.tx != null) {
-        const dx = step.tx - p.cx;
-        // near the column → cut horizontal so we drop straight down onto it; far → seek it.
+      const myRow = Math.floor((p.y + p.height - 1) / BLOCK_SIZE);
+      const dx = (step.tx != null) ? step.tx - p.cx : (step.dir || 0) * BLOCK_SIZE;
+      if (step.tr != null && myRow > step.tr) {
+        i.moveX = Math.sign(dx) * 0.2;                 // below the ledge → mostly rise, drift a touch toward it
+      } else if (step.tx != null) {
         const seek = Math.abs(dx) < 3 ? 0 : Math.sign(dx) * Math.min(1, Math.abs(dx) / (0.8 * BLOCK_SIZE));
-        i.moveX = seek * (0.65 + 0.35 * this.diff.navPrecision);   // skill = landing accuracy
+        i.moveX = seek * (0.65 + 0.35 * this.diff.navPrecision);  // at/above the ledge → land on the column
       } else {
         i.moveX = (step.dir || 0) * (this.diff.alwaysRun ? 1 : 0.8);
       }

@@ -675,18 +675,21 @@ console.log('Wayfinding fix — stuck bot triggers a back-up-and-jump escape:');
   ok(escapeMove !== null, 'a wedged bot enters an escape maneuver (not endless vibration)');
   ok(escapeMove.moveX < 0 && escapeMove.jump === true, 'escape backs up (reverse dir) AND jumps to clear the obstacle');
 }
-console.log('Air control — airborne bot steers toward the landing column and eases in:');
+console.log('Air control — two-phase (rise beside a ledge, then land on the column):');
 {
   const level = flatLevel();
-  const bot = mkPlayer(5, 2, { owner: 'p2', onGround: false });   // airborne
+  const bot = mkPlayer(5, 2, { owner: 'p2', onGround: false });   // airborne, feet row 2
   const game = mkGame(level, [mkPlayer(9, 2, { owner: 'p1' }), bot]);
   const ctrl = new BotController(game, 1, 'competitive', 'HARD');
-  // Target column far to the right → seek it (moveX > 0).
-  ctrl._applyMove({ dir: 1, jump: false, rise: 0, tx: bot.cx + 5 * B });
-  ok(ctrl._input.moveX > 0.3, 'far from the landing column → steers toward it');
-  // Target column basically under us → cut horizontal so we drop onto it (no overshoot).
-  ctrl._applyMove({ dir: 1, jump: false, rise: 0, tx: bot.cx + 1 });
-  ok(Math.abs(ctrl._input.moveX) < 0.01, 'over the landing column → eases to 0 (drops on, not past)');
+  // Landing is ABOVE (tr=0, we're at row 2) → RISE, only gentle drift (don't dive under).
+  ctrl._applyMove({ dir: 1, jump: false, rise: 5, tx: bot.cx + 5 * B, tr: 0 });
+  ok(Math.abs(ctrl._input.moveX) <= 0.25, 'below the ledge → mostly rise (gentle drift, no diving under)');
+  // At the landing row (tr=2) and far → traverse toward the column.
+  ctrl._applyMove({ dir: 1, jump: false, rise: 0, tx: bot.cx + 5 * B, tr: 2 });
+  ok(ctrl._input.moveX > 0.3, 'at the landing row → traverse toward the column');
+  // Over the column → ease to 0 (land on it, no overshoot).
+  ctrl._applyMove({ dir: 1, jump: false, rise: 0, tx: bot.cx + 1, tr: 2 });
+  ok(Math.abs(ctrl._input.moveX) < 0.01, 'over the column → eases to 0 (drops on, not past)');
 }
 
 console.log('Wayfinding fix — repeated fruitless escapes stop pacing (re-decide):');

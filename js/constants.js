@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 138 (Precise jumps: the bot now uses mid-air control to LAND on the target column (eases off as it nears it, instead of overshooting small/single-block platforms), and COMMITS a jump (no mid-air re-planning that made it miss). Helps tight jumping paths / staircases of small platforms. + build 137 vertical maze fix.)';
+const GAME_VERSION = 'v3 · build 139 (Jumping ONTO high platforms: two-phase air control — RISE beside the platform edge first (so it clears the top / lets edge-grab catch it) instead of diving under the overhang and bouncing on the underside, THEN traverse onto the landing once high enough. + build 138 precise jumps.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
