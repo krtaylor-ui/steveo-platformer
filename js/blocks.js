@@ -65,7 +65,33 @@ const BLOCK = Object.freeze({
   SPEED_BOOSTER:          56,   // non-solid trigger zone (+50% speed on touch)
   JUMP_PAD:               57,   // solid slime launch pad (big upward boost)
   SPEED_ITEM:             58,   // collectible lightning bolt (+15% speed for 3 s)
+  // Smart Mobs §10 — decorative foliage (non-solid). The render LAYER is encoded in
+  // the id: *_BACK draws behind the player/mob sprite, *_FRONT draws in front of it
+  // (concealment). Bushes occlude mob line-of-sight (§4a); leaves are purely cosmetic.
+  // Per-cell COLOUR (green/yellow/orange) lives in game._foliageColorMap, cycled by
+  // re-clicking a placed cell (mirrors the Goal-Star colour cycle).
+  BUSH_BACK:              59,
+  BUSH_FRONT:             60,
+  DECO_LEAVES_BACK:       61,
+  DECO_LEAVES_FRONT:      62,
 });
+
+// Colour palette for decorative foliage (§10). Index 0 = green (default).
+const FOLIAGE_COLORS = [
+  { name: 'Green',  base: '#3f8a34', light: '#5bb048', dark: '#2c5f22' },
+  { name: 'Yellow', base: '#c8a52a', light: '#e2c44c', dark: '#9a7d18' },
+  { name: 'Orange', base: '#c56a20', light: '#e18b3a', dark: '#964c12' },
+];
+// True if a block id is one of the decorative-foliage ids.
+function isFoliageBlock(id) {
+  return id === BLOCK.BUSH_BACK  || id === BLOCK.BUSH_FRONT ||
+         id === BLOCK.DECO_LEAVES_BACK || id === BLOCK.DECO_LEAVES_FRONT;
+}
+// True if the block id occludes a mob's line of sight (§4a). Solid blocks always do;
+// among foliage, only bushes conceal — leaves are see-through cosmetic cover.
+function foliageOccludesSight(id) {
+  return id === BLOCK.BUSH_BACK || id === BLOCK.BUSH_FRONT;
+}
 
 // Per-block properties
 // mineTier: 0=wooden, 1=stone, 2=iron, 3=diamond, 4=netherite
@@ -136,6 +162,11 @@ const BLOCK_DATA = {
   [BLOCK.SPEED_BOOSTER]: { name: 'Speed Booster', hardness: Infinity, mineable: false, solid: false, mineTier: 0 },
   [BLOCK.JUMP_PAD]:      { name: 'Jump Pad',       hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
   [BLOCK.SPEED_ITEM]:    { name: 'Speed Item',     hardness: Infinity, mineable: false, solid: false, mineTier: 0 },
+  // Smart Mobs §10 — decorative foliage (non-solid). `occludes` = blocks mob sight.
+  [BLOCK.BUSH_BACK]:         { name: 'Bush (Behind)',   hardness: 15, mineable: true, solid: false, mineTier: 0, isFoliage: true, foliageShape: 'bush',   foliageFront: false, occludes: true },
+  [BLOCK.BUSH_FRONT]:        { name: 'Bush (Front)',    hardness: 15, mineable: true, solid: false, mineTier: 0, isFoliage: true, foliageShape: 'bush',   foliageFront: true,  occludes: true },
+  [BLOCK.DECO_LEAVES_BACK]:  { name: 'Leaves (Behind)', hardness: 15, mineable: true, solid: false, mineTier: 0, isFoliage: true, foliageShape: 'leaves', foliageFront: false },
+  [BLOCK.DECO_LEAVES_FRONT]: { name: 'Leaves (Front)',  hardness: 15, mineable: true, solid: false, mineTier: 0, isFoliage: true, foliageShape: 'leaves', foliageFront: true  },
 };
 
 // ── Pixel-art block renderers ────────────────────────────────
@@ -152,6 +183,10 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.STONE:             _drawStone(ctx, px, py, s);                          break;
     case BLOCK.OAK_LOG:           _drawLog(ctx, px, py, s);                            break;
     case BLOCK.OAK_LEAVES:        _drawLeaves(ctx, px, py, s);                         break;
+    case BLOCK.BUSH_BACK:
+    case BLOCK.BUSH_FRONT:        _drawFoliage(ctx, px, py, s, 'bush',   state.foliageColor ?? 0); break;
+    case BLOCK.DECO_LEAVES_BACK:
+    case BLOCK.DECO_LEAVES_FRONT: _drawFoliage(ctx, px, py, s, 'leaves', state.foliageColor ?? 0); break;
     case BLOCK.BEDROCK:           _drawBedrock(ctx, px, py, s);                        break;
     case BLOCK.OAK_PLANKS:        _drawPlanks(ctx, px, py, s);                         break;
     case BLOCK.COAL_ORE:          _drawOre(ctx, px, py, s, '#111');                    break;
@@ -321,6 +356,37 @@ function _drawLeaves(ctx, px, py, s) {
   ctx.fillStyle = '#2A5A1A';
   ctx.fillRect(px+12, py+10, 8, 8);
   ctx.fillRect(px+2,  py+20, 7, 7);
+}
+
+// Smart Mobs §10 — decorative foliage. Draws leafy blobs with transparent gaps
+// (never a full opaque cell) so the FRONT layer only partially conceals whatever is
+// behind it. `shape` = 'bush' (denser, bottom-weighted mound) or 'leaves' (airier,
+// scattered). `colorIdx` selects the green/yellow/orange palette.
+function _drawFoliage(ctx, px, py, s, shape, colorIdx) {
+  const pal = FOLIAGE_COLORS[colorIdx] || FOLIAGE_COLORS[0];
+  const blob = (bx, by, bw, bh, col) => {
+    ctx.fillStyle = col;
+    ctx.fillRect(px + bx, py + by, bw, bh);
+  };
+  if (shape === 'bush') {
+    // Rounded mound sitting on the cell floor.
+    blob(4,  10, s - 8, s - 12, pal.dark);
+    blob(6,  6,  s - 12, s - 8, pal.base);
+    blob(9,  3,  s - 18, 10,    pal.base);
+    blob(8,  8,  7, 7, pal.light);
+    blob(s - 15, 12, 7, 7, pal.light);
+    blob(13, 17, 6, 6, pal.dark);
+  } else {
+    // Airier scattered leaf clusters (leaves the corners open).
+    blob(3,  4,  10, 10, pal.base);
+    blob(17, 6,  10, 10, pal.base);
+    blob(9,  16, 11, 11, pal.base);
+    blob(20, 18, 8,  8,  pal.dark);
+    blob(4,  4,  5,  5,  pal.light);
+    blob(18, 6,  5,  5,  pal.light);
+    blob(11, 17, 5,  5,  pal.light);
+    blob(2,  18, 6,  6,  pal.dark);
+  }
 }
 
 function _drawBedrock(ctx, px, py, s) {

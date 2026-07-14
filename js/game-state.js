@@ -26,6 +26,22 @@ const GAME_STATE = {
     return out;
   },
 
+  // Serialize decorative-foliage colours from game._foliageColorMap ("r,c" -> idx).
+  // The block ids (bush/leaves, front/back) already live in the grid; only the
+  // per-cell colour needs its own array (Smart Mobs §10).
+  _foliage(game) {
+    const cm = game._foliageColorMap;
+    if (!cm) return [];
+    const out = [];
+    for (const key in cm) {
+      const color = cm[key];
+      if (!color) continue;
+      const [row, col] = key.split(',').map(Number);
+      if (Number.isFinite(row) && Number.isFinite(col)) out.push({ row, col, color });
+    }
+    return out;
+  },
+
   _provenance(game) {
     const prev = game._loadedProvenance || {};
     const uid  = prev.uid || ('w-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8));
@@ -207,6 +223,7 @@ const GAME_STATE = {
       arenaObjects: game.sandbox ? game.sandbox.placedArenaObjs.map(o => ({ ...o })) : [],
       // Goal-star colours (campaign-prep) — [{row,col,color}] for coloured exits.
       goalStars: GAME_STATE._goalStars(game),
+      foliage:   GAME_STATE._foliage(game),
       placedItems,
       portalLinks,
       sandboxLevers,

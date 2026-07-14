@@ -1161,3 +1161,50 @@ persistence, fallback). Suite 219/219.
   arrows that miss every mob stick + are collectable; arrows that hit a mob are NOT recoverable
   (crossbow pierces the full path then isn't recoverable). Arrow gains stuck/returning/recoverable/
   _hitAnyMob. test-weapons/-mobs +14; suite 233/233. Automatic auto-return is a later enchant.
+
+---
+
+# Smart Mobs Batch 2 — Detection Core + Behavior Layer (2026-07-13)
+
+Mob-intelligence half of the Smart Mobs brief (§4–§10). Built on a fresh branch
+`smart-mobs-detection` off `main` (build 101). **Every behavior here is additive /
+opt-in — default-off never changes existing mob behavior** (the hard rule from the
+brief, since aggro/behavior is shared across all 8 mob classes). Build order per the
+brief: §10 → §4 → §5 → §7 → §8 → §9. Up-front Q&A with Kevin resolved:
+- **Detection (§4):** master **Smart Detection** toggle (default OFF) + per-axis
+  Sight/Sound/Action sub-toggles under Advanced.
+- **Foliage (§10):** do BOTH — existing Oak Leaves stay decorative/behind & non-
+  occluding; NEW **Bush** concealment block. Colours (green/yellow/orange) for leaves
+  AND bushes; a new **"Decor" palette tab** for non-solid front/back foliage.
+- **Sprint (§7):** opt-in "Sprinting Mobs"; melee chasers (Zombie/Piglin/Wither
+  Skeleton/Cave Spider).
+- **Flee (§8):** **per-mob-type**, and the low-HP response is a `lowHpAction`
+  **variable** (`none`/`flee`) built so new actions can be added later + advanced
+  per-type HP-% threshold (default 20%).
+
+## §10 — Decorative foliage (build 102)
+- **Model chosen:** 4 new non-solid block ids — `BUSH_BACK`(59)/`BUSH_FRONT`(60)/
+  `DECO_LEAVES_BACK`(61)/`DECO_LEAVES_FRONT`(62). The render **LAYER is encoded in the
+  id** (so the grid + serializer carry it for free); the **COLOUR** (green/yellow/
+  orange) lives in a `game._foliageColorMap` "r,c"→idx overlay, exactly mirroring the
+  Goal-Star colour model (serialized as `world_data.foliage`, restored by both
+  loaders via `_restoreFoliageColors`).
+- **Occlusion (feeds §4a):** `foliageOccludesSight(id)` → **bushes conceal**, leaves
+  don't (Kevin: oak leaves stay non-blocking). `game._blocksSight(col,row)` = solid OR
+  bush — the single sight-occlusion API §4 raycasts against.
+- **Rendering:** `Level.draw` skips foliage ids (like TX/RX); drawn by two dedicated
+  passes — `_drawFoliageBack` (after terrain, before entities) and `_drawFoliageFront`
+  (after players, beside `_drawEndPortalForeground`, reusing that same second-pass
+  technique per brief §8.1). Art = see-through leafy blobs (transparent gaps) so FRONT
+  foliage only partially conceals. **Sandbox-only cue:** front cells get a bright
+  dashed outline + ▲ tick, back cells a faint dotted outline — so the two variants are
+  visually **distinct in the editor** but **identical in play** (brief §3).
+- **Authoring:** new **"Decor"** palette tab (`SANDBOX_PALETTE_BLOCKS.decorative`,
+  tab count 4→5). Placed via the normal block path; **re-click a placed foliage cell**
+  (with a foliage block selected) cycles its colour green→yellow→orange (mirrors the
+  Goal-Star re-click cycle); a new cell inherits a touching cell's colour. Removal
+  clears the colour-map entry.
+- Existing `OAK_LEAVES` (id 5) is UNTOUCHED — no existing world changes. New test
+  `test/test-foliage.js` (16 assertions: block flags, occlusion helpers, colour
+  serialize round-trip). Suite green. Browser-UNTESTED (canvas rendering + the editor
+  front/back cue + colour cycle warrant Kevin's look).

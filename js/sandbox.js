@@ -14,6 +14,13 @@ const SANDBOX_PALETTE_BLOCKS = {
     BLOCK.NETHERRACK, BLOCK.SOUL_SAND, BLOCK.CRIMSON_LOG,
     BLOCK.WARPED_LOG, BLOCK.OBSIDIAN, BLOCK.LAVA, BLOCK.GLOWSTONE,
   ],
+  // Smart Mobs §10 — non-solid decorative foliage. "Behind" renders behind the
+  // player/mob sprite, "Front" in front (concealment); bushes conceal mobs' line of
+  // sight. Re-click a placed cell (with a foliage block selected) to cycle its colour.
+  decorative: [
+    BLOCK.BUSH_BACK, BLOCK.BUSH_FRONT,
+    BLOCK.DECO_LEAVES_BACK, BLOCK.DECO_LEAVES_FRONT,
+  ],
 };
 
 const SPAWN_EGG_DEFS = [
@@ -857,7 +864,7 @@ class SandboxManager {
     }
 
     // Tab row
-    const TABS = ['overworld', 'nether', 'gear', 'other'];
+    const TABS = ['overworld', 'nether', 'decorative', 'gear', 'other'];
     const tg = this._paletteTabGeom();
     for (let i = 0; i < TABS.length; i++) {
       const tx = tg.x0 + i * tg.tabW;
@@ -1111,7 +1118,7 @@ class SandboxManager {
   // Tab-row geometry shared by draw + click (4 tabs filling the panel width).
   _paletteTabGeom() {
     const { px, py, pw } = this._paletteLayout();
-    const tabW = (pw - 16) / 4;
+    const tabW = (pw - 16) / 5;
     return { tabW, gap: 4, y: py + 32, h: 26, x0: px + 8 };
   }
 
@@ -1776,10 +1783,11 @@ class SandboxManager {
 
     // Tabs
     const TABS = [
-      { key: 'overworld', label: 'Overworld', color: '#4CAF50' },
-      { key: 'nether',    label: 'Nether',    color: '#FF4400' },
-      { key: 'gear',      label: 'Gear',      color: '#FFD700' },
-      { key: 'other',     label: 'Other',     color: '#FF9800' },
+      { key: 'overworld',  label: 'Overworld', color: '#4CAF50' },
+      { key: 'nether',     label: 'Nether',    color: '#FF4400' },
+      { key: 'decorative', label: 'Decor',     color: '#8ED07A' },
+      { key: 'gear',       label: 'Gear',      color: '#FFD700' },
+      { key: 'other',      label: 'Other',     color: '#FF9800' },
     ];
     const tg = this._paletteTabGeom();
     for (let i = 0; i < TABS.length; i++) {

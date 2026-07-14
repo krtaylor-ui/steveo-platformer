@@ -2641,6 +2641,10 @@ class Game {
               this.level.goalRow = hoverRow;
               this._setGoalColor(hoverRow, hoverCol, this._adjacentGoalColor(hoverRow, hoverCol));
               this._invalidateGoalCells();
+            } else if (isFoliageBlock(sb)) {
+              // New foliage inherits a touching foliage cell's colour so a patch stays
+              // uniform as you paint it (re-click a placed cell to cycle its colour).
+              this._setFoliageColor(hoverRow, hoverCol, this._adjacentFoliageColor(hoverRow, hoverCol));
             }
             window.multiplayerManager?.placeBlock(hoverCol, hoverRow, sb);
             // Register lever/trapdoor/pressure_plate in redstone system
@@ -2786,6 +2790,16 @@ class Game {
           // Goal Star selected + click a placed goal → cycle the whole touching
           // group's colour (select a DIFFERENT block/tool, then click, to remove).
           this._cycleGoalGroupColor(hoverRow, hoverCol);
+        } else if (isFoliageBlock(target) && isFoliageBlock(this.sandbox.selectedBlock) &&
+                   !this.sandbox.isEggSelected && !this.sandbox.isToolSelected &&
+                   !this.sandbox.isEmeraldSelected && !this.sandbox.isPowerupSelected &&
+                   !this.sandbox.isDustSelected && !this.sandbox.isGateSelected &&
+                   !this.sandbox.isBlockItemSelected && !this.sandbox.isHillSelected &&
+                   !this.sandbox.isSpawnLineSelected && !this.sandbox.isSpawnPointSelected &&
+                   !this.sandbox.isArenaObjSelected) {
+          // Foliage block selected + click a placed foliage cell → cycle its colour
+          // (green → yellow → orange). Select a different tool then click to remove.
+          this._cycleFoliageColor(hoverRow, hoverCol);
         } else {
           // Non-air block → instant remove (connected removal for beds/portals)
           if (this.sandbox.brushSize > 1 && this.sandbox.isBrushApplicable) {
@@ -3631,7 +3645,7 @@ class Game {
 
     // Tab bar
     if (clicked) {
-      const TABS = ['overworld', 'nether', 'gear', 'other'];
+      const TABS = ['overworld', 'nether', 'decorative', 'gear', 'other'];
       for (let i = 0; i < TABS.length; i++) {
         const tx = L.tabX + i * 92;
         if (mx >= tx && mx <= tx + 88 && my >= L.tabY && my <= L.tabY + 24) {
@@ -4474,6 +4488,103 @@ class Game {
     const nm = (typeof GOAL_COLORS !== 'undefined') ? (GOAL_COLORS[next]?.name || '') : '';
     this._notify(`Goal colour: ${nm}${group.length > 1 ? ` (×${group.length})` : ''}`, '#FFE066', 100);
   }
+
+  // ── Smart Mobs §10 — decorative foliage (bushes / leaves) ─────────────────
+  // Per-cell colour index (0=green default) lives in _foliageColorMap ("r,c"→idx),
+  // mirroring the Goal-Star colour model. The LAYER (front/back) is encoded in the
+  // block id itself, so the grid + serializer carry it for free.
+  // Rebuild _foliageColorMap from a saved world's `foliage` array (block ids live in
+  // the grid; only the per-cell colour needs restoring). Called by both loaders.
+  _restoreFoliageColors(data) {
+    this._foliageColorMap = {};
+    if (Array.isArray(data.foliage)) {
+      for (const f of data.foliage) {
+        if (f && typeof f.row === 'number' && typeof f.col === 'number' && f.color) {
+          this._foliageColorMap[f.row + ',' + f.col] = f.color;
+        }
+      }
+    }
+  }
+  _foliageColorAt(r, c) { return (this._foliageColorMap && this._foliageColorMap[r + ',' + c]) || 0; }
+  _setFoliageColor(r, c, color) {
+    if (!this._foliageColorMap) this._foliageColorMap = {};
+    if (color) this._foliageColorMap[r + ',' + c] = color;
+    else delete this._foliageColorMap[r + ',' + c];
+  }
+  // Colour of the first foliage cell touching (row,col), else 0 — so a new cell joins
+  // its neighbours' colour as you paint a patch.
+  _adjacentFoliageColor(row, col) {
+    const grid = this.level && this.level.grid;
+    if (!grid) return 0;
+    for (const [nr, nc] of [[row - 1, col], [row + 1, col], [row, col - 1], [row, col + 1]]) {
+      if (nr < 0 || nc < 0 || nr >= grid.length || !grid[nr] || nc >= grid[nr].length) continue;
+      if (isFoliageBlock(grid[nr][nc])) { const c = this._foliageColorAt(nr, nc); if (c) return c; }
+    }
+    return 0;
+  }
+  // Re-clicking a placed foliage cell with a foliage block selected cycles its colour.
+  _cycleFoliageColor(row, col) {
+    const n    = (typeof FOLIAGE_COLORS !== 'undefined') ? FOLIAGE_COLORS.length : 3;
+    const next = (this._foliageColorAt(row, col) + 1) % n;
+    this._setFoliageColor(row, col, next);
+    const nm = (typeof FOLIAGE_COLORS !== 'undefined') ? (FOLIAGE_COLORS[next]?.name || '') : '';
+    this._notify(`Foliage colour: ${nm}`, '#8ED07A', 100);
+  }
+  // True if the cell blocks a mob's line of sight (§4a): any solid block, plus bushes.
+  _blocksSight(col, row) {
+    if (!this.level) return false;
+    if (this.level.isSolid(row, col)) return true;
+    const b = this.level.grid?.[row]?.[col];
+    return b !== undefined && foliageOccludesSight(b);
+  }
+  // Draw one foliage layer (front=false → behind entities, front=true → in front).
+  // In the sandbox EDITOR the two layers are made visually distinct (a small marker)
+  // so a designer can tell them apart; in every other mode they render identically.
+  _drawFoliageLayer(ctx, front) {
+    const grid = this.level && this.level.grid;
+    if (!grid) return;
+    const startCol = Math.max(0,                      Math.floor(this.camera.x / BLOCK_SIZE) - 1);
+    const endCol   = Math.min(this.level.width  - 1,  Math.ceil((this.camera.x + CANVAS_W) / BLOCK_SIZE) + 1);
+    const startRow = Math.max(0,                      Math.floor(this.camera.y / BLOCK_SIZE) - 1);
+    const endRow   = Math.min(this.level.height - 1,  Math.ceil((this.camera.y + CANVAS_H) / BLOCK_SIZE) + 1);
+    const editor = this.gameMode === 'sandbox';
+    for (let r = startRow; r <= endRow; r++) {
+      const row = grid[r];
+      if (!row) continue;
+      for (let c = startCol; c <= endCol; c++) {
+        const b = row[c];
+        if (!isFoliageBlock(b)) continue;
+        if (!!BLOCK_DATA[b].foliageFront !== front) continue;
+        const sx = c * BLOCK_SIZE - this.camera.x;
+        const sy = r * BLOCK_SIZE - this.camera.y;
+        const shape = BLOCK_DATA[b].foliageShape;
+        drawBlock(ctx, b, sx, sy, 0, { foliageColor: this._foliageColorAt(r, c) });
+        if (editor) {
+          // Editor-only cue: FRONT foliage gets a bright dashed outline + ▲ tick;
+          // BACK gets a faint dotted outline. Players never see either.
+          ctx.save();
+          ctx.lineWidth = 1;
+          if (front) {
+            ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+            ctx.setLineDash([3, 2]);
+            ctx.strokeRect(sx + 1.5, sy + 1.5, BLOCK_SIZE - 3, BLOCK_SIZE - 3);
+            ctx.setLineDash([]);
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.font = 'bold 8px Courier New'; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+            ctx.fillText('▲', sx + BLOCK_SIZE - 2, sy + 1);
+          } else {
+            ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+            ctx.setLineDash([1, 3]);
+            ctx.strokeRect(sx + 1.5, sy + 1.5, BLOCK_SIZE - 3, BLOCK_SIZE - 3);
+            ctx.setLineDash([]);
+          }
+          ctx.restore();
+        }
+      }
+    }
+  }
+  _drawFoliageBack(ctx)  { this._drawFoliageLayer(ctx, false); }
+  _drawFoliageFront(ctx) { this._drawFoliageLayer(ctx, true); }
 
   _applyMovementConfig(p) {
     const aws = this._worldAdvSettings;
@@ -5539,6 +5650,8 @@ class Game {
     this._drawTxRxBlocks(ctx);
     this._drawRuinedPortalOverlay(ctx);
     this._drawAltarItems(ctx);
+    // Smart Mobs §10 — foliage BEHIND the player/mob sprite (drawn above terrain).
+    this._drawFoliageBack(ctx);
 
     // Copy-selection overlay (sandbox)
     if (this.gameMode === 'sandbox') this._drawCopySelection(ctx);
@@ -5672,6 +5785,8 @@ class Game {
       ctx.restore();
     }
     this._drawEndPortalForeground(ctx);
+    // Smart Mobs §10 — foliage IN FRONT of the player/mob sprite (concealment).
+    this._drawFoliageFront(ctx);
     // SR world-space overlays (particles, ghost, speed items) drawn inside zoom context
     if (this.gameMode === 'speedrunner' && this._sr) {
       this._drawSRWorldOverlay(ctx);
@@ -7879,6 +7994,7 @@ class Game {
         this.level.goalRow = -1;
         this._setGoalColor(row, col, 0);
       }
+      if (isFoliageBlock(blockType)) this._setFoliageColor(row, col, 0);
       if (blockType === BLOCK.LEVER || blockType === BLOCK.TRAPDOOR ||
           blockType === BLOCK.PRESSURE_PLATE || blockType === BLOCK.TNT ||
           blockType === BLOCK.PISTON_BODY) {
@@ -14108,6 +14224,7 @@ class Game {
       }
     }
     this._invalidateGoalCells();
+    this._restoreFoliageColors(data);
 
     // Restore arena collectibles (Phase 3A.2) + objectives (Phase 3A.3)
     if (this.sandbox) {
@@ -15042,6 +15159,7 @@ class Game {
       }
     }
     this._invalidateGoalCells();
+    this._restoreFoliageColors(data);
     this._score = 0;
     this._emeraldsCollected = 0;
     this._wonExitColor = 0;

@@ -124,6 +124,10 @@ class Level {
         // Transmitter/Receiver drawn by game._drawTxRxBlocks(); piston heads by redstone.draw()
         if (block === BLOCK.TRANSMITTER || block === BLOCK.RECEIVER ||
             block === BLOCK.PISTON_HEAD) continue;
+        // Smart Mobs §10 — decorative foliage is drawn in its own back/front passes
+        // (game._drawFoliageBack / _drawFoliageFront) so it can layer around entities
+        // and carry per-cell colour. Skip it here.
+        if (isFoliageBlock(block)) continue;
 
         const screenX = c * BLOCK_SIZE - camera.x;
         const screenY = r * BLOCK_SIZE - camera.y;
