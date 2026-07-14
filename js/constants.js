@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 134 (Bot pathing: "get as close as you can" — when it can\'t reach your exact spot it now routes AROUND obstacles toward you (partial path) instead of hopping/giving up. Plus a debug overlay — World Settings → Display → "Show Bot Paths" draws the planned route (green), goal (magenta), and a red ✕ when it has no path — so we can see what it\'s mapping. + build 133 maze-ready pathing.)';
+const GAME_VERSION = 'v3 · build 135 ("Show Bot Paths" debug upgrade: now also OUTLINES every cell the pathfinder treats as SOLID (orange) around the bot, and colors jump/climb path segments yellow vs. walk segments green — so you can see whether your maze WALLS actually register as solid. (Heads-up: the Decor "Bush/Leaves/Solid Leaves" blocks are NON-solid — use a real solid block for maze walls.) + build 134 partial paths.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

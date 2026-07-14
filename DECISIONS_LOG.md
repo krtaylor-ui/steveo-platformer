@@ -2084,3 +2084,24 @@ platform ("doesn't seem to be mapping"). Two fixes + observability:
   (the next thing to fix if so).
 - Tests: test-pathfinding +3 (partial returns a toward-goal route on an unreachable
   island; null by default). Suite 511. Browser-UNTESTED.
+
+## Bot maze debug — nav-solidity overlay + co-op-menu note (build 135)
+Kevin's maze test: the debug path drew a straight line THROUGH the "grass" maze walls,
+and adding a block didn't change it — "sees all blocks as non-solid for movement but
+knows where to stand." Diagnosis: the maze walls are almost certainly a NON-SOLID
+Decor block (Bush / Leaves / Oak Leaves / "Solid Leaves" — the last is `solid:false`
+despite the name), so both the player and the pathfinder pass through them. The ground
+IS solid (hence "knows where to stand").
+- **Debug upgrade (`_drawBotDebug`):** "Show Bot Paths" now also **outlines every cell
+  the pathfinder considers SOLID** (orange) in a window around the bot, and **colors
+  jump/climb path segments yellow** vs. walk segments green. So Kevin can SEE whether
+  the maze walls register as solid (they won't, if they're Decor foliage) and tell a
+  legit hop-over from a route-through.
+- **Fix is content, not code:** build maze walls from a real solid block (Grass id 1 /
+  Dirt / Stone / Planks / Logs), not the Decor foliage. Flagged the "Solid Leaves"
+  naming footgun (looks opaque, is non-solid).
+- **Removing the companion from Platformer for now:** it's opt-in — World Settings →
+  Players → Companion Bot → **Off**. (Kevin: co-op/companion selection should
+  eventually live in the Platformer START menu + the continue-game screen, NOT World
+  Settings — recorded as a TODO in FUTURE_ROADMAP.)
+- Suite 511. Browser-UNTESTED.

@@ -733,3 +733,13 @@ Deliberately deferred rather than built alongside instant detection — it's a g
 not a requirement, and doubling up on both detection models in one pass isn't worth the risk.
 
 **Effort:** MODERATE — builds directly on the detection‑signal plumbing from Smart Mobs.
+
+## 20. Co-op / Companion selection UI placement  *(flagged 2026-07-14)*
+Companion-bot + co-op selection currently lives in **World Settings → Players**
+(`companionBot`, `p1Char`/`p2Char`, `companionTeleport`, etc.). Kevin wants co-op/
+companion selection to move to the **Platformer START menu** (choosing to start a
+platformer game), and eventually the **continue-game screen** — it's a per-session
+play choice, not a world property. World Settings can keep the advanced knobs
+(teleport range, stuck behavior) but the "play with a companion? which character?"
+choice belongs at game-start. Low effort once there's a platformer start/continue
+screen to hang it on. Until then, `companionBot = Off` removes it.

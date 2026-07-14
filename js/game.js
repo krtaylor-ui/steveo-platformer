@@ -1210,17 +1210,39 @@ class Game {
   _drawBotDebug(ctx) {
     const cam = this.camera, S = BLOCK_SIZE;
     ctx.save();
+    // ── Nav SOLIDITY overlay (the decisive diagnostic): outline every cell the
+    // PATHFINDER considers solid, in a window around each bot. If your maze walls
+    // do NOT get an orange outline, the planner isn't seeing them as obstacles
+    // (routes straight through) — a solidity/layer bug, not a jump artifact.
+    if (typeof BOT_AI !== 'undefined' && BOT_AI.buildNav) {
+      const nav = BOT_AI.buildNav(this.level);
+      ctx.strokeStyle = 'rgba(255,140,0,0.55)'; ctx.lineWidth = 1;
+      for (const b of this._botControllers) {
+        if (!b || !b.player) continue;
+        const bc = Math.floor(b.player.cx / S), br = Math.floor(b.player.cy / S);
+        for (let r = Math.max(0, br - 18); r <= Math.min(this.level.height - 1, br + 18); r++) {
+          for (let c = Math.max(0, bc - 28); c <= Math.min(this.level.width - 1, bc + 28); c++) {
+            if (nav.solid(c, r)) { const s = cam.toScreen(c * S, r * S); ctx.strokeRect(s.x + 1, s.y + 1, S - 2, S - 2); }
+          }
+        }
+        break;   // one window is enough (bots are usually near each other)
+      }
+    }
     for (const b of this._botControllers) {
       if (!b || !b.player) continue;
       const path = b._path;
       if (path && path.length) {
-        ctx.strokeStyle = 'rgba(60,220,90,0.9)'; ctx.lineWidth = 2; ctx.beginPath();
-        for (let i = 0; i < path.length; i++) {
+        // Walk segments green; jump/drop/climb segments yellow (so a valid hop over a
+        // wall is visually distinct from routing THROUGH one).
+        for (let i = 1; i < path.length; i++) {
+          const a = cam.toScreen((path[i - 1][0] + 0.5) * S, (path[i - 1][1] + 0.5) * S);
           const s = cam.toScreen((path[i][0] + 0.5) * S, (path[i][1] + 0.5) * S);
-          if (i === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+          const dc = Math.abs(path[i][0] - path[i - 1][0]), dr = path[i][1] - path[i - 1][1];
+          const jump = dr !== 0 || dc > 1;
+          ctx.strokeStyle = jump ? 'rgba(255,220,40,0.95)' : 'rgba(60,220,90,0.95)';
+          ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(s.x, s.y); ctx.stroke();
         }
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(60,220,90,0.9)';
+        ctx.fillStyle = 'rgba(60,220,90,0.95)';
         for (const c of path) { const s = cam.toScreen((c[0] + 0.5) * S, (c[1] + 0.5) * S); ctx.fillRect(s.x - 2, s.y - 2, 4, 4); }
       }
       const g = b.goal && b.goal.cell;
