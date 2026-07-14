@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 114 (Smart Mobs §6 Wayfinding: opt-in "Path-Aware Mobs" — pursuing mobs follow a real A* route around terrain (drops off ledges to ambush, routes around walls/wide gaps) instead of a straight-line beeline. Also upgrades Pack surround + low-HP flee to use pathing. Default off = classic aggro. Closes the Smart Mobs brief.)';
+const GAME_VERSION = 'v3 · build 115 (New Platformer worlds now spawn with a curated default World Settings preset — a snapshot of "Kevin\'s World!" gameplay settings (movement moves, scoring, Smart-Mobs behavior incl. wayfinding, weapons). Applies ONLY to newly-created PLT worlds on both the offline + online paths; existing worlds + other modes are untouched. + Smart Mobs §6 Wayfinding from build 114.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

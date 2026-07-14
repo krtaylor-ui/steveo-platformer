@@ -7,7 +7,23 @@ Guide, **Campaign mode** §12, Tower Defense/bots, world cleanup, itch/Tauri,
 plus new §13–§18: Ladders, Trampolines, Online/MP UX, Mob-config engine,
 Enchantments, Suspicion meter).
 
-## CURRENT STATE (2026-07-13) — build 114, on branch `smart-mobs-wayfinding` (NOT merged)
+## CURRENT STATE (2026-07-14) — build 115, on branch `smart-mobs-wayfinding` (NOT merged)
+
+**Build 115 — new-Platformer default World Settings preset (on top of the wayfinding
+work below).** Newly-CREATED Platformer worlds now spawn seeded with a curated snapshot
+of **Kevin's World!** gameplay settings (movement moves, scoring, weapons, Smart-Mobs
+behavior incl. §6 wayfinding). One shared preset `js/platformer-defaults.js`
+(`worldModeDefaults(mode)`) consumed by BOTH creation paths — `LOCAL_WORLDS.create`
+(offline) + server `emptyWorldData` (online `require`) — so client/server can't drift.
+Applies ONLY to new PLT worlds; other modes + all existing worlds untouched. Scope =
+gameplay/level settings only (audio/controller/chat/teleport/arena/SR/boss excluded).
+Source committed at `saves/Kevins_World_PLT_2026-07-14.json`. `physicsLocked:true` is
+carried (flagged — see DECISIONS build 115; easy to drop). Suite **362**. Server change
+needs a Railway deploy for ONLINE creation. Browser-UNTESTED.
+
+---
+
+## SMART MOBS §6 WAYFINDING (2026-07-13) — build 114, same branch
 
 **Smart Mobs §6 — WAYFINDING — is BUILT, and this CLOSES the original Smart Mobs brief
 entirely.** Branch `smart-mobs-wayfinding` off `main` @ build 113. Headless-verified

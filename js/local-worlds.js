@@ -48,7 +48,9 @@ const LOCAL_WORLDS = {
     const map = this._all();
     const id = this._uid();
     const now = new Date().toISOString();
-    const adv = {};
+    // Seed per-mode creation defaults (Platformer gets the "Kevin's World!" preset;
+    // other modes get {} → engine defaults). Existing worlds are never touched.
+    const adv = (typeof worldModeDefaults === 'function') ? worldModeDefaults(gameModeDefault) : {};
     if (config && config.arenaViewType) adv.arenaViewType = config.arenaViewType;
     map[id] = {
       id, world_name: worldName, description, is_published: false, created_at: now,

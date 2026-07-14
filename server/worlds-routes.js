@@ -1,4 +1,5 @@
 const { supabaseAdmin } = require('./supabase-client');
+const { worldModeDefaults } = require('../js/platformer-defaults.js');
 
 // Token verification — same contract as games-routes.js. Kept local so the two
 // route modules stay independently mountable.
@@ -57,6 +58,11 @@ function normalizeMovementConfig(config = {}) {
 
 function emptyWorldData({ width = WORLD_W, height = WORLD_H, gameModeDefault = 'NRM', createdBy = 'Player', config = {} } = {}) {
   const movement = normalizeMovementConfig(config);
+  // Seed per-mode creation defaults (Platformer gets the "Kevin's World!" preset;
+  // other modes get {} → engine defaults). Shared with the offline path via the
+  // same module, so client + server can't drift. Merged AFTER normalizeMovementConfig
+  // so the preset's movement values win for a fresh Platformer world.
+  Object.assign(movement, worldModeDefaults(gameModeDefault));
   // Arena worlds (Phase 3A.3): seed the chosen view type so the camera behaves
   // correctly from the first play; everything else uses the Arena settings tab's
   // flat-key defaults (applied client-side).

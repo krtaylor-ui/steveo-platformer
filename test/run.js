@@ -2,7 +2,7 @@
 //   node test/run.js
 const { execFileSync } = require('child_process');
 const path = require('path');
-const tests = ['test-pause.js', 'test-v3.js', 'test-scoring.js', 'test-rules.js', 'test-mobs.js', 'test-gamepad-nav.js', 'test-weapons.js', 'test-foliage.js', 'test-detection.js', 'test-webs.js', 'test-pathfinding.js', 'test-wayfinding.js'];
+const tests = ['test-pause.js', 'test-v3.js', 'test-scoring.js', 'test-rules.js', 'test-mobs.js', 'test-gamepad-nav.js', 'test-weapons.js', 'test-foliage.js', 'test-detection.js', 'test-webs.js', 'test-pathfinding.js', 'test-wayfinding.js', 'test-platformer-defaults.js'];
 let failed = 0;
 for (const t of tests) {
   process.stdout.write(`\n=== ${t} ===\n`);

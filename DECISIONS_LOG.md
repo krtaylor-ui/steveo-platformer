@@ -1485,3 +1485,45 @@ Suite 329 (+17 pathfinding, +17 wayfinding). Browser-UNTESTED (canvas + feel is
 Kevin's playtest). This CLOSES the original Smart Mobs brief entirely; next per
 Kevin's priority order = Arena objective-bots (T2), which is the intended next
 consumer of this shared pathfinder (FUTURE_ROADMAP §4).
+
+## Build 115 — New-Platformer default World Settings preset (snapshot of "Kevin's World!")
+Kevin asked: snapshot the World Settings on **Kevin's World!** and make them the
+default for **newly-created Platformer worlds** (existing worlds untouched).
+
+**Where new-world settings come from (two paths):** `LOCAL_WORLDS.create` (offline)
+and `POST /api/worlds/sandbox/create` → `emptyWorldData` (online). Both previously
+seeded only a few movement keys and let everything else fall back to
+`Game._worldAdvSettings` engine defaults.
+
+**Implementation — one shared preset, no drift.** New `js/platformer-defaults.js`
+(UMD, same pattern as `js/pathfinding.js`) exports `PLATFORMER_DEFAULTS` +
+`worldModeDefaults(mode)` (returns a fresh deep copy for 'PLT', `{}` for every
+other mode). BOTH creation paths consume it: local via the browser global, server
+via `require('../js/platformer-defaults.js')` — so client + server can't diverge.
+Merged only when `gameModeDefault === 'PLT'`; Normal/Speed-Run/Arena and all
+existing worlds are unaffected.
+
+**Snapshot scope = GAMEPLAY/LEVEL settings only (Kevin's choice).** Source =
+`saves/Kevins_World_PLT_2026-07-14.json` (committed for provenance). Included:
+movement moves (auto-climb, double jump, wall-slide + lock-away, ledge hang,
+ground slide + invincible), physics (gravity, jump-pad, redstone speed 2, XP-speed
+off, **physicsLocked**), scoring (score on, emerald/goal points), combat/weapons
+(slide-attack, guided/auto-return trident, weapon traits, unlimited+recoverable
+arrows), Smart-Mobs behavior (detection + detectActionRange 12, pack, sprint,
+webs+stacking, **pathAwareMobs** §6, zombie/piglin flee), day/night, background.
+**Excluded** (per the chosen scope — per-player/display/instance prefs): audio
+volumes, controller sensitivity/aim/deadzone, chat, online-health-bars,
+compact-hotbar, worldZoom, twoPlayerMode, customTeleportPoints (tied to that
+world's geometry), and all arena-*/speed-run-*/boss-* keys (irrelevant to PLT).
+
+**Flagged for Kevin:** `physicsLocked: true` is the most likely to surprise — it
+means a fresh Platformer world's physics is locked against player override by
+default (the creator would toggle it off in World Settings to tweak). Kept because
+it faithfully mirrors his world; easy to drop from the preset if unwanted.
+
+Because the preset references build-114 keys (`pathAwareMobs`), this rides on the
+`smart-mobs-wayfinding` branch as **build 115** (his world already uses those
+features) — it ships when wayfinding merges. Server change needs a Railway deploy
+to affect ONLINE creation (offline works on client reload). Test:
+`test/test-platformer-defaults.js` (PLT gets preset, other modes empty, scope
+exclusions, fresh-copy safety, merge simulation). Suite 362. Browser-UNTESTED.
