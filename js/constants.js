@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 142 (Jump arc fix: launching from directly beside a platform, the bot now jumps STRAIGHT UP (beside the edge → ledge-grab / step on top) instead of angling into the platform side; horizontal launch/drift is now proportional to how OFFSET the target is, so offset jumps still cover ground and clear the arc. + build 141 node-by-node.)';
+const GAME_VERSION = 'v3 · build 143 (Double-jump + ledge-grab now actually FIRE — the bot was releasing jump the instant it left the ground, so neither could trigger; it now holds jump-intent airborne (full-height single jumps, mid-air double-jump, and holds through the apex so ledge-grab catches the edge). A* also now prefers a fast double-jump for moderate heights. NEW: Movement → Climb Speed setting for the ledge climb animation. + build 142.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

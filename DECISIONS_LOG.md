@@ -2276,3 +2276,25 @@ horizontal is needed) — the arc has to hit the edge or clear the top."
 - Tests: test-bot-ai +3 (vertical takeoff straight up; rise straight; offset takeoff
   carries horizontal); updated the two-phase test for the new proportional drift.
   Suite 524. Browser-UNTESTED.
+
+## Double-jump + ledge-grab actually fire; Climb Speed setting (build 143)
+Kevin: bots weren't double-jumping OR grabbing/climbing edges (double-jump preferred —
+faster). Also asked for a configurable climb-animation speed.
+- **ROOT CAUSE:** build-141's node-by-node `_followStep` only set `jump=true` while
+  ON THE GROUND. So the instant the bot left the ground, jump input released →
+  `_jumpControl` never got wantJump=true airborne (double-jump never fired), AND the
+  held-jump ledge-grab (player needs jump held near the apex) never triggered either.
+  One flag broke both.
+- **FIX:** `_followStep` keeps `jump=true` while AIRBORNE and still below a higher node
+  (rise ≥ 1). `_jumpControl` reworked: hold jump the whole rise (`vy < -1`) for full
+  height + to keep it held through the apex (ledge-grab); the double-jump arms near the
+  apex (`vy > -2.5`) and re-presses. So single-jump, double-jump, AND ledge-grab all
+  work now.
+- **Cost tuning:** lowered `NAV_BIGJUMP_PENALTY` 2.5 → 0.8 so A* PREFERS a fast
+  double-jump for moderate 4-5 heights (4-up: 4.2 < two steps 4.4), while extreme 6+
+  climbs stay borderline vs a staircase. Matches Kevin's "double-jump is faster."
+- **NEW — Climb Speed setting** (World Settings → Movement → Moves, advanced, under
+  Ledge Hang): `climbSpeed` multiplier (0.5–3×, default 1) scales the ledge climb-up
+  (75f) + climb-down (45f) animation. `p._climbSpeed` via `_applyMovementConfig`.
+- Tests: test-bot-ai +2 (airborne keeps jump-intent toward a higher node; double-jump
+  edge sequence verified). Suite 526. Browser-UNTESTED.

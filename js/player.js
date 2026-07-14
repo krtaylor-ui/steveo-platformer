@@ -816,7 +816,7 @@ class Player {
         this._hangX = hx; this._hangY = hy;
         this._gripX = dir > 0 ? (standCol + 1) * BS : standCol * BS;   // ledge top corner (hands)
         this._gripY = footRow * BS;
-        this._hangState = 'down'; this._climbT = 0; this._climbDur = 45;
+        this._hangState = 'down'; this._climbT = 0; this._climbDur = Math.max(4, Math.round(45 / (this._climbSpeed || 1)));
       }
     }
   }
@@ -841,8 +841,8 @@ class Player {
       this._jumpPressed = input.isJump();
       if (input.isCrouch()) {                  // down → drop off
         this._hangState = null; this._hangCooldown = 12; this.vy = 2; this._downWas = true;
-      } else if (jumpEdge) {                    // up/jump → climb up (≈1.25s at the chosen speed)
-        this._hangState = 'up'; this._climbT = 0; this._climbDur = 75;
+      } else if (jumpEdge) {                    // up/jump → climb up (75f default; scaled by climbSpeed)
+        this._hangState = 'up'; this._climbT = 0; this._climbDur = Math.max(6, Math.round(75 / (this._climbSpeed || 1)));
       }
     } else if (s === 'up') {
       // Muscle-up: rise to the ledge (arms pivot from grip to perpendicular, legs

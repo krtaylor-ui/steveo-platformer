@@ -4722,6 +4722,7 @@ class Game {
     p._wallSlideEnabled = !!aws.wallSlideEnabled;
     p._wallJumpLockAway = !!aws.wallJumpLockAway;
     p._ledgeHangEnabled = !!aws.ledgeHangEnabled;
+    p._climbSpeed       = aws.climbSpeed || 1;   // ledge climb-up/down animation speed (1 = default)
     p._slideEnabled     = !!aws.slideEnabled;
     p._slideInvincible  = !!aws.slideInvincible;
     p._slideDur         = Math.max(6, Math.min(120, aws.slideDurationFrames ?? 30));

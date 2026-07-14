@@ -139,6 +139,7 @@ const WORLD_SETTINGS = {
       { key: 'wallSlideEnabled', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Wall Slide', hint: 'slow-slide down a wall you press into' },
       { key: 'wallJumpLockAway', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Wall-Jump Lock-Away', sub: true, dependsOn: 'wallSlideEnabled', advanced: true, hint: 'jump forces away, no steering till you land' },
       { key: 'ledgeHangEnabled', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Ledge Hang', hint: 'grab & climb block edges' },
+      { key: 'climbSpeed', tab: 'movement', group: 'Moves', modes: M.physics, type: 'cycle', opts: [0.5, 0.75, 1, 1.5, 2, 3], dflt: 1, label: 'Climb Speed', fmt: (v) => v.toFixed(2).replace(/\.?0+$/, '') + 'x', sub: true, dependsOn: 'ledgeHangEnabled', advanced: true, hint: 'how fast the ledge climb-up animation plays (1x = default)' },
       { key: 'slideEnabled', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Ground Slide', hint: 'jump + down to slide' },
       { key: 'slideInvincible', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Slide Invincible', sub: true, dependsOn: 'slideEnabled', advanced: true },
       { key: 'slideDurationFrames', tab: 'movement', group: 'Moves', modes: M.physics, type: 'cycle', opts: O.slideDur, dflt: 30, label: 'Slide Length', fmt: (v) => v + 'f', sub: true, dependsOn: 'slideEnabled', advanced: true },

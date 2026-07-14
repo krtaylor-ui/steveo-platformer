@@ -762,19 +762,20 @@ class BotController {
   // ledge apex, which the single-jump hold below already does.)
   _jumpControl(wantJump, riseNeeded) {
     const p = this.player;
-    if (!wantJump) { this._jHeld = 0; this._jArmed = false; return false; }
-    if (p.onGround) { this._jHeld = 1; this._jArmed = false; return true; }  // fresh ground jump (edge)
-    this._jHeld = (this._jHeld || 0) + 1;
+    if (!wantJump) { this._jArmed = false; return false; }
+    if (p.onGround) { this._jArmed = false; return true; }   // fresh ground jump (edge)
     const baseUp = this._envUp || NAV_MAX_JUMP_UP;
     const wantDouble = p._airJumpEnabled && (p._airJumpsUsed || 0) < 1 && riseNeeded > baseUp;
     if (wantDouble) {
-      // Hold while still rising; only near the APEX (vy ~ 0) release ONE frame to arm
-      // the edge, then press again → the air-jump fires at the top for MAX height
-      // (was firing too early / low). vy > -2.5 ≈ nearly at the peak.
+      // Rise on the FIRST jump; near the apex (vy ~ 0) release ONE frame to arm the
+      // edge, then press again → the mid-air DOUBLE-JUMP fires at the top for height.
       if (!this._jArmed) { if (p.vy > -2.5) { this._jArmed = true; return false; } return true; }
       return true;
     }
-    return this._jHeld < 8;   // single jump: hold briefly for full height, then release
+    // Single jump (or after the double-jump is spent): HOLD jump the whole way up —
+    // that gives full height AND keeps jump held through the apex so Ledge-Grab can
+    // catch the edge (it needs a held jump near the top). Release once we're falling.
+    return p.vy < -1;
   }
 
   // Node-by-node path follower (replaces the nearest-cell scan). Targets ONE node and
@@ -796,9 +797,14 @@ class BotController {
     const nearCol = Math.abs(tx - p.cx) < 1.9 * BLOCK_SIZE;
     const canRise = !nav.solid(cc, cr - 2);
     let jump = false;
-    if (p.onGround) {                                   // only INITIATE a jump from the ground
-      if (rise >= 1 && nearCol && canRise) jump = true;                                   // climb up to the node
-      else if (!nav.solid(cc + dir, cr + 1) && tr <= cr + 1 && nearCol && canRise) jump = true;  // hop a gap
+    if (rise >= 1 && canRise) {
+      // Want to gain height toward a higher node. On the ground: initiate when lined
+      // up. AIRBORNE: KEEP wanting to jump so _jumpControl can HOLD for full height,
+      // fire the mid-air DOUBLE-JUMP, and hold through the apex so LEDGE-GRAB catches
+      // the edge. (Previously jump was ground-only → double-jump/grab never fired.)
+      if (!p.onGround || nearCol) jump = true;
+    } else if (p.onGround && !nav.solid(cc + dir, cr + 1) && tr <= cr + 1 && nearCol && canRise) {
+      jump = true;                                      // hop a gap from the ground
     }
     return { dir, jump, rise: Math.max(0, rise), tx, tr };
   }

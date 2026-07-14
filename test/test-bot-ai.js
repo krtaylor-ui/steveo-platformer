@@ -711,6 +711,20 @@ console.log('Air control — two-phase (rise beside a ledge, then land on the co
   ok(Math.abs(ctrl._input.moveX) < 0.01, 'over the column → eases to 0 (drops on, not past)');
 }
 
+console.log('Airborne jump-intent — keeps wanting to jump toward a higher node:');
+{
+  const level = withPixels(mkLevel(['          ', '          ', '          ', '          ', '          ', '          ', '##########']));
+  const bot = mkPlayer(5, 5, { owner: 'p2' });          // feet row5 (floor row6)
+  const game = mkGame(level, [mkPlayer(9, 5, { owner: 'p1' }), bot]);
+  const ctrl = new BotController(game, 1, 'competitive', 'HARD');
+  const nav = BOT_AI.buildNav(level);
+  ctrl._path = [[5, 5], [5, 1]]; ctrl._pathIdx = 1;     // node 4 blocks up
+  bot.onGround = false;                                 // airborne, below the node
+  const step = ctrl._followStep(nav);
+  ok(step.jump === true, 'airborne below a higher node → still wants to jump (so double-jump / ledge-grab can fire)');
+  ok(step.rise >= 3, `rise reflects the climb needed (got ${step.rise})`);
+}
+
 console.log('Node-by-node — advances only after LANDING on a node (no fly-past):');
 {
   const level = flatLevel();

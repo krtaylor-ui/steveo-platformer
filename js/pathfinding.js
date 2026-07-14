@@ -202,7 +202,9 @@ const NAV_DROP_COST  = 0.05;  // per block of fall (tiny, but non-zero)
 // small easy jumps over one tall risky climb whenever the terrain offers steps
 // (Kevin: "plot 3 steps, not a 6-block climb"). Bots with a tall envelope are the
 // only ones that generate rise > 3 jumps, so mobs (envelope 3) are unaffected.
-const NAV_BIGJUMP_PENALTY = 2.5;  // extra cost per block of climb beyond a single jump
+const NAV_BIGJUMP_PENALTY = 0.8;  // extra cost per block of climb beyond a single jump
+                                  // (light: prefer a fast double-jump for moderate 4-5
+                                  // heights; only EXTREME 6+ climbs lose to a staircase)
 function _navEdgeCost(dc, dr) {
   let c = Math.max(1, Math.abs(dc));
   if (dr < 0) {
