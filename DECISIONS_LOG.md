@@ -2312,3 +2312,20 @@ flips back ON and it finally arms + fires the air-jump WHILE FALLING (too late).
   threshold (`vy > -1.5`, was -2.5) so it releases-to-arm right at the top for max height.
 - Tests: test-bot-ai +2 (holds below apex incl. vy -3; fires at vy -1; shrunk live rise
   still double-jumps via the locked total). Suite 528. Browser-UNTESTED.
+
+## Down-path fix — drop-through-platform (build 145)
+Kevin: with the player BELOW the bot, tracking broke back to a straight line through
+blocks. Repro: bot on a platform, player directly below → path was [[3,1],[3,5]] (straight
+DOWN through the platform at (3,2)).
+- **ROOT CAUSE:** `navJumpClear`'s arc sweep skipped endpoint bodies with `x===nc &&
+  y<=nr`. On a VERTICAL move the takeoff and landing share a column (c===nc), so
+  `y<=nr` skipped the ENTIRE column → the platform between was never checked → the
+  straight-down "jump" was accepted. (The build-137 fix handled horizontal/diagonal but
+  this range-skip was too broad for pure-vertical.)
+- **FIX:** skip only the actual endpoint BODY cells — `(y===r||y===r-1)` at the takeoff
+  column and `(y===nr||y===nr-1)` at the landing column — so intermediate cells (incl.
+  a platform straight below/above) are always checked. Now the down path routes AROUND
+  ([[3,1],[2,1],[1,5],[3,5]] — walk to the edge, drop off, to the player). Up/ledge/
+  gap/maze cases all still pass.
+- Tests: test-pathfinding +3 (down routes around, not straight through). Suite 531.
+  Browser-UNTESTED. Sample worlds: still only the redstone puzzle flags (unchanged).

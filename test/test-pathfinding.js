@@ -222,6 +222,23 @@ console.log('Maze walls — a jump cannot pass THROUGH a solid wall (the maze bu
   ok(findMobPath(shortWall, [1, 2], [8, 2], { maxRadius: 30 }) !== null, 'a short wall (open above) is still hoppable');
 }
 
+console.log('Down through a platform — routes AROUND, not straight through (vertical-skip bug):');
+{
+  const nav = mkNav([
+    '          ',
+    '   S      ',   // start on a platform (feet row1)
+    '  ######  ',   // platform cols2-7 at row2
+    '          ',
+    '          ',
+    '   G      ',   // goal on the ground below (feet row5)
+    '##########',
+  ]);
+  const res = findMobPath(nav, [3, 1], [3, 5], { maxRadius: 40, maxUp: 5, maxDx: 6 });
+  ok(res !== null, 'a route down (around the platform edge) exists');
+  ok(!(res.path.length === 2 && res.path.every(p => p[0] === 3)), 'does NOT drop straight down THROUGH the platform');
+  ok(res.path.some(p => p[1] >= 5), 'actually reaches the lower level');
+}
+
 console.log('Partial path — get as close as possible when the goal is unreachable:');
 {
   const nav = mkNav([

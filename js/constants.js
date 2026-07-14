@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 144 (Double-jump timing fix: the air-jump now fires AT THE APEX (top of the arc), not late. The bot was using the shrinking REMAINING rise to decide, which flipped the double-jump off mid-climb and back on while FALLING (firing late); the jump height is now LOCKED at take-off and the air-jump triggers right at the peak. + build 143 double-jump/ledge-grab enable + Climb Speed.)';
+const GAME_VERSION = 'v3 · build 145 (DOWN-path fix: when the player is below the bot, the route no longer draws/plans straight DOWN through a platform — the jump arc-clearance check was skipping the whole column on a vertical move, so a floor/platform straight below wasn\'t checked. Now it routes around (walk to edge, drop). + build 144 apex double-jump.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

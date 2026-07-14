@@ -84,8 +84,11 @@ function _navArcClears(nav, c, r, nc, nr, peakRow) {
     const x = Math.round(c + dc * t);
     const y = t < 0.5 ? Math.round(r + (peakRow - r) * (t / 0.5))
                       : Math.round(peakRow + (nr - peakRow) * ((t - 0.5) / 0.5));
-    if (x === c && y >= r - 1) continue;             // still leaving the takeoff body
-    if (x === nc && y <= nr) continue;               // arriving into the landing body
+    // Skip ONLY the endpoint bodies (feet+head), not whole ranges — a `y <= nr` skip
+    // wrongly skipped the entire column on a VERTICAL move (dc=0, c===nc), so a
+    // platform straight below/above was never checked (drop-through-the-floor bug).
+    if (x === c  && (y === r  || y === r - 1))  continue;   // takeoff body
+    if (x === nc && (y === nr || y === nr - 1)) continue;   // landing body
     if (nav.solid(x, y) || nav.solid(x, y - 1)) return false;   // feet+head hit terrain
   }
   return true;
