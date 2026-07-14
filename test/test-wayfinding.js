@@ -22,6 +22,7 @@ const real = {
   PATH_FLANK_BIAS_BLOCKS: 2.5, MOB_ATTACK_RATE: 30, SKELETON_SHOOT_RATE: 90,
   CREEPER_FUSE_FRAMES: 60,
   PATH_CROWD_THRESHOLD: 8, PATH_CROWD_RECOMPUTE_MULT: 2.5, PATH_CROWD_RADIUS_MULT: 0.6,
+  MOB_PATH_BUDGET: 4, MOB_PATH_RECOMPUTES_PER_FRAME: 2,
 };
 const sandbox = new Proxy(real, {
   has: () => true,
@@ -238,6 +239,42 @@ console.log('Active-pather count reflects mobs following routes this frame:');
   mm._targetPlayers = [player];
   mm.update(player, level);
   ok(mm._activePathCount === 1, `one chasing mob counted as wayfinding (got ${mm._activePathCount})`);
+}
+
+console.log('Bounded pathfinding — only the nearest few mobs are "smart" (perf):');
+{
+  const mm = new MobManager();
+  const cfg = { enabled: true, searchRadius: 24, recompute: 12, maxExpansions: 2500 };
+  const level = mkLevel(['                              ', '                              ', '##############################']);
+  const player = bodyAt(15, 1, 48);
+  // 10 chasing mobs strung across the floor, all within the search radius of the player.
+  for (let i = 0; i < 10; i++) { const z = mm._createMob('Zombie', (3 + i * 2) * BS, 1 * BS - 48); z._alerted = true; mm.mobs.push(z); }
+  const set = mm._selectPathfinders(player, null, cfg);
+  ok(set instanceof Set && set.size === 4, `only MOB_PATH_BUDGET (4) mobs selected to pathfind (got ${set && set.size})`);
+  // The selected mobs must be the CLOSEST to the player (nearest-first), not arbitrary.
+  const dist = (m) => Math.abs(m.cx - player.cx);
+  const chosenMax = Math.max(...[...set].map(dist));
+  const unchosenMin = Math.min(...mm.mobs.filter(m => !set.has(m)).map(dist));
+  ok(chosenMax <= unchosenMin, 'the selected pathfinders are the nearest mobs to the player');
+  // Few mobs in range → no restriction (null = everyone may path).
+  const mm2 = new MobManager();
+  for (let i = 0; i < 3; i++) { const z = mm2._createMob('Zombie', (14 + i) * BS, 1 * BS - 48); z._alerted = true; mm2.mobs.push(z); }
+  ok(mm2._selectPathfinders(player, null, cfg) === null, '<= budget in range → no restriction (null)');
+}
+
+console.log('Per-frame A* cap — recomputes are bounded regardless of mob count:');
+{
+  const mm = new MobManager();
+  mm.pathCfg = { enabled: true, searchRadius: 24, recompute: 12, maxExpansions: 2500 };
+  const level = mkLevel(['                    ', '                    ', '####################']);
+  const player = bodyAt(10, 1, 48);
+  for (let i = 0; i < 10; i++) { const z = mm._createMob('Zombie', (1 + i) * BS, 1 * BS - 48); z._alerted = true; mm.mobs.push(z); }
+  // Count findMobPath calls in one update() frame (all mobs stale on their first frame).
+  let calls = 0; const orig = sandbox.findMobPath;
+  sandbox.findMobPath = (...a) => { calls++; return orig(...a); };
+  try { mm.update(player, level); } finally { sandbox.findMobPath = orig; }
+  ok(calls <= 2, `at most MOB_PATH_RECOMPUTES_PER_FRAME (2) A* runs in a frame, even with 10 mobs (got ${calls})`);
+  ok(calls >= 1, 'but at least one mob does pathfind (not fully starved)');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

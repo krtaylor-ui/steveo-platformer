@@ -349,8 +349,22 @@ class Mob {
     const stale = !this._path || this._path.length < 2 || --this._pathTimer <= 0 ||
       goalMoved || this._pathStale(level, this._path);
     if (stale) {
+      // Per-frame global A* cap: if this frame's recompute budget is already spent, DEFER
+      // running A* entirely — so the cost can't spike when several mobs go stale together,
+      // INCLUDING mobs whose last search failed (null path, e.g. an unreachable player):
+      // those would otherwise re-run the full (expensive) doomed search every frame. Follow
+      // a still-valid cached route if we have one; otherwise beeline this frame.
+      const rb = this._recomputeBudget;
+      if (rb && rb.left <= 0) {
+        if (this._path && this._path.length >= 2 && !this._pathStale(level, this._path)) {
+          this._wayfinding = true;
+          return this._followPath(this._path, player, level);
+        }
+        return null;                              // no budget + no usable route → cheap beeline
+      }
       const res = findMobPath(this._navFor(level), [cc, cr], [gc, gr],
         { maxRadius: cfg.searchRadius, maxExpansions: cfg.maxExpansions });
+      if (rb) rb.left--;
       // Reset the recompute timer; on a mob's FIRST route, add a random offset so a
       // crowd that all start chasing the same frame don't then recompute in lockstep
       // (spreads the A* cost across frames — cheap insurance on top of the crowd throttle).
@@ -2114,6 +2128,30 @@ class MobManager {
   // PATH_CROWD_THRESHOLD active pathers, routes recompute less often + over a smaller
   // radius (fewer + cheaper A* runs). Returns the base cfg unchanged when uncrowded or
   // path-aware is off. The threshold/multipliers are tunable perf levers (constants.js).
+  // Bounded pathfinding — pick which mobs get to be "smart" (run A*) this frame: the
+  // nearest MOB_PATH_BUDGET actively-chasing, in-range mobs. Returns a Set of those mobs,
+  // or null when there are few enough in range that no restriction is needed. Everyone
+  // NOT in the set falls back to the cheap legacy beeline+hop. This is the core of the
+  // "simple nav for most mobs, smart nav for a few" design (Kevin's suggestion) and is
+  // what actually holds the framerate with a big group — A* is far too costly per call
+  // to run on every mob every recompute.
+  _selectPathfinders(player, player2, cfg) {
+    if (!cfg || !cfg.enabled) return null;
+    const R = cfg.searchRadius;
+    const inRange = [];
+    for (const m of this.mobs) {
+      if (!m.alive) continue;
+      const t = this._nearestPlayer(m.cx, m.cy, player, player2);
+      if (!t) continue;
+      const dc = Math.abs(m.cx - t.cx) / BLOCK_SIZE, dr = Math.abs(m.cy - t.cy) / BLOCK_SIZE;
+      if (dc > R || dr > R) continue;                 // out of pathfind range → beelines anyway
+      inRange.push({ m, d: dc + dr });
+    }
+    if (inRange.length <= MOB_PATH_BUDGET) return null;   // few enough → no restriction
+    inRange.sort((a, b) => a.d - b.d);
+    return new Set(inRange.slice(0, MOB_PATH_BUDGET).map(x => x.m));
+  }
+
   _crowdAdjustedPathCfg() {
     const cfg = this.pathCfg;
     if (!cfg || !cfg.enabled) return cfg;
@@ -2208,6 +2246,11 @@ class MobManager {
     // recompute less often + search a smaller radius — trading pursuit snappiness
     // for framerate. Uses LAST frame's active count (1-frame lag is imperceptible).
     const pathCfgEff = this._crowdAdjustedPathCfg();
+    // Bounded pathfinding (perf): pick the NEAREST few in-range chasers to be the "smart"
+    // (pathfinding) mobs this frame; everyone else beelines. Plus a shared per-FRAME cap
+    // on actual A* runs so the cost can't spike no matter the crowd size (see constants).
+    const budgetSet = this._selectPathfinders(player, player2, pathCfgEff);
+    this._frameRecomputes = { left: MOB_PATH_RECOMPUTES_PER_FRAME };   // shared per-frame A* token
 
     // Mob AI — each mob targets the nearest active player
     let _pathingNow = 0;
@@ -2227,7 +2270,8 @@ class MobManager {
       this._updateDetection(mob, target, level);   // Smart Mobs §4 — sight axis + gate
       this._updateSprint(mob, target);             // Smart Mobs §7 — telegraphed sprint
       mob._flee = this.fleeCfg ? this.fleeCfg[MOB_CLASS_KEY[mob.constructor.name]] : null;  // §8
-      mob._pathCfg = pathCfgEff;                   // Smart Mobs §6 — (crowd-adjusted) path config
+      mob._pathCfg = (pathCfgEff && (!budgetSet || budgetSet.has(mob))) ? pathCfgEff : null;  // §6 — budgeted: only the nearest few are "smart"
+      mob._recomputeBudget = this._frameRecomputes;   // shared per-frame A* cap (all mobs reference the one token)
       mob._wayfinding = false;                     // reset each frame; _pathStep sets it true if pathing
       if (mob instanceof Skeleton) {
         mob.update(target, level, this.arrows);

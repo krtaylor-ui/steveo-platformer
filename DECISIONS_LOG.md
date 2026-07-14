@@ -2370,3 +2370,36 @@ this exposed a *chain* of actuator/planner bugs the earlier decision-only tests 
   different approaches before giving up + a visual cue for follow/mirror mode — deferred
   to its own build (the climb fix removes most stuck cases; "!" timing is best tuned after
   Kevin re-tests). Recorded in FUTURE_ROADMAP.
+
+## Mob pathfinding PERFORMANCE — bounded "smart" nav (build 147)
+Kevin: the maze climb (146) runs clean, but a regular platformer level with 8-10 mobs
+became "super slow, impossible to play." He suspected many entities sharing the route
+planner and suggested "simple nav for most mobs, smart nav for a few." Correct diagnosis.
+- **Root cause:** `platformer-defaults.js` sets `pathAwareMobs: true` (it's `false`
+  everywhere else), so EVERY mob runs the A* route planner. Benchmarked findMobPath at
+  the mob envelope on a representative level: **~5 ms per call (reachable goal), up to
+  ~25 ms (far / in-range-but-unreachable — a whole frame in ONE call)**. 8-10 mobs ×
+  that = 50-250 ms/frame. (A precomputed flat solidity grid barely helped — the cost is
+  the algorithm: navNeighbors does arc-sweep jump-clearance per node.)
+- **Fix — bounded pathfinding (the "few smart mobs" design):**
+  1. **Path budget:** each frame only the NEAREST `MOB_PATH_BUDGET` (=4) in-range chasers
+     are "smart" (get a path config); everyone else uses the cheap legacy beeline+hop
+     (`_selectPathfinders` → a Set; non-members get `_pathCfg = null`).
+  2. **Per-frame A* cap:** a shared token (`MOB_PATH_RECOMPUTES_PER_FRAME` = 2) caps how
+     many findMobPath runs happen per FRAME across ALL mobs. When spent, a mob follows its
+     cached route or beelines — crucially INCLUDING mobs whose last search failed (null
+     path, unreachable player), which otherwise re-ran the full doomed search every frame.
+     Token lives on each mob (`mob._recomputeBudget`, one shared object), NOT the cfg —
+     mutating the shared cfg leaked a stale token across the test suite.
+  3. `PATH_MAX_EXPANSIONS` 5000 → 2500 (a 24-radius route fits well under it; caps the
+     worst single call ~10 ms).
+  4. `PATH_CROWD_THRESHOLD` → 4 (= budget): the nearest few run at FULL config (snappy);
+     the per-frame cap, not crowd-degrade, is the framerate guard.
+- **Measured (real MobManager + 10 real Zombies, 180 frames):** reachable goals → avg
+  0.55 A* calls/frame, MAX 1, ~0.6 ms worst frame. In-range-unreachable → MAX 2/frame
+  (= the cap), ~1.3 ms. Was effectively unbounded (50 ms+) before.
+- Distant mobs beelining is fine in a platformer (off-screen / not the threat); the
+  nearest 4 navigate smartly, and the set re-picks as the player moves.
+- Tests: +2 groups in test-wayfinding (budget selects nearest ≤4; per-frame cap ≤2 with
+  10 mobs) + updated the crowd-throttle constants mock. Suite 542, all green. Browser-UNTESTED.
+- Levers (constants.js): MOB_PATH_BUDGET, MOB_PATH_RECOMPUTES_PER_FRAME, PATH_MAX_EXPANSIONS.

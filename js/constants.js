@@ -5,8 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 146 (Two-level climb EXECUTION fix — verified with a frame-by-frame physics sim of the real Player + bot actuator: the bot now completes consecutive double-jumps up a maze\'s vertical sections. It launches an up-and-across jump from the TAKE-OFF node (not after walking under/off the target), no longer re-checks head-room mid-flight (which released the double-jump late), backs up to clear headroom when head-blocked, air-controls at full speed so long diagonal jumps land, plans only RELIABLE double-jumps (up 5/dx 9) so it routes via interim platforms instead of un-executable mega-leaps, and never counts the follow-band as "arrived" mid-jump (which dropped it back down). + build 145 down-path.)';
-
+const GAME_VERSION = 'v3 · build 147 (Mob pathfinding PERFORMANCE fix — a platformer with 8-10 mobs became unplayable because every mob ran the expensive A* route planner (measured ~5 ms, up to ~25 ms, per call). Now only the NEAREST few chasers are "smart" (pathfind); the rest use the cheap legacy beeline+hop, and at most 2 A* runs happen per FRAME across ALL mobs — so cost stays flat no matter how many are on screen (10-mob worst frame ~0.6 ms in a sim). + build 146 two-level climb.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
@@ -191,12 +190,24 @@ const SPRINT_MAX_BLOCKS    = 12;    // … up to this far (closing distance, not
 const PATH_RECOMPUTE_FRAMES = 12;   // recompute cadence (~5×/sec) — cache the route between
 const PATH_SEARCH_RADIUS    = 24;   // bounded search radius (blocks); player farther than this
                                     //   → fall back to legacy chase/wander (not actionable yet)
-const PATH_MAX_EXPANSIONS    = 5000; // A* node-expansion cap (runaway backstop)
+const PATH_MAX_EXPANSIONS    = 2500; // A* node-expansion cap (runaway backstop). A single call
+                                     // measured ~5 ms (reachable) / ~25 ms (far-unreachable) at
+                                     // 5000 — a whole frame — so it's halved; a 24-radius route
+                                     // fits well under 2500, and this caps the worst case ~10 ms.
 const PATH_FLANK_BIAS_BLOCKS = 2.5;  // §5 surround: path GOAL offset past the player (per side)
-// Crowd-adaptive throttle: when more than this many mobs are actively wayfinding at
-// once, degrade every mob's path config (recompute less often + smaller radius) to hold
-// framerate. Kevin saw slowdown ~10 mobs on screen; 8 = the drop-to-cheaper threshold.
-const PATH_CROWD_THRESHOLD      = 8;
+// ── Bounded pathfinding (the real perf fix). A* is EXPENSIVE per call (see above), so
+// letting every mob run it tanks the framerate (Kevin: 8–10 mobs → "impossible to play").
+// Instead only the NEAREST few actively-chasing mobs are "smart" (pathfind); everyone
+// else uses the cheap legacy beeline+hop ("simple" nav). And at most a couple of A* runs
+// are allowed per FRAME (the rest keep their cached route / beeline), so the cost never
+// spikes no matter how many mobs are on screen. These are the primary perf levers.
+const MOB_PATH_BUDGET            = 4; // max mobs allowed to pathfind at all (nearest-first)
+const MOB_PATH_RECOMPUTES_PER_FRAME = 2; // max A* runs per frame across ALL mobs (spikes-guard)
+// Crowd-adaptive throttle (secondary safety): degrade the pathers' config if MORE than
+// this many are ever active. Set to the budget so the nearest few "smart" mobs normally
+// run at FULL config (snappy pursuit) — the per-frame A* cap is what guards the framerate,
+// not this. It only bites if MOB_PATH_BUDGET is raised beyond this.
+const PATH_CROWD_THRESHOLD      = 4;
 const PATH_CROWD_RECOMPUTE_MULT = 2.5; // ×recompute interval when crowded (12f → 30f, ~2/sec)
 const PATH_CROWD_RADIUS_MULT    = 0.6; // ×search radius + node cap when crowded (24bl → ~14bl)
 
