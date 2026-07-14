@@ -2260,3 +2260,19 @@ fly-by waypoint, and missed both. Asked to "mandate it follow the path."
   now also prefers staircases (build 140), so double-jump edges appear only when needed.
 - Tests: test-bot-ai +2 (airborne-over-node does NOT advance; landed → advances).
   Suite 521. Browser-UNTESTED.
+
+## Jump arc — straight-up beside a platform, proportional horizontal (build 142)
+Kevin: launching from the block directly LEFT of a platform 3 up, the bot angled
+right INTO the platform side as it rose. "It needs to jump straight up (unless
+horizontal is needed) — the arc has to hit the edge or clear the top."
+- **FIX (`_applyMove`):** compute how horizontally OFFSET the target node is (`dxB`).
+  A near-vertical target (|dxB| <= 1.2, rise >= 2) = a "beside-a-platform" climb →
+  `verticalJump`: the TAKE-OFF frame launches straight up (moveX 0) and the RISE phase
+  stays straight (moveX 0), so it goes up beside the edge (ledge-grab catches it / it
+  steps on at the top) instead of clipping the platform side/underside. An OFFSET
+  target drifts/launches horizontally PROPORTIONAL to the offset (min .25 → cap .6),
+  so longer diagonal jumps still cover ground during the arc. Traverse + ease at the
+  landing row unchanged.
+- Tests: test-bot-ai +3 (vertical takeoff straight up; rise straight; offset takeoff
+  carries horizontal); updated the two-phase test for the new proportional drift.
+  Suite 524. Browser-UNTESTED.

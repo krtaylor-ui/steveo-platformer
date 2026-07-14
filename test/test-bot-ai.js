@@ -675,15 +675,34 @@ console.log('Wayfinding fix — stuck bot triggers a back-up-and-jump escape:');
   ok(escapeMove !== null, 'a wedged bot enters an escape maneuver (not endless vibration)');
   ok(escapeMove.moveX < 0 && escapeMove.jump === true, 'escape backs up (reverse dir) AND jumps to clear the obstacle');
 }
+console.log('Vertical jump — straight up beside a platform (not into it):');
+{
+  const level = flatLevel();
+  const bot = mkPlayer(5, 2, { owner: 'p2' });
+  const game = mkGame(level, [mkPlayer(9, 2, { owner: 'p1' }), bot]);
+  const ctrl = new BotController(game, 1, 'competitive', 'HARD');
+  // Target ~directly above (tx ≈ current column), rise 3 → vertical jump.
+  bot.onGround = true;
+  ctrl._applyMove({ dir: 1, jump: true, rise: 3, tx: bot.cx + 3, tr: 0 });
+  ok(Math.abs(ctrl._input.moveX) < 0.01 && ctrl._input.jump === true, 'takeoff launches STRAIGHT UP (no horizontal into the platform)');
+  bot.onGround = false;
+  ctrl._applyMove({ dir: 1, jump: false, rise: 3, tx: bot.cx + 3, tr: 0 });
+  ok(Math.abs(ctrl._input.moveX) < 0.01, 'rises straight beside the platform (no drift into it)');
+  // Offset target → takeoff carries horizontal to cover ground.
+  bot.onGround = true;
+  ctrl._applyMove({ dir: 1, jump: true, rise: 2, tx: bot.cx + 5 * B, tr: 0 });
+  ok(ctrl._input.moveX > 0.3, 'offset target → takeoff moves horizontally to cover the distance');
+}
+
 console.log('Air control — two-phase (rise beside a ledge, then land on the column):');
 {
   const level = flatLevel();
   const bot = mkPlayer(5, 2, { owner: 'p2', onGround: false });   // airborne, feet row 2
   const game = mkGame(level, [mkPlayer(9, 2, { owner: 'p1' }), bot]);
   const ctrl = new BotController(game, 1, 'competitive', 'HARD');
-  // Landing is ABOVE (tr=0, we're at row 2) → RISE, only gentle drift (don't dive under).
+  // Landing ABOVE + OFFSET (tr=0, tx 5 blocks right) → drift toward it to cover ground.
   ctrl._applyMove({ dir: 1, jump: false, rise: 5, tx: bot.cx + 5 * B, tr: 0 });
-  ok(Math.abs(ctrl._input.moveX) <= 0.25, 'below the ledge → mostly rise (gentle drift, no diving under)');
+  ok(ctrl._input.moveX > 0.25, 'below an OFFSET ledge → drifts toward it (covers horizontal during the arc)');
   // At the landing row (tr=2) and far → traverse toward the column.
   ctrl._applyMove({ dir: 1, jump: false, rise: 0, tx: bot.cx + 5 * B, tr: 2 });
   ok(ctrl._input.moveX > 0.3, 'at the landing row → traverse toward the column');

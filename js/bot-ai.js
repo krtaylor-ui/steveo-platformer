@@ -696,16 +696,22 @@ class BotController {
       this._lastX = p.cx;
       return;
     }
+    // How horizontally OFFSET the target is (blocks). A target ~directly above means
+    // a "beside a platform" climb → the arc must go STRAIGHT UP (any sideways motion
+    // clips the platform); an offset target needs horizontal travel during the arc.
+    const dxB = (step.tx != null) ? (step.tx - p.cx) / BLOCK_SIZE : (step.dir || 0);
+    const verticalJump = Math.abs(dxB) <= 1.2 && (step.rise || 0) >= 2;
+
     // ── AIRBORNE: two-phase air control (the player has full mid-air control). ──
-    // Landing is ABOVE us (jumping ONTO a ledge/platform) → RISE beside the edge
-    // first (only a gentle drift toward it), so we clear the platform top / let
-    // ledge-grab catch it, instead of diving under the overhang and bonking. Once we
-    // reach the landing row, TRAVERSE onto the column and ease in (precise landing).
+    // Below the landing row → RISE: straight up for a vertical (beside-platform) jump
+    // so we don't clip the platform side/underside — ledge-grab catches the edge or we
+    // step over at the top; for an offset target, drift toward it to cover ground.
+    // At/above the landing row → TRAVERSE onto the column and ease in (precise landing).
     if (!p.onGround) {
       const myRow = Math.floor((p.y + p.height - 1) / BLOCK_SIZE);
       const dx = (step.tx != null) ? step.tx - p.cx : (step.dir || 0) * BLOCK_SIZE;
       if (step.tr != null && myRow > step.tr) {
-        i.moveX = Math.sign(dx) * 0.2;                 // below the ledge → mostly rise, drift a touch toward it
+        i.moveX = verticalJump ? 0 : Math.sign(dx) * Math.min(0.6, Math.max(0.25, Math.abs(dxB) / 4));
       } else if (step.tx != null) {
         const seek = Math.abs(dx) < 3 ? 0 : Math.sign(dx) * Math.min(1, Math.abs(dx) / (0.8 * BLOCK_SIZE));
         i.moveX = seek * (0.65 + 0.35 * this.diff.navPrecision);  // at/above the ledge → land on the column
@@ -721,7 +727,9 @@ class BotController {
     // speed, so movement looks less robotic and is a touch less effective.
     let mag = this.diff.alwaysRun ? 1 : (0.55 + 0.45 * this.diff.navPrecision);
     if (!this.diff.alwaysRun && this._frac() > this.diff.navPrecision) mag *= 0.4;
-    i.moveX = dir * mag;
+    // Launch a vertical (beside-platform) jump STRAIGHT UP — no horizontal on the
+    // take-off frame, so it rises beside the edge instead of into the platform.
+    i.moveX = (verticalJump && step.jump) ? 0 : dir * mag;
     i.jump = this._jumpControl(!!step.jump, step.rise || 0);
     // Stuck detection: intending to move but no horizontal progress → wedged.
     // After a short window (scaled by skill so Easy dithers a touch longer), kick
