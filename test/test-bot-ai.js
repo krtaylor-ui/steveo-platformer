@@ -46,6 +46,7 @@ run('blocks.js', 'this.BLOCK=BLOCK;');
 run('pathfinding.js', 'this.findMobPath=findMobPath; this.navStandable=navStandable;');
 run('input.js', 'this.InputManager=InputManager;');
 run('bot-ai.js', 'this.BOT_AI=BOT_AI; this.BotController=BotController;');
+run('bot-telemetry.js', 'this.BOT_TELEMETRY=BOT_TELEMETRY;');
 
 const { InputManager, BOT_AI, BotController, BLOCK, BLOCK_SIZE, BOT_DIFFICULTY_PRESETS } = sandbox;
 const B = BLOCK_SIZE;
@@ -609,6 +610,39 @@ console.log('Phase 6 — custom rulesets route to the right strategy:');
   ok(['engage', 'hunt'].includes(customKind({ pvp: true }, {})), 'custom {pvp} → kills');
 }
 sandbox.ARENA_RULES = REAL_RULES;   // keep the real engine for any later blocks
+
+// ════════════════════════════════════════════════════════════
+// Phase 7 — telemetry (records, trace collapse, batch, summarize)
+// ════════════════════════════════════════════════════════════
+console.log('Phase 7 — telemetry records + batch + summarize:');
+{
+  const BOT_TELEMETRY = sandbox.BOT_TELEMETRY;
+  const level = flatLevel();
+  const bot = mkPlayer(5, 2, { owner: 'p2' });
+  const opp = mkPlayer(9, 2, { owner: 'p1' });
+  const game = mkGame(level, [opp, bot], { arenaConfig: { arenaGameMode: 'DEATHMATCH' } });
+  game.arenaState = { stats: { p1: {}, p2: { kills: 5, deaths: 2, mobKills: 1 } }, gameStartTime: 1, endTime: 1 };
+  const ctrl = new BotController(game, 1, 'competitive', 'HARD');
+  game._botControllers = [ctrl];
+  for (let f = 0; f < 60; f++) { game.frameCount = f; ctrl._think(); }  // populate a trace
+  const recs = BOT_TELEMETRY.buildRecords(game, { ts: 1000, matchId: 'test-1', winnerId: 'p2', durationSec: 120 });
+  ok(recs.length === 1, 'one record per bot');
+  const r = recs[0];
+  ok(r.schema === 'steveo-bot-telemetry/v1', 'record carries the schema id');
+  ok(r.mode === 'DEATHMATCH' && r.bot.difficulty === 'HARD' && r.bot.slot === 2, 'record has mode + difficulty + slot');
+  ok(r.outcome.result === 'win', 'winner resolves to a win');
+  ok(r.stats.kills === 5 && r.stats.deaths === 2, 'objective stats copied from arenaState');
+  ok(Array.isArray(r.decisionTrace) && r.decisionTrace.length >= 1, 'decision trace present');
+  ok(r.decisionTrace.every(run => run.toFrame >= run.fromFrame && run.samples >= 1), 'trace runs are well-formed (collapsed)');
+  ok(typeof r.goalCounts === 'object' && Object.keys(r.goalCounts).length >= 1, 'goalCounts present');
+  // Trace collapse: many identical consecutive decisions → few runs.
+  ok(r.decisionTrace.length < 40, `consecutive identical decisions collapsed (${r.decisionTrace.length} runs from 60 ticks)`);
+  // Batch + summarize over an accumulated set.
+  const batch = BOT_TELEMETRY.exportBatch(recs.concat(recs));
+  ok(batch.schema === 'steveo-bot-telemetry/v1' && batch.matchCount === 2 && batch.dataDictionary === 'BOT_TELEMETRY_SCHEMA.md', 'exportBatch wraps records + points to the data dictionary');
+  const sum = BOT_TELEMETRY.summarize(recs.concat(recs));
+  ok(sum.length === 1 && sum[0].mode === 'DEATHMATCH' && sum[0].difficulty === 'HARD' && sum[0].matches === 2 && sum[0].winRate === 1, 'summarize aggregates per mode×difficulty');
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

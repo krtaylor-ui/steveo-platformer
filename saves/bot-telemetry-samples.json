@@ -1,0 +1,1811 @@
+{
+  "schema": "steveo-bot-telemetry/v1",
+  "dataDictionary": "BOT_TELEMETRY_SCHEMA.md",
+  "exportedAt": 1784006500945,
+  "matchCount": 36,
+  "matches": [
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "DEATHMATCH-1",
+      "ts": 1783994498904,
+      "mode": "DEATHMATCH",
+      "rulesetId": "DEATHMATCH",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 2,
+        "ownerId": "p2",
+        "role": "competitive",
+        "difficulty": "EASY"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 1
+      },
+      "stats": {
+        "kills": 1,
+        "deaths": 4,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "engage": 16
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 120,
+          "kind": "engage",
+          "reason": "highest-threat opponent",
+          "target": "p3",
+          "cell": [
+            11,
+            2
+          ],
+          "samples": 5
+        },
+        {
+          "fromFrame": 150,
+          "toFrame": 270,
+          "kind": "engage",
+          "reason": "highest-threat opponent",
+          "target": "p1",
+          "cell": [
+            6,
+            2
+          ],
+          "samples": 5
+        },
+        {
+          "fromFrame": 300,
+          "toFrame": 390,
+          "kind": "engage",
+          "reason": "highest-threat opponent",
+          "target": "p3",
+          "cell": [
+            11,
+            2
+          ],
+          "samples": 4
+        },
+        {
+          "fromFrame": 420,
+          "toFrame": 450,
+          "kind": "engage",
+          "reason": "highest-threat opponent",
+          "target": "p1",
+          "cell": [
+            6,
+            2
+          ],
+          "samples": 2
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "DEATHMATCH-1",
+      "ts": 1783994498904,
+      "mode": "DEATHMATCH",
+      "rulesetId": "DEATHMATCH",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 3,
+        "ownerId": "p3",
+        "role": "competitive",
+        "difficulty": "MEDIUM"
+      },
+      "outcome": {
+        "result": "win",
+        "score": 2
+      },
+      "stats": {
+        "kills": 2,
+        "deaths": 2,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "engage": 32
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 465,
+          "kind": "engage",
+          "reason": "highest-threat opponent",
+          "target": "p2",
+          "cell": [
+            8,
+            2
+          ],
+          "samples": 32
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "DEATHMATCH-2",
+      "ts": 1783994558916,
+      "mode": "DEATHMATCH",
+      "rulesetId": "DEATHMATCH",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 2,
+        "ownerId": "p2",
+        "role": "competitive",
+        "difficulty": "MEDIUM"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 4
+      },
+      "stats": {
+        "kills": 4,
+        "deaths": 4,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "engage": 32
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 135,
+          "kind": "engage",
+          "reason": "highest-threat opponent",
+          "target": "p3",
+          "cell": [
+            11,
+            2
+          ],
+          "samples": 10
+        },
+        {
+          "fromFrame": 150,
+          "toFrame": 270,
+          "kind": "engage",
+          "reason": "highest-threat opponent",
+          "target": "p1",
+          "cell": [
+            6,
+            2
+          ],
+          "samples": 9
+        },
+        {
+          "fromFrame": 285,
+          "toFrame": 405,
+          "kind": "engage",
+          "reason": "highest-threat opponent",
+          "target": "p3",
+          "cell": [
+            11,
+            2
+          ],
+          "samples": 9
+        },
+        {
+          "fromFrame": 420,
+          "toFrame": 465,
+          "kind": "engage",
+          "reason": "highest-threat opponent",
+          "target": "p1",
+          "cell": [
+            6,
+            2
+          ],
+          "samples": 4
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "DEATHMATCH-2",
+      "ts": 1783994558916,
+      "mode": "DEATHMATCH",
+      "rulesetId": "DEATHMATCH",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 3,
+        "ownerId": "p3",
+        "role": "competitive",
+        "difficulty": "HARD"
+      },
+      "outcome": {
+        "result": "win",
+        "score": 9
+      },
+      "stats": {
+        "kills": 9,
+        "deaths": 2,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "engage": 60
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 472,
+          "kind": "engage",
+          "reason": "highest-threat opponent",
+          "target": "p2",
+          "cell": [
+            8,
+            2
+          ],
+          "samples": 60
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "DEATHMATCH-3",
+      "ts": 1783994618924,
+      "mode": "DEATHMATCH",
+      "rulesetId": "DEATHMATCH",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 2,
+        "ownerId": "p2",
+        "role": "competitive",
+        "difficulty": "HARD"
+      },
+      "outcome": {
+        "result": "win",
+        "score": 7
+      },
+      "stats": {
+        "kills": 7,
+        "deaths": 2,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "engage": 60
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 136,
+          "kind": "engage",
+          "reason": "highest-threat opponent",
+          "target": "p3",
+          "cell": [
+            11,
+            2
+          ],
+          "samples": 18
+        },
+        {
+          "fromFrame": 144,
+          "toFrame": 272,
+          "kind": "engage",
+          "reason": "highest-threat opponent",
+          "target": "p1",
+          "cell": [
+            6,
+            2
+          ],
+          "samples": 17
+        },
+        {
+          "fromFrame": 280,
+          "toFrame": 416,
+          "kind": "engage",
+          "reason": "highest-threat opponent",
+          "target": "p3",
+          "cell": [
+            11,
+            2
+          ],
+          "samples": 18
+        },
+        {
+          "fromFrame": 424,
+          "toFrame": 472,
+          "kind": "engage",
+          "reason": "highest-threat opponent",
+          "target": "p1",
+          "cell": [
+            6,
+            2
+          ],
+          "samples": 7
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "DEATHMATCH-3",
+      "ts": 1783994618924,
+      "mode": "DEATHMATCH",
+      "rulesetId": "DEATHMATCH",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 3,
+        "ownerId": "p3",
+        "role": "competitive",
+        "difficulty": "EASY"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 3
+      },
+      "stats": {
+        "kills": 3,
+        "deaths": 4,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "engage": 16
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 450,
+          "kind": "engage",
+          "reason": "highest-threat opponent",
+          "target": "p2",
+          "cell": [
+            8,
+            2
+          ],
+          "samples": 16
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "KING_OF_HILL-1",
+      "ts": 1783994499072,
+      "mode": "KING_OF_HILL",
+      "rulesetId": "KING_OF_HILL",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 2,
+        "ownerId": "p2",
+        "role": "competitive",
+        "difficulty": "EASY"
+      },
+      "outcome": {
+        "result": "win",
+        "score": 3
+      },
+      "stats": {
+        "kills": 3,
+        "deaths": 2,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 32,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "hill-approach": 21
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 456,
+          "kind": "hill-approach",
+          "reason": "moving to the hill",
+          "target": "hill",
+          "cell": [
+            15,
+            2
+          ],
+          "samples": 21
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "KING_OF_HILL-1",
+      "ts": 1783994499072,
+      "mode": "KING_OF_HILL",
+      "rulesetId": "KING_OF_HILL",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 3,
+        "ownerId": "p3",
+        "role": "competitive",
+        "difficulty": "MEDIUM"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 3
+      },
+      "stats": {
+        "kills": 3,
+        "deaths": 0,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 42,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "hill-approach": 35
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 469,
+          "kind": "hill-approach",
+          "reason": "moving to the hill",
+          "target": "hill",
+          "cell": [
+            15,
+            2
+          ],
+          "samples": 35
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "KING_OF_HILL-2",
+      "ts": 1783994559261,
+      "mode": "KING_OF_HILL",
+      "rulesetId": "KING_OF_HILL",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 2,
+        "ownerId": "p2",
+        "role": "competitive",
+        "difficulty": "MEDIUM"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 0
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 3,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 24,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "hill-approach": 35
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 469,
+          "kind": "hill-approach",
+          "reason": "moving to the hill",
+          "target": "hill",
+          "cell": [
+            15,
+            2
+          ],
+          "samples": 35
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "KING_OF_HILL-2",
+      "ts": 1783994559261,
+      "mode": "KING_OF_HILL",
+      "rulesetId": "KING_OF_HILL",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 3,
+        "ownerId": "p3",
+        "role": "competitive",
+        "difficulty": "HARD"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 0
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 2,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 87,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "hill-approach": 61
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 474,
+          "kind": "hill-approach",
+          "reason": "moving to the hill",
+          "target": "hill",
+          "cell": [
+            15,
+            2
+          ],
+          "samples": 61
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "KING_OF_HILL-3",
+      "ts": 1783994619437,
+      "mode": "KING_OF_HILL",
+      "rulesetId": "KING_OF_HILL",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 2,
+        "ownerId": "p2",
+        "role": "competitive",
+        "difficulty": "HARD"
+      },
+      "outcome": {
+        "result": "win",
+        "score": 1
+      },
+      "stats": {
+        "kills": 1,
+        "deaths": 3,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 60,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "hill-approach": 61
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 474,
+          "kind": "hill-approach",
+          "reason": "moving to the hill",
+          "target": "hill",
+          "cell": [
+            15,
+            2
+          ],
+          "samples": 61
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "KING_OF_HILL-3",
+      "ts": 1783994619437,
+      "mode": "KING_OF_HILL",
+      "rulesetId": "KING_OF_HILL",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 3,
+        "ownerId": "p3",
+        "role": "competitive",
+        "difficulty": "EASY"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 1
+      },
+      "stats": {
+        "kills": 1,
+        "deaths": 0,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 23,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "hill-approach": 21
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 456,
+          "kind": "hill-approach",
+          "reason": "moving to the hill",
+          "target": "hill",
+          "cell": [
+            15,
+            2
+          ],
+          "samples": 21
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "CAPTURE_FLAG-1",
+      "ts": 1783994499610,
+      "mode": "CAPTURE_FLAG",
+      "rulesetId": "CAPTURE_FLAG",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 2,
+        "ownerId": "p2",
+        "role": "coop",
+        "difficulty": "EASY"
+      },
+      "outcome": {
+        "result": "win",
+        "score": 2
+      },
+      "stats": {
+        "kills": 2,
+        "deaths": 3,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 2,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "flag-grab": 1,
+        "flag-escort": 20
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 0,
+          "kind": "flag-grab",
+          "reason": "going for the enemy flag",
+          "target": "enemyFlag",
+          "cell": [
+            27,
+            2
+          ],
+          "samples": 1
+        },
+        {
+          "fromFrame": 30,
+          "toFrame": 456,
+          "kind": "flag-escort",
+          "reason": "teammate on the flag — defending base",
+          "target": "defend",
+          "cell": [
+            3,
+            2
+          ],
+          "samples": 20
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "CAPTURE_FLAG-1",
+      "ts": 1783994499610,
+      "mode": "CAPTURE_FLAG",
+      "rulesetId": "CAPTURE_FLAG",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 3,
+        "ownerId": "p3",
+        "role": "coop",
+        "difficulty": "MEDIUM"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 0
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 3,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "flag-grab": 35
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 469,
+          "kind": "flag-grab",
+          "reason": "going for the enemy flag",
+          "target": "enemyFlag",
+          "cell": [
+            27,
+            2
+          ],
+          "samples": 35
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "CAPTURE_FLAG-2",
+      "ts": 1783994559864,
+      "mode": "CAPTURE_FLAG",
+      "rulesetId": "CAPTURE_FLAG",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 2,
+        "ownerId": "p2",
+        "role": "coop",
+        "difficulty": "MEDIUM"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 2
+      },
+      "stats": {
+        "kills": 2,
+        "deaths": 3,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 3,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "flag-grab": 1,
+        "flag-escort": 34
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 0,
+          "kind": "flag-grab",
+          "reason": "going for the enemy flag",
+          "target": "enemyFlag",
+          "cell": [
+            27,
+            2
+          ],
+          "samples": 1
+        },
+        {
+          "fromFrame": 15,
+          "toFrame": 469,
+          "kind": "flag-escort",
+          "reason": "teammate on the flag — defending base",
+          "target": "defend",
+          "cell": [
+            3,
+            2
+          ],
+          "samples": 34
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "CAPTURE_FLAG-2",
+      "ts": 1783994559864,
+      "mode": "CAPTURE_FLAG",
+      "rulesetId": "CAPTURE_FLAG",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 3,
+        "ownerId": "p3",
+        "role": "coop",
+        "difficulty": "HARD"
+      },
+      "outcome": {
+        "result": "win",
+        "score": 4
+      },
+      "stats": {
+        "kills": 4,
+        "deaths": 2,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "flag-grab": 61
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 474,
+          "kind": "flag-grab",
+          "reason": "going for the enemy flag",
+          "target": "enemyFlag",
+          "cell": [
+            27,
+            2
+          ],
+          "samples": 61
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "CAPTURE_FLAG-3",
+      "ts": 1783994620013,
+      "mode": "CAPTURE_FLAG",
+      "rulesetId": "CAPTURE_FLAG",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 2,
+        "ownerId": "p2",
+        "role": "coop",
+        "difficulty": "HARD"
+      },
+      "outcome": {
+        "result": "win",
+        "score": 1
+      },
+      "stats": {
+        "kills": 1,
+        "deaths": 0,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "flag-grab": 1,
+        "flag-escort": 60
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 0,
+          "kind": "flag-grab",
+          "reason": "going for the enemy flag",
+          "target": "enemyFlag",
+          "cell": [
+            27,
+            2
+          ],
+          "samples": 1
+        },
+        {
+          "fromFrame": 8,
+          "toFrame": 474,
+          "kind": "flag-escort",
+          "reason": "teammate on the flag — defending base",
+          "target": "defend",
+          "cell": [
+            3,
+            2
+          ],
+          "samples": 60
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "CAPTURE_FLAG-3",
+      "ts": 1783994620013,
+      "mode": "CAPTURE_FLAG",
+      "rulesetId": "CAPTURE_FLAG",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 3,
+        "ownerId": "p3",
+        "role": "coop",
+        "difficulty": "EASY"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 0
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 2,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 1,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "flag-grab": 21
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 456,
+          "kind": "flag-grab",
+          "reason": "going for the enemy flag",
+          "target": "enemyFlag",
+          "cell": [
+            27,
+            2
+          ],
+          "samples": 21
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "DEFEND_TOWER-1",
+      "ts": 1783994500141,
+      "mode": "DEFEND_TOWER",
+      "rulesetId": "DEFEND_TOWER",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 2,
+        "ownerId": "p2",
+        "role": "coop",
+        "difficulty": "EASY"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 0
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 0,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 2,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "tower-attack": 21
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 456,
+          "kind": "tower-attack",
+          "reason": "attacking enemy tower",
+          "target": "tower:p1",
+          "cell": [
+            26,
+            2
+          ],
+          "samples": 21
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "DEFEND_TOWER-1",
+      "ts": 1783994500141,
+      "mode": "DEFEND_TOWER",
+      "rulesetId": "DEFEND_TOWER",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 3,
+        "ownerId": "p3",
+        "role": "coop",
+        "difficulty": "MEDIUM"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 0
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 0,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 4,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "tower-defend": 32
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 465,
+          "kind": "tower-defend",
+          "reason": "teammate attacking — defending our tower",
+          "target": "defend",
+          "cell": [
+            20,
+            2
+          ],
+          "samples": 32
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "DEFEND_TOWER-2",
+      "ts": 1783994560323,
+      "mode": "DEFEND_TOWER",
+      "rulesetId": "DEFEND_TOWER",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 2,
+        "ownerId": "p2",
+        "role": "coop",
+        "difficulty": "MEDIUM"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 0
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 0,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 3,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "tower-attack": 35
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 469,
+          "kind": "tower-attack",
+          "reason": "attacking enemy tower",
+          "target": "tower:p1",
+          "cell": [
+            26,
+            2
+          ],
+          "samples": 35
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "DEFEND_TOWER-2",
+      "ts": 1783994560323,
+      "mode": "DEFEND_TOWER",
+      "rulesetId": "DEFEND_TOWER",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 3,
+        "ownerId": "p3",
+        "role": "coop",
+        "difficulty": "HARD"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 0
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 0,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 3,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "tower-defend": 60
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 472,
+          "kind": "tower-defend",
+          "reason": "teammate attacking — defending our tower",
+          "target": "defend",
+          "cell": [
+            20,
+            2
+          ],
+          "samples": 60
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "DEFEND_TOWER-3",
+      "ts": 1783994620534,
+      "mode": "DEFEND_TOWER",
+      "rulesetId": "DEFEND_TOWER",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 2,
+        "ownerId": "p2",
+        "role": "coop",
+        "difficulty": "HARD"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 0
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 0,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 12,
+        "towersDestroyed": 1
+      },
+      "goalCounts": {
+        "tower-attack": 61
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 474,
+          "kind": "tower-attack",
+          "reason": "attacking enemy tower",
+          "target": "tower:p1",
+          "cell": [
+            26,
+            2
+          ],
+          "samples": 61
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "DEFEND_TOWER-3",
+      "ts": 1783994620534,
+      "mode": "DEFEND_TOWER",
+      "rulesetId": "DEFEND_TOWER",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 3,
+        "ownerId": "p3",
+        "role": "coop",
+        "difficulty": "EASY"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 0
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 0,
+        "mobKills": 0,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 5,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "tower-defend": 16
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 450,
+          "kind": "tower-defend",
+          "reason": "teammate attacking — defending our tower",
+          "target": "defend",
+          "cell": [
+            20,
+            2
+          ],
+          "samples": 16
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "COLLECT_EMERALDS-1",
+      "ts": 1783994500634,
+      "mode": "COLLECT_EMERALDS",
+      "rulesetId": "COLLECT_EMERALDS",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 2,
+        "ownerId": "p2",
+        "role": "competitive",
+        "difficulty": "EASY"
+      },
+      "outcome": {
+        "result": "win",
+        "score": 6
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 0,
+        "mobKills": 0,
+        "emeralds": 6,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "emerald": 21
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 456,
+          "kind": "emerald",
+          "reason": "nearest emerald",
+          "target": "emerald",
+          "cell": [
+            14,
+            2
+          ],
+          "samples": 21
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "COLLECT_EMERALDS-1",
+      "ts": 1783994500634,
+      "mode": "COLLECT_EMERALDS",
+      "rulesetId": "COLLECT_EMERALDS",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 3,
+        "ownerId": "p3",
+        "role": "competitive",
+        "difficulty": "MEDIUM"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 3
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 0,
+        "mobKills": 0,
+        "emeralds": 3,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "emerald": 35
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 469,
+          "kind": "emerald",
+          "reason": "nearest emerald",
+          "target": "emerald",
+          "cell": [
+            14,
+            2
+          ],
+          "samples": 35
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "COLLECT_EMERALDS-2",
+      "ts": 1783994560778,
+      "mode": "COLLECT_EMERALDS",
+      "rulesetId": "COLLECT_EMERALDS",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 2,
+        "ownerId": "p2",
+        "role": "competitive",
+        "difficulty": "MEDIUM"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 6
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 0,
+        "mobKills": 0,
+        "emeralds": 6,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "emerald": 35
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 469,
+          "kind": "emerald",
+          "reason": "nearest emerald",
+          "target": "emerald",
+          "cell": [
+            14,
+            2
+          ],
+          "samples": 35
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "COLLECT_EMERALDS-2",
+      "ts": 1783994560778,
+      "mode": "COLLECT_EMERALDS",
+      "rulesetId": "COLLECT_EMERALDS",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 3,
+        "ownerId": "p3",
+        "role": "competitive",
+        "difficulty": "HARD"
+      },
+      "outcome": {
+        "result": "win",
+        "score": 17
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 0,
+        "mobKills": 0,
+        "emeralds": 17,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "emerald": 61
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 474,
+          "kind": "emerald",
+          "reason": "nearest emerald",
+          "target": "emerald",
+          "cell": [
+            14,
+            2
+          ],
+          "samples": 61
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "COLLECT_EMERALDS-3",
+      "ts": 1783994620920,
+      "mode": "COLLECT_EMERALDS",
+      "rulesetId": "COLLECT_EMERALDS",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 2,
+        "ownerId": "p2",
+        "role": "competitive",
+        "difficulty": "HARD"
+      },
+      "outcome": {
+        "result": "win",
+        "score": 7
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 0,
+        "mobKills": 0,
+        "emeralds": 7,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "emerald": 61
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 474,
+          "kind": "emerald",
+          "reason": "nearest emerald",
+          "target": "emerald",
+          "cell": [
+            14,
+            2
+          ],
+          "samples": 61
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "COLLECT_EMERALDS-3",
+      "ts": 1783994620920,
+      "mode": "COLLECT_EMERALDS",
+      "rulesetId": "COLLECT_EMERALDS",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 3,
+        "ownerId": "p3",
+        "role": "competitive",
+        "difficulty": "EASY"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 6
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 0,
+        "mobKills": 0,
+        "emeralds": 6,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "emerald": 21
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 456,
+          "kind": "emerald",
+          "reason": "nearest emerald",
+          "target": "emerald",
+          "cell": [
+            14,
+            2
+          ],
+          "samples": 21
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "MOB_HUNTER-1",
+      "ts": 1783994500929,
+      "mode": "MOB_HUNTER",
+      "rulesetId": "MOB_HUNTER",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 2,
+        "ownerId": "p2",
+        "role": "competitive",
+        "difficulty": "EASY"
+      },
+      "outcome": {
+        "result": "win",
+        "score": 7
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 0,
+        "mobKills": 7,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "mob": 16
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 450,
+          "kind": "mob",
+          "reason": "engaging nearest mob",
+          "target": "mob1",
+          "cell": [
+            12,
+            3
+          ],
+          "samples": 16
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "MOB_HUNTER-1",
+      "ts": 1783994500929,
+      "mode": "MOB_HUNTER",
+      "rulesetId": "MOB_HUNTER",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 3,
+        "ownerId": "p3",
+        "role": "competitive",
+        "difficulty": "MEDIUM"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 5
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 2,
+        "mobKills": 5,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "mob": 32
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 465,
+          "kind": "mob",
+          "reason": "engaging nearest mob",
+          "target": "mob1",
+          "cell": [
+            12,
+            3
+          ],
+          "samples": 32
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "MOB_HUNTER-2",
+      "ts": 1783994560937,
+      "mode": "MOB_HUNTER",
+      "rulesetId": "MOB_HUNTER",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 2,
+        "ownerId": "p2",
+        "role": "competitive",
+        "difficulty": "MEDIUM"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 5
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 1,
+        "mobKills": 5,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "mob": 32
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 465,
+          "kind": "mob",
+          "reason": "engaging nearest mob",
+          "target": "mob1",
+          "cell": [
+            12,
+            3
+          ],
+          "samples": 32
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "MOB_HUNTER-2",
+      "ts": 1783994560937,
+      "mode": "MOB_HUNTER",
+      "rulesetId": "MOB_HUNTER",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 3,
+        "ownerId": "p3",
+        "role": "competitive",
+        "difficulty": "HARD"
+      },
+      "outcome": {
+        "result": "win",
+        "score": 10
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 1,
+        "mobKills": 10,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "mob": 60
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 472,
+          "kind": "mob",
+          "reason": "engaging nearest mob",
+          "target": "mob1",
+          "cell": [
+            12,
+            3
+          ],
+          "samples": 60
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "MOB_HUNTER-3",
+      "ts": 1783994620945,
+      "mode": "MOB_HUNTER",
+      "rulesetId": "MOB_HUNTER",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 2,
+        "ownerId": "p2",
+        "role": "competitive",
+        "difficulty": "HARD"
+      },
+      "outcome": {
+        "result": "win",
+        "score": 7
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 2,
+        "mobKills": 7,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "mob": 60
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 472,
+          "kind": "mob",
+          "reason": "engaging nearest mob",
+          "target": "mob1",
+          "cell": [
+            12,
+            3
+          ],
+          "samples": 60
+        }
+      ]
+    },
+    {
+      "schema": "steveo-bot-telemetry/v1",
+      "matchId": "MOB_HUNTER-3",
+      "ts": 1783994620945,
+      "mode": "MOB_HUNTER",
+      "rulesetId": "MOB_HUNTER",
+      "custom": false,
+      "durationSec": 300,
+      "bot": {
+        "slot": 3,
+        "ownerId": "p3",
+        "role": "competitive",
+        "difficulty": "EASY"
+      },
+      "outcome": {
+        "result": "loss",
+        "score": 3
+      },
+      "stats": {
+        "kills": 0,
+        "deaths": 1,
+        "mobKills": 3,
+        "emeralds": 0,
+        "hillSeconds": 0,
+        "flagCaptures": 0,
+        "towerDamage": 0,
+        "towersDestroyed": 0
+      },
+      "goalCounts": {
+        "mob": 16
+      },
+      "decisionTrace": [
+        {
+          "fromFrame": 0,
+          "toFrame": 450,
+          "kind": "mob",
+          "reason": "engaging nearest mob",
+          "target": "mob1",
+          "cell": [
+            12,
+            3
+          ],
+          "samples": 16
+        }
+      ]
+    }
+  ]
+}

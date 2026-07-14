@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 121 (Bot AI Phase 6 — Custom Rules support + a real-engine fix: the bot now dispatches on the Arena Rules Engine\'s ACTUAL element keys (ctf/towers/waveSpawns/bots/spawnEggs/hill/emeralds/pvp), verified against arena-rules.js for every preset AND custom rulesets — so bots play custom modes for free. (Fixes a key mismatch that would have made CTF/Tower/Waves bots fall back to plain kills.) + builds 117-120 Bot AI Phases 1-5.)';
+const GAME_VERSION = 'v3 · build 122 (Bot AI Phase 7 — Learning Mode / telemetry: one structured log per bot per match (mode, difficulty, role, outcome, objective stats) + a sampled decision trace, accumulated in localStorage and exportable as one JSON batch (BOT_TELEMETRY.download()). Data dictionary in BOT_TELEMETRY_SCHEMA.md so both Claude Code and Claude web read the fields identically. + builds 117-121 Bot AI Phases 1-6. COMPLETES the Bot AI brief.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

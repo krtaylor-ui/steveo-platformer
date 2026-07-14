@@ -11426,6 +11426,20 @@ class Game {
   _submitArenaResultOnce() {
     if (this._arenaResultSubmitted) return;
     this._arenaResultSubmitted = true;
+
+    // ── Bot AI Phase 7 — per-bot telemetry (records even in Test World, since it's
+    // local dev/tuning data, not a leaderboard entry). One entry per bot per match,
+    // accumulated in localStorage; export via BOT_TELEMETRY.download(). ──
+    if (typeof BOT_TELEMETRY !== 'undefined' && this._botControllers && this._botControllers.length) {
+      let winnerId = null;
+      try {
+        const rs = (typeof ARENA_RULES !== 'undefined' && ARENA_RULES.rulesetForMode) ? ARENA_RULES.rulesetForMode(this.arenaConfig.arenaGameMode, this.arenaConfig) : null;
+        if (rs && ARENA_RULES.winner) winnerId = ARENA_RULES.winner(rs, this);
+      } catch (e) { /* winner unknown → outcome 'unknown' */ }
+      const dMs = (this.arenaState.gameStartTime && this.arenaState.endTime) ? this.arenaState.endTime - this.arenaState.gameStartTime : 0;
+      try { BOT_TELEMETRY.record(this, { winnerId, durationSec: Math.round(dMs / 1000) }); } catch (e) { /* best-effort */ }
+    }
+
     if (this._testMode) return; // Test World never records to the leaderboard
 
     const mode = this.arenaConfig.arenaGameMode;

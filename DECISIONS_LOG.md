@@ -1792,3 +1792,35 @@ CTF, Defend-the-Tower, and Survival-Waves bots silently fall through to plain ki
   active elements, not the stage graph. Common single-objective + simple-combo customs
   work; exotic designer rulesets are not guaranteed.
 - Tests: test-bot-ai.js +12 (real preset keys + custom dispatch). **Suite 457.**
+
+## Phase 7 — Learning Mode / telemetry (build 122, DONE, headless-verified)
+`js/bot-telemetry.js` (`BOT_TELEMETRY`) — one structured record PER BOT PER MATCH,
+accumulated in localStorage (`steveo_bot_telemetry`, never overwritten, capped 500),
+exportable as ONE JSON batch. Recorded once at arena match end via
+`_submitArenaResultOnce` (records even in Test World — it's local dev/tuning data,
+not a leaderboard entry).
+- **Record fields:** schema, matchId, ts, mode, rulesetId, custom, durationSec, bot
+  {slot, ownerId, role, difficulty}, outcome {result, score}, stats {kills, deaths,
+  mobKills, emeralds, hillSeconds, flagCaptures, towerDamage, towersDestroyed},
+  goalCounts, decisionTrace.
+- **Sampled decision trace:** the BotController already records one snapshot per
+  brain-tick (`telemetry.decisions`); the exporter run-length-COLLAPSES consecutive
+  identical decisions into `{fromFrame, toFrame, kind, reason, target, cell,
+  samples}` runs — compact "what was it trying to do, and when," not a per-frame
+  replay.
+- **Export / review helpers:** `exportBatch()` (wrapper naming the schema + the data
+  dictionary), `download()` (browser .json), `all()`, `clear()`, and `summarize()`
+  (per mode×difficulty win-rate/avg-score roll-up — the same reduction Claude
+  Code/web would run).
+- **DATA DICTIONARY — `BOT_TELEMETRY_SCHEMA.md`** (the critical deliverable): every
+  field, its meaning/units, score-by-mode, goal kinds, trace interpretation, a
+  "what to look for when tuning EASY/HARD" section, and honest limitations — so a
+  batch handed to Claude Code OR Claude (web) is read identically.
+- **Sample logs — `tools/gen-bot-telemetry-samples.js`** → `saves/bot-telemetry-
+  samples.json`: drives the REAL bot brains through 3 simulated matches × 6 modes
+  (36 bot-records; decision traces + goalCounts are genuine, stats/outcomes
+  synthesized + difficulty-scaled). Demonstrates ACCUMULATION (many records per mode)
+  + BATCH round-trip; the summary shows Hard > Medium > Easy as intended. (Companion
+  telemetry not logged yet — arena bots only; flagged in the schema doc.)
+- Tests: test-bot-ai.js +11 (record fields, trace collapse, batch wrapper,
+  summarize). **Suite 468. Bot AI brief COMPLETE (Phases 0–7).**
