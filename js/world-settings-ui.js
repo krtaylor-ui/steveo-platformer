@@ -200,6 +200,12 @@ const WORLD_SETTINGS = {
       // ── Retreating mobs (Smart Mobs §8) — per mob type: flee at low HP (+ advanced
       //    HP-% threshold). Coexists with Skeleton kiting. ──
       ...this._fleeRows(M),
+      // ── Spider webs (Smart Mobs §9) — Cave Spiders spit slowing webs. Opt-in;
+      //    slowness / duration / stacking are advanced. ──
+      { key: 'spiderWebs',     tab: 'combat', group: 'Spider Webs', modes: M.physics, type: 'toggle', dflt: false, label: 'Spider Webs', hint: 'Cave Spiders spit webs that slow you (webbing shows while slowed)' },
+      { key: 'webSlowPct',     tab: 'combat', group: 'Spider Webs', modes: M.physics, type: 'cycle', opts: [20, 33, 50, 67], dflt: 33, label: 'Slowness', fmt: (v) => v + '%', sub: true, dependsOn: 'spiderWebs', advanced: true, hint: 'speed removed per web (33% → 67% speed)' },
+      { key: 'webDurationSec', tab: 'combat', group: 'Spider Webs', modes: M.physics, type: 'cycle', opts: [2, 3, 5, 8], dflt: 3, label: 'Duration', fmt: (v) => v + 's', sub: true, dependsOn: 'spiderWebs', advanced: true },
+      { key: 'webStacking',    tab: 'combat', group: 'Spider Webs', modes: M.physics, type: 'toggle', dflt: false, label: 'Stacking', sub: true, dependsOn: 'spiderWebs', advanced: true, hint: 'a second web compounds the slow + resets the timer' },
       // ── Special moves (Smart Mobs §2) — per-weapon context attacks ──
       { key: 'slideAttack', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Slide Attack (Spear)', hint: 'ground-slide with a spear launches nearby mobs into the air' },
       { key: 'slideAttackDmg', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'cycle', opts: O.wdmg, dflt: 1.0, label: 'Slide Attack Damage', fmt: x1, advanced: true, dependsOn: 'slideAttack' },

@@ -2955,6 +2955,7 @@ class Game {
       // off → legacy aggro). Cheap; recomputed each frame so live setting changes apply.
       this.mobManager.detectCfg = this._detectionConfig();
       this.mobManager.fleeCfg   = this._fleeConfig();   // §8 — per-mob-type low-HP flee
+      this.mobManager.webCfg    = this._webConfig();    // §9 — spider web slow
       if (!_onlineNonHost) {
         this.mobManager.update(this.player, this.level, this.player2 || null, this.players.slice(2).filter(Boolean));
       } else {
@@ -16627,6 +16628,21 @@ class Game {
       out[k] = { action, threshold: (aws['lowHpThreshold_' + k] ?? 20) / 100 };
     }
     return Object.keys(out).length ? out : null;
+  }
+
+  // Smart Mobs §9 — spider-web slow config for Cave Spiders (null = disabled, so they
+  // don't spit webs — default). Durations authored in seconds → frames here.
+  _webConfig() {
+    const aws = this._worldAdvSettings || {};
+    if (!aws.spiderWebs) return null;
+    return {
+      enabled:        true,
+      reduction:      (aws.webSlowPct ?? 33) / 100,        // 0.33 → 67% speed
+      durationFrames: Math.round((aws.webDurationSec ?? 3) * 60),
+      stacking:       !!aws.webStacking,
+      range:          10 * BLOCK_SIZE,
+      cooldown:       150,
+    };
   }
 
   // Smart Mobs §4b/§4c — translate the player's per-frame movement events into mob

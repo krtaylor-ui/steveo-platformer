@@ -970,10 +970,14 @@ class CaveSpider extends Mob {
     super(x, y, 16, 16, 6);
     this.speed       = 3.6;
     this.meleeDamage = 2;
+    this.webShootTimer = 90 + Math.floor(Math.random() * 90);  // §9 stagger first web
   }
 
-  update(player, level) {
+  // Smart Mobs §9 — spit a web at the player. `webs` = the manager's web list; `_webCfg`
+  // (set by the manager from world settings) gates it + carries the slow parameters.
+  update(player, level, webs) {
     this._tickTimers();
+    if (this.webShootTimer > 0) this.webShootTimer--;
     if (this.knockbackTimer > 0) { _mobPhysics(this, level); return; }
     // Smart Mobs §8 — low-HP flee takes priority over chasing.
     if (this._fleeIfHurt(player, level)) { _mobPhysics(this, level); return; }
@@ -984,6 +988,18 @@ class CaveSpider extends Mob {
     const dir = Math.sign(player.cx - this.cx);
     this.vx   = (Math.sign(this._chaseTargetX(player) - this.cx) || dir) * this.speed;  // §5 surround
     this.facing = dir;
+
+    // Web shot (§9): opt-in; from a distance, on a cooldown, when it has a clear-ish line.
+    const wc = this._webCfg;
+    if (wc && wc.enabled && webs && this.webShootTimer === 0) {
+      const dist = Math.hypot(player.cx - this.cx, player.cy - this.cy);
+      if (dist > 2 * BLOCK_SIZE && dist < (wc.range || 10 * BLOCK_SIZE)) {
+        const ang   = Math.atan2(player.cy - this.cy, player.cx - this.cx);
+        const speed = 6;
+        webs.push(new Web(this.cx, this.cy, Math.cos(ang) * speed, Math.sin(ang) * speed - 1.2, wc));
+        this.webShootTimer = wc.cooldown || 150;
+      }
+    }
 
     // Jump if blocked or can jump up to player
     if (this.onGround) {
@@ -1157,6 +1173,61 @@ class BlazeShot {
     ctx.fillRect(sx - 5, sy - 5, 10, 10);
     ctx.fillStyle = '#FFDD00';
     ctx.fillRect(sx - 3, sy - 3, 6, 6);
+    ctx.restore();
+  }
+}
+
+// ── Spider Web (Smart Mobs §9) ────────────────────────────────
+// A slow-moving sticky glob a Cave Spider spits. On contact it slows the player
+// (no damage) via player.applyWeb(); expires on a wall or after its lifetime.
+class Web {
+  constructor(x, y, vx, vy, cfg) {
+    this.x = x; this.y = y;
+    this.vx = vx; this.vy = vy;
+    this.alive = true;
+    this.age   = 0;
+    this.spin  = 0;
+    // Snapshot the slow config at spawn: { reduction, durationFrames, stacking }.
+    this.cfg = cfg || { reduction: 0.33, durationFrames: 180, stacking: false };
+  }
+
+  update(player, level) {
+    if (!this.alive) return;
+    this.age++;
+    this.spin += 0.25;
+    if (this.age > 150) { this.alive = false; return; }
+    this.vy += 0.10;   // gentle arc
+    this.x  += this.vx;
+    this.y  += this.vy;
+    if (level.isSolid(Math.floor(this.y / BLOCK_SIZE), Math.floor(this.x / BLOCK_SIZE))) { this.alive = false; return; }
+    if (this.x > player.x && this.x < player.x + player.width &&
+        this.y > player.y && this.y < player.y + player.height) {
+      if (typeof player.applyWeb === 'function') {
+        player.applyWeb(this.cfg.reduction, this.cfg.durationFrames, this.cfg.stacking);
+      }
+      this.alive = false;
+    }
+  }
+
+  draw(ctx, camera) {
+    if (!this.alive) return;
+    const sx = Math.floor(this.x - camera.x);
+    const sy = Math.floor(this.y - camera.y);
+    if (sx < camera.viewMinX() - 20 || sx > camera.viewMaxX() + 20) return;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(this.spin);
+    ctx.strokeStyle = 'rgba(240,240,255,0.85)';
+    ctx.lineWidth = 1.5;
+    // A little asterisk/web glob.
+    for (let i = 0; i < 4; i++) {
+      const a = i * Math.PI / 4;
+      ctx.beginPath();
+      ctx.moveTo(-6 * Math.cos(a), -6 * Math.sin(a));
+      ctx.lineTo( 6 * Math.cos(a),  6 * Math.sin(a));
+      ctx.stroke();
+    }
+    ctx.strokeRect(-3, -3, 6, 6);
     ctx.restore();
   }
 }
@@ -1535,6 +1606,7 @@ class MobManager {
     this.spawnPoints     = [];
     this.playerArrows = [];
     this.blazeShots   = [];
+    this.webs         = [];   // Smart Mobs §9 — spider web projectiles
     this.droppedItems = [];
     this.dropConfig   = null;  // set by game.js to _mobDropSettings
     this.nightSpawnMultiplier = 1.0;
@@ -1553,6 +1625,8 @@ class MobManager {
     this.detectCfg            = null;
     // Smart Mobs §8 — per-mob-type low-HP behavior config: { <key>: {action, threshold} }.
     this.fleeCfg              = null;
+    // Smart Mobs §9 — spider-web slow config (null/disabled = spiders don't spit webs).
+    this.webCfg               = null;
   }
 
   // Set up spawn points from world data
@@ -1940,6 +2014,9 @@ class MobManager {
         mob.update(target, level, this.arrows);
       } else if (mob instanceof Blaze) {
         mob.update(target, level, this.blazeShots);
+      } else if (mob instanceof CaveSpider) {
+        mob._webCfg = this.webCfg;                 // Smart Mobs §9
+        mob.update(target, level, this.webs);
       } else {
         mob.update(target, level);
       }
@@ -2056,6 +2133,12 @@ class MobManager {
       const bsTarget = this._nearestPlayer(bs.x, bs.y, player, player2);
       bs.update(bsTarget, level);
       return bs.alive;
+    });
+
+    // Smart Mobs §9 — spider webs travel + apply the slow on contact.
+    this.webs = this.webs.filter(w => {
+      w.update(this._nearestPlayer(w.x, w.y, player, player2), level);
+      return w.alive;
     });
 
     // Deflected blaze shots — check mob collisions
@@ -2400,6 +2483,8 @@ class MobManager {
     for (const a of this.playerArrows) a.draw(ctx, camera);
     // Blaze shots
     for (const bs of this.blazeShots)  bs.draw(ctx, camera);
+    // Spider webs (§9)
+    for (const w of this.webs)         w.draw(ctx, camera);
     // Mobs — slide-launched mobs spin about their centre (and fade while being
     // tossed to death). Wrapping here avoids touching all 8 per-mob draw methods.
     for (const mob of this.mobs) {

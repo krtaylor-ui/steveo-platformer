@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 106 (Smart Mobs §8: RETREATING MOBS — per-mob-type low-HP action (None/Flee, extensible) + advanced HP-% threshold; wired for Zombie/Skeleton/CaveSpider/Piglin/WitherSkeleton, coexists with skeleton kiting)';
+const GAME_VERSION = 'v3 · build 107 (Smart Mobs §9: SPIDER WEBS — opt-in; Cave Spiders spit slowing webs (default 33%%->67%% speed, 3s), visible webbing on the player, optional stacking that compounds the slow + resets the timer)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

@@ -22,6 +22,8 @@ class Player {
     this._sfxLand     = 0;     // >0 = landed this frame; value = fall speed on impact
     this._sfxJump     = false; // a ground jump fired this frame (§4c action detection)
     this.sprinting    = false; // true while actually sprinting (for §4b sound radius)
+    this._webSlowMult = 1;     // §9 spider web: <1 slows movement while _webSlowTimer > 0
+    this._webSlowTimer = 0;
 
     // Animation
     this.walkTimer  = 0;
@@ -343,6 +345,17 @@ class Player {
   // Normal-rated blocks. Sneaking requires being on the ground.
   get isSneaking() { return this.crouching && this.onGround; }
 
+  // Smart Mobs §9 — a spider web hit. `reduction` = fraction of speed removed (0.33 →
+  // 67% speed). When `stacking` is on and a web is still active, the reduction compounds
+  // on the ALREADY-reduced speed (67% → ~44%); otherwise it just re-applies the base
+  // cut. Either way the duration timer resets to the full configured length.
+  applyWeb(reduction, durationFrames, stacking) {
+    const factor = Math.max(0.1, 1 - (reduction || 0));
+    if (stacking && this._webSlowTimer > 0) this._webSlowMult = Math.max(0.1, this._webSlowMult * factor);
+    else                                     this._webSlowMult = factor;
+    this._webSlowTimer = durationFrames || 180;
+  }
+
   // Axis-aligned bounding box (world coords)
   get bounds() {
     return { x: this.x, y: this.y, w: this.width, h: this.height };
@@ -394,7 +407,10 @@ class Player {
                       typeof input.isRun === 'function' && input.isRun();
     const sprintMult = sprinting ? 2 : 1;
     this.sprinting = sprinting && Math.abs(input.moveX ? input.moveX() : 0) > 0.01;  // §4b sound radius
-    const speed  = (this.crouching ? this.crouchSpeed : this.moveSpeed) * hsMult * sprintMult;
+    // §9 spider web slow — decay the timer + apply the speed multiplier while active.
+    if (this._webSlowTimer > 0) { this._webSlowTimer--; if (this._webSlowTimer === 0) this._webSlowMult = 1; }
+    const webMult = this._webSlowTimer > 0 ? this._webSlowMult : 1;
+    const speed  = (this.crouching ? this.crouchSpeed : this.moveSpeed) * hsMult * sprintMult * webMult;
     this.running = !this.crouching;
 
     // Horizontal movement — analog-aware (uses left stick magnitude when available)
@@ -1029,6 +1045,31 @@ class Player {
     } else {
       this._drawSteve(ctx, sx, sy);
     }
+
+    // Smart Mobs §9 — visible webbing over the player while a spider web is active.
+    if (this._webSlowTimer > 0) this._drawWebOverlay(ctx, sx, sy);
+  }
+
+  // A translucent net of web strands across the player's bounding box (fades out as
+  // the slow wears off). Purely cosmetic — the slow itself is applied in movement.
+  _drawWebOverlay(ctx, sx, sy) {
+    const w = this.width, h = this.height;
+    ctx.save();
+    ctx.globalAlpha = Math.min(0.7, 0.25 + this._webSlowTimer / 240);
+    ctx.strokeStyle = '#f2f2ff';
+    ctx.lineWidth = 1;
+    // Radial strands from the centre + a couple of cross-threads.
+    const cx = sx + w / 2, cy = sy + h / 2;
+    for (let i = 0; i < 6; i++) {
+      const a = i * Math.PI / 3 + this._webSlowTimer * 0.005;
+      ctx.beginPath(); ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(a) * w, cy + Math.sin(a) * h * 0.9);
+      ctx.stroke();
+    }
+    ctx.globalAlpha *= 0.8;
+    ctx.strokeRect(sx - 2, sy, w + 4, h);
+    ctx.beginPath(); ctx.moveTo(sx - 2, cy); ctx.lineTo(sx + w + 2, cy); ctx.stroke();
+    ctx.restore();
   }
 
   _drawSteve(ctx, sx, sy) {

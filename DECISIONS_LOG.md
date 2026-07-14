@@ -1300,3 +1300,41 @@ brief: §10 → §4 → §5 → §7 → §8 → §9. Up-front Q&A with Kevin res
 - `mobManager.fleeCfg` built per frame by `game._fleeConfig()` (only non-'none' types
   included; null when none). test-detection.js +6 (threshold boundary, flee-away
   direction, none/null = no flee); suite 283. Browser-UNTESTED.
+
+## §9 — Spider Webs (build 107) — FINAL feature of this batch
+- **Opt-in `spiderWebs` toggle** (Combat → Spider Webs, default OFF → Cave Spiders behave
+  as before). When on, a chasing Cave Spider spits a `Web` projectile on a cooldown from
+  range (`webShootTimer`).
+- **`Web` class** (new, mirrors BlazeShot): a slow-arc glob; on overlapping the player it
+  calls `player.applyWeb(...)` (NO damage) then dies; also dies on a wall / after its
+  lifetime. Added to `MobManager.webs` (update + draw alongside blazeShots); CaveSpider
+  dispatch now passes `this.webs` + `_webCfg`.
+- **Player slow** (`applyWeb` + `_webSlowMult`/`_webSlowTimer`): the move-speed calc
+  multiplies by `_webSlowMult` while the timer runs; timer decays each frame, mult resets
+  to 1 on expiry. **Advanced settings** (all default per brief): Slowness (33% →
+  67% speed), Duration (3s), **Stacking** (off) — when on, a second web while still
+  slowed **compounds** (0.67 → ~0.4489 ≈ 44%); **every** web resets the duration timer to
+  full. Verified: `applyWeb(0.33,·,stack)` twice → 0.4489.
+- **Visible webbing** (`_drawWebOverlay`): a translucent radial web net over the player
+  while slowed, fading as it wears off.
+- New `test/test-webs.js` (10: Web travel/apply/expire/wall, applyWeb reduction + stacking
+  compounding + timer reset). Suite **293**. Browser-UNTESTED — web feel + the overlay.
+
+## Batch 2 wrap-up (builds 102–107)
+- **Shipped (headless-verified, browser-UNTESTED):** §10 foliage, §4 detection, §5 pack,
+  §7 sprint, §8 flee, §9 webs — each its own build + additive/opt-in (confirmed: NONE
+  change default mob behavior unless a World-Settings toggle is turned on; defaults are
+  all off/legacy). Suite 293 (adds test-foliage 16, test-detection 38, test-webs 10 to
+  the prior 233 minus overlap; run.js lists all).
+- **NOT changed by default:** verified every new behavior gates on an opt-in setting
+  (smartDetection / packAlert / sprintingMobs / lowHpAction_* / spiderWebs), and the
+  §10 blocks are new ids (existing Oak Leaves untouched).
+- **Deferred / out of scope (unchanged):** §6 Wayfinding & ambush-from-above — still the
+  ONLY remaining piece of the original Smart Mobs brief. This batch surfaced concrete
+  §6 candidates: (a) sticky alert (mobs never de-aggro) wants path-aware repositioning;
+  (b) §5 surround is a left/right heuristic — real flanking-around-terrain needs pathing;
+  (c) an alerted mob still can't route around walls to reach the player.
+- **Playtest watch-items for Kevin (the "feels right" bar):** detection sight-range +
+  sound radii; sprint telegraph timing (~0.7s enough warning?); foliage front/back editor
+  cue + colour cycle; surround readability (mobs are non-solid, so flankers overlap the
+  player); web slow strength/stacking feel.
