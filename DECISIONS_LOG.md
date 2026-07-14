@@ -2329,3 +2329,44 @@ DOWN through the platform at (3,2)).
   gap/maze cases all still pass.
 - Tests: test-pathfinding +3 (down routes around, not straight through). Suite 531.
   Browser-UNTESTED. Sample worlds: still only the redstone puzzle flags (unchanged).
+
+## Two-level climb execution — consecutive double-jumps (build 146)
+Kevin: on a maze's final two-level climb the bot double-jumps to an interim platform
+but then only SINGLE-jumps on the next one and can't reach it. Diagnosed by building a
+frame-by-frame physics sim (real Player + real bot actuator; test/test-bot-climb.js) —
+this exposed a *chain* of actuator/planner bugs the earlier decision-only tests couldn't:
+- **Take-off position:** the `nearCol` gate delayed an up-and-across jump until the bot
+  had walked horizontally near the TARGET column — by which point it had walked in under
+  the target platform (head-blocked) or off its own platform edge. Node-by-node already
+  guarantees we're standing on the jump's take-off node, so now it LAUNCHES immediately
+  and arcs across.
+- **Mid-flight head-room re-check:** `canRise = !solid(cc,cr-2)` was evaluated every
+  frame; while rising toward a platform, the cell 2 above is the TARGET's underside →
+  read as "overhang → stop jumping", so the button released and the mid-air double-jump
+  armed far too LATE (past the apex, after falling back). Head-room is now a TAKE-OFF
+  gate only (ground); airborne the arc is committed.
+- **Head-blocked on the ground:** if the take-off column has a canopy/upper-platform
+  directly overhead, back up to the previous path node (A* chose it *because* it has
+  clear head-room) and launch there — instead of vibrating under the overhang.
+- **Air control too slow:** the below-landing drift was capped at 0.6, so a long diagonal
+  jump landed ~4 columns short. The player has no horizontal inertia, so overshoot is
+  free — now full speed until lined up over the column.
+- **Envelope too generous:** maxUp 6 / (ledge-hang) let A* emit 6-up single leaps and
+  skip interim platforms; the bot then head-bonked the upper ledge. Capped at a RELIABLE
+  double-jump (single 3 + air-jump 2 = **5 up**, **9 dx**); ledge-hang is an execution
+  aid, not a planning extension. A* now routes via interim platforms (staircase of
+  double-jumps) — which is what Kevin expected.
+- **"Arrived" mid-jump:** the companion follow-band (straight-line distance) is satisfied
+  as the arc grazes a leader perched at the top of a climb — both the brain (→ idle) and
+  the actuator (→ stop) then dropped the path and the bot fell back down. Neither settles
+  while AIRBORNE now; it finishes onto the ledge first.
+- Also bumped the planner's arc gate: the "horizontal reach shrinks with height" budget
+  subtracted the FULL climb; a double-jump is a second impulse (adds airtime), so the
+  shrink is capped at a single jump's height (NAV_MAX_JUMP_UP) — a legit 4-up/6-across
+  double-jump was being wrongly rejected, yielding a partial (floor) route.
+- Tests: NEW test/test-bot-climb.js (4 real-physics climb scenarios) + updated envelope
+  assertions in test-bot-ai. Suite 536, all green. Browser-UNTESTED.
+- STILL OPEN (Kevin's same message): the yellow "!" appears too fast + should try a few
+  different approaches before giving up + a visual cue for follow/mirror mode — deferred
+  to its own build (the climb fix removes most stuck cases; "!" timing is best tuned after
+  Kevin re-tests). Recorded in FUTURE_ROADMAP.

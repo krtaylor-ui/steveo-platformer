@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 145 (DOWN-path fix: when the player is below the bot, the route no longer draws/plans straight DOWN through a platform — the jump arc-clearance check was skipping the whole column on a vertical move, so a floor/platform straight below wasn\'t checked. Now it routes around (walk to edge, drop). + build 144 apex double-jump.)';
+const GAME_VERSION = 'v3 · build 146 (Two-level climb EXECUTION fix — verified with a frame-by-frame physics sim of the real Player + bot actuator: the bot now completes consecutive double-jumps up a maze\'s vertical sections. It launches an up-and-across jump from the TAKE-OFF node (not after walking under/off the target), no longer re-checks head-room mid-flight (which released the double-jump late), backs up to clear headroom when head-blocked, air-controls at full speed so long diagonal jumps land, plans only RELIABLE double-jumps (up 5/dx 9) so it routes via interim platforms instead of un-executable mega-leaps, and never counts the follow-band as "arrived" mid-jump (which dropped it back down). + build 145 down-path.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

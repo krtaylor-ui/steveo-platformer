@@ -419,8 +419,13 @@ class BotController {
     if (!leader) return this._goalIdle();
     const dist = Math.hypot(leader.cx - this.player.cx, leader.cy - this.player.cy) / BLOCK_SIZE;
     if (dist > BOT_FOLLOW_FAR) this._catchingUp = true;
-    else if (dist < BOT_FOLLOW_NEAR) this._catchingUp = false;
-    if (this._catchingUp) {
+    // Only SETTLE (stop following) once we're back on the GROUND within the band. The
+    // straight-line distance can dip under the near-band mid-jump — the arc passes close
+    // to a leader perched at the top of a climb — and settling to idle there drops the
+    // path and the bot falls back down instead of finishing onto the ledge (Kevin:
+    // reaches the goal's height, then falls off). Airborne → keep the follow goal alive.
+    else if (dist < BOT_FOLLOW_NEAR && this.player.onGround) this._catchingUp = false;
+    if (this._catchingUp || !this.player.onGround) {
       return { kind: 'companion-follow', cell: BOT_AI.cellOf(leader), approach: 'range',
                reachBlocks: BOT_FOLLOW_NEAR, targetRef: null, action: null, targetId: 'leader',
                reason: 'catching up to the player' };
@@ -663,7 +668,12 @@ class BotController {
       // goal.reachBlocks overrides (companion follow-band).
       const reach = (goal.reachBlocks != null) ? goal.reachBlocks
                   : (goal.approach === 'range') ? this._preferredRange(tgt) : BOT_OBJECTIVE_REACH_BLOCKS;
-      if (distBlocks > reach) {
+      // Never count as "arrived" while AIRBORNE: the arc can pass within the reach band
+      // mid-jump (e.g. the follow-band brackets the top of a climb), and stopping the
+      // steering there drops the bot straight down — it misses the platform it was about
+      // to land on and falls back (Kevin: reaches the goal's height, then falls off).
+      // Finish the jump first; only settle once we're back on the ground within reach.
+      if (distBlocks > reach || !p.onGround) {
         // Commit the jump: only (re)plan while on the ground, so a mid-air replan
         // can't flip the bot's direction and make it miss a small platform.
         if (p.onGround) this._pathToward(gc, gr);
@@ -710,11 +720,16 @@ class BotController {
     if (!p.onGround) {
       const myRow = Math.floor((p.y + p.height - 1) / BLOCK_SIZE);
       const dx = (step.tx != null) ? step.tx - p.cx : (step.dir || 0) * BLOCK_SIZE;
-      if (step.tr != null && myRow > step.tr) {
-        i.moveX = verticalJump ? 0 : Math.sign(dx) * Math.min(0.6, Math.max(0.25, Math.abs(dxB) / 4));
+      const need = Math.abs(dx) / BLOCK_SIZE;               // blocks still to cover horizontally
+      if (verticalJump && step.tr != null && myRow > step.tr) {
+        i.moveX = 0;                                        // beside-platform → rise STRAIGHT up (no side-clip)
       } else if (step.tx != null) {
-        const seek = Math.abs(dx) < 3 ? 0 : Math.sign(dx) * Math.min(1, Math.abs(dx) / (0.8 * BLOCK_SIZE));
-        i.moveX = seek * (0.65 + 0.35 * this.diff.navPrecision);  // at/above the ledge → land on the column
+        // Seek the target column at FULL speed until lined up over it. The player has
+        // no horizontal inertia (vx = speed·moveX each frame), so OVERSHOOT is free —
+        // easing early instead made a long diagonal jump land a column short in the
+        // brief moment the arc crosses the target row (Kevin's missed second jump). A
+        // tight deadzone stops the tiny end-of-arc jitter without slowing the approach.
+        i.moveX = need < 0.2 ? 0 : Math.sign(dx) * (0.75 + 0.25 * this.diff.navPrecision);
       } else {
         i.moveX = (step.dir || 0) * (this.diff.alwaysRun ? 1 : 0.8);
       }
@@ -799,14 +814,36 @@ class BotController {
     let dir = Math.sign(tx - p.cx) || (p.facing || 1);
     const rise = cr - tr;
     const nearCol = Math.abs(tx - p.cx) < 1.9 * BLOCK_SIZE;
-    const canRise = !nav.solid(cc, cr - 2);
+    // headroom is a TAKE-OFF gate only (is there a canopy directly overhead where I
+    // stand?). It must NOT be re-evaluated mid-flight: once airborne toward a higher
+    // node the arc is committed, and the cell 2 above the rising bot is often the
+    // TARGET platform's underside — which wrongly read as "overhang → stop jumping",
+    // releasing the button so the mid-air double-jump armed far too LATE (past the
+    // apex, after falling back down). So only consult it on the ground.
+    const canRise = p.onGround ? !nav.solid(cc, cr - 2) : true;
+    if (rise >= 1 && p.onGround && !canRise) {
+      // Want to rise but HEADBLOCKED right here — the cell above our head is a canopy
+      // or the TARGET platform's own underside (a stacked climb, where the upper ledge
+      // sits directly over our landing spot). Launching is impossible from this column,
+      // and steering toward the (up-and-over) target only drags us further UNDER the
+      // overhang, where we vibrate (Kevin: bot stuck under a one-block overhang / under
+      // the upper platform). Back up to the jump's TAKE-OFF cell — the previous path
+      // node, which A* picked precisely because it HAS clear headroom — and launch there.
+      const prev = path[Math.max(0, this._pathIdx - 1)];
+      dir = Math.sign((prev[0] + 0.5) * BLOCK_SIZE - p.cx) || -dir;
+      return { dir, jump: false, rise: Math.max(0, rise), tx, tr };
+    }
     let jump = false;
     if (rise >= 1 && canRise) {
-      // Want to gain height toward a higher node. On the ground: initiate when lined
-      // up. AIRBORNE: KEEP wanting to jump so _jumpControl can HOLD for full height,
-      // fire the mid-air DOUBLE-JUMP, and hold through the apex so LEDGE-GRAB catches
-      // the edge. (Previously jump was ground-only → double-jump/grab never fired.)
-      if (!p.onGround || nearCol) jump = true;
+      // Rise toward a higher node. Node-by-node only advances the target once we've
+      // LANDED on the previous node, so when we're on the ground here we're standing
+      // on the jump's TAKE-OFF cell — LAUNCH now and let air-control arc us across to
+      // the target (waiting until we're horizontally "near" the target column instead
+      // walked us off the platform edge / in under the target's overhang, where the
+      // jump then failed — Kevin's "second double-jump only single-jumps"). AIRBORNE:
+      // KEEP wanting to jump so _jumpControl HOLDS for full height, fires the mid-air
+      // DOUBLE-JUMP at the apex, and holds through it so LEDGE-GRAB can catch the edge.
+      jump = true;
     } else if (p.onGround && !nav.solid(cc + dir, cr + 1) && tr <= cr + 1 && nearCol && canRise) {
       jump = true;                                      // hop a gap from the ground
     }
@@ -849,16 +886,28 @@ class BotController {
   // climbs it could actually make). Wall-jump scaling is iterative, not a static
   // envelope, so it's not modelled here (flagged). `_envUp` is the SINGLE-jump
   // height, used by the actuator to decide when a double-jump press is needed.
+  //
+  // maxUp is deliberately capped at a RELIABLY-EXECUTABLE double-jump: single (3) + one
+  // air-jump (+2) = 5. A 6-block single leap is NOT reliably executable — it needs a
+  // pixel-perfect ledge-grab and clear headroom the whole way up, and where a taller
+  // climb exists the level almost always provides an interim platform to split it into
+  // two clean double-jump hops. Letting the planner emit 6-up leaps made A* SKIP those
+  // interims (a big jump was "cheaper" than two), then the bot's head hit the upper
+  // platform's underside on the way up and it never made it (Kevin: reaches the interim,
+  // fails the next). Ledge-hang still widens horizontal REACH (airtime), just not height.
   _jumpEnvelope() {
     const aws = this.game._worldAdvSettings || {};
-    let up = Math.round(aws.jumpHeightBlocks || NAV_MAX_JUMP_UP);   // base (matches physics)
+    let up = Math.round(aws.jumpHeightBlocks || NAV_MAX_JUMP_UP);   // base single-jump (matches physics)
     let dx = NAV_MAX_JUMP_DX;
     this._envUp = up;
-    if (aws.airJumpEnabled)   { up += Math.max(2, up - 1); dx += 3; }  // 2nd jump ≈ +another jump + airtime
-    if (aws.ledgeHangEnabled) { up += 1; }                            // grab a ledge at the apex + pull up
+    if (aws.airJumpEnabled) { up += 2; dx += 3; }   // reliable double-jump: +2 up, more airtime
+    // Ledge-hang is an EXECUTION aid (it helps the actuator catch a lip it slightly
+    // undershot), NOT a planning extension — folding it into the envelope let A* emit
+    // ever-longer/taller "shortcut" leaps the bot then couldn't actually land. The
+    // planner sticks to reliable double-jumps; ledge-grab just makes them more forgiving.
     // Wall Slide → wall-jump climb: the planner may scale walls (bot-gated wallClimb).
     const wallClimb = aws.wallSlideEnabled ? BOT_WALLJUMP_UP_BONUS : 0;
-    return { maxUp: Math.min(up, 8), maxDx: Math.min(dx, 10), wallClimb };
+    return { maxUp: Math.min(up, 5), maxDx: Math.min(dx, 9), wallClimb };
   }
 
   // Combat: aim at target (+ difficulty aim error) and fire the bow (charge to

@@ -860,9 +860,15 @@ console.log('Wayfinding — jump envelope reflects enabled moves + double-jump p
   const base = ctrl._jumpEnvelope();
   ok(base.maxUp === 3, `default envelope = 3-block jump (got ${base.maxUp})`);
   game._worldAdvSettings = { airJumpEnabled: true };
-  ok(ctrl._jumpEnvelope().maxUp > base.maxUp, 'double jump raises reachable height');
+  ok(ctrl._jumpEnvelope().maxUp === 5, 'double jump raises reachable height to a reliable 5 (single 3 + air-jump 2)');
+  // Ledge-hang is an EXECUTION aid, not a planning extension: it must NOT raise maxUp
+  // (folding it in let A* emit taller "shortcut" leaps the bot couldn't land — it would
+  // skip an interim platform, then head-bonk the upper ledge on the way up). It widens
+  // horizontal REACH (airtime) only.
   game._worldAdvSettings = { ledgeHangEnabled: true };
-  ok(ctrl._jumpEnvelope().maxUp === 4, 'ledge hang adds one block of reach');
+  ok(ctrl._jumpEnvelope().maxUp === 3, 'ledge hang does NOT raise jump height (execution aid, not planning)');
+  game._worldAdvSettings = { airJumpEnabled: true, ledgeHangEnabled: true };
+  ok(ctrl._jumpEnvelope().maxUp === 5, 'double-jump height stays a reliable 5 with ledge-hang on');
   // Double-jump pulse on a tall rise: ground press → hold → release near apex → press.
   game._worldAdvSettings = { airJumpEnabled: true }; ctrl._jumpEnvelope();   // _envUp = 3
   const P = ctrl.player; P._airJumpEnabled = true; P._airJumpsUsed = 0;

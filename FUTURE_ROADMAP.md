@@ -757,3 +757,25 @@ Kevin flagged two nav capabilities to add after the core maze pathing is solid:
   `navJumpClear` (1-tall) for cells the bot can only pass while crouched, and the
   actuator holding crouch through them. Reuses the Smart-Mobs crouch state.
 Both are MODERATE; do after maze/platform nav feels right.
+
+## 22. Companion "stuck" detection, retry, and follow-mode cues  *(flagged 2026-07-14)*
+Kevin, after the two-level climb fix (build 146): the yellow "!" appears too fast, and he
+wants smarter give-up behaviour + a visible follow-mode cue. Plan:
+- **"!" only when GENUINELY stuck.** Today it fires purely on a distance-stall timer
+  (`_ccStuck > BOT_COMPANION_WARP_STUCK`, ~0.75 s) in the teleport-OFF path. Gate it on the
+  actuator having actually EXHAUSTED its escape attempts (`_escapeCount > BOT_ESCAPE_MAX`
+  → the "back up and jump, then re-decide" cycle) so the "!" means "tried and failed",
+  not "hasn't arrived yet." (The climb fix already removes most stalls, so re-tune the
+  threshold against real post-146 behaviour.)
+- **Self-detect a repeated pattern + try a DIFFERENT approach.** The escape logic already
+  varies the retry (reverse dir + jump, then drop-goal/re-path). Extend to: on the 2nd
+  identical failed pattern, deliberately perturb — try the OTHER take-off side, a longer
+  run-up, or a different path node — before escalating to "!". Kevin: "try a different
+  approach if it repeats the same pattern twice, and only after a few attempts → Yellow."
+- **Visual cue for Follow / mirror mode.** When `_mirrorTimer > 0` (copying the player's
+  inputs to thread a route), draw a distinct marker over the bot (e.g. a small linked-arrows
+  / footsteps icon, or a coloured outline) so it's obvious the bot is in "repeat mode."
+  Pairs with the existing yellow "!" (stuck) mark in player.js `_stuckMark`.
+- Kevin's aspiration: a model smart enough that follow-mode isn't needed — treat mirror
+  mode as the safety net, and keep improving autonomous climbing so it rarely triggers.
+LOW–MODERATE; best done right after Kevin re-tests the 146 climb fix.

@@ -140,8 +140,14 @@ function navNeighbors(nav, c, r, baseUp, baseDx, out, wallClimb) {
       if (dr < 0 && headBlocked) continue;   // overhang overhead → no upward jump from this cell
       const nc = c + dc, nr = r + dr;
       if (!navStandable(nav, nc, nr)) continue;
-      // horizontal reach shrinks the higher you go (rough arc gate)
-      const upCost = dr < 0 ? -dr : 0;
+      // horizontal reach shrinks the higher you go (rough arc gate) — but only up to
+      // a SINGLE jump's height. Climbing beyond that is a DOUBLE-JUMP (a second
+      // impulse), which ADDS airtime rather than eating horizontal reach, so the extra
+      // height past NAV_MAX_JUMP_UP doesn't shrink the budget further. Without this cap
+      // a legit 4-up/6-across double-jump (budget 9-4=5 < 6) was wrongly rejected, so
+      // the planner returned a partial (floor) route and the bot never climbed. Mobs +
+      // the generator use baseUp=3, so -dr never exceeds the cap → they're unaffected.
+      const upCost = dr < 0 ? Math.min(-dr, NAV_MAX_JUMP_UP) : 0;
       const budget = jDx - upCost;
       if (Math.abs(dc) > Math.max(1, budget)) continue;
       // Reject jumps that pass THROUGH terrain (e.g. straight through a maze wall) —
