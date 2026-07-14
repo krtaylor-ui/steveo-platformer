@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 108 (Smart Mobs §10+: opaque "Solid Leaves" decor block — the classic full-cell leaves look, now front/back + 3 colours in the Decor tab, alongside the semi-transparent Bush/Leaves; Oak Leaves palette tile moved to Decor, existing leaves untouched)';
+const GAME_VERSION = 'v3 · build 109 (create-world minimum height lowered 30 -> 15 blocks for non-arena worlds, matching the client input + offline path)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

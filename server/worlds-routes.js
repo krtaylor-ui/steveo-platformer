@@ -28,7 +28,7 @@ const WORLD_H = 60;
 // editor already reads (data.worldWidth/worldHeight), so no schema migration.
 const GAME_MODES = ['NRM', 'PLT', 'RUN', 'ARN'];
 const WIDTH_MIN = 25, WIDTH_MAX = 2000;
-const HEIGHT_MIN = 30, HEIGHT_MAX = 500;
+const HEIGHT_MIN = 15, HEIGHT_MAX = 500;   // floor 15 (matches the client input + offline path)
 // Arena worlds have fixed, non-editable dimensions (server-enforced).
 const ARENA_W = 25, ARENA_H = 15;
 
