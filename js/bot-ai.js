@@ -195,15 +195,18 @@ class BotController {
       goal = this._thinkCompanion();
     } else {
       const el = BOT_AI.elementsFor(this.game);
-      // Element-priority dispatch — objective elements first, then kills. Bots
-      // read the SAME ruleset that DEFINES the mode (Custom Rules → free support).
+      // Element-priority dispatch — bots read the SAME ruleset that DEFINES the
+      // mode (Custom Rules → free support). Element KEYS are the Arena Rules Engine's
+      // own: ctf / hill / towers / emeralds / waveSpawns|bots|spawnEggs (mobs) / pvp.
+      // "Position" objectives first, then collectibles, then mobs, then kills; each
+      // is skipped when there's nothing to act on (so a mixed ruleset falls through).
       goal = null;
-      if (el.flags)         goal = this._goalFlags(el);
-      else if (el.hill)     goal = this._goalHill(el);
-      else if (el.tower)    goal = this._goalTower(el);
-      else if (el.emeralds) goal = this._goalEmeralds(el);
-      else if (el.waves)    goal = this._goalWaves(el);
-      if (!goal && (el.pvp || el.kills !== false)) goal = this._goalKills(el);
+      if (el.ctf)                      goal = this._goalFlags(el);
+      if (!goal && el.hill)            goal = this._goalHill(el);
+      if (!goal && el.towers)          goal = this._goalTower(el);
+      if (!goal && el.emeralds && this._liveEmeralds().length) goal = this._goalEmeralds(el);
+      if (!goal && (el.waveSpawns || el.bots || el.spawnEggs) && this._hasLiveMobs()) goal = this._goalWaves(el);
+      if (!goal && el.pvp && this._opponents().length) goal = this._goalKills(el);
       if (!goal) goal = this._goalIdle();
       // Phase 3 — co-op coordination: complementary roles (simple heuristics).
       goal = this._coopAdjust(goal, el);
@@ -728,6 +731,10 @@ class BotController {
       if (score < bestScore) { bestScore = score; best = m; }
     }
     return best || this._nearestMobAny();
+  }
+  _hasLiveMobs() {
+    const mm = this.game.mobManager; if (!mm || !mm.mobs) return false;
+    return mm.mobs.some(m => m.alive && m.hp > 0);
   }
   _nearestMobAny() {
     const mm = this.game.mobManager; if (!mm || !mm.mobs) return null;

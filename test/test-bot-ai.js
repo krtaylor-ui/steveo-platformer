@@ -23,12 +23,13 @@ const real = {
   Math, console, Set, Map, Array, Object, JSON, Number, String, Boolean, Infinity, isFinite,
   // Mocked engine singletons the bot references:
   Game: { ownerId: (i) => 'p' + (i + 1) },
-  // Mode-aware so _think dispatches to the right element strategy (mirrors the
-  // real ARENA_RULES preset elements closely enough for the bot's dispatch).
+  // Mode-aware, using the REAL Arena Rules Engine element keys (ctf/towers/
+  // waveSpawns/bots/spawnEggs/hill/emeralds/pvp) so the dispatch test matches
+  // production behaviour (Phase 6 verifies against the real arena-rules.js too).
   ARENA_RULES: { rulesetForMode: (mode) => ({ elements: ({
-    CAPTURE_FLAG: { flags: true }, DEFEND_TOWER: { tower: true },
-    COLLECT_EMERALDS: { emeralds: true }, SURVIVAL_WAVES: { waves: true },
-    MOB_HUNTER: { waves: true }, KING_OF_HILL: { hill: true },
+    CAPTURE_FLAG: { ctf: true, pvp: true }, DEFEND_TOWER: { towers: true, pvp: true },
+    COLLECT_EMERALDS: { emeralds: true, bots: true }, SURVIVAL_WAVES: { waveSpawns: true },
+    MOB_HUNTER: { bots: true, spawnEggs: true }, KING_OF_HILL: { hill: true, pvp: true },
     DEATHMATCH: { pvp: true },
   })[mode] || { pvp: true } }) },
 };
@@ -376,7 +377,7 @@ console.log('Phase 2 — _think element dispatch:');
   sandbox.EMERALD_SYSTEM = { _activeEmeralds: () => [{ wx: 8 * B, wy: 2 * B, collected: false }] };
   ok(dispatch({ emeralds: true }) === 'emerald', 'emeralds element → emerald strategy');
   sandbox.EMERALD_SYSTEM = undefined;
-  ok(dispatch({ waves: true }) === 'idle' || dispatch({ waves: true }) === 'mob', 'waves element → wave strategy (mob or idle when none)');
+  ok(dispatch({ waveSpawns: true }) === 'idle', 'waveSpawns element, no mobs → idle (guarded)');
   sandbox.ARENA_RULES = savedRules;   // restore the mode-aware mock for Phase 3
 }
 
@@ -553,6 +554,61 @@ console.log('Phase 5 — aim error: HARD lands closer to the true angle than EAS
   const eErr = measure('EASY'), hErr = measure('HARD');
   ok(hErr < eErr, `HARD mean aim error (${hErr.toFixed(3)}) < EASY (${eErr.toFixed(3)})`);
 }
+
+// ════════════════════════════════════════════════════════════
+// Phase 6 — Custom Rules (verify against the REAL arena-rules.js)
+// ════════════════════════════════════════════════════════════
+// Load the actual Arena Rules Engine and confirm the bot's dispatch keys match
+// the engine's element keys — for every preset AND for custom rulesets.
+run('arena-rules.js', 'this.ARENA_RULES=ARENA_RULES;');
+const REAL_RULES = sandbox.ARENA_RULES;   // now the real engine (replaces the mock)
+
+console.log('Phase 6 — bot dispatch keys match the REAL preset elements:');
+{
+  const need = {
+    CAPTURE_FLAG: 'ctf', DEFEND_TOWER: 'towers', KING_OF_HILL: 'hill',
+    COLLECT_EMERALDS: 'emeralds', SURVIVAL_WAVES: 'waveSpawns', DEATHMATCH: 'pvp',
+  };
+  for (const [mode, key] of Object.entries(need)) {
+    const el = REAL_RULES.rulesetForMode(mode, {}).elements;
+    ok(el && el[key] === true, `${mode} ruleset has elements.${key} (the key the bot dispatches on)`);
+  }
+  const mh = REAL_RULES.rulesetForMode('MOB_HUNTER', {}).elements;
+  ok(mh && (mh.bots || mh.spawnEggs || mh.waveSpawns), 'MOB_HUNTER exposes a mob-source element (bots/spawnEggs)');
+}
+
+console.log('Phase 6 — custom rulesets route to the right strategy:');
+{
+  const level = flatLevel();
+  // Helper: build a game whose REAL CUSTOM elements come from a customRuleset, with
+  // the needed systems present, and return the bot's chosen goal kind.
+  const customKind = (elements, systems) => {
+    const bot = mkPlayer(5, 2, { owner: 'p2', teamId: 0 });
+    const opp = mkPlayer(9, 2, { owner: 'p1', teamId: 1 });
+    const game = mkGame(level, [opp, bot], { arenaConfig: { arenaGameMode: 'CUSTOM', customRuleset: { elements }, kothScoring: 'STICKY' } });
+    Object.assign(sandbox, systems || {});
+    const ctrl = new BotController(game, 1, 'competitive', 'MEDIUM');
+    ctrl._think();
+    // cleanup mocked systems
+    for (const k of Object.keys(systems || {})) sandbox[k] = undefined;
+    return ctrl.goal.kind;
+  };
+  // Custom: hill only → hill strategy.
+  sandbox.ARENA_MODES = { _onHill: () => false };
+  ok(customKind({ hill: true }, {}).startsWith('hill'), 'custom {hill} → hill strategy');
+  sandbox.ARENA_MODES = undefined;
+  // Custom: ctf → flag strategy.
+  const flags = [{ team: 0, x: 3 * B, y: 2 * B, carriedBy: null, dropped: false }, { team: 1, x: 27 * B, y: 2 * B, carriedBy: null, dropped: false }];
+  ok(customKind({ ctf: true, pvp: true }, { CTF_SYSTEM: { flags, bases: [{ x: 3 * B, y: 2 * B }, { x: 27 * B, y: 2 * B }], isCarrying: () => false } }).startsWith('flag'), 'custom {ctf} → flag strategy');
+  // Custom: towers → tower strategy.
+  const towers = [{ ownerId: 'p2', x: 4 * B, y: B, w: B, h: 2 * B, maxHp: 9, hp: 9 }, { ownerId: 'p1', x: 26 * B, y: B, w: B, h: 2 * B, maxHp: 9, hp: 9 }];
+  ok(customKind({ towers: true }, { TOWER_SYSTEM: { towers } }).startsWith('tower'), 'custom {towers} → tower strategy');
+  // Custom: emeralds + pvp → emeralds take priority when gems exist.
+  ok(customKind({ emeralds: true, pvp: true }, { EMERALD_SYSTEM: { _activeEmeralds: () => [{ wx: 8 * B, wy: 2 * B, collected: false }] } }) === 'emerald', 'custom {emeralds,pvp} with gems → emerald');
+  // Custom: pvp only → kills.
+  ok(['engage', 'hunt'].includes(customKind({ pvp: true }, {})), 'custom {pvp} → kills');
+}
+sandbox.ARENA_RULES = REAL_RULES;   // keep the real engine for any later blocks
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

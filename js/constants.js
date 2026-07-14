@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 120 (Bot AI Phase 4 — companion bot for Platformer/Normal/Campaign: a friendly follower that stays in a proximity band of the player, fights hostile MOBS (never the player), avoids hazards via the pathfinder, and respects loot priority — the player gets first pick (time-delayed leftover pickup) and any item the player picks up that is redundant/worse than what they have equipped is auto-handed to the companion. Opt-in via _worldAdvSettings.companionBot. + builds 117-119 Bot AI Phases 1-3.)';
+const GAME_VERSION = 'v3 · build 121 (Bot AI Phase 6 — Custom Rules support + a real-engine fix: the bot now dispatches on the Arena Rules Engine\'s ACTUAL element keys (ctf/towers/waveSpawns/bots/spawnEggs/hill/emeralds/pvp), verified against arena-rules.js for every preset AND custom rulesets — so bots play custom modes for free. (Fixes a key mismatch that would have made CTF/Tower/Waves bots fall back to plain kills.) + builds 117-120 Bot AI Phases 1-5.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

@@ -1770,3 +1770,25 @@ blend weights (Q2) are separately tunable (`BOT_THREAT_WEIGHTS`).
   tighter/more-accurate/more-aggressive), detectRange actually gates engagement (a
   15-block opponent is invisible to EASY, engaged by MEDIUM/HARD), and HARD's mean
   aim error is measurably smaller than EASY's over 400 frames. **Suite 445.**
+
+## Phase 6 — Custom Rules support (build 121, DONE, headless-verified) + real-engine fix
+Because Phase 2 keyed strategies to ruleset ELEMENTS, Custom Rules support fell out —
+BUT verifying against the REAL arena-rules.js surfaced a genuine bug (exactly what
+this phase is for): the engine's element keys are **ctf / towers / waveSpawns / bots
+/ spawnEggs / hill / emeralds / pvp**, whereas the bot dispatch (and the earlier test
+mock) used `flags` / `tower` / `waves`. Against the real engine that would have made
+CTF, Defend-the-Tower, and Survival-Waves bots silently fall through to plain kills.
+- **FIX:** `_think` now dispatches on the real keys with availability guards and a
+  clear priority: ctf → hill → towers → emeralds(if gems) → mobs(waveSpawns|bots|
+  spawnEggs, if live mobs) → pvp(if opponents) → idle. Test mock updated to the real
+  keys too. (`_hasLiveMobs` helper added.)
+- **Custom Rules verified** against the real `ARENA_RULES.rulesetForMode('CUSTOM',
+  {customRuleset})`: {hill}→hill, {ctf}→flag, {towers}→tower, {emeralds,pvp}→emerald,
+  {pvp}→kills. Preset element keys verified for all 6 objective modes + Mob Hunter.
+- **Best-effort gaps flagged (per brief):** (1) with a mixed custom ruleset the bot
+  follows the fixed priority above rather than the ruleset's SCORING weights — e.g.
+  {emeralds,pvp} makes it collect gems even if kills score higher; (2) multi-stage /
+  sequenced custom win conditions aren't reasoned about — the bot plays the currently-
+  active elements, not the stage graph. Common single-objective + simple-combo customs
+  work; exotic designer rulesets are not guaranteed.
+- Tests: test-bot-ai.js +12 (real preset keys + custom dispatch). **Suite 457.**
