@@ -40,11 +40,13 @@
   — groundwork for Campaign mode. Builds 68–72 = editor fixes + the Return‑to‑Sandbox playtest‑exit fix.
 
 ## 🔜 Still planned (not built)
-- **Smart Mobs** — mob intelligence pass (wayfinding, line-of-sight + sound + action detection,
-  pack behaviour, sprint-telegraph, flee-at-low-HP, spider webs) + a trait-based weapon system,
-  a crouch/sneak movement state, and Leaves/Bushes concealment blocks. **Fully specced** in the
-  *Bug Fixes + Smart Mobs brief* (2026‑07‑08) but **not yet built** — it's the direct foundation
-  several items below cross‑reference (§16 mob config, §17 enchantments, §18 suspicion meter).
+- **Smart Mobs** — LARGELY BUILT. The weapon/UX half (traits, crouch/sneak, Leaves/Bushes)
+  shipped builds 73–99; the **mob-intelligence half (§4–§10): detection (sight/sound/action),
+  pack behaviour, sprint-telegraph, flee-at-low-HP, spider webs, + decorative foliage** shipped
+  builds **102–107** on branch `smart-mobs-detection` (headless-verified, browser-UNTESTED,
+  awaiting Kevin's playtest + merge). **Only §6 Wayfinding & ambush-from-above remains** — its
+  own mini-project (needs a tile A*/navmesh; see CONTEXT_SUMMARY "§6 Wayfinding" recommendation
+  + the shared-navmesh note in §4 below). Still the foundation §16/§17/§18 cross-reference.
 - **User Guide** — §1 below (not started).
 - **Offline providers for Normal / Platformer / Arena** — extend the §6 local provider
   beyond Sandbox (only Sandbox works offline today).

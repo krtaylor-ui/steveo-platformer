@@ -7,7 +7,70 @@ Guide, **Campaign mode** §12, Tower Defense/bots, world cleanup, itch/Tauri,
 plus new §13–§18: Ladders, Trampolines, Online/MP UX, Mob-config engine,
 Enchantments, Suspicion meter).
 
-## CURRENT STATE (2026-07-13) — build 99, SHIPPED to main + origin
+## CURRENT STATE (2026-07-13) — build 107, on branch `smart-mobs-detection` (NOT merged)
+
+**Smart Mobs Batch 2 — the mob-intelligence half of the brief (§4–§10) — is BUILT** on
+branch `smart-mobs-detection` (off `main` @ build 101), **headless-verified (suite 293),
+browser-UNTESTED, NOT yet merged/pushed** — awaiting Kevin's playtest. `GAME_VERSION` =
+build 107; bump all THREE markers each commit. **Every behavior is additive/opt-in —
+NONE changes default mob behavior unless a World-Settings → Combat toggle is turned on**
+(the hard rule from the brief). What shipped, one build each:
+- **§10 — build 102:** decorative foliage. New **"Decor" palette tab** with non-solid
+  **Bush** + **Leaves** blocks, each in **front/back** layers (encoded in the block id) +
+  **green/yellow/orange** colours (re-click a placed cell to cycle; overlay map, mirrors
+  Goal-Star colours, serialized as `world_data.foliage`). Bushes **occlude mob sight**
+  (`game._blocksSight` / `foliageOccludesSight`) — the §4 dependency; leaves are cosmetic.
+  Drawn in dedicated back/front passes (front reuses the `_drawEndPortalForeground`
+  technique); front/back look **distinct in the editor, identical in play**. Existing Oak
+  Leaves untouched.
+- **§4 — build 103:** DETECTION core. `Mob._shouldChase()` gate (default-off = legacy
+  distance aggro across all 8 mob classes; on = chase only once `_alerted`). Sight =
+  frontal-cone raycast blocked by walls + bushes; Sound = block tiers (gravel loud /
+  grass silent / normal walk-run) reusing the footstep/landing flags via
+  `game._emitMovementNoise`; Action = attack/jump noise. Master toggle + per-axis
+  sub-toggles + ranges in World Settings → Combat → Detection. Alerting is **sticky**.
+- **§5 — build 104:** PACK behavior (one `packAlert` toggle). Alert propagation (one
+  alerted mob rouses neighbours within `packRadius`, ripples over frames) + surround
+  (clustered melee mobs get alternating `_flankOffset`s via `_chaseTargetX` — a left/right
+  heuristic, not pathfinding).
+- **§7 — build 105:** SPRINTING MOBS (own `sprintingMobs` toggle, independent of the
+  detection master). Ground melee chasers occasionally sprint; **always telegraphed** —
+  a ~0.7s wind-up (slow + pulsing "!" ring + mob voice), then a 2.4× burst with streaks.
+- **§8 — build 106:** RETREATING MOBS (per-mob-type `lowHpAction` **variable** =
+  None/Flee, extensible; advanced per-type HP-% threshold, default 20%). Wired for
+  Zombie/Skeleton/CaveSpider/Piglin/WitherSkeleton; Creeper/Blaze/Enderman excluded
+  (their low-HP behavior is explode/fly/teleport). Coexists with skeleton kiting.
+- **§9 — build 107:** SPIDER WEBS (`spiderWebs` toggle). Cave Spiders spit slowing `Web`
+  globs (no damage); player slows via `applyWeb` (default 33%→67% speed, 3s) with visible
+  webbing; optional **Stacking** compounds (0.67→~0.4489) + resets the timer.
+
+**Tests:** `node test/run.js` → **293** (adds test-foliage 16, test-detection 38,
+test-webs 10). New/changed: `js/mobs.js` (detection/pack/sprint/flee/web engine + Web
+class), `js/game.js` (`_detectionConfig`/`_fleeConfig`/`_webConfig`, foliage draw+overlay,
+noise emit), `js/player.js` (sprint/jump/web flags + applyWeb + web overlay),
+`js/blocks.js` + `js/level.js` + `js/game-state.js` (foliage), `js/world-settings-ui.js`
+(Combat rows), `js/constants.js` (DETECT_*/SPRINT_* + GAME_VERSION).
+
+**Ship path (unchanged):** `node test/run.js` → bump the THREE markers → commit → **Kevin
+browser-tests** → `git checkout main && git merge --ff-only smart-mobs-detection` →
+`git push origin main`.
+
+### §6 Wayfinding — the ONLY remaining piece of the Smart Mobs brief (recommendation)
+Deferred by design (no pathfinding exists; it pervasively touches aggro/pathing across all
+8 classes). Batch 2 surfaced concrete reasons it's next and what it must fix:
+- **Sticky alert:** an alerted mob never de-aggros and can't route around terrain — §6
+  should add path-aware pursuit + a de-aggro/return-to-post rule (or fold in the §18
+  Suspicion decay).
+- **§5 surround is a left/right heuristic** (mobs are non-solid, so "flankers" currently
+  overlap the player) — real flanking wants navigation.
+- **Ambush-from-above** + reaching a player behind walls both need the tile A*/navmesh.
+Recommend building §6 as a **shared navmesh subsystem** (also unlocks Arena objective-bots
++ TD/MOBA per FUTURE_ROADMAP §4), then retrofitting detection-driven chase, surround, and
+flee-to-cover onto it. Treat it as its own mini-project.
+
+---
+
+## PRIOR STATE (2026-07-13) — build 99, SHIPPED to main + origin
 
 **Builds 73–99 (the weapon/UX half of the Smart Mobs work) are MERGED to `main`
 and pushed**, browser-verified by Kevin across many playtest rounds. Test suite
