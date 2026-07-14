@@ -1851,3 +1851,13 @@ log companion telemetry; (4) P1-as-bot (needs the P1 mouse-aim/combat path overr
 if Kevin ever wants bot-vs-bot spectating. **Watch-items (feel/tuning levers in
 `constants.js`):** `BOT_DIFFICULTY_PRESETS`, `BOT_THREAT_WEIGHTS`, `BOT_ARCHER_RANGE_
 BLOCKS`, `BOT_FOLLOW_NEAR/FAR`, `BOT_COMPANION_LOOT_DELAY`.
+
+## Bot AI — Companion World-Settings toggle (build 123)
+Closes the Phase-4 gap (no UI). Added `companionBot` to `world-settings-ui.js`
+(World Settings → Players → "Companion Bot": Off/Easy/Medium/Hard; modes = normal/
+platformer/sandbox). It free-rides the `worldAdvSettings` serialize path, so it saves
+with the world; `_maybeSetupCompanion()` reads it on first update. Set it, (re)start
+the level, and P2 becomes the companion. NOTE: takes effect at level start (not live
+mid-match); if `twoPlayerMode` is also on, the companion claims the P2 slot. Suite
+468 (settings entry is data-only). Browser-UNTESTED — the companion combat/loot path
+gets its first real exercise here.

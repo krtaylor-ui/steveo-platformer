@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 122 (Bot AI Phase 7 — Learning Mode / telemetry: one structured log per bot per match (mode, difficulty, role, outcome, objective stats) + a sampled decision trace, accumulated in localStorage and exportable as one JSON batch (BOT_TELEMETRY.download()). Data dictionary in BOT_TELEMETRY_SCHEMA.md so both Claude Code and Claude web read the fields identically. + builds 117-121 Bot AI Phases 1-6. COMPLETES the Bot AI brief.)';
+const GAME_VERSION = 'v3 · build 123 (Bot AI — Companion toggle: World Settings → Players → "Companion Bot" (Off/Easy/Medium/Hard) enables a friendly AI teammate (P2) in Platformer/Normal that follows you, fights mobs, and takes leftover loot. Closes the Phase-4 UI gap. + builds 117-122 = full Bot AI brief Phases 0-7.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
