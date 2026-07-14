@@ -2964,6 +2964,7 @@ class Game {
       this.mobManager.detectCfg = this._detectionConfig();
       this.mobManager.fleeCfg   = this._fleeConfig();   // §8 — per-mob-type low-HP flee
       this.mobManager.webCfg    = this._webConfig();    // §9 — spider web slow
+      this.mobManager.pathCfg   = this._pathConfig();   // §6 — path-aware pursuit
       if (!_onlineNonHost) {
         this.mobManager.update(this.player, this.level, this.player2 || null, this.players.slice(2).filter(Boolean));
       } else {
@@ -16680,6 +16681,21 @@ class Game {
       stacking:       !!aws.webStacking,
       range:          10 * BLOCK_SIZE,
       cooldown:       150,
+    };
+  }
+
+  // Smart Mobs §6 — path-aware pursuit config for the mob manager (null/disabled =
+  // legacy straight-line chase). Its OWN opt-in toggle, independent of the detection
+  // master (brief §3: pathing also improves classic-aggro worlds). searchRadius +
+  // recompute are the main feel/perf levers, exposed as advanced World-Settings.
+  _pathConfig() {
+    const aws = this._worldAdvSettings || {};
+    if (!aws.pathAwareMobs) return null;
+    return {
+      enabled:       true,
+      searchRadius:  aws.pathSearchRadius   || PATH_SEARCH_RADIUS,
+      recompute:     aws.pathRecomputeFrames || PATH_RECOMPUTE_FRAMES,
+      maxExpansions: PATH_MAX_EXPANSIONS,
     };
   }
 

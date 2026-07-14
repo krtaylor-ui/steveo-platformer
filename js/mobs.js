@@ -248,6 +248,10 @@ class Mob {
   // Skeleton fully retreats instead of holding its preferred range.
   _fleeIfHurt(player, level) {
     if (!player || !this._shouldFlee()) return false;
+    // §6 stretch — path-aware flee: route to a reachable retreat cell AWAY from the
+    // player (around walls) instead of backing straight into terrain. Falls through
+    // to the legacy straight-away flee if no retreat route exists.
+    if (this._pathCfg && this._pathCfg.enabled && level && this._fleePathStep(player, level)) return true;
     const away  = Math.sign(this.cx - player.cx) || (this.facing || 1);
     const speed = (this.speed || 2) * 1.15;
     this.vx     = away * speed;
@@ -260,11 +264,146 @@ class Mob {
     return true;
   }
 
+  // §6 stretch — steer a fleeing mob along an A* route to a retreat cell away from
+  // the player. Returns true if a route is being followed, false to let the caller
+  // fall back to the straight-away flee. Retreat goal = progressively shorter
+  // distances away from the player until a reachable one is found.
+  _fleePathStep(player, level) {
+    const cfg = this._pathCfg;
+    if (typeof findMobPath !== 'function') return false;
+    const cc = this._cellCol(), cr = this._cellRow();
+    const away = Math.sign(this.cx - player.cx) || (this.facing || 1);
+    if (this._fleeTimer == null) this._fleeTimer = 0;
+    const stale = !this._fleePath || this._fleePath.length < 2 ||
+      --this._fleeTimer <= 0 || this._pathStale(level, this._fleePath);
+    if (stale) {
+      const nav = this._navFor(level);
+      let res = null;
+      for (const dist of [cfg.searchRadius, Math.max(6, (cfg.searchRadius / 2) | 0), 4]) {
+        res = findMobPath(nav, [cc, cr], [cc + away * dist, cr],
+          { maxRadius: cfg.searchRadius, maxExpansions: cfg.maxExpansions });
+        if (res && res.path.length >= 2) break;
+      }
+      this._fleeTimer = cfg.recompute;
+      this._fleePath  = (res && res.path.length >= 2) ? res.path : null;
+      if (!this._fleePath) return false;
+    }
+    const step  = this._followPath(this._fleePath, player, level);
+    const speed = (this.speed || 2) * 1.15;
+    this.vx     = step.dir * speed;
+    this.facing = -away;   // keep eyes on the player while backing away
+    if (step.jump && this.onGround) this.vy = JUMP_VELOCITY * step.jumpMult;
+    return true;
+  }
+
   // Smart Mobs §5 — surround: the x a melee chaser steers toward. Normally the player,
   // but the MobManager sets `_flankOffset` so clustered mobs approach from opposite
   // sides (a simple left/right heuristic — real pathfinding is the deferred §6). Zero
   // offset (default) = beeline the player, so this is a no-op when pack behavior is off.
   _chaseTargetX(player) { return player.cx + (this._flankOffset || 0); }
+
+  // ── Smart Mobs §6 — WAYFINDING (path-aware pursuit) ─────────────────────────
+  // `_pathCfg` = the shared config (set by the MobManager each frame from world
+  // settings; null/disabled = legacy straight-line chase, so default behavior is
+  // byte-identical). When enabled, a pursuing mob follows a real A* route
+  // (js/pathfinding.js) around terrain instead of beelining the player.
+
+  // Build a `nav` adapter over the live Level for the pathfinder. (c,r)=(col,row);
+  // Level speaks (row,col). Out-of-bounds is solid (world edge = wall); lava is a
+  // hazard a mob must never route through; jump pads extend the reach envelope.
+  _navFor(level) {
+    return {
+      W: level.width, H: level.height,
+      solid:  (c, r) => level.isSolid(r, c),
+      hazard: (c, r) => level.get(r, c) === BLOCK.LAVA,
+      pad:    (c, r) => level.get(r, c) === BLOCK.JUMP_PAD,
+    };
+  }
+  // This mob's current path cell: the feet cell (air just above the support block).
+  _cellCol() { return Math.floor(this.cx / BLOCK_SIZE); }
+  _cellRow() { return Math.floor((this.y + this.height - 1) / BLOCK_SIZE); }
+
+  // Returns { dir, jump, jumpMult } steering this mob along a cached A* route to
+  // `player` (offset to a flank side when §5 surround is active), or null to fall
+  // back to legacy straight-line steering — path-aware OFF, player beyond the
+  // bounded search radius (not actionable yet), or NO route found (degrade
+  // gracefully to today's beeline; never hang). Caches the route + recomputes on
+  // a cadence (not every frame) to bound cost and avoid path flip-flop jitter.
+  _pathStep(player, level) {
+    const cfg = this._pathCfg;
+    if (!cfg || !cfg.enabled || !player || !level || typeof findMobPath !== 'function') return null;
+    const cc = this._cellCol(), cr = this._cellRow();
+    // Flank bias (§5 surround) — aim the GOAL past the player toward this mob's
+    // assigned side so flankers route AROUND to the far side (real pathing, not
+    // the old overlap-the-player left/right nudge).
+    const goalX = player.cx + (this._pathFlankBias || 0);
+    const gc = Math.floor(goalX / BLOCK_SIZE);
+    const gr = Math.floor((player.y + player.height - 1) / BLOCK_SIZE);
+    if (Math.abs(gc - cc) > cfg.searchRadius || Math.abs(gr - cr) > cfg.searchRadius) {
+      this._path = null; return null;          // out of range → legacy fallback
+    }
+    if (this._pathTimer == null) this._pathTimer = 0;
+    const goalMoved = !this._pathGoal ||
+      Math.abs(this._pathGoal[0] - gc) > 1 || Math.abs(this._pathGoal[1] - gr) > 1;
+    const stale = !this._path || this._path.length < 2 || --this._pathTimer <= 0 ||
+      goalMoved || this._pathStale(level, this._path);
+    if (stale) {
+      const res = findMobPath(this._navFor(level), [cc, cr], [gc, gr],
+        { maxRadius: cfg.searchRadius, maxExpansions: cfg.maxExpansions });
+      this._pathTimer = cfg.recompute;
+      this._pathGoal  = [gc, gr];
+      this._path      = res ? res.path : null;
+      if (!this._path) return null;            // unreachable within budget → legacy
+    }
+    return this._followPath(this._path, player, level);
+  }
+
+  // The cached route is stale if any of the next few cells is no longer standable
+  // (a block was placed/mined or a piston moved terrain under the mob) — forces a
+  // recompute rather than walking into now-solid terrain or a vanished ledge.
+  _pathStale(level, path) {
+    if (!path || typeof navStandable !== 'function') return !path;
+    const nav = this._navFor(level);
+    for (let i = 0; i < path.length && i < 4; i++) {
+      if (!navStandable(nav, path[i][0], path[i][1])) return true;
+    }
+    return false;
+  }
+
+  // Steer toward the next unreached cell on `path`; trigger a jump when that cell
+  // is above the mob (a rise auto-climb can't handle) or a gap lies directly ahead.
+  _followPath(path, player, level) {
+    // nearest cell on the path, then look one ahead
+    let idx = 0, best = Infinity;
+    for (let i = 0; i < path.length; i++) {
+      const dx = (path[i][0] + 0.5) * BLOCK_SIZE - this.cx;
+      const dy = (path[i][1] + 0.5) * BLOCK_SIZE - this.cy;
+      const d = dx * dx + dy * dy;
+      if (d < best) { best = d; idx = i; }
+    }
+    const tIdx = Math.min(idx + 1, path.length - 1);
+    const [tc, tr] = path[tIdx];
+    const tx = (tc + 0.5) * BLOCK_SIZE;
+    let dir = Math.sign(tx - this.cx);
+    if (dir === 0) {                              // aligned with this cell — aim further
+      const nc2 = path[Math.min(tIdx + 1, path.length - 1)][0];
+      dir = Math.sign((nc2 + 0.5) * BLOCK_SIZE - this.cx) || Math.sign(player.cx - this.cx);
+    }
+    dir = dir || (this.facing || 1);
+    const cr = this._cellRow(), cc = this._cellCol();
+    const rise = cr - tr;                         // >0 = target cell is above us
+    const nearCol = Math.abs(tx - this.cx) < 1.8 * BLOCK_SIZE;
+    let jump = false, jumpMult = 0.85;
+    if (rise >= 2 && nearCol) { jump = true; jumpMult = rise >= 3 ? 1.0 : 0.9; }
+    else {
+      // gap directly ahead in the travel direction (no floor to step onto) and the
+      // target is at/above our level → hop it. (A 1-block rise with a floor ahead is
+      // left to _mobPhysics' auto step-up.)
+      const nav = this._navFor(level);
+      if (!nav.solid(cc + dir, cr + 1) && tr <= cr + 1 && nearCol) jump = true;
+    }
+    return { dir, jump, jumpMult };
+  }
 
   _flashAlpha(ctx) {
     // Flash white-ish when recently hit
@@ -312,9 +451,14 @@ class Zombie extends Mob {
     if (this.knockbackTimer > 0) {
       // knockback — let physics handle it
     } else if (this.state === 'chase') {
-      const mdir  = Math.sign(this._chaseTargetX(player) - this.cx) || Math.sign(dx);  // §5 surround
-      this.vx     = mdir * 1.8;
-      this.facing = Math.sign(dx);
+      const step = this._pathStep(player, level);   // §6 path-aware pursuit (null = legacy)
+      if (step) {
+        this.vx = step.dir * 1.8;
+        if (step.jump && this.onGround) this.vy = JUMP_VELOCITY * step.jumpMult;
+      } else {
+        this.vx = (Math.sign(this._chaseTargetX(player) - this.cx) || Math.sign(dx)) * 1.8;  // §5 surround
+      }
+      this.facing = Math.sign(dx) || this.facing;
     } else {
       this._wanderUpdate(level, 0.8);
     }
@@ -429,9 +573,15 @@ class Skeleton extends Mob {
       this._wanderUpdate(level, 0.7);
     } else {
       if (dist > 180 && dist < 350) {
-        // Approach to shoot range
-        this.vx     = Math.sign(dx) * 1.5;
-        this.facing = Math.sign(dx);
+        // Approach to shoot range — §6 path-aware when terrain is in the way (else legacy).
+        const step = this._pathStep(player, level);
+        if (step) {
+          this.vx = step.dir * 1.5;
+          if (step.jump && this.onGround) this.vy = JUMP_VELOCITY * step.jumpMult;
+        } else {
+          this.vx = Math.sign(dx) * 1.5;
+        }
+        this.facing = Math.sign(dx) || this.facing;
       } else if (dist <= 110) {
         // Too close — back away
         this.vx     = -Math.sign(dx) * 1.5;
@@ -587,8 +737,14 @@ class Creeper extends Mob {
     } else if (this.state === 'wander') {
       this._wanderUpdate(level, 0.7);
     } else {
-      this.vx     = Math.sign(dx) * 1.5;
-      this.facing = Math.sign(dx);
+      const step = this._pathStep(player, level);   // §6 path-aware pursuit (null = legacy)
+      if (step) {
+        this.vx = step.dir * 1.5;
+        if (step.jump && this.onGround) this.vy = JUMP_VELOCITY * step.jumpMult;
+      } else {
+        this.vx = Math.sign(dx) * 1.5;
+      }
+      this.facing = Math.sign(dx) || this.facing;
     }
 
     this.walkTimer += Math.abs(this.vx) > 0.4 ? 0.09 : 0;
@@ -986,7 +1142,19 @@ class CaveSpider extends Mob {
 
     // Chase player horizontally, jump to reach
     const dir = Math.sign(player.cx - this.cx);
-    this.vx   = (Math.sign(this._chaseTargetX(player) - this.cx) || dir) * this.speed;  // §5 surround
+    const step = this._pathStep(player, level);   // §6 path-aware pursuit (null = legacy)
+    if (step) {
+      this.vx = step.dir * this.speed;
+      if (step.jump && this.onGround) this.vy = JUMP_VELOCITY * step.jumpMult;
+    } else {
+      this.vx = (Math.sign(this._chaseTargetX(player) - this.cx) || dir) * this.speed;  // §5 surround
+      // Legacy jump: if blocked ahead, or the player is above.
+      if (this.onGround) {
+        const dRow = Math.floor(this.y / BLOCK_SIZE);
+        const dCol = Math.floor((this.x + (dir > 0 ? this.width + 2 : -2)) / BLOCK_SIZE);
+        if (level.isSolid(dRow, dCol) || player.y < this.y - 8) this.vy = JUMP_VELOCITY * 0.85;
+      }
+    }
     this.facing = dir;
 
     // Web shot (§9): opt-in; from a distance, on a cooldown, when it has a clear-ish line.
@@ -998,15 +1166,6 @@ class CaveSpider extends Mob {
         const speed = 6;
         webs.push(new Web(this.cx, this.cy, Math.cos(ang) * speed, Math.sin(ang) * speed - 1.2, wc));
         this.webShootTimer = wc.cooldown || 150;
-      }
-    }
-
-    // Jump if blocked or can jump up to player
-    if (this.onGround) {
-      const dRow = Math.floor(this.y / BLOCK_SIZE);
-      const dCol = Math.floor((this.x + (dir > 0 ? this.width + 2 : -2)) / BLOCK_SIZE);
-      if (level.isSolid(dRow, dCol) || player.y < this.y - 8) {
-        this.vy = JUMP_VELOCITY * 0.85;
       }
     }
 
@@ -1066,14 +1225,19 @@ class Piglin extends Mob {
     if (!this._shouldChase()) { this._wanderUpdate(level, 0.8); _mobPhysics(this, level); return; }
 
     const dir = Math.sign(player.cx - this.cx);
-    this.vx = (Math.sign(this._chaseTargetX(player) - this.cx) || dir) * this.speed;  // §5 surround
-    this.facing = dir;
-
-    if (this.onGround && level.isSolid(
-        Math.floor(this.y / BLOCK_SIZE),
-        Math.floor((this.x + (dir > 0 ? this.width + 2 : -2)) / BLOCK_SIZE))) {
-      this.vy = JUMP_VELOCITY * 0.9;
+    const step = this._pathStep(player, level);   // §6 path-aware pursuit (null = legacy)
+    if (step) {
+      this.vx = step.dir * this.speed;
+      if (step.jump && this.onGround) this.vy = JUMP_VELOCITY * step.jumpMult;
+    } else {
+      this.vx = (Math.sign(this._chaseTargetX(player) - this.cx) || dir) * this.speed;  // §5 surround
+      if (this.onGround && level.isSolid(
+          Math.floor(this.y / BLOCK_SIZE),
+          Math.floor((this.x + (dir > 0 ? this.width + 2 : -2)) / BLOCK_SIZE))) {
+        this.vy = JUMP_VELOCITY * 0.9;
+      }
     }
+    this.facing = dir;
 
     if (this._touchesPlayer(player) && this.attackTimer === 0 && player.iFrames === 0) {
       player.takeDamage(3, dir);
@@ -1355,14 +1519,19 @@ class WitherSkeleton extends Mob {
     if (!this._shouldChase()) { this._wanderUpdate(level, 0.8); _mobPhysics(this, level); return; }
 
     const dir = Math.sign(player.cx - this.cx);
-    this.vx = (Math.sign(this._chaseTargetX(player) - this.cx) || dir) * this.speed;  // §5 surround
-    this.facing = dir;
-
-    if (this.onGround && level.isSolid(
-        Math.floor(this.y / BLOCK_SIZE),
-        Math.floor((this.x + (dir > 0 ? this.width + 2 : -2)) / BLOCK_SIZE))) {
-      this.vy = JUMP_VELOCITY * 0.95;
+    const step = this._pathStep(player, level);   // §6 path-aware pursuit (null = legacy)
+    if (step) {
+      this.vx = step.dir * this.speed;
+      if (step.jump && this.onGround) this.vy = JUMP_VELOCITY * step.jumpMult;
+    } else {
+      this.vx = (Math.sign(this._chaseTargetX(player) - this.cx) || dir) * this.speed;  // §5 surround
+      if (this.onGround && level.isSolid(
+          Math.floor(this.y / BLOCK_SIZE),
+          Math.floor((this.x + (dir > 0 ? this.width + 2 : -2)) / BLOCK_SIZE))) {
+        this.vy = JUMP_VELOCITY * 0.95;
+      }
     }
+    this.facing = dir;
 
     if (this._touchesPlayer(player) && this.attackTimer === 0 && player.iFrames === 0) {
       player.takeDamage(4, dir);
@@ -1627,6 +1796,9 @@ class MobManager {
     this.fleeCfg              = null;
     // Smart Mobs §9 — spider-web slow config (null/disabled = spiders don't spit webs).
     this.webCfg               = null;
+    // Smart Mobs §6 — wayfinding config: { enabled, searchRadius, recompute, maxExpansions }.
+    // null/disabled = legacy straight-line chase (own opt-in toggle, independent of detection).
+    this.pathCfg              = null;
   }
 
   // Set up spawn points from world data
@@ -1902,12 +2074,15 @@ class MobManager {
 
   // Smart Mobs §5 — SURROUND. When several melee mobs converge on the player they
   // otherwise stack on the near side; assign them alternating sides so some flank to
-  // the far side. Deliberately a left/right position preference, NOT pathfinding (§6) —
-  // `_flankOffset` shifts each mob's chase target past the player toward its side.
+  // the far side. `_flankOffset` shifts each mob's LEGACY chase target past the player
+  // toward its side; when §6 path-aware is ON, `_pathFlankBias` instead pushes each
+  // mob's path GOAL past the player so flankers route AROUND to the far side properly
+  // (the real-pathfinding surround upgrade the §6 brief asked for).
   _assignSurround(player) {
-    for (const m of this.mobs) m._flankOffset = 0;   // reset (also the disabled case)
+    for (const m of this.mobs) { m._flankOffset = 0; m._pathFlankBias = 0; }  // reset (also disabled case)
     const cfg = this.detectCfg;
     if (!cfg || !cfg.enabled || !cfg.packAlert || !player) return;
+    const pathOn = !!(this.pathCfg && this.pathCfg.enabled);
     const near = this.mobs.filter(m => m.alive && m._alerted &&
       (m instanceof Zombie || m instanceof CaveSpider || m instanceof Piglin || m instanceof WitherSkeleton) &&
       Math.abs(m.cx - player.cx) < 8 * BLOCK_SIZE);
@@ -1915,7 +2090,13 @@ class MobManager {
     // Closest first, then alternate the assigned side so the group splits around the
     // player instead of piling onto whichever side they approached from.
     near.sort((a, b) => Math.abs(a.cx - player.cx) - Math.abs(b.cx - player.cx));
-    near.forEach((m, i) => { m._flankOffset = (i % 2 === 0 ? 1 : -1) * 1.5 * BLOCK_SIZE; });
+    near.forEach((m, i) => {
+      const side = (i % 2 === 0 ? 1 : -1);
+      m._flankOffset = side * 1.5 * BLOCK_SIZE;
+      // Path mode: bias the GOAL further past the player so the pathfinder routes the
+      // flanker to a cell clearly on the far side (not overlapping the near-side stack).
+      if (pathOn) m._pathFlankBias = side * PATH_FLANK_BIAS_BLOCKS * BLOCK_SIZE;
+    });
   }
 
   // Smart Mobs §7 — which mobs can sprint: ground melee chasers only (ranged kiters +
@@ -2010,6 +2191,7 @@ class MobManager {
       this._updateDetection(mob, target, level);   // Smart Mobs §4 — sight axis + gate
       this._updateSprint(mob, target);             // Smart Mobs §7 — telegraphed sprint
       mob._flee = this.fleeCfg ? this.fleeCfg[MOB_CLASS_KEY[mob.constructor.name]] : null;  // §8
+      mob._pathCfg = this.pathCfg;                 // Smart Mobs §6 — path-aware pursuit config
       if (mob instanceof Skeleton) {
         mob.update(target, level, this.arrows);
       } else if (mob instanceof Blaze) {

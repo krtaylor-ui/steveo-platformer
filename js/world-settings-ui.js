@@ -199,6 +199,13 @@ const WORLD_SETTINGS = {
       // ── Sprint (Smart Mobs §7) — melee mobs occasionally sprint to close distance;
       //    always telegraphed (a wind-up cue precedes the burst). Own opt-in toggle. ──
       { key: 'sprintingMobs', tab: 'mobs', group: 'Sprint', modes: M.physics, type: 'toggle', dflt: false, label: 'Sprinting Mobs', hint: 'melee mobs occasionally sprint at you — telegraphed by a wind-up cue' },
+      // ── Wayfinding (Smart Mobs §6) — pursuing mobs follow a real A* route around
+      //    terrain (drop off ledges, route around walls/wide gaps) instead of a
+      //    straight-line beeline. Own opt-in toggle, independent of Smart Detection
+      //    (it also improves classic-aggro worlds). Radius/cadence = feel/perf levers. ──
+      { key: 'pathAwareMobs', tab: 'mobs', group: 'Wayfinding', modes: M.physics, type: 'toggle', dflt: false, label: 'Path-Aware Mobs', hint: 'chasing mobs navigate terrain (jump gaps, drop off ledges, route around walls) instead of beelining you' },
+      { key: 'pathSearchRadius', tab: 'mobs', group: 'Wayfinding', modes: M.physics, type: 'cycle', opts: [16, 24, 32], dflt: PATH_SEARCH_RADIUS, label: 'Path Range', fmt: (v) => v + ' bl', sub: true, dependsOn: 'pathAwareMobs', advanced: true, hint: 'how far a mob will pathfind; farther = it reverts to simple chase' },
+      { key: 'pathRecomputeFrames', tab: 'mobs', group: 'Wayfinding', modes: M.physics, type: 'cycle', opts: [8, 12, 20], dflt: PATH_RECOMPUTE_FRAMES, label: 'Path Update', fmt: (v) => 'every ' + v + 'f', sub: true, dependsOn: 'pathAwareMobs', advanced: true, hint: 'how often the route recomputes (lower = snappier, costlier)' },
       // ── Retreating mobs (Smart Mobs §8) — per mob type: flee at low HP (+ advanced
       //    HP-% threshold). Coexists with Skeleton kiting. ──
       ...this._fleeRows(M),

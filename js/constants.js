@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 113 (Fix: End Portal — Eye of Ender is consumed only when actually placed (no more wasted eyes), and the portal anchor is derived from the grid when unregistered, so any 5-in-a-row frame set activates)';
+const GAME_VERSION = 'v3 · build 114 (Smart Mobs §6 Wayfinding: opt-in "Path-Aware Mobs" — pursuing mobs follow a real A* route around terrain (drops off ledges to ambush, routes around walls/wide gaps) instead of a straight-line beeline. Also upgrades Pack surround + low-HP flee to use pathing. Default off = classic aggro. Closes the Smart Mobs brief.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
@@ -184,6 +184,16 @@ const SPRINT_WINDUP_MULT   = 0.35;  // speed during the telegraph (visibly gathe
 const SPRINT_TRIGGER_CHANCE = 0.02; // per-eligible-frame chance to start a sprint
 const SPRINT_MIN_BLOCKS    = 3;     // only sprint when the player is this far …
 const SPRINT_MAX_BLOCKS    = 12;    // … up to this far (closing distance, not point-blank)
+
+// Smart Mobs §6 — WAYFINDING (opt-in "Path-Aware Mobs"). Once a mob is pursuing,
+// it follows a real A* route (js/pathfinding.js) around terrain instead of a
+// straight-line beeline. The two main feel/perf levers (Kevin can retune):
+const PATH_RECOMPUTE_FRAMES = 12;   // recompute cadence (~5×/sec) — cache the route between
+const PATH_SEARCH_RADIUS    = 24;   // bounded search radius (blocks); player farther than this
+                                    //   → fall back to legacy chase/wander (not actionable yet)
+const PATH_MAX_EXPANSIONS    = 5000; // A* node-expansion cap (runaway backstop)
+const PATH_FLANK_BIAS_BLOCKS = 2.5;  // §5 surround: path GOAL offset past the player (per side)
+
 const VICTORY_MUSIC_FILE   = 'music/boss/victory.mp3';  // ~20s fanfare after Ender Dragon defeat
 
 // Music disc registry — each entry maps a disc key to its audio file and display name.
