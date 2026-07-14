@@ -1201,9 +1201,10 @@ class Player {
       ctx.fillStyle = headArm.dark; ctx.fillRect(-HEAD/2-1, -HEAD/2-1, HEAD+2, HEAD*0.5);
       ctx.fillStyle = headArm.base; ctx.fillRect(-HEAD/2,   -HEAD/2,   HEAD,   HEAD*0.5-1);
       ctx.fillStyle = headArm.hi;   ctx.fillRect(-HEAD/2+2, -HEAD/2+1, HEAD-6, 2);
-      ctx.fillStyle = headArm.base;
-      ctx.fillRect(-HEAD/2,   -HEAD/2, 2, HEAD*0.75);
-      ctx.fillRect(HEAD/2-2,  -HEAD/2, 2, HEAD*0.75);
+      // Only the BACK of the head comes down (profile) — past where the ear would be
+      const bx = facing === 1 ? -HEAD/2 : HEAD/2-2;
+      ctx.fillStyle = headArm.dark; ctx.fillRect(bx, -HEAD/2, 2, HEAD*0.8);
+      ctx.fillStyle = headArm.base; ctx.fillRect(bx, -HEAD/2, 2, HEAD*0.72);
     }
     ctx.fillStyle='#fff'; ctx.fillRect(2*facing,-2,4,4);
     ctx.fillStyle='#1A50C0'; ctx.fillRect(3*facing,-1,2,2);
@@ -1309,15 +1310,15 @@ class Player {
     ctx.fillStyle = HAIR;
     ctx.fillRect(sx + 2, sy, 16, 5);
     ctx.fillRect(sx + 2, sy+5, 3, 3);   // sideburn
-    // Eyes
+    // Eye — pushed forward, toward the way the character is looking (profile)
     ctx.fillStyle = '#fff';
-    ctx.fillRect(sx + 8, sy + 6, 4, 4);
+    ctx.fillRect(sx + 10, sy + 6, 4, 4);
     ctx.fillStyle = '#1A50C0';
-    ctx.fillRect(sx + 9, sy + 7, 2, 2);
+    ctx.fillRect(sx + 11, sy + 7, 2, 2);
     // Mouth
     ctx.fillStyle = '#9A4020';
-    ctx.fillRect(sx + 8,  sy + 12, 2, 1);
-    ctx.fillRect(sx + 11, sy + 12, 2, 1);
+    ctx.fillRect(sx + 10, sy + 12, 2, 1);
+    ctx.fillRect(sx + 13, sy + 12, 2, 1);
   }
 
   _drawCrouch(ctx, sx, sy) {
@@ -1372,12 +1373,12 @@ class Player {
     ctx.fillRect(sx+2, sy, 16, 5);
     ctx.fillRect(sx+2, sy+5, 3, 3);
     ctx.fillStyle = '#fff';
-    ctx.fillRect(sx+8, sy+6, 4, 4);
+    ctx.fillRect(sx+10, sy+6, 4, 4);
     ctx.fillStyle = '#1A50C0';
-    ctx.fillRect(sx+9, sy+7, 2, 2);
+    ctx.fillRect(sx+11, sy+7, 2, 2);
     ctx.fillStyle = '#9A4020';
-    ctx.fillRect(sx+8,  sy+12, 2, 1);
-    ctx.fillRect(sx+11, sy+12, 2, 1);
+    ctx.fillRect(sx+10, sy+12, 2, 1);
+    ctx.fillRect(sx+13, sy+12, 2, 1);
   }
 
   _drawWeapon(ctx, sx, sy, swing, flipX, crouch) {
@@ -1587,13 +1588,12 @@ class Player {
         ctx.fillRect(sx + 2, sy, 16, 6);           // cap face
         ctx.fillStyle = c.hi;
         ctx.fillRect(sx + 4, sy + 1, 10, 2);       // top highlight
-        // Cheek strips down the sides, past the eyes — thin so the eyes stay clear
+        // Only the BACK of the head comes down (profile view) — past where the ear
+        // would be. The face side stays open so the eye reads clearly.
         ctx.fillStyle = c.dark;
-        ctx.fillRect(sx + 2, sy + 6, 2, 6);        // left strip
-        ctx.fillRect(sx + 16, sy + 6, 2, 6);       // right strip
+        ctx.fillRect(sx + 2, sy + 6, 2, 7);        // back strip (down past the ear)
         ctx.fillStyle = c.base;
-        ctx.fillRect(sx + 2, sy + 6, 2, 5);
-        ctx.fillRect(sx + 16, sy + 6, 2, 5);
+        ctx.fillRect(sx + 2, sy + 6, 2, 6);
       }
       if (eq.chest) {
         const c = tc(eq.chest);
@@ -1621,12 +1621,11 @@ class Player {
         ctx.fillRect(sx + 2, sy, 16, 6);
         ctx.fillStyle = c.hi;
         ctx.fillRect(sx + 4, sy + 1, 10, 2);
+        // Back-of-head strip only (profile view) — past where the ear would be
         ctx.fillStyle = c.dark;
-        ctx.fillRect(sx + 2, sy + 6, 2, 6);
-        ctx.fillRect(sx + 16, sy + 6, 2, 6);
+        ctx.fillRect(sx + 2, sy + 6, 2, 7);
         ctx.fillStyle = c.base;
-        ctx.fillRect(sx + 2, sy + 6, 2, 5);
-        ctx.fillRect(sx + 16, sy + 6, 2, 5);
+        ctx.fillRect(sx + 2, sy + 6, 2, 6);
       }
       if (eq.chest) {
         const c = tc(eq.chest);

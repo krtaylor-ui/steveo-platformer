@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 100 (sprite: climb-style helmet cap on standing/crouch — eyes stay visible; climb figure gets a dark silhouette edge + layered armour to match the standing outline)';
+const GAME_VERSION = 'v3 · build 101 (sprite: helmet reads as a profile — flat top, comes down only at the back of the head past the ear; eye/mouth pushed forward toward facing)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
