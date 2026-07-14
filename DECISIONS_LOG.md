@@ -2037,3 +2037,29 @@ across the WHOLE spin — `hipBend = rollDir * (0.75 + 0.4·sin(rprog·π))` (�
 always bent), both legs pike (left ×1.0, right ×0.85), + slightly more leg lift
 (natural tuck 0.4→0.5). Reads as a bent-body silhouette through the flip. Browser-
 UNTESTED (canvas). Suite 503.
+
+## Maze-ready bot pathing (build 133)
+Prep for Kevin's maze test — the two fixes agreed + a maze heuristic.
+- **Bigger A* budget (bot-only):** `BOT_PATH_MAX_RADIUS` 48→64, `BOT_PATH_MAX_EXPANSIONS`
+  6000→12000, and the companion radius floor raised (`max(30, detectRange+12)`). Mazes
+  fan the search out (path length >> straight-line), so more room = it finds long
+  corridor routes instead of giving up. Mobs keep their own smaller budget; the
+  sample-world generator (BFS) is unaffected (9/9 still pass).
+- **Maze-focusing heuristic (opt-in `opts.vBias`, bots pass 0.4):** the base heuristic
+  is horizontal-only (admissible) which floods a maze; a small vertical pull focuses
+  the search so it reaches farther within the budget (mildly non-optimal — fine for
+  following/objectives). Default 0 → mobs/tests/generator unchanged.
+- **Stuck-fallback warp even with Teleport ON:** teleport fires on STRAIGHT-LINE
+  distance, but a maze corridor can be far longer — so a bot could be straight-line-
+  close yet unreachable and just sit. Now, with Teleport ON, a long genuine stall
+  (`> BOT_COMPANION_WARP_STUCK×3`, ~2.25s, still beyond FOLLOW_FAR) also warps — closes
+  the "trapped near a wall" gap without firing during normal nav.
+- **Design note for Kevin (recorded):** what he described (explore → dead-end →
+  backtrack to the last split → try the other branch) is exactly what A* does, computed
+  before moving rather than physical trial-and-error. "Simplifying barriers" isn't
+  needed — A* handles arbitrary/concave shapes as grid cells; bounding-box simplifying
+  would LOSE valid routes. "Smarter = longer path" == bigger search radius/budget (tied
+  to difficulty). Trapping came from budget + the teleport gap, both addressed here.
+- Tests: test-pathfinding +3 (vBias solves a vertical climb; default still works),
+  test-bot-ai +2 (teleport-ON no early warp, but stuck-fallback warps after a stall).
+  Suite 508. Browser-UNTESTED.

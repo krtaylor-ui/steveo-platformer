@@ -424,11 +424,18 @@ class BotController {
     const aws = this.game._worldAdvSettings || {};
     const distB = Math.hypot(leader.cx - me.cx, leader.cy - me.cy) / BLOCK_SIZE;  // DIRECT (vertical counts)
 
-    // ── Fast-pace teleport: warp purely on distance (predictable; never waits). ──
+    // ── Fast-pace teleport: warp on distance, PLUS a long stuck-fallback. ──
+    // The distance check uses straight-line distance, but a maze's corridor route can
+    // be far longer — so the bot could be straight-line-close yet corridor-unreachable
+    // and just sit there. The fallback warps after a long genuine stall so it never
+    // gets permanently trapped (threshold ×3 so it won't fire during normal nav).
     if (aws.companionTeleport !== false) {
-      this._clearStuck();
+      this.player._stuckMark = false;
       const range = aws.companionTeleportRange || BOT_COMPANION_WARP_DIST;
-      if (distB > range) this._doWarp(leader);
+      if (distB > range) { this._doWarp(leader); return; }
+      if (this._ccBest == null || distB < this._ccBest - 0.5) { this._ccBest = distB; this._ccStuck = 0; }
+      else this._ccStuck = (this._ccStuck || 0) + 1;
+      if (this._ccStuck > BOT_COMPANION_WARP_STUCK * 3 && distB > BOT_FOLLOW_FAR) this._doWarp(leader);
       return;
     }
 
@@ -733,10 +740,10 @@ class BotController {
     const goalMoved = !this._pathGoalCell || Math.abs(this._pathGoalCell[0] - gc) > 1 || Math.abs(this._pathGoalCell[1] - gr) > 1;
     const stale = !this._path || this._path.length < 2 || --this._pathTimer <= 0 || goalMoved;
     if (stale) {
-      const radius = Math.min(BOT_PATH_MAX_RADIUS, Math.max(16, this.diff.detectRange + 8));
+      const radius = Math.min(BOT_PATH_MAX_RADIUS, Math.max(30, this.diff.detectRange + 12));  // room for winding corridors
       const env = this._jumpEnvelope();   // reachability reflects the world's enabled moves
       const res = (typeof findMobPath === 'function')
-        ? findMobPath(this._nav(), [cc, cr], [gc, gr], { maxRadius: radius, maxExpansions: BOT_PATH_MAX_EXPANSIONS, maxUp: env.maxUp, maxDx: env.maxDx, wallClimb: env.wallClimb })
+        ? findMobPath(this._nav(), [cc, cr], [gc, gr], { maxRadius: radius, maxExpansions: BOT_PATH_MAX_EXPANSIONS, maxUp: env.maxUp, maxDx: env.maxDx, wallClimb: env.wallClimb, vBias: BOT_PATH_VBIAS })
         : null;
       this._pathTimer = this.diff.navRecompute;
       this._pathGoalCell = [gc, gr];

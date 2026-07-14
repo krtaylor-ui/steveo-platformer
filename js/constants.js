@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 132 (Natural Spin polish: the hip bend is now held across the whole flip (~43°→66°) instead of a fleeting mid-arc blip, with both legs piking + a touch more leg lift — a clearly bent body silhouette through the spin. + build 131 Double Jump Style + build 130 companion tuning.)';
+const GAME_VERSION = 'v3 · build 133 (Maze-ready bot pathing: bigger A* search budget + radius for long/winding corridors, a maze-focusing heuristic, and a stuck-fallback warp even when Teleport is ON — so a bot that\'s straight-line-close but corridor-unreachable never sits trapped. + build 132 Natural Spin polish.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
@@ -270,8 +270,12 @@ const BOT_THREAT_RECENT_FRAMES = 180;  // "recently damaged me" window (~3s)
 // Bot pathing envelope reuses the player jump model (pathfinder defaults). Search
 // radius scales with the bot's detectRange but is capped so a far objective still
 // falls back gracefully rather than running an unbounded A*.
-const BOT_PATH_MAX_RADIUS   = 48;
-const BOT_PATH_MAX_EXPANSIONS = 6000;
+const BOT_PATH_MAX_RADIUS   = 64;    // raised for mazes/long corridors (path length >> straight-line)
+const BOT_PATH_MAX_EXPANSIONS = 12000; // A* node budget — mazes fan out (weak heuristic), so give more room
+// Vertical heuristic bias for BOT A* (bots only). The base heuristic is horizontal-
+// only (admissible) which floods a maze; a small vertical pull focuses the search so
+// it reaches farther within the budget (mildly non-optimal, fine for following/objectives).
+const BOT_PATH_VBIAS = 0.4;
 const BOT_MELEE_RANGE_BLOCKS = 1.6;   // switch-to/prefer melee when this close
 const BOT_ARCHER_RANGE_BLOCKS = 9;    // archer bot approaches to ~this, then holds + fires
 const BOT_OBJECTIVE_REACH_BLOCKS = 1.4; // "arrived at objective cell" tolerance

@@ -715,6 +715,20 @@ console.log('Wayfinding fix — companion warps to the leader when it cannot rea
   ok(compV.y !== byV, 'vertical distance beyond range triggers teleport (direct distance, not horizontal-only)');
 }
 
+console.log('Teleport ON — stuck-fallback warps even when straight-line-close (maze case):');
+{
+  const level = flatLevel();
+  const leader = mkPlayer(12, 2, { owner: 'p1' });      // 10 blocks away: under the 18-block range → no distance warp
+  const comp = mkPlayer(2, 2, { owner: 'p2' });
+  const game = mkGame(level, [leader, comp], { gameMode: 'platformer', _worldAdvSettings: { companionTeleport: true } });
+  const ctrl = new BotController(game, 1, 'companion', 'MEDIUM');
+  const bx = comp.x;
+  for (let f = 0; f < 5; f++) { ctrl._companionAssist(); }
+  ok(comp.x === bx, 'does NOT warp early while straight-line-close (within range)');
+  for (let f = 0; f < 200; f++) { ctrl._companionAssist(); }  // never closes → long stall
+  ok(comp.x !== bx, 'stuck-fallback warps after a long stall even with Teleport ON (no permanent trap)');
+}
+
 console.log('Companion stuck behaviors (Teleport OFF):');
 {
   const level = flatLevel();

@@ -203,6 +203,16 @@ console.log('Wall-jump climb (bot-gated) — scales a tall wall only when wallCl
   ok(findMobPath(nav, start, goal, { maxRadius: 20, wallClimb: 4 }) !== null, 'wallClimb scales the wall (bot with Wall Slide)');
 }
 
+console.log('vBias heuristic (bot maze/vertical focus) — still solves a vertical climb:');
+{
+  const nav = mkNav(['      ', '      ', '   ###', '      ', '######']);
+  const res = findMobPath(nav, [1, 3], [3, 1], { maxRadius: 20, vBias: 0.5 });
+  ok(res !== null, 'vBias path found (option honored, still reaches the goal)');
+  ok(res && res.path[res.path.length - 1][1] === 1, 'reaches the upper ledge');
+  // default (vBias 0) still works too — no regression.
+  ok(findMobPath(nav, [1, 3], [3, 1], { maxRadius: 20 }) !== null, 'default heuristic still solves it');
+}
+
 console.log('Pad — a jump pad extends reach across a wide gap:');
 {
   // An 8-wide gap (beyond the 6 normal jump) but a pad on the take-off lip.

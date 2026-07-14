@@ -212,7 +212,12 @@ function findMobPath(nav, start, goal, opts) {
   // Cheap out-of-bound: goal too far to be actionable.
   if (Math.abs(gc - sc) + Math.abs(gr - sr) > maxRadius * 2) return null;
 
-  const h = (c, r) => Math.abs(c - gc); // admissible: horizontal Manhattan (min 1/blk)
+  // Base heuristic = horizontal Manhattan (admissible). opts.vBias adds a vertical
+  // pull (bots pass ~0.4) to FOCUS the search in mazes/vertical levels — reaches
+  // farther within the expansion budget at the cost of strict optimality. Default 0
+  // = the original admissible heuristic (mobs, generator, tests unchanged).
+  const vBias = opts.vBias || 0;
+  const h = (c, r) => Math.abs(c - gc) + vBias * Math.abs(r - gr);
   const gScore = new Map([[_navKey(sc, sr), 0]]);
   const cameFrom = new Map();
   const open = new _NavHeap();
