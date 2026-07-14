@@ -330,6 +330,7 @@ class Mob {
   // gracefully to today's beeline; never hang). Caches the route + recomputes on
   // a cadence (not every frame) to bound cost and avoid path flip-flop jitter.
   _pathStep(player, level) {
+    this._wayfinding = false;   // set true below iff this mob actively pathfinds (crowd count)
     const cfg = this._pathCfg;
     if (!cfg || !cfg.enabled || !player || !level || typeof findMobPath !== 'function') return null;
     const cc = this._cellCol(), cr = this._cellRow();
@@ -350,11 +351,16 @@ class Mob {
     if (stale) {
       const res = findMobPath(this._navFor(level), [cc, cr], [gc, gr],
         { maxRadius: cfg.searchRadius, maxExpansions: cfg.maxExpansions });
-      this._pathTimer = cfg.recompute;
+      // Reset the recompute timer; on a mob's FIRST route, add a random offset so a
+      // crowd that all start chasing the same frame don't then recompute in lockstep
+      // (spreads the A* cost across frames — cheap insurance on top of the crowd throttle).
+      this._pathTimer = cfg.recompute + (this._pathInit ? 0 : Math.floor(Math.random() * cfg.recompute));
+      this._pathInit  = true;
       this._pathGoal  = [gc, gr];
       this._path      = res ? res.path : null;
       if (!this._path) return null;            // unreachable within budget → legacy
     }
+    this._wayfinding = true;                    // actively following a route this frame
     return this._followPath(this._path, player, level);
   }
 
@@ -393,14 +399,17 @@ class Mob {
     const cr = this._cellRow(), cc = this._cellCol();
     const rise = cr - tr;                         // >0 = target cell is above us
     const nearCol = Math.abs(tx - this.cx) < 1.8 * BLOCK_SIZE;
+    const nav = this._navFor(level);
     let jump = false, jumpMult = 0.85;
-    if (rise >= 2 && nearCol) { jump = true; jumpMult = rise >= 3 ? 1.0 : 0.9; }
-    else {
-      // gap directly ahead in the travel direction (no floor to step onto) and the
-      // target is at/above our level → hop it. (A 1-block rise with a floor ahead is
-      // left to _mobPhysics' auto step-up.)
-      const nav = this._navFor(level);
-      if (!nav.solid(cc + dir, cr + 1) && tr <= cr + 1 && nearCol) jump = true;
+    if (rise >= 2 && nearCol) {
+      jump = true; jumpMult = rise >= 3 ? 1.0 : 0.9;       // multi-block rise → jump
+    } else if (nav.solid(cc + dir, cr) && !nav.solid(cc + dir, cr - 1)) {
+      // A step/obstacle directly ahead at foot level (with headroom above it). A body
+      // taller than 1 block auto-steps it in _mobPhysics; a SHORT body (<= 1 block —
+      // the Cave Spider) can't, so it must hop or it hangs on the ledge (Kevin's bug).
+      if (this.height <= BLOCK_SIZE) jump = true;
+    } else if (!nav.solid(cc + dir, cr + 1) && tr <= cr + 1 && nearCol) {
+      jump = true;                                         // gap directly ahead → hop it
     }
     return { dir, jump, jumpMult };
   }
@@ -1799,6 +1808,7 @@ class MobManager {
     // Smart Mobs §6 — wayfinding config: { enabled, searchRadius, recompute, maxExpansions }.
     // null/disabled = legacy straight-line chase (own opt-in toggle, independent of detection).
     this.pathCfg              = null;
+    this._activePathCount     = 0;     // §6 — mobs actively wayfinding last frame (crowd throttle)
   }
 
   // Set up spawn points from world data
@@ -2099,6 +2109,24 @@ class MobManager {
     });
   }
 
+  // Smart Mobs §6 — return the path config to hand mobs THIS frame, degraded when a
+  // crowd is already wayfinding (per last frame's `_activePathCount`). Above
+  // PATH_CROWD_THRESHOLD active pathers, routes recompute less often + over a smaller
+  // radius (fewer + cheaper A* runs). Returns the base cfg unchanged when uncrowded or
+  // path-aware is off. The threshold/multipliers are tunable perf levers (constants.js).
+  _crowdAdjustedPathCfg() {
+    const cfg = this.pathCfg;
+    if (!cfg || !cfg.enabled) return cfg;
+    if ((this._activePathCount || 0) <= PATH_CROWD_THRESHOLD) return cfg;
+    return {
+      enabled:       true,
+      recompute:     Math.round(cfg.recompute * PATH_CROWD_RECOMPUTE_MULT),
+      searchRadius:  Math.max(8, Math.round(cfg.searchRadius * PATH_CROWD_RADIUS_MULT)),
+      maxExpansions: Math.round(cfg.maxExpansions * PATH_CROWD_RADIUS_MULT),
+      _degraded:     true,   // (diagnostic marker; harmless if read elsewhere)
+    };
+  }
+
   // Smart Mobs §7 — which mobs can sprint: ground melee chasers only (ranged kiters +
   // Enderman + Blaze excluded).
   _isSprinter(mob) {
@@ -2174,7 +2202,15 @@ class MobManager {
     this._propagatePackAlerts();
     this._assignSurround(player);
 
+    // Smart Mobs §6 — crowd-adaptive pathfinding. When MANY mobs are actively
+    // wayfinding at once the per-frame A* cost adds up (Kevin saw slowdown ~10 on
+    // screen), so above a threshold we hand every mob a DEGRADED config — routes
+    // recompute less often + search a smaller radius — trading pursuit snappiness
+    // for framerate. Uses LAST frame's active count (1-frame lag is imperceptible).
+    const pathCfgEff = this._crowdAdjustedPathCfg();
+
     // Mob AI — each mob targets the nearest active player
+    let _pathingNow = 0;
     for (const mob of this.mobs) {
       if (!mob.alive) continue;
       // Smart Mobs §2 — slide-attack launch: spin in the air (AI already suppressed
@@ -2191,7 +2227,8 @@ class MobManager {
       this._updateDetection(mob, target, level);   // Smart Mobs §4 — sight axis + gate
       this._updateSprint(mob, target);             // Smart Mobs §7 — telegraphed sprint
       mob._flee = this.fleeCfg ? this.fleeCfg[MOB_CLASS_KEY[mob.constructor.name]] : null;  // §8
-      mob._pathCfg = this.pathCfg;                 // Smart Mobs §6 — path-aware pursuit config
+      mob._pathCfg = pathCfgEff;                   // Smart Mobs §6 — (crowd-adjusted) path config
+      mob._wayfinding = false;                     // reset each frame; _pathStep sets it true if pathing
       if (mob instanceof Skeleton) {
         mob.update(target, level, this.arrows);
       } else if (mob instanceof Blaze) {
@@ -2202,6 +2239,7 @@ class MobManager {
       } else {
         mob.update(target, level);
       }
+      if (mob._wayfinding) _pathingNow++;          // §6 crowd count (set by Mob._pathStep)
       if (mob instanceof Enderman) mob.tryTeleport(level);
       // Kill mobs that are standing in lava
       if (mob.alive) {
@@ -2218,6 +2256,7 @@ class MobManager {
         this._doExplosion(ep, level);
       }
     }
+    this._activePathCount = _pathingNow;           // §6 — feeds next frame's crowd throttle
 
     // Skeleton/enemy arrows
     this.arrows = this.arrows.filter(a => { a.update(allPlayers, level); return a.alive; });

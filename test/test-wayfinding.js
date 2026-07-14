@@ -21,6 +21,7 @@ const real = {
   SPRINT_MIN_BLOCKS: 3, SPRINT_MAX_BLOCKS: 12,
   PATH_FLANK_BIAS_BLOCKS: 2.5, MOB_ATTACK_RATE: 30, SKELETON_SHOOT_RATE: 90,
   CREEPER_FUSE_FRAMES: 60,
+  PATH_CROWD_THRESHOLD: 8, PATH_CROWD_RECOMPUTE_MULT: 2.5, PATH_CROWD_RADIUS_MULT: 0.6,
 };
 const sandbox = new Proxy(real, {
   has: () => true,
@@ -188,6 +189,55 @@ console.log('§8 path-flee: a hurt mob retreats along a route:');
   const fled = z._fleeIfHurt(player, level);
   ok(fled === true, 'low-HP mob flees');
   ok(z.vx < 0, `retreats AWAY from the player (vx ${z.vx.toFixed(2)} < 0)`);
+}
+
+console.log('Short mob HOPS a 1-block obstacle (Cave-Spider fix); tall mob auto-steps:');
+{
+  //        col: 0123456789
+  const level = mkLevel([
+    '          ',
+    '          ',
+    '   #      ',   // a 1-block step at col 3, sitting on the floor
+    '##########',   // floor
+  ]);
+  // Short mob (height 16, <= 1 block) adjacent to the step → must jump.
+  const spider = new sandbox.Mob(0, 0, 16, 16, 6);
+  placeMob(spider, 2, 3); spider._pathCfg = PATH_ON; spider.facing = 1;
+  const s1 = spider._pathStep(bodyAt(7, 3, 48), level);
+  ok(s1 && s1.jump === true, 'short mob jumps the 1-block obstacle (no longer hangs)');
+  // Tall mob (height 48) in the same spot → relies on _mobPhysics auto step-up.
+  const zombie = new sandbox.Mob(0, 0, 22, 48, 10);
+  placeMob(zombie, 2, 3); zombie._pathCfg = PATH_ON; zombie.facing = 1;
+  const s2 = zombie._pathStep(bodyAt(7, 3, 48), level);
+  ok(s2 && s2.jump === false, 'tall mob does NOT jump a 1-block step (auto-steps smoothly)');
+}
+
+console.log('Crowd throttle degrades the path config above the threshold:');
+{
+  const mm = new MobManager();
+  mm.pathCfg = { enabled: true, searchRadius: 24, recompute: 12, maxExpansions: 5000 };
+  mm._activePathCount = 5;                       // <= threshold → unchanged
+  ok(mm._crowdAdjustedPathCfg() === mm.pathCfg, 'uncrowded → base config (unchanged)');
+  mm._activePathCount = 9;                       // > threshold (8) → degraded
+  const d = mm._crowdAdjustedPathCfg();
+  ok(d !== mm.pathCfg && d._degraded === true, 'crowded → a degraded config');
+  ok(d.recompute === 30, `recompute stretched 12 → ${d.recompute} (less frequent)`);
+  ok(d.searchRadius === 14, `radius shrunk 24 → ${d.searchRadius} (cheaper search)`);
+  ok(d.maxExpansions === 3000, `node cap reduced 5000 → ${d.maxExpansions}`);
+  mm.pathCfg = null;
+  ok(mm._crowdAdjustedPathCfg() === null, 'path-aware off → null (no throttle)');
+}
+
+console.log('Active-pather count reflects mobs following routes this frame:');
+{
+  const mm = new MobManager();
+  mm.pathCfg = { enabled: true, searchRadius: 24, recompute: 12, maxExpansions: 5000 };
+  const level = mkLevel(['            ', '            ', '############']);
+  const z = mm._createMob('Zombie', 3 * BS, 2 * BS - 48); z._alerted = true; mm.mobs.push(z);
+  const player = bodyAt(6, 2, 48);
+  mm._targetPlayers = [player];
+  mm.update(player, level);
+  ok(mm._activePathCount === 1, `one chasing mob counted as wayfinding (got ${mm._activePathCount})`);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

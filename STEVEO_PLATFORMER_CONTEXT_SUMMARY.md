@@ -7,7 +7,16 @@ Guide, **Campaign mode** §12, Tower Defense/bots, world cleanup, itch/Tauri,
 plus new §13–§18: Ladders, Trampolines, Online/MP UX, Mob-config engine,
 Enchantments, Suspicion meter).
 
-## CURRENT STATE (2026-07-14) — build 115, on branch `smart-mobs-wayfinding` (NOT merged)
+## CURRENT STATE (2026-07-14) — build 116, on branch `smart-mobs-wayfinding` (NOT merged)
+
+**Build 116 — wayfinding playtest polish (Kevin tested 114, "looks great").** (1) Short
+mobs (Cave Spider, 16px) now HOP a 1-block obstacle instead of hanging — they can't
+`_mobPhysics` auto-step like tall bodies; `_followPath` jumps a foot-level step when
+`height <= BLOCK_SIZE`. (2) Crowd-adaptive throttle: mobs set `_wayfinding` when actively
+pathing; `MobManager._activePathCount` feeds `_crowdAdjustedPathCfg()` — above
+`PATH_CROWD_THRESHOLD` (8) mobs, routes recompute ×2.5 less often + ×0.6 radius to hold
+framerate (Kevin saw slowdown ~10 on screen). First-route recompute jitter desyncs packs.
+All levers in `constants.js` (`PATH_CROWD_*`). Suite **371**. Browser-UNTESTED.
 
 **Build 115 — new-Platformer default World Settings preset (on top of the wayfinding
 work below).** Newly-CREATED Platformer worlds now spawn seeded with a curated snapshot

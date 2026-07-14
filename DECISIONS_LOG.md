@@ -1527,3 +1527,33 @@ features) — it ships when wayfinding merges. Server change needs a Railway dep
 to affect ONLINE creation (offline works on client reload). Test:
 `test/test-platformer-defaults.js` (PLT gets preset, other modes empty, scope
 exclusions, fresh-copy safety, merge simulation). Suite 362. Browser-UNTESTED.
+
+## Build 116 — Wayfinding playtest polish (Kevin): spider hang + crowd throttle
+Kevin playtested build 114 wayfinding ("looks great"). Two items:
+
+**1. Cave Spider hung on a 1-block obstacle (bug).** The path told the spider "rise
+of 1 → no jump, let auto-step handle it" — but `_mobPhysics`' 1-block auto step-up
+only works for a body that spans ≥2 grid rows (head cell above feet cell). The
+Cave Spider is 16px tall (≤1 block), so its head + feet share a row → the step-up
+branch never fires → it stalls against the ledge. (Tall mobs — Zombie 48, Piglin
+44, etc. — auto-step fine, which is why only the spider hung.) Fix: `_followPath`
+now detects a solid block directly ahead at foot level (with headroom above) and,
+for a SHORT body (`height <= BLOCK_SIZE`), returns jump=true so it hops the step;
+tall bodies still auto-step smoothly (no behavior change for them).
+
+**2. Framerate dropped ~10 mobs on screen (perf).** Per-mob A* adds up. Added a
+crowd-adaptive throttle: each frame every mob sets `_wayfinding` when it's actively
+following a route; the manager counts them (`_activePathCount`) and, when the count
+exceeds `PATH_CROWD_THRESHOLD = 8` (Kevin's number), hands all mobs a DEGRADED
+config for the next frame — recompute interval ×2.5 (12f → 30f, ~2/sec) and search
+radius ×0.6 (24 → 14 bl, + node cap ×0.6) via `_crowdAdjustedPathCfg()`. Uses last
+frame's count (1-frame lag, imperceptible). Also: a mob's FIRST route reset gets a
+random 0..recompute jitter so a pack that all start chasing the same frame don't
+then recompute in lockstep (spreads A* cost across frames). All tunable in
+constants.js (`PATH_CROWD_*`). Trades pursuit snappiness for framerate only under
+load; ≤8 pathers = full-quality behavior, unchanged.
+
+Tests: test-wayfinding.js +3 (short-mob hop vs tall-mob auto-step; crowd throttle
+degrades cfg above threshold; active-pather count). Suite 371. Browser-UNTESTED —
+Kevin to confirm the spider hops cleanly + the throttle holds framerate at ~10+.
+Both `PATH_CROWD_THRESHOLD` and the multipliers are "try it and adjust" levers.

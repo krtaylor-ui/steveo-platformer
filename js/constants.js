@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 115 (New Platformer worlds now spawn with a curated default World Settings preset — a snapshot of "Kevin\'s World!" gameplay settings (movement moves, scoring, Smart-Mobs behavior incl. wayfinding, weapons). Applies ONLY to newly-created PLT worlds on both the offline + online paths; existing worlds + other modes are untouched. + Smart Mobs §6 Wayfinding from build 114.)';
+const GAME_VERSION = 'v3 · build 116 (Wayfinding polish from Kevin playtest: (1) short mobs like the Cave Spider now HOP a 1-block obstacle instead of hanging on it — they can\'t auto-step like tall mobs; (2) crowd-adaptive pathfinding — when >8 mobs are wayfinding at once, routes recompute less often + over a smaller radius to hold framerate. + build 115 Platformer default-settings preset + build 114 §6 Wayfinding.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
@@ -193,6 +193,12 @@ const PATH_SEARCH_RADIUS    = 24;   // bounded search radius (blocks); player fa
                                     //   → fall back to legacy chase/wander (not actionable yet)
 const PATH_MAX_EXPANSIONS    = 5000; // A* node-expansion cap (runaway backstop)
 const PATH_FLANK_BIAS_BLOCKS = 2.5;  // §5 surround: path GOAL offset past the player (per side)
+// Crowd-adaptive throttle: when more than this many mobs are actively wayfinding at
+// once, degrade every mob's path config (recompute less often + smaller radius) to hold
+// framerate. Kevin saw slowdown ~10 mobs on screen; 8 = the drop-to-cheaper threshold.
+const PATH_CROWD_THRESHOLD      = 8;
+const PATH_CROWD_RECOMPUTE_MULT = 2.5; // ×recompute interval when crowded (12f → 30f, ~2/sec)
+const PATH_CROWD_RADIUS_MULT    = 0.6; // ×search radius + node cap when crowded (24bl → ~14bl)
 
 const VICTORY_MUSIC_FILE   = 'music/boss/victory.mp3';  // ~20s fanfare after Ender Dragon defeat
 
