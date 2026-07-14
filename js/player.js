@@ -14,6 +14,10 @@ class Player {
     this.crouching = false;
     this.facing    = 1;       // 1 = right, -1 = left
     this.running   = false;
+    // Character skin — 'male' (Steve: brown hair, blue shirt) or 'female' (Alex-ish:
+    // ginger hair + a ponytail, green shirt). Cosmetic only; a CTF/team shirtColor
+    // still overrides the default shirt. Set from the pre-launch / 2-player picker.
+    this.charType  = 'male';
     // Smart Mobs §4 — per-frame movement "noise events" (footstep cadence + land
     // impact). The game reads these to play footstep/landing SFX, and the §4
     // sound-detection system will reuse them. Cleared by the consumer each frame.
@@ -1208,8 +1212,22 @@ class Player {
 
   // Draw the blocky figure from a hip point with a waist angle (torso+head) and a
   // hip angle (legs), arms running shoulder→hand. Angles in radians; +toward facing.
+  // ── Character skin palette (male = Steve, female = Alex-ish) ──
+  _charHair()   { return this.charType === 'female' ? '#A83A1E' : '#7D4E1A'; }  // ginger vs brown
+  _charShirt()  { return this.charType === 'female' ? '#3FA34D' : '#4A8FD4'; }  // green vs blue (default; team colour overrides)
+  _hasPonytail(){ return this.charType === 'female'; }
+  // Ponytail for the flat (standing/crouch) poses: a tuft off the BACK-lower head,
+  // below where a helmet lip would sit. The head is a 16×16 box at (sx+2, sy); the
+  // whole sprite is flipped for facing-left, so "back" = the local left edge.
+  _drawPonytailFlat(ctx, sx, sy, hair) {
+    ctx.fillStyle = hair;
+    ctx.fillRect(sx,     sy + 4, 2, 3);    // base at the back of the head
+    ctx.fillRect(sx - 2, sy + 6, 3, 7);    // tail hanging down the back
+    ctx.fillRect(sx - 3, sy + 11, 2, 3);   // slight kick at the tip
+  }
+
   _drawFigureAt(ctx, hipX, hipY, torso, leg, handX, handY, facing) {
-    const SKIN='#F4C78A', HAIR='#7D4E1A', SHIRT=this.shirtColor||'#4A8FD4', PANTS='#2C5F8A', SHOE='#3D1C02';
+    const SKIN='#F4C78A', HAIR=this._charHair(), SHIRT=this.shirtColor||this._charShirt(), PANTS='#2C5F8A', SHOE='#3D1C02';
     const TL=16, LL=17, HEAD=16;
     const tA = torso * facing;
     const shX = hipX + TL*Math.sin(tA),  shY = hipY - TL*Math.cos(tA);          // shoulders
@@ -1253,6 +1271,10 @@ class Player {
     }
     ctx.fillStyle='#fff'; ctx.fillRect(2*facing,-2,4,4);
     ctx.fillStyle='#1A50C0'; ctx.fillRect(3*facing,-1,2,2);
+    if (this._hasPonytail()) {                                            // tail off the back of the head (under the helmet lip)
+      const px = facing === 1 ? -HEAD/2 - 2 : HEAD/2;
+      ctx.fillStyle = HAIR; ctx.fillRect(px, -1, 2, HEAD*0.6);
+    }
     ctx.restore();
     // front arm + hands
     this._limbBar(ctx, shX+3*facing, shY, handX+3*facing, handY, 6, armSleeve, armEdge);
@@ -1262,8 +1284,8 @@ class Player {
   _drawStanding(ctx, sx, sy, swing, tuck = 0, armAngleL = null, armAngleR = null) {
     // ── Colors ──────────────────────────────────────────────
     const SKIN    = '#F4C78A';
-    const HAIR    = '#7D4E1A';
-    const SHIRT   = this.shirtColor || '#4A8FD4'; // CTF team shirt colour (§6)
+    const HAIR    = this._charHair();
+    const SHIRT   = this.shirtColor || this._charShirt(); // CTF team shirt colour (§6) overrides
     const PANTS   = '#2C5F8A';
     const SHOE    = '#3D1C02';
     const SHADOW  = 'rgba(0,0,0,0.4)';
@@ -1349,6 +1371,7 @@ class Player {
     ctx.restore();
 
     // ── Head ────────────────────────────────────────────────
+    if (this._hasPonytail()) this._drawPonytailFlat(ctx, sx + 2, sy, HAIR);   // behind the head
     ctx.fillStyle = SKIN;
     ctx.fillRect(sx + 2, sy, 16, 16);
     // Hair top
@@ -1368,8 +1391,8 @@ class Player {
 
   _drawCrouch(ctx, sx, sy) {
     const SKIN  = '#F4C78A';
-    const HAIR  = '#7D4E1A';
-    const SHIRT = this.shirtColor || '#4A8FD4'; // CTF team shirt colour (§6)
+    const HAIR  = this._charHair();
+    const SHIRT = this.shirtColor || this._charShirt(); // CTF team shirt colour (§6) overrides
     const PANTS = '#2C5F8A';
     const SHOE  = '#3D1C02';
 
@@ -1412,6 +1435,7 @@ class Player {
     ctx.fillRect(sx+15,sy+18, 5, 4);
 
     // Head
+    if (this._hasPonytail()) this._drawPonytailFlat(ctx, sx+2, sy, HAIR);
     ctx.fillStyle = SKIN;
     ctx.fillRect(sx+2, sy, 16, 16);
     ctx.fillStyle = HAIR;

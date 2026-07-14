@@ -1950,3 +1950,21 @@ underestimates reachability and warps instead of climbing).
   (2) a "stuck" state — yellow "!" over the bot's head, then when a player is nearby it
   enters a timed MIRROR-FOLLOW mode (copy the player's inputs to thread a tricky
   tunnel). Neat; deferred as its own feature.
+
+## Female character sprite + selection (build 129)
+Kevin: add a female sprite option (loosely Alex — green shirt, ginger/red hair, a
+ponytail out the back under the helmet lip); pick it in Arena setup + the 2-player
+section for Platformer/Normal (full customization later).
+- **Player.charType** = 'male' (Steve: brown hair, blue shirt) | 'female' (Alex-ish:
+  ginger `#A83A1E` hair, green `#3FA34D` default shirt, ponytail). Cosmetic; a CTF/
+  team `shirtColor` still overrides the shirt. Palette helpers `_charHair/_charShirt/
+  _hasPonytail` + `_drawPonytailFlat`; wired into all 3 figure poses (standing,
+  crouch, climb/`_drawFigureAt`) — the ponytail draws behind the head, below the
+  helmet lip, so it shows even with a helmet on.
+- **Selection UI:** Arena pre-launch — a per-slot character dropdown (Steve/Alex)
+  beside each P1–P4 row → `cfg.playerCharTypes`, applied in `_setupArena`. Platformer/
+  Normal — World Settings → Players → "P1 Character" + "P2 / Companion Character"
+  (`p1Char`/`p2Char`), applied live each frame to `this.player`/`this.player2`.
+- Browser-UNTESTED (canvas pixel-art — no headless render check). Suite 492.
+- **NOTE:** full sprite customization (colours, per-account skins) remains a future
+  arena feature per Kevin; this is the male/female first pass he asked for.

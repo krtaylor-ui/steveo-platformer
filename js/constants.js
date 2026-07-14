@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 128 (Movement-aware bot wayfinding: the pathfinder now sizes the bot\'s jump reach to the WORLD\'s enabled moves — Double Jump raises the reachable height (with a real mid-air jump PULSE so the second jump actually fires), Ledge Hang adds reach — so bots plan/climb what they can actually do. Companion Teleport is now a World Setting (default ON; turn OFF to stress-test nav). + build 127 loot sharing.)';
+const GAME_VERSION = 'v3 · build 129 (Female character option: pick Steve (♂) or an Alex-style female sprite (♀ ginger hair + ponytail, green shirt). Choose per-slot in the Arena pre-launch screen, and via World Settings → Players (P1 / P2·Companion) for Platformer/Normal. Cosmetic; CTF team colours still override the shirt. + build 128 movement-aware wayfinding.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

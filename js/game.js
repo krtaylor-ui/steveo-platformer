@@ -803,6 +803,7 @@ class Game {
       if (!p) continue;
       p.maxHp = maxHp;
       p._ownerId = Game.ownerId(i);  // PvP owner tag ('p1'..'p4')
+      p.charType = (this.arenaConfig.playerCharTypes || [])[i] || 'male';  // Steve/Alex (cosmetic)
       this._armArenaPlayer(p, this._arenaSpawns[spawnKeys[i]]);
       // Reserved team fields (Phase 3C — no logic yet; see [[phase3-arena-redesign]]).
       p.teamId = p.teamId ?? null; p.teamColor = p.teamColor ?? null;
@@ -2040,6 +2041,13 @@ class Game {
 
     // ── Bot AI: lazily create a companion bot (non-arena) on first update.
     if (!this._companionInit) this._maybeSetupCompanion();
+    // Character sprite (Steve/Alex) for non-arena P1/P2 — applied live so a change
+    // in World Settings takes effect immediately. Arena chars are set in _setupArena.
+    if (!this.isArena) {
+      const aws = this._worldAdvSettings;
+      if (this.player  && aws.p1Char) this.player.charType  = aws.p1Char;
+      if (this.player2 && aws.p2Char) this.player2.charType = aws.p2Char;
+    }
     // ── Bot AI tick — decide + write synthetic input BEFORE players/combat
     // consume it this frame. Each controller self-guards on dead/respawning/
     // not-playing (writes a neutral no-op). (Bot AI brief, Phase 1.)

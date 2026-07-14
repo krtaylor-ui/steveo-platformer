@@ -71,6 +71,7 @@ const ARENA_PRELAUNCH = {
       const row = document.getElementById('pl-bot-row-' + s);
       if (row) row.style.display = (s <= cnt) ? 'block' : 'none';
     }
+    const p1 = document.getElementById('pl-bot-row-1'); if (p1) p1.style.display = 'block';  // P1 always shown
   },
 
   _wire() {
@@ -114,6 +115,11 @@ const ARENA_PRELAUNCH = {
     cfg.playerTypes = ['human'];
     for (let s = 2; s <= 4; s++) {
       cfg.playerTypes[s - 1] = (s <= cfg.playerCount) ? val('pl-bot-' + s, 'human') : 'human';
+    }
+    // Per-slot character (Steve/Alex) — cosmetic; applied in _setupArena.
+    cfg.playerCharTypes = [];
+    for (let s = 1; s <= 4; s++) {
+      cfg.playerCharTypes[s - 1] = (s <= cfg.playerCount) ? val('pl-char-' + s, 'male') : 'male';
     }
     if (this._mode === 'COLLECT_EMERALDS') {
       cfg.emeraldRounds = num('pl-emerald-rounds', 3);
