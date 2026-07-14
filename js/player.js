@@ -1120,9 +1120,10 @@ class Player {
     ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
     ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
   }
-  _limbBar(ctx, x0, y0, x1, y1, w, color) {
+  _limbBar(ctx, x0, y0, x1, y1, w, color, outline) {
     const dx = x1-x0, dy = y1-y0, len = Math.hypot(dx,dy) || 0.001, a = Math.atan2(dy,dx);
     ctx.save(); ctx.translate(x0,y0); ctx.rotate(a);
+    if (outline) { ctx.fillStyle = outline; ctx.fillRect(-1, -w/2-1, len+2, w+2); }  // dark silhouette edge
     ctx.fillStyle = color; ctx.fillRect(0, -w/2, len, w);   // hard-edged, matches the blocky sprite
     ctx.restore();
   }
@@ -1173,40 +1174,43 @@ class Player {
     // Armour tints (Smart Mobs) — overlay the matching parts using the SAME joints
     // as the base figure, so equipped gear shows during the climb too (not just in
     // the standing/crouch poses which use _drawArmorOverlay).
+    const EDGE = 'rgba(0,0,0,0.35)';   // subtle silhouette edge so the climb reads as crisply as the standing sprite
     const AR = this.equippedArmor || {};
-    const acol = (slot) => (AR[slot] ? this._armorColors(AR[slot]).base : null);
+    const acol = (slot) => (AR[slot] ? this._armorColors(AR[slot]) : null);
     const legArm = acol('legs'), footArm = acol('feet'), chestArm = acol('chest'), headArm = acol('head');
-    const armSleeve = chestArm || SHIRT;
-    // legs (two) + leggings overlay
-    this._limbBar(ctx, hipX-3*facing, hipY, ftX-3*facing, ftY, 8, PANTS);
-    this._limbBar(ctx, hipX+3*facing, hipY, ftX+3*facing, ftY, 8, PANTS);
-    if (legArm) {
-      this._limbBar(ctx, hipX-3*facing, hipY, ftX-3*facing, ftY, 9, legArm);
-      this._limbBar(ctx, hipX+3*facing, hipY, ftX+3*facing, ftY, 9, legArm);
-    }
+    const armSleeve = chestArm ? chestArm.base : SHIRT;
+    const armEdge   = chestArm ? chestArm.dark : EDGE;
+    // legs (two) — leggings tint + dark edge (matches the standing pose's dark/base border)
+    const legCol = legArm ? legArm.base : PANTS, legEdge = legArm ? legArm.dark : EDGE, legW = legArm ? 9 : 8;
+    this._limbBar(ctx, hipX-3*facing, hipY, ftX-3*facing, ftY, legW, legCol, legEdge);
+    this._limbBar(ctx, hipX+3*facing, hipY, ftX+3*facing, ftY, legW, legCol, legEdge);
     // shoes / boots
-    this._limbBar(ctx, ftX-3*facing, ftY, ftX-3*facing+5*facing, ftY+2, footArm ? 9 : 8, footArm || SHOE);
-    this._limbBar(ctx, ftX+3*facing, ftY, ftX+3*facing+5*facing, ftY+2, footArm ? 9 : 8, footArm || SHOE);
+    const footCol = footArm ? footArm.base : SHOE, footEdge = footArm ? footArm.dark : EDGE, footW = footArm ? 9 : 8;
+    this._limbBar(ctx, ftX-3*facing, ftY, ftX-3*facing+5*facing, ftY+2, footW, footCol, footEdge);
+    this._limbBar(ctx, ftX+3*facing, ftY, ftX+3*facing+5*facing, ftY+2, footW, footCol, footEdge);
     // torso (+ chestplate)
-    this._limbBar(ctx, hipX, hipY, shX, shY, chestArm ? 13 : 12, chestArm || SHIRT);
+    this._limbBar(ctx, hipX, hipY, shX, shY, chestArm ? 13 : 12, chestArm ? chestArm.base : SHIRT, armEdge);
     // back arm
-    this._limbBar(ctx, shX-3*facing, shY, handX-3*facing, handY, 6, armSleeve);
+    this._limbBar(ctx, shX-3*facing, shY, handX-3*facing, handY, 6, armSleeve, armEdge);
     // head (+ helmet)
     ctx.save(); ctx.translate(hdX, hdY); ctx.rotate(tA);
+    ctx.fillStyle=EDGE; ctx.fillRect(-HEAD/2-1,-HEAD/2-1,HEAD+2,HEAD+2);   // head outline
     ctx.fillStyle=SKIN; ctx.fillRect(-HEAD/2,-HEAD/2,HEAD,HEAD);           // square head
     ctx.fillStyle=HAIR; ctx.fillRect(-HEAD/2,-HEAD/2,HEAD,HEAD*0.36);
-    if (headArm) {                                                        // helmet: cap + side strips
-      ctx.fillStyle = headArm;
-      ctx.fillRect(-HEAD/2-1, -HEAD/2-1, HEAD+2, HEAD*0.5);
-      ctx.fillRect(-HEAD/2-1, -HEAD/2-1, 2, HEAD);
-      ctx.fillRect(HEAD/2-1,  -HEAD/2-1, 2, HEAD);
+    if (headArm) {                                                        // helmet cap + side strips (eye stays visible)
+      ctx.fillStyle = headArm.dark; ctx.fillRect(-HEAD/2-1, -HEAD/2-1, HEAD+2, HEAD*0.5);
+      ctx.fillStyle = headArm.base; ctx.fillRect(-HEAD/2,   -HEAD/2,   HEAD,   HEAD*0.5-1);
+      ctx.fillStyle = headArm.hi;   ctx.fillRect(-HEAD/2+2, -HEAD/2+1, HEAD-6, 2);
+      ctx.fillStyle = headArm.base;
+      ctx.fillRect(-HEAD/2,   -HEAD/2, 2, HEAD*0.75);
+      ctx.fillRect(HEAD/2-2,  -HEAD/2, 2, HEAD*0.75);
     }
     ctx.fillStyle='#fff'; ctx.fillRect(2*facing,-2,4,4);
     ctx.fillStyle='#1A50C0'; ctx.fillRect(3*facing,-1,2,2);
     ctx.restore();
     // front arm + hands
-    this._limbBar(ctx, shX+3*facing, shY, handX+3*facing, handY, 6, armSleeve);
-    this._limbBar(ctx, handX-3*facing, handY, handX+3*facing, handY, 6, SKIN);
+    this._limbBar(ctx, shX+3*facing, shY, handX+3*facing, handY, 6, armSleeve, armEdge);
+    this._limbBar(ctx, handX-3*facing, handY, handX+3*facing, handY, 6, SKIN, EDGE);
   }
 
   _drawStanding(ctx, sx, sy, swing, tuck = 0, armAngleL = null, armAngleR = null) {
@@ -1576,20 +1580,20 @@ class Player {
       // ── Standing armor ─────────────────────────���────────────
       if (eq.head) {
         const c = tc(eq.head);
+        // Cap over the crown — leaves the face/eyes exposed (matches the climb helmet look)
         ctx.fillStyle = c.dark;
-        ctx.fillRect(sx + 2, sy, 16, 16);
+        ctx.fillRect(sx + 1, sy - 1, 18, 8);       // shell (oversized = dark outline)
         ctx.fillStyle = c.base;
-        ctx.fillRect(sx + 3, sy + 1, 14, 13);      // main plate
+        ctx.fillRect(sx + 2, sy, 16, 6);           // cap face
         ctx.fillStyle = c.hi;
-        ctx.fillRect(sx + 4, sy + 2, 12, 3);       // top highlight
+        ctx.fillRect(sx + 4, sy + 1, 10, 2);       // top highlight
+        // Cheek strips down the sides, past the eyes — thin so the eyes stay clear
         ctx.fillStyle = c.dark;
-        ctx.fillRect(sx + 3, sy + 14, 14, 2);      // chin bar
-        // Eye visor slot — re-expose skin
-        ctx.fillStyle = '#F4C78A';
-        ctx.fillRect(sx + 6, sy + 6, 8, 5);
+        ctx.fillRect(sx + 2, sy + 6, 2, 6);        // left strip
+        ctx.fillRect(sx + 16, sy + 6, 2, 6);       // right strip
         ctx.fillStyle = c.base;
-        ctx.fillRect(sx + 6, sy + 6, 2, 5);        // left eye guard
-        ctx.fillRect(sx + 12, sy + 6, 2, 5);       // right eye guard
+        ctx.fillRect(sx + 2, sy + 6, 2, 5);
+        ctx.fillRect(sx + 16, sy + 6, 2, 5);
       }
       if (eq.chest) {
         const c = tc(eq.chest);
@@ -1610,17 +1614,19 @@ class Player {
       // ── Crouching armor (CROUCH_H=32) ───────────────────────
       if (eq.head) {
         const c = tc(eq.head);
+        // Cap over the crown — leaves the face/eyes exposed (matches the climb helmet look)
         ctx.fillStyle = c.dark;
-        ctx.fillRect(sx + 2, sy, 16, 16);
+        ctx.fillRect(sx + 1, sy - 1, 18, 8);
         ctx.fillStyle = c.base;
-        ctx.fillRect(sx + 3, sy + 1, 14, 13);
+        ctx.fillRect(sx + 2, sy, 16, 6);
         ctx.fillStyle = c.hi;
-        ctx.fillRect(sx + 4, sy + 2, 12, 3);
-        ctx.fillStyle = '#F4C78A';
-        ctx.fillRect(sx + 6, sy + 6, 8, 5);
+        ctx.fillRect(sx + 4, sy + 1, 10, 2);
+        ctx.fillStyle = c.dark;
+        ctx.fillRect(sx + 2, sy + 6, 2, 6);
+        ctx.fillRect(sx + 16, sy + 6, 2, 6);
         ctx.fillStyle = c.base;
-        ctx.fillRect(sx + 6, sy + 6, 2, 5);
-        ctx.fillRect(sx + 12, sy + 6, 2, 5);
+        ctx.fillRect(sx + 2, sy + 6, 2, 5);
+        ctx.fillRect(sx + 16, sy + 6, 2, 5);
       }
       if (eq.chest) {
         const c = tc(eq.chest);
