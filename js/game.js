@@ -2954,6 +2954,7 @@ class Game {
       // Smart Mobs §4 — hand the mob manager this world's detection config (default
       // off → legacy aggro). Cheap; recomputed each frame so live setting changes apply.
       this.mobManager.detectCfg = this._detectionConfig();
+      this.mobManager.fleeCfg   = this._fleeConfig();   // §8 — per-mob-type low-HP flee
       if (!_onlineNonHost) {
         this.mobManager.update(this.player, this.level, this.player2 || null, this.players.slice(2).filter(Boolean));
       } else {
@@ -16612,6 +16613,20 @@ class Game {
       // §7 sprint — a SEPARATE opt-in, independent of the master detection toggle.
       sprintMobs:  !!aws.sprintingMobs,
     };
+  }
+
+  // Smart Mobs §8 — per-mob-type low-HP behavior config for the mob manager. Only the
+  // mob types with a non-'none' action are included. `action` is a variable so future
+  // low-HP responses (beyond 'flee') can be added without reworking the plumbing.
+  _fleeConfig() {
+    const aws = this._worldAdvSettings || {};
+    const out = {};
+    for (const k of ['zombie', 'skeleton', 'cave_spider', 'piglin', 'wither_skeleton']) {
+      const action = aws['lowHpAction_' + k] || 'none';
+      if (action === 'none') continue;
+      out[k] = { action, threshold: (aws['lowHpThreshold_' + k] ?? 20) / 100 };
+    }
+    return Object.keys(out).length ? out : null;
   }
 
   // Smart Mobs §4b/§4c — translate the player's per-frame movement events into mob

@@ -197,6 +197,9 @@ const WORLD_SETTINGS = {
       // ── Sprint (Smart Mobs §7) — melee mobs occasionally sprint to close distance;
       //    always telegraphed (a wind-up cue precedes the burst). Own opt-in toggle. ──
       { key: 'sprintingMobs', tab: 'combat', group: 'Sprint', modes: M.physics, type: 'toggle', dflt: false, label: 'Sprinting Mobs', hint: 'melee mobs occasionally sprint at you — telegraphed by a wind-up cue' },
+      // ── Retreating mobs (Smart Mobs §8) — per mob type: flee at low HP (+ advanced
+      //    HP-% threshold). Coexists with Skeleton kiting. ──
+      ...this._fleeRows(M),
       // ── Special moves (Smart Mobs §2) — per-weapon context attacks ──
       { key: 'slideAttack', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Slide Attack (Spear)', hint: 'ground-slide with a spear launches nearby mobs into the air' },
       { key: 'slideAttackDmg', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'cycle', opts: O.wdmg, dflt: 1.0, label: 'Slide Attack Damage', fmt: x1, advanced: true, dependsOn: 'slideAttack' },
@@ -253,6 +256,27 @@ const WORLD_SETTINGS = {
         rows.push({ key: 'guidedTrident',     tab: 'combat', group: g, modes, type: 'toggle', dflt: false, label: 'Guided (steer to cursor)', advanced: true });
         rows.push({ key: 'tridentTurn',        tab: 'combat', group: g, modes, type: 'slider', dflt: 30, label: 'Guided Turn Speed', advanced: true, dependsOn: 'guidedTrident' });
       }
+    }
+    return rows;
+  },
+
+  // Smart Mobs §8 — per-mob-type low-HP behavior rows. `lowHpAction_<key>` is a VARIABLE
+  // (None / Flee) so future responses can be added; `lowHpThreshold_<key>` (advanced) is
+  // the HP-% at which it triggers (default 20%). Wired for the mob types where fleeing is
+  // coherent (Creeper explodes, Blaze flies, Enderman teleports — their own low-HP
+  // behaviors, so they're intentionally excluded).
+  _fleeRows(M) {
+    const cap = (s) => s.charAt(0) + s.slice(1).toLowerCase();
+    const modes = M.physics;
+    const MOBS = [['zombie', 'Zombie'], ['skeleton', 'Skeleton'], ['cave_spider', 'Cave Spider'],
+      ['piglin', 'Piglin'], ['wither_skeleton', 'Wither Skel.']];
+    const rows = [];
+    for (const [key, name] of MOBS) {
+      rows.push({ key: `lowHpAction_${key}`, tab: 'combat', group: 'Retreating Mobs', modes, type: 'cycle',
+        opts: ['none', 'flee'], dflt: 'none', label: name, fmt: cap, hint: `what ${name} does at low HP` });
+      rows.push({ key: `lowHpThreshold_${key}`, tab: 'combat', group: 'Retreating Mobs', modes, type: 'cycle',
+        opts: [10, 20, 35, 50], dflt: 20, label: `${name} · Flee Below`, fmt: (v) => v + '%', sub: true, advanced: true,
+        dependsOn: (a) => (a[`lowHpAction_${key}`] || 'none') !== 'none' });
     }
     return rows;
   },

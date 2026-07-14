@@ -219,5 +219,30 @@ console.log('Sprint telegraph (§7):');
   ok(sk._sprintBoost === 1, 'ranged Skeleton is not a sprinter (no boost)');
 }
 
+console.log('Flee at low HP (§8):');
+{
+  const mm = new MobManager();
+  const z = mm._createMob('Zombie', 300, 100); z.maxHp = 10;
+  // Action 'flee', threshold 20%. At 5/10 HP → not fleeing; at 2/10 → fleeing.
+  z._flee = { action: 'flee', threshold: 0.2 };
+  z.hp = 5;
+  ok(z._shouldFlee() === false, 'above threshold → not fleeing');
+  z.hp = 2;
+  ok(z._shouldFlee() === true, 'at/below threshold → fleeing');
+  // Flee moves AWAY from the player (player to the LEFT → mob flees RIGHT).
+  const player = tgt(100, 124);   // left of the mob at cx 311
+  const moved = z._fleeIfHurt(player, clearLevel);
+  ok(moved === true, '_fleeIfHurt drives the mob when hurt');
+  ok(z.vx > 0, 'flees away from the player (player left → mob moves right)');
+}
+{
+  const mm = new MobManager();
+  const z = mm._createMob('Zombie', 300, 100); z.maxHp = 10; z.hp = 1;
+  z._flee = { action: 'none', threshold: 0.2 };
+  ok(z._shouldFlee() === false, "action 'none' → never flees even at 1 HP");
+  z._flee = null;
+  ok(z._shouldFlee() === false, 'no flee config → never flees (default behavior)');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

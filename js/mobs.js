@@ -235,6 +235,31 @@ class Mob {
     return !d || !d.enabled || this._alerted;
   }
 
+  // Smart Mobs §8 — flee at low HP. `_flee` = this mob type's { action, threshold }
+  // (set by the manager from world settings). The response is a VARIABLE (`action`)
+  // built so new low-HP behaviors can be added later; only 'flee' is implemented now.
+  _shouldFlee() {
+    const f = this._flee;
+    return !!f && f.action === 'flee' && this.maxHp > 0 && (this.hp / this.maxHp) <= f.threshold;
+  }
+  // If this mob should flee, drive it AWAY from the player (facing the player so it
+  // reads as a retreat, hopping obstacles behind it) and return true so the caller
+  // skips its normal chase/attack this frame. Additive to Skeleton kiting — a very low
+  // Skeleton fully retreats instead of holding its preferred range.
+  _fleeIfHurt(player, level) {
+    if (!player || !this._shouldFlee()) return false;
+    const away  = Math.sign(this.cx - player.cx) || (this.facing || 1);
+    const speed = (this.speed || 2) * 1.15;
+    this.vx     = away * speed;
+    this.facing = -away;   // keep eyes on the player while backing away
+    if (this.onGround && level && level.isSolid(
+        Math.floor(this.y / BLOCK_SIZE),
+        Math.floor((this.x + (away > 0 ? this.width + 2 : -2)) / BLOCK_SIZE))) {
+      this.vy = JUMP_VELOCITY * 0.85;
+    }
+    return true;
+  }
+
   // Smart Mobs §5 — surround: the x a melee chaser steers toward. Normally the player,
   // but the MobManager sets `_flankOffset` so clustered mobs approach from opposite
   // sides (a simple left/right heuristic — real pathfinding is the deferred §6). Zero
@@ -251,6 +276,14 @@ class Mob {
 
 Mob._nextId = 0;
 
+// Smart Mobs §8 — map a mob's class name to the lowercase key used by spawn eggs /
+// mob-drops / the per-type flee settings (so `_worldAdvSettings.lowHpAction_<key>` etc.
+// line up across all the per-mob-type config surfaces).
+const MOB_CLASS_KEY = {
+  Zombie: 'zombie', Skeleton: 'skeleton', Creeper: 'creeper', CaveSpider: 'cave_spider',
+  Piglin: 'piglin', Blaze: 'blaze', WitherSkeleton: 'wither_skeleton', Enderman: 'enderman',
+};
+
 // ── Zombie ───────────────────────────────────────────────────
 
 class Zombie extends Mob {
@@ -264,6 +297,12 @@ class Zombie extends Mob {
     if (!this.alive) return;
     this._tickTimers();
     if (this.attackTimer > 0) this.attackTimer--;
+
+    // Smart Mobs §8 — flee at low HP takes priority (skips chase + contact damage).
+    if (this.knockbackTimer <= 0 && this._fleeIfHurt(player, level)) {
+      this.walkTimer += Math.abs(this.vx) > 0.4 ? 0.09 : 0;
+      _mobPhysics(this, level); return;
+    }
 
     const dx   = player.cx - this.cx;
     const dist = Math.abs(dx);
@@ -372,6 +411,12 @@ class Skeleton extends Mob {
     if (!this.alive) return;
     this._tickTimers();
     if (this.shootTimer > 0) this.shootTimer--;
+
+    // Smart Mobs §8 — at low HP, fully retreat (additive to the normal kiting below).
+    if (this.knockbackTimer <= 0 && this._fleeIfHurt(player, level)) {
+      this.walkTimer += Math.abs(this.vx) > 0.4 ? 0.09 : 0;
+      _mobPhysics(this, level); return;
+    }
 
     const dx   = player.cx - this.cx;
     const dist = Math.abs(dx);
@@ -930,6 +975,8 @@ class CaveSpider extends Mob {
   update(player, level) {
     this._tickTimers();
     if (this.knockbackTimer > 0) { _mobPhysics(this, level); return; }
+    // Smart Mobs §8 — low-HP flee takes priority over chasing.
+    if (this._fleeIfHurt(player, level)) { _mobPhysics(this, level); return; }
     // Smart Mobs §4 — undetected mobs wander instead of beelining the player.
     if (!this._shouldChase()) { this._wanderUpdate(level, 0.8); _mobPhysics(this, level); return; }
 
@@ -997,6 +1044,8 @@ class Piglin extends Mob {
     this._tickTimers();
     if (this.attackTimer > 0) this.attackTimer--;
     if (this.knockbackTimer > 0) { _mobPhysics(this, level); return; }
+    // Smart Mobs §8 — low-HP flee takes priority over chasing.
+    if (this._fleeIfHurt(player, level)) { _mobPhysics(this, level); return; }
     // Smart Mobs §4 — undetected mobs wander instead of beelining the player.
     if (!this._shouldChase()) { this._wanderUpdate(level, 0.8); _mobPhysics(this, level); return; }
 
@@ -1229,6 +1278,8 @@ class WitherSkeleton extends Mob {
     this._tickTimers();
     if (this.attackTimer > 0) this.attackTimer--;
     if (this.knockbackTimer > 0) { _mobPhysics(this, level); return; }
+    // Smart Mobs §8 — low-HP flee takes priority over chasing.
+    if (this._fleeIfHurt(player, level)) { _mobPhysics(this, level); return; }
     // Smart Mobs §4 — undetected mobs wander instead of beelining the player.
     if (!this._shouldChase()) { this._wanderUpdate(level, 0.8); _mobPhysics(this, level); return; }
 
@@ -1500,6 +1551,8 @@ class MobManager {
     // sightRange, sightArcDeg, packAlert, packRadius }. Noise radii are computed on the
     // player side (game._emitMovementNoise / action noise) and fed via emitNoise().
     this.detectCfg            = null;
+    // Smart Mobs §8 — per-mob-type low-HP behavior config: { <key>: {action, threshold} }.
+    this.fleeCfg              = null;
   }
 
   // Set up spawn points from world data
@@ -1882,6 +1935,7 @@ class MobManager {
       const target = this._nearestPlayer(mob.cx, mob.cy, player, player2);
       this._updateDetection(mob, target, level);   // Smart Mobs §4 — sight axis + gate
       this._updateSprint(mob, target);             // Smart Mobs §7 — telegraphed sprint
+      mob._flee = this.fleeCfg ? this.fleeCfg[MOB_CLASS_KEY[mob.constructor.name]] : null;  // §8
       if (mob instanceof Skeleton) {
         mob.update(target, level, this.arrows);
       } else if (mob instanceof Blaze) {
