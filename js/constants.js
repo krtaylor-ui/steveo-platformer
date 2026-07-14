@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 104 (Smart Mobs §5: PACK behavior — one opt-in toggle: an alerted mob rouses nearby mobs (alert propagation), and clustered melee attackers flank to opposite sides instead of stacking)';
+const GAME_VERSION = 'v3 · build 105 (Smart Mobs §7: SPRINTING MOBS — opt-in; melee mobs occasionally sprint to close distance, always telegraphed by a wind-up (slow + pulsing ! ring + mob voice) before the burst)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
@@ -172,6 +172,18 @@ const DETECT_SOUND_RUN_DEF   = 9;    // radius a RUNNING footstep is heard (bloc
 const DETECT_SOUND_LOUD_DEF  = 14;   // radius when touching a LOUD block (gravel), blocks
 const DETECT_ACTION_RANGE_DEF = 8;   // radius an attack/jump is heard (blocks)
 const DETECT_PACK_RADIUS_DEF = 7;    // §5 — alert-propagation radius between mobs (blocks)
+
+// Smart Mobs §7 — melee-mob SPRINT (opt-in "Sprinting Mobs"). A sprint is always
+// TELEGRAPHED: a wind-up (mob slows + a pulsing cue) precedes the burst, so a fast
+// approach reads as a fair, reactable threat rather than a cheap ambush.
+const SPRINT_TELE_FRAMES   = 42;    // wind-up / telegraph duration (~0.7s @60fps)
+const SPRINT_RUN_FRAMES    = 46;    // burst duration (~0.75s)
+const SPRINT_COOLDOWN      = 150;   // frames before a mob can sprint again (~2.5s)
+const SPRINT_SPEED_MULT    = 2.4;   // speed multiplier during the burst
+const SPRINT_WINDUP_MULT   = 0.35;  // speed during the telegraph (visibly gathers itself)
+const SPRINT_TRIGGER_CHANCE = 0.02; // per-eligible-frame chance to start a sprint
+const SPRINT_MIN_BLOCKS    = 3;     // only sprint when the player is this far …
+const SPRINT_MAX_BLOCKS    = 12;    // … up to this far (closing distance, not point-blank)
 const VICTORY_MUSIC_FILE   = 'music/boss/victory.mp3';  // ~20s fanfare after Ender Dragon defeat
 
 // Music disc registry — each entry maps a disc key to its audio file and display name.

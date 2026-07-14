@@ -16609,6 +16609,8 @@ class Game {
       // §5 pack behavior (read by the manager's alert-propagation pass).
       packAlert:   !!aws.packAlert,
       packRadius:  bl(aws.packRadius, DETECT_PACK_RADIUS_DEF),
+      // §7 sprint — a SEPARATE opt-in, independent of the master detection toggle.
+      sprintMobs:  !!aws.sprintingMobs,
     };
   }
 

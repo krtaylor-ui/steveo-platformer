@@ -194,6 +194,9 @@ const WORLD_SETTINGS = {
       //    and melee attackers flank to opposite sides instead of stacking. ──
       { key: 'packAlert',  tab: 'combat', group: 'Pack', modes: M.physics, type: 'toggle', dflt: false, label: 'Pack Behavior', hint: 'one mob spotting you alerts nearby mobs; attackers surround from both sides' },
       { key: 'packRadius', tab: 'combat', group: 'Pack', modes: M.physics, type: 'cycle', opts: [4, 7, 10, 14], dflt: DETECT_PACK_RADIUS_DEF, label: 'Alert Spread Range', fmt: (v) => v + ' bl', sub: true, dependsOn: 'packAlert', advanced: true },
+      // ── Sprint (Smart Mobs §7) — melee mobs occasionally sprint to close distance;
+      //    always telegraphed (a wind-up cue precedes the burst). Own opt-in toggle. ──
+      { key: 'sprintingMobs', tab: 'combat', group: 'Sprint', modes: M.physics, type: 'toggle', dflt: false, label: 'Sprinting Mobs', hint: 'melee mobs occasionally sprint at you — telegraphed by a wind-up cue' },
       // ── Special moves (Smart Mobs §2) — per-weapon context attacks ──
       { key: 'slideAttack', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Slide Attack (Spear)', hint: 'ground-slide with a spear launches nearby mobs into the air' },
       { key: 'slideAttackDmg', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'cycle', opts: O.wdmg, dflt: 1.0, label: 'Slide Attack Damage', fmt: x1, advanced: true, dependsOn: 'slideAttack' },

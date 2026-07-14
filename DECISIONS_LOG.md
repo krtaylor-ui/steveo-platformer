@@ -1262,3 +1262,23 @@ brief: §10 → §4 → §5 → §7 → §8 → §9. Up-front Q&A with Kevin res
   radius + gating, opposite-side surround, reset-when-off); suite 269. Browser-UNTESTED —
   surround FEEL (do the flankers read as "surrounding"? without pathfinding they walk
   through the player, who is non-solid) is a playtest watch-item + a §6 candidate.
+
+## §7 — Sprint with telegraph (build 105)
+- **Opt-in `sprintingMobs` toggle** (Combat → Sprint), INDEPENDENT of the master
+  detection toggle (a designer can add sprinting mobs without full stealth) — gated in
+  `MobManager._updateSprint` on `detectCfg.sprintMobs`, not `.enabled`.
+- **Scope:** ground melee chasers only (`_isSprinter` = Zombie/Piglin/WitherSkeleton/
+  CaveSpider); ranged kiters (Skeleton/Blaze) + Enderman excluded (per the up-front Q&A).
+- **State machine** (per mob, timers): idle → (random chance while chasing + in a 3–12
+  block band) telegraph → burst → cooldown. `_sprintBoost` (the only movement effect) is
+  read by the shared `_mobPhysics` speed line, so no per-subclass movement edits.
+- **Telegraph (the requirement):** the wind-up phase (`SPRINT_TELE_FRAMES` ~0.7s) SLOWS
+  the mob (`SPRINT_WINDUP_MULT` 0.35 — it visibly gathers itself) and draws a pulsing red
+  ring + bobbing "!" over it (in `MobManager.draw`, so no per-mob draw edits), plus plays
+  the mob's own voice (existing `mob-*.mp3` assets — works out of the box). THEN the burst
+  (`SPRINT_SPEED_MULT` 2.4) fires with trailing speed streaks. So a fast approach always
+  reads as a fair, reactable threat.
+- Additive: `_sprintBoost` defaults 1 (no-op when off / non-sprinters). test-detection.js
+  +8 (phase transitions, boost values, off-gating, non-sprinter exclusion); suite 277.
+  Browser-UNTESTED — **telegraph timing FEEL** (is 0.7s enough warning?) is a key
+  playtest watch-item, flagged per the brief's deliverable §4.

@@ -15,6 +15,9 @@ const real = {
   window: {}, Math, console, Set, Map, Array, Object, JSON, Number, String, Boolean,
   BLOCK_SIZE: 32, GRAVITY: 0.66, JUMP_VELOCITY: -12, MAX_FALL_SPEED: 12,
   IFRAMES: 20, KNOCKBACK_FORCE: 6, CANVAS_W: 960,
+  SPRINT_TELE_FRAMES: 42, SPRINT_RUN_FRAMES: 46, SPRINT_COOLDOWN: 150,
+  SPRINT_SPEED_MULT: 2.4, SPRINT_WINDUP_MULT: 0.35, SPRINT_TRIGGER_CHANCE: 0.02,
+  SPRINT_MIN_BLOCKS: 3, SPRINT_MAX_BLOCKS: 12,
 };
 const sandbox = new Proxy(real, {
   has: () => true,
@@ -177,6 +180,43 @@ console.log('Pack behavior (§5):');
   m1._flankOffset = 99;
   mm._assignSurround(player);
   ok(m1._flankOffset === 0, 'surround clears flank offset when pack behavior is off');
+}
+
+console.log('Sprint telegraph (§7):');
+{
+  const mm = new MobManager(); mm.detectCfg = { ...CFG, sprintMobs: true };
+  const z = mm._createMob('Zombie', 100, 100); z.onGround = true; z._alerted = true;
+  const target = tgt(100 + 6 * 32);
+  // Telegraph phase → wind-up slow.
+  z._sprintTele = 2;
+  mm._updateSprint(z, target);
+  ok(Math.abs(z._sprintBoost - 0.35) < 1e-9, 'telegraph phase = wind-up slow boost');
+  ok(z._sprintTele === 1, 'telegraph counts down');
+  z._sprintTele = 1;
+  mm._updateSprint(z, target);
+  ok(z._sprintRun === 46, 'telegraph end → burst begins');
+  // Burst phase → speed multiplier.
+  mm._updateSprint(z, target);
+  ok(Math.abs(z._sprintBoost - 2.4) < 1e-9, 'burst phase = sprint speed multiplier');
+  // End of burst → cooldown.
+  z._sprintRun = 1;
+  mm._updateSprint(z, target);
+  ok(z._sprintCd === 150, 'burst end → cooldown set');
+  ok(Math.abs((z._sprintBoost || 1) - 1) < 1e-9 || z._sprintCd > 0, 'no boost during cooldown');
+}
+{
+  const mm = new MobManager(); mm.detectCfg = { ...CFG, sprintMobs: false };
+  const z = mm._createMob('Zombie', 100, 100); z.onGround = true; z._alerted = true;
+  z._sprintTele = 5;
+  mm._updateSprint(z, tgt(100 + 6 * 32));
+  ok(z._sprintBoost === 1 && z._sprintTele === 0, 'sprint OFF → no boost, timers cleared');
+}
+{
+  const mm = new MobManager(); mm.detectCfg = { ...CFG, sprintMobs: true };
+  const sk = mm._createMob('Skeleton', 100, 100); sk.onGround = true; sk._alerted = true;
+  sk._sprintTele = 5;
+  mm._updateSprint(sk, tgt(100 + 6 * 32));
+  ok(sk._sprintBoost === 1, 'ranged Skeleton is not a sprinter (no boost)');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

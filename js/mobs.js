@@ -34,7 +34,8 @@ function _mobPhysics(mob, level) {
 
   // Horizontal — with 1-block step-up. speedMult scales movement (arena: ×2, +per
   // survival wave) without changing mob.vx (used for facing/animation). Phase 3A.3.
-  const sm = mob.speedMult || 1;
+  // Smart Mobs §7 — _sprintBoost layers the telegraphed sprint burst on top.
+  const sm = (mob.speedMult || 1) * (mob._sprintBoost || 1);
   if (mob.vx > 0) {
     const newX    = mob.x + mob.vx * sm;
     const bCol    = Math.floor((newX + mob.width) / BLOCK_SIZE);
@@ -1790,6 +1791,48 @@ class MobManager {
     near.forEach((m, i) => { m._flankOffset = (i % 2 === 0 ? 1 : -1) * 1.5 * BLOCK_SIZE; });
   }
 
+  // Smart Mobs §7 — which mobs can sprint: ground melee chasers only (ranged kiters +
+  // Enderman + Blaze excluded).
+  _isSprinter(mob) {
+    return mob instanceof Zombie || mob instanceof Piglin ||
+           mob instanceof WitherSkeleton || mob instanceof CaveSpider;
+  }
+
+  // Telegraphed sprint state machine (per mob). Phases via timers:
+  //   idle → (chance) telegraph (slow wind-up + pulsing cue) → burst (speed×) → cooldown.
+  // `_sprintBoost` (read by _mobPhysics) is the only movement effect; `_sprintTele` also
+  // drives the visual cue drawn in draw(). Gated by its OWN toggle (independent of the
+  // master detection toggle) so a designer can add sprinting mobs without full stealth.
+  _updateSprint(mob, target) {
+    mob._sprintBoost = 1;
+    const cfg = this.detectCfg;
+    if (!cfg || !cfg.sprintMobs || !this._isSprinter(mob) || !target || mob.knockbackTimer > 0) {
+      mob._sprintTele = 0; mob._sprintRun = 0; return;
+    }
+    if (mob._sprintTele > 0) {                       // winding up (telegraph)
+      mob._sprintBoost = SPRINT_WINDUP_MULT;
+      if (--mob._sprintTele <= 0) mob._sprintRun = SPRINT_RUN_FRAMES;
+    } else if (mob._sprintRun > 0) {                 // bursting
+      mob._sprintBoost = SPRINT_SPEED_MULT;
+      if (--mob._sprintRun <= 0) mob._sprintCd = SPRINT_COOLDOWN;
+    } else if (mob._sprintCd > 0) {                  // recovering
+      mob._sprintCd--;
+    } else if (mob.onGround && mob._shouldChase()) {  // eligible to start
+      const dist = Math.abs(target.cx - mob.cx);
+      if (dist > SPRINT_MIN_BLOCKS * BLOCK_SIZE && dist < SPRINT_MAX_BLOCKS * BLOCK_SIZE &&
+          Math.random() < SPRINT_TRIGGER_CHANCE) {
+        mob._sprintTele = SPRINT_TELE_FRAMES;
+        // Audible cue = the mob's own voice (existing assets, so it works out of the box).
+        if (this.soundCallback) {
+          const snd = mob instanceof Piglin ? 'sounds/mob-piglin.mp3'
+                    : mob instanceof WitherSkeleton ? 'sounds/mob-skeleton.mp3'
+                    : 'sounds/mob-zombie.mp3';
+          this.soundCallback(snd, 0.55);
+        }
+      }
+    }
+  }
+
   // Returns the closest live player to (cx, cy) among all local players (P1-P4)
   // + online players. Falls back to the passed p1/p2 if the target list isn't
   // set yet. Dead players (hp <= 0) are skipped unless none are alive.
@@ -1838,6 +1881,7 @@ class MobManager {
       }
       const target = this._nearestPlayer(mob.cx, mob.cy, player, player2);
       this._updateDetection(mob, target, level);   // Smart Mobs §4 — sight axis + gate
+      this._updateSprint(mob, target);             // Smart Mobs §7 — telegraphed sprint
       if (mob instanceof Skeleton) {
         mob.update(target, level, this.arrows);
       } else if (mob instanceof Blaze) {
@@ -2315,8 +2359,46 @@ class MobManager {
       } else {
         mob.draw(ctx, camera);
       }
+      // Smart Mobs §7 — sprint TELEGRAPH: a pulsing red ring + "!" above a winding-up
+      // mob, and speed streaks during the burst. Drawn here so no per-mob draw changes.
+      if (mob.alive && (mob._sprintTele > 0 || mob._sprintRun > 0)) {
+        this._drawSprintCue(ctx, camera, mob);
+      }
     }
     // Floating numbers on top
     for (const d of this.damageNums)   d.draw(ctx, camera);
+  }
+
+  _drawSprintCue(ctx, camera, mob) {
+    const sx = mob.cx - camera.x, sy = mob.y - camera.y;
+    ctx.save();
+    if (mob._sprintTele > 0) {
+      // Wind-up: pulsing ring around the mob + a bobbing "!" warning above it.
+      const t     = 1 - mob._sprintTele / SPRINT_TELE_FRAMES;   // 0→1 over the telegraph
+      const pulse = 0.45 + 0.35 * Math.sin(mob._sprintTele * 0.5);
+      const cx = mob.cx - camera.x, cy = mob.cy - camera.y;
+      ctx.strokeStyle = `rgba(255,60,40,${pulse.toFixed(3)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, mob.width * (0.7 + t * 0.5), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = `rgba(255,80,60,${(0.6 + 0.4 * pulse).toFixed(3)})`;
+      ctx.font = 'bold 16px Courier New';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.fillText('!', cx, sy - 4 - (mob._sprintTele % 8 < 4 ? 2 : 0));
+    } else if (mob._sprintRun > 0) {
+      // Burst: motion streaks trailing behind the charge direction.
+      const dir = mob.facing >= 0 ? -1 : 1;   // streaks trail opposite to travel
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) {
+        const y = sy + 8 + i * 12;
+        ctx.beginPath();
+        ctx.moveTo(sx + mob.width / 2, y);
+        ctx.lineTo(sx + mob.width / 2 + dir * (10 + i * 4), y);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
   }
 }
