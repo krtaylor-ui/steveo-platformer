@@ -2003,3 +2003,14 @@ Kevin's co-op tuning pass:
 - **STILL FLAGGED for next:** wall-jump actuator reliability (chimney execution); and
   Kevin's note — possibly drop the "Teleport" option from the stuck-behavior list once
   fast response + range prove enough.
+
+## CONVENTION — gender-neutral wording (build 130, 2026-07-14)
+Kevin's request: keep all player-facing wording gender-neutral to avoid injecting
+gender bias. Players choose any sprite for themselves and the co-op companion (Kevin
+plays Steve, uses the Alex/female sprite for the bot and calls it "she" personally —
+a player's choice, not the game's voice). **Rule:** in tooltips, notifications, HUD,
+menus, and the future Player's Guide, use "you" / "the player" / "the companion" /
+"the bot" / "it" / "they" — NEVER he/she/his/her. ("Steve"/"Alex" are sprite NAMES,
+fine as labels — the rule targets pronouns/gendered terms.) Audit done at this point:
+no gendered pronouns in any current player-facing string (existing companion copy uses
+"it"/"you"/"the companion"). Mirrored in CONTEXT_SUMMARY (top) + FUTURE_ROADMAP §1.

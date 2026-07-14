@@ -7,6 +7,17 @@ Guide, **Campaign mode** §12, Tower Defense/bots, world cleanup, itch/Tauri,
 plus new §13–§18: Ladders, Trampolines, Online/MP UX, Mob-config engine,
 Enchantments, Suspicion meter).
 
+## ⚖️ WRITING CONVENTION — gender-neutral wording (project-wide)
+**All player-facing wording for the player, sprites, and bots MUST be gender-neutral.**
+Players choose any sprite (e.g. Kevin plays Steve and uses the Alex/female sprite for
+the co-op companion, referring to that bot as "she" — a personal choice, not the game's
+voice). So the GAME must never assume gender: use **"you" / "the player" / "the
+companion" / "the bot" / "it" / "they"**, never he/she/his/her in tooltips, notifications,
+HUD text, menus, or the future Player's Guide. ("Steve" / "Alex" are the sprite *names*
+— fine to use as labels; the rule is about pronouns/gendered terms.) **Check any new
+gendered term against this before shipping copy.** (Note added 2026-07-14 at Kevin's
+request; also in DECISIONS_LOG + FUTURE_ROADMAP §1.)
+
 ## CURRENT STATE (2026-07-14) — build 122, on branch `bot-ai` (off `smart-mobs-wayfinding`; NOT merged)
 
 **BOT AI (Competitive + Cooperative) — the full mega-session brief is BUILT, Phases 0–7.**

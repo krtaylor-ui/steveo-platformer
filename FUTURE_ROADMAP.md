@@ -99,6 +99,12 @@ controls lives in the code*, and only in‑repo tooling can read it accurately.
 page), one page per mode. More maintainable than a PDF, and print‑to‑PDF covers the file case.
 
 **Caveats to honor when writing it:**
+- **GENDER-NEUTRAL WORDING (hard rule, project-wide).** Players pick any sprite for
+  themselves and their co-op companion/bot, so the game must never assume gender. Use
+  "you" / "the player" / "the companion" / "the bot" / "it" / "they" — never he/she/his/her
+  — in this guide AND in all tooltips, notifications, HUD, and menu copy. ("Steve" / "Alex"
+  are sprite names and are fine as labels.) Check every gendered term against this rule.
+  (Kevin's request, 2026-07-14; mirrored in CONTEXT_SUMMARY + DECISIONS_LOG.)
 - Document what the code *does*, not an idealized spec. Flag anything that looks buggy rather
   than writing it up as intended behavior.
 - Sandbox/Arena shortcuts are **scattered inline** across the large `game.js` sandbox update
