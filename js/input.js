@@ -58,6 +58,18 @@ class InputManager {
     // Set each frame by game.js.
     this.dualInput = false;
 
+    // ── Bot AI synthetic input (Bot AI brief) ────────────────
+    // A bot-controlled slot writes its desired virtual input here each frame and
+    // the pXxx(i) accessors below read from it INSTEAD of hardware — so a bot is
+    // just another input source into the exact same movement/combat code a human
+    // drives. null = a human slot (default; hardware path, byte-identical). Shape:
+    //   { moveX:-1..1, jump, crouch, attack, aimX, aimY, gpSlot,
+    //     buttons:{ jump, place, context, prevSlot, dpad0..3, throwBtn } }
+    // buttons drive the one-shot pJustDown edge detection (weapon-switch / place /
+    // context-action); _botPrev holds last frame's buttons for that edge test.
+    this.botInput = [null, null, null, null];
+    this._botPrev = [null, null, null, null];
+
     // Legacy alias kept for compatibility in a few places that still read it
     Object.defineProperty(this, 'p2KeyMode', {
       get: () => this.p2GpSlot === -2 ? 'arrows' : 'ijkl',
@@ -95,8 +107,23 @@ class InputManager {
     return p >= 0 ? this._deadzone(p) : (this.controllerDeadzone ?? GP_DEADZONE_STICK);
   }
 
+  // ── Bot synthetic-input API (Bot AI brief) ────────────────
+  // A BotController calls setBotInput(i, obj) each frame with its virtual input;
+  // clearBotInput(i) hands the slot back to hardware (bot removed / match end).
+  setBotInput(i, obj) { this.botInput[i] = obj; }
+  clearBotInput(i)    { this.botInput[i] = null; this._botPrev[i] = null; }
+  isBot(i)            { return !!this.botInput[i]; }
+  _botOf(i)           { return this.botInput[i]; }
+
   // Poll Gamepad API — call once per frame at the START of _update()
   updateGamepad() {
+    // Snapshot each bot slot's CURRENT (i.e. last-frame's) button state for the
+    // pJustDown edge test — the BotController overwrites botInput later this frame
+    // (after gameplay input is polled), so this captures the "previous" frame.
+    for (let i = 0; i < 4; i++) {
+      const b = this.botInput[i];
+      this._botPrev[i] = (b && b.buttons) ? { ...b.buttons } : null;
+    }
     const raw = navigator.getGamepads ? navigator.getGamepads() : [];
     for (let i = 0; i < 4; i++) {
       this._gpPrev[i]  = this.gamepads[i];
@@ -387,26 +414,35 @@ class InputManager {
   _pSlot(i) { return [this.p1GpSlot, this.p2GpSlot, this.p3GpSlot, this.p4GpSlot][i]; }
   _slotGp(slot) { return slot >= 0 ? (this.gamepads[slot] ?? this._emptyGamepad(0)) : this._emptyGamepad(0); }
 
-  pLeft(i)   { return i === 0 ? this.isLeft()   : i === 1 ? this.isP2Left()   : this._slotGp(this._pSlot(i)).moveX < 0; }
-  pRight(i)  { return i === 0 ? this.isRight()  : i === 1 ? this.isP2Right()  : this._slotGp(this._pSlot(i)).moveX > 0; }
-  pJump(i)   { return i === 0 ? this.isJump()   : i === 1 ? this.isP2Jump()   : this._slotGp(this._pSlot(i)).jump; }
-  pCrouch(i) { return i === 0 ? this.isCrouch() : i === 1 ? this.isP2Crouch() : this._slotGp(this._pSlot(i)).crouch; }
+  // Each accessor checks a bot override FIRST — a bot-controlled slot reads its
+  // synthetic input; a human slot falls through to the existing hardware path.
+  pLeft(i)   { const b = this.botInput[i]; if (b) return b.moveX < -0.15; return i === 0 ? this.isLeft()   : i === 1 ? this.isP2Left()   : this._slotGp(this._pSlot(i)).moveX < 0; }
+  pRight(i)  { const b = this.botInput[i]; if (b) return b.moveX >  0.15; return i === 0 ? this.isRight()  : i === 1 ? this.isP2Right()  : this._slotGp(this._pSlot(i)).moveX > 0; }
+  pJump(i)   { const b = this.botInput[i]; if (b) return !!b.jump;        return i === 0 ? this.isJump()   : i === 1 ? this.isP2Jump()   : this._slotGp(this._pSlot(i)).jump; }
+  pCrouch(i) { const b = this.botInput[i]; if (b) return !!b.crouch;      return i === 0 ? this.isCrouch() : i === 1 ? this.isP2Crouch() : this._slotGp(this._pSlot(i)).crouch; }
   pAttack(i) {
+    const b = this.botInput[i]; if (b) return !!b.attack;
     if (i === 0) return this.isAttack();
     if (i === 1) return this.isP2Attack();
     const gp = this._slotGp(this._pSlot(i));
     return gp.attack || gp.triggerR > 0.5;
   }
   pMoveX(i)  {
+    const b = this.botInput[i]; if (b) return b.moveX;
     if (i === 0) return this.moveX();
     if (i === 1) return this.moveX2();
     return this._slotGp(this._pSlot(i)).moveX * (this._sens(i));
   }
   // Right-stick gamepad object for a player (aim). P1/P2 keep their helpers.
-  pGp(i)     { return i === 0 ? this._p1gp() : i === 1 ? this._p2gp() : this._slotGp(this._pSlot(i)); }
-  pGpSlot(i) { return this._pSlot(i); }
+  // A bot returns a synthetic stick vector so the free-aim combat branch is used.
+  pGp(i)     { const b = this.botInput[i]; if (b) return { aimX: b.aimX || 0, aimY: b.aimY || 0, moveX: b.moveX || 0, moveY: 0 }; return i === 0 ? this._p1gp() : i === 1 ? this._p2gp() : this._slotGp(this._pSlot(i)); }
+  // A bot reports a gamepad-like slot (>=0) so aim uses the free-aim atan2 path.
+  pGpSlot(i) { const b = this.botInput[i]; if (b) return b.gpSlot != null ? b.gpSlot : 0; return this._pSlot(i); }
   // One-shot just-pressed for a player. P1 honors dual-input; others slot-based.
+  // Bot slots edge-detect against last frame's snapshot (_botPrev).
   pJustDown(i, btn) {
+    const b = this.botInput[i];
+    if (b) { const prev = this._botPrev[i]; return !!(b.buttons && b.buttons[btn]) && !(prev && prev[btn]); }
     if (i === 0) return this.p1JustDown(btn);
     if (i === 1) return this.p2JustDown(btn);
     const s = this._pSlot(i);

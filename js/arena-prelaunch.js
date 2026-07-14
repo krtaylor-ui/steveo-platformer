@@ -57,10 +57,21 @@ const ARENA_PRELAUNCH = {
     }
 
     this._wire();
+    this._syncBotRows();     // show P2–P4 bot selectors for the current player count
     modal.style.display = 'flex';
   },
 
   _toggle(id, on) { const el = document.getElementById(id); if (el) el.style.display = on ? 'block' : 'none'; },
+
+  // Show a per-slot bot dropdown for each ACTIVE non-P1 slot (2..playerCount).
+  // Bot AI brief: per-bot difficulty — any of those slots can be Human or a bot.
+  _syncBotRows() {
+    const cnt = (() => { const el = document.getElementById('pl-player-count'); const n = el ? parseInt(el.value, 10) : 1; return Math.max(1, Math.min(4, n || 1)); })();
+    for (let s = 2; s <= 4; s++) {
+      const row = document.getElementById('pl-bot-row-' + s);
+      if (row) row.style.display = (s <= cnt) ? 'block' : 'none';
+    }
+  },
 
   _wire() {
     if (this._wired) return;
@@ -79,6 +90,7 @@ const ARENA_PRELAUNCH = {
     hm?.addEventListener('change', (e) => this._toggle('pl-tower-heal-random-group', e.target.value === 'RANDOM'));
     const fr = document.getElementById('pl-flag-return');
     fr?.addEventListener('input', (e) => { const v = document.getElementById('pl-flag-return-val'); if (v) v.textContent = e.target.value; });
+    document.getElementById('pl-player-count')?.addEventListener('change', () => this._syncBotRows());
     document.getElementById('pl-cancel-btn')?.addEventListener('click', () => this.hide());
     document.getElementById('pl-start-btn')?.addEventListener('click', () => this._start());
   },
@@ -97,6 +109,12 @@ const ARENA_PRELAUNCH = {
       disableMobs:   chk('pl-disable-mobs'),    // suppress bot spawns (non-mob modes)
       friendlyFire:  chk('pl-friendly-fire'),   // Phase 3B PvP gate
     };
+    // Bot AI brief — per-slot player types: 'human' | 'EASY' | 'MEDIUM' | 'HARD'.
+    // playerTypes[0] is always human (P1); [i] for active slots may name a bot.
+    cfg.playerTypes = ['human'];
+    for (let s = 2; s <= 4; s++) {
+      cfg.playerTypes[s - 1] = (s <= cfg.playerCount) ? val('pl-bot-' + s, 'human') : 'human';
+    }
     if (this._mode === 'COLLECT_EMERALDS') {
       cfg.emeraldRounds = num('pl-emerald-rounds', 3);
       cfg.mobDifficulty = val('pl-mob-difficulty', 'MEDIUM');

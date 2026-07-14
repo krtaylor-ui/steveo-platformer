@@ -1557,3 +1557,118 @@ Tests: test-wayfinding.js +3 (short-mob hop vs tall-mob auto-step; crowd throttl
 degrades cfg above threshold; active-pather count). Suite 371. Browser-UNTESTED —
 Kevin to confirm the spider hops cleanly + the throttle holds framerate at ~10+.
 Both `PATH_CROWD_THRESHOLD` and the multipliers are "try it and adjust" levers.
+
+---
+
+# Bot AI (Competitive + Cooperative) — mega session (2026-07-14, branch `bot-ai` off `smart-mobs-wayfinding`)
+
+Building the full Bot AI brief (Phases 0–7). Branch `bot-ai` sits on top of the
+un-merged wayfinding work (Bot AI depends on the pathfinder), so it inherits
+wayfinding's "browser-UNTESTED, awaiting Kevin's playtest" status. Everything is
+additive/opt-in — no bots unless a match is configured with them; human-only play
+is byte-identical.
+
+## Up-front answers from Kevin (2026-07-14)
+- **Q1 Bot setup UI → PER-BOT difficulty.** Each non-P1 slot in the arena
+  pre-launch modal is Human / Easy Bot / Medium Bot / Hard Bot.
+- **Q2 PvP targeting → HIGHEST-THREAT BLEND with configurable weights.** Kevin:
+  "go with 3 [the blend], but have configurable thresholds (may hide later, but
+  makes fine tuning easier)." So the blend weights are real wired tunables
+  (`BOT_THREAT_WEIGHTS` in constants.js), not hardcoded.
+- **Q3 Companion loot → time-delayed eligibility + a redundant-downgrade handoff.**
+  Kevin picked #3 (an unclaimed pickup becomes companion-eligible only after a
+  delay) AND added: "anything redundant the player picks up that is as good or
+  worse than what the player has equipped is automatically given to the bot."
+  Both to be implemented in Phase 4.
+- **Q4 Mob Hunter aggressiveness → "compete harder for mob kills," NOT PvP.**
+  Confirmed; matches the code (mode scores mobKills only).
+
+## Phase 0 — Wayfinding further testing (DONE — greenlight to build on it)
+- Re-ran the existing pathfinder suite: **371/371 pass** (incl. test-pathfinding's
+  5 brief cases + ambush + bound + pad, and test-wayfinding's mob integration).
+- Wrote an ADDITIONAL static-objective smoke test (bots path to fixed objective
+  tiles, not just a moving player): 4 spawns → one static hill tile across arena
+  terrain; air-marker objective (snaps to ground); drop/ambush approach; long
+  distance (113 blocks) + clean null fallback when radius too small; raised
+  tower-top objective via staircase; unreachable-across-void → null (no hang).
+  **27/27 pass.** (Kept in scratchpad — it exercises the same `findMobPath`
+  entry the permanent suite already covers; the permanent coverage is enough.)
+- Two initial "failures" in the smoke test were MY hand-drawn ASCII-map bugs
+  (objectives placed against the top out-of-bounds ceiling — `navStandable`
+  requires `r>=1` with headroom — and a void exactly 6 wide = the max jump range,
+  so the pathfinder correctly leapt it). The pathfinder behaved correctly in
+  every case (null for genuinely unreachable, snapping for air markers).
+  **Conclusion: the pathfinder handles static-point objective targets correctly.
+  Greenlit to build Bot AI on it.** No pathfinder changes made.
+
+## Phase 1 — Bot player foundation (DONE, headless-verified; browser-UNTESTED)
+- **A bot occupies a real player SLOT (P2–P4) and drives SYNTHETIC INPUT** through
+  the same `input.pXxx(i)` pipeline a human's keyboard/gamepad feeds. In
+  `js/input.js`, a per-slot `botInput[i]` override is consulted first by
+  `pLeft/pRight/pJump/pCrouch/pAttack/pMoveX/pGp/pGpSlot/pJustDown`; a human slot
+  falls through to the hardware path unchanged. `pGpSlot` returns ≥0 for a bot so
+  the free-aim combat branch is used; `pJustDown` edge-detects against a per-frame
+  snapshot (`_botPrev`, taken in `updateGamepad`). So a bot is "just another input
+  source" into the existing movement/combat/objective code — CTF carry, KOTH
+  zone-standing, Tower damage, weapon traits, friendly-fire, scoring all apply for
+  free (no parallel bot-entity type), exactly as the brief requires.
+- **DECISION: bots occupy slots P2–P4 (index ≥1); P1 stays human.** This covers
+  every deliverable (competitive human-vs-bots; co-op human+bot teammates;
+  companion human+bot P2; telemetry = Kevin plays P1 while bots fill the rest) and
+  keeps injection clean through the existing per-index path. The `botInput`
+  mechanism is universal (all 4 indices) but only slots ≥1 are wired; a P1 bot
+  would additionally need the P1 mouse-aim/mining combat path overridden — noted
+  as a future extension, not needed for any deliverable.
+- **`js/bot-ai.js`** — `BOT_AI` helpers (buildNav = same nav adapter mobs use;
+  navFollow = mob `_followPath`-style steering adapted for a ~2-block player;
+  cellOf; elementsFor) + `class BotController` (one per bot slot):
+  - **Two loops** (same reasoning as wayfinding's recompute cadence): a periodic
+    **BRAIN** (`difficulty.brainTick`) picks a GOAL; an every-frame **ACT**uator
+    translates the goal into virtual input (path to the goal cell via `findMobPath`
+    + the goal's context action).
+  - **Goal executor** (shared infra for all later phases): path to an arbitrary
+    cell (cached + recomputed on the difficulty cadence, graceful null → hold) and
+    do a context action (Phase 1 = combat; Phase 2 adds hill/flag/tower/etc.).
+  - **`_think` dispatches on the active ruleset ELEMENTS** (`ARENA_RULES
+    .rulesetForMode(...).elements`), not mode names — the roadmap's "the system
+    that defines modes tells a bot how to play them," which is why Custom Rules
+    get bot support for free (Phase 6). Phase 1 implements the pvp/kills strategy
+    (highest-threat blend engage; hunt nearest when none in range; idle/recentre
+    when no opponents) + element stubs for Phase 2.
+  - **Combat**: aim at target (+ difficulty aim error, resampled), charge the bow
+    to `fireChargeMin` then release one frame to fire; per-target reaction delay so
+    it doesn't snap-fire on decision. Archer approaches to ~`BOT_ARCHER_RANGE_BLOCKS`
+    (9) then holds + fires (was `detectRange*0.5` — too far, froze the bot; fixed).
+- **Difficulty = REAL WIRED PARAMS** (`BOT_DIFFICULTY_PRESETS` in constants.js):
+  brainTick, reactionFrames, navRecompute, navPrecision, detectRange, aggression,
+  aimError, aimJitter, fireChargeMin, alwaysRun, loseInterest. **MEDIUM is the ONE
+  calibrated baseline; EASY/HARD are best-guess starting values explicitly flagged
+  for playtest calibration (that's what Phase 7 telemetry is for).** Chosen
+  starting values (per the brief's requirement to log them):
+  - EASY: brainTick 30, reaction 24, navRecompute 20, navPrecision 0.55,
+    detect 12, aggression 0.40, aimError 0.42, fireChargeMin 0.35, dawdles.
+  - MEDIUM: brainTick 15, reaction 10, navRecompute 12, navPrecision 0.82,
+    detect 22, aggression 0.70, aimError 0.20, fireChargeMin 0.55, always-run.
+  - HARD: brainTick 8, reaction 3, navRecompute 8, navPrecision 1.0, detect 40,
+    aggression 1.0, aimError 0.05, fireChargeMin 0.75, always-run, near-perfect aim.
+  Threat blend weights (Q2, tunable): proximity 1.0, lowHp 0.6, recentDamage 0.9;
+  recent-damage window 180f (~3s). "recentDamage" is approximated: when the bot's
+  hp drops, the nearest opponent is credited as the recent attacker for the window.
+- **Wiring** (game.js): `_setupArena` builds a `BotController` for each slot whose
+  `arenaConfig.playerTypes[i]` names a difficulty (else human); `_update` ticks all
+  controllers right after controller-assignment, BEFORE players/combat consume
+  input; each controller self-guards on dead/respawning/not-playing (neutral no-op).
+  All 4 bot-input slots are cleared at setup so nothing leaks between matches.
+- **UI** (arena pre-launch): per-slot Human/Easy/Medium/Hard dropdowns for P2–P4,
+  shown for the active player count; `_start` emits `cfg.playerTypes`.
+- **NOTE found while wiring (flagged):** the existing `arenaConfig.botCount` spawns
+  ambient enemy **Skeletons** (`_createMob('Skeleton')`) — a totally separate
+  concept from these slot-occupying player-bots. They coexist; the new bots are
+  distinct and additive.
+- **Tests:** new `test/test-bot-ai.js` (30 assertions) — the InputManager synthetic
+  seam (setBotInput→pXxx / justDown edge / clearBotInput), navFollow/buildNav/cellOf,
+  the threat blend (nearer wins same-HP; wounded wins same-distance; out-of-range
+  not picked), goal selection (engage/hunt/idle), actuation (moveX+aim toward
+  target), dead→neutral, and the goal executor routing around a wall. **Suite now
+  401** (`node test/run.js`). Browser-UNTESTED (no browser here) — the natural first
+  real-world check is a Deathmatch with 1–3 Medium bots.

@@ -808,6 +808,24 @@ class Game {
       p.teamId = p.teamId ?? null; p.teamColor = p.teamColor ?? null;
     }
 
+    // ── Bot AI (Bot AI brief) — create a BotController for each slot the
+    // pre-launch modal marked as a bot. playerTypes[i] = 'human' | 'EASY' |
+    // 'MEDIUM' | 'HARD'; a difficulty value means "this slot is a bot". P1 stays
+    // human (index 0). Opt-in: no entry → no bots → byte-identical human play.
+    for (let i = 0; i < 4; i++) this.input.clearBotInput(i);  // reset any stale overrides
+    this._botControllers = [];
+    if (typeof BotController === 'function') {
+      const pTypes = this.arenaConfig.playerTypes || [];
+      for (let i = 1; i < nP; i++) {
+        const t = pTypes[i];
+        if (t && t !== 'human' && BOT_DIFFICULTY_PRESETS[t] && this.players[i]) {
+          this._botControllers.push(new BotController(this, i, 'competitive', t));
+          this.players[i]._isBot = true;
+          this.players[i]._botDifficulty = t;
+        }
+      }
+    }
+
     // Disable mob drops when requested (pre-launch toggle, all modes; default off).
     this.mobManager.dropsDisabled = !!this.arenaConfig.disableMobDrops;
 
@@ -2019,6 +2037,13 @@ class Game {
     this.input.dualInput = this.activePlayers().length <= 1 && !this._onlineGameId;
     // Sync XP speed boost flag to all local players
     for (const p of this.activePlayers()) p.xpSpeedDisabled = !!this._worldAdvSettings.disableXpSpeedBoost;
+
+    // ── Bot AI tick — decide + write synthetic input BEFORE players/combat
+    // consume it this frame. Each controller self-guards on dead/respawning/
+    // not-playing (writes a neutral no-op). (Bot AI brief, Phase 1.)
+    if (this._botControllers && this._botControllers.length) {
+      for (const b of this._botControllers) b.tick();
+    }
 
     // ── P1 respawn timer (2P co-op / arena) ────────────────
     if (this._p1RespawnTimer > 0) {

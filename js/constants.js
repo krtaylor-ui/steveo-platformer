@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 116 (Wayfinding polish from Kevin playtest: (1) short mobs like the Cave Spider now HOP a 1-block obstacle instead of hanging on it — they can\'t auto-step like tall mobs; (2) crowd-adaptive pathfinding — when >8 mobs are wayfinding at once, routes recompute less often + over a smaller radius to hold framerate. + build 115 Platformer default-settings preset + build 114 §6 Wayfinding.)';
+const GAME_VERSION = 'v3 · build 117 (Bot AI Phase 1 — a bot occupies a real player slot (P2–P4) and drives SYNTHETIC input through the same input pipeline a human uses: brain-tick decision loop + goal executor that paths to a point via the wayfinding A* and does a context action. Highest-threat-blend PvP targeting, per-bot difficulty (Easy/Med/Hard = real wired params). Opt-in via the arena pre-launch modal; human-only play unchanged. + build 116 Wayfinding polish.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
@@ -199,6 +199,88 @@ const PATH_FLANK_BIAS_BLOCKS = 2.5;  // §5 surround: path GOAL offset past the 
 const PATH_CROWD_THRESHOLD      = 8;
 const PATH_CROWD_RECOMPUTE_MULT = 2.5; // ×recompute interval when crowded (12f → 30f, ~2/sec)
 const PATH_CROWD_RADIUS_MULT    = 0.6; // ×search radius + node cap when crowded (24bl → ~14bl)
+
+// ════════════════════════════════════════════════════════════════════════════
+// BOT AI (Competitive + Cooperative) — a bot occupies a real player SLOT and
+// drives SYNTHETIC input through the same input.pXxx(i) pipeline a human uses
+// (js/bot-ai.js). It reads the Arena Rules Engine's declared ELEMENTS to decide
+// its goal, and the Phase-0-verified pathfinder (js/pathfinding.js) to move.
+// Everything here is OPT-IN — no bots spawn unless a match is configured with
+// them, so human-only play is byte-identical.
+//
+// DIFFICULTY = real wired parameters (NOT hardcoded behaviour). Kevin chose
+// PER-BOT difficulty, so each bot slot resolves one of these presets. MEDIUM is
+// the calibrated baseline; EASY/HARD are best-guess starting values explicitly
+// flagged for playtest calibration (that is what the Phase-7 telemetry is for —
+// see BOT_TELEMETRY_SCHEMA.md). Tune these numbers, not the strategy code.
+const BOT_DIFFICULTY_PRESETS = {
+  EASY: {
+    label: 'Easy',
+    brainTick:      30,   // frames between full decisions (~2/sec) — slow, indecisive
+    reactionFrames: 24,   // extra delay before acting on a NEW threat/opportunity (~0.4s)
+    navRecompute:   20,   // path recompute cadence (frames) — laggier route updates
+    navPrecision:   0.55, // 0..1 follow fidelity: lower = sloppier jump timing + move jitter
+    detectRange:    12,   // blocks: how far it NOTICES a target/objective
+    aggression:     0.40, // 0..1 bias to engage (vs. objective / retreat) + mob-kill competition
+    aimError:       0.42, // radians of random aim offset (bigger = wilder shots)
+    aimJitter:      18,   // frames between aim-error resamples
+    fireChargeMin:  0.35, // min bow charge before releasing (weaker/shorter shots)
+    alwaysRun:      false,// dawdles at partial move speed sometimes (via navPrecision)
+    loseInterest:   90,   // frames of no-progress before re-deciding a goal
+  },
+  MEDIUM: {                // ← the ONE calibrated baseline tier (default)
+    label: 'Medium',
+    brainTick:      15,   // ~4/sec
+    reactionFrames: 10,   // ~0.17s
+    navRecompute:   12,   // matches the mob PATH_RECOMPUTE_FRAMES cadence
+    navPrecision:   0.82,
+    detectRange:    22,
+    aggression:     0.70,
+    aimError:       0.20,
+    aimJitter:      12,
+    fireChargeMin:  0.55,
+    alwaysRun:      true,
+    loseInterest:   150,
+  },
+  HARD: {
+    label: 'Hard',
+    brainTick:      8,    // ~7.5/sec — snappy
+    reactionFrames: 3,    // ~0.05s
+    navRecompute:   8,
+    navPrecision:   1.0,  // tight, always-running, clean jump timing
+    detectRange:    40,   // sees across most arenas
+    aggression:     1.0,
+    aimError:       0.05, // near-perfect aim
+    aimJitter:      8,
+    fireChargeMin:  0.75, // charges hard for max range/power
+    alwaysRun:      true,
+    loseInterest:   240,
+  },
+};
+const BOT_DEFAULT_DIFFICULTY = 'MEDIUM';
+
+// PvP target selection = a configurable HIGHEST-THREAT BLEND (Kevin's choice).
+// threat(target) = wProximity·nearness + wLowHp·(1-hpFrac) + wRecentDamage·hitMe
+// where nearness = 1 at point-blank → 0 at detectRange, hpFrac = target hp/maxHp,
+// hitMe = 1 if the target damaged this bot within BOT_THREAT_RECENT_FRAMES.
+// Exposed as tunables now (may be hidden later) so fine-tuning is easy.
+const BOT_THREAT_WEIGHTS = { proximity: 1.0, lowHp: 0.6, recentDamage: 0.9 };
+const BOT_THREAT_RECENT_FRAMES = 180;  // "recently damaged me" window (~3s)
+
+// Bot pathing envelope reuses the player jump model (pathfinder defaults). Search
+// radius scales with the bot's detectRange but is capped so a far objective still
+// falls back gracefully rather than running an unbounded A*.
+const BOT_PATH_MAX_RADIUS   = 48;
+const BOT_PATH_MAX_EXPANSIONS = 6000;
+const BOT_MELEE_RANGE_BLOCKS = 1.6;   // switch-to/prefer melee when this close
+const BOT_ARCHER_RANGE_BLOCKS = 9;    // archer bot approaches to ~this, then holds + fires
+const BOT_OBJECTIVE_REACH_BLOCKS = 1.4; // "arrived at objective cell" tolerance
+
+// Phase 4 companion (friendly follower in Platformer/Normal/Campaign):
+const BOT_FOLLOW_NEAR = 3;    // blocks: closer than this → stop crowding the player
+const BOT_FOLLOW_FAR  = 9;    // blocks: farther than this → catch up
+const BOT_COMPANION_LOOT_DELAY = 150; // frames an unclaimed pickup waits before the
+                                      // companion may grab it (~2.5s) — player gets first pick
 
 const VICTORY_MUSIC_FILE   = 'music/boss/victory.mp3';  // ~20s fanfare after Ender Dragon defeat
 
