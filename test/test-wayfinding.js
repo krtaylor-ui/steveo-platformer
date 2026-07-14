@@ -277,5 +277,20 @@ console.log('Per-frame A* cap — recomputes are bounded regardless of mob count
   ok(calls >= 1, 'but at least one mob does pathfind (not fully starved)');
 }
 
+console.log('Flee pathfinding also honours the per-frame A* cap (heavy ×3-retry caller):');
+{
+  const mm = new MobManager();
+  mm.pathCfg = { enabled: true, searchRadius: 24, recompute: 12, maxExpansions: 2500 };
+  mm.fleeCfg = { zombie: { action: 'flee', threshold: 0.99 } };   // always flee (low HP)
+  const level = mkLevel(['                    ', '                    ', '####################']);
+  const player = bodyAt(3, 2, 48);
+  // 10 hurt zombies → all want to flee; flee used to run 3 A* each, every frame, uncapped.
+  for (let i = 0; i < 10; i++) { const z = mm._createMob('Zombie', (7 + i) * BS, 1 * BS - 48); z._alerted = true; z.hp = 1; z.maxHp = 6; mm.mobs.push(z); }
+  let calls = 0; const orig = sandbox.findMobPath;
+  sandbox.findMobPath = (...a) => { calls++; return orig(...a); };
+  try { mm.update(player, level); } finally { sandbox.findMobPath = orig; }
+  ok(calls <= 2, `fleeing mobs also capped at 2 A* runs/frame (was 12+ uncapped; got ${calls})`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

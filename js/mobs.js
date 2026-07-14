@@ -274,20 +274,33 @@ class Mob {
     const cc = this._cellCol(), cr = this._cellRow();
     const away = Math.sign(this.cx - player.cx) || (this.facing || 1);
     if (this._fleeTimer == null) this._fleeTimer = 0;
-    const stale = !this._fleePath || this._fleePath.length < 2 ||
-      --this._fleeTimer <= 0 || this._pathStale(level, this._fleePath);
-    if (stale) {
-      const nav = this._navFor(level);
-      let res = null;
-      for (const dist of [cfg.searchRadius, Math.max(6, (cfg.searchRadius / 2) | 0), 4]) {
-        res = findMobPath(nav, [cc, cr], [cc + away * dist, cr],
-          { maxRadius: cfg.searchRadius, maxExpansions: cfg.maxExpansions });
-        if (res && res.path.length >= 2) break;
+    // Recompute the retreat route on the SAME throttle as chase — and crucially only
+    // when the cadence timer has expired, even after a FAILED search (a cornered mob's
+    // retreat cell can be unreachable). Without this the null-path case went stale every
+    // frame and re-ran the (heavy, ×3-retry) flee search every frame — and once mobs take
+    // damage in combat MANY flee at once, which was the real post-engagement slowdown
+    // (Kevin). Between recomputes we follow the cached route or fall back to legacy flee.
+    if (--this._fleeTimer <= 0) {
+      const rb = this._recomputeBudget;
+      if (rb && rb.left <= 0) {
+        this._fleeTimer = 1;                        // out of this frame's A* budget → retry next frame
+      } else {
+        const nav = this._navFor(level);
+        let res = null;
+        // Try progressively shorter retreats until one is reachable. Each try is a full
+        // A* call, so it consumes from the shared per-frame cap and stops when spent.
+        for (const dist of [cfg.searchRadius, Math.max(6, (cfg.searchRadius / 2) | 0), 4]) {
+          res = findMobPath(nav, [cc, cr], [cc + away * dist, cr],
+            { maxRadius: cfg.searchRadius, maxExpansions: cfg.maxExpansions });
+          if (rb) rb.left--;
+          if (res && res.path.length >= 2) break;
+          if (rb && rb.left <= 0) break;            // frame budget spent mid-retry
+        }
+        this._fleeTimer = cfg.recompute;
+        this._fleePath  = (res && res.path.length >= 2) ? res.path : null;
       }
-      this._fleeTimer = cfg.recompute;
-      this._fleePath  = (res && res.path.length >= 2) ? res.path : null;
-      if (!this._fleePath) return false;
     }
+    if (!this._fleePath || this._fleePath.length < 2) return false;   // no route → legacy straight-away flee
     const step  = this._followPath(this._fleePath, player, level);
     const speed = (this.speed || 2) * 1.15;
     this.vx     = step.dir * speed;

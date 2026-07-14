@@ -2403,3 +2403,26 @@ planner and suggested "simple nav for most mobs, smart nav for a few." Correct d
 - Tests: +2 groups in test-wayfinding (budget selects nearest ≤4; per-frame cap ≤2 with
   10 mobs) + updated the crowd-throttle constants mock. Suite 542, all green. Browser-UNTESTED.
 - Levers (constants.js): MOB_PATH_BUDGET, MOB_PATH_RECOMPUTES_PER_FRAME, PATH_MAX_EXPANSIONS.
+
+## Mob performance pt.2 — the FLEE path was the real killer (build 148)
+Kevin: build 147 didn't fix it — still "exceptionally slow, kicked AFTER the computer
+engaged the mobs." He suspected detection/speed/flee checks. Profiled each:
+- **Detection** early-returns once a mob is `_alerted`, so its line-of-sight raycasts
+  STOP after engagement — not the post-engagement cost. Sprint/physics are trivial.
+- **FLEE was the culprit.** `_fleePathStep` calls A* — but (1) it BYPASSED the build-147
+  per-frame cap entirely, and (2) it runs findMobPath UP TO 3× per recompute (it retries
+  progressively shorter retreat distances), and (3) on a FAILED search (cornered mob,
+  unreachable retreat) `_fleePath` stayed null → stale every frame → it re-ran all 3
+  searches EVERY frame. `platformer-defaults` sets `lowHpAction: 'flee'`, so as soon as
+  combat hurt the mobs they ALL fled → measured **12 A* calls/frame, every frame** (4
+  budgeted mobs × 3 retries), each up to ~25 ms when the retreat is unreachable → the
+  freeze. (Build 147 only capped the CHASE path.)
+- **Fix:** flee now (a) shares the same per-frame recompute token as chase (each of the
+  ≤3 retries consumes one; stops when the frame budget is spent), and (b) throttles on
+  the recompute cadence even after a FAILED search (a cornered mob retries once per
+  `recompute` frames, beelining away in between) instead of hammering A* every frame.
+- **Measured (10 hurt/fleeing mobs, real MobManager):** 12 A*/frame → avg 0.69, MAX 2
+  (= the cap). FULL update() incl. detection/sprint/flee/physics = **0.66 ms/frame** for
+  10 mobs (was effectively unbounded — hundreds of ms with unreachable retreats).
+- Tests: +flee-cap regression in test-wayfinding (10 fleeing mobs → ≤2 A*/frame). Suite
+  543, all green. Browser-UNTESTED.

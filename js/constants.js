@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 147 (Mob pathfinding PERFORMANCE fix — a platformer with 8-10 mobs became unplayable because every mob ran the expensive A* route planner (measured ~5 ms, up to ~25 ms, per call). Now only the NEAREST few chasers are "smart" (pathfind); the rest use the cheap legacy beeline+hop, and at most 2 A* runs happen per FRAME across ALL mobs — so cost stays flat no matter how many are on screen (10-mob worst frame ~0.6 ms in a sim). + build 146 two-level climb.)';
+const GAME_VERSION = 'v3 · build 148 (Mob performance pt.2 — the FLEE path also ran A*, but UNCAPPED and up to 3× per mob EVERY frame (a hurt mob retries several retreat distances). Once combat hurt the mobs they all fled at once → the post-engagement freeze Kevin hit. Flee now shares the same per-frame A* cap + recompute throttle as chase. Measured: 10 hurt mobs went from 12 A*/frame to ≤2; full mob update ~0.66 ms/frame. + build 147 bounded chase pathfinding.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
