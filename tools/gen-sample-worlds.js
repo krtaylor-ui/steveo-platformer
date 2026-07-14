@@ -19,6 +19,11 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+// Reuse the SHARED movement model (Smart Mobs §6) so the Speed-Run structural
+// validator and the mob pathfinder can never drift apart — one physics envelope,
+// one neighbour model. (This checker is where that model was first written; it
+// now lives in js/pathfinding.js and is imported back here.)
+const { navReachable } = require('../js/pathfinding.js');
 
 const BS = 32;
 const OUT = path.join(__dirname, '..', 'sample-worlds');
@@ -167,51 +172,18 @@ function dropTo(gr, c, r) {
 }
 function key(c, r) { return c + ',' + r; }
 
-// BFS over standable cells honoring the jump envelope. Returns reachable Set of "c,r".
+// BFS over standable cells honoring the jump envelope. Returns reachable Set of
+// "c,r". Delegates to the shared model in js/pathfinding.js via a thin nav adapter
+// over this grid (out-of-bounds = BEDROCK, matching get()), so the validator uses
+// the exact same standable/passable/jump-envelope logic the mobs do.
 function reachable(gr, startC, startR, opts = {}) {
-  // Per-world jump envelope (e.g. double-jump raises the up/across reach).
-  const baseUp = opts.maxUp || MAX_JUMP_UP;
-  const baseDx = opts.maxDx || MAX_JUMP_DX;
-  // snap start down to ground
-  let sr = standable(gr, startC, startR) ? startR : dropTo(gr, startC, startR);
-  if (sr < 0) return new Set();
-  const seen = new Set([key(startC, sr)]);
-  const q = [[startC, sr]];
-  while (q.length) {
-    const [c, r] = q.pop();
-    const nbrs = [];
-    // walk left/right (same row) or drop off a ledge
-    for (const dc of [-1, 1]) {
-      const nc = c + dc;
-      if (standable(gr, nc, r)) nbrs.push([nc, r]);
-      else if (passable(gr, nc, r) && passable(gr, nc, r - 1)) {
-        const lr = dropTo(gr, nc, r);
-        if (lr >= 0) nbrs.push([nc, lr]);
-      }
-    }
-    // jumps: up to baseUp up, MAX_DROP down, baseDx across.
-    // Standing on a JUMP_PAD launches much higher/farther (vy≈-18 → ~7 up, ~10 across).
-    const onPad = get(gr, c, r + 1) === B.JUMP_PAD;
-    const jUp = onPad ? Math.max(PAD_JUMP_UP, baseUp) : baseUp;
-    const jDx = onPad ? Math.max(PAD_JUMP_DX, baseDx) : baseDx;
-    for (let dc = -jDx; dc <= jDx; dc++) {
-      for (let dr = -jUp; dr <= MAX_DROP; dr++) {
-        if (dc === 0 && dr === 0) continue;
-        const nc = c + dc, nr = r + dr;
-        if (!standable(gr, nc, nr)) continue;
-        // horizontal reach shrinks the higher you go (rough arc gate)
-        const upCost = dr < 0 ? -dr : 0;
-        const budget = jDx - upCost;
-        if (Math.abs(dc) > Math.max(1, budget)) continue;
-        nbrs.push([nc, nr]);
-      }
-    }
-    for (const [nc, nr] of nbrs) {
-      const k = key(nc, nr);
-      if (!seen.has(k)) { seen.add(k); q.push([nc, nr]); }
-    }
-  }
-  return seen;
+  const nav = {
+    W: gr.W, H: gr.H,
+    solid:  (c, r) => SOLID.has(get(gr, c, r)),
+    hazard: (c, r) => HAZARD.has(get(gr, c, r)),
+    pad:    (c, r) => get(gr, c, r) === B.JUMP_PAD,
+  };
+  return navReachable(nav, startC, startR, opts);
 }
 
 // Confirm a "point of interest" sits on standable ground; return the standable
