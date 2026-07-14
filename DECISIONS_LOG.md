@@ -2298,3 +2298,17 @@ faster). Also asked for a configurable climb-animation speed.
   (75f) + climb-down (45f) animation. `p._climbSpeed` via `_applyMovementConfig`.
 - Tests: test-bot-ai +2 (airborne keeps jump-intent toward a higher node; double-jump
   edge sequence verified). Suite 526. Browser-UNTESTED.
+
+## Double-jump timing — fire at the apex, not late (build 144)
+Kevin: "the bot is still air-jumping too late — it needs to air-jump at the top of the
+arc." Root cause: `_jumpControl` decided `wantDouble` from the LIVE remaining rise
+(`step.rise`, recomputed each frame). As the bot climbs, the remaining rise shrinks
+below the single-jump height → wantDouble flips OFF mid-ascent (no arming during the
+rise); then near/after the apex the bot falls, remaining rise GROWS again → wantDouble
+flips back ON and it finally arms + fires the air-jump WHILE FALLING (too late).
+- **FIX:** lock the jump's TOTAL height at take-off (`this._jumpRise = riseNeeded` on the
+  ground frame) and use that for the wantDouble decision throughout the jump — stable, so
+  the air-jump arms during the ascent and fires at the peak. Also tightened the apex
+  threshold (`vy > -1.5`, was -2.5) so it releases-to-arm right at the top for max height.
+- Tests: test-bot-ai +2 (holds below apex incl. vy -3; fires at vy -1; shrunk live rise
+  still double-jumps via the locked total). Suite 528. Browser-UNTESTED.

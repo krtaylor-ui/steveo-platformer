@@ -869,10 +869,19 @@ console.log('Wayfinding — jump envelope reflects enabled moves + double-jump p
   P.onGround = true; P.vy = 0;
   ok(ctrl._jumpControl(true, 5) === true, 'ground: presses jump');
   P.onGround = false; P.vy = -10;
-  ok(ctrl._jumpControl(true, 5) === true, 'airborne rising fast: holds');
-  P.vy = -2;
-  ok(ctrl._jumpControl(true, 5) === false, 'near apex: releases to arm the air-jump edge');
-  ok(ctrl._jumpControl(true, 5) === true, 'next frame: presses again → air-jump edge');
+  ok(ctrl._jumpControl(true, 5) === true, 'airborne rising fast: holds (still climbing, well below apex)');
+  P.vy = -3;
+  ok(ctrl._jumpControl(true, 5) === true, 'still below the apex (vy -3): keeps holding, does NOT fire early');
+  P.vy = -1;                                             // essentially at the apex
+  ok(ctrl._jumpControl(true, 5) === false, 'AT the apex: releases to arm the air-jump edge');
+  ok(ctrl._jumpControl(true, 5) === true, 'next frame: presses again → air-jump fires at the top');
+  // Locked total-rise: the LIVE remaining rise shrinks as we climb; the double-jump
+  // must still fire (else it flips off mid-ascent and re-fires late while falling).
+  ctrl._jArmed = false; ctrl._jumpRise = undefined;
+  P.onGround = true; ctrl._jumpControl(true, 5);         // take off: lock total rise = 5
+  P.onGround = false; P._airJumpsUsed = 0; P.vy = -1;    // apex; live remaining rise now only 2
+  ctrl._jumpControl(true, 2);                            // arm (release)
+  ok(ctrl._jumpControl(true, 2) === true, 'shrunk live rise (2) STILL double-jumps — total (5) locked at take-off');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

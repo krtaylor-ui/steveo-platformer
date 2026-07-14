@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 143 (Double-jump + ledge-grab now actually FIRE — the bot was releasing jump the instant it left the ground, so neither could trigger; it now holds jump-intent airborne (full-height single jumps, mid-air double-jump, and holds through the apex so ledge-grab catches the edge). A* also now prefers a fast double-jump for moderate heights. NEW: Movement → Climb Speed setting for the ledge climb animation. + build 142.)';
+const GAME_VERSION = 'v3 · build 144 (Double-jump timing fix: the air-jump now fires AT THE APEX (top of the arc), not late. The bot was using the shrinking REMAINING rise to decide, which flipped the double-jump off mid-climb and back on while FALLING (firing late); the jump height is now LOCKED at take-off and the air-jump triggers right at the peak. + build 143 double-jump/ledge-grab enable + Climb Speed.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

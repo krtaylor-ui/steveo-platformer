@@ -763,18 +763,22 @@ class BotController {
   _jumpControl(wantJump, riseNeeded) {
     const p = this.player;
     if (!wantJump) { this._jArmed = false; return false; }
-    if (p.onGround) { this._jArmed = false; return true; }   // fresh ground jump (edge)
+    // Capture the jump's TOTAL height at take-off. Using the live (shrinking) remaining
+    // rise instead flipped the double-jump decision OFF mid-ascent and back ON while
+    // FALLING — so the air-jump fired late (past the apex). Locking it keeps the
+    // decision stable for the whole jump.
+    if (p.onGround) { this._jArmed = false; this._jumpRise = riseNeeded; return true; }  // fresh ground-jump edge
     const baseUp = this._envUp || NAV_MAX_JUMP_UP;
-    const wantDouble = p._airJumpEnabled && (p._airJumpsUsed || 0) < 1 && riseNeeded > baseUp;
+    const totalRise = this._jumpRise || riseNeeded;
+    const wantDouble = p._airJumpEnabled && (p._airJumpsUsed || 0) < 1 && totalRise > baseUp;
     if (wantDouble) {
-      // Rise on the FIRST jump; near the apex (vy ~ 0) release ONE frame to arm the
-      // edge, then press again → the mid-air DOUBLE-JUMP fires at the top for height.
-      if (!this._jArmed) { if (p.vy > -2.5) { this._jArmed = true; return false; } return true; }
+      // Rise on the FIRST jump; right at the APEX (vy ≈ 0) release ONE frame to arm the
+      // edge, then press → the mid-air DOUBLE-JUMP fires AT THE TOP for max height.
+      if (!this._jArmed) { if (p.vy > -1.5) { this._jArmed = true; return false; } return true; }
       return true;
     }
     // Single jump (or after the double-jump is spent): HOLD jump the whole way up —
-    // that gives full height AND keeps jump held through the apex so Ledge-Grab can
-    // catch the edge (it needs a held jump near the top). Release once we're falling.
+    // full height AND keeps jump held through the apex so Ledge-Grab can catch the edge.
     return p.vy < -1;
   }
 
