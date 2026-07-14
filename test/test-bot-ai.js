@@ -509,5 +509,50 @@ console.log('Phase 4 — Companion loot priority (time-delay + player-first):');
   ok(BOT_AI.companionShouldGrab(game, comp, item, 9999) === false, 'player closer/heading for it → companion defers');
 }
 
+// ════════════════════════════════════════════════════════════
+// Phase 5 — difficulty tuning (real wired params differentiate tiers)
+// ════════════════════════════════════════════════════════════
+console.log('Phase 5 — difficulty presets are real + monotonic:');
+{
+  const E = BOT_DIFFICULTY_PRESETS.EASY, M = BOT_DIFFICULTY_PRESETS.MEDIUM, H = BOT_DIFFICULTY_PRESETS.HARD;
+  ok(E.brainTick > M.brainTick && M.brainTick > H.brainTick, 'harder = faster decisions (smaller brainTick)');
+  ok(E.reactionFrames > M.reactionFrames && M.reactionFrames > H.reactionFrames, 'harder = quicker reaction');
+  ok(E.detectRange < M.detectRange && M.detectRange < H.detectRange, 'harder = larger detection range');
+  ok(E.navPrecision < M.navPrecision && M.navPrecision < H.navPrecision, 'harder = tighter navigation');
+  ok(E.aimError > M.aimError && M.aimError > H.aimError, 'harder = smaller aim error');
+  ok(E.aggression < M.aggression && M.aggression < H.aggression, 'harder = more aggressive');
+}
+console.log('Phase 5 — detectRange actually gates who a bot engages:');
+{
+  const level = flatLevel();
+  // Opponent 15 blocks away: outside EASY range (12), inside MEDIUM (22) / HARD (40).
+  const mkOne = (diff) => { const bot = mkPlayer(5, 2, { owner: 'p2' }); return new BotController(mkGame(level, [mkPlayer(20, 2, { owner: 'p1' }), bot]), 1, 'competitive', diff); };
+  ok(mkOne('EASY')._pickThreatTarget() == null, 'EASY (detect 12) cannot see the 15-block opponent → hunts');
+  ok(mkOne('MEDIUM')._pickThreatTarget() != null, 'MEDIUM (detect 22) sees + engages it');
+  ok(mkOne('HARD')._pickThreatTarget() != null, 'HARD (detect 40) sees + engages it');
+}
+console.log('Phase 5 — aim error: HARD lands closer to the true angle than EASY:');
+{
+  const level = flatLevel();
+  const trueAngle = 0; // opponent directly to the right
+  const measure = (diff) => {
+    const bot = mkPlayer(5, 2, { owner: 'p2' });
+    const opp = mkPlayer(11, 2, { owner: 'p1' });
+    const game = mkGame(level, [opp, bot]);
+    const ctrl = new BotController(game, 1, 'competitive', diff);
+    let sum = 0, n = 0;
+    for (let f = 0; f < 400; f++) {
+      game.frameCount = f; ctrl._acquireFrame = -9999; // skip reaction gate
+      ctrl.goal = { targetId: 'p1', targetRef: opp, action: 'combat' };
+      ctrl._combat(opp);
+      const ang = Math.atan2(ctrl._input.aimY, ctrl._input.aimX);
+      sum += Math.abs(ang - trueAngle); n++;
+    }
+    return sum / n;
+  };
+  const eErr = measure('EASY'), hErr = measure('HARD');
+  ok(hErr < eErr, `HARD mean aim error (${hErr.toFixed(3)}) < EASY (${eErr.toFixed(3)})`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

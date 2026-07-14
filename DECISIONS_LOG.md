@@ -1752,3 +1752,21 @@ HARD; `_maybeSetupCompanion()` (lazy, offline, non-arena) creates P2 + a
   Platformer world with `companionBot:'MEDIUM'` set. NOTE: no pre-launch UI toggle
   yet for the companion (set via world settings/flag) — a small follow-up; the
   mechanism is complete.
+
+## Phase 5 — difficulty tuning architecture (DONE — architecture landed in Phase 1)
+The difficulty system is REAL WIRED PARAMETERS (`BOT_DIFFICULTY_PRESETS`), built in
+Phase 1 and used throughout: brainTick (decision cadence), reactionFrames (reaction
+time), navRecompute + navPrecision (nav movement precision — Kevin's Emerald example:
+Easy = imprecise/dawdles, Hard = tight/always-running), detectRange (how far it
+notices targets/objectives), aggression (mob-kill competition — Kevin's Mob Hunter
+example), aimError + aimJitter, fireChargeMin, alwaysRun, loseInterest. Per Kevin's
+Q1, difficulty is PER-BOT (each arena slot picks Easy/Medium/Hard). The PvP threat
+blend weights (Q2) are separately tunable (`BOT_THREAT_WEIGHTS`).
+- **MEDIUM is the ONE calibrated baseline; EASY/HARD are best-guess presets flagged
+  for playtest calibration** (that's what Phase-7 telemetry is for). Starting values
+  logged under Phase 1.
+- Phase 5 work = VERIFY the params are wired + differentiate tiers (not just
+  defined): test-bot-ai.js +10 — monotonic preset ordering (harder = faster/farther/
+  tighter/more-accurate/more-aggressive), detectRange actually gates engagement (a
+  15-block opponent is invisible to EASY, engaged by MEDIUM/HARD), and HARD's mean
+  aim error is measurably smaller than EASY's over 400 frames. **Suite 445.**
