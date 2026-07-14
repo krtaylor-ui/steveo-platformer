@@ -1378,3 +1378,19 @@ flee+sprint.
 ## Build 109 (Kevin) — min world height 15
 Server `HEIGHT_MIN` 30 → 15 for non-arena create-world (client input/validation, arena,
 and the offline path already allowed 15). Server-only.
+
+## Build 111 (Kevin) — hide items behind foliage + height hint fix
+- **Items over foliage:** sandbox placement was gated by `target === BLOCK.AIR`, so a
+  non-solid decorative-foliage cell (non-air grid block) blocked dropping items there.
+  Non-grid placeables (egg/emerald/power-up/spawn point/spawn line/arena-obj/tool/
+  block-item) live in their OWN arrays (not the level grid), so overlaying them on a
+  foliage cell is safe. Extended the condition to `target === AIR || (isFoliageBlock(target)
+  && _placeableSel)`. Grid blocks still can't share a cell (one block per cell). Render
+  order already does the hiding: FRONT-layer foliage draws after all entities/items, so an
+  item under a front bush/leaves is concealed; a back-layer foliage sits behind it. Both
+  placement orders work (item-then-foliage already worked — the grid cell stays AIR).
+  Browser-UNTESTED (UI-click path).
+- **Height hint:** the create-world height `<small>` still read "30-500"; fixed to
+  "15-500". (The input min + client JS + server floor already allow 15 as of build 109 —
+  but note the **server change needs a Railway deploy** to take effect for ONLINE world
+  creation, and the SW-cached index.html may need a reload cycle to pick up the client.)

@@ -2584,6 +2584,14 @@ class Game {
         const slIdx   = this.sandbox.hitTestSpawnLines(world.x, world.y);
         const spIdx   = this.sandbox.hitTestSpawnPoints(world.x, world.y);
         const aoIdx   = this.sandbox.hitTestArenaObjs(world.x, world.y);
+        // A "placeable item" is a NON-GRID object (egg/emerald/power-up/spawn/arena-obj/
+        // tool/block-item) — it lives in its own array, not the level grid. Those may be
+        // dropped onto a non-solid DECORATIVE foliage cell so items can hide behind
+        // leaves/bushes (Smart Mobs §10). Grid blocks still can't share a cell.
+        const _placeableSel = this.sandbox.isEggSelected || this.sandbox.isEmeraldSelected ||
+          this.sandbox.isPowerupSelected || this.sandbox.isHillSelected ||
+          this.sandbox.isSpawnLineSelected || this.sandbox.isSpawnPointSelected ||
+          this.sandbox.isArenaObjSelected || this.sandbox.isToolSelected || this.sandbox.isBlockItemSelected;
         if (eggIdx >= 0) {
           this.sandbox.openPopup(eggIdx);
         } else if (itemIdx >= 0) {
@@ -2600,8 +2608,8 @@ class Game {
           this.sandbox.openArenaObjPopup(aoIdx);
         } else if (this.sandbox.hitTestHill(world.x, world.y)) {
           this.sandbox.openHillPopup();
-        } else if (target === BLOCK.AIR) {
-          // Empty space → place selected item type
+        } else if (target === BLOCK.AIR || (isFoliageBlock(target) && _placeableSel)) {
+          // Empty space (or a decorative-foliage cell, for non-grid items) → place it.
           if (this.sandbox.isDustSelected) {
             this._notify('Redstone Dust must be placed on a solid block — click a block surface', '#CC4444', 120);
           } else if (this.sandbox.isGateSelected) {

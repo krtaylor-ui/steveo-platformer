@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 110 (World Settings: "Mob Drops" tab renamed "Mob Settings" + all mob-behavior config (Detection/Pack/Sprint/Retreating/Spider Webs) moved there from Combat, masters-first with the drops table below; Combat now = player gear only)';
+const GAME_VERSION = 'v3 · build 111 (Sandbox: items (eggs/emeralds/power-ups/spawns/arena-objs/tools) can be placed on decorative-foliage cells to hide behind front leaves/bushes; create-world height hint fixed 30->15)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
