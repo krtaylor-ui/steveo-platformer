@@ -1420,3 +1420,68 @@ portal never activated. Two root causes (both PRE-EXISTING, not from the Smart M
 Both `_tryPlaceEye` callers checked (hotbar consumes on success; sandbox palette ignores
 the return). Suite 295. Browser-UNTESTED — can't drive the canvas headlessly; if a
 specific world still won't activate, need to know how its portal was authored.
+
+## Build 114 (Smart Mobs §6) — Wayfinding & ambush-from-above (closes the brief)
+The last and biggest piece of the Smart Mobs brief: replace "chase in a straight
+line" with real pathfinding. Built in two verified phases.
+
+**Phase A — the pathfinder (shared subsystem, committed separately).** New
+`js/pathfinding.js` is the SINGLE source of truth for platformer-physics
+traversal. Its movement model was ported VERBATIM from the Speed-Run
+reachability validator in `tools/gen-sample-worlds.js` (standable/passable/dropTo
++ the arc-gated, pad-aware jump envelope), and then the generator was refactored
+to `require()` `navReachable()` back from it — so the level validator and the mob
+pathfinder share one model and can never drift. Proof: regenerating the sample
+worlds produced byte-identical files (reach counts unchanged), so a level
+validated as completable for a PLAYER is, by construction, sane for MOB pathing.
+- `navReachable(nav, sc, sr)` → reachable-cell Set (generator validator).
+- `findMobPath(nav, start, goal, opts)` → `{path, cost}` | null via A*, bounded by
+  a search radius + node cap. Grid-agnostic `nav` adapter (`solid/hazard/pad` by
+  col,row) runs against both the browser Level and the Node grid.
+- Headless `test/test-pathfinding.js` (17): the 5 brief cases — corridor, jumpable
+  gap, too-wide gap + legal detour, unreachable island = null, ambush drop — plus
+  the search bound and a jump pad. Verified BEFORE touching any mob behavior.
+
+**Ambush from above — HONEST NOTE (brief §1/§3 ask).** Built as scoped: it is an
+EMERGENT result of the edge-cost model, not a deliberate vantage-seeking tactic.
+Dropping costs ~0.05/block, climbing ~0.6/block, horizontal ~1/block, so when a
+short drop and a long walk-around both reach the target the search prefers the
+drop — the mob falls on the player from a ledge. My read: for the common case
+(mob on a platform above the player's path) this delivers a genuinely satisfying
+"it dropped on me!" moment. What it does NOT do is have a mob *seek out* a ledge
+to lie in wait when it isn't already near one — that's T3-tactical AI and was
+explicitly out of scope. If the emergent version feels too passive in playtest,
+deliberate vantage-seeking is the natural follow-up (flag it).
+
+**Phase B — integration.** Own opt-in toggle "Path-Aware Mobs" (NOT gated under
+Smart Detection — brief §3 wants pathing to help classic-aggro worlds too, and it
+matches the Sprint precedent). Everything default-off = byte-identical legacy.
+- Per-mob cached route + recompute cadence + bounded radius + invalidation live on
+  the `Mob` base (`_pathStep`/`_followPath`/`_pathStale`); each of the 8 classes'
+  pursuit routes through it. Ground chasers (Zombie/CaveSpider/Piglin/
+  WitherSkeleton/Creeper) fully path; Skeleton paths its approach-to-range; Blaze
+  (flight) + Enderman (teleport) KEEP native movement — ground-cell A* doesn't
+  model a flyer/teleporter, so forcing it on them would be wrong, not thorough.
+- Stretches (both, per Kevin): §5 Pack surround now biases the path GOAL past the
+  player (`_pathFlankBias`) so flankers route AROUND to the far side instead of the
+  old overlap-the-player nudge; §8 low-HP flee routes to a reachable retreat cell
+  around walls instead of backing straight into terrain (falls back to
+  straight-away if no route).
+
+**Defaults chosen (the "try it and adjust" feel/perf levers — Kevin picked the
+Balanced profile).** These are the main things to retune in playtest:
+- `PATH_RECOMPUTE_FRAMES = 12` (~5 recomputes/sec) — lower = snappier pursuit but
+  costlier + more path flip-flop; advanced World-Setting "Path Update" (8/12/20).
+- `PATH_SEARCH_RADIUS = 24` blocks — player beyond this → mob reverts to simple
+  chase/wander (an A* to an unactionable far target is wasted cost); advanced
+  "Path Range" (16/24/32).
+- `PATH_MAX_EXPANSIONS = 5000` (A* node cap, runaway backstop — not user-facing).
+- `PATH_FLANK_BIAS_BLOCKS = 2.5` (surround goal offset per side).
+- Jump feel in `_followPath` (jump for rise ≥2 near the target column, or a gap
+  directly ahead; `jumpMult` 0.85–1.0 scaled by rise) is heuristic and the most
+  likely thing to want hand-tuning if mobs over/under-jump on real geometry.
+
+Suite 329 (+17 pathfinding, +17 wayfinding). Browser-UNTESTED (canvas + feel is
+Kevin's playtest). This CLOSES the original Smart Mobs brief entirely; next per
+Kevin's priority order = Arena objective-bots (T2), which is the intended next
+consumer of this shared pathfinder (FUTURE_ROADMAP §4).

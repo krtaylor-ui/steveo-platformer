@@ -7,7 +7,51 @@ Guide, **Campaign mode** §12, Tower Defense/bots, world cleanup, itch/Tauri,
 plus new §13–§18: Ladders, Trampolines, Online/MP UX, Mob-config engine,
 Enchantments, Suspicion meter).
 
-## CURRENT STATE (2026-07-13) — build 107, on branch `smart-mobs-detection` (NOT merged)
+## CURRENT STATE (2026-07-13) — build 114, on branch `smart-mobs-wayfinding` (NOT merged)
+
+**Smart Mobs §6 — WAYFINDING — is BUILT, and this CLOSES the original Smart Mobs brief
+entirely.** Branch `smart-mobs-wayfinding` off `main` @ build 113. Headless-verified
+(suite **329**), **browser-UNTESTED, NOT merged/pushed** — awaiting Kevin's playtest.
+`GAME_VERSION` = build 114; bump all THREE markers each commit. As always, **everything
+is additive/opt-in** — the new "Path-Aware Mobs" toggle is default-off = byte-identical
+legacy chase.
+
+- **Phase A (commit `693b293`):** `js/pathfinding.js` — the shared tile-grid A* / reachability
+  subsystem, the SINGLE source of truth for platformer traversal. Movement model ported
+  VERBATIM from the Speed-Run reachability validator (`tools/gen-sample-worlds.js`), which
+  now `require()`s `navReachable()` back from it (one model, can't drift; sample worlds
+  regenerate byte-identical). `findMobPath()` = bounded A* returning `{path,cost}`|null.
+  Verified by `test/test-pathfinding.js` (the 5 brief cases) BEFORE any mob wiring.
+- **Phase B (commit `19d3b89`, build 114):** own opt-in **"Path-Aware Mobs"** toggle (Mob
+  Settings tab; independent of Smart Detection — it also improves classic-aggro worlds).
+  `Mob._pathStep`/`_followPath` give a cached route + recompute cadence (~12f) + bounded
+  radius (24bl) + terrain-change invalidation + graceful null fallback. All 8 classes route
+  through it: ground chasers (Zombie/CaveSpider/Piglin/WitherSkeleton/Creeper) fully path,
+  Skeleton paths its approach, Blaze (flight)+Enderman (teleport) keep native movement.
+  **Stretches shipped (both):** §5 Pack surround now paths flankers AROUND to the far side;
+  §8 low-HP flee routes around walls. **"Ambush from above" is EMERGENT** from the edge-cost
+  model (cheap drops) — not deliberate vantage-seeking (that's T3, out of scope; see
+  DECISIONS build 114 for the honest feel note + the feel/perf levers to retune).
+- **Playtest watch-items for Kevin (flagged):** the jump heuristic in `_followPath` (mobs
+  over/under-jumping on real geometry) and the two "try it" levers — Path Update cadence +
+  Path Range — are the most likely to want hand-tuning. `PATH_*` in `js/constants.js`.
+- **NEXT per Kevin's priority order = Arena objective-bots (T2)** — the intended next consumer
+  of this shared pathfinder (FUTURE_ROADMAP §4). The Smart Mobs brief is now fully done.
+
+**Ship path:** `node test/run.js` (329) → bump the THREE markers (done: build 114, `?v=b114`,
+`steveo-shell-v114`) → **Kevin browser-tests** → `git checkout main && git merge --ff-only
+smart-mobs-wayfinding` → `git push origin main`.
+
+---
+
+## PRIOR STATE (2026-07-13) — build 107 → 113, Smart Mobs Batch 2 (MERGED to main)
+
+Batch 2 (§4–§10 detection/pack/sprint/flee/webs, builds 102–107) plus builds 108–113
+(Solid Leaves, Mob-Settings tab consolidation, min world height 15, World-Settings scroll
+preservation, End-Portal fix) are all **on `main`**. `main` == `origin/main` @ build 113.
+The historical Batch 2 detail below is kept for provenance.
+
+## PRIOR-BATCH-2 DETAIL (2026-07-13) — build 107, on branch `smart-mobs-detection`
 
 **Smart Mobs Batch 2 — the mob-intelligence half of the brief (§4–§10) — is BUILT** on
 branch `smart-mobs-detection` (off `main` @ build 101), **headless-verified (suite 293),
@@ -55,7 +99,8 @@ noise emit), `js/player.js` (sprint/jump/web flags + applyWeb + web overlay),
 browser-tests** → `git checkout main && git merge --ff-only smart-mobs-detection` →
 `git push origin main`.
 
-### §6 Wayfinding — the ONLY remaining piece of the Smart Mobs brief (recommendation)
+### §6 Wayfinding — ✅ BUILT in build 114 (see CURRENT STATE). The recommendation below was followed (shared navmesh-style subsystem; retrofitted chase/surround/flee). Kept for provenance.
+### §6 Wayfinding — the (former) ONLY remaining piece of the Smart Mobs brief (recommendation)
 Deferred by design (no pathfinding exists; it pervasively touches aggro/pathing across all
 8 classes). Batch 2 surfaced concrete reasons it's next and what it must fix:
 - **Sticky alert:** an alerted mob never de-aggros and can't route around terrain — §6
