@@ -175,6 +175,10 @@ class BotController {
     this._hpWas = p.hp;
     if (this._threatenedTimer > 0 && --this._threatenedTimer === 0) this._threatenedBy = null;
 
+    // Companion catch-up: if it genuinely can't reach the leader (too-tall tree/
+    // wall, pit, unreachable platform), warp beside them instead of pacing forever.
+    if (this.role === 'companion') this._companionCatchUp();
+
     // BRAIN — periodic decision.
     if (--this._brainTimer <= 0) {
       this._brainTimer = this.diff.brainTick;
@@ -393,6 +397,38 @@ class BotController {
     }
     return { kind: 'companion-idle', cell: null, targetRef: null, action: null, targetId: null, reason: 'staying near the player' };
   }
+  // Warp the companion beside the leader when it can't path there. Tracks
+  // "closing progress"; fires when way behind, or after a stretch of no progress
+  // while still far. Standard co-op-follower behaviour (Mario-style catch-up).
+  _companionCatchUp() {
+    const leader = this.game.getPlayer(0), me = this.player;
+    if (!leader || !me || me.hp <= 0) return;
+    const distB = Math.hypot(leader.cx - me.cx, leader.cy - me.cy) / BLOCK_SIZE;
+    if (this._ccBest == null || distB < this._ccBest - 0.5) { this._ccBest = distB; this._ccStuck = 0; }
+    else this._ccStuck = (this._ccStuck || 0) + 1;
+    const warp = distB > BOT_COMPANION_WARP_DIST || (this._ccStuck > BOT_COMPANION_WARP_STUCK && distB > BOT_FOLLOW_FAR);
+    if (warp && this._warpNearLeader(leader)) {
+      this._ccStuck = 0; this._ccBest = null; this._path = null; this._pathTimer = 0;
+      if (this.game._notify) this.game._notify('Companion caught up', '#9fddff', 90);
+    }
+  }
+  _warpNearLeader(leader) {
+    if (typeof navStandable !== 'function') return false;
+    const nav = this._nav();
+    const [lc, lr] = BOT_AI.cellOf(leader);
+    for (const dc of [1, -1, 2, -2, 3, -3, 0]) {   // prefer a spot beside the leader
+      let rr = navStandable(nav, lc + dc, lr) ? lr
+             : (typeof navDropTo === 'function' ? navDropTo(nav, lc + dc, lr) : -1);
+      if (rr >= 0) {
+        this.player.x = (lc + dc) * BLOCK_SIZE + (BLOCK_SIZE - this.player.width) / 2;
+        this.player.y = (rr + 1) * BLOCK_SIZE - this.player.height;
+        this.player.vx = 0; this.player.vy = 0;
+        return true;
+      }
+    }
+    return false;
+  }
+
   _nearestMobInRange() {
     const mm = this.game.mobManager; if (!mm || !mm.mobs) return null;
     const me = this.player, r = this.diff.detectRange;
@@ -592,11 +628,19 @@ class BotController {
     if (dir !== 0 && this._lastX != null && Math.abs(p.cx - this._lastX) < 0.4) {
       const limit = Math.round(18 / Math.max(0.4, this.diff.navPrecision));  // HARD 18 → EASY ~33
       if (++this._noProgress > limit) {
-        this._escapeDir = -Math.sign(dir || (p.facing || 1));   // away from the target
-        this._escapeTimer = 16;
         this._noProgress = 0;
+        this._escapeCount = (this._escapeCount || 0) + 1;
+        if (this._escapeCount > BOT_ESCAPE_MAX) {
+          // Repeated escapes got nowhere → it's a genuine dead-end (e.g. a 4-tall
+          // tree it can't clear). Stop pacing: drop the goal + re-decide. For a
+          // companion the catch-up warp then takes over; an arena bot picks a new goal.
+          this._path = null; this._pathTimer = 0; this._brainTimer = 0; this._escapeCount = 0;
+        } else {
+          this._escapeDir = -Math.sign(dir || (p.facing || 1));   // back away from the target
+          this._escapeTimer = 16;
+        }
       }
-    } else this._noProgress = 0;
+    } else { this._noProgress = 0; this._escapeCount = 0; }
     this._lastX = p.cx;
   }
 

@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 125 (Wayfinding fix: bots/mobs no longer get trapped "vibrating" under a one-block overhang. Root cause — the A* neighbour model offered an impossible straight-up jump through a ceiling on the actor\'s head; now it forbids rising through an overhang, so the route goes OUT sideways then up ("back up and jump over"). Plus actuator hardening: never jump into a ceiling, and a back-up-and-jump ESCAPE when wedged. + build 124 right-click fix + Bot AI brief.)';
+const GAME_VERSION = 'v3 · build 126 (Companion wayfinding: a 4-tall tree (solid trunk) can\'t be jumped or walked around on flat ground, so the companion used to pace at it. Now — repeated fruitless escapes stop the pacing, and a companion that genuinely can\'t reach you WARPS beside you (standard co-op catch-up). + build 125 overhang fix + Bot AI brief.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
@@ -281,6 +281,15 @@ const BOT_FOLLOW_NEAR = 3;    // blocks: closer than this → stop crowding the 
 const BOT_FOLLOW_FAR  = 9;    // blocks: farther than this → catch up
 const BOT_COMPANION_LOOT_DELAY = 150; // frames an unclaimed pickup waits before the
                                       // companion may grab it (~2.5s) — player gets first pick
+// Companion teleport catch-up (standard co-op follower behaviour): when the
+// companion genuinely can't reach the player — a too-tall tree/wall it can't jump,
+// a pit, a platform it can't path to — warp it beside the player rather than let it
+// pace forever. Fires when it's way behind OR has made no progress for a while.
+const BOT_COMPANION_WARP_DIST  = 22;  // blocks behind the leader → warp (off-screen-ish)
+const BOT_COMPANION_WARP_STUCK = 90;  // frames of no closing progress (while beyond FOLLOW_FAR) → warp
+// Stuck-escape: after this many consecutive fruitless escapes on one goal, stop
+// escaping (it's a genuine dead-end) and re-decide, so a bot never paces endlessly.
+const BOT_ESCAPE_MAX = 2;
 
 const VICTORY_MUSIC_FILE   = 'music/boss/victory.mp3';  // ~20s fanfare after Ender Dragon defeat
 

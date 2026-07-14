@@ -43,7 +43,7 @@ const run = (file, expose) => vm.runInContext(fs.readFileSync(`${jsDir}/${file}`
 
 run('constants.js', 'this.BLOCK_SIZE=BLOCK_SIZE; this.BOT_DIFFICULTY_PRESETS=BOT_DIFFICULTY_PRESETS; this.BOT_DEFAULT_DIFFICULTY=BOT_DEFAULT_DIFFICULTY; this.BOT_THREAT_WEIGHTS=BOT_THREAT_WEIGHTS; this.BOT_THREAT_RECENT_FRAMES=BOT_THREAT_RECENT_FRAMES; this.BOT_MELEE_RANGE_BLOCKS=BOT_MELEE_RANGE_BLOCKS; this.BOT_ARCHER_RANGE_BLOCKS=BOT_ARCHER_RANGE_BLOCKS; this.BOT_OBJECTIVE_REACH_BLOCKS=BOT_OBJECTIVE_REACH_BLOCKS; this.BOT_FOLLOW_NEAR=BOT_FOLLOW_NEAR; this.BOT_FOLLOW_FAR=BOT_FOLLOW_FAR; this.BOT_COMPANION_LOOT_DELAY=BOT_COMPANION_LOOT_DELAY; this.GP_DEADZONE_STICK=GP_DEADZONE_STICK;');
 run('blocks.js', 'this.BLOCK=BLOCK;');
-run('pathfinding.js', 'this.findMobPath=findMobPath; this.navStandable=navStandable;');
+run('pathfinding.js', 'this.findMobPath=findMobPath; this.navStandable=navStandable; this.navDropTo=navDropTo;');
 run('input.js', 'this.InputManager=InputManager;');
 run('bot-ai.js', 'this.BOT_AI=BOT_AI; this.BotController=BotController;');
 run('bot-telemetry.js', 'this.BOT_TELEMETRY=BOT_TELEMETRY;');
@@ -673,6 +673,33 @@ console.log('Wayfinding fix — stuck bot triggers a back-up-and-jump escape:');
   }
   ok(escapeMove !== null, 'a wedged bot enters an escape maneuver (not endless vibration)');
   ok(escapeMove.moveX < 0 && escapeMove.jump === true, 'escape backs up (reverse dir) AND jumps to clear the obstacle');
+}
+console.log('Wayfinding fix — repeated fruitless escapes stop pacing (re-decide):');
+{
+  const level = mkLevel(['     ', '     ', '#####']);
+  const bot = mkPlayer(2, 1, { owner: 'p2' });
+  const game = mkGame(level, [mkPlayer(1, 1, { owner: 'p1' }), bot]);
+  const ctrl = new BotController(game, 1, 'competitive', 'HARD');
+  let reDecided = false;
+  for (let f = 0; f < 200; f++) {
+    game.frameCount = f;
+    ctrl._input.moveX = 0; ctrl._input.jump = false;
+    ctrl._applyMove({ dir: 1, jump: false });        // wedged forever (cx never moves)
+    if (ctrl._path === null && ctrl._brainTimer === 0) reDecided = true;
+  }
+  ok(reDecided, 'after BOT_ESCAPE_MAX fruitless escapes the bot drops the goal to re-decide (no endless pacing)');
+}
+console.log('Wayfinding fix — companion warps to the leader when it cannot reach:');
+{
+  const level = flatLevel();
+  const leader = mkPlayer(25, 2, { owner: 'p1' });     // far ahead
+  const comp = mkPlayer(2, 2, { owner: 'p2' });        // 23 blocks behind (> WARP_DIST 22)
+  const game = mkGame(level, [leader, comp], { gameMode: 'platformer' });
+  const ctrl = new BotController(game, 1, 'companion', 'MEDIUM');
+  const beforeX = comp.x;
+  ctrl.tick();
+  ok(comp.x !== beforeX, 'companion is repositioned (warped) toward the far leader');
+  ok(Math.hypot(leader.cx - comp.cx, leader.cy - comp.cy) / B <= 4, 'companion ends up beside the leader');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -1889,3 +1889,22 @@ with a one-block overhang, vibrating instead of backing up to jump over it.
   arc, so extremely tight diagonal squeezes could still mislead; the escape reverses
   "away from the target," which is usually but not always the exit — but it guarantees
   the bot won't sit and vibrate forever. Suite 481. Browser-UNTESTED.
+
+## Companion wayfinding — stuck on a 4-tall tree (build 126)
+Kevin (co-op): companion stuck on a 4-block tree (branches at h1 near / h2 far),
+"jumping away then reversing at the midpoint and back" = the build-125 escape firing,
+ending, re-approaching, repeating. Root reality: an OAK_LOG trunk is SOLID and a
+4-tall wall > the 3-block max jump, with no gap at ground level → on flat ground
+there is NO nav route over/around it. So the fixes are behavioural, not a new path:
+- **Escape cap (`BOT_ESCAPE_MAX`=2):** after 2 fruitless escapes on one goal, stop
+  escaping and drop the goal to re-decide — a bot never paces a dead-end forever.
+- **Companion teleport catch-up (standard co-op follower behaviour):** when the
+  companion is way behind (`>BOT_COMPANION_WARP_DIST` 22 blocks) OR makes no closing
+  progress for `BOT_COMPANION_WARP_STUCK` (90f) while still far, it WARPS to a
+  standable cell beside the leader (`_warpNearLeader`), with a "Companion caught up"
+  toast. Gated to the companion role (arena bots never teleport). This resolves
+  trees, tall walls, pits, and unreachable platforms in one robust stroke.
+- Tests: test-bot-ai +4 (escape cap re-decides; companion warps to a far leader).
+  Suite 483. Browser-UNTESTED. NOTE: deeper *arc-aware* jumping (so bots could climb
+  branch staircases / route around shorter obstacles instead of warping) is a future
+  nav improvement — flagged, not built.
