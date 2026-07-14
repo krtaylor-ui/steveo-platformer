@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 130 (Companion tuning: snappier following; Teleport now warps on DIRECT distance (vertical counts) at a configurable Range, and lands on YOUR level (no more cave-drops). When Teleport is OFF, an "If Companion Gets Stuck" setting — Do nothing / Teleport / FOLLOW mode (default): the bot shows a yellow "!", waits for you, then MIRRORS your moves through the spot. Wall Slide now feeds wall-jump climbs into the bot\'s pathing. + build 129 female sprite.)';
+const GAME_VERSION = 'v3 · build 131 (Double Jump Style — advanced World Setting (Movement → Moves, under Double Jump): "No Spin" (looks like a normal jump), "Simple Spin" (the classic tucked 360, current default), or "Natural Spin" (360 that keeps your weapon in hand + a relaxed hip bend). + build 130 companion tuning.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

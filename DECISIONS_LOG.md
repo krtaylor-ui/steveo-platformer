@@ -2014,3 +2014,18 @@ menus, and the future Player's Guide, use "you" / "the player" / "the companion"
 fine as labels — the rule targets pronouns/gendered terms.) Audit done at this point:
 no gendered pronouns in any current player-facing string (existing companion copy uses
 "it"/"you"/"the companion"). Mirrored in CONTEXT_SUMMARY (top) + FUTURE_ROADMAP §1.
+
+## Double Jump Style — animation option (build 131)
+Kevin: keep weapons visible during the air-jump flip + a more natural body shape
+(hip bend); make it an advanced setting with three looks.
+- **World Setting `doubleJumpStyle`** (Movement → Moves, advanced, shown under Double
+  Jump): **No Spin** ('nospin') / **Simple Spin** ('simple', DEFAULT = current) /
+  **Natural Spin** ('natural'). Applied to the player via `_applyMovementConfig`
+  (`p._doubleJumpStyle`).
+- **player.js draw:** 'nospin' → `rolling` is skipped, so the air-jump renders like a
+  normal jump (weapon shown via the existing `!special` path, no rotation). 'simple' →
+  unchanged (tucked 360, weapon hidden). 'natural' → 360 spin BUT (a) a gentler tuck
+  (×0.4) + a `hipBend` (new `_drawStanding` param rotating the legs at the hip through
+  the arc) for a natural shape, and (b) the weapon is drawn INSIDE the roll transform
+  (`flipX=false`, since the ctx is already flipped) so it spins in-hand with the body.
+- Browser-UNTESTED (canvas animation). Suite 503.

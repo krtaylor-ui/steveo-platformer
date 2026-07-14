@@ -1096,12 +1096,18 @@ class Player {
     const hanging   = false;
     const sliding   = this._slideFrames > 0;
     const wallSlide = this._wallSliding && !this.onGround && !hanging && !sliding;
-    const rolling   = this._rollFrames > 0 && !this.onGround && !crouch && !hanging && !sliding;
+    // Double-jump look (advanced World Setting): 'nospin' = a normal jump (no roll,
+    // weapon shown), 'simple' = the classic tucked 360 spin (weapon hidden), 'natural'
+    // = a 360 spin with the weapon kept in hand + a relaxed hip bend (less balled-up).
+    const djStyle   = this._doubleJumpStyle || 'simple';
+    const rolling   = this._rollFrames > 0 && !this.onGround && !crouch && !hanging && !sliding && djStyle !== 'nospin';
+    const natural   = rolling && djStyle === 'natural';
     const special   = hanging || sliding || wallSlide || rolling;
 
     const rprog     = rolling ? 1 - (this._rollFrames / (this._rollTotal || 1)) : 0;
     const rollAngle = rolling ? (this._rollDir || 1) * rprog * Math.PI * 2 : 0;
-    const tuck      = rolling ? Math.sin(rprog * Math.PI) : 0;   // ease in → peak → out
+    const tuck      = rolling ? Math.sin(rprog * Math.PI) * (natural ? 0.4 : 1) : 0;  // gentler tuck for a natural shape
+    const hipBend   = natural ? (this._rollDir || 1) * Math.sin(rprog * Math.PI) * 0.5 : 0;  // slight hip flex through the arc
     const swing     = special ? 0 : Math.sin(this.walkTimer) * (this.onGround ? 0.5 : 0.2);
     const flipX     = this.facing === -1;
     const squishY   = special ? 1 : 1 - this.jumpSquish * 0.12;
@@ -1154,7 +1160,7 @@ class Player {
     if (useCrouch) {
       this._drawCrouch(ctx, sx, sy);
     } else {
-      this._drawStanding(ctx, sx, sy, swing, tuck, armL, armR);
+      this._drawStanding(ctx, sx, sy, swing, tuck, armL, armR, hipBend);
     }
 
     this._drawArmorOverlay(ctx, sx, sy, useCrouch);
@@ -1162,6 +1168,10 @@ class Player {
     if (this.hasShield) {
       this._drawShield(ctx, sx, sy, useCrouch);
     }
+
+    // Natural double-jump spin keeps the weapon in hand — drawn INSIDE the roll
+    // transform (flipX=false: the ctx is already flipped) so it spins with the body.
+    if (natural) this._drawWeapon(ctx, sx, sy, swing, false, crouch);
 
     ctx.restore();
 
@@ -1293,7 +1303,7 @@ class Player {
     this._limbBar(ctx, handX-3*facing, handY, handX+3*facing, handY, 6, SKIN, EDGE);
   }
 
-  _drawStanding(ctx, sx, sy, swing, tuck = 0, armAngleL = null, armAngleR = null) {
+  _drawStanding(ctx, sx, sy, swing, tuck = 0, armAngleL = null, armAngleR = null, hipBend = 0) {
     // ── Colors ──────────────────────────────────────────────
     const SKIN    = '#F4C78A';
     const HAIR    = this._charHair();
@@ -1314,7 +1324,7 @@ class Player {
     // Left leg (tuck pulls it up + inward toward the torso during the air-roll)
     ctx.save();
     ctx.translate(sx + 4 + tuck * 4, sy + 34 - tuck * 14);
-    ctx.rotate(legSwing);
+    ctx.rotate(legSwing + hipBend);              // hipBend = natural-spin hip flex
     ctx.fillStyle = PANTS;
     ctx.fillRect(-2, 0, 8, 14);
     ctx.fillStyle = SHOE;
@@ -1336,7 +1346,7 @@ class Player {
     // Right leg
     ctx.save();
     ctx.translate(sx + 12 - tuck * 4, sy + 34 - tuck * 14);
-    ctx.rotate(-legSwing);
+    ctx.rotate(-legSwing + hipBend * 0.7);       // hipBend = natural-spin hip flex
     ctx.fillStyle = PANTS;
     ctx.fillRect(-2, 0, 8, 14);
     ctx.fillStyle = SHOE;

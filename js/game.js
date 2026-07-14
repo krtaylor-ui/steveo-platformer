@@ -4662,6 +4662,7 @@ class Game {
     p._gravityOverride = g;
     p._sprintEnabled   = aws.sprintEnabled !== false;
     p._airJumpEnabled  = !!aws.airJumpEnabled;
+    p._doubleJumpStyle = aws.doubleJumpStyle || 'simple';  // nospin | simple | natural (Bot AI brief follow-up)
     p._autoStepUp      = !!aws.autoStepUp;
     p._wallSlideEnabled = !!aws.wallSlideEnabled;
     p._wallJumpLockAway = !!aws.wallJumpLockAway;
