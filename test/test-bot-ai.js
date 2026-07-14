@@ -43,7 +43,7 @@ const run = (file, expose) => vm.runInContext(fs.readFileSync(`${jsDir}/${file}`
 
 run('constants.js', 'this.BLOCK_SIZE=BLOCK_SIZE; this.BOT_DIFFICULTY_PRESETS=BOT_DIFFICULTY_PRESETS; this.BOT_DEFAULT_DIFFICULTY=BOT_DEFAULT_DIFFICULTY; this.BOT_THREAT_WEIGHTS=BOT_THREAT_WEIGHTS; this.BOT_THREAT_RECENT_FRAMES=BOT_THREAT_RECENT_FRAMES; this.BOT_MELEE_RANGE_BLOCKS=BOT_MELEE_RANGE_BLOCKS; this.BOT_ARCHER_RANGE_BLOCKS=BOT_ARCHER_RANGE_BLOCKS; this.BOT_OBJECTIVE_REACH_BLOCKS=BOT_OBJECTIVE_REACH_BLOCKS; this.BOT_FOLLOW_NEAR=BOT_FOLLOW_NEAR; this.BOT_FOLLOW_FAR=BOT_FOLLOW_FAR; this.BOT_COMPANION_LOOT_DELAY=BOT_COMPANION_LOOT_DELAY; this.GP_DEADZONE_STICK=GP_DEADZONE_STICK;');
 run('blocks.js', 'this.BLOCK=BLOCK;');
-run('pathfinding.js', 'this.findMobPath=findMobPath; this.navStandable=navStandable; this.navDropTo=navDropTo;');
+run('pathfinding.js', 'this.findMobPath=findMobPath; this.navStandable=navStandable; this.navDropTo=navDropTo; this.NAV_MAX_JUMP_UP=NAV_MAX_JUMP_UP; this.NAV_MAX_JUMP_DX=NAV_MAX_JUMP_DX;');
 run('input.js', 'this.InputManager=InputManager;');
 run('bot-ai.js', 'this.BOT_AI=BOT_AI; this.BotController=BotController;');
 run('bot-telemetry.js', 'this.BOT_TELEMETRY=BOT_TELEMETRY;');
@@ -700,6 +700,37 @@ console.log('Wayfinding fix — companion warps to the leader when it cannot rea
   ctrl.tick();
   ok(comp.x !== beforeX, 'companion is repositioned (warped) toward the far leader');
   ok(Math.hypot(leader.cx - comp.cx, leader.cy - comp.cy) / B <= 4, 'companion ends up beside the leader');
+  // Teleport World Setting OFF → no warp (nav must handle it).
+  const comp2 = mkPlayer(2, 2, { owner: 'p2' });
+  const game2 = mkGame(level, [mkPlayer(25, 2, { owner: 'p1' }), comp2], { gameMode: 'platformer', _worldAdvSettings: { companionTeleport: false } });
+  const ctrl2 = new BotController(game2, 1, 'companion', 'MEDIUM');
+  const bx2 = comp2.x; ctrl2.tick();
+  ok(comp2.x === bx2, 'companionTeleport:false disables the warp (for nav stress-testing)');
+}
+
+console.log('Wayfinding — jump envelope reflects enabled moves + double-jump pulse:');
+{
+  const level = flatLevel();
+  const bot = mkPlayer(5, 2, { owner: 'p2' });
+  const game = mkGame(level, [mkPlayer(6, 2, { owner: 'p1' }), bot]);
+  const ctrl = new BotController(game, 1, 'competitive', 'MEDIUM');
+  game._worldAdvSettings = {};
+  const base = ctrl._jumpEnvelope();
+  ok(base.maxUp === 3, `default envelope = 3-block jump (got ${base.maxUp})`);
+  game._worldAdvSettings = { airJumpEnabled: true };
+  ok(ctrl._jumpEnvelope().maxUp > base.maxUp, 'double jump raises reachable height');
+  game._worldAdvSettings = { ledgeHangEnabled: true };
+  ok(ctrl._jumpEnvelope().maxUp === 4, 'ledge hang adds one block of reach');
+  // Double-jump pulse on a tall rise: ground press → hold → release near apex → press.
+  game._worldAdvSettings = { airJumpEnabled: true }; ctrl._jumpEnvelope();   // _envUp = 3
+  const P = ctrl.player; P._airJumpEnabled = true; P._airJumpsUsed = 0;
+  P.onGround = true; P.vy = 0;
+  ok(ctrl._jumpControl(true, 5) === true, 'ground: presses jump');
+  P.onGround = false; P.vy = -10;
+  ok(ctrl._jumpControl(true, 5) === true, 'airborne rising fast: holds');
+  P.vy = -2;
+  ok(ctrl._jumpControl(true, 5) === false, 'near apex: releases to arm the air-jump edge');
+  ok(ctrl._jumpControl(true, 5) === true, 'next frame: presses again → air-jump edge');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

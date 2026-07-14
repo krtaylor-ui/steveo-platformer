@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 127 (Co-op loot sharing: in Platformer/Normal with a companion bot, gear the PLAYER can\'t use goes to the bot instead of vanishing — a redundant pickup (duplicate/worse) is handed to the bot, and an UPGRADE (e.g. diamond helmet over iron) equips on you while your OLD piece hands DOWN to the bot. With no bot (single / human 2-player) it\'s left on the ground for the player. + build 126 companion catch-up.)';
+const GAME_VERSION = 'v3 · build 128 (Movement-aware bot wayfinding: the pathfinder now sizes the bot\'s jump reach to the WORLD\'s enabled moves — Double Jump raises the reachable height (with a real mid-air jump PULSE so the second jump actually fires), Ledge Hang adds reach — so bots plan/climb what they can actually do. Companion Teleport is now a World Setting (default ON; turn OFF to stress-test nav). + build 127 loot sharing.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

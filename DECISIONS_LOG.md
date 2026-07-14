@@ -1925,3 +1925,28 @@ go to the bot, not vanish. Reworked `_collectPlatformerItem` to a benefit model:
   leftover pickups (time-delayed, player-farther gated) still apply.
 - Browser-UNTESTED (Game-method gameplay code, like the rest of _collectPlatformerItem
   — no headless harness). node -c clean; suite 483.
+
+## Movement-aware wayfinding + teleport World Setting (build 128)
+Kevin: the bot drives the real player, so if Double Jump / Ledge Hang / Wall Slide
+are enabled it can clear more height — the pathfinder must account for that (else it
+underestimates reachability and warps instead of climbing).
+- **Planning envelope (`_jumpEnvelope`):** `_pathToward` now passes `maxUp/maxDx` to
+  `findMobPath` derived from `worldAdvSettings`: base = `jumpHeightBlocks||3`; Double
+  Jump → +~a second jump's height (+3 dx airtime); Ledge Hang → +1 (grab at apex +
+  pull up). Capped (≤8 up / ≤10 dx). Bot-only (mobs keep the basic envelope). Wall-
+  jump scaling is ITERATIVE, not a static envelope → NOT modelled (flagged).
+- **Double-jump actuation (`_jumpControl`):** the player's air-jump is EDGE-triggered
+  (fresh press while airborne), so a held jump only single-jumps. For a rise taller
+  than one jump with air-jump enabled, the controller holds while rising, RELEASES one
+  frame near the apex (`vy > -4`) to arm the edge, then presses again → the air-jump
+  fires. Ledge-hang needs no special handling (auto-fires on a held jump near a ledge
+  apex, which the single-jump hold already does).
+- **Companion Teleport = a World Setting** (`companionTeleport`, default ON, in World
+  Settings → Players). Kevin turns it OFF to stress-test the nav so the bot must
+  genuinely path rather than warp out of trouble.
+- Tests: test-bot-ai +8 (envelope reflects moves; double-jump pulse edge sequence;
+  teleport-off disables the warp). Suite 492. Browser-UNTESTED.
+- **FLAGGED for next (Kevin's ideas):** (1) wall-jump-aware scaling in the envelope;
+  (2) a "stuck" state — yellow "!" over the bot's head, then when a player is nearby it
+  enters a timed MIRROR-FOLLOW mode (copy the player's inputs to thread a tricky
+  tunnel). Neat; deferred as its own feature.

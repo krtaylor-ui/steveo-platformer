@@ -81,7 +81,7 @@ const BOT_AI = {
     } else if (nav && !nav.solid(cc + dir, cr + 1) && tr <= cr + 1 && nearCol && canRise) {
       jump = true;                            // gap directly ahead → hop it
     }
-    return { dir, jump };
+    return { dir, jump, rise: Math.max(0, rise) };
   },
 
   // Companion loot priority (Q3): the PLAYER always gets first pick. A placed item
@@ -406,8 +406,11 @@ class BotController {
     const distB = Math.hypot(leader.cx - me.cx, leader.cy - me.cy) / BLOCK_SIZE;
     if (this._ccBest == null || distB < this._ccBest - 0.5) { this._ccBest = distB; this._ccStuck = 0; }
     else this._ccStuck = (this._ccStuck || 0) + 1;
+    // Teleport is a World Setting (default ON) — Kevin turns it OFF to stress-test
+    // the nav (so the bot must genuinely path instead of warping out of trouble).
+    const allowed = !this.game._worldAdvSettings || this.game._worldAdvSettings.companionTeleport !== false;
     const warp = distB > BOT_COMPANION_WARP_DIST || (this._ccStuck > BOT_COMPANION_WARP_STUCK && distB > BOT_FOLLOW_FAR);
-    if (warp && this._warpNearLeader(leader)) {
+    if (allowed && warp && this._warpNearLeader(leader)) {
       this._ccStuck = 0; this._ccBest = null; this._path = null; this._pathTimer = 0;
       if (this.game._notify) this.game._notify('Companion caught up', '#9fddff', 90);
     }
@@ -620,7 +623,7 @@ class BotController {
     let mag = this.diff.alwaysRun ? 1 : (0.55 + 0.45 * this.diff.navPrecision);
     if (!this.diff.alwaysRun && this._frac() > this.diff.navPrecision) mag *= 0.4;
     i.moveX = dir * mag;
-    if (step.jump) i.jump = true;
+    i.jump = this._jumpControl(!!step.jump, step.rise || 0);
     // Stuck detection: intending to move but no horizontal progress → wedged.
     // After a short window (scaled by skill so Easy dithers a touch longer), kick
     // off a reverse-and-jump escape. Far cheaper than waiting out loseInterest, and
@@ -644,6 +647,28 @@ class BotController {
     this._lastX = p.cx;
   }
 
+  // Drive the jump INPUT as edges the player can act on. The player's double-jump
+  // is edge-triggered (a fresh press while airborne), so a held jump only single-
+  // jumps — to clear a rise taller than one jump we must release near the apex, then
+  // press again for the air-jump. `riseNeeded` = blocks the current path step climbs.
+  // (Ledge-hang needs no special handling: it auto-fires when jump is held near a
+  // ledge apex, which the single-jump hold below already does.)
+  _jumpControl(wantJump, riseNeeded) {
+    const p = this.player;
+    if (!wantJump) { this._jHeld = 0; this._jArmed = false; return false; }
+    if (p.onGround) { this._jHeld = 1; this._jArmed = false; return true; }  // fresh ground jump (edge)
+    this._jHeld = (this._jHeld || 0) + 1;
+    const baseUp = this._envUp || NAV_MAX_JUMP_UP;
+    const wantDouble = p._airJumpEnabled && (p._airJumpsUsed || 0) < 1 && riseNeeded > baseUp;
+    if (wantDouble) {
+      // Hold while still rising fast; near the apex release ONE frame to arm the
+      // edge, then press again → the air-jump fires.
+      if (!this._jArmed) { if (p.vy > -4) { this._jArmed = true; return false; } return true; }
+      return true;
+    }
+    return this._jHeld < 8;   // single jump: hold briefly for full height, then release
+  }
+
   // Path to (gc,gr), cached + recomputed on the difficulty cadence, invalidated
   // when the goal cell moves. Graceful null → no move (bot holds) rather than a
   // beeline into a wall.
@@ -654,13 +679,30 @@ class BotController {
     const stale = !this._path || this._path.length < 2 || --this._pathTimer <= 0 || goalMoved;
     if (stale) {
       const radius = Math.min(BOT_PATH_MAX_RADIUS, Math.max(16, this.diff.detectRange + 8));
+      const env = this._jumpEnvelope();   // reachability reflects the world's enabled moves
       const res = (typeof findMobPath === 'function')
-        ? findMobPath(this._nav(), [cc, cr], [gc, gr], { maxRadius: radius, maxExpansions: BOT_PATH_MAX_EXPANSIONS })
+        ? findMobPath(this._nav(), [cc, cr], [gc, gr], { maxRadius: radius, maxExpansions: BOT_PATH_MAX_EXPANSIONS, maxUp: env.maxUp, maxDx: env.maxDx })
         : null;
       this._pathTimer = this.diff.navRecompute;
       this._pathGoalCell = [gc, gr];
       this._path = res ? res.path : null;
     }
+  }
+
+  // The bot's reachable jump envelope, derived from the WORLD's movement config —
+  // because the bot drives the real player, so if Double Jump / Ledge Hang are on,
+  // it can clear more height and the PLANNER must know (else it warps/gives up on
+  // climbs it could actually make). Wall-jump scaling is iterative, not a static
+  // envelope, so it's not modelled here (flagged). `_envUp` is the SINGLE-jump
+  // height, used by the actuator to decide when a double-jump press is needed.
+  _jumpEnvelope() {
+    const aws = this.game._worldAdvSettings || {};
+    let up = Math.round(aws.jumpHeightBlocks || NAV_MAX_JUMP_UP);   // base (matches physics)
+    let dx = NAV_MAX_JUMP_DX;
+    this._envUp = up;
+    if (aws.airJumpEnabled)   { up += Math.max(2, up - 1); dx += 3; }  // 2nd jump ≈ +another jump + airtime
+    if (aws.ledgeHangEnabled) { up += 1; }                            // grab a ledge at the apex + pull up
+    return { maxUp: Math.min(up, 8), maxDx: Math.min(dx, 10) };
   }
 
   // Combat: aim at target (+ difficulty aim error) and fire the bow (charge to
