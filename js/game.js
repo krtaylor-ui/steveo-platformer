@@ -15286,71 +15286,96 @@ class Game {
     this.camera.y = Math.max(0, Math.min(this.level.pixelHeight - CANVAS_H, this.player.y - CANVAS_H * 0.55));
   }
 
-  // `collector` defaults to P1. Bot AI Phase 4: when P1 picks up a weapon/tool
-  // that is REDUNDANT (equal or worse than what they already have), it is handed
-  // to the companion bot instead of vanishing (Kevin's Q3 alt) — the companion
-  // never competes for something the player benefits from, but salvages leftovers.
+  // `collector` defaults to P1. Bot AI loot sharing (Platformer/Normal co-op with a
+  // companion bot): the PLAYER always benefits first, and gear the player DOESN'T
+  // benefit from goes to the bot instead of vanishing / cluttering the ground:
+  //   • redundant pickup (equal/worse than equipped) → companion takes the new item;
+  //   • an UPGRADE (e.g. diamond helmet over iron) → player equips it and the OLD
+  //     piece (the iron helmet) hands DOWN to the companion.
+  // With NO companion (single-player or HUMAN 2-player) a pickup the player can't use
+  // is LEFT ON THE GROUND for the player, never silently consumed.
   _collectPlatformerItem(item, collector = this.player) {
-    item.collected = true;
     const isP1 = collector === this.player;
+    const tag = isP1 ? 'Picked up' : 'Companion took';
+    // Blocks always stack — just collect.
     if (item.blockType) {
+      item.collected = true;
       const count = item.count || 1;
       for (let i = 0; i < count; i++) collector.addBlock(item.blockType);
       const bname = BLOCK_DATA[item.blockType]?.name ?? 'item';
-      this._notify(`${isP1 ? 'Picked up' : 'Companion took'} ${count > 1 ? count + ' ' : ''}${bname}${count > 1 ? 's' : ''}!`, '#A07840', 200);
+      this._notify(`${tag} ${count > 1 ? count + ' ' : ''}${bname}${count > 1 ? 's' : ''}!`, '#A07840', 200);
       return;
     }
+    // Gear: does it BENEFIT the collector, and does it displace an old piece
+    // (armor/pickaxe upgrades) that should hand DOWN to the bot?
     const armorData = ARMOR_DATA[item.toolKey];
-    if (armorData) {
-      collector.addArmorItem(item.toolKey);
-      this._notify(`${isP1 ? 'Picked up' : 'Companion took'} ${armorData.name}!`, armorData.color, 200);
-      return;
-    }
     const data = TOOL_DATA[item.toolKey];
-    if (!data) return;
-    if (data.type === 'pickaxe') {
-      const cur = TOOL_DATA[collector.pickaxe];
-      if (!cur || data.tier > cur.tier) {
-        collector.pickaxe = item.toolKey;
-        this._notify(`${isP1 ? 'Picked up' : 'Companion took'} ${data.name}!`, data.color, 200);
-      } else if (isP1) { this._handToCompanion(item); }
-    } else if (data.type === 'sword' || data.type === 'bow') {
-      // Smart Mobs §2 — COLLECT into the slot. New class → collected; higher tier
-      // of an owned class → upgraded; equal/lower of an owned class → redundant.
+    let beneficial = false, replacedKey = null, name = '', color = '#fff';
+    if (armorData) {
+      name = armorData.name; color = armorData.color;
+      const cur = collector.equippedArmor[armorData.piece];
+      const curTier = cur ? (ARMOR_DATA[cur].tier ?? 0) : -1;
+      if ((armorData.tier ?? 0) > curTier) { beneficial = true; replacedKey = cur; }   // upgrade → old hands down
+    } else if (data && data.type === 'pickaxe') {
+      name = data.name; color = data.color;
+      const cur = collector.pickaxe, curTier = cur ? (TOOL_DATA[cur].tier ?? 0) : -1;
+      if ((data.tier ?? 0) > curTier) { beneficial = true; replacedKey = cur; }
+    } else if (data && (data.type === 'sword' || data.type === 'bow')) {
+      name = data.name; color = data.color;
+      // Weapons are a cycling COLLECTION (keep every class' best tier), not a single
+      // slot — so no "old" piece is displaced; only new-class / higher-tier benefits.
       const list = data.type === 'bow' ? collector.rangedOwned : collector.meleeOwned;
       const cls  = data.weaponClass || data.type;
       const exKey = list.find(k => ((TOOL_DATA[k].weaponClass || TOOL_DATA[k].type) === cls));
-      if (!(exKey && (TOOL_DATA[exKey].tier ?? 0) >= (data.tier ?? 0))) {
-        collector.acquireWeapon(item.toolKey);
-        this._notify(`${isP1 ? 'Picked up' : 'Companion took'} ${data.name}!`, data.color, 200);
-      } else if (isP1) { this._handToCompanion(item); }   // redundant for the player → companion
-    } else if (data.type === 'shield') {
-      if (!collector.hasShield) { collector.hasShield = true; this._notify(`${isP1 ? 'Picked up' : 'Companion took'} Shield!`, data.color, 200); }
-      else if (isP1) { this._handToCompanion(item); }
-    } else if (data.type === 'flint_steel') {
-      if (!collector.hasFlintSteel) { collector.hasFlintSteel = true; this._notify(`${isP1 ? 'Picked up' : 'Companion took'} Flint & Steel!`, data.color, 200); }
-      else if (isP1) { this._handToCompanion(item); }
+      beneficial = !(exKey && (TOOL_DATA[exKey].tier ?? 0) >= (data.tier ?? 0));
+    } else if (data && data.type === 'shield') { name = 'Shield'; color = data.color; beneficial = !collector.hasShield; }
+    else if (data && data.type === 'flint_steel') { name = 'Flint & Steel'; color = data.color; beneficial = !collector.hasFlintSteel; }
+    else { if (data) item.collected = true; return; }   // unknown gear → collect as-is (don't lose it)
+
+    if (beneficial) {
+      item.collected = true;
+      this._applyGearTo(collector, item, armorData, data);
+      this._notify(`${tag} ${name}!`, color, 200);
+      if (isP1 && replacedKey) this._giveKeyToCompanion(replacedKey);   // hand-me-down to the bot
+      return;
     }
+    // Redundant for the collector.
+    if (isP1 && this._companionPlayer()) { item.collected = true; this._giveKeyToCompanion(item.toolKey); return; }
+    // No bot to take it (single / human 2-player) → LEAVE IT for the player (don't consume).
+  }
+
+  // Equip/acquire a beneficial gear item onto a player.
+  _applyGearTo(p, item, armorData, data) {
+    if (armorData) { p.addArmorItem(item.toolKey); return; }
+    if (!data) return;
+    if (data.type === 'pickaxe') p.pickaxe = item.toolKey;
+    else if (data.type === 'sword' || data.type === 'bow') p.acquireWeapon(item.toolKey);
+    else if (data.type === 'shield') p.hasShield = true;
+    else if (data.type === 'flint_steel') p.hasFlintSteel = true;
   }
 
   // Bot AI Phase 4 — the companion Player (null if no companion bot this game).
   _companionPlayer() { return this._companionController ? this._companionController.player : null; }
 
-  // Give a redundant-for-P1 item to the companion (best-tier logic; no-op if the
-  // companion already has something at least as good). Returns true if taken.
-  _handToCompanion(item) {
+  // Give a gear item (by tool/armor key) to the companion — a redundant player
+  // pickup OR an upgraded-out hand-me-down. Best-tier gated (no-op if the companion
+  // already has something at least as good). Returns true if the companion took it.
+  _giveKeyToCompanion(toolKey) {
     const comp = this._companionPlayer();
-    if (!comp) return false;
-    const armor = ARMOR_DATA[item.toolKey], data = TOOL_DATA[item.toolKey];
-    if (armor) { comp.addArmorItem(item.toolKey); }
-    else if (data && (data.type === 'sword' || data.type === 'bow')) {
+    if (!comp || !toolKey) return false;
+    const armor = ARMOR_DATA[toolKey], data = TOOL_DATA[toolKey];
+    if (armor) {
+      const cur = comp.equippedArmor[armor.piece];
+      if (cur && (ARMOR_DATA[cur].tier ?? 0) >= (armor.tier ?? 0)) return false;
+      comp.addArmorItem(toolKey);
+    } else if (data && (data.type === 'sword' || data.type === 'bow')) {
       const list = data.type === 'bow' ? comp.rangedOwned : comp.meleeOwned;
       const cls  = data.weaponClass || data.type;
       const exKey = list.find(k => ((TOOL_DATA[k].weaponClass || TOOL_DATA[k].type) === cls));
       if (exKey && (TOOL_DATA[exKey].tier ?? 0) >= (data.tier ?? 0)) return false;
-      comp.acquireWeapon(item.toolKey);
+      comp.acquireWeapon(toolKey);
     } else if (data && data.type === 'pickaxe') {
-      const c = TOOL_DATA[comp.pickaxe]; if (c && (c.tier ?? 0) >= (data.tier ?? 0)) return false; comp.pickaxe = item.toolKey;
+      const c = TOOL_DATA[comp.pickaxe]; if (c && (c.tier ?? 0) >= (data.tier ?? 0)) return false; comp.pickaxe = toolKey;
     } else if (data && data.type === 'shield') { if (comp.hasShield) return false; comp.hasShield = true; }
     else if (data && data.type === 'flint_steel') { if (comp.hasFlintSteel) return false; comp.hasFlintSteel = true; }
     else return false;

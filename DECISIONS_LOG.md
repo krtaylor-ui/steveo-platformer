@@ -1908,3 +1908,20 @@ there is NO nav route over/around it. So the fixes are behavioural, not a new pa
   Suite 483. Browser-UNTESTED. NOTE: deeper *arc-aware* jumping (so bots could climb
   branch staircases / route around shorter obstacles instead of warping) is a future
   nav improvement — flagged, not built.
+
+## Co-op loot sharing — duplicate / hand-me-down gear → companion (build 127)
+Kevin: in Platformer/Normal bot co-op, gear the player picks up but can't use should
+go to the bot, not vanish. Reworked `_collectPlatformerItem` to a benefit model:
+- **Beneficial** pickup (new class / higher tier / empty slot): the collector equips
+  it; if it DISPLACES an old piece (armor or pickaxe upgrade — e.g. diamond helmet
+  over iron), the OLD piece **hands down to the companion** (`_giveKeyToCompanion`,
+  best-tier gated). Weapons are a cycling collection (keep every class' best), so no
+  hand-me-down there — only new/upgrade benefits.
+- **Redundant** pickup (equal/worse than equipped): with a companion → the NEW item
+  goes to the bot; with NO companion (single-player / HUMAN 2-player) → LEFT ON THE
+  GROUND for the player (never silently consumed — a small improvement over the old
+  "consume + lose").
+- Only P1's pickups hand down (bot never steals from the player); the companion's own
+  leftover pickups (time-delayed, player-farther gated) still apply.
+- Browser-UNTESTED (Game-method gameplay code, like the rest of _collectPlatformerItem
+  — no headless harness). node -c clean; suite 483.
