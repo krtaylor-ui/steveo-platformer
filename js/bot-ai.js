@@ -166,6 +166,18 @@ class BotController {
       return;
     }
 
+    // Ledge-hang: if we grabbed a ledge, CLIMB UP. Grabbing fires by HOLDING jump,
+    // but climbing up needs a fresh jump EDGE — so a held jump hangs forever (no new
+    // edge) → the "stuck hanging with a !" bug (path also freezes, since we don't
+    // replan while airborne). Pulse jump (release↔press) to make the climb edge.
+    if (p._hangState) {
+      this._neutral();
+      if (p._hangState === 'hang') { this._input.jump = !this._hangJumpWas; this._hangJumpWas = this._input.jump; }
+      g.input.setBotInput(this.index, this._input);
+      return;
+    }
+    this._hangJumpWas = false;
+
     // recentDamage tracking (drives the threat blend): if our hp dropped, credit
     // the nearest opponent as "threatened by" for a window.
     if (this._hpWas != null && p.hp < this._hpWas) {
@@ -745,9 +757,10 @@ class BotController {
     const baseUp = this._envUp || NAV_MAX_JUMP_UP;
     const wantDouble = p._airJumpEnabled && (p._airJumpsUsed || 0) < 1 && riseNeeded > baseUp;
     if (wantDouble) {
-      // Hold while still rising fast; near the apex release ONE frame to arm the
-      // edge, then press again → the air-jump fires.
-      if (!this._jArmed) { if (p.vy > -4) { this._jArmed = true; return false; } return true; }
+      // Hold while still rising; only near the APEX (vy ~ 0) release ONE frame to arm
+      // the edge, then press again → the air-jump fires at the top for MAX height
+      // (was firing too early / low). vy > -2.5 ≈ nearly at the peak.
+      if (!this._jArmed) { if (p.vy > -2.5) { this._jArmed = true; return false; } return true; }
       return true;
     }
     return this._jHeld < 8;   // single jump: hold briefly for full height, then release

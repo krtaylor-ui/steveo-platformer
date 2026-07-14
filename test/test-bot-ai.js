@@ -692,6 +692,19 @@ console.log('Air control — two-phase (rise beside a ledge, then land on the co
   ok(Math.abs(ctrl._input.moveX) < 0.01, 'over the column → eases to 0 (drops on, not past)');
 }
 
+console.log('Ledge-hang — bot pulses jump to climb up (not stuck hanging):');
+{
+  const level = flatLevel();
+  const bot = mkPlayer(5, 2, { owner: 'p2' });
+  bot._hangState = 'hang';                              // grabbed a ledge
+  const game = mkGame(level, [mkPlayer(9, 2, { owner: 'p1' }), bot], { gameMode: 'platformer' });
+  const ctrl = new BotController(game, 1, 'companion', 'MEDIUM');
+  const jumps = new Set();
+  for (let f = 0; f < 4; f++) { game.frameCount = f; ctrl.tick(); jumps.add(game.input._bots[1].jump); }
+  ok(jumps.has(true) && jumps.has(false), 'jump PULSES (release+press) to make a climb-up edge — not held forever');
+  ok(game.input._bots[1].crouch === false, 'never presses crouch while hanging (would drop off)');
+}
+
 console.log('Wayfinding fix — repeated fruitless escapes stop pacing (re-decide):');
 {
   const level = mkLevel(['     ', '     ', '#####']);

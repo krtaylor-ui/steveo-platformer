@@ -197,10 +197,19 @@ function navReachable(nav, startC, startR, opts) {
 // a bespoke tactic (see brief §1/§2).
 const NAV_CLIMB_COST = 0.6;   // per block of rise
 const NAV_DROP_COST  = 0.05;  // per block of fall (tiny, but non-zero)
+// A big single climb (a double-jump, rise > NAV_MAX_JUMP_UP) is hard to execute
+// reliably, so it's penalised SUPER-linearly — this makes A* prefer a STAIRCASE of
+// small easy jumps over one tall risky climb whenever the terrain offers steps
+// (Kevin: "plot 3 steps, not a 6-block climb"). Bots with a tall envelope are the
+// only ones that generate rise > 3 jumps, so mobs (envelope 3) are unaffected.
+const NAV_BIGJUMP_PENALTY = 2.5;  // extra cost per block of climb beyond a single jump
 function _navEdgeCost(dc, dr) {
   let c = Math.max(1, Math.abs(dc));
-  if (dr < 0) c += NAV_CLIMB_COST * (-dr);
-  else if (dr > 0) c += NAV_DROP_COST * dr;
+  if (dr < 0) {
+    const up = -dr;
+    c += NAV_CLIMB_COST * up;
+    if (up > NAV_MAX_JUMP_UP) c += (up - NAV_MAX_JUMP_UP) * NAV_BIGJUMP_PENALTY;
+  } else if (dr > 0) c += NAV_DROP_COST * dr;
   return c;
 }
 

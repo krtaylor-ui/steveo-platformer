@@ -2197,3 +2197,44 @@ overhang and bonked the underside before gaining height.
   levers are (a) pure-vertical rise (drift 0.2→0) so it rises dead-straight beside the
   edge and relies on edge-grab/apex-traverse, and (b) softer takeoff horizontal for
   steep (rise≥4) jumps so it launches more vertically. Easy follow-ups once observed.
+
+## Bot climbing — hang-climb, staircase preference, apex double-jump (build 140)
+Kevin: bot got STUCK HANGING from a ledge with a "!" (path frozen), air-jumping at the
+BOTTOM of the arc, and the planner chose a 6-block climb over 3 small steps. Also asked
+for wayfinding best practices.
+- **Ledge-hang climb (the frozen-"!" bug):** ledge-GRAB fires by HOLDING jump, but
+  climbing UP needs a fresh jump EDGE — so a held jump hangs forever (no new edge) and,
+  since we don't replan while airborne, the path freezes too. Fix: while `p._hangState
+  === 'hang'`, the bot PULSES jump (release↔press) to make the climb edge; it climbs up,
+  lands, and replans. (`tick()`, before the brain.)
+- **Staircase preference (Kevin's request):** `_navEdgeCost` now penalises a big single
+  climb SUPER-linearly (`NAV_BIGJUMP_PENALTY` per block above NAV_MAX_JUMP_UP). A 6-block
+  climb costs ~13 vs ~9.6 for three 2-block steps → A* prefers the steps when the terrain
+  offers them. Only affects tall-envelope BOTS (mobs' envelope is 3, never rise>3), and
+  A* selection only (navReachable/BFS + generator unaffected).
+- **Apex double-jump:** `_jumpControl` now releases-to-arm the air-jump at `vy > -2.5`
+  (nearly the apex) instead of -4, so the 2nd jump fires at the TOP for max height
+  (was firing low).
+- Tests: test-bot-ai +2 (hang → jump pulses, never crouches); cost arithmetic verified
+  (stairs 9.6 < big 13.1). Suite 519. Browser-UNTESTED.
+
+## Bot wayfinding — best practices (Kevin asked; recorded for reference)
+1. **Plan then execute** (don't physically trial-and-error): A* computes the full route
+   over a tile grid; the actuator follows it. Backtracking at dead-ends is the SEARCH's
+   job, done virtually. ✅ have.
+2. **Cost model encodes "easy/reliable":** cheap walks/drops, pricier climbs, super-
+   linear on risky big jumps → prefers safe staircases. ✅ (build 140).
+3. **Plan within what the actuator can EXECUTE:** size the jump envelope to enabled moves
+   (double-jump/ledge-hang/wall-slide) AND bias toward the most reliable mechanic (ledge-
+   grab for tall ledges). ✅ envelope + hang-climb.
+4. **Arc/clearance-correct neighbours:** never plan a jump through terrain (builds 136-137).
+5. **Handle special movement STATES explicitly** (hang/wall-slide) in the actuator. 🟡
+   hang done; wall-jump execution still best-effort.
+6. **Two-phase precise jumps:** rise beside a ledge, then traverse onto it; air-control
+   to land on small platforms (builds 138-139).
+7. **Never freeze/pace forever:** stuck-escape, re-decide caps, and companion teleport/
+   follow safety nets (builds 125-133). 🟡 also: don't freeze the path while airborne
+   indefinitely (hang-climb fixes the common case; a hard airborne-timeout replan is a
+   possible future safety).
+8. **Difficulty = knobs, not different code:** reaction/precision/detrange/aggression.
+   ✅ BOT_DIFFICULTY_PRESETS.
