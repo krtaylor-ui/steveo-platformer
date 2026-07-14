@@ -1106,8 +1106,10 @@ class Player {
 
     const rprog     = rolling ? 1 - (this._rollFrames / (this._rollTotal || 1)) : 0;
     const rollAngle = rolling ? (this._rollDir || 1) * rprog * Math.PI * 2 : 0;
-    const tuck      = rolling ? Math.sin(rprog * Math.PI) * (natural ? 0.4 : 1) : 0;  // gentler tuck for a natural shape
-    const hipBend   = natural ? (this._rollDir || 1) * Math.sin(rprog * Math.PI) * 0.5 : 0;  // slight hip flex through the arc
+    const tuck      = rolling ? Math.sin(rprog * Math.PI) * (natural ? 0.5 : 1) : 0;  // gentler tuck for a natural shape
+    // Natural: a hip bend that's held THROUGHOUT the spin (not a mid-arc blip) so the
+    // silhouette reads as a bent body, not a rigid stick — 0.75 rad base → ~1.15 at peak.
+    const hipBend   = natural ? (this._rollDir || 1) * (0.75 + 0.4 * Math.sin(rprog * Math.PI)) : 0;
     const swing     = special ? 0 : Math.sin(this.walkTimer) * (this.onGround ? 0.5 : 0.2);
     const flipX     = this.facing === -1;
     const squishY   = special ? 1 : 1 - this.jumpSquish * 0.12;
@@ -1346,7 +1348,7 @@ class Player {
     // Right leg
     ctx.save();
     ctx.translate(sx + 12 - tuck * 4, sy + 34 - tuck * 14);
-    ctx.rotate(-legSwing + hipBend * 0.7);       // hipBend = natural-spin hip flex
+    ctx.rotate(-legSwing + hipBend * 0.85);      // hipBend = natural-spin hip flex
     ctx.fillStyle = PANTS;
     ctx.fillRect(-2, 0, 8, 14);
     ctx.fillStyle = SHOE;

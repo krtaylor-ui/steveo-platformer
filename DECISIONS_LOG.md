@@ -2029,3 +2029,11 @@ Kevin: keep weapons visible during the air-jump flip + a more natural body shape
   the arc) for a natural shape, and (b) the weapon is drawn INSIDE the roll transform
   (`flipX=false`, since the ctx is already flipped) so it spins in-hand with the body.
 - Browser-UNTESTED (canvas animation). Suite 503.
+
+## Natural Spin polish — visible hip bend (build 132)
+Kevin: Natural Spin's bend was barely visible. Root cause: it peaked at only ~0.5 rad
+(28°) for a couple frames mid-arc, lost under the 360° rotation. Fix: hold the bend
+across the WHOLE spin — `hipBend = rollDir * (0.75 + 0.4·sin(rprog·π))` (≈43°→66°,
+always bent), both legs pike (left ×1.0, right ×0.85), + slightly more leg lift
+(natural tuck 0.4→0.5). Reads as a bent-body silhouette through the flip. Browser-
+UNTESTED (canvas). Suite 503.

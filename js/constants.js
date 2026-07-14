@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 131 (Double Jump Style — advanced World Setting (Movement → Moves, under Double Jump): "No Spin" (looks like a normal jump), "Simple Spin" (the classic tucked 360, current default), or "Natural Spin" (360 that keeps your weapon in hand + a relaxed hip bend). + build 130 companion tuning.)';
+const GAME_VERSION = 'v3 · build 132 (Natural Spin polish: the hip bend is now held across the whole flip (~43°→66°) instead of a fleeting mid-arc blip, with both legs piking + a touch more leg lift — a clearly bent body silhouette through the spin. + build 131 Double Jump Style + build 130 companion tuning.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
