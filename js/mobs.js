@@ -67,6 +67,11 @@ function _mobPhysics(mob, level) {
   }
 }
 
+// ── Perf instrumentation (triage) — count + time A* calls per frame across all mobs.
+// Reset by MobManager.update; surfaced to the game's perf HUD. Cheap; browser-only timing.
+const _MOB_PATH_STATS = { calls: 0, ms: 0 };
+const _mobNow = () => (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
+
 // ── Base Mob ─────────────────────────────────────────────────
 
 class Mob {
@@ -290,8 +295,10 @@ class Mob {
         // Try progressively shorter retreats until one is reachable. Each try is a full
         // A* call, so it consumes from the shared per-frame cap and stops when spent.
         for (const dist of [cfg.searchRadius, Math.max(6, (cfg.searchRadius / 2) | 0), 4]) {
+          const _pt = _mobNow();
           res = findMobPath(nav, [cc, cr], [cc + away * dist, cr],
             { maxRadius: cfg.searchRadius, maxExpansions: cfg.maxExpansions });
+          _MOB_PATH_STATS.calls++; if (_pt) _MOB_PATH_STATS.ms += _mobNow() - _pt;
           if (rb) rb.left--;
           if (res && res.path.length >= 2) break;
           if (rb && rb.left <= 0) break;            // frame budget spent mid-retry
@@ -375,8 +382,10 @@ class Mob {
         }
         return null;                              // no budget + no usable route → cheap beeline
       }
+      const _pt = _mobNow();
       const res = findMobPath(this._navFor(level), [cc, cr], [gc, gr],
         { maxRadius: cfg.searchRadius, maxExpansions: cfg.maxExpansions });
+      _MOB_PATH_STATS.calls++; if (_pt) _MOB_PATH_STATS.ms += _mobNow() - _pt;
       if (rb) rb.left--;
       // Reset the recompute timer; on a mob's FIRST route, add a random offset so a
       // crowd that all start chasing the same frame don't then recompute in lockstep
@@ -2239,6 +2248,7 @@ class MobManager {
   // Called from game._update; returns amount of damage dealt to player this frame.
   // Phase 3B — extraPlayers carries P3/P4 so targeting/arrows/PvP see all players.
   update(player, level, player2 = null, extraPlayers = null) {
+    _MOB_PATH_STATS.calls = 0; _MOB_PATH_STATS.ms = 0;   // perf triage: A* calls this frame
     const hpBefore = player.hp;
     // All live local players this frame (used for targeting + enemy arrows + PvP).
     const allPlayers = [player, player2, ...(extraPlayers || [])].filter(p => p);
@@ -2267,6 +2277,7 @@ class MobManager {
 
     // Mob AI — each mob targets the nearest active player
     let _pathingNow = 0;
+    const _loopT = _mobNow();
     for (const mob of this.mobs) {
       if (!mob.alive) continue;
       // Smart Mobs §2 — slide-attack launch: spin in the air (AI already suppressed
@@ -2314,6 +2325,8 @@ class MobManager {
       }
     }
     this._activePathCount = _pathingNow;           // §6 — feeds next frame's crowd throttle
+    const _loopMs = _loopT ? _mobNow() - _loopT : 0;   // whole AI loop (incl. A*, physics, per-mob)
+    this._pathStats = { calls: _MOB_PATH_STATS.calls, ms: _MOB_PATH_STATS.ms, loop: _loopMs, count: this.mobs.length };  // perf HUD
 
     // Skeleton/enemy arrows
     this.arrows = this.arrows.filter(a => { a.update(allPlayers, level); return a.alive; });

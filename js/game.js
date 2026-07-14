@@ -1340,7 +1340,8 @@ class Game {
       this._profSlow = (this._profSlow || 0) + 1;
       if (this._profSlow % 15 === 1) {   // throttle the log so a sustained slowdown doesn't spam
         const n = this.mobManager ? this.mobManager.mobs.filter(m => m.alive).length : 0;
-        console.warn(`[perf] frame ${tot.toFixed(1)}ms = update ${upd.toFixed(1)} (mobs ${this._prof.mobs.toFixed(1)}, bot ${this._prof.bot.toFixed(1)}, redstone ${this._prof.redstone.toFixed(1)}) + render ${ren.toFixed(1)} (mobDraw ${this._prof.mobDraw.toFixed(1)}) | mobs=${n} arrows=${this.mobManager ? (this.mobManager.arrows || []).length : '?'} particles=${this._deathParts ? this._deathParts.length : '?'}`);
+        const ps = (this.mobManager && this.mobManager._pathStats) || { calls: 0, ms: 0 };
+        console.warn(`[perf] frame ${tot.toFixed(1)}ms = update ${upd.toFixed(1)} (mobs ${this._prof.mobs.toFixed(1)} [A* ${ps.calls}call ${ps.ms.toFixed(1)}ms], bot ${this._prof.bot.toFixed(1)}, redstone ${this._prof.redstone.toFixed(1)}) + render ${ren.toFixed(1)} (mobDraw ${this._prof.mobDraw.toFixed(1)}) | mobs=${n} arrows=${this.mobManager ? (this.mobManager.arrows || []).length : '?'}`);
       }
     }
     this.input.flush();
@@ -6045,11 +6046,13 @@ class Game {
       const f = this._profFrame;
       const nMobs = this.mobManager ? this.mobManager.mobs.filter(m => m.alive).length : 0;
       const nArr  = this.mobManager ? (this.mobManager.arrows || []).length : 0;
+      const ps    = (this.mobManager && this.mobManager._pathStats) || { calls: 0, ms: 0 };
       const lines = [
         `FPS ~${(1000 / Math.max(1, this._profAvg || 16)).toFixed(0)}  frame ${(this._profAvg || 0).toFixed(1)}ms`,
         `update ${f.upd.toFixed(1)}  render ${f.ren.toFixed(1)}`,
         `mobs ${f.mobs.toFixed(1)}  bot ${(f.bot || 0).toFixed(1)}  redstone ${f.redstone.toFixed(1)}`,
-        `mobDraw ${f.mobDraw.toFixed(1)}  |  mobs ${nMobs}  arrows ${nArr}`,
+        `mobDraw ${f.mobDraw.toFixed(1)}  |  mobs ${nMobs}(${ps.count || 0} total)  arrows ${nArr}`,
+        `A* ${ps.calls}call ${ps.ms.toFixed(1)}ms  |  aiLoop ${(ps.loop || 0).toFixed(1)}ms`,
       ];
       ctx.save();
       ctx.font = '11px monospace'; ctx.textBaseline = 'top';

@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 149 (Perf PROFILER — the mob AI is provably cheap in isolation (~0.66 ms/frame headless), so builds 147-148 didn\'t fix the real slowdown; the cost is elsewhere. This build adds a frame profiler + on-screen HUD (auto-shows when frames run slow, or set window._perfHud=true) that breaks the frame into update/render + mobs/bot/redstone/mobDraw, so the actual hotspot can be MEASURED instead of guessed. Diagnostic build — no behaviour change. + build 148 flee cap.)';
+const GAME_VERSION = 'v3 · build 150 (Perf profiler pt.2 — the HUD now splits the mob bucket into A* calls/time + AI-loop time, to pin whether the 1-2s/frame Kevin measured is the pathfinder hammering the expensive monkey-patched isSolid (which iterates every redstone component) or non-A* mob work. Diagnostic only. + build 149 profiler.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
