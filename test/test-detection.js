@@ -140,5 +140,44 @@ console.log('Sound / action (emitNoise):');
   ok(m._alerted === false, 'master detection OFF → neither sight nor noise alerts');
 }
 
+console.log('Pack behavior (§5):');
+{
+  const mm = new MobManager(); mm.detectCfg = { ...CFG, packAlert: true };
+  const a = mm._createMob('Zombie', 100, 100); a._alerted = true;
+  const b = mm._createMob('Zombie', 100 + 4 * 32, 100); b._alerted = false;   // within 7-block radius
+  const far = mm._createMob('Zombie', 100 + 20 * 32, 100); far._alerted = false;
+  mm.mobs.push(a, b, far);
+  mm._propagatePackAlerts();
+  ok(b._alerted === true, 'alerted mob rouses a nearby mob (pack propagation)');
+  ok(far._alerted === false, 'a mob beyond the spread radius is not roused');
+}
+{
+  const mm = new MobManager(); mm.detectCfg = { ...CFG, packAlert: false };
+  const a = mm._createMob('Zombie', 100, 100); a._alerted = true;
+  const b = mm._createMob('Zombie', 100 + 4 * 32, 100); b._alerted = false;
+  mm.mobs.push(a, b);
+  mm._propagatePackAlerts();
+  ok(b._alerted === false, 'no propagation when pack behavior is off');
+}
+{
+  const mm = new MobManager(); mm.detectCfg = { ...CFG, packAlert: true };
+  const player = tgt(500, 300);
+  const m1 = mm._createMob('Zombie', 400, 276); m1._alerted = true;   // both left of player
+  const m2 = mm._createMob('Zombie', 420, 276); m2._alerted = true;
+  mm.mobs.push(m1, m2);
+  mm._assignSurround(player);
+  ok(m1._flankOffset !== 0 && m2._flankOffset !== 0, 'surround assigns flank offsets to clustered melee mobs');
+  ok(Math.sign(m1._flankOffset) !== Math.sign(m2._flankOffset), 'clustered mobs get OPPOSITE sides (surround)');
+}
+{
+  const mm = new MobManager(); mm.detectCfg = { ...CFG, packAlert: false };
+  const player = tgt(500, 300);
+  const m1 = mm._createMob('Zombie', 400, 276); m1._alerted = true;
+  mm.mobs.push(m1);
+  m1._flankOffset = 99;
+  mm._assignSurround(player);
+  ok(m1._flankOffset === 0, 'surround clears flank offset when pack behavior is off');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

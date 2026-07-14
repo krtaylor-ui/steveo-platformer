@@ -234,6 +234,12 @@ class Mob {
     return !d || !d.enabled || this._alerted;
   }
 
+  // Smart Mobs §5 — surround: the x a melee chaser steers toward. Normally the player,
+  // but the MobManager sets `_flankOffset` so clustered mobs approach from opposite
+  // sides (a simple left/right heuristic — real pathfinding is the deferred §6). Zero
+  // offset (default) = beeline the player, so this is a no-op when pack behavior is off.
+  _chaseTargetX(player) { return player.cx + (this._flankOffset || 0); }
+
   _flashAlpha(ctx) {
     // Flash white-ish when recently hit
     if (this.hitCooldown > 0 && Math.floor(this.hitCooldown / 4) % 2 === 0) {
@@ -266,7 +272,8 @@ class Zombie extends Mob {
     if (this.knockbackTimer > 0) {
       // knockback — let physics handle it
     } else if (this.state === 'chase') {
-      this.vx     = Math.sign(dx) * 1.8;
+      const mdir  = Math.sign(this._chaseTargetX(player) - this.cx) || Math.sign(dx);  // §5 surround
+      this.vx     = mdir * 1.8;
       this.facing = Math.sign(dx);
     } else {
       this._wanderUpdate(level, 0.8);
@@ -927,7 +934,7 @@ class CaveSpider extends Mob {
 
     // Chase player horizontally, jump to reach
     const dir = Math.sign(player.cx - this.cx);
-    this.vx   = dir * this.speed;
+    this.vx   = (Math.sign(this._chaseTargetX(player) - this.cx) || dir) * this.speed;  // §5 surround
     this.facing = dir;
 
     // Jump if blocked or can jump up to player
@@ -993,7 +1000,7 @@ class Piglin extends Mob {
     if (!this._shouldChase()) { this._wanderUpdate(level, 0.8); _mobPhysics(this, level); return; }
 
     const dir = Math.sign(player.cx - this.cx);
-    this.vx = dir * this.speed;
+    this.vx = (Math.sign(this._chaseTargetX(player) - this.cx) || dir) * this.speed;  // §5 surround
     this.facing = dir;
 
     if (this.onGround && level.isSolid(
@@ -1225,7 +1232,7 @@ class WitherSkeleton extends Mob {
     if (!this._shouldChase()) { this._wanderUpdate(level, 0.8); _mobPhysics(this, level); return; }
 
     const dir = Math.sign(player.cx - this.cx);
-    this.vx = dir * this.speed;
+    this.vx = (Math.sign(this._chaseTargetX(player) - this.cx) || dir) * this.speed;  // §5 surround
     this.facing = dir;
 
     if (this.onGround && level.isSolid(
@@ -1746,6 +1753,43 @@ class MobManager {
     }
   }
 
+  // Smart Mobs §5 — PACK alert propagation. Any alerted mob rouses un-alerted mobs
+  // within packRadius (one hop per frame — we snapshot the alerted set first, so a
+  // freshly-roused mob only spreads it further next frame; the alert ripples outward
+  // rather than flooding the level in a single frame).
+  _propagatePackAlerts() {
+    const cfg = this.detectCfg;
+    if (!cfg || !cfg.enabled || !cfg.packAlert) return;
+    const r2 = cfg.packRadius * cfg.packRadius;
+    const sources = this.mobs.filter(m => m.alive && m._alerted);
+    if (!sources.length) return;
+    for (const src of sources) {
+      for (const m of this.mobs) {
+        if (!m.alive || m._alerted) continue;
+        const dx = m.cx - src.cx, dy = m.cy - src.cy;
+        if (dx * dx + dy * dy <= r2) this._alert(m, 'pack');
+      }
+    }
+  }
+
+  // Smart Mobs §5 — SURROUND. When several melee mobs converge on the player they
+  // otherwise stack on the near side; assign them alternating sides so some flank to
+  // the far side. Deliberately a left/right position preference, NOT pathfinding (§6) —
+  // `_flankOffset` shifts each mob's chase target past the player toward its side.
+  _assignSurround(player) {
+    for (const m of this.mobs) m._flankOffset = 0;   // reset (also the disabled case)
+    const cfg = this.detectCfg;
+    if (!cfg || !cfg.enabled || !cfg.packAlert || !player) return;
+    const near = this.mobs.filter(m => m.alive && m._alerted &&
+      (m instanceof Zombie || m instanceof CaveSpider || m instanceof Piglin || m instanceof WitherSkeleton) &&
+      Math.abs(m.cx - player.cx) < 8 * BLOCK_SIZE);
+    if (near.length < 2) return;
+    // Closest first, then alternate the assigned side so the group splits around the
+    // player instead of piling onto whichever side they approached from.
+    near.sort((a, b) => Math.abs(a.cx - player.cx) - Math.abs(b.cx - player.cx));
+    near.forEach((m, i) => { m._flankOffset = (i % 2 === 0 ? 1 : -1) * 1.5 * BLOCK_SIZE; });
+  }
+
   // Returns the closest live player to (cx, cy) among all local players (P1-P4)
   // + online players. Falls back to the passed p1/p2 if the target list isn't
   // set yet. Dead players (hp <= 0) are skipped unless none are alive.
@@ -1772,6 +1816,12 @@ class MobManager {
 
     // Spawn point respawn
     this._updateSpawnPoints(player, level);
+
+    // Smart Mobs §5 — pack behavior: propagate alerts to nearby mobs + assign surround
+    // sides (both no-ops unless packAlert is on). Runs before the AI loop so this
+    // frame's chase uses the updated alert flags + flank offsets.
+    this._propagatePackAlerts();
+    this._assignSurround(player);
 
     // Mob AI — each mob targets the nearest active player
     for (const mob of this.mobs) {

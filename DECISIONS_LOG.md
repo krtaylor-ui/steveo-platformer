@@ -1243,3 +1243,22 @@ brief: §10 → §4 → §5 → §7 → §8 → §9. Up-front Q&A with Kevin res
   `test/test-detection.js` (18 assertions). Suite 263. Browser-UNTESTED — **detection
   range/radius FEEL is Kevin's playtest call** (the "technically correct vs. feels right"
   bar from world_creation.md).
+
+## §5 — Pack behavior (build 104)
+- **Single Combat-tab toggle `packAlert`** (default OFF), per the brief ("one toggle;
+  per-mob-type later — don't over-build"). Enables BOTH pieces:
+- **Alert propagation** (`MobManager._propagatePackAlerts`): any alerted mob rouses
+  un-alerted mobs within `packRadius` (default 7 bl, advanced). One hop/frame — the
+  alerted set is snapshotted first so it ripples outward over frames instead of flooding
+  instantly. Runs before the AI loop so roused mobs chase the same frame.
+- **Surround** (`_assignSurround` + `Mob._chaseTargetX`): clustered melee mobs
+  (Zombie/CaveSpider/Piglin/WitherSkeleton within 8 bl of the player) get alternating
+  `_flankOffset`s so they approach from OPPOSITE sides instead of stacking. A deliberate
+  left/right position preference, **not pathfinding** (brief §5 explicitly allows this;
+  true flanking-around-terrain is the deferred §6). `_chaseTargetX` shifts the chaser's
+  steer target past the player; zero offset (default / pack off) = beeline, so it's a
+  no-op when off. Ranged kiters (Skeleton/Blaze) + Enderman excluded.
+- Additive: both no-op unless `packAlert` is on. test-detection.js +6 (propagation
+  radius + gating, opposite-side surround, reset-when-off); suite 269. Browser-UNTESTED —
+  surround FEEL (do the flankers read as "surrounding"? without pathfinding they walk
+  through the player, who is non-solid) is a playtest watch-item + a §6 candidate.

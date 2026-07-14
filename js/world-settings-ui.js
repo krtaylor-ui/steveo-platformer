@@ -190,6 +190,10 @@ const WORLD_SETTINGS = {
       { key: 'detectSoundRun',    tab: 'combat', group: 'Detection', modes: M.physics, type: 'cycle', opts: [6, 9, 12, 16], dflt: DETECT_SOUND_RUN_DEF, label: 'Run Sound', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection', advanced: true },
       { key: 'detectSoundLoud',   tab: 'combat', group: 'Detection', modes: M.physics, type: 'cycle', opts: [10, 14, 18, 24], dflt: DETECT_SOUND_LOUD_DEF, label: 'Loud-Block Sound', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection', advanced: true, hint: 'gravel radius' },
       { key: 'detectActionRange', tab: 'combat', group: 'Detection', modes: M.physics, type: 'cycle', opts: [5, 8, 12, 16], dflt: DETECT_ACTION_RANGE_DEF, label: 'Attack/Jump Sound', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection', advanced: true },
+      // ── Pack behavior (Smart Mobs §5) — one toggle: alerted mobs rouse nearby mobs,
+      //    and melee attackers flank to opposite sides instead of stacking. ──
+      { key: 'packAlert',  tab: 'combat', group: 'Pack', modes: M.physics, type: 'toggle', dflt: false, label: 'Pack Behavior', hint: 'one mob spotting you alerts nearby mobs; attackers surround from both sides' },
+      { key: 'packRadius', tab: 'combat', group: 'Pack', modes: M.physics, type: 'cycle', opts: [4, 7, 10, 14], dflt: DETECT_PACK_RADIUS_DEF, label: 'Alert Spread Range', fmt: (v) => v + ' bl', sub: true, dependsOn: 'packAlert', advanced: true },
       // ── Special moves (Smart Mobs §2) — per-weapon context attacks ──
       { key: 'slideAttack', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Slide Attack (Spear)', hint: 'ground-slide with a spear launches nearby mobs into the air' },
       { key: 'slideAttackDmg', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'cycle', opts: O.wdmg, dflt: 1.0, label: 'Slide Attack Damage', fmt: x1, advanced: true, dependsOn: 'slideAttack' },

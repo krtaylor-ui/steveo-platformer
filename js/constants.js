@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 103 (Smart Mobs §4: DETECTION core — opt-in Smart Detection with frontal line-of-sight (blocked by walls + bushes), sound tiers (gravel loud / grass silent), and attack/jump action detection; per-axis toggles + tuning in World Settings → Combat)';
+const GAME_VERSION = 'v3 · build 104 (Smart Mobs §5: PACK behavior — one opt-in toggle: an alerted mob rouses nearby mobs (alert propagation), and clustered melee attackers flank to opposite sides instead of stacking)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
