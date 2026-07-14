@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 123 (Bot AI — Companion toggle: World Settings → Players → "Companion Bot" (Off/Easy/Medium/Hard) enables a friendly AI teammate (P2) in Platformer/Normal that follows you, fights mobs, and takes leftover loot. Closes the Phase-4 UI gap. + builds 117-122 = full Bot AI brief Phases 0-7.)';
+const GAME_VERSION = 'v3 · build 124 (Fix: right-click (hold-to-charge a bow) no longer pops the browser context menu during gameplay — a long right-hold could fire contextmenu on a HUD overlay/canvas-wrap, which the canvas-only handler missed; now suppressed at the window level while in-game (menus keep their native menu). + build 123 Companion toggle + builds 117-122 full Bot AI brief.)';
 
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;

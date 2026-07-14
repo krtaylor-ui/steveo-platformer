@@ -244,6 +244,14 @@ class InputManager {
       if (e.button === 2) this.mouse.rightDown = false;   // held-state for ranged attack
     });
     this._canvas.addEventListener('contextmenu', e => e.preventDefault());
+    // Right-click is the ranged attack (hold to charge a bow). Suppress the browser
+    // context menu during GAMEPLAY no matter which element the event targets — a
+    // long right-hold can fire `contextmenu` on a HUD overlay or the canvas wrap
+    // (not just the canvas), which the canvas-only handler above misses. Capture
+    // phase + gated on `body.in-game`, so menu screens keep their native menu.
+    window.addEventListener('contextmenu', (e) => {
+      if (document.body && document.body.classList.contains('in-game')) e.preventDefault();
+    }, true);
     this._canvas.addEventListener('mouseleave', () => { this.mouse.down = false; this.mouse.rightDown = false; });
     this._canvas.addEventListener('wheel', e => {
       e.preventDefault();
