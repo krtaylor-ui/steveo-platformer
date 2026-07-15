@@ -297,7 +297,7 @@ class Mob {
         for (const dist of [cfg.searchRadius, Math.max(6, (cfg.searchRadius / 2) | 0), 4]) {
           const _pt = _mobNow();
           res = findMobPath(nav, [cc, cr], [cc + away * dist, cr],
-            { maxRadius: cfg.searchRadius, maxExpansions: cfg.maxExpansions });
+            { maxRadius: cfg.searchRadius, maxExpansions: cfg.maxExpansions, maxDrop: MOB_PATH_MAX_DROP });
           _MOB_PATH_STATS.calls++; if (_pt) _MOB_PATH_STATS.ms += _mobNow() - _pt;
           if (rb) rb.left--;
           if (res && res.path.length >= 2) break;
@@ -391,7 +391,7 @@ class Mob {
       }
       const _pt = _mobNow();
       const res = findMobPath(this._navFor(level), [cc, cr], [gc, gr],
-        { maxRadius: cfg.searchRadius, maxExpansions: cfg.maxExpansions });
+        { maxRadius: cfg.searchRadius, maxExpansions: cfg.maxExpansions, maxDrop: MOB_PATH_MAX_DROP });
       _MOB_PATH_STATS.calls++; if (_pt) _MOB_PATH_STATS.ms += _mobNow() - _pt;
       if (rb) rb.left--;
       // Reset the recompute timer; on a mob's FIRST route, add a random offset so a

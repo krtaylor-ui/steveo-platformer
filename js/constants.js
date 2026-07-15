@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 152 (THE fix + Debug tab — pathfinding (mobs AND the companion bot) now reads BASE block solidity directly instead of the monkey-patched level.isSolid, which the game wraps with per-call trapdoor/piston/portal work. A* calls solid() hundreds of thousands of times per route, so that overhead made a single A* call cost ~0.5-1 s on a real level (Kevin: A*/aiLoop >1000 ms). Base solidity is a plain table lookup — component/patch-independent — so A* is ~6-14 ms/call no matter the level. Mob physics still uses the real isSolid (no clipping). Also: NEW Debug tab in World Settings (Performance HUD + Show Bot/Mob Paths + Show Nav Grid). + build 151 O(1) piston cache.)';
+const GAME_VERSION = 'v3 · build 153 (More A* headroom — the per-node neighbour scan looped DOWN to NAV_MAX_DROP (40) on every one of A*\'s thousands of expansions; mob/bot pathfinding now caps that at 8 (deep falls become a walk-off) and the expansion budget is 2500→1500. ~13→7 ms per call on a big open level. + build 152 base-solidity nav + Debug tab.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
@@ -190,10 +190,13 @@ const SPRINT_MAX_BLOCKS    = 12;    // … up to this far (closing distance, not
 const PATH_RECOMPUTE_FRAMES = 12;   // recompute cadence (~5×/sec) — cache the route between
 const PATH_SEARCH_RADIUS    = 24;   // bounded search radius (blocks); player farther than this
                                     //   → fall back to legacy chase/wander (not actionable yet)
-const PATH_MAX_EXPANSIONS    = 2500; // A* node-expansion cap (runaway backstop). A single call
-                                     // measured ~5 ms (reachable) / ~25 ms (far-unreachable) at
-                                     // 5000 — a whole frame — so it's halved; a 24-radius route
-                                     // fits well under 2500, and this caps the worst case ~10 ms.
+const PATH_MAX_EXPANSIONS    = 1500; // A* node-expansion cap (runaway backstop). Lowered again
+                                     // (5000→2500→1500): a 24-radius chase route fits well under
+                                     // it, and on a big OPEN level the full scan is the residual
+                                     // per-frame cost, so a tighter cap keeps each call ~6-8 ms.
+const MOB_PATH_MAX_DROP      = 8;    // per-node DOWN-scan cap for mob/bot A* (vs NAV_MAX_DROP 40
+                                     // for the generator). The down-loop dominates per-node cost;
+                                     // 8 handles normal ledges, deep falls become a walk-off.
 const PATH_FLANK_BIAS_BLOCKS = 2.5;  // §5 surround: path GOAL offset past the player (per side)
 // ── Bounded pathfinding (the real perf fix). A* is EXPENSIVE per call (see above), so
 // letting every mob run it tanks the framerate (Kevin: 8–10 mobs → "impossible to play").

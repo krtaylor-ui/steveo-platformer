@@ -110,8 +110,15 @@ function _navKey(c, r) { return c + ',' + r; }
 // Standing on a JUMP_PAD swaps in the larger pad envelope. Verbatim port of the
 // generator's reachable() inner loop; `out` is filled with [c, r, dc, dr] so
 // callers can cost each edge by how it was traversed (dr<0 = climb, dr>0 = drop).
-function navNeighbors(nav, c, r, baseUp, baseDx, out, wallClimb) {
+function navNeighbors(nav, c, r, baseUp, baseDx, out, wallClimb, maxDrop) {
   out.length = 0;
+  // How far DOWN a single jump/drop move may reach. Defaults to NAV_MAX_DROP (the
+  // generator/validator's reachability rule), but the live mob/bot pathfinders pass a
+  // SMALLER value: the down-loop below is the dominant per-node cost (dr spans -jUp..maxDrop
+  // → hundreds of neighbour candidates), and a 40-deep scan on every one of A*'s ~thousands
+  // of node expansions was the residual per-frame cost. A smaller drop still handles normal
+  // ledges; deep falls just get taken as a walk-off (navDropTo) instead of a planned leap.
+  const dropMax = (maxDrop != null) ? maxDrop : NAV_MAX_DROP;
   // walk left/right (same row) or drop off a ledge
   for (const dc of [-1, 1]) {
     const nc = c + dc;
@@ -135,7 +142,7 @@ function navNeighbors(nav, c, r, baseUp, baseDx, out, wallClimb) {
   // bug). Horizontal jumps + drops are unaffected.
   const headBlocked = nav.solid(c, r - 2);
   for (let dc = -jDx; dc <= jDx; dc++) {
-    for (let dr = -jUp; dr <= NAV_MAX_DROP; dr++) {
+    for (let dr = -jUp; dr <= dropMax; dr++) {
       if (dc === 0 && dr === 0) continue;
       if (dr < 0 && headBlocked) continue;   // overhang overhead → no upward jump from this cell
       const nc = c + dc, nr = r + dr;
@@ -258,6 +265,7 @@ function findMobPath(nav, start, goal, opts) {
   const wallClimb = opts.wallClimb || 0;   // bots pass this when Wall Slide is enabled
   const maxRadius = opts.maxRadius || 40;
   const maxExpansions = opts.maxExpansions || 6000;
+  const maxDrop = (opts.maxDrop != null) ? opts.maxDrop : NAV_MAX_DROP;   // per-node down-scan cap (mobs/bots pass smaller)
 
   // Snap start + goal down to standable ground (either may be airborne).
   let [sc, sr] = start;
@@ -319,7 +327,7 @@ function findMobPath(nav, start, goal, opts) {
     if (hc < bestH) { bestH = hc; bestKey = k; }
     if (++expansions > maxExpansions) return partialResult();
     const gCur = gScore.get(k);
-    navNeighbors(nav, c, r, baseUp, baseDx, nbrs, wallClimb);
+    navNeighbors(nav, c, r, baseUp, baseDx, nbrs, wallClimb, maxDrop);
     for (const n of nbrs) {
       const [nc, nr, dc, dr] = n;
       if (Math.abs(nc - sc) + Math.abs(nr - sr) > maxRadius * 2) continue; // stay inside the budget
