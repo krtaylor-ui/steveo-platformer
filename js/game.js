@@ -1214,7 +1214,7 @@ class Game {
     // PATHFINDER considers solid, in a window around each bot. If your maze walls
     // do NOT get an orange outline, the planner isn't seeing them as obstacles
     // (routes straight through) — a solidity/layer bug, not a jump artifact.
-    if (typeof BOT_AI !== 'undefined' && BOT_AI.buildNav) {
+    if (this._worldAdvSettings.showNavGrid && typeof BOT_AI !== 'undefined' && BOT_AI.buildNav) {
       const nav = BOT_AI.buildNav(this.level);
       ctx.strokeStyle = 'rgba(255,140,0,0.55)'; ctx.lineWidth = 1;
       for (const b of this._botControllers) {
@@ -1228,7 +1228,7 @@ class Game {
         break;   // one window is enough (bots are usually near each other)
       }
     }
-    for (const b of this._botControllers) {
+    if (this._worldAdvSettings.showBotPaths) for (const b of this._botControllers) {
       if (!b || !b.player) continue;
       const path = b._path;
       if (path && path.length) {
@@ -5949,7 +5949,7 @@ class Game {
     // Arena world-space overlays (emeralds, power-ups) drawn inside the zoom context
     if (this.isArena) this._drawArenaWorldOverlay(ctx);
     // Bot AI debug: draw each bot's planned route + goal (World Setting, off by default).
-    if (this._worldAdvSettings.showBotPaths && this._botControllers && this._botControllers.length) this._drawBotDebug(ctx);
+    if ((this._worldAdvSettings.showBotPaths || this._worldAdvSettings.showNavGrid) && this._botControllers && this._botControllers.length) this._drawBotDebug(ctx);
     // Sandbox WORLD overlays (placed eggs/emeralds/power-ups/hill/spawn-lines/items
     // + portal labels) must scale with the zoom too — draw them inside the transform.
     if (this.gameMode === 'sandbox' && this.sandbox && this.sandbox.drawWorld) {
@@ -6042,7 +6042,7 @@ class Game {
     // ── Perf HUD (triage). Auto-shows when frames run slow (rolling avg > 18 ms);
     // force it on any time with `window._perfHud = true` in the console. Reads the
     // per-frame sub-timings stamped by the profiler in _loop. Zero cost when hidden.
-    if (this._profFrame && ((this._profAvg || 0) > 18 || (typeof window !== 'undefined' && window._perfHud))) {
+    if (this._profFrame && ((this._profAvg || 0) > 18 || (this._worldAdvSettings && this._worldAdvSettings.perfHud) || (typeof window !== 'undefined' && window._perfHud))) {
       const f = this._profFrame;
       const nMobs = this.mobManager ? this.mobManager.mobs.filter(m => m.alive).length : 0;
       const nArr  = this.mobManager ? (this.mobManager.arrows || []).length : 0;

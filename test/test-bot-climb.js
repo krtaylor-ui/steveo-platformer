@@ -32,7 +32,7 @@ const sandbox = new Proxy(real, { has: () => true, get: (t, k) => (k in t ? t[k]
 vm.createContext(sandbox);
 const run = (file, expose) => vm.runInContext(fs.readFileSync(`${jsDir}/${file}`, 'utf8') + '\n;' + expose, sandbox, { filename: file });
 run('constants.js', 'this.BLOCK_SIZE=BLOCK_SIZE;');
-run('blocks.js', 'this.BLOCK=BLOCK;');
+run('blocks.js', 'this.BLOCK=BLOCK; this.BLOCK_DATA=BLOCK_DATA;');
 run('pathfinding.js', 'this.findMobPath=findMobPath;');
 run('input.js', 'this.InputManager=InputManager;');
 run('player.js', 'this.Player=Player;');

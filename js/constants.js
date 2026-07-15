@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 151 (THE mob-perf fix — redstone.isPistonHeadAt() looped over EVERY component in the level on EVERY solidity check, and A* calls isSolid ~hundreds of thousands of times per route, so on a component-heavy level a SINGLE A* call cost up to a full second (Kevin measured A* >1000 ms/frame). It is now an O(1) per-frame cached set — A* cost is component-count-independent again (~6 ms/call in a bench, vs 27 ms+ before). Keeps the build-149/150 perf HUD so the win is visible. + build 150 profiler.)';
+const GAME_VERSION = 'v3 · build 152 (THE fix + Debug tab — pathfinding (mobs AND the companion bot) now reads BASE block solidity directly instead of the monkey-patched level.isSolid, which the game wraps with per-call trapdoor/piston/portal work. A* calls solid() hundreds of thousands of times per route, so that overhead made a single A* call cost ~0.5-1 s on a real level (Kevin: A*/aiLoop >1000 ms). Base solidity is a plain table lookup — component/patch-independent — so A* is ~6-14 ms/call no matter the level. Mob physics still uses the real isSolid (no clipping). Also: NEW Debug tab in World Settings (Performance HUD + Show Bot/Mob Paths + Show Nav Grid). + build 151 O(1) piston cache.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

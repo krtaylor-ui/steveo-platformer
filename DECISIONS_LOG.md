@@ -2471,3 +2471,28 @@ holding at ≤2 calls — i.e. a SINGLE A\* call cost ~500-1000 ms. Headless the
 - Tests: NEW test/test-redstone.js (8 assertions — head cell solid, body/non-piston/empty
   not, retract/extend + add/remove refresh the cache). Suite 550, all green. Browser-UNTESTED
   but the mechanism is benched.
+
+## THE mob-perf fix — pathfinding bypasses the monkey-patched isSolid (build 152)
+Build 151 (O(1) piston cache) did NOT fix Kevin's slowdown — the HUD still showed
+`mobs` ≈ `A*` ≈ `aiLoop` = **1000-2000 ms/frame**. Benched every angle:
+- A single A* call on a large open level with CHEAP solidity = ~6-14 ms (fine).
+- The game monkey-patches `level.isSolid` (trapdoor/piston/portal). Even post-151 (O(1)
+  piston) the patch adds constant per-call overhead; A* calls `solid()` ~hundreds of
+  thousands of times per route, so that overhead × volume dominates — and if the browser
+  had a PRE-151 cached build, the O(components) `isPistonHeadAt` made it ~80 ms/call at
+  3000 components (→ 100s of ms on bigger/heavier levels). Either way the per-call
+  solidity cost was the bottleneck, not the mob AI (which is ~0.66 ms).
+- **THE fix:** the pathfinding nav (`Mob._navFor` AND `BOT_AI.buildNav`) now reads BASE
+  block solidity directly — `const d = BLOCK_DATA[level.get(r,c)]; return d ? d.solid : true`
+  — instead of `level.isSolid`. That's a plain table lookup, component- AND patch- AND
+  cache-independent, so A* is ~6-14 ms/call on ANY level. Mob/bot PHYSICS still uses the
+  real `level.isSolid`, so they never clip a trapdoor/piston — this only trades a little
+  routing nicety around dynamic blocks for a guaranteed bound (A* ≤ ~28 ms/frame at the
+  2-recompute cap, vs 1000-2000 ms).
+- This makes build 151's isSolid work moot for pathfinding, but 151 still helps every
+  OTHER isSolid caller (player physics, etc.), so it stays.
+- **Debug tab** (Kevin asked to keep all the dev tools): NEW "Debug" tab in World Settings
+  with Performance HUD (the 149/150 profiler overlay), Show Bot/Mob Paths, and Show Nav
+  Grid (the orange solid-cell overlay — split out from showBotPaths). May be hidden later.
+- Tests: exposed BLOCK_DATA in the nav-using test sandboxes; fixed the path-stale test to
+  mutate `get` (nav's new solidity source); +test-redstone from 151. Suite 550, all green.

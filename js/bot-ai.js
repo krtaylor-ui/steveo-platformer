@@ -33,7 +33,11 @@ const BOT_AI = {
   buildNav(level) {
     return {
       W: level.width, H: level.height,
-      solid:  (c, r) => level.isSolid(r, c),
+      // Base block solidity (BLOCK_DATA), NOT the monkey-patched level.isSolid — A* calls
+      // solid() a huge number of times per route and the patch's per-call work (trapdoor/
+      // piston/portal) made that ruinously expensive on component-heavy levels. Same fix as
+      // the mobs' _navFor; the bot's PHYSICS still uses the real isSolid.
+      solid:  (c, r) => { const d = BLOCK_DATA[level.get(r, c)]; return d ? d.solid : true; },
       hazard: (c, r) => level.get(r, c) === BLOCK.LAVA,
       pad:    (c, r) => level.get(r, c) === BLOCK.JUMP_PAD,
     };

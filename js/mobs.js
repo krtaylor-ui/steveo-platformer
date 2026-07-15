@@ -334,7 +334,14 @@ class Mob {
   _navFor(level) {
     return {
       W: level.width, H: level.height,
-      solid:  (c, r) => level.isSolid(r, c),
+      // Pathfinding reads BASE block solidity (BLOCK_DATA) directly, NOT level.isSolid.
+      // The game monkey-patches level.isSolid with per-call work (trapdoor/piston/portal
+      // checks); it's trivial ONCE, but A* calls solid() hundreds of thousands of times
+      // per route, so the patch's overhead × that volume caused multi-second frames
+      // (Kevin's slowdown). Base solidity is a plain table lookup and is component- and
+      // patch-independent. Mob PHYSICS still uses the real isSolid, so mobs never clip a
+      // trapdoor/piston — this only trades a little routing nicety around dynamic blocks.
+      solid:  (c, r) => { const d = BLOCK_DATA[level.get(r, c)]; return d ? d.solid : true; },
       hazard: (c, r) => level.get(r, c) === BLOCK.LAVA,
       pad:    (c, r) => level.get(r, c) === BLOCK.JUMP_PAD,
     };

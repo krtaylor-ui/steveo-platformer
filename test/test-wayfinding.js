@@ -34,7 +34,7 @@ vm.runInContext(fs.readFileSync(`${jsDir}/pathfinding.js`, 'utf8') +
   '\n;this.findMobPath = findMobPath; this.navReachable = navReachable; this.navStandable = navStandable;',
   sandbox, { filename: 'pathfinding.js' });
 vm.runInContext(fs.readFileSync(`${jsDir}/blocks.js`, 'utf8') +
-  '\n;this.BLOCK = BLOCK;', sandbox, { filename: 'blocks.js' });
+  '\n;this.BLOCK = BLOCK; this.BLOCK_DATA = BLOCK_DATA;', sandbox, { filename: 'blocks.js' });
 vm.runInContext(fs.readFileSync(`${jsDir}/mobs.js`, 'utf8') +
   '\n;this.MobManager = MobManager; this.Mob = Mob;', sandbox, { filename: 'mobs.js' });
 const { MobManager, BLOCK } = sandbox;
@@ -144,8 +144,11 @@ console.log('Path invalidation on terrain change:');
   ok(z._path && z._path.length >= 2, 'a route was cached');
   ok(z._pathStale(level, z._path) === false, 'cached route valid while terrain unchanged');
   // Drop a solid block onto a cell the route stands in → route is now stale.
+  // (Nav reads base solidity via level.get now, so override get, not isSolid.)
   const cell = z._path[1];
   level.grid[cell[1]][cell[0]] = BLOCK.STONE;
+  const _origGet = level.get;
+  level.get = (r, c) => (r === cell[1] && c === cell[0]) ? BLOCK.STONE : _origGet(r, c);
   level.isSolid = (r, c) => (r === cell[1] && c === cell[0]) ? true : (r >= 2);
   ok(z._pathStale(level, z._path) === true, 'a block placed on the route → stale → recompute');
 }

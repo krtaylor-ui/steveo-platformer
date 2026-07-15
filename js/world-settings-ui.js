@@ -63,6 +63,7 @@ const WORLD_SETTINGS = {
     { id: 'arena',    label: 'Arena' },
     { id: 'combat',   label: 'Combat' },
     { id: 'mobs',     label: 'Mob Settings' },  // mob behavior (schema rows) + the special drops table (sandbox)
+    { id: 'debug',    label: 'Debug' },         // dev overlays: perf HUD, bot paths, nav-grid (may be hidden later)
   ],
 
   // Arena game types (which modes an arena world supports) → arenaEnabledTypes[].
@@ -110,7 +111,10 @@ const WORLD_SETTINGS = {
       { key: 'fullMoonHpBoost', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'toggle', dflt: false, label: 'Full-Moon Mob HP', hint: 'tougher mobs on full-moon nights' },
       { key: 'fullMoonHpAmount', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'cycle', opts: [1.25, 1.5, 2, 3], dflt: 1.5, label: 'Full-Moon HP Boost', fmt: (v) => v.toFixed(2) + 'x', sub: true, dependsOn: 'fullMoonHpBoost', advanced: true, hint: 'mob HP multiplier on a full moon' },
       { key: 'compactHotbar', tab: 'world', group: 'Display', modes: M.display, type: 'toggle', dflt: false, label: 'Compact Hotbar' },
-      { key: 'showBotPaths', tab: 'world', group: 'Display', modes: M.display, type: 'toggle', dflt: false, label: 'Show Bot Paths (debug)', advanced: true, hint: 'draw each AI bot’s planned route (green), goal (magenta ring), and a red ✕ when it has no path — for debugging navigation' },
+      // ── Debug tab — dev overlays (kept for diagnosing perf + navigation; may be hidden later) ──
+      { key: 'perfHud', tab: 'debug', group: 'Overlays', modes: M.all, type: 'toggle', dflt: false, label: 'Performance HUD', hint: 'show a live frame-time breakdown (FPS, update/render, mobs/bot/redstone, A* calls) — also auto-appears when frames run slow' },
+      { key: 'showBotPaths', tab: 'debug', group: 'Overlays', modes: M.all, type: 'toggle', dflt: false, label: 'Show Bot / Mob Paths', hint: 'draw each AI’s planned route (green), goal (magenta ring), and a red ✕ when it has no path — for debugging navigation' },
+      { key: 'showNavGrid', tab: 'debug', group: 'Overlays', modes: M.all, type: 'toggle', dflt: false, label: 'Show Nav Grid (solid cells)', hint: 'outline every cell the pathfinder treats as SOLID (orange) around each bot — if a wall has no outline, the planner isn’t seeing it' },
       { key: 'worldZoom', tab: 'world', group: 'Display', modes: M.display, type: 'cycle', opts: O.zoom, dflt: 1.0, label: 'Default Zoom', fmt: (v) => v.toFixed(2) + 'x' },
       { key: 'twoPlayerMode', tab: 'world', group: 'Players', modes: M.adventure, type: 'toggle', dflt: false, label: '2-Player Co-op', hint: 'P2 joins with a gamepad' },
       { key: 'companionBot', tab: 'world', group: 'Players', modes: M.adventure, type: 'cycle', opts: ['off', 'EASY', 'MEDIUM', 'HARD'], dflt: 'off', label: 'Companion Bot', fmt: (v) => v === 'off' ? 'Off' : v.charAt(0) + v.slice(1).toLowerCase(), hint: 'an AI teammate (P2) that follows you, fights mobs, and takes leftover loot' },
