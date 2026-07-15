@@ -2449,3 +2449,25 @@ draw). Rather than guess a third time, this build INSTRUMENTS the real frame:
   ~25-100 ms each. The HUD's `bot` bucket will confirm or clear this.
 - Next: Kevin reproduces, reads the HUD, reports which bucket dominates → targeted fix.
 - Suite 543 green (game.js syntax-checked; profiler is browser-only).
+
+## THE mob-perf fix — O(1) piston-head lookup (build 151)
+The build-149/150 perf HUD (on Kevin's machine) showed `update` = `mobs` = **1000-2000 ms/
+frame**, and the pt.2 split showed **A\* itself was >1000 ms** with the per-frame cap
+holding at ≤2 calls — i.e. a SINGLE A\* call cost ~500-1000 ms. Headless the same call is
+~5 ms. The only O(large) work in the pathfinding hot path:
+- The game monkey-patches `level.isSolid` (trapdoors/pistons/portals). For the common case
+  (any normal block) it calls `redstone.isPistonHeadAt(col,row)`, which **looped over EVERY
+  component in the level** (wires, torches, plates… not just pistons). A\* calls `isSolid`
+  ~hundreds of thousands of times per route (2500 expansions × ~100 neighbour candidates ×
+  ~3 solidity checks), so on a component-heavy/large level that's isSolid-calls × components
+  = **billions of ops per A\* call**. Nothing to do with the mob AI logic (which is ~0.66 ms)
+  — builds 147/148 fixed the wrong thing.
+- **Fix:** `isPistonHeadAt` is now an O(1) lookup into a `_pistonHeads` Set (numeric cell
+  keys) rebuilt once per frame in `updatePistonAnimations` (+ on sandbox add/remove). A\*
+  cost is component-count-independent again — bench: 2000 components went 27 ms → 6 ms/call
+  (≈ the zero-component baseline); the Set-based isSolid is flat regardless of component count.
+- Kept the perf HUD/profiler (builds 149-150) so Kevin can SEE the fix (`A* Ncall Xms`
+  should drop to a few ms).
+- Tests: NEW test/test-redstone.js (8 assertions — head cell solid, body/non-piston/empty
+  not, retract/extend + add/remove refresh the cache). Suite 550, all green. Browser-UNTESTED
+  but the mechanism is benched.

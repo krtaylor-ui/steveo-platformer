@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 150 (Perf profiler pt.2 — the HUD now splits the mob bucket into A* calls/time + AI-loop time, to pin whether the 1-2s/frame Kevin measured is the pathfinder hammering the expensive monkey-patched isSolid (which iterates every redstone component) or non-A* mob work. Diagnostic only. + build 149 profiler.)';
+const GAME_VERSION = 'v3 · build 151 (THE mob-perf fix — redstone.isPistonHeadAt() looped over EVERY component in the level on EVERY solidity check, and A* calls isSolid ~hundreds of thousands of times per route, so on a component-heavy level a SINGLE A* call cost up to a full second (Kevin measured A* >1000 ms/frame). It is now an O(1) per-frame cached set — A* cost is component-count-independent again (~6 ms/call in a bench, vs 27 ms+ before). Keeps the build-149/150 perf HUD so the win is visible. + build 150 profiler.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

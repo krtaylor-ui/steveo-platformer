@@ -25,6 +25,26 @@ class RedstoneSystem {
       this._map.set(`${c.col},${c.row}`, c);
     }
     this.soundCallback = null;    // set by game.js: fn(file, volMult?)
+    // Perf: O(1) piston-head lookup. isPistonHeadAt() is called from the (monkey-patched)
+    // level.isSolid on EVERY solidity check, and pathfinding hammers isSolid ~hundreds of
+    // thousands of times per A* run — so the old per-call loop over ALL components made a
+    // single A* cost up to a full second on a component-heavy level (Kevin's freeze). This
+    // set is rebuilt once per frame (in updatePistonAnimations) so the per-call cost is O(1).
+    this._pistonHeads = new Set();
+    this._rebuildPistonHeads();
+  }
+  // Numeric cell key (avoids per-call string allocation). Cols/rows are small.
+  _phKey(col, row) { return col * 100000 + row; }
+  // Rebuild the extended-piston-head cell set. Iterates components ONCE (cheap; done per
+  // frame), replacing the old per-isSolid-call scan.
+  _rebuildPistonHeads() {
+    this._pistonHeads.clear();
+    for (const comp of this.components) {
+      if (comp.type !== 'piston') continue;
+      if ((comp.animTarget ?? (comp.extended ? 1 : 0)) === 0) continue;
+      const { dr, dc } = _pistonDelta(comp.dir);
+      this._pistonHeads.add(this._phKey(comp.col + dc, comp.row + dr));
+    }
   }
 
   getAt(col, row) {
@@ -176,14 +196,10 @@ class RedstoneSystem {
   }
 
   isPistonHeadAt(col, row) {
-    for (const comp of this.components) {
-      if (comp.type !== 'piston') continue;
-      // Solid once targeting extended, regardless of animation progress
-      if ((comp.animTarget ?? (comp.extended ? 1 : 0)) === 0) continue;
-      const { dr, dc } = _pistonDelta(comp.dir);
-      if (comp.col + dc === col && comp.row + dr === row) return true;
-    }
-    return false;
+    // O(1) via the per-frame cache (see _rebuildPistonHeads). Was an O(components) scan on
+    // every call — catastrophic under pathfinding, which calls isSolid → this a huge number
+    // of times per A* run.
+    return this._pistonHeads.has(this._phKey(col, row));
   }
 
   // Called once per frame to advance piston animation (6 frames ≈ 100ms at 60fps)
@@ -199,20 +215,24 @@ class RedstoneSystem {
       const dir = comp.animTarget > comp.animProgress ? 1 : -1;
       comp.animProgress = Math.max(0, Math.min(1, comp.animProgress + dir * SPEED));
     }
+    this._rebuildPistonHeads();   // refresh the O(1) piston-head cache for this frame's isSolid calls
   }
 
   // Dynamically add a component (for sandbox-placed levers/trapdoors)
   addComponent(comp) {
     this.components.push(comp);
     this._map.set(`${comp.col},${comp.row}`, comp);
+    if (comp.type === 'piston') this._rebuildPistonHeads();
   }
 
   // Remove a component by grid position
   removeAt(col, row) {
     const key = `${col},${row}`;
     const idx = this.components.findIndex(c => c.col === col && c.row === row);
+    const wasPiston = idx >= 0 && this.components[idx].type === 'piston';
     if (idx >= 0) this.components.splice(idx, 1);
     this._map.delete(key);
+    if (wasPiston) this._rebuildPistonHeads();
   }
 
   // Draw state-aware redstone blocks on top of level render.
