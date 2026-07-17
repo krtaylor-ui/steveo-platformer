@@ -2496,3 +2496,24 @@ Build 151 (O(1) piston cache) did NOT fix Kevin's slowdown — the HUD still sho
   Grid (the orange solid-cell overlay — split out from showBotPaths). May be hidden later.
 - Tests: exposed BLOCK_DATA in the nav-using test sandboxes; fixed the path-stale test to
   mutate `get` (nav's new solidity source); +test-redstone from 151. Suite 550, all green.
+
+## World-select: new-game spawn + Continue/Start button (build 155)
+Kevin: (1) launching a platformer world from the world-select screen spawned the player
+wherever they were in the Sandbox editor, not the designed spawn point (Sandbox "Test"
+was correct); (2) the slot button always said "Continue" even for a never-played game.
+- **Root cause (server-verified):** `POST /api/games/create` sets `game_data = world_data`
+  — a FULL copy of the source world, which includes the editor's `playerProgress` (god-mode
+  loadout + editor POSITION). `game-play.js` then ran `GAME_STATE.deserialize` unconditionally,
+  restoring that editor position ON TOP of the world's spawn point. (Sandbox "Test" doesn't
+  deserialize, so it kept the spawn point → the discrepancy.)
+- **Signal:** a game row has `last_played_at = null` on create (only the first save sets it),
+  so `!last_played_at` = "never played / new".
+- **Fixes:**
+  - `game-state.js deserialize(game, data, {newGame})` — on a new game, skip playerProgress
+    entirely: the world load already placed the player at its spawn point and
+    `_applyStartingWeapons` supplies the DESIGNED loadout (not the editor's god inventory).
+  - `game-play.js` — `isNew = !record.last_played_at`; pass `options.newGame` + deserialize opts.
+  - `game-selection.js` — button text = `last_played_at ? 'Continue' : 'Start Game'`.
+  - `server/games-routes.js` — Restart now also clears `last_played_at` (a restarted game is
+    fresh: spawn point + "Start Game"). **Needs a server redeploy to take effect.**
+- Suite 554, all green. Browser/DB-UNTESTED.

@@ -37,7 +37,11 @@ const GAME_PLAY = {
 
       // Build options for Game constructor
       const gameData = record.game_data || {};
-      const options  = { templateData: gameData };
+      // A game that has never been played has no last_played_at (create doesn't set it;
+      // the first save does). New game → start fresh at the world's spawn point; an
+      // in-progress game → restore the saved position/loadout ("Continue").
+      const isNew = !record.last_played_at;
+      const options  = { templateData: gameData, newGame: isNew };
       // Normal / platformer still expect world:'adventure' so their level generation
       // runs before the templateData override replaces the grid.
       if (this.gameMode === 'normal' || this.gameMode === 'platformer') {
@@ -47,8 +51,9 @@ const GAME_PLAY = {
       // Create the game — _loadNormalWorld / _loadPlatformerWorld runs inside constructor
       window.game = new Game(this.gameMode, options, () => this._onGameExit());
 
-      // Apply saved player position, health, inventory on top of world load
-      GAME_STATE.deserialize(window.game, gameData);
+      // Apply saved player position, health, inventory on top of world load (a NEW game
+      // skips this so it spawns at the designed spawn point, not the editor position).
+      GAME_STATE.deserialize(window.game, gameData, { newGame: isNew });
 
       // Start the play-time tracker for THIS game. Session resets to 0; the
       // total continues from the loaded save. It's pause-aware, so it won't

@@ -341,6 +341,7 @@ module.exports = function setupGamesRoutes(app) {
         .update({
           game_data: world.world_data,
           status: 'IN_PROGRESS',
+          last_played_at: null,   // restart = fresh: spawn at the world's spawn point, show "Start Game"
         })
         .eq('id', gameId)
         .eq('player_id', req.user.id)

@@ -275,10 +275,17 @@ const GAME_STATE = {
   // DESERIALIZE: Apply saved playerProgress to a live game.
   // Call this AFTER new Game() finishes constructing.
   // ════════════════════════════════════════════════════════════
-  deserialize(game, stateData) {
+  deserialize(game, stateData, opts) {
     if (!stateData) return;
     // Restore persistent total play time (top-level, independent of playerProgress).
     if (typeof stateData.totalGameTime === 'number') game.totalGameTime = stateData.totalGameTime;
+    // NEW GAME: a freshly-created game's game_data is a full COPY of the source world —
+    // including the sandbox editor's player state (god-mode loadout + editor POSITION).
+    // Restoring that would spawn the player wherever the designer left off instead of at
+    // the designed spawn point (Kevin). So on a new game skip playerProgress entirely: the
+    // world load already placed the player at its spawn point, and _applyStartingWeapons
+    // gives the designed starting loadout. Progress is only restored when CONTINUING.
+    if (opts && opts.newGame) return;
     if (!stateData.playerProgress) return;
     const prog = stateData.playerProgress;
     const p    = game.player;
