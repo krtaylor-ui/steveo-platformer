@@ -3,6 +3,20 @@ const { supabaseAdmin } = require('./supabase-client');
 // Fixed owner of seeded default/system worlds (mirrors server.js).
 const SYSTEM_USER_ID = '00000000-0000-4000-8000-000000000001';
 
+// A world's saved data includes the editor's `playerProgress` (god-mode loadout + the
+// editor POSITION). A brand-new / restarted GAME must NOT inherit that — it should spawn
+// at the world's designed spawn point with the designed starting loadout. Strip it; its
+// absence also marks the game as "never played" (Start Game vs Continue). Handles both an
+// object (JSONB) and a JSON string, and never throws on odd input.
+function freshGameData(worldData) {
+  try {
+    let d = worldData;
+    if (typeof d === 'string') d = JSON.parse(d);
+    if (d && typeof d === 'object') { d = { ...d }; d.playerProgress = null; return d; }
+  } catch (e) { /* fall through */ }
+  return worldData;
+}
+
 const verifyToken = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -188,7 +202,12 @@ module.exports = function setupGamesRoutes(app) {
           mode,
           game_name: gameName,
           slot_number: slot,
-          game_data: world.world_data,
+          // A new game is a copy of the world's data, but WITHOUT the editor's saved
+          // player progress — otherwise the player spawns wherever the designer left off
+          // in the editor instead of the designed spawn point (Kevin). Absence of
+          // playerProgress also marks the game as "never played" for the Start/Continue
+          // button + fresh-spawn logic.
+          game_data: freshGameData(world.world_data),
           status: 'IN_PROGRESS',
         })
         .select()
@@ -339,9 +358,10 @@ module.exports = function setupGamesRoutes(app) {
       const { data: restarted, error: restartError } = await supabaseAdmin
         .from('games')
         .update({
-          game_data: world.world_data,
+          // Restart = fresh: reset to the world's data minus the editor's progress, so
+          // the player spawns at the designed spawn point and the slot reads "Start Game".
+          game_data: freshGameData(world.world_data),
           status: 'IN_PROGRESS',
-          last_played_at: null,   // restart = fresh: spawn at the world's spawn point, show "Start Game"
         })
         .eq('id', gameId)
         .eq('player_id', req.user.id)

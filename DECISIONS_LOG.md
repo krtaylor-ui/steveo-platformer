@@ -2517,3 +2517,20 @@ was correct); (2) the slot button always said "Continue" even for a never-played
   - `server/games-routes.js` — Restart now also clears `last_played_at` (a restarted game is
     fresh: spawn point + "Start Game"). **Needs a server redeploy to take effect.**
 - Suite 554, all green. Browser/DB-UNTESTED.
+
+## World-select new-game fixes pt.2 — robust "never played" signal (build 156)
+Build 155 keyed "new game" on `last_played_at === null`, but the games table's column
+apparently DEFAULTs to now() on insert, so a fresh game already had a timestamp → every
+game read as "played": the slot button stayed "Continue" and P1's editor position was
+restored (the companion is placed separately, so it looked correct — Kevin's exact report).
+- **Client fix (works WITHOUT a redeploy):** a game is "new" when its `game_data` has no
+  `playerProgress` OR `last_played_at ≈ created_at` (bumped only by a real save; a <3 s gap
+  = never saved). Used by both the Start/Continue button (game-selection `_isNewGame`) and
+  game-play's `isNew` (→ skips restoring the editor position, so P1 spawns at the designed
+  spawn point via `_loadPlatformerWorld`).
+- **Server fix (needs redeploy for full effect):** `create` and `restart` now store
+  `freshGameData(world_data)` — the world data with the editor's `playerProgress` STRIPPED
+  — so a new/restarted game can't inherit the editor position/loadout, and its absence is a
+  clean "never played" marker. Reverted the build-155 `last_played_at:null` on restart (that
+  column may be NOT NULL → would have errored).
+- Suite 554, all green. Browser/DB-UNTESTED (verified against server code).

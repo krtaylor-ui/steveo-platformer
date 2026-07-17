@@ -37,10 +37,13 @@ const GAME_PLAY = {
 
       // Build options for Game constructor
       const gameData = record.game_data || {};
-      // A game that has never been played has no last_played_at (create doesn't set it;
-      // the first save does). New game → start fresh at the world's spawn point; an
-      // in-progress game → restore the saved position/loadout ("Continue").
-      const isNew = !record.last_played_at;
+      // A game that has never been played reads as "new" → start fresh at the world's
+      // spawn point; an in-progress game restores the saved position/loadout ("Continue").
+      // last_played_at is meant to be null until the first save, but the DB column may
+      // DEFAULT now() on insert, so also treat last_played_at ≈ created_at as never-saved.
+      const isNew = !gameData.playerProgress ||
+        !record.last_played_at ||
+        (record.created_at && (new Date(record.last_played_at) - new Date(record.created_at)) < 3000);
       const options  = { templateData: gameData, newGame: isNew };
       // Normal / platformer still expect world:'adventure' so their level generation
       // runs before the templateData override replaces the grid.

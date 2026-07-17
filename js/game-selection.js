@@ -41,6 +41,20 @@ const GAME_SELECTION = {
     }
   },
 
+  // A game is "new / never really played" if it has no save yet. `last_played_at` is
+  // only meant to be set by the first save — but the DB column may DEFAULT now() on
+  // insert, so we can't just test for null. Treat it as new when last_played_at is
+  // missing OR still ≈ created_at (i.e. it hasn't been bumped by an actual save).
+  _isNewGame(g) {
+    if (!g) return true;
+    // Most reliable: the server strips the editor's playerProgress from a fresh/restarted
+    // game's data, so its absence = never played (works once the server is redeployed).
+    if (g.game_data && !g.game_data.playerProgress) return true;
+    if (!g.last_played_at) return true;
+    if (!g.created_at) return false;
+    return (new Date(g.last_played_at) - new Date(g.created_at)) < 3000;   // <3s gap → never saved
+  },
+
   _renderSlots() {
     this.games.forEach((game, slotNum) => {
       const slotEl = document.getElementById(`slot-${slotNum}`);
@@ -52,7 +66,7 @@ const GAME_SELECTION = {
           <h3 class="game-name">${game.game_name}</h3>
           <p class="world-name">World: ${game.world_name || 'Unnamed World'}</p>
           <div class="game-actions">
-            <button class="btn btn-primary continue-btn" data-game-id="${game.id}">${this.currentMode === 'SPEEDRUNNER' ? 'Play' : (game.last_played_at ? 'Continue' : 'Start Game')}</button>
+            <button class="btn btn-primary continue-btn" data-game-id="${game.id}">${this.currentMode === 'SPEEDRUNNER' ? 'Play' : (this._isNewGame(game) ? 'Start Game' : 'Continue')}</button>
             ${this.currentMode === 'SPEEDRUNNER' ? '' : `<button class="btn btn-secondary restart-btn" data-game-id="${game.id}">Restart</button>`}
             <button class="btn btn-secondary copy-btn" data-game-id="${game.id}">Copy</button>
             <button class="btn btn-danger delete-btn" data-game-id="${game.id}">Delete</button>
