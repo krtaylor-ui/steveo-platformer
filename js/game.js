@@ -2125,9 +2125,13 @@ class Game {
     // consume it this frame. Each controller self-guards on dead/respawning/
     // not-playing (writes a neutral no-op). (Bot AI brief, Phase 1.)
     if (this._botControllers && this._botControllers.length) {
+      // Companion summon: pressing C calls a companion to you — but ONLY while its "!" is
+      // showing (it's genuinely far). The bot reads this flag during its tick; cleared after.
+      this._companionSummon = this.input.isJustDown('KeyC');
       const _bt = (this._prof && typeof performance !== 'undefined') ? performance.now() : 0;
       for (const b of this._botControllers) b.tick();
       if (this._prof && _bt) this._prof.bot = (this._prof.bot || 0) + (performance.now() - _bt);
+      this._companionSummon = false;
     }
 
     // ── P1 respawn timer (2P co-op / arena) ────────────────
@@ -4756,18 +4760,44 @@ class Game {
       : null;
   }
 
+  // Would player `p`'s body box overlap a solid block at x? (Body rows only — the floor
+  // one row below the feet isn't included, so a grounded player reads as un-blocked.)
+  _playerBlockedAt(p, x) {
+    const c0 = Math.floor(x / BLOCK_SIZE), c1 = Math.floor((x + p.width - 1) / BLOCK_SIZE);
+    const r0 = Math.floor(p.y / BLOCK_SIZE), r1 = Math.floor((p.y + p.height - 1) / BLOCK_SIZE);
+    for (let r = r0; r <= r1; r++)
+      for (let c = c0; c <= c1; c++)
+        if (this.level.isSolid(r, c)) return true;
+    return false;
+  }
+
   _resolvePlayerCollision(p1, p2) {
+    // World setting: players can pass THROUGH each other (no push) — share a spot on screen.
+    if (this._worldAdvSettings && this._worldAdvSettings.playersPassThrough) return;
     const overlapX = (p1.x + p1.width)  - p2.x;
     const overlapX2= (p2.x + p2.width)  - p1.x;
     if (overlapX <= 0 || overlapX2 <= 0) return;
     const topA = p1.y, botA = p1.y + p1.height;
     const topB = p2.y, botB = p2.y + p2.height;
     if (botA <= topB || botB <= topA) return;
-    // Horizontal push: push each away by half overlap
-    const push = Math.min(overlapX, overlapX2) / 2;
-    const dir  = p1.cx < p2.cx ? 1 : -1;
-    p1.x -= dir * push;
-    p2.x += dir * push;
+    // Horizontal push: push each away by half the overlap — but NEVER into a wall. If a
+    // player's half-push would embed them in solid terrain, cancel it and let the other
+    // absorb the full separation instead (Kevin: a player/bot could shove the other into
+    // a wall). If BOTH are wall-blocked, leave them (can't separate without clipping).
+    const half = Math.min(overlapX, overlapX2) / 2;
+    const dir  = p1.cx < p2.cx ? 1 : -1;   // p1 is the left one, p2 the right one
+    const p1x = p1.x - dir * half, p2x = p2.x + dir * half;
+    const p1ok = !this._playerBlockedAt(p1, p1x);
+    const p2ok = !this._playerBlockedAt(p2, p2x);
+    if (p1ok && p2ok) { p1.x = p1x; p2.x = p2x; return; }
+    if (p1ok && !p2ok) {                                   // p2 against a wall → p1 absorbs it all
+      const full = p1.x - dir * half * 2;
+      p1.x = this._playerBlockedAt(p1, full) ? p1x : full;
+    } else if (p2ok && !p1ok) {                            // p1 against a wall → p2 absorbs it all
+      const full = p2.x + dir * half * 2;
+      p2.x = this._playerBlockedAt(p2, full) ? p2x : full;
+    }
+    // both blocked → do nothing
   }
 
   // ── Phase 3B player-model accessors ──────────────────────────

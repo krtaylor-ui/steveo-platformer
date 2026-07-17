@@ -445,18 +445,20 @@ class BotController {
     const aws = this.game._worldAdvSettings || {};
     const distB = Math.hypot(leader.cx - me.cx, leader.cy - me.cy) / BLOCK_SIZE;  // DIRECT (vertical counts)
 
-    // ── Fast-pace teleport: warp on distance, PLUS a long stuck-fallback. ──
-    // The distance check uses straight-line distance, but a maze's corridor route can
-    // be far longer — so the bot could be straight-line-close yet corridor-unreachable
-    // and just sit there. The fallback warps after a long genuine stall so it never
-    // gets permanently trapped (threshold ×3 so it won't fire during normal nav).
+    // ── Teleport ON = player-SUMMONED warp (Kevin: auto-teleport was too aggressive). ──
+    // Getting too far just raises the yellow "!" (bot wants a lift); it does NOT warp on
+    // its own. The player presses C to call it — and that only works WHILE the "!" is
+    // showing. Hysteresis: "!" turns on past `range`, off once reunited, so it doesn't
+    // flicker at the edge.
     if (aws.companionTeleport !== false) {
-      this.player._stuckMark = false;
       const range = aws.companionTeleportRange || BOT_COMPANION_WARP_DIST;
-      if (distB > range) { this._doWarp(leader); return; }
-      if (this._ccBest == null || distB < this._ccBest - 0.5) { this._ccBest = distB; this._ccStuck = 0; }
-      else this._ccStuck = (this._ccStuck || 0) + 1;
-      if (this._ccStuck > BOT_COMPANION_WARP_STUCK * 3 && distB > BOT_FOLLOW_FAR) this._doWarp(leader);
+      if (distB > range) this._summonable = true;
+      else if (distB < BOT_FOLLOW_NEAR + 1) this._summonable = false;
+      me._stuckMark = !!this._summonable;                 // yellow "!" = "press C to call me"
+      if (this._summonable && this.game._companionSummon) {
+        this._doWarp(leader);
+        this._summonable = false; me._stuckMark = false;
+      }
       return;
     }
 

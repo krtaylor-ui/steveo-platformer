@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 153 (More A* headroom — the per-node neighbour scan looped DOWN to NAV_MAX_DROP (40) on every one of A*\'s thousands of expansions; mob/bot pathfinding now caps that at 8 (deep falls become a walk-off) and the expansion budget is 2500→1500. ~13→7 ms per call on a big open level. + build 152 base-solidity nav + Debug tab.)';
+const GAME_VERSION = 'v3 · build 154 (Playtest fixes: wall-slide now needs a wall TALLER than 1 block (matches ledge-grab; the old count summed the floor under a 1-block wall); players no longer shove each other INTO walls (push is wall-checked) + new "Players Pass Through" world setting (overlap, no collision); companion Auto-teleport replaced with player SUMMON — a far companion shows "!", press C to warp it (never auto, no more over-eager teleporting). + build 153 A* headroom.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

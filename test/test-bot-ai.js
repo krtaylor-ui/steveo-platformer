@@ -769,44 +769,41 @@ console.log('Wayfinding fix — repeated fruitless escapes stop pacing (re-decid
   }
   ok(reDecided, 'after BOT_ESCAPE_MAX fruitless escapes the bot drops the goal to re-decide (no endless pacing)');
 }
-console.log('Wayfinding fix — companion warps to the leader when it cannot reach:');
+console.log('Companion summon (Teleport ON) — "!" on distance, warp only when the player calls it:');
 {
   const level = flatLevel();
-  const leader = mkPlayer(25, 2, { owner: 'p1' });     // far ahead
-  const comp = mkPlayer(2, 2, { owner: 'p2' });        // 23 blocks behind (> WARP_DIST 22)
+  const leader = mkPlayer(25, 2, { owner: 'p1' });     // far ahead (> range 22)
+  const comp = mkPlayer(2, 2, { owner: 'p2' });        // 23 blocks behind
   const game = mkGame(level, [leader, comp], { gameMode: 'platformer' });
   const ctrl = new BotController(game, 1, 'companion', 'MEDIUM');
   const beforeX = comp.x;
   ctrl.tick();
-  ok(comp.x !== beforeX, 'companion is repositioned (warped) toward the far leader');
+  ok(comp.x === beforeX, 'far companion does NOT auto-warp (Kevin: too aggressive)');
+  ok(comp._stuckMark === true, 'a far companion raises the "!" (summonable)');
+  // Player presses C (summon) while the "!" is up → warp beside the leader.
+  game._companionSummon = true;
+  ctrl.tick();
+  ok(comp.x !== beforeX, 'pressing summon while "!" is up warps the companion');
   ok(Math.hypot(leader.cx - comp.cx, leader.cy - comp.cy) / B <= 4, 'companion ends up beside the leader');
-  // Teleport World Setting OFF → no warp (nav must handle it).
+  // Summon does NOTHING when the companion is near (no "!" → can't call it).
+  const compN = mkPlayer(24, 2, { owner: 'p2' });      // right next to the leader
+  const gameN = mkGame(level, [mkPlayer(25, 2, { owner: 'p1' }), compN], { gameMode: 'platformer' });
+  const ctrlN = new BotController(gameN, 1, 'companion', 'MEDIUM');
+  const bxN = compN.x; gameN._companionSummon = true; ctrlN.tick();
+  ok(compN.x === bxN, 'summon is ignored when the companion is near (no "!" active)');
+  // Teleport World Setting OFF → summon disabled; stuck-behaviour path handles it instead.
   const comp2 = mkPlayer(2, 2, { owner: 'p2' });
   const game2 = mkGame(level, [mkPlayer(25, 2, { owner: 'p1' }), comp2], { gameMode: 'platformer', _worldAdvSettings: { companionTeleport: false, companionStuckBehavior: 'none' } });
   const ctrl2 = new BotController(game2, 1, 'companion', 'MEDIUM');
-  const bx2 = comp2.x; ctrl2.tick();
-  ok(comp2.x === bx2, 'companionTeleport:false disables the warp (for nav stress-testing)');
-  // Direct (Euclidean) distance: a leader far ABOVE (vertical) also triggers teleport.
+  const bx2 = comp2.x; game2._companionSummon = true; ctrl2.tick();
+  ok(comp2.x === bx2, 'companionTeleport:false → C does not warp (nav stress-testing)');
+  // Direct (Euclidean) distance: a leader far ABOVE (vertical) also raises the "!".
   const compV = mkPlayer(5, 40, { owner: 'p2' });
   const leadV = mkPlayer(5, 40, { owner: 'p1' }); leadV.y = 2 * B;   // ~38 blocks straight up
   const gameV = mkGame(level, [leadV, compV], { gameMode: 'platformer', _worldAdvSettings: { companionTeleport: true, companionTeleportRange: 18 } });
   const ctrlV = new BotController(gameV, 1, 'companion', 'MEDIUM');
-  const byV = compV.y; ctrlV.tick();
-  ok(compV.y !== byV, 'vertical distance beyond range triggers teleport (direct distance, not horizontal-only)');
-}
-
-console.log('Teleport ON — stuck-fallback warps even when straight-line-close (maze case):');
-{
-  const level = flatLevel();
-  const leader = mkPlayer(12, 2, { owner: 'p1' });      // 10 blocks away: under the 18-block range → no distance warp
-  const comp = mkPlayer(2, 2, { owner: 'p2' });
-  const game = mkGame(level, [leader, comp], { gameMode: 'platformer', _worldAdvSettings: { companionTeleport: true } });
-  const ctrl = new BotController(game, 1, 'companion', 'MEDIUM');
-  const bx = comp.x;
-  for (let f = 0; f < 5; f++) { ctrl._companionAssist(); }
-  ok(comp.x === bx, 'does NOT warp early while straight-line-close (within range)');
-  for (let f = 0; f < 200; f++) { ctrl._companionAssist(); }  // never closes → long stall
-  ok(comp.x !== bx, 'stuck-fallback warps after a long stall even with Teleport ON (no permanent trap)');
+  ctrlV.tick();
+  ok(compV._stuckMark === true, 'vertical distance beyond range raises the "!" (direct distance, not horizontal-only)');
 }
 
 console.log('Companion stuck behaviors (Teleport OFF):');
