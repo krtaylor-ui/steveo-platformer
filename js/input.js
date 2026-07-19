@@ -228,8 +228,10 @@ class InputManager {
       const rect   = this._canvas.getBoundingClientRect();
       const scaleX = this._canvas.width  / rect.width;
       const scaleY = this._canvas.height / rect.height;
-      this.mouse.x = (e.clientX - rect.left) * scaleX;
-      this.mouse.y = (e.clientY - rect.top)  * scaleY;
+      // Clamp to the 800×500 backing so a transient display/size mismatch can't map the
+      // cursor to a wild off-canvas world point (belt-and-suspenders for the resize fix).
+      this.mouse.x = Math.max(0, Math.min(this._canvas.width,  (e.clientX - rect.left) * scaleX));
+      this.mouse.y = Math.max(0, Math.min(this._canvas.height, (e.clientY - rect.top)  * scaleY));
     });
     this._canvas.addEventListener('mousedown', e => {
       if (e.button === 0) {
