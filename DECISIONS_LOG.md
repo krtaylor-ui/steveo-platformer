@@ -17,6 +17,21 @@
   coord clamp (162), window mouseup / mouseleave / blur button reset (158/160), `e.buttons` bitmask sync
   on mousemove (163). Raw-button Debug HUD line retained (164).
 
+## Aim freeze on the right half — mousemove on window (2026-07-19, build 166)
+- **Symptom (after 165 let Space fire the bow):** the bow fired, but the aim LOCKED to wherever the
+  cursor crossed left→right — `mouse.x` froze at the visual center in zoomed-out / single-screen play.
+- **Root cause:** the `mousemove` listener was on the **canvas element**. The zoom-to-fit view puts
+  letterbox bars / an overflow-clipped canvas edge / HUD overlays under the cursor on the right side;
+  a canvas-only listener gets no `mousemove` there, so the last coordinate stuck. (Backing is a fixed
+  800×500; `world≈800` at `mouse.x≈400` is just the `_srZoom` divide, not part of the bug.)
+- **Fix:** attach `mousemove` to the **window** and map through `canvas.getBoundingClientRect()`, clamped
+  to the 800×500 backing. Cursor is tracked everywhere on screen; aiming past the visible edge pins to the
+  edge instead of freezing. Removed the now-obsolete canvas `mouseleave` reset (window mousemove re-syncs
+  button state from `e.buttons` everywhere; window mouseup/blur catch releases).
+- **Net player-facing result:** aim with the mouse anywhere on screen; fire the bow with **Space** when the
+  bow is selected (mouse-free, immune to the driver's right-click zone-remap) OR right-click where the mouse
+  behaves. Both share the same cursor aim, which now tracks the full screen.
+
 Started 2026-07-01. Records assumptions/decisions made during the Phase 3 master-brief run.
 Q0 verified: Phase 3B (`players[]`, PvP hit detection, kill attribution, Friendly Fire, Deathmatch)
 is committed (`91176fa`) and complete in code. CTF still `comingSoon`. Building on top of it.
