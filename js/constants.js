@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 159 (Bow-fire diagnosis: added a safety that re-equips the bow if it was spuriously cleared (a likely cause of "can\'t fire unless I switch to the bow slot"), plus a P1 weapon-state line on the Debug HUD (slot/mode/bow/hand/rangedDown/dual) so the exact state when it flips to sword can be read. Input release now caught window-wide (b158). + build 158.)';
+const GAME_VERSION = 'v3 · build 160 (Bow-fire stuck-input fix: releasing the mouse OUTSIDE the browser (click off-screen / alt-tab / other window) never fired a mouseup, so right-mouse stuck DOWN and the bow charge could never release — a window blur now clears all held input. Confirmed combat is two-button (right-click fires the bow from ANY hotbar slot; slot only drives the sprite), so no slot-switch is needed to fire. + build 159 bow re-sync + weapon-state HUD.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

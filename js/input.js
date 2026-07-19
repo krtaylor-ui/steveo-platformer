@@ -269,6 +269,16 @@ class InputManager {
       e.preventDefault();
       this.scrollDelta += e.deltaY > 0 ? 1 : -1;
     }, { passive: false });
+    // Lose focus (clicked off-screen / another window / alt-tab): a mouse button released
+    // OUTSIDE the browser never fires a mouseup here, so mouse.rightDown / down would stick
+    // TRUE — which persistently blocks bow-fire (the charge can only release when rightDown
+    // goes false) and can spam melee. Clear all held input on blur so nothing stays latched
+    // (Kevin: "the first time you click off screen it breaks, then it's constant").
+    window.addEventListener('blur', () => {
+      this.mouse.down = false; this.mouse.rightDown = false;
+      this.mouse.clicked = false; this.mouse.rightClicked = false;
+      for (const k in this.keys) this.keys[k] = false;
+    });
   }
 
   // Right-stick cursor movement — uses P1's assigned gamepad if it's a controller
