@@ -224,12 +224,18 @@ class InputManager {
       this.keys[e.code] = false;
     });
 
-    this._canvas.addEventListener('mousemove', e => {
+    // Track the cursor on the WINDOW, not the canvas. Aiming works everywhere on
+    // screen even when the cursor is over a letterbox bar, an overflow-clipped canvas
+    // edge, or a HUD overlay — regions a canvas-only listener never sees, which made
+    // mouse.x "freeze" at the visual center in zoomed-out / single-screen play
+    // (Kevin: aim locked to wherever the cursor crossed left→right). We still map
+    // through the canvas rect and clamp to the 800×500 backing, so positions past the
+    // visible edge just pin to that edge instead of sticking mid-screen.
+    window.addEventListener('mousemove', e => {
       const rect   = this._canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;   // canvas hidden (menus) — nothing to map
       const scaleX = this._canvas.width  / rect.width;
       const scaleY = this._canvas.height / rect.height;
-      // Clamp to the 800×500 backing so a transient display/size mismatch can't map the
-      // cursor to a wild off-canvas world point (belt-and-suspenders for the resize fix).
       this.mouse.x = Math.max(0, Math.min(this._canvas.width,  (e.clientX - rect.left) * scaleX));
       this.mouse.y = Math.max(0, Math.min(this._canvas.height, (e.clientY - rect.top)  * scaleY));
       // Self-correct the HELD-button state from the event's live buttons bitmask (bit0=left,
@@ -271,11 +277,9 @@ class InputManager {
     window.addEventListener('contextmenu', (e) => {
       if (document.body && document.body.classList.contains('in-game')) e.preventDefault();
     }, true);
-    // Cursor left the canvas: stop LEFT-click actions (mining/placing), but DON'T clear
-    // rightDown — you routinely aim the bow past the canvas edge, and clearing it here
-    // was cancelling the charge/fire mid-aim (Kevin: "right-click to fire randomly turns
-    // off"). The window mouseup above still catches the real release.
-    this._canvas.addEventListener('mouseleave', () => { this.mouse.down = false; });
+    // (No canvas 'mouseleave' reset: the window mousemove above re-syncs down/rightDown
+    // from e.buttons everywhere on screen, and window mouseup/blur catch the real
+    // release — clearing on leave only risked cancelling a bow charge mid-aim.)
     this._canvas.addEventListener('wheel', e => {
       e.preventDefault();
       this.scrollDelta += e.deltaY > 0 ? 1 : -1;

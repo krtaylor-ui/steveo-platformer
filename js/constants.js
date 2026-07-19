@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 165 (Mouse-free bow fire: diagnosis PROVED the right mouse button reports as a LEFT-click over the right half of Kevin\'s screen (a gaming-mouse driver / browser gesture zone-remap) -- game code reads e.button directly and cannot undo that. FIX: when the BOW is the selected weapon, the attack button (Space / gamepad X / Insert) now DRAWS + FIRES the bow -- hold to charge, release to loose, aim with the cursor -- matching the on-screen "Attack/Bow" hint. Fully mouse-free; left-click still melees, right-click still ranged. + raw-button Debug HUD line from 164.)';
+const GAME_VERSION = 'v3 · build 166 (Aim-freeze FIX: with Space now firing the bow, the real bug surfaced -- mouse.x froze at the visual center when the cursor crossed to the right in zoomed-out/single-screen play, so the aim locked at the crossover. Cause: the mousemove listener was on the CANVAS element, so the cursor going over a letterbox bar / overflow-clipped edge / HUD overlay stopped updating coords. FIX: track mousemove on the WINDOW and map through the canvas rect (clamped to 800x500) -- the cursor is now followed everywhere on screen, aim tracks past center to the edge. Removed the obsolete canvas mouseleave reset. + build 165 Space-fires-bow.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
