@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 156 (World-select new-game fixes pt.2 — build 155\'s "new game" test (last_played_at is null) failed because the DB column defaults to now(), so every game read as played: button showed "Continue" and P1 restored the editor position (the bot spawns separately, so it was fine). Now a game reads as NEW when its data has no editor progress OR last_played_at ≈ created_at — works WITHOUT a server redeploy. Server also now strips the editor progress from a created/restarted game (needs redeploy for full effect incl. Restart). + build 155.)';
+const GAME_VERSION = 'v3 · build 157 (In-game Debug menu (pause → Settings, all modes: Performance HUD + Bot/Mob Paths + Nav Grid — flip on mid-game to diagnose slowdowns) + secondary players (P2/companion) now keep their POSITION when you Continue a game instead of snapping to spawn. + build 156.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

@@ -268,6 +268,10 @@ const GAME_STATE = {
         hasFlintSteel:  !!p.hasFlintSteel,
         discoveredOres: p.discoveredOres ? [...p.discoveredOres] : [],
       },
+      // Secondary players (P2–P4 / the companion) — position + hp, so CONTINUING a game
+      // keeps them where they were instead of snapping back to their spawn point (Kevin).
+      secondaryPlayers: (game.players || []).slice(1).map(sp =>
+        sp ? { px: Math.floor(sp.x), py: Math.floor(sp.y), hp: sp.hp } : null),
     };
   },
 
@@ -335,6 +339,19 @@ const GAME_STATE = {
       }
       p.velX = 0;
       p.velY = 0;
+      // Secondary players (P2–P4 / companion) — restore their saved position + hp so a
+      // co-op teammate / companion resumes where it left off, not at its spawn point.
+      if (Array.isArray(stateData.secondaryPlayers)) {
+        stateData.secondaryPlayers.forEach((sp, i) => {
+          const target = game.players && game.players[i + 1];
+          if (sp && target && typeof sp.px === 'number') {
+            target.x = sp.px;
+            target.y = typeof sp.py === 'number' ? sp.py : target.y;
+            target.vx = 0; target.vy = 0;
+            if (typeof sp.hp === 'number') target.hp = Math.max(1, sp.hp);
+          }
+        });
+      }
       console.log('[GameState] Player progress restored');
     } catch (e) {
       console.error('[GameState] Deserialize error:', e);

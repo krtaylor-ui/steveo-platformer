@@ -252,6 +252,7 @@ const PAUSE_MENU = {
             }, lvl => ['Off', '3×', '6×'][lvl] || 'Off')),
         ]));
       }
+      wrap.appendChild(this._debugSection(game));   // debug overlays available in Sandbox too
       return; // no duplicate audio on the sandbox pause tab
     }
 
@@ -282,6 +283,20 @@ const PAUSE_MENU = {
       }
     }
     wrap.appendChild(this._section('', rows));
+    wrap.appendChild(this._debugSection(game));
+  },
+
+  // Debug overlays — mirrors the World Settings "Debug" tab, but available IN-GAME from the
+  // pause menu for EVERY mode, so the perf HUD / nav overlays can be flipped on to diagnose
+  // a slowdown without leaving the game (Kevin). Writes the same _worldAdvSettings keys the
+  // renderer reads (perfHud / showBotPaths / showNavGrid).
+  _debugSection(game) {
+    const aws = game._worldAdvSettings || (game._worldAdvSettings = {});
+    return this._section('Debug', [
+      this._row('📊 Performance HUD', this._toggle(() => !!aws.perfHud,      v => { aws.perfHud = v; })),
+      this._row('🧭 Bot / Mob Paths',  this._toggle(() => !!aws.showBotPaths, v => { aws.showBotPaths = v; })),
+      this._row('🟧 Nav Grid (solid)', this._toggle(() => !!aws.showNavGrid,  v => { aws.showNavGrid = v; })),
+    ]);
   },
 
   _arenaObjectiveText(game) {
