@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 162 (THE zoom bow-fire fix: the cursor froze on the right half of the canvas because the canvas was scaled to fit ONLY on window-resize, not when a game starts (the play-HUD appearing changes the layout), so its style.width went stale, it overflowed the overflow:hidden wrap, and the clipped part stopped getting mousemove — right-click aim/fire died there. A ResizeObserver on the wrap now keeps the canvas fitted through any layout change; mouse coords are also clamped to the canvas. + build 161 aim HUD.)';
+const GAME_VERSION = 'v3 · build 163 (Bow-fire: sync held mouse buttons from the live e.buttons bitmask on every mousemove. Coords updated on right-click but no arrow fired = mouse.rightDown was latched wrong (a right-mousedown/up missed at a clipped canvas edge or a context menu eating the mouseup), so the bow charge never released. Because aiming always moves the cursor, syncing rightDown/down to the real button state each move self-corrects it. + build 162 canvas-resize + 161 aim HUD.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

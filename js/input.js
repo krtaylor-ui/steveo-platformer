@@ -232,6 +232,14 @@ class InputManager {
       // cursor to a wild off-canvas world point (belt-and-suspenders for the resize fix).
       this.mouse.x = Math.max(0, Math.min(this._canvas.width,  (e.clientX - rect.left) * scaleX));
       this.mouse.y = Math.max(0, Math.min(this._canvas.height, (e.clientY - rect.top)  * scaleY));
+      // Self-correct the HELD-button state from the event's live buttons bitmask (bit0=left,
+      // bit1=right). A mousedown or mouseup that got missed — right-click at a clipped canvas
+      // edge, a context menu swallowing the mouseup, a release off-window — would otherwise
+      // leave mouse.down / rightDown latched wrong, so the bow charge never starts or never
+      // releases (Kevin: coords update on right-click but no arrow fires). Since aiming always
+      // moves the cursor, this keeps the button state honest every frame.
+      this.mouse.down      = (e.buttons & 1) !== 0;
+      this.mouse.rightDown = (e.buttons & 2) !== 0;
     });
     this._canvas.addEventListener('mousedown', e => {
       if (e.button === 0) {
