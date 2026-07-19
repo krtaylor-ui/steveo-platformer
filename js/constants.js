@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 160 (Bow-fire stuck-input fix: releasing the mouse OUTSIDE the browser (click off-screen / alt-tab / other window) never fired a mouseup, so right-mouse stuck DOWN and the bow charge could never release — a window blur now clears all held input. Confirmed combat is two-button (right-click fires the bow from ANY hotbar slot; slot only drives the sprite), so no slot-switch is needed to fire. + build 159 bow re-sync + weapon-state HUD.)';
+const GAME_VERSION = 'v3 · build 161 (Zoom bow-fire diagnosis: added an aim readout to the Debug HUD — mouse px, the world point the cursor maps to, hover cell, active zoom, a shots-fired counter, and the player position — so the zoomed-out bottom-right no-fire case can be read exactly (is the cursor mapping below the arena? does a shot actually fire?). + build 160.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

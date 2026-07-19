@@ -2283,6 +2283,10 @@ class Game {
     const hoverCol = Math.floor(world.x / BLOCK_SIZE);
     const hoverRow = Math.floor(world.y / BLOCK_SIZE);
     const target   = this.level.get(hoverRow, hoverCol);
+    // Debug: expose where the cursor maps in world space (+ mouse px + zoom) so a
+    // firing problem tied to zoom/position (Kevin: zoomed-out, bottom-right) can be read.
+    this._dbgAim = { mx: Math.round(this.input.mouse.x), my: Math.round(this.input.mouse.y),
+                     wx: Math.round(world.x), wy: Math.round(world.y), c: hoverCol, r: hoverRow };
 
     // ── Weapon actions: bow / sword / pickaxe ─────────────
     // CTF: carrying a flag disables all combat (no attack / no shield) (§6).
@@ -2418,6 +2422,7 @@ class Game {
             this.player.cx, this.player.cy, Math.cos(angle) * speed, Math.sin(angle) * speed,
             Math.max(1, Math.round(PLAYER_ARROW_DAMAGE * (rt.dmgMult || 1))), 'p1', { pierce: rt.pierce, recoverable });
           this.player.activeHand = 'ranged';
+          this._dbgShots = (this._dbgShots || 0) + 1;   // debug: P1 arrows actually fired
           this._playSound('sounds/bow-fire.mp3');
           this._emitActionNoise(this.player);        // §4c
           if (!this._worldAdvSettings.unlimitedArrows) this._consumeArrow();
@@ -6097,10 +6102,11 @@ class Game {
         `A* ${ps.calls}call ${ps.ms.toFixed(1)}ms  |  aiLoop ${(ps.loop || 0).toFixed(1)}ms`,
         // Weapon-state diagnostic (helps pin the "switches to sword / can't fire bow" bug):
         pl ? `P1 slot${pl.selectedSlot} mode:${pl.weaponMode} bow:${pl.bow || '-'} rng:${pl.rangedOwned ? pl.rangedOwned.length : '?'} hand:${pl.activeHand} draw:${pl.bowDrawing ? 1 : 0} rDn:${this.input.isRangedAttackDown() ? 1 : 0} dual:${this.input.dualInput ? 1 : 0}` : 'no player',
+        this._dbgAim ? `aim mouse(${this._dbgAim.mx},${this._dbgAim.my}) world(${this._dbgAim.wx},${this._dbgAim.wy}) cell(${this._dbgAim.c},${this._dbgAim.r}) zoom:${(this.camera && this.camera._srZoom || 1).toFixed(2)} shots:${this._dbgShots || 0}${pl ? ` plr(${Math.round(pl.cx)},${Math.round(pl.cy)})` : ''}` : '',
       ];
       ctx.save();
       ctx.font = '11px monospace'; ctx.textBaseline = 'top';
-      ctx.fillStyle = 'rgba(0,0,0,0.72)'; ctx.fillRect(4, 4, 470, lines.length * 14 + 8);
+      ctx.fillStyle = 'rgba(0,0,0,0.72)'; ctx.fillRect(4, 4, 560, lines.length * 14 + 8);
       ctx.fillStyle = (this._profAvg || 0) > 24 ? '#ff8080' : '#9fddff';
       lines.forEach((ln, i) => ctx.fillText(ln, 10, 9 + i * 14));
       ctx.restore();
