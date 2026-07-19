@@ -2299,6 +2299,12 @@ class Game {
     //    Inputs are remappable via input.isMeleeAttack()/isRangedAttackDown()
     //    (build 79 adds a rebinding UI). ──
     const _p1Shift    = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight');
+    // Safety: if the active bow got cleared (e.g. a _syncActiveWeapon('ranged') ran while
+    // rangedOwned was momentarily empty) but the player still OWNS a ranged weapon, restore
+    // it — otherwise right-click fire silently dies until you re-select the bow slot (the
+    // "can't fire the bow unless I switch to it" report).
+    if (!this.player.bow && this.player.rangedOwned && this.player.rangedOwned.length &&
+        this.player._syncActiveWeapon) this.player._syncActiveWeapon('ranged');
     const _ownsRanged = !!this.player.bow;
     const rangedDown  = this.input.isRangedAttackDown();
     // Left-click melee only outside the sandbox editor (there a click = build).
@@ -6082,16 +6088,19 @@ class Game {
       const nMobs = this.mobManager ? this.mobManager.mobs.filter(m => m.alive).length : 0;
       const nArr  = this.mobManager ? (this.mobManager.arrows || []).length : 0;
       const ps    = (this.mobManager && this.mobManager._pathStats) || { calls: 0, ms: 0 };
+      const pl = this.player;
       const lines = [
         `FPS ~${(1000 / Math.max(1, this._profAvg || 16)).toFixed(0)}  frame ${(this._profAvg || 0).toFixed(1)}ms`,
         `update ${f.upd.toFixed(1)}  render ${f.ren.toFixed(1)}`,
         `mobs ${f.mobs.toFixed(1)}  bot ${(f.bot || 0).toFixed(1)}  redstone ${f.redstone.toFixed(1)}`,
         `mobDraw ${f.mobDraw.toFixed(1)}  |  mobs ${nMobs}(${ps.count || 0} total)  arrows ${nArr}`,
         `A* ${ps.calls}call ${ps.ms.toFixed(1)}ms  |  aiLoop ${(ps.loop || 0).toFixed(1)}ms`,
+        // Weapon-state diagnostic (helps pin the "switches to sword / can't fire bow" bug):
+        pl ? `P1 slot${pl.selectedSlot} mode:${pl.weaponMode} bow:${pl.bow || '-'} rng:${pl.rangedOwned ? pl.rangedOwned.length : '?'} hand:${pl.activeHand} draw:${pl.bowDrawing ? 1 : 0} rDn:${this.input.isRangedAttackDown() ? 1 : 0} dual:${this.input.dualInput ? 1 : 0}` : 'no player',
       ];
       ctx.save();
       ctx.font = '11px monospace'; ctx.textBaseline = 'top';
-      ctx.fillStyle = 'rgba(0,0,0,0.72)'; ctx.fillRect(4, 4, 232, lines.length * 14 + 8);
+      ctx.fillStyle = 'rgba(0,0,0,0.72)'; ctx.fillRect(4, 4, 470, lines.length * 14 + 8);
       ctx.fillStyle = (this._profAvg || 0) > 24 ? '#ff8080' : '#9fddff';
       lines.forEach((ln, i) => ctx.fillText(ln, 10, 9 + i * 14));
       ctx.restore();

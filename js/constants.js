@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 158 (Right-click bow-fire fix: aiming past the canvas edge (or the context menu) no longer cancels the charge — releasing the mouse is now caught window-wide and leaving the canvas keeps the ranged hold; arena players\' weapon collections are made consistent so a sync can\'t wipe the bow. Restart now treats a game as fresh CLIENT-side (spawn point + "Start Game") without waiting on the server redeploy. Debug toggles live in the in-game pause → Settings (all modes, build 157). + build 157.)';
+const GAME_VERSION = 'v3 · build 159 (Bow-fire diagnosis: added a safety that re-equips the bow if it was spuriously cleared (a likely cause of "can\'t fire unless I switch to the bow slot"), plus a P1 weapon-state line on the Debug HUD (slot/mode/bow/hand/rangedDown/dual) so the exact state when it flips to sword can be read. Input release now caught window-wide (b158). + build 158.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
