@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 163 (Bow-fire: sync held mouse buttons from the live e.buttons bitmask on every mousemove. Coords updated on right-click but no arrow fired = mouse.rightDown was latched wrong (a right-mousedown/up missed at a clipped canvas edge or a context menu eating the mouseup), so the bow charge never released. Because aiming always moves the cursor, syncing rightDown/down to the real button state each move self-corrects it. + build 162 canvas-resize + 161 aim HUD.)';
+const GAME_VERSION = 'v3 · build 164 (Bow-fire diagnostic: rDn not changing on right-click means mouse.rightDown never tracks the button. Added a raw button-state line to the Debug HUD — the browser\'s live e.buttons bitmask, mouse.rightDown/down, and P1 gamepad slot — to see EXACTLY what the browser reports while you hold right-click, which pins whether it\'s a button-detection issue vs something downstream. + build 163.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

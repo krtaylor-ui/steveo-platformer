@@ -238,6 +238,7 @@ class InputManager {
       // leave mouse.down / rightDown latched wrong, so the bow charge never starts or never
       // releases (Kevin: coords update on right-click but no arrow fires). Since aiming always
       // moves the cursor, this keeps the button state honest every frame.
+      this.mouse.rawButtons = e.buttons;   // diagnostic: what the browser reports this move
       this.mouse.down      = (e.buttons & 1) !== 0;
       this.mouse.rightDown = (e.buttons & 2) !== 0;
     });
