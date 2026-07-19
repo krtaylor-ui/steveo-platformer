@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 164 (Bow-fire diagnostic: rDn not changing on right-click means mouse.rightDown never tracks the button. Added a raw button-state line to the Debug HUD — the browser\'s live e.buttons bitmask, mouse.rightDown/down, and P1 gamepad slot — to see EXACTLY what the browser reports while you hold right-click, which pins whether it\'s a button-detection issue vs something downstream. + build 163.)';
+const GAME_VERSION = 'v3 · build 165 (Mouse-free bow fire: diagnosis PROVED the right mouse button reports as a LEFT-click over the right half of Kevin\'s screen (a gaming-mouse driver / browser gesture zone-remap) -- game code reads e.button directly and cannot undo that. FIX: when the BOW is the selected weapon, the attack button (Space / gamepad X / Insert) now DRAWS + FIRES the bow -- hold to charge, release to loose, aim with the cursor -- matching the on-screen "Attack/Bow" hint. Fully mouse-free; left-click still melees, right-click still ranged. + raw-button Debug HUD line from 164.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

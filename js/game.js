@@ -2310,11 +2310,21 @@ class Game {
     if (!this.player.bow && this.player.rangedOwned && this.player.rangedOwned.length &&
         this.player._syncActiveWeapon) this.player._syncActiveWeapon('ranged');
     const _ownsRanged = !!this.player.bow;
-    const rangedDown  = this.input.isRangedAttackDown();
+    // When the BOW is the selected weapon, the attack button (Space / gamepad X /
+    // Insert) DRAWS THE BOW — hold to charge, release to loose — instead of
+    // meleeing. This matches the on-screen "Attack/Bow" control hint and gives a
+    // fully mouse-free way to fire, which matters when a gaming-mouse driver or a
+    // browser gesture extension remaps the right mouse button (Kevin's setup made
+    // right-click register as a LEFT-click over the right half of the screen, so
+    // the bow never fired there). Left-click still melees; right-click still ranged.
+    const _bowSelected    = this.player.weaponMode === 'bow' && _ownsRanged;
+    const _attackFiresBow = _bowSelected && this.input.isMeleeAttack();
+    const rangedDown  = this.input.isRangedAttackDown() || _attackFiresBow;
     // Left-click melee only outside the sandbox editor (there a click = build).
-    // NB: use the mode check directly — `isSandbox` is declared later in _update,
-    // so referencing it here would hit the const temporal-dead-zone and crash.
-    const meleeNow    = this.input.isMeleeAttack() ||
+    // The attack-button melee is suppressed while the bow is selected (it draws the
+    // bow instead, above). NB: use the mode check directly — `isSandbox` is declared
+    // later in _update, so referencing it here would hit the const TDZ and crash.
+    const meleeNow    = (this.input.isMeleeAttack() && !_bowSelected) ||
                         (this.gameMode !== 'sandbox' && this.input.mouse.clicked && !p1OverMineable && !_p1Shift);
 
     // A Trident equipped as the melee weapon THROWS on right-click (its ranged
