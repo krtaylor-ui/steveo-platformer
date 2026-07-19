@@ -1,5 +1,22 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
+## Bow-fire "won't fire on the right side" — root cause + fix (2026-07-19, builds 160–165)
+- **Symptom:** in zoomed-out / single-screen play, the bow fired when aiming/right-clicking on the
+  LEFT half of the screen but NOT the right; a melee happened instead.
+- **Diagnosis (raw-button Debug HUD, build 164):** the SAME physical right-click reports
+  `e.button===2` (right) on the left half but `e.button===0` (LEFT) on the right half. So on the
+  right it registers as a left-click → melee, and `mouse.rightDown` never goes true → bow never
+  charges. Game code reads `e.button` directly with zero position logic (`input.js:246-251`), so this
+  is an **external gaming-mouse driver / browser gesture zone-remap** — not fixable from JS.
+- **Fix (build 165):** when the BOW is the selected weapon (`weaponMode==='bow'` + a bow owned), the
+  **attack button (Space / gamepad X / Insert) now draws + fires the bow** (hold→charge, release→loose);
+  its melee is suppressed that frame. Aim still follows the mouse cursor (coords update everywhere), so
+  you aim with the mouse and loose with Space — **no right mouse button needed.** Matches the existing
+  on-screen "Attack/Bow" hint. Left-click melee and right-click ranged unchanged for normal mice.
+- Prior attempts that did NOT fix it (kept as belt-and-suspenders, not harmful): canvas ResizeObserver +
+  coord clamp (162), window mouseup / mouseleave / blur button reset (158/160), `e.buttons` bitmask sync
+  on mousemove (163). Raw-button Debug HUD line retained (164).
+
 Started 2026-07-01. Records assumptions/decisions made during the Phase 3 master-brief run.
 Q0 verified: Phase 3B (`players[]`, PvP hit detection, kill attribution, Friendly Fire, Deathmatch)
 is committed (`91176fa`) and complete in code. CTF still `comingSoon`. Building on top of it.
