@@ -1001,7 +1001,12 @@ class Game {
 
   _armArenaPlayer(p, spawn) {
     p.bow = 'BOW';
-    p.selectedSlot = 2; // bow slot (weaponMode getter → 'bow')
+    // Keep the weapon COLLECTIONS consistent with the directly-set bow. Setting p.bow
+    // alone left rangedOwned empty, so a later _syncActiveWeapon('ranged') (weapon cycle /
+    // pickup) would reset bow to null and silently kill right-click fire. normalizeWeapons
+    // folds the active sword/bow back into their owned lists.
+    if (p.normalizeWeapons) p.normalizeWeapons();
+    p.selectedSlot = 1; // bow slot (weaponMode getter: slot 1 → 'bow')
     p.hp = p.maxHp;
     p.respawnAt(spawn.x, spawn.y);
   }

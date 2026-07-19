@@ -243,6 +243,14 @@ class InputManager {
       if (e.button === 0) this.mouse.down = false;
       if (e.button === 2) this.mouse.rightDown = false;   // held-state for ranged attack
     });
+    // Also release on a WINDOW mouseup: a right-hold to charge the bow is often released
+    // with the cursor off the canvas (aiming at the screen edge) or while the context
+    // menu briefly grabbed the event — the canvas-only handler above would miss it and
+    // leave rightDown stuck. Catching it on the window makes bow-fire reliable.
+    window.addEventListener('mouseup', e => {
+      if (e.button === 0) this.mouse.down = false;
+      if (e.button === 2) this.mouse.rightDown = false;
+    });
     this._canvas.addEventListener('contextmenu', e => e.preventDefault());
     // Right-click is the ranged attack (hold to charge a bow). Suppress the browser
     // context menu during GAMEPLAY no matter which element the event targets — a
@@ -252,7 +260,11 @@ class InputManager {
     window.addEventListener('contextmenu', (e) => {
       if (document.body && document.body.classList.contains('in-game')) e.preventDefault();
     }, true);
-    this._canvas.addEventListener('mouseleave', () => { this.mouse.down = false; this.mouse.rightDown = false; });
+    // Cursor left the canvas: stop LEFT-click actions (mining/placing), but DON'T clear
+    // rightDown — you routinely aim the bow past the canvas edge, and clearing it here
+    // was cancelling the charge/fire mid-aim (Kevin: "right-click to fire randomly turns
+    // off"). The window mouseup above still catches the real release.
+    this._canvas.addEventListener('mouseleave', () => { this.mouse.down = false; });
     this._canvas.addEventListener('wheel', e => {
       e.preventDefault();
       this.scrollDelta += e.deltaY > 0 ? 1 : -1;

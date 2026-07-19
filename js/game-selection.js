@@ -4,6 +4,9 @@ const GAME_SELECTION = {
   games: [],
   _staticBound: false,
   _creating: false,
+  // Game IDs restarted THIS session — treated as new (Start Game + fresh spawn) even if
+  // the server hasn't yet stamped it (redeploy lag). Cleared once the game is played+saved.
+  _justRestarted: new Set(),
 
   async init(mode) {
     this.currentMode = mode;
@@ -47,6 +50,7 @@ const GAME_SELECTION = {
   // missing OR still ≈ created_at (i.e. it hasn't been bumped by an actual save).
   _isNewGame(g) {
     if (!g) return true;
+    if (this._justRestarted.has(String(g.id))) return true;   // restarted this session
     // Most reliable: the server strips the editor's playerProgress from a fresh/restarted
     // game's data, so its absence = never played (works once the server is redeployed).
     if (g.game_data && !g.game_data.playerProgress) return true;
@@ -294,6 +298,7 @@ const GAME_SELECTION = {
         alert('Failed to restart game');
         return;
       }
+      this._justRestarted.add(String(gameId));   // treat as fresh until played+saved (redeploy-independent)
       await this._loadGames();
     } catch (error) {
       console.error('Restart error:', error);

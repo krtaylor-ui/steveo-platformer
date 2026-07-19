@@ -41,9 +41,16 @@ const GAME_PLAY = {
       // spawn point; an in-progress game restores the saved position/loadout ("Continue").
       // last_played_at is meant to be null until the first save, but the DB column may
       // DEFAULT now() on insert, so also treat last_played_at ≈ created_at as never-saved.
-      const isNew = !gameData.playerProgress ||
+      // Restarted this session (client marker) → force fresh even if the server hasn't
+      // re-stamped the record yet (redeploy lag).
+      const wasRestarted = typeof GAME_SELECTION !== 'undefined' &&
+        GAME_SELECTION._justRestarted && GAME_SELECTION._justRestarted.has(String(gameId));
+      const isNew = wasRestarted || !gameData.playerProgress ||
         !record.last_played_at ||
         (record.created_at && (new Date(record.last_played_at) - new Date(record.created_at)) < 3000);
+      // Once we actually play it, it's no longer "just restarted" (a save will give it real
+      // progress); drop the marker so a later visit reflects true state.
+      if (wasRestarted) GAME_SELECTION._justRestarted.delete(String(gameId));
       const options  = { templateData: gameData, newGame: isNew };
       // Normal / platformer still expect world:'adventure' so their level generation
       // runs before the templateData override replaces the grid.
