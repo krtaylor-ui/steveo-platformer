@@ -2550,7 +2550,7 @@ class Game {
           const recoverable = !this._worldAdvSettings.unlimitedArrows && !!this._worldAdvSettings.recoverableArrows;
           this.mobManager.addPlayerArrow(
             this.player.cx, this.player.cy, Math.cos(angle) * speed, Math.sin(angle) * speed,
-            damage, 'p1', { pierce: rt.pierce, recoverable, gravity, chargeGlow: charge });
+            damage, 'p1', { pierce: rt.pierce, recoverable, gravity, chargeGlow: ((this.player._bowHold || 0) >= BOW_GLOW_DELAY_FRAMES ? charge : 0) });
           this.player.activeHand = 'ranged';
           this._dbgShots = (this._dbgShots || 0) + 1;   // debug: P1 arrows actually fired
           this._playSound('sounds/bow-fire.mp3');
@@ -2599,7 +2599,7 @@ class Game {
             Math.cos(angle) * speed, Math.sin(angle) * speed,
             damage,
             owner,
-            { pierce: rt.pierce, gravity, chargeGlow: charge }
+            { pierce: rt.pierce, gravity, chargeGlow: ((p._bowHold || 0) >= BOW_GLOW_DELAY_FRAMES ? charge : 0) }
           );
           this._playSound('sounds/bow-fire.mp3');
           if (!this._worldAdvSettings.unlimitedArrows) this._consumeArrowForPlayer(p);
@@ -15993,7 +15993,9 @@ class Game {
       const drawn = armorData ? drawArmorIcon(ctx, armorData.piece, sx, sy, 26, data.color)
                               : drawWeaponIcon(ctx, wcls, sx, sy, 24, data.color);
       if (!drawn) {
-        const sym = armorData ? (armorIcons[armorData.piece] ?? '🛡') : (icons[data.type] ?? '?');
+        // Match the Sandbox palette: per-WEAPON-CLASS icon (spear/axe/trident/boomerang/
+        // grapple/…) via weaponIconFor, not a generic per-type ⚔/🏹.
+        const sym = armorData ? (armorIcons[armorData.piece] ?? '🛡') : (weaponIconFor(data) || icons[data.type] || '?');
         ctx.font = '20px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillStyle = '#ffffff';
         ctx.fillText(sym, sx, sy);

@@ -387,6 +387,9 @@ class Player {
 
   update(input, level) {
     this._frameNum++;
+    // §Follow-up — how long the bow/crossbow has been drawn (frames). The charge glow only
+    // shows after BOW_GLOW_DELAY_FRAMES so a quick tap doesn't flash it (see _drawBow).
+    if (this.bowDrawing) this._bowHold = (this._bowHold || 0) + 1; else this._bowHold = 0;
     // Countdown timers
     if (this.attackCooldown > 0) this.attackCooldown--;
     if (this.iframes        > 0) this.iframes--;
@@ -1620,7 +1623,7 @@ class Player {
     ctx.save();
     ctx.translate(flipX ? sx - 2 : sx + 14, sy + 15);
     if (flipX) ctx.scale(-1, 1);
-    if (this.bowDrawing && charge > 0.02) {   // §Follow-up — charged-shot glow on the crossbow
+    if (this.bowDrawing && charge > 0.02 && (this._bowHold || 0) >= BOW_GLOW_DELAY_FRAMES) {   // §Follow-up — delayed charge glow
       ctx.shadowColor = `hsl(${55 * (1 - Math.min(1, charge))}, 100%, 55%)`;
       ctx.shadowBlur  = 5 + 12 * Math.min(1, charge);
     }
@@ -1649,8 +1652,9 @@ class Player {
     if (flipX) ctx.scale(-1, 1);
 
     // §Follow-up — charged-shot glow ON THE BOW itself: the limbs/string glow brighter and
-    // shift hue yellow → orange → red as the shot charges (replaces the old player-box aura).
-    if (this.bowDrawing && charge > 0.02) {
+    // shift hue yellow → orange → red as the shot charges. Delayed (BOW_GLOW_DELAY_FRAMES)
+    // so a quick tap doesn't flash it — it only shows once meaningfully charging.
+    if (this.bowDrawing && charge > 0.02 && (this._bowHold || 0) >= BOW_GLOW_DELAY_FRAMES) {
       ctx.shadowColor = `hsl(${55 * (1 - Math.min(1, charge))}, 100%, 55%)`;
       ctx.shadowBlur  = 5 + 12 * Math.min(1, charge);
     }

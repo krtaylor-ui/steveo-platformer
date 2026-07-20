@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 187 (Combat/Controls FOLLOW-UP — playtest fixes: Boomerang + Grappling Hook now ALWAYS appear under Equipment in the Sandbox palette (ungated); the ledge grab triggers off the Look-Up/Aim-Up key in any scheme (isLookUpHeld, mode-independent); the charged-shot glow moved off the player box onto the BOW/crossbow outline AND the fired arrow (same yellow→orange→red ramp).)';
+const GAME_VERSION = 'v3 · build 188 (Combat/Controls FOLLOW-UP — bow-glow delay (~0.75s hold before the charge glow shows, so quick taps do not flash it) + placed items in Platformer/Normal now use the same per-weapon-class icon as the Sandbox palette (via weaponIconFor) instead of a generic sword/bow glyph.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
@@ -89,6 +89,11 @@ const BOOM_RETURN_MULT    = 1.0;  // return-leg speed (× BOOM_SPEED) — separa
 const BOOM_STEER_PCT      = 30;   // homing/steer intensity toward the cursor (0-100 → up to 0.20 rad/f)
 const BOOM_SPIN_RATE      = 0.5;  // visual spin (rad/frame)
 const BOOM_MAX_LIFE       = 600;  // safety expiry (frames) if it never gets home
+// §Follow-up — the charged-shot GLOW only appears after the bow's been drawn this long, so a
+// quick tap doesn't flash it (it means "meaningfully charging"). ~0.75s: a touch under a full
+// second so the tail of the yellow→orange→red ramp still shows at default charge speed
+// (full charge ≈ 0.83s). Raise toward 60 for a stricter 1-second gate.
+const BOW_GLOW_DELAY_FRAMES = 45;
 // Sword cleave count by tier: Wood/Stone=1, Iron/Diamond=2, Netherite=3.
 function swordCleaveForTier(tier) { return tier >= 4 ? 3 : tier >= 2 ? 2 : 1; }
 
