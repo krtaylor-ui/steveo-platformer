@@ -40,6 +40,18 @@
   — groundwork for Campaign mode. Builds 68–72 = editor fixes + the Return‑to‑Sandbox playtest‑exit fix.
 
 ## 🔜 Still planned (not built)
+- **Session follow-ups (2026-07-19, mentioned but not actioned during the build 114–172 run):**
+  - **Companion "!" polish** — when the companion repeats the same failed maneuver twice, try a
+    *different* approach before flashing the yellow "!" (summon prompt); and add a **visual cue for
+    follow-mode / repeat-mode** so the player can see the bot's state. (Companion summon itself
+    shipped: press **C** while "!" is active.)
+  - **Touch Controls On/Off/Auto toggle in Settings** — auto-detect (`js/touch-controls.js`) can
+    misfire on hybrid touch+mouse laptops. Build 171 made it default to mouse when a fine pointer
+    exists, but a user-facing toggle (Auto / Force-on for tablets / Force-off) would make it
+    explicit. Root-cause context: the touch aim pad (`.tc-aimpad`) once overlaid the arena screen
+    and ate mouse right-clicks — see `DECISIONS_LOG.md` (2026-07-19).
+  - _Resolved, no action:_ the old "automatic weapon switch to sword" fallback — the two-button
+    scheme (LEFT=melee / RIGHT=ranged, weaponMode is cosmetic) makes it unnecessary; not present.
 - **Smart Mobs** — LARGELY BUILT. The weapon/UX half (traits, crouch/sneak, Leaves/Bushes)
   shipped builds 73–99; the **mob-intelligence half (§4–§10): detection (sight/sound/action),
   pack behaviour, sprint-telegraph, flee-at-low-HP, spider webs, + decorative foliage** shipped

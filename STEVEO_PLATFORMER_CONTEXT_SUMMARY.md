@@ -18,7 +18,38 @@ HUD text, menus, or the future Player's Guide. ("Steve" / "Alex" are the sprite 
 gendered term against this before shipping copy.** (Note added 2026-07-14 at Kevin's
 request; also in DECISIONS_LOG + FUTURE_ROADMAP §1.)
 
-## CURRENT STATE (2026-07-14) — build 122, on branch `bot-ai` (off `smart-mobs-wayfinding`; NOT merged)
+## CURRENT STATE (2026-07-19) — build 172, MERGED to `main` + DEPLOYED to Railway ✅
+
+**Shipped to production this session** (origin/main fast-forwarded build 113 → 172; Railway
+auto-deploys `main`). Headless suite **554** (`node test/run.js`, all green). `bot-ai` == `main`.
+
+Highlights of builds 123–172 (all now live):
+- **Arena bow-fire bug — ROOT CAUSE FOUND + FIXED (builds 160–172).** Right-click didn't fire
+  the bow on the RIGHT HALF of the screen, in ARENA only. It masqueraded as a mouse-driver
+  zone-remap for many builds; `document.elementFromPoint` finally proved the culprit:
+  **`DIV.tc-aimpad`** — the mobile touch-controls arena aim/fire pad — overlays the right half
+  and its `pointerdown` rewrote a mouse right-click into a left-click/melee. It was auto-enabled
+  on a touchscreen laptop that also has a mouse. Fix (build 171, `js/touch-controls.js`):
+  `detect()` auto-enables touch ONLY when there is no fine pointer (`any-pointer: fine`); touch
+  handlers ignore `pointerType==='mouse'`; the overlay drops `pointer-events` while a mouse is
+  active. Two-button combat (LEFT=melee / RIGHT=ranged) restored in build 172 after the
+  workarounds (Space-fires-bow 165, window-mousemove 166, left-click-fires-bow 168) were peeled
+  back — window-level mousemove/mousedown (166/167) stay. Full trail in `DECISIONS_LOG.md`.
+- **Playtest fixes (builds ~154–159):** new-game Platformer spawns at the designed spawn point
+  (not the sandbox editor position); world-select button reads "Start Game" vs "Continue";
+  wall-slide needs a wall ≥2 blocks tall; **companion is summoned by pressing C** (gated on the
+  yellow "!") instead of aggressive auto-teleport; players no longer shove each other into walls
+  + a `playersPassThrough` world setting; **Debug toggles (Perf HUD / Bot-Mob Paths / Nav Grid)
+  added to the in-game Settings/pause menu for ALL modes** (the World Settings Debug tab stays).
+- **Mob performance fix (builds ~145–153):** 8–10 mobs no longer tank the framerate. The A*
+  `nav` adapter now uses BASE block solidity (`BLOCK_DATA[...]`) instead of the monkey-patched
+  `level.isSolid` (which iterated every redstone piston per call); plus a per-frame recompute
+  budget + nearest-N pathfinder selection + O(1) piston-head lookup (`js/redstone.js`).
+- **Bot maze execution (builds 134–138):** consecutive double-jumps, air control, jump
+  commitment, take-off-node launch — the two-level climb now completes.
+
+The **Bot AI mega-brief (Phases 0–7, build 122)** is included in this deploy and is now
+browser-validated by Kevin's arena/platformer playtests. Detail:
 
 **BOT AI (Competitive + Cooperative) — the full mega-session brief is BUILT, Phases 0–7.**
 Branch `bot-ai` sits on top of the un-merged wayfinding work (Bot AI depends on the
@@ -57,12 +88,13 @@ work for a bot automatically (no parallel bot-entity type). New files: `js/bot-a
   dictionary; `saves/bot-telemetry-samples.json` (36 sample records) via
   `tools/gen-bot-telemetry-samples.js`.
 
-**Bump all THREE markers each commit** (GAME_VERSION build 122, `?v=b122`,
-`steveo-shell-v122`). **Ship path:** `node test/run.js` (468) → **Kevin browser-tests
-a Deathmatch with 1–3 bots** (the natural first check) → then this branch merges
-*after* wayfinding is validated (Bot AI is stacked on it). **NEXT / watch-items:** see
-the wrap-up at the end of the `DECISIONS_LOG.md` Bot AI section — companion pre-launch
-UI toggle, and per-tier EASY/HARD calibration from real-match telemetry.
+**Bump all THREE markers each commit** (GAME_VERSION build N, `?v=bN`, `steveo-shell-vN`).
+**Ship path (used this session):** `node test/run.js` (554) → Kevin browser-tests → `git push
+origin bot-ai:main` (fast-forward) → Railway auto-deploys `main`. **NEXT / watch-items:**
+companion "!" retry-before-Yellow + a follow-mode visual cue; a **Touch Controls On/Off/Auto
+toggle in Settings** (auto-detect can misfire on hybrid touch+mouse laptops — see the
+touch-aimpad fix); companion pre-launch UI toggle; per-tier EASY/HARD bot calibration from
+telemetry. Bot AI + wayfinding are now browser-validated by Kevin's playtests.
 
 ---
 
