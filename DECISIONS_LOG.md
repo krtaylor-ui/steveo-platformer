@@ -33,6 +33,30 @@ Bug-fix + polish follow-up to the mega-session, from Kevin's first playtest. Pha
   at spawn (the mega-session's auto-grant is removed). The explicit "Starting Melee = Boomerang" choice
   stays as a separate intentional grant.
 
+## PHASE F — Boomerang completion (build 185) — DONE (mechanics tested; render/persist browser-verify)
+- **Placeable/pickup:** Boomerang/Grapple were already auto-included in the gear palette (from
+  `TOOL_DATA`); added them to `_GEAR_GROUP_ORDER` for proper grouping and **gated the palette** so they
+  only appear when the world toggle is on (`_paletteItems()` filter + routed the draw through it so
+  draw/click indices stay aligned). Pickup rides the existing `acquireWeapon`(type sword/bow) path;
+  placed-item persistence rides `sandbox.placedItems`. (Canvas render + save/continue = browser-verify.)
+- **Dual-slot display (Q2 — pre-existing gap, fixed for BOTH):** `player.dualModeMelee()` returns the
+  melee key when it's a Trident/Boomerang. Both hotbar renderers now MIRROR it into the ranged slot
+  when no real bow is held (with a cyan "↔" cue), and `_selectOrCycleSlot` redirects a mirrored ranged-
+  slot press to the melee slot (swap only via melee). Arrow-count overlay restricted to a real bow/
+  crossbow (fixes it also showing for a grapple).
+- **Acquisition model changed (flagged decision):** `weaponBoomerang`/`weaponGrapple` now gate
+  AVAILABILITY (palette/placeable) only — the mega-session auto-grant at spawn was REMOVED. The player
+  acquires by pickup; the explicit "Starting Melee = Boomerang" choice is the one intentional grant.
+- **Wall-interaction settings (new):** `boomerangWall` Pass Through (default — the signature trait) /
+  Stop; `boomerangOnBlock` (when Stop) Early Return (turn back on contact) / Stick (embed like a
+  Trident → the player drops to the next weapon via `throwActiveBoomerang`, recovers on walkover via
+  `collectStuckArrows`→`recoverBoomerang`); `boomerangReturn` Auto (default) / Click-to-Return (flies
+  out, WAITS at range, recalls on the ranged button — included this phase, not deferred).
+- **Isometric look:** the iso tumble now also squashes vertically (`scale(sc, 0.8)`) to sell the
+  side-view plane (a by-eye value — Kevin can fine-tune).
+- `test/test-boomerang.js` extended to 23 (wall Stop→Early Return turns back, Stop→Stick embeds, Pass
+  Through ignores walls, Click-to-Return waits then recalls).
+
 ## PHASE E — Ranged combat polish (build 184) — DONE
 - **Charged-shot glow** (`player.js`): while `bowDrawing`, an aura brightens (alpha + blur) and shifts
   hue yellow(55°)→orange→red(0°) with `drawProgress`. Layered onto the existing charge bar; applies to

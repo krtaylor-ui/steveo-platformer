@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 184 (Combat/Controls FOLLOW-UP — Phase E (ranged polish): charged-shot glow now brightens + shifts yellow→orange→red with charge; arrow-speed cap raised 2x→4x; Unlimited/Recoverable Arrows moved under the Ranged heading (Combat heading gone).)';
+const GAME_VERSION = 'v3 · build 185 (Combat/Controls FOLLOW-UP — Phase F (Boomerang completion): placeable/pickup (palette gated by the world toggle); dual-slot display — Boomerang AND Trident now mirror into the ranged slot when no bow is held (swap via melee only); wall-interaction settings (Pass Through default / Stop → Early Return or Stick) + Auto vs Click-to-Return; isometric look vertically squashed. Enabling a weapon = available/placeable content, no longer auto-granted (pickup required).)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

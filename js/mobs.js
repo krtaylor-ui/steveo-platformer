@@ -918,9 +918,12 @@ class Arrow {
     this.age++;
     this._spin = (this._spin || 0) + (this._spinRate || BOOM_SPIN_RATE);
     if (this.age > BOOM_MAX_LIFE) { this.alive = false; return; }
+    if (this.stuck) { this._stuckAge = (this._stuckAge || 0) + 1; return; }   // §F embedded in a wall (Stick)
+    if (this._boomWaiting) return;   // §F Click-to-Return: hover at the far point until recalled
     const tgt   = Array.isArray(players) ? players[0] : players;
     const range = this._boomRange, base = this._boomSpeed;
     const minSpd = base * (this._boomMinMult ?? BOOM_MIN_SPEED_MULT);
+    const clickReturn = this._boomReturnMode === 'click';
     if (!this._boomReturning) {
       const dist    = Math.hypot(this.x - this._boomOX, this.y - this._boomOY);
       const decelAt = range * (this._boomDecelPct ?? BOOM_DECEL_PCT);
@@ -931,7 +934,11 @@ class Arrow {
       }
       const h = Math.hypot(this.vx, this.vy) || 1;        // keep the steer-set heading, set the speed
       this.vx = this.vx / h * spd; this.vy = this.vy / h * spd;
-      if (dist >= range) { this._boomReturning = true; if (this._hitMobs) this._hitMobs.clear(); }
+      if (dist >= range) {
+        if (this._hitMobs) this._hitMobs.clear();
+        if (clickReturn) { this._boomWaiting = true; this.vx = 0; this.vy = 0; return; }  // wait for recall
+        this._boomReturning = true;
+      }
     } else {
       const retSpd = base * (this._boomReturnMult ?? BOOM_RETURN_MULT);
       if (tgt) {                                          // pull toward player; steer still curves to cursor
@@ -944,7 +951,16 @@ class Arrow {
         this.vx = nvx / nh * retSpd; this.vy = nvy / nh * retSpd;
       }
     }
-    this.x += this.vx; this.y += this.vy;
+    // §Phase F — wall interaction (only when Wall mode = 'stop'; default 'pass' flies over).
+    const nx = this.x + this.vx, ny = this.y + this.vy;
+    if (this._boomWall === 'stop' && level && level.isSolid && level.isSolid(Math.floor(ny / BLOCK_SIZE), Math.floor(nx / BLOCK_SIZE))) {
+      this._angle = Math.atan2(this.vy, this.vx);
+      if (this._boomOnBlock === 'stick') { this.vx = 0; this.vy = 0; this.stuck = true; return; }  // embed → game drops it
+      // Early Return (default): turn back at the wall (don't step into it).
+      if (!this._boomReturning) { this._boomReturning = true; if (this._hitMobs) this._hitMobs.clear(); }
+      return;
+    }
+    this.x = nx; this.y = ny;
     this._angle = Math.atan2(this.vy, this.vx);
     if (this._boomReturning && tgt) {                     // caught → game re-arms the slot
       const pcx = tgt.x + tgt.width / 2, pcy = tgt.y + tgt.height / 2;
@@ -1074,8 +1090,10 @@ class Arrow {
     ctx.save();
     ctx.translate(Math.floor(sx), Math.floor(sy));
     if (this._boomLook === 'iso') {
+      // §Phase F — pseudo-3D tumble: foreshorten WIDTH by |cos(spin)| AND squash the whole
+      // sprite vertically (~0.8) so it reads as lying in a side-view plane, not face-on.
       const sc = Math.max(0.12, Math.abs(Math.cos(spin)));
-      ctx.scale(sc, 1);
+      ctx.scale(sc, 0.8);
       ctx.rotate(Math.sin(spin) * 0.35);
     } else {
       ctx.rotate(spin);
@@ -2117,6 +2135,9 @@ class MobManager {
       a._boomMinMult   = BOOM_MIN_SPEED_MULT;
       a._boomReturnMult= opts.returnMult != null ? opts.returnMult : BOOM_RETURN_MULT;
       a._boomLook      = opts.look || '2d';
+      a._boomWall      = opts.wall || 'pass';        // §F 'pass' | 'stop'
+      a._boomOnBlock   = opts.onBlock || 'earlyReturn'; // §F 'earlyReturn' | 'stick'
+      a._boomReturnMode= opts.returnMode || 'auto';  // §F 'auto' | 'click'
       a._spinRate      = BOOM_SPIN_RATE;
     }
     this.playerArrows.push(a);
@@ -2683,7 +2704,7 @@ class MobManager {
   // a boomerang later. No-op on stuck/returning projectiles.
   steerGuided(tx, ty, turnRate) {
     for (const pa of this.playerArrows) {
-      if (!pa.alive || !pa.guided || pa.stuck || pa.returning) continue;
+      if (!pa.alive || !pa.guided || pa.stuck || pa.returning || pa._boomWaiting) continue;
       const desired = Math.atan2(ty - pa.y, tx - pa.x);
       const cur     = Math.atan2(pa.vy, pa.vx);
       let d = desired - cur;
@@ -2701,17 +2722,19 @@ class MobManager {
   // projectile picks it up. Returns { trident, arrows } for the game to apply
   // (re-equip the Trident / add recovered arrows to the quiver).
   collectStuckArrows(player) {
-    let trident = false, arrows = 0;
+    let trident = false, arrows = 0, boomerang = false;
     for (const pa of this.playerArrows) {
       if (!pa.alive || (!pa.stuck && !pa.returning)) continue;
       if (pa.x > player.x - 5 && pa.x < player.x + player.width + 5 &&
           pa.y > player.y - 5 && pa.y < player.y + player.height + 5) {
-        if (pa.isTrident) trident = true; else arrows++;
+        if (pa.isTrident) trident = true;
+        else if (pa.boomerang) boomerang = true;   // §F a stuck (wall-embedded) boomerang
+        else arrows++;
         pa.alive = false;   // consumed → filtered out next update
       }
     }
-    if (trident || arrows) this.playerArrows = this.playerArrows.filter((a) => a.alive);
-    return { trident, arrows };
+    if (trident || arrows || boomerang) this.playerArrows = this.playerArrows.filter((a) => a.alive);
+    return { trident, arrows, boomerang };
   }
 
   // Collect dropped items near player; returns array of {itemKey, amount}

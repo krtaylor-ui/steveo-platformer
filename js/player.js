@@ -160,6 +160,10 @@ class Player {
   get meleeDamage()  { const d = TOOL_DATA[this.sword]; return d ? d.damage : 1; }
   get meleeClass()   { return (TOOL_DATA[this.sword] && TOOL_DATA[this.sword].weaponClass) || 'sword'; }
   get rangedClass()  { return (this.bow && TOOL_DATA[this.bow] && TOOL_DATA[this.bow].weaponClass) || 'bow'; }
+  // §Phase F — the melee weapon key when it's a DUAL-MODE weapon (Trident / Boomerang),
+  // else null. The ranged hotbar slot MIRRORS this (both are thrown via the ranged action)
+  // instead of showing an empty-bow ghost, so a dual-mode weapon reads as occupying both slots.
+  dualModeMelee() { const c = this.meleeClass; return (c === 'trident' || c === 'boomerang') ? this.sword : null; }
   get weaponClass()  {
     if (this.weaponMode === 'bow')   return this.rangedClass;
     if (this.weaponMode === 'sword') return this.meleeClass;
@@ -223,6 +227,18 @@ class Player {
   recoverTrident() {
     this._tridentOut = false;
     const idx = this._tridentIndex();
+    if (idx >= 0) { this.meleeIndex = idx; this._syncActiveWeapon('melee'); this.activeHand = 'melee'; }
+  }
+  // §Phase F — Boomerang STICK mode: the thrown boomerang embedded in a wall, so switch the
+  // melee slot to the next non-boomerang weapon (keep fighting); recover puts it back.
+  _boomerangIndex() { return this.meleeOwned.findIndex((k) => this._weaponClassOf(k) === 'boomerang'); }
+  throwActiveBoomerang() {
+    const other = this.meleeOwned.findIndex((k) => this._weaponClassOf(k) !== 'boomerang');
+    if (other >= 0) { this.meleeIndex = other; this._syncActiveWeapon('melee'); }
+    this.activeHand = 'melee';
+  }
+  recoverBoomerang() {
+    const idx = this._boomerangIndex();
     if (idx >= 0) { this.meleeIndex = idx; this._syncActiveWeapon('melee'); this.activeHand = 'melee'; }
   }
 

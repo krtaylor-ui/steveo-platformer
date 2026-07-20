@@ -42,8 +42,13 @@ function mkBoom(opts = {}) {
   a._boomMinMult = 0.35;
   a._boomReturnMult = opts.returnMult || 1.0;
   a._boomLook = '2d'; a._spinRate = 0.5;
+  a._boomWall = opts.wall || 'pass';
+  a._boomOnBlock = opts.onBlock || 'earlyReturn';
+  a._boomReturnMode = opts.returnMode || 'auto';
   return a;
 }
+// A level whose cells at column >= wallCol are solid (a wall to the right).
+const wallLevel = (wallCol) => ({ isSolid: (row, col) => col >= wallCol });
 
 console.log('Boomerang — outbound decelerates then auto-returns:');
 {
@@ -93,6 +98,56 @@ console.log('Boomerang — pierce set clears its hit set on the turn (can re-hit
   let guard = 0;
   while (!b._boomReturning && guard++ < 400) b.update(player, {});
   ok(b._hitMobs.size === 0, 'hit set cleared when it turns back (mobs are hittable again on the way home)');
+}
+
+console.log('Boomerang §F — Wall mode Stop + Early Return turns back at the wall:');
+{
+  // Wall at column 12 (x >= 384); range 320px → auto-flip would be at x≈430 (past the wall),
+  // so the wall (hit at ~x384) turns it back EARLY.
+  const lvl = wallLevel(12);
+  const b = mkBoom({ wall: 'stop', onBlock: 'earlyReturn' });
+  let maxX = b.x, guard = 0;
+  while (!b._boomReturning && guard++ < 400) { b.update(player, lvl); maxX = Math.max(maxX, b.x); }
+  ok(b._boomReturning, 'turns back on contact with a wall');
+  ok(maxX < 12 * 32, `never entered the wall (maxX ${maxX.toFixed(0)} < ${12 * 32})`);
+  ok((maxX - ox) < b._boomRange, 'turned back EARLY (before max range) because of the wall');
+}
+
+console.log('Boomerang §F — Wall mode Stop + Stick embeds in the wall:');
+{
+  const lvl = wallLevel(12);
+  const b = mkBoom({ wall: 'stop', onBlock: 'stick' });
+  let guard = 0;
+  while (!b.stuck && b.alive && guard++ < 400) b.update(player, lvl);
+  ok(b.stuck === true, 'the boomerang sticks (embeds) on the wall');
+  ok(b.x < 12 * 32, 'it embeds at the wall face, not past it');
+  ok(b.vx === 0 && b.vy === 0, 'a stuck boomerang stops moving');
+}
+
+console.log('Boomerang §F — Pass Through (default) ignores walls:');
+{
+  const lvl = wallLevel(12);
+  const b = mkBoom({ wall: 'pass' });   // default — flies over/through
+  let guard = 0, passedWall = false;
+  while (!b._boomReturning && guard++ < 400) { b.update(player, lvl); if (b.x >= 12 * 32) passedWall = true; }
+  ok(!b.stuck, 'never sticks in Pass Through mode');
+  ok(passedWall, 'flies through/over the wall (reached beyond it before turning at range)');
+}
+
+console.log('Boomerang §F — Click-to-Return waits at range, then recalls:');
+{
+  const b = mkBoom({ returnMode: 'click' });
+  let guard = 0;
+  while (!b._boomWaiting && guard++ < 400) b.update(player, {});
+  ok(b._boomWaiting === true, 'reaches max range and WAITS (does not auto-return)');
+  ok(!b._boomReturning, 'not returning while waiting');
+  ok(b.alive, 'still alive while waiting');
+  // Player recalls it (game sets these on the ranged-button press).
+  b._boomWaiting = false; b._boomReturning = true;
+  let g2 = 0;
+  while (b.alive && g2++ < 800) b.update(player, {});
+  ok(!b.alive, 'after recall it returns and is caught');
+  ok(b._boomCaught === true, 'caught at the player');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

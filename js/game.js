@@ -1397,10 +1397,17 @@ class Game {
     if (this.player && this.player._tridentOut && (!this.player._tridentArrow || !this.player._tridentArrow.alive)) {
       this.player._tridentOut = false; this.player._tridentArrow = null;
     }
-    // §Phase 3 — Boomerang re-arms once it's caught / lands / expires (mirrors the
-    // Trident-in-flight rule: the boomerang stays "yours" but you're unarmed while it's out).
-    if (this.player && this.player._boomOut && (!this.player._boomArrow || !this.player._boomArrow.alive)) {
-      this.player._boomOut = false; this.player._boomArrow = null;
+    // §Phase 3/F — Boomerang re-arms once it's caught / lands / expires (mirrors the
+    // Trident-in-flight rule). §F: if it STUCK in a wall (Stick mode), the player drops to
+    // the next weapon instead of staying unarmed; the boomerang stays embedded + recoverable.
+    if (this.player && this.player._boomOut) {
+      const ba = this.player._boomArrow;
+      if (!ba || !ba.alive) { this.player._boomOut = false; this.player._boomArrow = null; }
+      else if (ba.stuck && !ba._boomFellBack) {
+        ba._boomFellBack = true;
+        if (this.player.throwActiveBoomerang) this.player.throwActiveBoomerang();
+        this.player._boomOut = false;   // armed with the fallback; recover the boomerang on walkover
+      }
     }
     // ── Poll gamepad state first (Phase 11K-1) ──────────────
     this.input.updateGamepad();
@@ -2168,6 +2175,7 @@ class Game {
     if (this.player) {
       const _picked = this.mobManager.collectStuckArrows(this.player);
       if (_picked.trident) { this.player.recoverTrident(); this.player._tridentArrow = null; this._notify('Trident recovered', '#3FB8C0', 90); }
+      if (_picked.boomerang) { this.player.recoverBoomerang && this.player.recoverBoomerang(); this.player._boomArrow = null; this._notify('Boomerang recovered', '#C98A3A', 90); }
       for (let i = 0; i < _picked.arrows; i++) this.player.addBlock(BLOCK.ARROW);
       // Never permanently lose a thrown Trident: if it expired/flew off, return it.
       if (this.player._tridentOut && this.player._tridentArrow && !this.player._tridentArrow.alive) {
@@ -2374,6 +2382,14 @@ class Game {
         this.player._tridentOut && this.player._tridentArrow && this.player._tridentArrow.alive) {
       this.player._tridentArrow.returning = true;
     }
+    // §Phase F — Boomerang Click-to-Return: a fresh ranged press recalls a boomerang that
+    // is out under 'click' return mode (whether still flying out or waiting at max range).
+    if (this.player._boomOut && this.player._boomArrow && this.player._boomArrow.alive &&
+        this.player._boomArrow._boomReturnMode === 'click' &&
+        (this.input.isThrow() || this.input.mouse.rightClicked)) {
+      this.player._boomArrow._boomWaiting = false;
+      this.player._boomArrow._boomReturning = true;
+    }
     // Steer any in-flight GUIDED projectile (Guided Trident; a future boomerang)
     // toward the cursor — runs before mobManager.update so the new heading is used
     // for this frame's move + swept collision. No-op when nothing is guided.
@@ -2478,7 +2494,9 @@ class Game {
             this.player.cx, this.player.cy, Math.cos(angle) * speed, Math.sin(angle) * speed,
             dmg, 'p1', { boomerang: true, speed, range: rangeBl * BLOCK_SIZE,
               decelPct: (s.boomerangDecel != null ? s.boomerangDecel / 100 : BOOM_DECEL_PCT),
-              returnMult: s.boomerangReturnMult ?? BOOM_RETURN_MULT, look: s.boomerangLook || '2d' });
+              returnMult: s.boomerangReturnMult ?? BOOM_RETURN_MULT, look: s.boomerangLook || '2d',
+              wall: s.boomerangWall || 'pass', onBlock: s.boomerangOnBlock || 'earlyReturn',
+              returnMode: s.boomerangReturn || 'auto' });   // §F wall + return-trigger config
           this.player._boomOut = true;   // stays "yours"; unarmed until it returns
           this.player.bowDrawing = false; this.player.drawProgress = 0;
           this.player.swingTimer = 12;
@@ -10961,6 +10979,10 @@ class Game {
   // that slot (Sword▸Spear▸Axe▸Trident / Bow▸Crossbow) with a name toast.
   _selectOrCycleSlot(hk) {
     const p = this.player;
+    // §Phase F — when the ranged slot is only MIRRORING a dual-mode melee weapon (Trident/
+    // Boomerang, no real bow), it isn't independently selectable: pressing it acts on the
+    // melee slot instead (you swap by changing the melee weapon).
+    if (hk === 1 && !p.bow && p.dualModeMelee && p.dualModeMelee()) hk = 0;
     const kind = hk === 0 ? 'melee' : hk === 1 ? 'ranged' : null;
     if (!kind) { p.selectedSlot = hk; return; }
     // A weapon slot (0 = melee, 1 = ranged): each press selects it, makes that
@@ -11153,12 +11175,10 @@ class Game {
       if (pl.normalizeWeapons) pl.normalizeWeapons();   // fold any deserialized sword/bow into the collections
       if (s.startingMelee  && MELEE[s.startingMelee]   && pl.acquireWeapon) pl.acquireWeapon(MELEE[s.startingMelee]);
       if (s.startingRanged && RANGED[s.startingRanged] && pl.acquireWeapon) pl.acquireWeapon(RANGED[s.startingRanged]);
-      // §Phase 3 — new-weapon opt-in pattern: the Boomerang exists in a world only when
-      // its World-Settings toggle is on. When on, grant it so the player can cycle to it
-      // (distinct from the always-available six weapons, which need no toggle).
-      if (s.weaponBoomerang && pl.acquireWeapon) pl.acquireWeapon('BOOMERANG');
-      // §Phase 5 — same opt-in pattern for the Grappling Hook (ranged slot).
-      if (s.weaponGrapple && pl.acquireWeapon) pl.acquireWeapon('GRAPPLING_HOOK');
+      // §Phase F/G — the Boomerang/Grapple World-Settings toggles gate AVAILABILITY (whether
+      // they can be placed/spawned in the world), NOT possession — they are NO LONGER
+      // auto-granted at spawn. The player ACQUIRES them by picking up a placed instance
+      // (the explicit "Starting Melee = Boomerang" choice above is the one intentional grant).
     }
   }
 
@@ -12027,7 +12047,9 @@ class Game {
 
       // Weapon slots 0-1 (sword, bow); pickaxe removed (mining is always-active).
       if (i <= 1) {
-        const toolKey  = i === 0 ? player.sword : player.bow;
+        // §Phase F — ranged slot mirrors a dual-mode melee weapon when no real bow.
+        const _mirror  = (i === 1 && !player.bow && player.dualModeMelee) ? player.dualModeMelee() : null;
+        const toolKey  = i === 0 ? player.sword : (player.bow || _mirror);
         const toolData = toolKey ? TOOL_DATA[toolKey] : null;
         const cls = toolData ? (toolData.weaponClass || toolData.type) : (i === 0 ? 'sword' : 'bow');
         const col = toolData ? toolData.color : 'rgba(180,140,80,0.6)';
@@ -12077,7 +12099,10 @@ class Game {
 
       // Weapon slots 0-1: sword (0), bow (1). Pickaxe removed (mining always-active).
       if (i <= 1) {
-        const toolKey  = i === 0 ? p.sword : p.bow;
+        // §Phase F — the ranged slot MIRRORS a dual-mode melee weapon (Trident/Boomerang)
+        // when no real bow is held, so the weapon reads as occupying both slots.
+        const _mirror  = (i === 1 && !p.bow && p.dualModeMelee) ? p.dualModeMelee() : null;
+        const toolKey  = i === 0 ? p.sword : (p.bow || _mirror);
         // Icon by weapon class (Smart Mobs §2) so a Spear/Axe/Trident/Crossbow
         // reads distinctly in its slot; falls back to the slot's default.
         const toolData = toolKey ? TOOL_DATA[toolKey] : null;
@@ -12106,6 +12131,12 @@ class Game {
             ctx.fillText(tierNames[toolData.tier] ?? '', sx + SLOT_SIZE - 3, sy + SLOT_SIZE - 2);
             ctx.textAlign    = 'left'; ctx.textBaseline = 'alphabetic';
           }
+          if (_mirror) { // §Phase F — "mirrored from melee" cue (not independently selectable)
+            ctx.fillStyle = 'rgba(150,220,255,0.8)'; ctx.font = 'bold 9px Courier New';
+            ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+            ctx.fillText('↔', sx + 3, sy + SLOT_SIZE - 2);
+            ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+          }
         } else if (i === 1) {
           // Bow slot empty — ghost + craft hint
           ctx.fillStyle    = 'rgba(180,140,80,0.35)'; ctx.font = `${SLOT_SIZE * 0.52}px serif`;
@@ -12116,8 +12147,9 @@ class Game {
           ctx.textAlign    = 'center'; ctx.fillText('craft', sx + SLOT_SIZE / 2, sy + SLOT_SIZE - 3);
           ctx.textAlign    = 'left';
         }
-        // Arrow count overlay on the bow slot (i===1) when equipped + finite ammo
-        if (i === 1 && toolKey && !this._worldAdvSettings.unlimitedArrows) {
+        // Arrow count overlay on the bow slot (i===1) — only a REAL bow/crossbow uses arrows
+        // (not a mirrored dual-mode weapon, not the grappling hook).
+        if (i === 1 && p.bow && (p.rangedClass === 'bow' || p.rangedClass === 'crossbow') && !this._worldAdvSettings.unlimitedArrows) {
           const arrowCount = p.countItem(BLOCK.ARROW);
           ctx.fillStyle    = arrowCount === 0 ? '#FF5555' : '#FFFFFF';
           ctx.font         = 'bold 10px Courier New';

@@ -43,7 +43,7 @@ const SPAWN_EGG_DEFS = [
 // TOOL_DATA's tier-interleaved insertion order. weaponClass distinguishes the
 // melee families that share type 'sword' (sword/spear/axe/trident) and the ranged
 // families that share type 'bow' (bow/crossbow); non-weapons fall back to `type`.
-const _GEAR_GROUP_ORDER = ['pickaxe', 'sword', 'spear', 'axe', 'trident', 'bow', 'crossbow', 'shield', 'flint_steel'];
+const _GEAR_GROUP_ORDER = ['pickaxe', 'sword', 'spear', 'axe', 'trident', 'boomerang', 'bow', 'crossbow', 'grapple', 'shield', 'flint_steel'];
 const _gearGroup = (key) => (TOOL_DATA[key].weaponClass || TOOL_DATA[key].type);
 const _gearRank  = (key) => { const i = _GEAR_GROUP_ORDER.indexOf(_gearGroup(key)); return i < 0 ? 99 : i; };
 const GEAR_PALETTE_ITEMS = [
@@ -1133,9 +1133,18 @@ class SandboxManager {
   }
 
   _paletteItems() {
-    return this.paletteTab === 'other' ? OTHER_PALETTE_ITEMS
-         : this.paletteTab === 'gear'  ? GEAR_PALETTE_ITEMS
-         : (SANDBOX_PALETTE_BLOCKS[this.paletteTab] || []);
+    if (this.paletteTab === 'other') return OTHER_PALETTE_ITEMS;
+    if (this.paletteTab === 'gear') {
+      // §Phase F/G — the opt-in weapons (Boomerang / Grapple) only appear in the palette
+      // when enabled for this world (enabling = "available content" that can be placed).
+      const aws = (typeof window !== 'undefined' && window.game && window.game._worldAdvSettings) || {};
+      return GEAR_PALETTE_ITEMS.filter((it) => {
+        if (it.weaponClass === 'boomerang') return !!aws.weaponBoomerang;
+        if (it.weaponClass === 'grapple')   return !!aws.weaponGrapple;
+        return true;
+      });
+    }
+    return SANDBOX_PALETTE_BLOCKS[this.paletteTab] || [];
   }
 
   _paletteMaxScroll() {
@@ -1815,9 +1824,7 @@ class SandboxManager {
     const gridTop = geom.gridTop, gridBottom = geom.gridBottom, slotSz = geom.slotSz, startX = geom.startX, cols = geom.cols;
     const isOther = this.paletteTab === 'other';
     const isGear  = this.paletteTab === 'gear';
-    const items  = isOther ? OTHER_PALETTE_ITEMS
-                 : isGear  ? GEAR_PALETTE_ITEMS
-                 : (SANDBOX_PALETTE_BLOCKS[this.paletteTab] || []);
+    const items  = this._paletteItems();   // §Phase F/G — filtered (opt-in weapons gated by world toggle)
     const maxScroll = Math.max(0, Math.ceil(items.length / cols) * slotSz - (gridBottom - gridTop));
     this.paletteScroll = Math.max(0, Math.min(this.paletteScroll, maxScroll));
     const scroll = this.paletteScroll;

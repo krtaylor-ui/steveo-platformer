@@ -323,6 +323,10 @@ const WORLD_SETTINGS = {
     // Candidate knobs (may be pruned later) — flagged per the brief.
     rows.push({ key: 'boomerangSteer', tab: 'combat', group: bg, modes, type: 'slider', dflt: 30, label: 'Steer Intensity ⚗', sub: true, dependsOn: 'weaponBoomerang', advanced: true, hint: 'homing strength toward the cursor on both legs (candidate — may be pruned)' });
     rows.push({ key: 'boomerangReturnMult', tab: 'combat', group: bg, modes, type: 'cycle', opts: [0.75, 1.0, 1.25, 1.5], dflt: 1.0, label: 'Return Speed ⚗', fmt: (v) => v.toFixed(2) + 'x', sub: true, dependsOn: 'weaponBoomerang', advanced: true, hint: 'return-leg speed vs outbound (candidate — may be pruned)' });
+    // §Phase F — wall interaction + return trigger.
+    rows.push({ key: 'boomerangWall', tab: 'combat', group: bg, modes, type: 'cycle', opts: ['pass', 'stop'], dflt: 'pass', label: 'Wall Mode', fmt: (v) => v === 'stop' ? 'Stop at Blocks' : 'Pass Through', sub: true, dependsOn: 'weaponBoomerang', hint: 'Pass Through = flies over/through blocks (its signature trait); Stop = interacts with blocks' });
+    rows.push({ key: 'boomerangOnBlock', tab: 'combat', group: bg, modes, type: 'cycle', opts: ['earlyReturn', 'stick'], dflt: 'earlyReturn', label: 'On Block Hit', fmt: (v) => v === 'stick' ? 'Stick (drop it)' : 'Early Return', sub: true, advanced: true, dependsOn: (a) => a.weaponBoomerang && a.boomerangWall === 'stop', hint: 'Early Return = turn back on contact; Stick = embed like a Trident (you lose it until picked up)' });
+    rows.push({ key: 'boomerangReturn', tab: 'combat', group: bg, modes, type: 'cycle', opts: ['auto', 'click'], dflt: 'auto', label: 'Return Trigger', fmt: (v) => v === 'click' ? 'Click to Return' : 'Auto-Return', sub: true, dependsOn: 'weaponBoomerang', hint: 'Auto = comes back on its own; Click = flies out, waits, and recalls on the ranged button (like the Trident)' });
     // §Phase 5 — Grappling Hook (new-weapon opt-in pattern). Fires a cable, swing/climb.
     // Occupies the RANGED slot (cycle to it, or it's granted here). Enabling it also turns
     // on Aim-Up (Up/W = look-up, jump → J) so you can grapple straight up.
