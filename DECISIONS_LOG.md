@@ -50,6 +50,25 @@
   mapping in the mouse software or the offending browser extension — not required now that left-click + Space
   both fire the bow.
 
+## CORRECTION — the REAL root cause was the touch aim pad (2026-07-19, build 171)
+- The "external mouse driver" conclusion above was WRONG. Decisive new evidence: platformer/normal/
+  speedrun showed `btn:2` across the whole screen, but ARENA showed `btn:0` on the right half at the same
+  spot — the browser can't be mode-dependent, so it had to be the game. `document.elementFromPoint` at the
+  cursor returned **`DIV.tc-aimpad < #touch-controls`** on the right half in arena, `gameCanvas` on the left.
+- **Root cause:** `.tc-aimpad` is the mobile touch-controls twin-stick **arena aim/fire pad** (touch-controls.js).
+  It is shown ONLY in arena and covers the RIGHT HALF of the screen. Its `pointerdown` did
+  `e.preventDefault(); mouse.down = true; mouse.clicked = true` — so a MOUSE right-click on it was swallowed
+  and turned into a left-click/melee. Explains every symptom: arena-only, right-half-only, reads-as-left, and
+  it covered the canvas so `mousemove` froze there too (the earlier "freeze" was the same overlay).
+- It was active on Kevin's desktop because `detect()` auto-enabled touch on ANY touch-capable device — a
+  touchscreen laptop reports touch points even with a mouse.
+- **Fixes (build 171):** (1) `detect()` auto-enables touch ONLY when there is no fine pointer
+  (`any-pointer: fine`) — hybrid mouse+touch devices get the desktop scheme; `?touch=`/localStorage still
+  override. (2) Touch handlers ignore `pointerType === 'mouse'`. (3) The overlay drops `pointer-events`
+  whenever the active pointer is a mouse, so it can never intercept mouse clicks even if touch is forced on.
+- The build 165/166/168 changes (Space fires bow, window mousemove, left-click fires selected bow) are still
+  good UX and stay — they're conveniences now, not the fix.
+
 Started 2026-07-01. Records assumptions/decisions made during the Phase 3 master-brief run.
 Q0 verified: Phase 3B (`players[]`, PvP hit detection, kill attribution, Friendly Fire, Deathmatch)
 is committed (`91176fa`) and complete in code. CTF still `comingSoon`. Building on top of it.
