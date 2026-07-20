@@ -865,11 +865,14 @@ class Player {
     const s = this._hangState;
     if (s === 'hang') {
       this.x = this._hangX; this.y = this._hangY;
-      const jumpEdge = input.isJump() && !this._jumpPressed;
-      this._jumpPressed = input.isJump();
+      // EITHER Up (look-up key) OR Jump climbs up — regardless of which one grabbed the
+      // edge — so the player never has to guess which button they used.
+      const upNow  = input.isJump() || (typeof input.isLookUpHeld === 'function' && input.isLookUpHeld());
+      const upEdge = upNow && !this._jumpPressed;
+      this._jumpPressed = upNow;
       if (input.isCrouch()) {                  // down → drop off
         this._hangState = null; this._hangCooldown = 12; this.vy = 2; this._downWas = true;
-      } else if (jumpEdge) {                    // up/jump → climb up (75f default; scaled by climbSpeed)
+      } else if (upEdge) {                      // up/jump → climb up (75f default; scaled by climbSpeed)
         this._hangState = 'up'; this._climbT = 0; this._climbDur = Math.max(6, Math.round(75 / (this._climbSpeed || 1)));
       }
     } else if (s === 'up') {

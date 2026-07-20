@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 190 (Combat/Controls FOLLOW-UP — grapple climb-on-top now HANDS OFF to the ledge-climb "up" animation, so the sprite shows the articulated climb onto the block (rise, then step on top) instead of a plain slide; works mid-face on any clear-topped block, independent of the ledge-hang world toggle.)';
+const GAME_VERSION = 'v3 · build 191 (Combat/Controls FOLLOW-UP — grapple/edge fixes: edge-climb triggers on Up OR Jump regardless of which grabbed; grapple hook damage now defaults to 0 (world setting to add it) + attaches only to a block bottom edge by default (setting for bottom/sides/any); the swing no longer auto-starts — you press Up to begin it (hang until then); releasing mid-swing (Down) keeps your swing momentum then gravity.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

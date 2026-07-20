@@ -33,6 +33,25 @@ Bug-fix + polish follow-up to the mega-session, from Kevin's first playtest. Pha
   at spawn (the mega-session's auto-grant is removed). The explicit "Starting Melee = Boomerang" choice
   stays as a separate intentional grant.
 
+## GRAPPLE + edge-climb fixes (build 191) — Kevin's 3rd playtest pass
+- **Edge climb on Up OR Jump (either grabs, either climbs):** `_tryLedgeGrab` already grabs on
+  `isJump() || isLookUpHeld()`; now `_updateHang`'s 'hang' state climbs up on the SAME combined edge
+  (was jump-only), so you never have to match the button you grabbed with.
+- **Grapple hook damage → 0 by default + world setting:** `_grappleHitMob` now deals
+  `_worldAdvSettings.grappleDamage ?? 0` (knockback + auto-return always apply). New **Hook Damage**
+  setting (0/2/4/6/9). (takeDamage applies knockback even at 0 damage.)
+- **Attach to the BOTTOM edge only by default + setting:** on a solid hit the face is classified from
+  the hook's travel direction (|dy|≥|dx| → bottom/top; else side); default anchors ONLY on `bottom`, a
+  disallowed face = no anchor (retract). New **Attach To** setting: Bottom edge only / Bottom + sides /
+  Any face.
+- **Swing no longer auto-starts (§5):** a solid hit now enters an **`attached`** state (the player hangs;
+  Down drops, Up begins the swing using the momentum they had at the grab). The swing only starts on Up.
+- **Down mid-swing preserves momentum (§6):** confirmed — swinging + Down calls `_endGrapple(true)` →
+  `GRAPPLE.releaseVelocity` (tangential) then normal gravity, so you fly off in the swing direction and
+  arc down (at the bottom, that's horizontal + a slow descent).
+- The build-190 climb-on-top handoff is reached via the new flow (attached → Up → swing → hold Up to
+  reel → climb), showing the articulated ledge-climb animation. Suite 689/689.
+
 ## GRAPPLE climb-on-top articulated pose (build 190)
 - The grapple climb now HANDS OFF to the existing ledge-climb `'up'` state (`_grappleClimbHandoff`
   sets `_hangState='up'` + the hang→stand geometry + grip corner, then `_endGrapple`), so

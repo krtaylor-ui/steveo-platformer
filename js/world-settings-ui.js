@@ -333,6 +333,8 @@ const WORLD_SETTINGS = {
     const gh = 'Weapon · Grappling Hook';
     rows.push({ key: 'weaponGrapple', tab: 'combat', group: gh, modes, type: 'toggle', dflt: false, label: 'Configure Grappling Hook', hint: 'the Grappling Hook is always available under Equipment in the Sandbox palette. The player must PICK ONE UP to use it — fire a cable, swing, reel in, climb 1-block ledges. Look-Up Aim (Up/W = aim up, jump → J) turns on once you are holding it. Turn this ON to customize the range.' });
     rows.push({ key: 'grappleRange', tab: 'combat', group: gh, modes, type: 'cycle', opts: [6, 8, 10, 12, 16], dflt: 8, label: 'Range', fmt: (v) => v + ' bl', sub: true, dependsOn: 'weaponGrapple', advanced: true, hint: 'hook reach; nothing hit within range → it auto-retracts' });
+    rows.push({ key: 'grappleDamage', tab: 'combat', group: gh, modes, type: 'cycle', opts: [0, 2, 4, 6, 9], dflt: 0, label: 'Hook Damage', fmt: (v) => v === 0 ? 'None (knockback only)' : v, sub: true, dependsOn: 'weaponGrapple', advanced: true, hint: 'damage dealt when the hook hits an enemy (it always knocks back + returns); 0 = no damage' });
+    rows.push({ key: 'grappleAttach', tab: 'combat', group: gh, modes, type: 'cycle', opts: ['bottom', 'bottomSide', 'any'], dflt: 'bottom', label: 'Attach To', fmt: (v) => ({ bottom: 'Bottom edge only', bottomSide: 'Bottom + sides', any: 'Any face' }[v] || v), sub: true, dependsOn: 'weaponGrapple', advanced: true, hint: 'which block face the hook can grab; default = only the underside (bottom edge)' });
     return rows;
   },
 

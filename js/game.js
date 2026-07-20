@@ -11109,26 +11109,48 @@ class Game {
       for (let s = 0; s < n; s++) {
         g.hx += g.dx * step; g.hy += g.dy * step; g.traveled += step;
         // §Follow-up — hook hits an ENEMY: knock it back and auto-retract (no attach/swing).
+        // Damage is 0 by default (knockback only); a world setting can add damage.
         const mob = this._grappleHitMob(g.hx, g.hy);
         if (mob) {
           const dir = Math.sign(g.dx) || (p.facing || 1);
-          if (mob.takeDamage) mob.takeDamage(3, dir, 1.8);   // light hit + strong knockback
+          if (mob.takeDamage) mob.takeDamage(this._worldAdvSettings.grappleDamage ?? 0, dir, 1.8);
           if (!mob.alive && this.mobManager && this.mobManager.onKill) this.mobManager.onKill('p1', mob);
           p._grapple = null; p._grappleOwn = false;           // hook returns to the player
           this._notify('Grapple knockback!', '#C0A070', 60);
           return;
         }
-        if (this.level.isSolid(Math.floor(g.hy / BLOCK_SIZE), Math.floor(g.hx / BLOCK_SIZE))) {
-          g.hx -= g.dx * step; g.hy -= g.dy * step;      // back up to just before the wall
+        const hitRow = Math.floor(g.hy / BLOCK_SIZE), hitCol = Math.floor(g.hx / BLOCK_SIZE);
+        if (this.level.isSolid(hitRow, hitCol)) {
+          // §follow-up — which FACE did the hook strike? (from its travel direction.) By
+          // default the hook only anchors to a block's BOTTOM edge; a world setting widens
+          // it to bottom+side or any. A disallowed face = no anchor → the hook retracts.
+          const adx = Math.abs(g.dx), ady = Math.abs(g.dy);
+          const face = ady >= adx ? (g.dy < 0 ? 'bottom' : 'top') : 'side';
+          const mode = this._worldAdvSettings.grappleAttach || 'bottom';
+          const ok = mode === 'any' || (mode === 'bottomSide' && face !== 'top') || (mode === 'bottom' && face === 'bottom');
+          if (!ok) { p._grapple = null; p._grappleOwn = false; return; }
+          g.hx -= g.dx * step; g.hy -= g.dy * step;      // stick just before the block
           g.ax = g.hx; g.ay = g.hy;
-          const acol = Math.floor(g.ax / BLOCK_SIZE), arow = Math.floor(g.ay / BLOCK_SIZE);
-          g.anchorCol = acol; g.anchorRow = arow;
-          g.topClear = !this.level.isSolid(arow - 1, acol);   // §item4 — is there a clear top to climb onto?
-          g.swing = GRAPPLE.beginSwing(g.ax, g.ay, p.x, p.y, p.width, p.height, p.vx, p.vy);
-          g.state = 'swinging';
+          g.anchorCol = hitCol; g.anchorRow = hitRow;
+          g.topClear = !this.level.isSolid(hitRow - 1, hitCol);   // §item4 — clear top to climb onto?
+          g.entryVx = p.vx; g.entryVy = p.vy;            // momentum at grab (for when swinging starts)
+          g.state = 'attached';                          // hang — swing does NOT start until Up (§5)
           return;
         }
         if (g.traveled >= g.range) { p._grapple = null; p._grappleOwn = false; return; }  // auto-retract (5e-5)
+      }
+      return;
+    }
+
+    // §follow-up — ATTACHED: the hook is stuck and the player hangs; the swing only STARTS
+    // when they press Up (not automatically). Down lets go (drop); Up begins the swing using
+    // the momentum they had when they grabbed.
+    if (g.state === 'attached') {
+      p._grappleOwn = true; p.vx = 0; p.vy = 0;
+      if (down) { this._endGrapple(false); return; }
+      if (up) {
+        g.swing = GRAPPLE.beginSwing(g.ax, g.ay, p.x, p.y, p.width, p.height, g.entryVx || 0, g.entryVy || 0);
+        g.state = 'swinging';
       }
       return;
     }
