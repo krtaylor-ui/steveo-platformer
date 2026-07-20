@@ -248,7 +248,21 @@ class InputManager {
       this.mouse.down      = (e.buttons & 1) !== 0;
       this.mouse.rightDown = (e.buttons & 2) !== 0;
     });
-    this._canvas.addEventListener('mousedown', e => {
+    // Register presses anywhere inside the GAME AREA (the canvas or its wrap), not just
+    // the canvas element. In zoomed-out / single-screen play the cursor sits over
+    // letterbox bars / overflow-clipped edges that are part of #canvas-wrap but NOT the
+    // canvas — a canvas-only listener never sees a click there, so a right-click on that
+    // side never set rightDown and the bow "became a left-click / melee" (Kevin: right→
+    // left ONLY in zoom mode). We still ignore clicks on the HTML HUD / menus (outside
+    // the wrap) so those keep their own behaviour. Diagnostic: record the raw button +
+    // which element was actually hit, surfaced on the Debug HUD.
+    const _inGameArea = (t) => t === this._canvas ||
+      (t && typeof t.closest === 'function' && t.closest('#canvas-wrap'));
+    window.addEventListener('mousedown', e => {
+      this.mouse._dbgDown = { btn: e.button, buttons: e.buttons,
+        tgt: (e.target && (e.target.id || e.target.tagName)) || '?',
+        area: _inGameArea(e.target) ? 1 : 0 };
+      if (!_inGameArea(e.target)) return;   // HTML UI outside the game area handles itself
       if (e.button === 0) {
         this.mouse.down       = true;
         this.mouse.clicked    = true;
