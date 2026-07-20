@@ -380,6 +380,9 @@ class Player {
 
     // Ledge hang owns the whole frame while active (no gravity/collision).
     if (this._hangState) { this._updateHang(input, level); this._animate(input); return; }
+    // §Phase 5 — while the grapple owns the frame (swinging / rising / climbing), the
+    // game's _updateGrapple() has already set position; skip gravity/collision.
+    if (this._grappleOwn) { this._animate(input); return; }
 
     this._detectWallSlide(input, level);   // sets _wallSliding (used by jump + physics)
     this._handleInput(input, level);

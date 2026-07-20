@@ -181,6 +181,38 @@ toggleable (see the "TOGGLE INVENTORY" running list at the bottom of this sectio
 - Byte-compatible by default (arrowSpeedMult 1.0, gravity = BOW_GRAVITY, no charge-damage) — suite
   green with no test changes. Feel (straight arrows, charge damage curve) is browser-untested; flag.
 
+## PHASE 5 — Grappling Hook (build 177) — DONE (5 invariants headless-VERIFIED; swing FEEL browser-UNTESTED)
+- **Pure math module `js/grapple.js` (`GRAPPLE`)** holds the cast + pendulum + release + reel-in +
+  climb-eligibility as deterministic functions, unit-tested FIRST per the brief. `test/test-grapple.js`
+  (16 assertions) verifies all five §5e invariants: **(1)** the swing never drops below launch height
+  (`py <= launchY` at every step, across many velocities/anchors — enforced by a clamp+bounce at the
+  launch line); **(2)** release preserves the tangential velocity (perpendicular to the cable);
+  **(3)** reeling in shortens the cable and narrows the arc (`swingHalfArc` shrinks with length);
+  **(4)** climb-over is gated to an exactly-1-block obstacle; **(5)** the cast attaches on a solid hit
+  within range and auto-retracts on a miss (injected `isSolid` predicate). ALL PASS.
+- **Weapon:** `TOOL_DATA.GRAPPLING_HOOK` (type `bow` → **ranged slot**, weaponClass `grapple`, `🪝`).
+  DECISION: put it in the ranged slot (fired with the ranged action) rather than adding a new weapon
+  `type` branch — least-risk equip path; documented deviation from the brief's "either slot" wording.
+- **Game state machine (`_updateGrapple` in game.js):** firing (straight cast, NO cursor tracking,
+  range default 8bl, auto-retract) → swinging (GRAPPLE pendulum owns the frame via `player._grappleOwn`,
+  which short-circuits normal physics like `_hangState`) → reel-in on Up/W (narrows the arc) → scripted
+  climb-over onto a 1-block ledge → release. Down = disengage/drop (momentum kept); Jump = release
+  (velocity preserved); catch/expire re-arms. Cable + hook rendered (`_drawGrapple`).
+- **§5b aim-up wired:** `aimUpEnabled` toggle (auto-on when the grapple is enabled). When on,
+  `input.isJump()` moves keyboard jump to **J** and `input.isAimUp()` reads Up/W; game.js redirects a
+  new `aimWorld` (bow/crossbow/trident/boomerang/grapple + guided steer) to straight-up while held,
+  WITHOUT moving the mine/place hover, and left/right run still works. **Generalized to all ranged
+  weapons (Q1).** Keybinding defaults: aimUp = the scheme's natural up (W / ArrowUp); the {jump, aimUp}
+  same-key pair is a deliberate mode-swap, excluded from conflict warnings. **Legacy Jump preset**
+  (Phase 2) restores Up/W = jump.
+- **World Settings → Combat → Weapon · Grappling Hook:** Enable toggle (opt-in, granted in
+  `_applyStartingWeapons`) + Range; **Look-Up Aim** toggle under Movement → Moves.
+- **Deviations / flags for playtest:** climb-over is a self-contained scripted lerp (NOT yet the
+  ledge-climb `_hangState` animation — reuse is a flagged polish follow-up); the grapple flies over
+  terrain with no cable-collision; swing owns physics by zeroing vx/vy each frame and realizing
+  velocity only on release. **The swing FEEL, climb-over, cable render, and aim-up controls are all
+  browser-untested — needs Kevin's hands-on playtest** (the invariants are proven; the feel is not).
+
 ## TOGGLE INVENTORY (running — every independent enable/config added this session)
 Permanent, player-facing unless marked. Phase 1:
 - **Touch Controls** (Auto/On/Off) — pause → Settings → Player. Permanent, per-device.
@@ -197,7 +229,10 @@ Phase 4:
 - **Straight Arrow Flight** (own toggle) — World Settings → Combat → Ranged. Permanent, per-world.
 - **Charged Shots** (own toggle, charge→damage) + **Max Charge Damage** + **Charge Speed** — per-world.
 - **Arrow Speed** — per-world.
-(No temp/debug-only flags added in Phases 1–4; the ⚗ boomerang knobs are permanent-but-prunable, not debug.)
+Phase 5:
+- **Enable Grappling Hook** (opt-in per world) + **Range** — World Settings → Combat → Weapon · Grappling Hook.
+- **Look-Up Aim (Up/W)** (own toggle; auto-on with the grapple) — World Settings → Movement → Moves.
+(No temp/debug-only flags added in Phases 1–5; the ⚗ boomerang knobs are permanent-but-prunable, not debug.)
 
 ## Bow-fire "won't fire on the right side" — root cause + fix (2026-07-19, builds 160–165)
 - **Symptom:** in zoomed-out / single-screen play, the bow fired when aiming/right-clicking on the

@@ -34,6 +34,8 @@ const TOOL_DATA = {
   TRIDENT:           { name: 'Trident',           type: 'sword', weaponClass: 'trident', tier: 2, damage: 7, mineSpeed: 0, color: '#3FB8C0' },
   // ── Boomerang (§Phase 3 — dual-mode melee + auto-returning throw; opt-in per world) ──
   BOOMERANG:         { name: 'Boomerang',         type: 'sword', weaponClass: 'boomerang', tier: 2, damage: 7, mineSpeed: 0, color: '#C98A3A' },
+  // ── Grappling Hook (§Phase 5 — fires a cable, swing/climb; ranged slot; opt-in per world) ──
+  GRAPPLING_HOOK:    { name: 'Grappling Hook',    type: 'bow',   weaponClass: 'grapple', tier: 0, damage: 0, mineSpeed: 0, color: '#9a7b4f' },
   BOW:               { name: 'Bow',               type: 'bow',   weaponClass: 'bow',      tier: 0, damage: PLAYER_ARROW_DAMAGE, mineSpeed: 0, color: '#C8A55A' },
   // ── Crossbow (piercing arrows; +damage) ──
   CROSSBOW:          { name: 'Crossbow',          type: 'bow',   weaponClass: 'crossbow', tier: 0, damage: PLAYER_ARROW_DAMAGE, mineSpeed: 0, color: '#9A7B4F' },
@@ -44,7 +46,7 @@ const TOOL_DATA = {
 // Emoji icon per weapon CLASS (Smart Mobs §2) so spear/axe/trident/crossbow read
 // distinctly in the hotbar, sandbox palette and drops — not all as swords.
 // (No true crossbow emoji exists; 🎯 stands in — a drawn sprite is a follow-up.)
-const WEAPON_CLASS_ICON = { sword: '⚔', spear: '🗡', axe: '🪓', trident: '🔱', boomerang: '🪃', bow: '🏹', crossbow: '🎯' };
+const WEAPON_CLASS_ICON = { sword: '⚔', spear: '🗡', axe: '🪓', trident: '🔱', boomerang: '🪃', bow: '🏹', crossbow: '🎯', grapple: '🪝' };
 // Icon for a TOOL_DATA entry (or palette item) by weapon class, falling back to type.
 function weaponIconFor(d) {
   if (!d) return '⚔';

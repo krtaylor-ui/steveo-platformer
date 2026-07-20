@@ -45,14 +45,18 @@ const KEY_BINDINGS = {
 
   // Per-scheme default primary codes. These MUST match the historical input.js keys.
   DEFAULTS: {
+    // NB: aimUp shares the scheme's natural UP key with jump (W / ArrowUp). That's a
+    // deliberate MODE SWAP, not a clash — when Aim-Up is enabled (§5b) jump moves to J
+    // and Up/W become look-up; the two are never live at once. conflicts() ignores the
+    // {jump, aimUp} pair for exactly this reason.
     kb1: {
       left: 'KeyA', right: 'KeyD', jump: 'KeyW', crouch: 'KeyS', run: 'ShiftLeft',
-      aimUp: 'ArrowUp', melee: 'Space', ranged: 'Mouse2', place: 'ShiftMouse0',
+      aimUp: 'KeyW', melee: 'Space', ranged: 'Mouse2', place: 'ShiftMouse0',
       throw: 'KeyQ', grapple: 'KeyG', inventory: 'KeyE',
     },
     kb2: {
       left: 'ArrowLeft', right: 'ArrowRight', jump: 'ArrowUp', crouch: 'ArrowDown', run: 'ShiftLeft',
-      aimUp: 'KeyW', melee: 'Insert', ranged: 'Mouse2', place: 'ShiftMouse0',
+      aimUp: 'ArrowUp', melee: 'Insert', ranged: 'Mouse2', place: 'ShiftMouse0',
       throw: 'KeyQ', grapple: 'KeyG', inventory: 'KeyI',
     },
   },
@@ -171,7 +175,12 @@ const KEY_BINDINGS = {
       (byCode[code] = byCode[code] || []).push(a.id);
     }
     const out = [];
-    for (const code in byCode) if (byCode[code].length > 1) out.push({ code, actions: byCode[code] });
+    for (const code in byCode) {
+      let acts = byCode[code];
+      // {jump, aimUp} on the same key is a deliberate mode swap (§5b), not a conflict.
+      if (acts.length === 2 && acts.includes('jump') && acts.includes('aimUp')) continue;
+      if (acts.length > 1) out.push({ code, actions: acts });
+    }
     return out;
   },
 

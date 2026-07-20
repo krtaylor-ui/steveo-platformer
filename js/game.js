@@ -2119,6 +2119,10 @@ class Game {
     // Single-player: both keyboard and any connected gamepad drive P1 simultaneously.
     // Disabled in co-op/arena multiplayer and online games for per-player isolation.
     this.input.dualInput = this.activePlayers().length <= 1 && !this._onlineGameId;
+    // §5b — Aim-Up (Up/W = look-up, jump → J): gated on the world toggle. Also on
+    // automatically whenever the grappling hook is enabled (it needs aim-up to grapple
+    // straight up). Read by input.isJump()/isAimUp().
+    this.input._aimUpEnabled = !!(this._worldAdvSettings.aimUpEnabled || this._worldAdvSettings.weaponGrapple);
     // Sync XP speed boost flag to all local players
     for (const p of this.activePlayers()) p.xpSpeedDisabled = !!this._worldAdvSettings.disableXpSpeedBoost;
 
@@ -2155,6 +2159,7 @@ class Game {
       }
     } else {
       this._applyMovementConfig(this.player);
+      this._updateGrapple();                 // §Phase 5 — advance hook/swing; may own the frame
       this.player.update(this.input, this.level);
     }
     this._playMovementSfx(this.player);   // Smart Mobs §4 — footstep + landing SFX
@@ -2285,6 +2290,11 @@ class Game {
     // exactly what the highlight is drawn on under the current zoom.
     this._syncViewTransform();
     const world    = this.camera.toWorld(this.input.mouse.x, this.input.mouse.y);
+    // §5b — Aim-Up override: while the look-up key is held, RANGED aim (bow / crossbow /
+    // trident / boomerang / grapple + guided steer) forces straight up. `world` still
+    // drives mine/place hover (unchanged) — only `aimWorld` is redirected. Left/right
+    // movement is read separately (moveX), so you can still run while aiming up.
+    const aimWorld = this.input.isAimUp() ? { x: this.player.cx, y: this.player.cy - 1000 } : world;
     const hoverCol = Math.floor(world.x / BLOCK_SIZE);
     const hoverRow = Math.floor(world.y / BLOCK_SIZE);
     const target   = this.level.get(hoverRow, hoverCol);
@@ -2321,6 +2331,7 @@ class Game {
     if (!this.player.bow && this.player.rangedOwned && this.player.rangedOwned.length &&
         this.player._syncActiveWeapon) this.player._syncActiveWeapon('ranged');
     const _ownsRanged = !!this.player.bow;
+    const _grappleEquipped = this.player.rangedClass === 'grapple';   // §Phase 5
     const rangedDown  = this.input.isRangedAttackDown();
     // Two-button combat: LEFT-click (or Space / gamepad X) = melee, RIGHT-click (or gamepad
     // RT) = ranged, hold to charge. Left-click melee only outside the sandbox editor (there
@@ -2370,7 +2381,7 @@ class Game {
     // A boomerang in flight steers with ITS own intensity; otherwise use the trident's.
     const _steerPct = _boomIsOut ? (this._worldAdvSettings.boomerangSteer ?? BOOM_STEER_PCT)
                                  : (this._worldAdvSettings.tridentTurn ?? 30);
-    this.mobManager.steerGuided(world.x, world.y, Math.max(0.01, _steerPct / 100 * 0.20));
+    this.mobManager.steerGuided(aimWorld.x, aimWorld.y, Math.max(0.01, _steerPct / 100 * 0.20));
 
     // ── Melee (sword / spear / axe / trident thrust) — checked FIRST ──
     if (this._p1RespawnTimer === 0 && !p1CarryingFlag) {
@@ -2395,7 +2406,16 @@ class Game {
     // ── Ranged: Trident throw (if equipped) else bow/crossbow — right-click,
     //    hold to charge, release to fire. Skipped the frame melee fires. ──
     if (this._p1RespawnTimer === 0 && !p1CarryingFlag && !_meleeFired && (_ownsRanged || _tridentActive || _boomerangActive) && !_tridentIsOut && !_boomIsOut && !_mcPlaceNow) {
-      if (_boomerangActive) {
+      if (_grappleEquipped) {
+        // §Phase 5 — the grapple consumes the ranged slot. Fire on a fresh press (latched
+        // until release) when no hook is out; _updateGrapple() drives it from there.
+        if (rangedDown && !this.player._grapple && !this.player._grappleLatch) {
+          this._startGrapple(aimWorld);
+          this.player._grappleLatch = true;
+        }
+        if (!rangedDown) this.player._grappleLatch = false;
+        this.player.bowDrawing = false; this.player.drawProgress = 0;   // grapple never charges a bow bar
+      } else if (_boomerangActive) {
         // §Phase 3 — hold to charge (reuse the bow plumbing), release to throw. The
         // boomerang auto-returns; the player is "unarmed" (_boomOut) until it's caught.
         if (rangedDown) {
@@ -2406,7 +2426,7 @@ class Game {
           const charge = this.player.drawProgress;
           const s      = this._worldAdvSettings;
           const speed  = (s.boomerangSpeed ?? BOOM_SPEED) * (0.85 + 0.3 * charge);   // charge tweaks launch speed
-          const angle  = Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
+          const angle  = Math.atan2(aimWorld.y - this.player.cy, aimWorld.x - this.player.cx);
           const traits = this._meleeTraits(this.player);
           const dmg    = Math.max(1, Math.round(this.player.meleeDamage * (traits.dmgMult || 1) * 1.3));
           const rangeBl = s.boomerangRange ?? BOOM_RANGE_BLOCKS;
@@ -2429,7 +2449,7 @@ class Game {
         } else if (this.player.bowDrawing) {
           const charge = this.player.drawProgress;
           const speed  = 14 + 12 * charge;   // charge → faster/farther
-          const angle  = Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
+          const angle  = Math.atan2(aimWorld.y - this.player.cy, aimWorld.x - this.player.cx);
           const traits = this._meleeTraits(this.player);
           const dmg    = Math.max(1, Math.round(this.player.meleeDamage * (traits.dmgMult || 1) * 1.3));
           // Straight throw (low gravity), sticks where it lands / hits. Guided
@@ -2458,7 +2478,7 @@ class Game {
           this.player.bowDrawing = false; this.player.drawProgress = 0;
         } else if (this.player.bowDrawing) {
           const charge = this.player.drawProgress;
-          const angle  = Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
+          const angle  = Math.atan2(aimWorld.y - this.player.cy, aimWorld.x - this.player.cx);
           const rt = this._rangedTraits(this.player);   // Crossbow = pierce
           // §Phase 4 — straight-flight / arrow-speed / charge-damage resolved centrally.
           const { speed, gravity, damage } = this._arrowFireParams(charge, PLAYER_ARROW_DAMAGE, rt.dmgMult);
@@ -6000,6 +6020,7 @@ class Game {
     const _p1Hidden = (this.gameMode === 'speedrunner' && this._sr?.dead)
                       || this._p1RespawnTimer > 0 || this.state === 'dead';
     if (!_p1Hidden) this.player.draw(ctx, this.camera);
+    this._drawGrapple(ctx);   // §Phase 5 — cable + hook over the player
     // Phase 16: Draw other multiplayer players (behind P2 labels)
     if (window.multiplayerManager?.isConnected)
       window.multiplayerManager.drawOtherPlayers(ctx, this.camera);
@@ -10963,6 +10984,103 @@ class Game {
     return (1 / BOW_CHARGE_FRAMES) * (base || 1) * (this._worldAdvSettings.chargeSpeedMult ?? 1.0);
   }
 
+  // ── §Phase 5 — Grappling Hook state machine ─────────────────
+  // Fires a straight cable (no cursor tracking after launch); sticks to the first solid
+  // block within range, else auto-retracts. On stick the player swings (GRAPPLE math,
+  // height-constrained); Up reels in (narrowing the arc) → a scripted climb-over onto an
+  // exactly-1-block obstacle; Down disengages; Jump releases with velocity preserved.
+  _startGrapple(aim) {
+    if (typeof GRAPPLE === 'undefined') return;
+    const p = this.player;
+    const dx = aim.x - p.cx, dy = aim.y - p.cy, d = Math.hypot(dx, dy) || 1;
+    const rangeBl = this._worldAdvSettings.grappleRange ?? GRAPPLE.DEFAULT_RANGE_BLOCKS;
+    p._grapple = { state: 'firing', dx: dx / d, dy: dy / d, hx: p.cx, hy: p.cy, traveled: 0, range: rangeBl * BLOCK_SIZE };
+    p._grappleOwn = false;
+    this._playSound('sounds/bow-fire.mp3');
+  }
+  _grappleObstacleHeight(ax, ay) {
+    const col = Math.floor(ax / BLOCK_SIZE);
+    let row = Math.floor(ay / BLOCK_SIZE);
+    while (row > 0 && this.level.isSolid(row - 1, col)) row--;   // climb to the top solid cell
+    let h = 0, r = row;
+    while (this.level.isSolid(r, col) && h < 30) { h++; r++; }   // contiguous solid downward
+    return h;
+  }
+  _endGrapple(preserveVel) {
+    const p = this.player, g = p._grapple;
+    if (g && g.swing && preserveVel) { const v = GRAPPLE.releaseVelocity(g.swing); p.vx = v.vx; p.vy = v.vy; }
+    else if (!preserveVel) { p.vx = 0; p.vy = 0; }
+    p._grapple = null; p._grappleOwn = false;
+  }
+  _updateGrapple() {
+    const p = this.player;
+    if (!p) return;
+    const g = p._grapple;
+    if (!g) { p._grappleOwn = false; return; }
+    if (typeof GRAPPLE === 'undefined') { p._grapple = null; p._grappleOwn = false; return; }
+    const inp = this.input;
+    const down = inp.isCrouch();     // disengage / drop
+    const up   = inp.isAimUp() || inp.isJump();   // reel in (Up/W) — jump also releases below
+
+    if (g.state === 'firing') {
+      p._grappleOwn = false;         // the player still moves/falls while the hook flies
+      const step = GRAPPLE.FIRE_STEP, n = Math.max(1, Math.round(GRAPPLE.FIRE_SPEED / step));
+      for (let s = 0; s < n; s++) {
+        g.hx += g.dx * step; g.hy += g.dy * step; g.traveled += step;
+        if (this.level.isSolid(Math.floor(g.hy / BLOCK_SIZE), Math.floor(g.hx / BLOCK_SIZE))) {
+          g.hx -= g.dx * step; g.hy -= g.dy * step;      // back up to just before the wall
+          g.ax = g.hx; g.ay = g.hy;
+          g.obstacleH = this._grappleObstacleHeight(g.ax, g.ay);
+          g.swing = GRAPPLE.beginSwing(g.ax, g.ay, p.x, p.y, p.vx, p.vy);
+          g.state = 'swinging';
+          return;
+        }
+        if (g.traveled >= g.range) { p._grapple = null; p._grappleOwn = false; return; }  // auto-retract (5e-5)
+      }
+      return;
+    }
+
+    if (g.state === 'climbing') {    // scripted climb-over onto a 1-block obstacle
+      p._grappleOwn = true;
+      const t = Math.min(1, (++g._climbT) / 24);
+      const tA = Math.min(1, t / 0.6), tB = Math.max(0, (t - 0.6) / 0.4);
+      p.y = g._climbFromY + (g._climbToY - g._climbFromY) * tA;   // rise first
+      p.x = g._climbFromX + (g._climbToX - g._climbFromX) * tB;   // then over
+      p.vx = 0; p.vy = 0;
+      if (t >= 1) this._endGrapple(false);   // landed on top, no fling
+      return;
+    }
+
+    // swinging (reeling handled inline)
+    if (down) { this._endGrapple(true); return; }        // Down = disengage/drop (keep momentum)
+    if (inp.isAimUp()) {
+      GRAPPLE.rise(g.swing);
+      if (g.obstacleH === 1 && g.swing.len <= GRAPPLE.MIN_LEN + 1) {   // reached the top of a 1-block ledge
+        g.state = 'climbing'; g._climbT = 0;
+        g._climbFromX = p.x; g._climbFromY = p.y;
+        g._climbToX = g.ax - p.width / 2; g._climbToY = g.ay - p.height;
+        p._grappleOwn = true; return;
+      }
+    }
+    const pos = GRAPPLE.stepSwing(g.swing, this._worldAdvSettings.physicsGravity ?? GRAVITY);
+    p.x = pos.x; p.y = pos.y; p.vx = 0; p.vy = 0;
+    p._grappleOwn = true;
+    if (inp.isJump()) this._endGrapple(true);   // release mid-swing, velocity preserved
+  }
+  _drawGrapple(ctx) {
+    const p = this.player, g = p && p._grapple;
+    if (!g) return;
+    const cam = this.camera;
+    const px = p.cx - cam.x, py = p.cy - cam.y;
+    const hx = (g.ax != null ? g.ax : g.hx) - cam.x, hy = (g.ay != null ? g.ay : g.hy) - cam.y;
+    ctx.save();
+    ctx.strokeStyle = '#6b5637'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(hx, hy); ctx.stroke();
+    ctx.fillStyle = '#cfcfcf';    // hook head
+    ctx.beginPath(); ctx.arc(hx, hy, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
   // Smart Mobs §2 — equip the world's chosen starting weapons (World Settings →
   // Combat → Weapons). Melee 'sword' is left alone so normal tier progression
   // still works; spear/axe/trident replace the melee slot. Crossbow replaces the
@@ -10982,6 +11100,8 @@ class Game {
       // its World-Settings toggle is on. When on, grant it so the player can cycle to it
       // (distinct from the always-available six weapons, which need no toggle).
       if (s.weaponBoomerang && pl.acquireWeapon) pl.acquireWeapon('BOOMERANG');
+      // §Phase 5 — same opt-in pattern for the Grappling Hook (ranged slot).
+      if (s.weaponGrapple && pl.acquireWeapon) pl.acquireWeapon('GRAPPLING_HOOK');
     }
   }
 

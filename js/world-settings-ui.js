@@ -152,6 +152,10 @@ const WORLD_SETTINGS = {
       { key: 'slideInvincible', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Slide Invincible', sub: true, dependsOn: 'slideEnabled', advanced: true },
       { key: 'slideDurationFrames', tab: 'movement', group: 'Moves', modes: M.physics, type: 'cycle', opts: O.slideDur, dflt: 30, label: 'Slide Length', fmt: (v) => v + 'f', sub: true, dependsOn: 'slideEnabled', advanced: true },
       { key: 'slideSpeedMult', tab: 'movement', group: 'Moves', modes: M.physics, type: 'cycle', opts: O.slideMult, dflt: 1.6, label: 'Slide Speed', fmt: x1, sub: true, dependsOn: 'slideEnabled', advanced: true },
+      // §Phase 5b — Look-Up Aim: hold Up/W to aim ranged weapons (and the grapple) straight
+      // up; jump moves to J. Its own toggle (also auto-on when the grappling hook is enabled).
+      // The rebind panel's "Legacy Jump" preset is the one-click way back to Up/W = jump.
+      { key: 'aimUpEnabled', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Look-Up Aim (Up/W)', hint: 'hold Up/W to aim straight up (bow, crossbow, trident, boomerang, grapple); jump moves to J. Rebind or pick “Legacy Jump” in Controls to restore Up/W = jump.' },
 
       // ── SPEED RUN ───────────────────────────────────────────
       { key: 'srBaseSpeed', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'cycle', opts: O.srBase, dflt: 1.0, label: 'Base Speed', fmt: x1 },
@@ -309,6 +313,12 @@ const WORLD_SETTINGS = {
     // Candidate knobs (may be pruned later) — flagged per the brief.
     rows.push({ key: 'boomerangSteer', tab: 'combat', group: bg, modes, type: 'slider', dflt: 30, label: 'Steer Intensity ⚗', sub: true, dependsOn: 'weaponBoomerang', advanced: true, hint: 'homing strength toward the cursor on both legs (candidate — may be pruned)' });
     rows.push({ key: 'boomerangReturnMult', tab: 'combat', group: bg, modes, type: 'cycle', opts: [0.75, 1.0, 1.25, 1.5], dflt: 1.0, label: 'Return Speed ⚗', fmt: (v) => v.toFixed(2) + 'x', sub: true, dependsOn: 'weaponBoomerang', advanced: true, hint: 'return-leg speed vs outbound (candidate — may be pruned)' });
+    // §Phase 5 — Grappling Hook (new-weapon opt-in pattern). Fires a cable, swing/climb.
+    // Occupies the RANGED slot (cycle to it, or it's granted here). Enabling it also turns
+    // on Aim-Up (Up/W = look-up, jump → J) so you can grapple straight up.
+    const gh = 'Weapon · Grappling Hook';
+    rows.push({ key: 'weaponGrapple', tab: 'combat', group: gh, modes, type: 'toggle', dflt: false, label: 'Enable Grappling Hook', hint: 'grants a grappling hook (ranged slot): fire a cable, swing, reel in, climb 1-block ledges. Turns on Look-Up Aim (Up/W = aim up, jump moves to J).' });
+    rows.push({ key: 'grappleRange', tab: 'combat', group: gh, modes, type: 'cycle', opts: [6, 8, 10, 12, 16], dflt: 8, label: 'Range', fmt: (v) => v + ' bl', sub: true, dependsOn: 'weaponGrapple', advanced: true, hint: 'hook reach; nothing hit within range → it auto-retracts' });
     return rows;
   },
 

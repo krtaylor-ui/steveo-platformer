@@ -364,6 +364,12 @@ class InputManager {
     // only while `jump` is NOT explicitly rebound (a rebind fully takes over).
     const kbExtra = this.p2GpSlot >= 0;
     const jumpBound = (typeof KEY_BINDINGS !== 'undefined') && KEY_BINDINGS.hasOverride(0, 'jump');
+    // §5b — when Aim-Up is enabled, Up/W become look-up so keyboard jump is J-only
+    // (unless jump was explicitly rebound). Gamepad A is unaffected.
+    if (this._aimUpEnabled && !jumpBound) {
+      if (this.dualInput) return this.isDown('KeyJ') || this._anyGp().jump;
+      return this.p1GpSlot >= 0 ? this._p1gp().jump : this.isDown('KeyJ');
+    }
     const extra = kbExtra && !jumpBound && (this.isDown('ArrowUp') || this.isDown('KeyJ'));
     if (this.dualInput) return this._kbDown('jump', 'KeyW') || (!jumpBound && (this.isDown('ArrowUp') || this.isDown('KeyJ'))) || this._anyGp().jump;
     const s = this.p1GpSlot;
@@ -379,10 +385,12 @@ class InputManager {
     return this._kbDown('crouch', 'KeyS');
   }
   // Aim-up / look-up override (§Phase 5b): while held, ranged aiming forces straight up.
-  // Keyboard only (gamepad uses the right stick). Default Up/W; rebindable.
+  // Keyboard only (gamepad aims with the right stick). Gated on the Aim-Up world toggle
+  // (`_aimUpEnabled`, set by game.js). Default up-key = the scheme's natural up (W for
+  // WASD, ArrowUp for arrows) or the player's aimUp rebind.
   isAimUp() {
-    if (this.p1GpSlot >= 0) return false;
-    return this._kbDown('aimUp', this.p1GpSlot === -2 ? 'KeyW' : 'ArrowUp');
+    if (!this._aimUpEnabled || this.p1GpSlot >= 0) return false;
+    return this._kbDown('aimUp', this.p1GpSlot === -2 ? 'ArrowUp' : 'KeyW');
   }
   isRun() {
     if (this.dualInput) return this.isDown('ShiftLeft') || this.isDown('ShiftRight');
