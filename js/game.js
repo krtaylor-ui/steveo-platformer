@@ -15808,18 +15808,58 @@ class Game {
     if (this._companionInit) return;
     this._companionInit = true;
     const diff = this._worldAdvSettings && this._worldAdvSettings.companionBot;
-    if (!diff || typeof BotController !== 'function' || !BOT_DIFFICULTY_PRESETS[diff]) return;
+    if (!diff || !BOT_DIFFICULTY_PRESETS || !BOT_DIFFICULTY_PRESETS[diff]) return;
+    this._spawnCompanion(diff);
+  }
+
+  // §Phase D — spawn a companion bot into slot P2 at runtime (reuses the Bot-AI companion
+  // role). Idempotent; also used by the pause "2 Player (Bot)" selector, not just startup.
+  _spawnCompanion(diff) {
+    if (this._companionController) return;
+    if (typeof BotController !== 'function' || !BOT_DIFFICULTY_PRESETS || !BOT_DIFFICULTY_PRESETS[diff]) return;
     if (this.isArena || this._onlineGameId) return;
     if (!['platformer', 'normal', 'sandbox'].includes(this.gameMode)) return;
     if (!this.player2) this._applyTwoPlayerMode(true, true);   // ensure P2 exists
     const comp = this.getPlayer(1);
     if (!comp) return;
-    comp.acquireWeapon('WOODEN_SWORD');                        // give it something to fight mobs with
+    if (comp.acquireWeapon) comp.acquireWeapon('WOODEN_SWORD'); // give it something to fight mobs with
     comp._isBot = true; comp._botDifficulty = diff; comp._isCompanion = true;
     this._botControllers = this._botControllers || [];
     this._companionController = new BotController(this, 1, 'companion', diff);
     this._botControllers.push(this._companionController);
+    this._companionInit = true;
     this._notify('Companion joined!', '#9fddff', 150);
+  }
+  // §Phase D — detach the companion bot, handing slot P2 back to hardware (→ a human).
+  _removeCompanion() {
+    if (!this._companionController) return;
+    if (this._botControllers) {
+      const i = this._botControllers.indexOf(this._companionController);
+      if (i >= 0) this._botControllers.splice(i, 1);
+    }
+    if (this.input && this.input.clearBotInput) this.input.clearBotInput(1);
+    const comp = this.getPlayer(1);
+    if (comp) { comp._isBot = false; comp._isCompanion = false; }
+    this._companionController = null;
+  }
+  // §Phase D — current co-op mode for the pause selector: 'off' | 'human' | 'bot'.
+  _coopMode() { return !this.player2 ? 'off' : (this._companionController ? 'bot' : 'human'); }
+  // §Phase D — switch co-op mode at runtime (pause menu). Bot reuses the companion infra.
+  _setCoopMode(mode) {
+    if (mode === 'off') {
+      this._removeCompanion();
+      this._applyTwoPlayerMode(false);
+      this._worldAdvSettings.companionBot = 'off';
+    } else if (mode === 'human') {
+      this._removeCompanion();
+      this._worldAdvSettings.companionBot = 'off';
+      this._applyTwoPlayerMode(true);
+    } else if (mode === 'bot') {
+      this._applyTwoPlayerMode(true);
+      const diff = (BOT_DIFFICULTY_PRESETS && BOT_DIFFICULTY_PRESETS[this._worldAdvSettings.companionBot]) ? this._worldAdvSettings.companionBot : 'MEDIUM';
+      this._worldAdvSettings.companionBot = diff;
+      this._spawnCompanion(diff);
+    }
   }
 
   // Tint any Goal Star whose colour index > 0 (0 = classic gold, drawn as-is by

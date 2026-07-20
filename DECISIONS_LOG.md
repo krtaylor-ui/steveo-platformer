@@ -33,6 +33,17 @@ Bug-fix + polish follow-up to the mega-session, from Kevin's first playtest. Pha
   at spawn (the mega-session's auto-grant is removed). The explicit "Starting Melee = Boomerang" choice
   stays as a separate intentional grant.
 
+## PHASE D — Co-op bot/human selector (build 183) — DONE (immediate fix; full redesign → roadmap §23)
+- The pause **Players** selector is now 3-way: **1 Player / 2 Player (Human) / 2 Player (Bot)**.
+  `Game._setCoopMode('off'|'human'|'bot')` + `_coopMode()` drive it. Bot reuses the Bot-AI companion
+  role via new runtime helpers `_spawnCompanion(diff)` / `_removeCompanion()` (refactored out of
+  `_maybeSetupCompanion`, which now delegates) — spawn/despawn a companion in slot P2 mid-game, handing
+  the slot back to hardware for the human case. Bot difficulty defaults to MEDIUM (or the world's
+  `companionBot` if set).
+- **Disabled in Sandbox** (`gameMode !== 'sandbox'` gate) + online (server owns the roster), per brief.
+- Full co-op UX redesign (start-time choice, top-level single/multi/online layout, dedicated 2P popup)
+  logged to **FUTURE_ROADMAP §23** — deferred to the Campaign dashboard rebuild; this is the interim.
+
 ## PHASE C — Controller mapping display + full rebind (build 182) — DONE (logic tested; capture browser-only)
 - Went for the IDEAL (full rebind), not just the read-only minimum — the seam was clean.
 - **`GP_BINDINGS` (keybindings.js):** parallel to KEY_BINDINGS but for gamepad button INDICES. 8

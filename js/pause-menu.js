@@ -273,13 +273,18 @@ const PAUSE_MENU = {
       rows.push(this._row('🎯 Objectives', null));
       const r = document.createElement('div'); r.className = 'pause-row pause-obj-row'; r.appendChild(obj);
       rows.push(r);
-    } else if (!game.isArena) {
-      // Normal / Platformer: 1–2 player co-op (4-player is arena-only).
+    } else if (!game.isArena && game.gameMode !== 'sandbox') {
+      // §Phase D — Normal / Platformer: 1 Player / 2 Player (Human) / 2 Player (Bot). The
+      // Bot case reuses the companion-bot infrastructure. Disabled in Sandbox for now
+      // (2-player editing isn't supported) + online (server owns the roster).
       if (!game._onlineGameId) {
         rows.push(this._row('Players',
-          this._select([{ v: 1, label: '1 Player' }, { v: 2, label: '2 Players' }],
-            () => (aws.twoPlayerMode ? 2 : 1),
-            v => { game._applyTwoPlayerMode(parseInt(v, 10) === 2); this._buildSettings(game); })));
+          this._select([
+            { v: 'off',   label: '1 Player' },
+            { v: 'human', label: '2 Player (Human)' },
+            { v: 'bot',   label: '2 Player (Bot)' },
+          ], () => game._coopMode(),
+            v => { game._setCoopMode(v); this._buildSettings(game); })));
       }
     }
     wrap.appendChild(this._section('', rows));

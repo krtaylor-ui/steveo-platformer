@@ -809,3 +809,18 @@ wants smarter give-up behaviour + a visible follow-mode cue. Plan:
 - Kevin's aspiration: a model smart enough that follow-mode isn't needed — treat mirror
   mode as the safety net, and keep improving autonomous climbing so it rarely triggers.
 LOW–MODERATE; best done right after Kevin re-tests the 146 climb fix.
+
+## 23. Platformer/Normal Co-op UX Redesign *(idea captured 2026-07-20 — deferred until Campaign mode's dashboard/landing page rebuild)*
+
+Currently 2-player co-op for Platformer/Normal is toggled from the Settings page. Planned redesign:
+- A game-start-time choice (1 player vs. 2-player co-op) rather than a settings-page toggle,
+  including the ability to continue a previously-started 1-player game.
+- Likely requires a new top-level layout: single-player games, multiplayer games, online play,
+  as distinct sections rather than the current flat structure.
+- A dedicated 2-player popup/menu (skin selection, bot-vs-human, per-player control settings)
+  rather than folding all of this into the existing pause-menu dropdown.
+- The bot-vs-human split (immediate fix, shipped 2026-07-20 — the pause "Players" selector now
+  offers 1 Player / 2 Player (Human) / 2 Player (Bot), the Bot case reusing the companion-bot
+  infrastructure) is the interim solution until this redesign happens.
+
+**Effort:** LARGE — tied to the broader dashboard rebuild, not a standalone change.
