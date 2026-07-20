@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 180 (Combat/Controls FOLLOW-UP — Phase A (Sandbox test round-trip): fixed unsaved World Settings (and any editor edit) being discarded when returning from Test. Root cause was NOT the Test launch (it already used the live draft) but the RETURN path re-fetching the saved file; now it reopens the editor from the in-memory snapshot. Nothing writes to disk unless Save is pressed.)';
+const GAME_VERSION = 'v3 · build 181 (Combat/Controls FOLLOW-UP — Phase B: the UP input now also triggers a ledge grab, not just a jump (isJump || isAimUp), so holding Up near a grabbable ledge grabs it in every control scheme — default (J-jump), aim-up-on, and Legacy (Up-jump).)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

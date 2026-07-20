@@ -33,6 +33,12 @@ Bug-fix + polish follow-up to the mega-session, from Kevin's first playtest. Pha
   at spawn (the mega-session's auto-grant is removed). The explicit "Starting Melee = Boomerang" choice
   stays as a separate intentional grant.
 
+## PHASE B — Up also triggers ledge grab (build 181) — DONE (suite green; browser-verify the aim-up case)
+- `player._tryLedgeGrab` path (a) now triggers on `input.isJump() || input.isAimUp()` (guarded for
+  mock inputs). Default/Legacy schemes were already covered by `isJump` (Up = a jump key there); the
+  gap was aim-up-on, where Up = look-up (jump = J) and no longer grabbed. Additive + safe (bots don't
+  set aimUp → unchanged). The existing bot ledge-climb tests still pass.
+
 ## PHASE A — Sandbox test round-trip preserves unsaved edits (build 180) — DONE (headless-tested)
 - `SANDBOX.editWorld(worldId, snapshotData=null)`: new snapshot branch reopens the editor from the
   in-memory `world_data` (metadata — name/published/dims/mode — from the already-open world, live grid +

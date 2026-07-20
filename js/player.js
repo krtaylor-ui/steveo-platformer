@@ -767,7 +767,11 @@ class Player {
     // (solid block; clear above for standing; open outward face + a clear body
     // column beside it). This rejects interior blocks — grabbing one embedded the
     // player and caused the tunneling / speed glitches.
-    if (!this.onGround && input.isJump() && this.vy > -3) {
+    // §Phase B — the UP input also triggers a ledge grab, not just a jump. Once aim-up
+    // repurposes Up/W to look-up (jump = J), holding Up near a grabbable ledge must still
+    // grab it; `isAimUp()` covers that case, `isJump()` covers the default + Legacy schemes.
+    const _upOrJump = input.isJump() || (typeof input.isAimUp === 'function' && input.isAimUp());
+    if (!this.onGround && _upOrJump && this.vy > -3) {
       const sideCol = dir > 0 ? Math.floor((this.x + this.width + 1) / BS)
                               : Math.floor((this.x - 1) / BS);
       const outCol  = dir > 0 ? sideCol - 1 : sideCol + 1;   // the player's (dangle) column
