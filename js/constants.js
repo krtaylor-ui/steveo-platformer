@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 169 (Geometry probe: platformer shows btn:2 across the whole screen but arena shows btn:0 on the RIGHT HALF at the same spot -> NOT the browser (mode-independent) -> the canvas element must not cover the full screen in arena, splitting at the halfway point (same place the cursor used to freeze). Added a canvasRect line to the Debug HUD -- the canvas on-screen bounds (L/R/W), window width, and the exact element under the cursor via elementFromPoint -- to pin what is on the right half in arena. + lastDown/rawBtns lines.)';
+const GAME_VERSION = 'v3 · build 170 (Found it: on the RIGHT half in arena, elementFromPoint returns a DIV (not gameCanvas) -- an unlabelled div overlays the right half of the play area and swallows right-clicks. Improved the Debug HUD under: readout to show the element id+class AND its parent so we can identify exactly which div it is, then remove/disable its pointer-events. + prior diagnostics.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

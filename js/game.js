@@ -6124,9 +6124,10 @@ class Game {
         (() => { const d = this.input.mouse._dbgDown; return d ? `lastDown btn:${d.btn} buttons:${d.buttons} tgt:${d.tgt} inArea:${d.area}` : 'lastDown: (none yet)'; })(),
         (() => {
           const r = this.canvas.getBoundingClientRect();
+          const desc = (n) => n ? ((n.id ? '#' + n.id : n.tagName) + (typeof n.className === 'string' && n.className ? '.' + n.className.trim().split(/\s+/).join('.') : '')) : 'none';
           let el = '?';
-          try { const e = document.elementFromPoint(this.input.mouse._clientX || 0, this.input.mouse._clientY || 0); el = e ? (e.id || e.tagName) : 'none'; } catch (_) {}
-          return `canvasRect L:${Math.round(r.left)} R:${Math.round(r.right)} W:${Math.round(r.width)} winW:${window.innerWidth} underCursor:${el}`;
+          try { const e = document.elementFromPoint(this.input.mouse._clientX || 0, this.input.mouse._clientY || 0); el = desc(e) + (e && e.parentElement ? ' < ' + desc(e.parentElement) : ''); } catch (_) {}
+          return `canvasRect R:${Math.round(r.right)} winW:${window.innerWidth} under:${el}`;
         })(),
         this._dbgAim ? `aim mouse(${this._dbgAim.mx},${this._dbgAim.my}) world(${this._dbgAim.wx},${this._dbgAim.wy}) cell(${this._dbgAim.c},${this._dbgAim.r}) zoom:${(this.camera && this.camera._srZoom || 1).toFixed(2)} shots:${this._dbgShots || 0}${pl ? ` plr(${Math.round(pl.cx)},${Math.round(pl.cy)})` : ''}` : '',
       ];
