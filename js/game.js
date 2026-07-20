@@ -2310,30 +2310,13 @@ class Game {
     if (!this.player.bow && this.player.rangedOwned && this.player.rangedOwned.length &&
         this.player._syncActiveWeapon) this.player._syncActiveWeapon('ranged');
     const _ownsRanged = !!this.player.bow;
-    // When the BOW is the selected weapon, the attack button (Space / gamepad X /
-    // Insert) DRAWS THE BOW — hold to charge, release to loose — instead of
-    // meleeing. This matches the on-screen "Attack/Bow" control hint and gives a
-    // fully mouse-free way to fire, which matters when a gaming-mouse driver or a
-    // browser gesture extension remaps the right mouse button (Kevin's setup made
-    // right-click register as a LEFT-click over the right half of the screen, so
-    // the bow never fired there). Left-click still melees; right-click still ranged.
-    const _bowSelected    = this.player.weaponMode === 'bow' && _ownsRanged;
-    // The LEFT mouse button is delivered reliably across the whole screen; a physical
-    // right-click gets remapped to LEFT over part of some setups' screens (Kevin's mouse
-    // driver / gesture layer: right-click on the right half arrives as e.button 0), so
-    // right-click ranged silently dies there. So when the BOW is the SELECTED weapon, a
-    // held LEFT button ALSO draws + fires it (hold to charge, release to loose) and does
-    // NOT melee/mine — aim with the cursor. Space / gamepad X / Insert fire it too. To
-    // melee while the bow is selected, switch to the sword slot.
-    const _leftBowHeld    = _bowSelected && this.input.mouse.down && !p1OverMineable && !_p1Shift;
-    const _attackFiresBow = _bowSelected && (this.input.isMeleeAttack() || _leftBowHeld);
-    const rangedDown  = this.input.isRangedAttackDown() || _attackFiresBow;
-    // Left-click melee only outside the sandbox editor (there a click = build). Both the
-    // attack-button AND left-click melee are suppressed while the bow is selected (they
-    // fire the bow instead, above). NB: use the mode check directly — `isSandbox` is
-    // declared later in _update, so referencing it here would hit the const TDZ and crash.
-    const meleeNow    = (this.input.isMeleeAttack() && !_bowSelected) ||
-                        (this.gameMode !== 'sandbox' && !_bowSelected && this.input.mouse.clicked && !p1OverMineable && !_p1Shift);
+    const rangedDown  = this.input.isRangedAttackDown();
+    // Two-button combat: LEFT-click (or Space / gamepad X) = melee, RIGHT-click (or gamepad
+    // RT) = ranged, hold to charge. Left-click melee only outside the sandbox editor (there
+    // a click = build). NB: use the mode check directly — `isSandbox` is declared later in
+    // _update, so referencing it here would hit the const temporal-dead-zone and crash.
+    const meleeNow    = this.input.isMeleeAttack() ||
+                        (this.gameMode !== 'sandbox' && this.input.mouse.clicked && !p1OverMineable && !_p1Shift);
 
     // A Trident equipped as the melee weapon THROWS on right-click (its ranged
     // action) — but ONLY when its Throwable trait is on (World Settings → Combat →
@@ -6120,15 +6103,6 @@ class Game {
         `A* ${ps.calls}call ${ps.ms.toFixed(1)}ms  |  aiLoop ${(ps.loop || 0).toFixed(1)}ms`,
         // Weapon-state diagnostic (helps pin the "switches to sword / can't fire bow" bug):
         pl ? `P1 slot${pl.selectedSlot} mode:${pl.weaponMode} bow:${pl.bow || '-'} rng:${pl.rangedOwned ? pl.rangedOwned.length : '?'} hand:${pl.activeHand} draw:${pl.bowDrawing ? 1 : 0} rDn:${this.input.isRangedAttackDown() ? 1 : 0} dual:${this.input.dualInput ? 1 : 0}` : 'no player',
-        `mouse rawBtns:${this.input.mouse.rawButtons ?? '?'} rightDown:${this.input.mouse.rightDown ? 1 : 0} down:${this.input.mouse.down ? 1 : 0} p1Gp:${this.input.p1GpSlot}`,
-        (() => { const d = this.input.mouse._dbgDown; return d ? `lastDown btn:${d.btn} buttons:${d.buttons} tgt:${d.tgt} inArea:${d.area}` : 'lastDown: (none yet)'; })(),
-        (() => {
-          const r = this.canvas.getBoundingClientRect();
-          const desc = (n) => n ? ((n.id ? '#' + n.id : n.tagName) + (typeof n.className === 'string' && n.className ? '.' + n.className.trim().split(/\s+/).join('.') : '')) : 'none';
-          let el = '?';
-          try { const e = document.elementFromPoint(this.input.mouse._clientX || 0, this.input.mouse._clientY || 0); el = desc(e) + (e && e.parentElement ? ' < ' + desc(e.parentElement) : ''); } catch (_) {}
-          return `canvasRect R:${Math.round(r.right)} winW:${window.innerWidth} under:${el}`;
-        })(),
         this._dbgAim ? `aim mouse(${this._dbgAim.mx},${this._dbgAim.my}) world(${this._dbgAim.wx},${this._dbgAim.wy}) cell(${this._dbgAim.c},${this._dbgAim.r}) zoom:${(this.camera && this.camera._srZoom || 1).toFixed(2)} shots:${this._dbgShots || 0}${pl ? ` plr(${Math.round(pl.cx)},${Math.round(pl.cy)})` : ''}` : '',
       ];
       ctx.save();

@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 171 (ROOT CAUSE FIXED: the culprit div was .tc-aimpad -- the mobile touch-controls arena aim/fire pad. It overlays the right half of the screen ONLY in arena, and its pointerdown did mouse.down=mouse.clicked=true + preventDefault, so a mouse right-click there was swallowed and turned into a left-click/melee. It was auto-enabled because touch detect() triggered on any touch-capable device even with a mouse. FIXES: (1) detect() auto-enables touch ONLY when there is no fine pointer (mouse/trackpad); (2) touch handlers ignore mouse-type pointers; (3) the overlay drops pointer-events whenever the active pointer is a mouse, so it can never eat mouse clicks. Right-click now works across the whole arena screen.)';
+const GAME_VERSION = 'v3 · build 172 (Restore two-button combat + production cleanup: with the touch-aimpad root cause fixed (171), the build-168 workaround (left-click fires the bow when selected) is obsolete and was stealing melee in arena -- reverted, so LEFT-click = melee and RIGHT-click = ranged everywhere again. Stripped all the mouse-investigation Debug HUD lines (rawBtns / lastDown / canvasRect) and their backing fields. Ready for production.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

@@ -244,9 +244,6 @@ class InputManager {
       // leave mouse.down / rightDown latched wrong, so the bow charge never starts or never
       // releases (Kevin: coords update on right-click but no arrow fires). Since aiming always
       // moves the cursor, this keeps the button state honest every frame.
-      this.mouse.rawButtons = e.buttons;   // diagnostic: what the browser reports this move
-      this.mouse._clientX = e.clientX;     // diagnostic: raw screen coords for elementFromPoint
-      this.mouse._clientY = e.clientY;
       this.mouse.down      = (e.buttons & 1) !== 0;
       this.mouse.rightDown = (e.buttons & 2) !== 0;
     });
@@ -261,9 +258,6 @@ class InputManager {
     const _inGameArea = (t) => t === this._canvas ||
       (t && typeof t.closest === 'function' && t.closest('#canvas-wrap'));
     window.addEventListener('mousedown', e => {
-      this.mouse._dbgDown = { btn: e.button, buttons: e.buttons,
-        tgt: (e.target && (e.target.id || e.target.tagName)) || '?',
-        area: _inGameArea(e.target) ? 1 : 0 };
       if (!_inGameArea(e.target)) return;   // HTML UI outside the game area handles itself
       if (e.button === 0) {
         this.mouse.down       = true;
