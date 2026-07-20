@@ -33,6 +33,13 @@ Bug-fix + polish follow-up to the mega-session, from Kevin's first playtest. Pha
   at spawn (the mega-session's auto-grant is removed). The explicit "Starting Melee = Boomerang" choice
   stays as a separate intentional grant.
 
+## GRAPPLE climb-on-top articulated pose (build 190)
+- The grapple climb now HANDS OFF to the existing ledge-climb `'up'` state (`_grappleClimbHandoff`
+  sets `_hangState='up'` + the hang→stand geometry + grip corner, then `_endGrapple`), so
+  `_updateHang` drives the articulated rise-then-step-on climbing sprite (reusing `_drawHangFigure`)
+  instead of a plain position slide. Works mid-face on any clear-topped block and is independent of
+  the ledge-hang world toggle (it sets the state directly). Removed the interim custom climb lerp.
+
 ## GRAPPLE REWORK + polish (builds 188–189) — from Kevin's 2nd playtest pass
 - **Bow-glow delay (188):** the charge glow only shows after ~0.75s of drawing (`player._bowHold >=
   BOW_GLOW_DELAY_FRAMES`) so a quick tap doesn't flash it — on the bow/crossbow outline + fired arrow.

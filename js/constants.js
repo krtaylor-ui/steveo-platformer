@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 189 (Combat/Controls FOLLOW-UP — Grapple rework: now a COLLECTED capability (like pickaxe/flint) fired with SHIFT+RIGHT-CLICK, not a hotbar weapon; hitting an enemy knocks it back + auto-returns the hook; reeling to the top of a rope on a clear-topped block climbs onto it; the swing arc bottoms at the standing-block level (full swing over flat ground) and walls stop the swing (or drift it back past the midpoint).)';
+const GAME_VERSION = 'v3 · build 190 (Combat/Controls FOLLOW-UP — grapple climb-on-top now HANDS OFF to the ledge-climb "up" animation, so the sprite shows the articulated climb onto the block (rise, then step on top) instead of a plain slide; works mid-face on any clear-topped block, independent of the ledge-hang world toggle.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

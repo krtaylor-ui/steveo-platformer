@@ -11133,30 +11133,16 @@ class Game {
       return;
     }
 
-    if (g.state === 'climbing') {    // scripted climb ONTO the platform (rise, then over)
-      p._grappleOwn = true;
-      const t = Math.min(1, (++g._climbT) / 26);
-      const tA = Math.min(1, t / 0.6), tB = Math.max(0, (t - 0.6) / 0.4);
-      p.y = g._climbFromY + (g._climbToY - g._climbFromY) * tA;   // rise first
-      p.x = g._climbFromX + (g._climbToX - g._climbFromX) * tB;   // then step in
-      p.vx = 0; p.vy = 0;
-      p._climbProg = t;   // drives the climbing sprite pose (reuses the ledge-climb figure)
-      if (t >= 1) { p._climbProg = 0; this._endGrapple(false); }   // landed on top, no fling
-      return;
-    }
-
     // swinging (reeling handled inline)
     if (down) { this._endGrapple(true); return; }        // Down = disengage/drop (keep momentum)
     if (inp.isAimUp()) {
       GRAPPLE.rise(g.swing);
       // §item4 — reeled to the top of a rope on a block with a CLEAR TOP → climb onto it
-      // (even mid-face, not only at an edge). Scripted climb like the ledge-climb.
-      if (g.topClear && g.swing.len <= GRAPPLE.MIN_LEN + 6) {
-        g.state = 'climbing'; g._climbT = 0;
-        g._climbFromX = p.x; g._climbFromY = p.y;
-        g._climbToX = (g.anchorCol != null ? g.anchorCol * BLOCK_SIZE + (BLOCK_SIZE - p.width) / 2 : g.ax - p.width / 2);
-        g._climbToY = (g.anchorRow != null ? g.anchorRow * BLOCK_SIZE - p.height : g.ay - p.height);
-        p._grappleOwn = true; return;
+      // (even mid-face, not only at an edge). Hands off to the ledge-climb 'up' animation
+      // so it shows the articulated climbing sprite, then stands on top.
+      if (g.topClear && g.anchorCol != null && g.swing.len <= GRAPPLE.MIN_LEN + 6) {
+        this._grappleClimbHandoff(g);
+        return;
       }
     }
     // §item5 — advance the pendulum, then block on terrain: stop dead if BEFORE the midpoint
@@ -11176,6 +11162,27 @@ class Game {
     p.vx = 0; p.vy = 0;
     p._grappleOwn = true;
     if (inp.isJump()) this._endGrapple(true);   // release mid-swing, velocity preserved
+  }
+  // §item4 — hand the grapple climb off to the existing ledge-climb 'up' animation: set up
+  // its hang→stand geometry + grip corner, flag `_hangState='up'`, then end the grapple so
+  // player.update runs `_updateHang` (which drives the articulated climbing pose + the
+  // rise-then-step motion and stands the player on top of the block).
+  _grappleClimbHandoff(g) {
+    const p = this.player, BS = BLOCK_SIZE;
+    const acol = g.anchorCol, arow = g.anchorRow;
+    const blockTopY = arow * BS, blockCx = acol * BS + BS / 2;
+    const side = Math.sign(blockCx - p.cx) || (p.facing || 1);   // climb toward the block
+    p._hangSide = side;
+    p._hangX = p.x; p._hangY = p.y;                              // climb FROM here (rope top)
+    p._standX = acol * BS + (BS - p.width) / 2;                  // stand centred on the block
+    p._standY = blockTopY - p.height;
+    p._gripX = side > 0 ? acol * BS : (acol + 1) * BS;           // ledge corner the hands grab
+    p._gripY = blockTopY;
+    p._climbT = 0;
+    p._climbDur = Math.max(6, Math.round(75 / (p._climbSpeed || 1)));
+    p._climbProg = 0;
+    p._hangState = 'up';                                        // _updateHang now owns the frame
+    this._endGrapple(false);                                    // release the hook; hang state takes over
   }
   // §item5 — the player's body box overlaps a solid block? (used to wall-block a swing)
   _grappleBodyBlocked(x, y, w, h) {
