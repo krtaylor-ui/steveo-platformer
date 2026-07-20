@@ -2598,7 +2598,11 @@ class MobManager {
     const damage  = Math.max(1, Math.round((player.meleeDamage != null ? player.meleeDamage : player.weaponDamage) * dmgMult));
     // cleave: 0/null/Infinity = unlimited; otherwise the max mobs one swing hits.
     const cleave  = (t.cleave == null || t.cleave <= 0) ? Infinity : t.cleave;
-    const faceAng = player.facing > 0 ? 0 : Math.PI;
+    // §Phase 6 — directional melee. `t.dir` = up|down|forward|back|neutral. Up/Down
+    // aim the hit-cone vertically; the height interaction (an overhead swing sails OVER
+    // a crouching/short target, a low attack connects with it) applies to PvE + PvP.
+    const dir = t.dir || 'neutral';
+    const faceAng = dir === 'up' ? -Math.PI / 2 : dir === 'down' ? Math.PI / 2 : (player.facing > 0 ? 0 : Math.PI);
 
     // Gather candidates within reach (and the hit-cone, if narrower than 360°),
     // nearest first, so a capped cleave hits the closest mobs.
@@ -2612,6 +2616,12 @@ class MobManager {
         let ad = Math.abs(Math.atan2(dy, dx) - faceAng);
         if (ad > Math.PI) ad = 2 * Math.PI - ad;
         if (ad > arcRad) continue;
+      }
+      // Height interaction: an UP (overhead) attack misses a short/crouching target;
+      // a DOWN (low) attack is the way to connect with one.
+      if (dir === 'up') {
+        const low = (mob.height != null && mob.height <= BLOCK_SIZE) || mob.crouching === true || mob.isSneaking === true;
+        if (low) continue;
       }
       cand.push({ mob, dist, dir: Math.sign(dx) || player.facing });
     }

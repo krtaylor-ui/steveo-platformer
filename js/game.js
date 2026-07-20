@@ -2386,6 +2386,20 @@ class Game {
     // ── Melee (sword / spear / axe / trident thrust) — checked FIRST ──
     if (this._p1RespawnTimer === 0 && !p1CarryingFlag) {
       const traits = this._meleeTraits(this.player);
+      // §Phase 6 — Advanced Attacks: a directional variant (up/down/forward/back) tunes
+      // the hit-cone + damage/knockback. Forward = less knockback, more damage; Back =
+      // more knockback, less damage; Up/Down aim the swing vertically (with the crouch/
+      // short height interaction handled in playerAttack). One master toggle covers all.
+      if (this._worldAdvSettings.advancedAttacks) {
+        const md = this._meleeDirection(this.player);
+        traits.dir = md;
+        // Distinct damage/knockback + a small reach tweak per direction (the "distinct
+        // ranges" ask; distinct per-weapon-class ANIMATIONS are the flagged art follow-up).
+        if (md === 'forward') { traits.dmgMult = (traits.dmgMult || 1) * 1.3; traits.knockback = (traits.knockback == null ? 1 : traits.knockback) * 0.6; traits.reachMult = (traits.reachMult || 1) * 1.15; }
+        else if (md === 'back') { traits.dmgMult = (traits.dmgMult || 1) * 0.7; traits.knockback = (traits.knockback == null ? 1 : traits.knockback) * 1.7; }
+        else if (md === 'up' || md === 'down') { traits.reachMult = (traits.reachMult || 1) * 0.92; }
+        this.player._attackDir = md;   // set for a future per-direction swing animation (playtest art)
+      } else { this.player._attackDir = null; }
       if (meleeNow && this.player.attackCooldown === 0 && !this.player.bowDrawing && !_tridentIsOut && !_boomIsOut) {
         this.mobManager.playerAttack(this.player, 'p1', traits);
         this._playerAttackDragon();
@@ -10963,6 +10977,19 @@ class Game {
       if (ov.dmgMult != null) t.dmgMult = ov.dmgMult;
     }
     return t;
+  }
+
+  // §Phase 6 — directional-melee intent from the live inputs. Vertical (crouch = down,
+  // the look-up key = up) takes precedence over horizontal (toward the facing = forward,
+  // away = back); else neutral. Only consulted when Advanced Attacks is enabled.
+  _meleeDirection(player) {
+    const inp = this.input;
+    if (inp.isCrouch()) return 'down';
+    const upHeld = inp.isAimUp() || (!inp._aimUpEnabled && (inp.isDown('KeyW') || inp.isDown('ArrowUp')));
+    if (upHeld) return 'up';
+    const mv = inp.moveX();
+    if (Math.abs(mv) > 0.2) return (Math.sign(mv) === Math.sign(player.facing || 1)) ? 'forward' : 'back';
+    return 'neutral';
   }
 
   // §Phase 4 — generic charge/flight resolver for a fired arrow. Centralizes the

@@ -247,6 +247,10 @@ const WORLD_SETTINGS = {
       // ── Special moves (Smart Mobs §2) — per-weapon context attacks ──
       { key: 'slideAttack', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Slide Attack (Spear)', hint: 'ground-slide with a spear launches nearby mobs into the air' },
       { key: 'slideAttackDmg', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'cycle', opts: O.wdmg, dflt: 1.0, label: 'Slide Attack Damage', fmt: x1, advanced: true, dependsOn: 'slideAttack' },
+      // §Phase 6 — one master toggle for all four directional melee variants (Up/Down
+      // overhead+low with the crouch/short height interaction, Forward = +dmg/−knockback,
+      // Back = +knockback/−dmg). Applies to PvE + PvP.
+      { key: 'advancedAttacks', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Advanced Attacks (directional)', hint: 'hold a direction while attacking: Up = overhead (misses crouchers), Down = low (hits short/crouching), Forward = more damage, Back = more knockback' },
       // ── Weapons (Smart Mobs §2) — starting weapon + per-weapon trait config;
       //    the Trident's recall/guided/turn-speed live under Weapon · Trident. ──
       ...this._weaponRows(M, O, x1),

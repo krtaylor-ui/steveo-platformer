@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 177 (Combat & Controls mega-session — Phase 5 (Grappling Hook): fire a straight cable that sticks to the first solid block (auto-retract on a miss), then swing (height-constrained), reel in (narrowing the arc), climb over a 1-block ledge, or release with velocity preserved. Up/W = look-up aim (jump → J), generalized to all ranged weapons. All 5 swing/cast invariants headless-verified in js/grapple.js; feel needs playtest. Opt-in per world.)';
+const GAME_VERSION = 'v3 · build 178 (Combat & Controls mega-session — Phase 6 (Advanced Combat): one toggle enables directional melee — Up = overhead (sails over a crouching/short target), Down = low (connects with it), Forward = more damage/less knockback + reach, Back = more knockback/less damage. Height dodge applies to PvP + PvE. Mechanics headless-tested; distinct per-weapon animations flagged for a playtest art pass.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

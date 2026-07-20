@@ -213,6 +213,25 @@ toggleable (see the "TOGGLE INVENTORY" running list at the bottom of this sectio
   velocity only on release. **The swing FEEL, climb-over, cable render, and aim-up controls are all
   browser-untested — needs Kevin's hands-on playtest** (the invariants are proven; the feel is not).
 
+## PHASE 6 — Advanced Combat: directional melee (build 178) — DONE (mechanics headless-tested; anims flagged)
+- **One master toggle `advancedAttacks`** (Combat → Special Moves) covers all four variants, per the brief.
+- **Direction** derived from live inputs (`Game._meleeDirection`): crouch = Down, look-up key = Up
+  (vertical wins), else toward-facing = Forward / away = Back / else Neutral. Set as `traits.dir`.
+- **`playerAttack` (mobs.js) is now direction-aware:** Up/Down aim the hit-cone vertically (`faceAng`
+  ±90°); **height interaction** — an Up (overhead) attack SKIPS a short (`height <= BLOCK_SIZE`, e.g.
+  Cave Spider) or crouching/sneaking target; a Down attack connects with it. Because secondary players
+  also route through `playerAttack`, this **applies to PvP** (crouch to dodge an overhead) as much as
+  PvE — built universally, flagged for Kevin's balance judgment.
+- **Forward/Back** (game.js): Forward = ×1.3 damage, ×0.6 knockback, +15% reach; Back = ×0.7 damage,
+  ×1.7 knockback. Up/Down = slightly shorter reach ("distinct ranges" ask).
+- **`test/test-directional.js` (7):** Up misses a short mob but hits a tall one; Down/Neutral hit the
+  short mob; a crouching PvP target dodges Up but is hit by Down; forward out-damages back. (Traced a
+  test-harness quirk: the vm sandbox proxy resolved the `Infinity` global to 1, mis-capping cleave —
+  production code was correct; fixed the test's sandbox, did NOT touch playerAttack.)
+- **Flagged:** distinct per-direction, per-weapon-class ANIMATIONS are NOT built — `player._attackDir`
+  is set for a future animation pass; this is the dedicated playtest-art follow-up the brief calls out.
+  The mechanics (targeting, height dodge, damage/knockback/reach) are the substance and are tested.
+
 ## TOGGLE INVENTORY (running — every independent enable/config added this session)
 Permanent, player-facing unless marked. Phase 1:
 - **Touch Controls** (Auto/On/Off) — pause → Settings → Player. Permanent, per-device.
@@ -232,7 +251,9 @@ Phase 4:
 Phase 5:
 - **Enable Grappling Hook** (opt-in per world) + **Range** — World Settings → Combat → Weapon · Grappling Hook.
 - **Look-Up Aim (Up/W)** (own toggle; auto-on with the grapple) — World Settings → Movement → Moves.
-(No temp/debug-only flags added in Phases 1–5; the ⚗ boomerang knobs are permanent-but-prunable, not debug.)
+Phase 6:
+- **Advanced Attacks (directional)** — one master toggle for all four variants — World Settings → Combat → Special Moves.
+(No temp/debug-only flags added in Phases 1–6; the ⚗ boomerang knobs are permanent-but-prunable, not debug.)
 
 ## Bow-fire "won't fire on the right side" — root cause + fix (2026-07-19, builds 160–165)
 - **Symptom:** in zoomed-out / single-screen play, the bow fired when aiming/right-clicking on the
