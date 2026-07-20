@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 167 (Right-click-in-zoom FIX + diagnostic: build 166 moved mousemove to window but LEFT mousedown/mouseup on the canvas. In zoomed-out play the cursor sits over letterbox/overflow regions that are part of #canvas-wrap but NOT the canvas, so a right-click there never reached the canvas mousedown -> rightDown never set -> bow read as a melee (Kevin: right->left ONLY in zoom mode). FIX: register presses anywhere inside the game area (canvas OR its wrap) via a window mousedown, still ignoring the HTML HUD/menus. Added a lastDown Debug HUD line (raw e.button + which element was hit) to confirm. + builds 165/166.)';
+const GAME_VERSION = 'v3 · build 168 (Bow fires on LEFT-click when selected -- the real fix. Kevin\'s diagnostic PROVED the browser delivers a physical right-click as e.button 0 (LEFT) over the right part of the screen -- an upstream mouse-driver/gesture zone-remap the page cannot see through (no pointer-capture / CSS-zoom in our code; verified). The LEFT button IS delivered correctly everywhere, so when the BOW is the selected weapon a held left button now draws + fires it -- hold to charge, release to loose, aim with the cursor -- and does not melee/mine. Space/gamepad fire it too. Switch to the sword to melee. + builds 165/166/167.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

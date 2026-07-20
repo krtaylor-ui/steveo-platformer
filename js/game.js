@@ -2318,14 +2318,22 @@ class Game {
     // right-click register as a LEFT-click over the right half of the screen, so
     // the bow never fired there). Left-click still melees; right-click still ranged.
     const _bowSelected    = this.player.weaponMode === 'bow' && _ownsRanged;
-    const _attackFiresBow = _bowSelected && this.input.isMeleeAttack();
+    // The LEFT mouse button is delivered reliably across the whole screen; a physical
+    // right-click gets remapped to LEFT over part of some setups' screens (Kevin's mouse
+    // driver / gesture layer: right-click on the right half arrives as e.button 0), so
+    // right-click ranged silently dies there. So when the BOW is the SELECTED weapon, a
+    // held LEFT button ALSO draws + fires it (hold to charge, release to loose) and does
+    // NOT melee/mine — aim with the cursor. Space / gamepad X / Insert fire it too. To
+    // melee while the bow is selected, switch to the sword slot.
+    const _leftBowHeld    = _bowSelected && this.input.mouse.down && !p1OverMineable && !_p1Shift;
+    const _attackFiresBow = _bowSelected && (this.input.isMeleeAttack() || _leftBowHeld);
     const rangedDown  = this.input.isRangedAttackDown() || _attackFiresBow;
-    // Left-click melee only outside the sandbox editor (there a click = build).
-    // The attack-button melee is suppressed while the bow is selected (it draws the
-    // bow instead, above). NB: use the mode check directly — `isSandbox` is declared
-    // later in _update, so referencing it here would hit the const TDZ and crash.
+    // Left-click melee only outside the sandbox editor (there a click = build). Both the
+    // attack-button AND left-click melee are suppressed while the bow is selected (they
+    // fire the bow instead, above). NB: use the mode check directly — `isSandbox` is
+    // declared later in _update, so referencing it here would hit the const TDZ and crash.
     const meleeNow    = (this.input.isMeleeAttack() && !_bowSelected) ||
-                        (this.gameMode !== 'sandbox' && this.input.mouse.clicked && !p1OverMineable && !_p1Shift);
+                        (this.gameMode !== 'sandbox' && !_bowSelected && this.input.mouse.clicked && !p1OverMineable && !_p1Shift);
 
     // A Trident equipped as the melee weapon THROWS on right-click (its ranged
     // action) — but ONLY when its Throwable trait is on (World Settings → Combat →
