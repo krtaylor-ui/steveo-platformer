@@ -32,6 +32,24 @@
   bow is selected (mouse-free, immune to the driver's right-click zone-remap) OR right-click where the mouse
   behaves. Both share the same cursor aim, which now tracks the full screen.
 
+## Right-click → left-click on the right screen half: CONCLUSIVE + final fix (2026-07-19, builds 167–168)
+- **Definitive diagnostic (build 167 `lastDown` HUD line):** LEFT part of screen — right-click → `btn:2
+  buttons:2`, left-click → `btn:0 buttons:1` (both correct). RIGHT part of screen — EVERY press, including a
+  physical right-click, arrives as `btn:0 buttons:1` (LEFT).
+- **Conclusion:** `e.button`/`e.buttons` are set by the browser before any game code runs; the game reads them
+  directly and has NO position-based button logic, NO synthetic mouse events, and (verified) NO
+  pointer-capture / pointer-lock / CSS `zoom`/`transform` that could alter pointer delivery. So the remap is
+  **upstream of the page** — a gaming-mouse driver (G HUB / Synapse / iCUE) or a mouse-gesture extension with
+  a screen-zone mapping. "Only in zoom mode" = only when the fixed wide view lets the cursor reach the right
+  screen zone (follow-cam keeps the action centered, off the remap zone). Not fixable by reading the button.
+- **Final fix (build 168):** the LEFT button is delivered correctly everywhere, so when the BOW is the
+  SELECTED weapon, a held LEFT mouse button now draws + fires it (hold→charge, release→loose) and no longer
+  melees/mines; aim follows the cursor. Select the bow, left-click anywhere (incl. the right side) to shoot.
+  Space/gamepad (165) and right-click (where it works) still fire too. Sword slot keeps left-click melee.
+- **User-side note:** the right-click remap can likely be removed by disabling per-zone/gesture button
+  mapping in the mouse software or the offending browser extension — not required now that left-click + Space
+  both fire the bow.
+
 Started 2026-07-01. Records assumptions/decisions made during the Phase 3 master-brief run.
 Q0 verified: Phase 3B (`players[]`, PvP hit detection, kill attribution, Friendly Fire, Deathmatch)
 is committed (`91176fa`) and complete in code. CTF still `comingSoon`. Building on top of it.
