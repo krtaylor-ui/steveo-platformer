@@ -2126,10 +2126,12 @@ class Game {
     // Single-player: both keyboard and any connected gamepad drive P1 simultaneously.
     // Disabled in co-op/arena multiplayer and online games for per-player isolation.
     this.input.dualInput = this.activePlayers().length <= 1 && !this._onlineGameId;
-    // §5b — Aim-Up (Up/W = look-up, jump → J): gated on the world toggle. Also on
-    // automatically whenever the grappling hook is enabled (it needs aim-up to grapple
-    // straight up). Read by input.isJump()/isAimUp().
-    this.input._aimUpEnabled = !!(this._worldAdvSettings.aimUpEnabled || this._worldAdvSettings.weaponGrapple);
+    // §5b/§G — Aim-Up (Up/W = look-up, jump → J): on when the world toggle is set, OR once
+    // the player actually OWNS a grappling hook (it needs aim-up to grapple straight up).
+    // NB: gated on POSSESSION, not world availability — enabling the grapple as content must
+    // not flip the controls before the player has picked one up. Read by isJump()/isAimUp().
+    const _ownsGrapple = !!(this.player && this.player.rangedOwned && this.player.rangedOwned.indexOf('GRAPPLING_HOOK') >= 0);
+    this.input._aimUpEnabled = !!(this._worldAdvSettings.aimUpEnabled || _ownsGrapple);
     // Sync XP speed boost flag to all local players
     for (const p of this.activePlayers()) p.xpSpeedDisabled = !!this._worldAdvSettings.disableXpSpeedBoost;
 

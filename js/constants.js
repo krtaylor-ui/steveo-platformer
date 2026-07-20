@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 185 (Combat/Controls FOLLOW-UP — Phase F (Boomerang completion): placeable/pickup (palette gated by the world toggle); dual-slot display — Boomerang AND Trident now mirror into the ranged slot when no bow is held (swap via melee only); wall-interaction settings (Pass Through default / Stop → Early Return or Stick) + Auto vs Click-to-Return; isometric look vertically squashed. Enabling a weapon = available/placeable content, no longer auto-granted (pickup required).)';
+const GAME_VERSION = 'v3 · build 186 (Combat/Controls FOLLOW-UP — Phase G (Grappling Hook completion): the hook is now an ACQUIRED item — enabling it in World Settings only makes it available/placeable (Sandbox palette gated by the toggle); the player must pick one up to use it, and Look-Up Aim (jump→J) now flips on only once they are HOLDING a grapple, not merely because the world enables it. Placeable/pickup/persistence reuse the shared tool path.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

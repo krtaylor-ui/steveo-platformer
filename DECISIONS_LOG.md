@@ -33,6 +33,20 @@ Bug-fix + polish follow-up to the mega-session, from Kevin's first playtest. Pha
   at spawn (the mega-session's auto-grant is removed). The explicit "Starting Melee = Boomerang" choice
   stays as a separate intentional grant.
 
+## PHASE G — Grappling Hook completion (build 186) — DONE (mostly via Phase F shared work)
+- **Acquired-item model:** already delivered by Phase F's shared changes — the gear palette gates the
+  grapple on `weaponGrapple` (available/placeable only when enabled), and the auto-grant was removed
+  (pickup required). Grouping via `_GEAR_GROUP_ORDER`; pickup via `acquireWeapon` (type 'bow'); placed-
+  item persistence via `sandbox.placedItems`. Use is already gated on ownership (`_grappleEquipped` =
+  `rangedClass === 'grapple'`, and you can only equip what you own).
+- **Phase-G-specific fix:** the Look-Up-Aim auto-on (jump→J) was keyed off the world's `weaponGrapple`
+  toggle — that flipped the controls before the player had a grapple. Now it's gated on **possession**
+  (`rangedOwned` includes `GRAPPLING_HOOK`) OR the explicit `aimUpEnabled` toggle. Enabling the grapple
+  as content no longer changes controls until one is picked up.
+- Updated the Enable-Boomerang / Enable-Grapple hints to say "available/placeable, pick one up to use"
+  rather than "grants".
+- **Browser-verify:** placed hook canvas render + hotbar icon + persistence through save/continue.
+
 ## PHASE F — Boomerang completion (build 185) — DONE (mechanics tested; render/persist browser-verify)
 - **Placeable/pickup:** Boomerang/Grapple were already auto-included in the gear palette (from
   `TOOL_DATA`); added them to `_GEAR_GROUP_ORDER` for proper grouping and **gated the palette** so they

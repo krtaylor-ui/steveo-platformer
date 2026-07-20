@@ -27,7 +27,35 @@ going until the entire session is implemented (or a hard blocker is hit, which s
 questions were front-loaded). Resolve ambiguity with best judgment + document it, rather than
 blocking. (These sessions are designed to run unattended.)
 
-## CURRENT STATE (2026-07-19) — builds 173–179, branch `combat-controls-mega` (NOT merged; awaiting playtest)
+## CURRENT STATE (2026-07-20) — builds 180–186, branch `combat-controls-mega` (follow-up; NOT merged)
+
+**Combat/Controls FOLLOW-UP (Kevin's first-playtest bug-fix + polish pass) is BUILT** on the same
+branch, on top of the mega-session. Headless suite **689** (`node test/run.js`, all green; adds
+test-testworld 11, test-gpbindings 27, boomerang +13). Still additive/opt-in; per-phase commits
+(builds 180→186). Detail in `DECISIONS_LOG.md` ("COMBAT/CONTROLS FOLLOW-UP"). What shipped:
+- **A (180) — Sandbox test round-trip:** unsaved World Settings no longer lost on returning from Test.
+  Root cause was the RETURN path re-fetching the saved file (not the Test launch, which already used the
+  live draft); now it reopens the editor from the in-memory snapshot. Nothing persists unless Save.
+- **B (181):** Up also triggers ledge grab (`isJump() || isAimUp()`), every control scheme.
+- **C (182):** controller mapping display + FULL rebind (`GP_BINDINGS` + click→press-a-button poll);
+  `updateGamepad` resolves each button-action through it (byte-identical default; face-swap flows through it).
+- **D (183):** pause "Players" selector → 1 Player / 2 Player (Human) / 2 Player (Bot), Bot reusing the
+  companion infra (runtime spawn/despawn). Disabled in Sandbox. Full co-op redesign → FUTURE_ROADMAP §23.
+- **E (184):** charged-shot glow (brightness + yellow→red by charge); arrow-speed cap 2×→4×; Unlimited/
+  Recoverable Arrows moved under a "Ranged" heading (Combat heading gone).
+- **F (185) — Boomerang completion:** palette placeable (gated by the world toggle); dual-slot display
+  (Boomerang + Trident mirror into the ranged slot, swap via melee only); wall settings (Pass Through /
+  Stop→Early-Return|Stick) + Auto/Click-to-Return; isometric vertical squash. **Acquisition model
+  changed: enabling a new weapon = available/placeable content, no longer auto-granted (pickup required).**
+- **G (186) — Grappling Hook completion:** now an acquired item (enable = available/placeable; pickup to
+  use); Look-Up-Aim flips controls only once a grapple is HELD, not on world availability.
+
+**Ship path unchanged** (suite 689 → Kevin browser-tests → `merge --ff-only combat-controls-mega` →
+push). **Browser-verify items:** the Sandbox round-trip (A), gamepad capture (C), the 2P-Bot spawn (D),
+boomerang/grapple canvas render + save/continue persistence (F/G), and all the feel items from the
+mega-session still stand.
+
+## CURRENT STATE (2026-07-19) — builds 173–179, branch `combat-controls-mega` (mega-session; NOT merged; awaiting playtest)
 
 **The Combat & Controls mega-session (7 phases) is BUILT** on branch `combat-controls-mega` off
 `bot-ai`(==`main` @ build 172). Headless suite **638** (`node test/run.js`, all green; adds
