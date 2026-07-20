@@ -54,6 +54,29 @@ const TOUCH_CONTROLS = {
     if (!on) this._teardown();
   },
 
+  // (§1b) Explicit user-facing mode: 'auto' (detect + default to mouse on hybrid
+  // laptops), 'on' (force the touch overlay — tablets), 'off' (force the desktop
+  // mouse scheme). 'auto' = no localStorage override; on/off write it. A ?touch=
+  // URL param still overrides everything (dev/testing).
+  getMode() {
+    try {
+      const ls = localStorage.getItem('steveo_touch');
+      if (ls === '1') return 'on';
+      if (ls === '0') return 'off';
+    } catch (e) {}
+    return 'auto';
+  },
+  setMode(mode) {
+    try {
+      if (mode === 'on') localStorage.setItem('steveo_touch', '1');
+      else if (mode === 'off') localStorage.setItem('steveo_touch', '0');
+      else localStorage.removeItem('steveo_touch');     // 'auto'
+    } catch (e) {}
+    this._enabled = this.detect();
+    if (!this._enabled) this._teardown();
+    // When (re-)enabling, the rAF _loop re-configures the layout next frame.
+  },
+
   init() {
     this._enabled = this.detect();
     this._build();

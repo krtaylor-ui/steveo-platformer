@@ -1,5 +1,108 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
+# ═══════════════════════════════════════════════════════════════════════
+# COMBAT & CONTROLS MEGA-SESSION (2026-07-19, build 173+, branch `combat-controls-mega`)
+# ═══════════════════════════════════════════════════════════════════════
+Running log for the 7-phase Combat & Controls build. Phases land + checkpoint in order:
+1 Tier-1 QoL → 2 Controls-Config UI → 3 Boomerang → 4 Arrow/Bow/Crossbow → 5 Grappling Hook
+→ 6 Directional melee → 7 Combos. Everything additive/opt-in; each feature independently
+toggleable (see the "TOGGLE INVENTORY" running list at the bottom of this section).
+
+## Up-front resolution of the Section 9 open questions (from a code audit before building)
+- **Q0 — Trident in-flight weapon availability (→ mirror for Boomerang):** It depends on
+  loadout. DEFAULT throw with another melee weapon owned → `throwActiveTrident()` switches the
+  melee slot to the fallback, so `_tridentIsOut` is false and the player CAN melee (with the
+  other weapon) + fire the bow while the trident is away. Trident-ONLY loadout OR recall-mode
+  (`tridentAutoReturn`) → the trident stays selected, `_tridentIsOut` true → BOTH melee and
+  ranged are disabled until it returns ("it's still yours, but you're unarmed while it's out").
+  Gates: `game.js` melee `!_tridentIsOut` + ranged `!_tridentIsOut`. **DECISION for Boomerang:**
+  the Boomerang AUTO-returns and stays selected (no weapon-switch), so it mirrors the
+  recall/trident-only rule → **the player is unarmed (can't melee/re-throw) while the boomerang
+  is in flight, until it returns.** Documented; will confirm by playtest feel.
+- **Q1 — Look-up input scope (Up/W aim-up):** P1's ranged aim for bow/crossbow/trident + the
+  guided-trident steer ALL converge on one world-space point (`camera.toWorld(mouse)` in
+  `game.js` ~2282). P2–P4 already implement aim-up-on-Up via `_snapAimAngle`. **DECISION:** the
+  Up/W aim-up override **generalizes to all ranged weapons** for P1 (single cleanest hook =
+  override that `world` point to straight-up while the aim-up action is held), matching the
+  existing P2–P4 behaviour — NOT grapple-specific. Left/right movement stays live while aiming up.
+- **Q2 — down-input key:** RESOLVED already = crouch/down ("S"), not "D".
+- **Q3 — Charge mechanic architecture:** `player.drawProgress` (0–1) + `bowDrawing` is a clean,
+  generic charge model available at fire time; today it maps ONLY to arrow speed (9→26). **CONFIRMED
+  generic enough:** the charge→damage-multiplier (Phase 4) applies a factor at the fire site
+  (`game.js` ~2424); the same `drawProgress` can later scale speed/range instead/too with no
+  rework — build damage-mult now, keep the timer/fill/release plumbing output-agnostic.
+- **Q4 — Combo same-target vs any-target:** `playerAttack` is radial + optional cone and returns
+  a candidate list. **CONFIRMED reading:** a combo hit stays alive if the swing lands on ANY valid
+  target (or targets, for multi-hit weapons) — not a strict same-target requirement.
+- **Q5 — PvP scope (directional height-dodge + combo finisher):** `playerAttack` is used for
+  secondary players too, so both features apply to PvP automatically. **DECISION:** build
+  UNIVERSALLY (PvE + PvP); flagged as a balance item for Kevin's playtest, not silently PvE-only.
+- **Q6 — Other findings that shaped wiring:** (a) All named input helpers in `input.js` are
+  HARDCODED to key codes — there is NO live binding map yet; Phase 2 must build it and migrate
+  `isJump`/`isCrouch`/`moveX`/`hotbarKey` to read it (combat + gamepad face-remap already
+  abstracted). (b) Repurposing Up/W off jump = edit `isJump()` + `isP2Jump()`; `KeyJ` is a safe
+  jump target (`P2_KEY_LEFT='KeyJ'` is dead code). This is the "Legacy Jump" preset foundation
+  (Phase 2). (c) Ledge climb-up is a SCRIPTED position-lerp state machine (`player._hangState`
+  bypasses gravity/collision) — reuse for the grapple 1-block climb-over (Phase 5). (d) The
+  spear slide-launch spin (`mob._launched/_launchSpin/_spinAngle/_launchFrames/_tossDeath` +
+  the render wrapper in `mobs.js`) — reuse for the combo finisher "knock onto back" (Phase 7).
+  (e) Boomerang rides the data-driven `WEAPON_TRAITS`+`TOOL_DATA` path (add a `boomerang`
+  weaponClass) + the generic `addPlayerArrow({guided,returning,recoverable})`/`steerGuided`
+  projectile substrate; a Grappling Hook is NOT a bow/sword so needs a new `type` branch in
+  `player.acquireWeapon` + `weaponMode`.
+
+## PHASE 1 — Tier 1 QoL (build 173) — DONE (headless-tested; browser-UNTESTED)
+### 1a. Companion "!" polish + follow-mode cue (`js/bot-ai.js`, `js/player.js`)
+- **"!" now means "tried and failed", not "hasn't arrived".** Scoped to the **teleport-OFF**
+  path (the genuine stuck prompt). The trigger was the bare distance-stall timer
+  (`_ccStuck > BOT_COMPANION_WARP_STUCK` ≈0.75s); it's now gated on the navigator actually
+  giving up — a new `_genuinelyStuck` latch set when escapes are exhausted TWICE. The old timer
+  survives only as a ×4 long-safety (≈3s) so a silent failure still eventually flags.
+  - **The teleport-ON summon "!" ("press C to call me") was LEFT distance-based** — that is
+    Kevin's intentional design (getting far raises the summon prompt), not the stuck prompt, so
+    §1a's escape-exhaustion gating does NOT apply there. (First implementation over-scoped it to
+    both paths and broke 4 teleport-ON tests; reverted to teleport-OFF only.)
+- **Different-approach retry before giving up.** In the actuator escape logic: pre-give-up
+  escapes now back away with a progressively LONGER run-up (16f → 24f). On the FIRST dead-end
+  (escapes exhausted for a line) it PERTURBS — flips `_perturbSide` (other take-off side) + a
+  longer run-up + a fresh re-path — instead of latching stuck. Only a SECOND failed dead-end sets
+  `_genuinelyStuck` → the "!". Resets on real progress and in `_clearStuck`.
+- **Follow/mirror-mode visual cue.** New `player._mirrorMark` (set while `_mirrorTimer>0`,
+  cleared otherwise) draws a distinct **cyan pulsing outline + linked chevrons** over the
+  companion — visibly different from the yellow "!" — so it's obvious when the bot is copying
+  your inputs. Tests: updated 3 teleport-OFF stuck tests to the new `_genuinelyStuck` precondition
+  + added a regression that a far-but-not-stuck companion does NOT raise "!" on the old timer.
+### 1b. Touch Controls Auto/On/Off toggle (`js/touch-controls.js`, `js/pause-menu.js`)
+- `TOUCH_CONTROLS.getMode()/setMode('auto'|'on'|'off')`: 'auto' = no localStorage override
+  (detect + default-to-mouse on hybrid laptops, the build-171 behaviour), 'on'/'off' force it.
+  A `?touch=` URL param still wins (dev). Surfaced as a **3-way select in the pause → Settings →
+  Player section** (a per-device preference, not a world property). Makes build-171 explicit +
+  overridable.
+### 1c. Companion selection moved to the start splash (`index.html`, `js/game-play.js`, `js/style.css`, `js/world-settings-ui.js`)
+- The single shared start/continue screen is the `#game-config-startup` splash
+  (`GAME_PLAY._showStartupScreen`), which serves BOTH new games ("Start Game") and continues
+  ("Continue") on the live authed path — and the companion spawns lazily on the first UNPAUSED
+  tick (`_maybeSetupCompanion`), i.e. AFTER the splash's Start, so writing the choice in
+  `begin()` is safe. Added a **Companion: Off / On·Easy/Medium/Hard + Companion Character
+  (Steve/Alex)** chooser there, shown for the companion-capable splash modes (**Platformer +
+  Normal**). `begin()` writes `_worldAdvSettings.companionBot`/`.p2Char`, overriding the world's
+  loaded values. Pre-fills from the loaded world (so an existing saved companion pre-selects).
+- **Removed `companionBot` from World Settings → Players** (it's now a per-session start-screen
+  choice, per the brief). KEPT the advanced knobs there (Companion Summon/press-C, Summon
+  Distance, stuck behaviour, Players Pass Through). Relabeled `p2Char` → "P2 (Co-op) Character"
+  (it still serves human co-op P2; the companion's character comes from the splash).
+- **Judgment calls flagged:** (i) enabled the chooser for **Normal too** (not just Platformer) —
+  same splash, companion works there. (ii) **Consequence:** sandbox-editor playtest + the
+  test-world path do NOT use this splash, so a companion can no longer be enabled in those (no
+  World Settings toggle either now) — acceptable per the brief's intent (companion is a play
+  choice, not a level-design concern); flag if Kevin wants a fallback there.
+
+## TOGGLE INVENTORY (running — every independent enable/config added this session)
+Permanent, player-facing unless marked. Phase 1:
+- **Touch Controls** (Auto/On/Off) — pause → Settings → Player. Permanent, per-device.
+- **Companion** (Off/Easy/Medium/Hard) + **Companion Character** — start splash. Permanent, per-session.
+(No temp/debug-only flags added in Phase 1.)
+
 ## Bow-fire "won't fire on the right side" — root cause + fix (2026-07-19, builds 160–165)
 - **Symptom:** in zoomed-out / single-screen play, the bow fired when aiming/right-clicking on the
   LEFT half of the screen but NOT the right; a melee happened instead.

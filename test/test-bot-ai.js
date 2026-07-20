@@ -815,18 +815,28 @@ console.log('Companion stuck behaviors (Teleport OFF):');
     const game = mkGame(level, [leader, comp], { gameMode: 'platformer', _worldAdvSettings: { companionTeleport: false, companionStuckBehavior: beh } });
     return { ctrl: new BotController(game, 1, 'companion', 'MEDIUM'), comp, leader };
   };
+  // (§1a) The teleport-OFF "stuck" prompt now fires on GENUINE stuck (the navigator
+  // exhausted its escapes → `_genuinelyStuck`), not the bare distance-stall timer. These
+  // tests set that precondition (the actuator would set it in-game) and verify the
+  // configured response (none / teleport / follow) runs off it.
   // 'none' → shows the ! mark, never warps (stress-test).
-  { const { ctrl, comp } = mk('none'); const bx = comp.x; for (let f = 0; f < 200; f++) ctrl._companionAssist(); ok(comp._stuckMark === true, 'none: shows the ! mark when stuck'); ok(comp.x === bx, 'none: never warps'); }
+  { const { ctrl, comp } = mk('none'); ctrl._genuinelyStuck = true; const bx = comp.x; for (let f = 0; f < 200; f++) ctrl._companionAssist(); ok(comp._stuckMark === true, 'none: shows the ! mark when genuinely stuck'); ok(comp.x === bx, 'none: never warps'); }
   // 'teleport' → after the stuck delay, warps.
-  { const { ctrl, comp } = mk('teleport'); const bx = comp.x; for (let f = 0; f < 200; f++) ctrl._companionAssist(); ok(comp.x !== bx, 'teleport: warps after the stuck delay'); }
+  { const { ctrl, comp } = mk('teleport'); ctrl._genuinelyStuck = true; const bx = comp.x; for (let f = 0; f < 200; f++) ctrl._companionAssist(); ok(comp.x !== bx, 'teleport: warps after the stuck delay'); }
   // 'follow' → latches stuck while far; engages mirror once the player comes near.
-  { const { ctrl, comp, leader } = mk('follow');
+  { const { ctrl, comp, leader } = mk('follow'); ctrl._genuinelyStuck = true;
     for (let f = 0; f < 80; f++) ctrl._companionAssist();
     ok(comp._stuckMark === true && (ctrl._mirrorTimer || 0) === 0, 'follow: shows ! and waits (not mirroring) while the player is far');
     leader.x = 6 * B;                                   // player comes near (4 blocks: within mirror range, not yet reunited)
     ctrl._companionAssist();
     ok(ctrl._mirrorTimer > 0, 'follow: mirrors once the player is near');
   }
+  // (§1a) Regression: a far companion that is NOT genuinely stuck must NOT raise the "!"
+  // on the old ~45-frame distance-stall timer (only the long ×4 safety, far later). This
+  // is the whole point of the change — "!" means "tried and failed", not "hasn't arrived".
+  { const { ctrl, comp } = mk('none');
+    for (let f = 0; f < 65; f++) ctrl._companionAssist();   // 65f > old 45f threshold, < ×4 safety (180f)
+    ok(comp._stuckMark !== true, 'far-but-not-stuck: no "!" on the bare distance-stall timer'); }
 }
 
 console.log('Warp stays on the leader\'s level (no cave-drop below):');

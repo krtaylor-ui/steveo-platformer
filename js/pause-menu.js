@@ -402,6 +402,15 @@ const PAUSE_MENU = {
     const prows = [
       this._row('Show Player Health Bars', this._toggle(() => aws.showOnlineHealthBars !== false, v => { game._worldAdvSettings.showOnlineHealthBars = v; })),
     ];
+    // (§1b) Touch Controls Auto / Force-On / Force-Off — a per-device preference that
+    // makes the build-171 auto-detect explicit + overridable (auto-detect can misfire on
+    // hybrid touch+mouse laptops). Stored in localStorage by TOUCH_CONTROLS, not the world.
+    if (typeof TOUCH_CONTROLS !== 'undefined' && TOUCH_CONTROLS.getMode) {
+      prows.push(this._row('Touch Controls', this._select(
+        [{ v: 'auto', label: 'Auto' }, { v: 'on', label: 'Force On' }, { v: 'off', label: 'Force Off' }],
+        () => TOUCH_CONTROLS.getMode(),
+        v => { TOUCH_CONTROLS.setMode(v); })));
+    }
     if (game._onlineGameId) prows.push(this._row('Disable Chat', this._toggle(() => aws.chatDisabled, v => { game._worldAdvSettings.chatDisabled = v; })));
     body.appendChild(this._section('Player', prows));
 

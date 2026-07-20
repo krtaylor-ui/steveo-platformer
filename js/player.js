@@ -1065,6 +1065,30 @@ class Player {
       ctx.fillStyle = '#FFE23A'; ctx.fillText('!', cx, by);
       ctx.restore();
     }
+
+    // Bot AI (§1a) — a cyan "follow / repeat-mode" cue on a companion that's mirroring
+    // the player's live inputs to thread a tricky spot. Deliberately distinct from the
+    // yellow "!" (stuck): a pulsing outline + linked chevrons pointing the way it copies.
+    if (this._mirrorMark) {
+      const w = this.width, h = this.height;
+      const t = (this._mirrorMarkT = (this._mirrorMarkT || 0) + 1);
+      ctx.save();
+      ctx.globalAlpha = 0.45 + 0.3 * Math.sin(t * 0.2);
+      ctx.strokeStyle = '#3fe0ff'; ctx.lineWidth = 2;
+      ctx.strokeRect(sx - 2, sy - 2, w + 4, h + 4);
+      ctx.globalAlpha = 1;
+      const mcx = sx + w / 2, mcy = sy - 10 - (t % 30 < 15 ? 1 : 0), dir = this.facing || 1;
+      ctx.strokeStyle = '#9beeff'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+      for (let k = 0; k < 2; k++) {
+        const ox = mcx + (k * 5 - 2) * dir;
+        ctx.beginPath();
+        ctx.moveTo(ox - 3 * dir, mcy - 3);
+        ctx.lineTo(ox, mcy);
+        ctx.lineTo(ox - 3 * dir, mcy + 3);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
   }
 
   // A translucent net of web strands across the player's bounding box (fades out as

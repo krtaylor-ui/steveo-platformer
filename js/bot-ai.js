@@ -199,10 +199,12 @@ class BotController {
     // skipping normal AI. (Cleared when we get unstuck or the timer runs out.)
     if (this._mirrorTimer > 0) {
       this._mirrorTimer--;
+      if (this.player) this.player._mirrorMark = true;   // follow/repeat-mode visual cue (§1a)
       this._mirrorAct();
       g.input.setBotInput(this.index, this._input);
       return;
     }
+    if (this.player) this.player._mirrorMark = false;
 
     // BRAIN — periodic decision. Companions re-decide fast (responsive following).
     const tickN = this.role === 'companion' ? Math.min(this.diff.brainTick, BOT_COMPANION_BRAINTICK) : this.diff.brainTick;
@@ -452,9 +454,13 @@ class BotController {
     // flicker at the edge.
     if (aws.companionTeleport !== false) {
       const range = aws.companionTeleportRange || BOT_COMPANION_WARP_DIST;
+      // Teleport ON = a distance-based SUMMON prompt (Kevin's design): getting far raises
+      // "!" = "press C to call me". This is intentionally distance-driven and is NOT the
+      // escape-exhaustion "stuck" prompt (§1a) — that lives in the teleport-OFF path below.
       if (distB > range) this._summonable = true;
       else if (distB < BOT_FOLLOW_NEAR + 1) this._summonable = false;
       me._stuckMark = !!this._summonable;                 // yellow "!" = "press C to call me"
+      me._mirrorMark = false;                             // teleport path never mirrors
       if (this._summonable && this.game._companionSummon) {
         this._doWarp(leader);
         this._summonable = false; me._stuckMark = false;
@@ -468,7 +474,11 @@ class BotController {
     // Progress tracking: "stuck" = can't close the gap for a while while still far.
     if (this._ccBest == null || distB < this._ccBest - 0.5) { this._ccBest = distB; this._ccStuck = 0; }
     else this._ccStuck = (this._ccStuck || 0) + 1;
-    if (!this._stuckState && this._ccStuck > BOT_COMPANION_WARP_STUCK && distB > BOT_FOLLOW_FAR) this._stuckState = 'stuck';
+    // (§1a) Primary trigger = the navigator genuinely gave up (`_genuinelyStuck`), NOT the
+    // bare distance-stall timer. The `_ccStuck` timer stays only as a long last-resort
+    // safety (×4 the old threshold ≈ 3s) so a silent failure still eventually flags.
+    if (!this._stuckState && distB > BOT_FOLLOW_FAR &&
+        (this._genuinelyStuck || this._ccStuck > BOT_COMPANION_WARP_STUCK * 4)) this._stuckState = 'stuck';
     if (!this._stuckState) return;                      // following fine
 
     // LATCHED stuck (stays set even as the player approaches — so Follow mode can
@@ -495,8 +505,9 @@ class BotController {
     }
   }
   _clearStuck() {
-    if (this.player) this.player._stuckMark = false;
+    if (this.player) { this.player._stuckMark = false; this.player._mirrorMark = false; }
     this._stuckState = null; this._stuckTimer = 0; this._followStuck = 0; this._mirrorTimer = 0;
+    this._deadEnds = 0; this._genuinelyStuck = false;   // (§1a) reset the dead-end detector on recovery
   }
   // Warp beside the leader on THEIR level — never navDropTo (that can fall many
   // blocks into a cave below the player, the reported bug). Same row first, then a
@@ -762,16 +773,34 @@ class BotController {
         this._noProgress = 0;
         this._escapeCount = (this._escapeCount || 0) + 1;
         if (this._escapeCount > BOT_ESCAPE_MAX) {
-          // Repeated escapes got nowhere → it's a genuine dead-end (e.g. a 4-tall
-          // tree it can't clear). Stop pacing: drop the goal + re-decide. For a
-          // companion the catch-up warp then takes over; an arena bot picks a new goal.
-          this._path = null; this._pathTimer = 0; this._brainTimer = 0; this._escapeCount = 0;
+          // Repeated escapes got nowhere with THIS approach → a dead-end for the line
+          // we tried. (§1a) Don't cry for help yet: on the FIRST dead-end try a
+          // DIFFERENT approach (flip the take-off side + a longer run-up + fresh
+          // re-path) before flagging genuinely-stuck. Only a SECOND failed dead-end
+          // latches `_genuinelyStuck`, which is what raises the companion "!".
+          this._escapeCount = 0;
+          this._deadEnds = (this._deadEnds || 0) + 1;
+          if (this._deadEnds >= 2) {
+            this._genuinelyStuck = true;   // read by _companionAssist / stuck detection
+            this._path = null; this._pathTimer = 0; this._brainTimer = 0;
+          } else {
+            this._perturbSide = -(this._perturbSide || 1);        // other take-off side
+            this._escapeDir = this._perturbSide;
+            this._escapeTimer = 28;                               // longer run-up than the 16f default
+            this._path = null; this._pathTimer = 0; this._brainTimer = 0;  // don't retrace the same line
+          }
         } else {
-          this._escapeDir = -Math.sign(dir || (p.facing || 1));   // back away from the target
-          this._escapeTimer = 16;
+          // Back away from the target for a run-up, lengthening it on the 2nd attempt so
+          // it doesn't wedge the identical way. (Take-off-SIDE variation happens at the
+          // dead-end level via `_perturbSide`, above.)
+          this._escapeDir = -Math.sign(dir || (p.facing || 1));   // reverse (back away)
+          this._escapeTimer = 16 + 8 * (this._escapeCount - 1);   // 16f, then 24f
         }
       }
-    } else { this._noProgress = 0; this._escapeCount = 0; }
+    } else {
+      // Real progress → clear the stuck bookkeeping ("tried and it worked").
+      this._noProgress = 0; this._escapeCount = 0; this._deadEnds = 0; this._genuinelyStuck = false;
+    }
     this._lastX = p.cx;
   }
 

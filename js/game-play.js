@@ -111,6 +111,24 @@ const GAME_PLAY = {
     set('startup-air-jump', aws.airJumpEnabled ? '✅ Enabled' : '❌ Disabled');
     set('startup-sprint', aws.sprintEnabled !== false ? '✅ Enabled' : '❌ Disabled');
 
+    // (§1c) Per-session companion chooser — shown for the companion-capable modes reachable
+    // via this splash (Platformer / Normal). Pre-filled from the world's saved value; the
+    // choice made here overrides _worldAdvSettings.companionBot / .p2Char at Start. Safe
+    // because the companion is spawned lazily on the first unpaused tick, AFTER begin().
+    const companionCapable = this.gameMode === 'platformer' || this.gameMode === 'normal';
+    const compBlock   = document.getElementById('startup-companion');
+    const compModeSel = document.getElementById('startup-companion-mode');
+    const compCharSel = document.getElementById('startup-companion-char');
+    const compCharRow = document.getElementById('startup-companion-char-row');
+    if (compBlock) compBlock.style.display = companionCapable ? '' : 'none';
+    if (companionCapable && compModeSel) {
+      compModeSel.value = ['EASY', 'MEDIUM', 'HARD'].includes(aws.companionBot) ? aws.companionBot : 'off';
+      if (compCharSel) compCharSel.value = (aws.p2Char === 'female') ? 'female' : 'male';
+      const syncCharRow = () => { if (compCharRow) compCharRow.style.display = (compModeSel.value === 'off') ? 'none' : ''; };
+      syncCharRow();
+      compModeSel.onchange = syncCharRow;
+    }
+
     screen.style.display = 'flex';
 
     const startBtn = document.getElementById('startup-start-btn');
@@ -124,8 +142,15 @@ const GAME_PLAY = {
     };
     const begin = () => {
       cleanup();
+      const g = window.game;
+      // (§1c) Apply the per-session companion choice (overrides the world's saved value)
+      // before unpausing — _maybeSetupCompanion() reads these on the next tick.
+      if (g && companionCapable && compModeSel) {
+        g._worldAdvSettings.companionBot = compModeSel.value;   // 'off' | 'EASY' | 'MEDIUM' | 'HARD'
+        if (compModeSel.value !== 'off' && compCharSel) g._worldAdvSettings.p2Char = compCharSel.value;
+      }
       // Unpause — the (already-running, pause-aware) timer resumes counting.
-      if (window.game) window.game.state = 'playing';
+      if (g) g.state = 'playing';
     };
     // Go Back: abort before playing — tear down the freshly-built game and
     // return to the game-selection screen (same as a normal exit).

@@ -1597,6 +1597,18 @@ html[data-theme="retro"] .ws-adv { color: #ffd166 !important; }
 .config-item:last-child { border-bottom: none; }
 .config-label { font-weight: bold; font-size: 1.05rem; }
 .config-item span:last-child { color: #9CFFA8; font-weight: bold; }
+/* (§1c) Interactive selects on the startup splash (companion chooser). */
+.startup-sel {
+  background: rgba(255, 255, 255, 0.1);
+  color: #9CFFA8;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-weight: bold;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.startup-sel option { color: #111; }
 .startup-footer { text-align: center; }
 #startup-instructions { text-align: center; color: rgba(255,255,255,0.75); margin: 0 0 18px; }
 #startup-start-btn { width: 100%; }

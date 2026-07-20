@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 172 (Restore two-button combat + production cleanup: with the touch-aimpad root cause fixed (171), the build-168 workaround (left-click fires the bow when selected) is obsolete and was stealing melee in arena -- reverted, so LEFT-click = melee and RIGHT-click = ranged everywhere again. Stripped all the mouse-investigation Debug HUD lines (rawBtns / lastDown / canvasRect) and their backing fields. Ready for production.)';
+const GAME_VERSION = 'v3 · build 173 (Combat & Controls mega-session — Phase 1 (Tier 1 QoL): companion "!" now fires only when genuinely stuck (escapes exhausted) with a different-approach retry + a cyan follow/mirror-mode cue; a Touch Controls Auto/On/Off toggle in pause Settings; and the co-op companion on/off + character choice moved to the Platformer/Normal start splash (off the World Settings Players group).)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
