@@ -48,35 +48,38 @@ const GRAPPLE = {
   },
 
   // ── Swing (5c) ──────────────────────────────────────────────
-  // Begin a pendulum from the player's entry state (top-left px,py + velocity vx,vy).
-  beginSwing(ax, ay, px, py, vx, vy) {
-    const dx = px - ax, dy = py - ay;
-    const len = Math.max(GRAPPLE.MIN_LEN, Math.hypot(dx, dy));
-    const theta = Math.atan2(dx, dy);            // from straight-down
-    // Tangent (dP/dθ) = (cosθ, -sinθ); angular velocity = (v · tangent) / L.
+  // Begin a pendulum from the player's entry state. `px,py` = player TOP-LEFT, `pw,ph` =
+  // size (default 20×52), `vx,vy` = entry velocity. KEY MODEL (§follow-up): the cable
+  // length is set to the VERTICAL drop from the anchor to the player's STANDING SURFACE
+  // (feet at launch), so the bottom of the swing sits exactly at that block level. The
+  // player is lifted onto that arc and can swing ALL THE WAY across (through the bottom) —
+  // it never dips below the ground they launched from, and it isn't trapped on one side.
+  beginSwing(ax, ay, px, py, pw, ph, vx, vy) {
+    pw = pw || 20; ph = ph || 52;
+    const feetCx = px + pw / 2, feetY = py + ph;             // standing-surface reference
+    const len = Math.max(GRAPPLE.MIN_LEN, feetY - ay);       // vertical anchor→standing → arc bottom = standing
+    const theta = Math.atan2(feetCx - ax, Math.max(1, feetY - ay));  // from straight-down
     let angVel = (vx * Math.cos(theta) - vy * Math.sin(theta)) / len;
     angVel = Math.max(-GRAPPLE.MAX_ANGVEL, Math.min(GRAPPLE.MAX_ANGVEL, angVel));
-    return { ax, ay, len, theta, angVel, launchY: py };
+    // launchY = the top-left ceiling (feet at standing → top-left at py); entrySign = which
+    // side of the bottom the player started on (for the past-midpoint wall rule in game.js).
+    return { ax, ay, len, theta, angVel, launchY: py, pw, ph, entrySign: (theta < 0 ? -1 : 1) };
   },
 
-  // Advance one frame under gravity; ENFORCE py <= launchY (invariant 1) by clamping
-  // to the launch line and reflecting the angular velocity (a bounce). Returns the new
-  // player top-left {x,y}. Mutates `s`.
+  // Advance one frame under gravity. Returns the player TOP-LEFT {x,y}. The vertical-len
+  // geometry already bottoms the FEET at the standing surface, so no bounce/clamp trap — the
+  // player swings through the bottom. A soft safety clamp keeps the top-left ≤ launchY.
   stepSwing(s, gravity) {
     s.angVel += -(gravity / s.len) * Math.sin(s.theta);
     s.angVel *= GRAPPLE.SWING_DAMP;
     s.angVel = Math.max(-GRAPPLE.MAX_ANGVEL, Math.min(GRAPPLE.MAX_ANGVEL, s.angVel));
+    s.theta += s.theta > Math.PI ? -2 * Math.PI : s.theta < -Math.PI ? 2 * Math.PI : 0; // wrap
     s.theta += s.angVel;
-    let py = s.ay + s.len * Math.cos(s.theta);
-    if (py > s.launchY) {                        // would dip BELOW launch height → clamp + bounce
-      let k = (s.launchY - s.ay) / s.len;
-      k = Math.max(-1, Math.min(1, k));
-      s.theta = (s.theta < 0 ? -1 : 1) * Math.acos(k);
-      s.angVel = -s.angVel * GRAPPLE.BOUNCE;
-      py = s.launchY;
-    }
-    const px = s.ax + s.len * Math.sin(s.theta);
-    return { x: px, y: py };
+    const feetCx = s.ax + s.len * Math.sin(s.theta);
+    const feetY  = s.ay + s.len * Math.cos(s.theta);
+    let ty = feetY - s.ph;
+    if (ty > s.launchY) ty = s.launchY;          // safety (rarely hit — geometry bottoms at launchY)
+    return { x: feetCx - s.pw / 2, y: ty };
   },
 
   // ── Release (5c) ────────────────────────────────────────────
@@ -94,13 +97,9 @@ const GRAPPLE = {
     s.len = Math.max(GRAPPLE.MIN_LEN, s.len - amount);
     return s.len;
   },
-  // The half-arc angle (radians) the swing can reach before clamping at launchY, at the
-  // current length. Smaller = narrower swing. (Used by tests + an optional debug viz.)
-  swingHalfArc(s) {
-    let k = (s.launchY - s.ay) / s.len;
-    k = Math.max(-1, Math.min(1, k));
-    return Math.acos(k);                          // θ at which py === launchY
-  },
+  // The swing RADIUS (= cable length). Reeling in shrinks it → a narrower arc (smaller
+  // horizontal reach). Used by tests + an optional debug viz.
+  swingRadius(s) { return s.len; },
 
   // ── Climb-over (5d) ─────────────────────────────────────────
   // The scripted climb-over onto the platform triggers ONLY when the grabbed obstacle

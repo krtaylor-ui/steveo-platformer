@@ -34,8 +34,10 @@ const TOOL_DATA = {
   TRIDENT:           { name: 'Trident',           type: 'sword', weaponClass: 'trident', tier: 2, damage: 7, mineSpeed: 0, color: '#3FB8C0' },
   // ── Boomerang (§Phase 3 — dual-mode melee + auto-returning throw; opt-in per world) ──
   BOOMERANG:         { name: 'Boomerang',         type: 'sword', weaponClass: 'boomerang', tier: 2, damage: 7, mineSpeed: 0, color: '#C98A3A' },
-  // ── Grappling Hook (§Phase 5 — fires a cable, swing/climb; ranged slot; opt-in per world) ──
-  GRAPPLING_HOOK:    { name: 'Grappling Hook',    type: 'bow',   weaponClass: 'grapple', tier: 0, damage: 0, mineSpeed: 0, color: '#9a7b4f' },
+  // ── Grappling Hook (§Phase 5 — fires a cable, swing/climb). A COLLECTED CAPABILITY like the
+  //    pickaxe / flint & steel (type 'grapple' → player.hasGrapple), NOT a hotbar weapon slot;
+  //    fired with SHIFT+RIGHT-CLICK once collected. ──
+  GRAPPLING_HOOK:    { name: 'Grappling Hook',    type: 'grapple', weaponClass: 'grapple', tier: 0, damage: 0, mineSpeed: 0, color: '#9a7b4f' },
   BOW:               { name: 'Bow',               type: 'bow',   weaponClass: 'bow',      tier: 0, damage: PLAYER_ARROW_DAMAGE, mineSpeed: 0, color: '#C8A55A' },
   // ── Crossbow (piercing arrows; +damage) ──
   CROSSBOW:          { name: 'Crossbow',          type: 'bow',   weaponClass: 'crossbow', tier: 0, damage: PLAYER_ARROW_DAMAGE, mineSpeed: 0, color: '#9A7B4F' },

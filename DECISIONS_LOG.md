@@ -33,6 +33,27 @@ Bug-fix + polish follow-up to the mega-session, from Kevin's first playtest. Pha
   at spawn (the mega-session's auto-grant is removed). The explicit "Starting Melee = Boomerang" choice
   stays as a separate intentional grant.
 
+## GRAPPLE REWORK + polish (builds 188–189) — from Kevin's 2nd playtest pass
+- **Bow-glow delay (188):** the charge glow only shows after ~0.75s of drawing (`player._bowHold >=
+  BOW_GLOW_DELAY_FRAMES`) so a quick tap doesn't flash it — on the bow/crossbow outline + fired arrow.
+- **Placed-item icons (188):** `_drawPlatformerItems` fallback now uses `weaponIconFor` (per weapon
+  class) so in-level items read the same as the Sandbox palette (not a generic ⚔/🏹).
+- **Grapple = collected capability (189):** `TOOL_DATA.GRAPPLING_HOOK` type `bow`→`grapple`; collected
+  like pickaxe/flint (`player.hasGrapple`, wired through every collect/serialize/companion/deserialize
+  site), NOT a hotbar weapon slot. Fired with **SHIFT + RIGHT-CLICK** (ranged bow-fire suppressed that
+  frame). HUD indicator `🪝 Grapple (⇧+RMB)`. Aim-up auto-on now keys off `hasGrapple`.
+- **Enemy hit (189):** the hook hitting a live mob knocks it back (light dmg + strong knockback) and
+  auto-retracts (returns to the player) — no attach/swing on enemies.
+- **Climb-on-top (189):** reeling (Up) to the top of a rope on a block with a CLEAR top climbs onto it
+  (mid-face, not only at an edge), via the scripted rise-then-step lerp. (Articulated climbing POSE
+  reusing the ledge-climb figure is a flagged follow-up — the position lerp is the current animation.)
+- **Swing arc = standing level + wall block (189):** `GRAPPLE.beginSwing` now sets the cable length to
+  the VERTICAL drop from the anchor to the player's standing surface, so the arc bottoms exactly at
+  that block level and the player swings ALL THE WAY across flat ground (no more one-side bounce trap).
+  Walls stop the swing dead if hit BEFORE the midpoint, or wall-stop + drift back toward the midpoint if
+  PAST it (game.js `_grappleBodyBlocked` + entrySign). `test/test-grapple.js` updated to the new
+  signature (16/16). Suite 689.
+
 ## PLAYTEST FIXES (build 187) — from Kevin's follow-up pass
 - **Palette:** Boomerang + Grapple now ALWAYS appear under Equipment (gear tab) — removed the
   world-toggle gating on `_paletteItems()` (they were hidden unless the toggle was on). The

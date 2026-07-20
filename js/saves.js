@@ -260,6 +260,7 @@ const NormalProgress = {
       gridSnapshot:    levelGrid ? levelGrid.map(row => Array.from(row)) : null,
       collectedItems:  collectedItemKeys || [],
       hasFlintSteel:   !!player.hasFlintSteel,
+      hasGrapple:      !!player.hasGrapple,
       discoveredOres:  [...player.discoveredOres],
       chests: chestsMap
         ? [...chestsMap.values()].map(ch => ({

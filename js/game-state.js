@@ -266,6 +266,7 @@ const GAME_STATE = {
         rangedIndex:  p.rangedIndex,
         hasShield:      !!p.hasShield,
         hasFlintSteel:  !!p.hasFlintSteel,
+        hasGrapple:     !!p.hasGrapple,
         discoveredOres: p.discoveredOres ? [...p.discoveredOres] : [],
       },
       // Secondary players (P2–P4 / the companion) — position + hp, so CONTINUING a game
@@ -307,6 +308,7 @@ const GAME_STATE = {
         }
       }
       if (prog.hasFlintSteel) p.hasFlintSteel = true;
+      if (prog.hasGrapple) p.hasGrapple = true;
       if (prog.hasShield)     p.hasShield     = true;
       if (prog.pickaxe)       p.pickaxe       = prog.pickaxe;
       // Restore the weapon COLLECTION (Smart Mobs §2); the collection is the source

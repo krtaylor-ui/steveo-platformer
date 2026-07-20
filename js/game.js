@@ -2130,8 +2130,7 @@ class Game {
     // the player actually OWNS a grappling hook (it needs aim-up to grapple straight up).
     // NB: gated on POSSESSION, not world availability — enabling the grapple as content must
     // not flip the controls before the player has picked one up. Read by isJump()/isAimUp().
-    const _ownsGrapple = !!(this.player && this.player.rangedOwned && this.player.rangedOwned.indexOf('GRAPPLING_HOOK') >= 0);
-    this.input._aimUpEnabled = !!(this._worldAdvSettings.aimUpEnabled || _ownsGrapple);
+    this.input._aimUpEnabled = !!(this._worldAdvSettings.aimUpEnabled || (this.player && this.player.hasGrapple));
     // Sync XP speed boost flag to all local players
     for (const p of this.activePlayers()) p.xpSpeedDisabled = !!this._worldAdvSettings.disableXpSpeedBoost;
 
@@ -2341,7 +2340,14 @@ class Game {
     if (!this.player.bow && this.player.rangedOwned && this.player.rangedOwned.length &&
         this.player._syncActiveWeapon) this.player._syncActiveWeapon('ranged');
     const _ownsRanged = !!this.player.bow;
-    const _grappleEquipped = this.player.rangedClass === 'grapple';   // §Phase 5
+    // §Follow-up — Grappling Hook is a collected CAPABILITY (not a weapon slot): SHIFT +
+    // RIGHT-CLICK fires it. While Shift is held with a grapple owned, Shift+RMB is the grapple
+    // action, so the bow/throw ranged-fire is suppressed that frame (below).
+    const _grappleShift = this.player.hasGrapple &&
+                          (this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight'));
+    if (_grappleShift && this.input.mouse.rightClicked && !this.player._grapple) {
+      this._startGrapple(aimWorld);
+    }
     const rangedDown  = this.input.isRangedAttackDown();
     // Two-button combat: LEFT-click (or Space / gamepad X) = melee, RIGHT-click (or gamepad
     // RT) = ranged, hold to charge. Left-click melee only outside the sandbox editor (there
@@ -2467,17 +2473,8 @@ class Game {
 
     // ── Ranged: Trident throw (if equipped) else bow/crossbow — right-click,
     //    hold to charge, release to fire. Skipped the frame melee fires. ──
-    if (this._p1RespawnTimer === 0 && !p1CarryingFlag && !_meleeFired && (_ownsRanged || _tridentActive || _boomerangActive) && !_tridentIsOut && !_boomIsOut && !_mcPlaceNow) {
-      if (_grappleEquipped) {
-        // §Phase 5 — the grapple consumes the ranged slot. Fire on a fresh press (latched
-        // until release) when no hook is out; _updateGrapple() drives it from there.
-        if (rangedDown && !this.player._grapple && !this.player._grappleLatch) {
-          this._startGrapple(aimWorld);
-          this.player._grappleLatch = true;
-        }
-        if (!rangedDown) this.player._grappleLatch = false;
-        this.player.bowDrawing = false; this.player.drawProgress = 0;   // grapple never charges a bow bar
-      } else if (_boomerangActive) {
+    if (this._p1RespawnTimer === 0 && !p1CarryingFlag && !_meleeFired && (_ownsRanged || _tridentActive || _boomerangActive) && !_tridentIsOut && !_boomIsOut && !_mcPlaceNow && !_grappleShift) {
+      if (_boomerangActive) {
         // §Phase 3 — hold to charge (reuse the bow plumbing), release to throw. The
         // boomerang auto-returns; the player is "unarmed" (_boomOut) until it's caught.
         if (rangedDown) {
@@ -3797,6 +3794,7 @@ class Game {
     }
     else if (data.type === 'shield')      { this.player.hasShield     = true; }
     else if (data.type === 'flint_steel') { this.player.hasFlintSteel = true; }
+    else if (data.type === 'grapple')     { this.player.hasGrapple   = true; }
     this._notify(`Equipped ${data.name}!`, data.color, 180);
   }
 
@@ -3840,6 +3838,7 @@ class Game {
       }
       if (td.type === 'shield')      { if (player.hasShield)    return false; player.hasShield = true; }
       else if (td.type === 'flint_steel') { if (player.hasFlintSteel) return false; player.hasFlintSteel = true; }
+      else if (td.type === 'grapple') { if (player.hasGrapple) return false; player.hasGrapple = true; }
       else return false;
       this._notify(`Equipped ${td.name}!`, td.color ?? '#aaffaa', 180);
       return true;
@@ -4233,6 +4232,7 @@ class Game {
       if (td.type === 'bow')    return this.player.bow    ? 'same' : 'new';
       if (td.type === 'shield')      return this.player.hasShield     ? 'same' : 'new';
       if (td.type === 'flint_steel') return this.player.hasFlintSteel ? 'same' : 'new';
+      if (td.type === 'grapple')     return this.player.hasGrapple     ? 'same' : 'new';
     }
     if (item.type === 'armor' && ARMOR_DATA[item.armorKey]) {
       const ad = ARMOR_DATA[item.armorKey];
@@ -11108,11 +11108,23 @@ class Game {
       const step = GRAPPLE.FIRE_STEP, n = Math.max(1, Math.round(GRAPPLE.FIRE_SPEED / step));
       for (let s = 0; s < n; s++) {
         g.hx += g.dx * step; g.hy += g.dy * step; g.traveled += step;
+        // §Follow-up — hook hits an ENEMY: knock it back and auto-retract (no attach/swing).
+        const mob = this._grappleHitMob(g.hx, g.hy);
+        if (mob) {
+          const dir = Math.sign(g.dx) || (p.facing || 1);
+          if (mob.takeDamage) mob.takeDamage(3, dir, 1.8);   // light hit + strong knockback
+          if (!mob.alive && this.mobManager && this.mobManager.onKill) this.mobManager.onKill('p1', mob);
+          p._grapple = null; p._grappleOwn = false;           // hook returns to the player
+          this._notify('Grapple knockback!', '#C0A070', 60);
+          return;
+        }
         if (this.level.isSolid(Math.floor(g.hy / BLOCK_SIZE), Math.floor(g.hx / BLOCK_SIZE))) {
           g.hx -= g.dx * step; g.hy -= g.dy * step;      // back up to just before the wall
           g.ax = g.hx; g.ay = g.hy;
-          g.obstacleH = this._grappleObstacleHeight(g.ax, g.ay);
-          g.swing = GRAPPLE.beginSwing(g.ax, g.ay, p.x, p.y, p.vx, p.vy);
+          const acol = Math.floor(g.ax / BLOCK_SIZE), arow = Math.floor(g.ay / BLOCK_SIZE);
+          g.anchorCol = acol; g.anchorRow = arow;
+          g.topClear = !this.level.isSolid(arow - 1, acol);   // §item4 — is there a clear top to climb onto?
+          g.swing = GRAPPLE.beginSwing(g.ax, g.ay, p.x, p.y, p.width, p.height, p.vx, p.vy);
           g.state = 'swinging';
           return;
         }
@@ -11121,14 +11133,15 @@ class Game {
       return;
     }
 
-    if (g.state === 'climbing') {    // scripted climb-over onto a 1-block obstacle
+    if (g.state === 'climbing') {    // scripted climb ONTO the platform (rise, then over)
       p._grappleOwn = true;
-      const t = Math.min(1, (++g._climbT) / 24);
+      const t = Math.min(1, (++g._climbT) / 26);
       const tA = Math.min(1, t / 0.6), tB = Math.max(0, (t - 0.6) / 0.4);
       p.y = g._climbFromY + (g._climbToY - g._climbFromY) * tA;   // rise first
-      p.x = g._climbFromX + (g._climbToX - g._climbFromX) * tB;   // then over
+      p.x = g._climbFromX + (g._climbToX - g._climbFromX) * tB;   // then step in
       p.vx = 0; p.vy = 0;
-      if (t >= 1) this._endGrapple(false);   // landed on top, no fling
+      p._climbProg = t;   // drives the climbing sprite pose (reuses the ledge-climb figure)
+      if (t >= 1) { p._climbProg = 0; this._endGrapple(false); }   // landed on top, no fling
       return;
     }
 
@@ -11136,17 +11149,50 @@ class Game {
     if (down) { this._endGrapple(true); return; }        // Down = disengage/drop (keep momentum)
     if (inp.isAimUp()) {
       GRAPPLE.rise(g.swing);
-      if (g.obstacleH === 1 && g.swing.len <= GRAPPLE.MIN_LEN + 1) {   // reached the top of a 1-block ledge
+      // §item4 — reeled to the top of a rope on a block with a CLEAR TOP → climb onto it
+      // (even mid-face, not only at an edge). Scripted climb like the ledge-climb.
+      if (g.topClear && g.swing.len <= GRAPPLE.MIN_LEN + 6) {
         g.state = 'climbing'; g._climbT = 0;
         g._climbFromX = p.x; g._climbFromY = p.y;
-        g._climbToX = g.ax - p.width / 2; g._climbToY = g.ay - p.height;
+        g._climbToX = (g.anchorCol != null ? g.anchorCol * BLOCK_SIZE + (BLOCK_SIZE - p.width) / 2 : g.ax - p.width / 2);
+        g._climbToY = (g.anchorRow != null ? g.anchorRow * BLOCK_SIZE - p.height : g.ay - p.height);
         p._grappleOwn = true; return;
       }
     }
+    // §item5 — advance the pendulum, then block on terrain: stop dead if BEFORE the midpoint
+    // (bottom of the arc), or wall-stop + drift back toward the midpoint if PAST it.
+    const prevTheta = g.swing.theta, prevAngVel = g.swing.angVel;
     const pos = GRAPPLE.stepSwing(g.swing, this._worldAdvSettings.physicsGravity ?? GRAVITY);
-    p.x = pos.x; p.y = pos.y; p.vx = 0; p.vy = 0;
+    if (this._grappleBodyBlocked(pos.x, pos.y, p.width, p.height)) {
+      const pastMid = (g.swing.theta < 0 ? -1 : 1) !== (g.swing.entrySign || 1) && Math.abs(g.swing.theta) > 0.02;
+      g.swing.theta = prevTheta;                          // don't enter the wall
+      if (!pastMid) g.swing.angVel = 0;                   // before midpoint → stop at the wall
+      else g.swing.angVel = -(g.swing.theta < 0 ? -1 : 1) * Math.min(Math.abs(prevAngVel) * 0.5, 0.05); // drift back to bottom
+      const fCx = g.swing.ax + g.swing.len * Math.sin(prevTheta), fY = g.swing.ay + g.swing.len * Math.cos(prevTheta);
+      p.x = fCx - p.width / 2; p.y = fY - p.height;
+    } else {
+      p.x = pos.x; p.y = pos.y;
+    }
+    p.vx = 0; p.vy = 0;
     p._grappleOwn = true;
     if (inp.isJump()) this._endGrapple(true);   // release mid-swing, velocity preserved
+  }
+  // §item5 — the player's body box overlaps a solid block? (used to wall-block a swing)
+  _grappleBodyBlocked(x, y, w, h) {
+    const BS = BLOCK_SIZE;
+    const c0 = Math.floor((x + 2) / BS), c1 = Math.floor((x + w - 2) / BS);
+    const r0 = Math.floor((y + 2) / BS), r1 = Math.floor((y + h - 2) / BS);
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) if (this.level.isSolid(r, c)) return true;
+    return false;
+  }
+  // §item3 — the grapple hook tip (hx,hy) overlaps a live hostile mob?
+  _grappleHitMob(hx, hy) {
+    if (!this.mobManager || !this.mobManager.mobs) return null;
+    for (const m of this.mobManager.mobs) {
+      if (!m.alive) continue;
+      if (hx > m.x && hx < m.x + m.width && hy > m.y && hy < m.y + m.height) return m;
+    }
+    return null;
   }
   _drawGrapple(ctx) {
     const p = this.player, g = p && p._grapple;
@@ -11658,6 +11704,7 @@ class Game {
     this._drawPickaxeBadge(ctx); // always-active mining tier (Normal mode)
     if (this.player.hasShield)     this._drawShieldIndicator(ctx);
     if (this.player.hasFlintSteel) this._drawFlintSteelIndicator(ctx);
+    if (this.player.hasGrapple)    this._drawGrappleIndicator(ctx);
     this._drawBlockInfo(ctx, hoverRow, hoverCol);
     this._drawCoords(ctx);
     // Hyper speed badge (all modes)
@@ -13013,6 +13060,18 @@ class Game {
     ctx.fillStyle = '#CC8833';
     ctx.font = 'bold 10px Courier New';
     ctx.fillText('🔥 Flint & Steel', px + 2, py + 10);
+  }
+
+  // §Follow-up — grapple is a collected capability (like flint & steel); show it + its
+  // SHIFT+RIGHT-CLICK hint, stacked below any shield / flint indicators.
+  _drawGrappleIndicator(ctx) {
+    const off = (this.player.hasShield ? 18 : 0) + (this.player.hasFlintSteel ? 18 : 0);
+    const px = 10, py = 52 + off;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    _roundRect(ctx, px - 2, py - 2, 118, 16, 4); ctx.fill();
+    ctx.fillStyle = '#C0A070';
+    ctx.font = 'bold 10px Courier New';
+    ctx.fillText('🪝 Grapple (⇧+RMB)', px + 2, py + 10);
   }
 
   _drawShieldIndicator(ctx) {
@@ -15324,6 +15383,7 @@ class Game {
           }
         }
         if (progress.hasFlintSteel) this.player.hasFlintSteel = true;
+        if (progress.hasGrapple) this.player.hasGrapple = true;
         if (progress.hasShield)     this.player.hasShield     = true;
         if (progress.pickaxe)       this.player.pickaxe       = progress.pickaxe;
         // Restore the weapon COLLECTION (Smart Mobs §2), collection is source of
@@ -15782,6 +15842,7 @@ class Game {
       beneficial = !(exKey && (TOOL_DATA[exKey].tier ?? 0) >= (data.tier ?? 0));
     } else if (data && data.type === 'shield') { name = 'Shield'; color = data.color; beneficial = !collector.hasShield; }
     else if (data && data.type === 'flint_steel') { name = 'Flint & Steel'; color = data.color; beneficial = !collector.hasFlintSteel; }
+    else if (data && data.type === 'grapple') { name = 'Grappling Hook'; color = data.color; beneficial = !collector.hasGrapple; }
     else { if (data) item.collected = true; return; }   // unknown gear → collect as-is (don't lose it)
 
     if (beneficial) {
@@ -15804,6 +15865,7 @@ class Game {
     else if (data.type === 'sword' || data.type === 'bow') p.acquireWeapon(item.toolKey);
     else if (data.type === 'shield') p.hasShield = true;
     else if (data.type === 'flint_steel') p.hasFlintSteel = true;
+    else if (data.type === 'grapple') p.hasGrapple = true;
   }
 
   // Bot AI Phase 4 — the companion Player (null if no companion bot this game).
@@ -15830,6 +15892,7 @@ class Game {
       const c = TOOL_DATA[comp.pickaxe]; if (c && (c.tier ?? 0) >= (data.tier ?? 0)) return false; comp.pickaxe = toolKey;
     } else if (data && data.type === 'shield') { if (comp.hasShield) return false; comp.hasShield = true; }
     else if (data && data.type === 'flint_steel') { if (comp.hasFlintSteel) return false; comp.hasFlintSteel = true; }
+    else if (data && data.type === 'grapple') { if (comp.hasGrapple) return false; comp.hasGrapple = true; }
     else return false;
     this._notify(`Companion took the ${(data || armor).name}`, '#9fddff', 150);
     return true;

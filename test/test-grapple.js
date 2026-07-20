@@ -13,8 +13,8 @@ console.log('Invariant 1 — swing never drops below launch height (py <= launch
   let worst = -Infinity, violations = 0, checked = 0;
   for (const vx of [-12, -6, 0, 6, 12, 20]) {
     for (const anchor of [[300, 100], [360, 60], [260, 40], [340, 120]]) {
-      // Player launches at (px=320, py=200); anchor above/beside.
-      const s = GRAPPLE.beginSwing(anchor[0], anchor[1], 320, 200, vx, -4);
+      // Player launches at top-left (320,200), size 20×52; anchor above/beside.
+      const s = GRAPPLE.beginSwing(anchor[0], anchor[1], 320, 200, 20, 52, vx, -4);
       for (let f = 0; f < 600; f++) {
         const p = GRAPPLE.stepSwing(s, GRAVITY);
         checked++;
@@ -30,7 +30,7 @@ console.log('Invariant 1 — swing never drops below launch height (py <= launch
 //      direction), then normal gravity takes over (caller-applied — we check the handoff).
 console.log('Invariant 2 — release preserves tangential velocity:');
 {
-  const s = GRAPPLE.beginSwing(300, 100, 340, 200, 10, -2);
+  const s = GRAPPLE.beginSwing(300, 100, 340, 200, 20, 52, 10, -2);
   for (let f = 0; f < 12; f++) GRAPPLE.stepSwing(s, GRAVITY);
   const rel = GRAPPLE.releaseVelocity(s);
   // Expected tangential velocity from the current state.
@@ -48,13 +48,13 @@ console.log('Invariant 2 — release preserves tangential velocity:');
 // 3 ── Rising along the cable narrows the swing's angular range.
 console.log('Invariant 3 — reeling in narrows the arc:');
 {
-  const s = GRAPPLE.beginSwing(300, 100, 340, 260, 8, 0);
-  const arc0 = GRAPPLE.swingHalfArc(s);
+  const s = GRAPPLE.beginSwing(300, 100, 340, 260, 20, 52, 8, 0);
+  const arc0 = GRAPPLE.swingRadius(s);
   const len0 = s.len;
   for (let i = 0; i < 30; i++) GRAPPLE.rise(s);   // reel in
-  const arc1 = GRAPPLE.swingHalfArc(s);
+  const arc1 = GRAPPLE.swingRadius(s);
   ok(s.len < len0, `cable shortened (${len0.toFixed(0)} → ${s.len.toFixed(0)})`);
-  ok(arc1 < arc0, `arc narrowed (${arc0.toFixed(3)} → ${arc1.toFixed(3)} rad)`);
+  ok(arc1 < arc0, `swing radius narrowed (${arc0.toFixed(0)} → ${arc1.toFixed(0)} px)`);
   ok(s.len >= GRAPPLE.MIN_LEN, 'cable never reels below the minimum length');
 }
 
