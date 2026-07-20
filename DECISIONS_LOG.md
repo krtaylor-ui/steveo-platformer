@@ -33,6 +33,25 @@ Bug-fix + polish follow-up to the mega-session, from Kevin's first playtest. Pha
   at spawn (the mega-session's auto-grant is removed). The explicit "Starting Melee = Boomerang" choice
   stays as a separate intentional grant.
 
+## PHASE C — Controller mapping display + full rebind (build 182) — DONE (logic tested; capture browser-only)
+- Went for the IDEAL (full rebind), not just the read-only minimum — the seam was clean.
+- **`GP_BINDINGS` (keybindings.js):** parallel to KEY_BINDINGS but for gamepad button INDICES. 8
+  rebindable button-actions (jump/crouch/melee/place/prevSlot/context/throw/menu); triggers/sticks/
+  d-pad stay fixed (analog/nav). `resolve(player, preset, action)` = per-player override else the
+  preset-adjusted default (the Switch face-swap now flows through this — it SUBSUMES the old
+  `_faceRemap` for these actions). Per-preset button-name tables (Xbox vs Switch). Unit-tested
+  `test/test-gpbindings.js` (27): defaults reproduce the historical indices (so `updateGamepad` is
+  byte-identical by default), face-swap, overrides, per-player, labels, conflicts.
+- **`input.js updateGamepad`:** the 8 button-fields resolve via `GP_BINDINGS.resolve` (with a
+  `btn()`/`_faceRemap` fallback when GP_BINDINGS is absent, e.g. headless). Downstream reads stay
+  by name (`gp.jump`…) so nothing else changed. Byte-identical with no overrides + default preset.
+- **`controls-ui.js`:** a "Gamepad Buttons" section — read-only current mapping per action (+ fixed
+  reference rows for triggers/sticks/d-pad) AND click→press-a-button rebind via a `navigator.
+  getGamepads()` poll (resolves on the first newly-pressed button; Esc cancels), plus a per-player
+  gamepad reset. Names follow the selected Gamepad Layout preset.
+- **Flag:** the live gamepad capture poll is browser+controller-only (can't be headless-verified); the
+  binding math (the substance) is tested. No distinct Minecraft controller layout exists (kb/mouse only).
+
 ## PHASE B — Up also triggers ledge grab (build 181) — DONE (suite green; browser-verify the aim-up case)
 - `player._tryLedgeGrab` path (a) now triggers on `input.isJump() || input.isAimUp()` (guarded for
   mock inputs). Default/Legacy schemes were already covered by `isJump` (Up = a jump key there); the

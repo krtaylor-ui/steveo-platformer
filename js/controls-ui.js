@@ -33,7 +33,7 @@ const CONTROLS_UI = {
     if (!this._keyHandler) {
       this._keyHandler = (e) => {
         if (!this.isOpen()) return;
-        if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); if (this._capturing) this._cancelCapture(); else this.close(); }
+        if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); if (this._capturing || this._gpCapturing) this._cancelCapture(); else this.close(); }
       };
       window.addEventListener('keydown', this._keyHandler, true);
     }
@@ -116,6 +116,29 @@ const CONTROLS_UI = {
       warn = `<div class="cu-conflict-note">⚠ Conflicting bindings: ${esc(list)}</div>`;
     }
 
+    // §Phase C — Gamepad buttons: the current mapping per action (read-only display), and
+    // click→press-a-button rebind. Face defaults follow the Gamepad Layout preset; triggers/
+    // sticks/d-pad are shown but fixed. Button names use the preset's letters (Xbox vs Switch).
+    let gpBody = '';
+    if (typeof GP_BINDINGS !== 'undefined') {
+      const gpConf = GP_BINDINGS.conflicts(this._player, gpPreset);
+      const gpConfIdx = new Set(gpConf.map((c) => c.index));
+      gpBody = `<div class="ws-group" style="margin-top:10px">Gamepad Buttons ${this._gpCapturing ? '— press a button (Esc cancels)' : '— click a button to rebind'}</div>`;
+      for (const a of GP_BINDINGS.ACTIONS) {
+        const idx = GP_BINDINGS.resolve(this._player, gpPreset, a.id);
+        const cap = this._gpCapturing === a.id;
+        const conf = gpConfIdx.has(idx);
+        const lbl = cap ? 'press a button…' : GP_BINDINGS.label(idx, gpPreset);
+        gpBody += `<div class="ws-row${conf ? ' cu-conflict' : ''}"><div class="ws-label"><span class="ws-lbl">${esc(a.label)}</span>${conf ? ' <span class="cu-warn" title="Shared with another action">⚠</span>' : ''}</div>
+          <button class="cu-gpbind${cap ? ' cu-capturing' : ''}" data-gpaction="${a.id}">${esc(lbl)}</button></div>`;
+      }
+      for (const f of GP_BINDINGS.FIXED) {   // read-only reference rows
+        const lbl = f.note || GP_BINDINGS.label(f.base, gpPreset);
+        gpBody += `<div class="ws-row"><div class="ws-label ws-sub"><span class="ws-lbl">${esc(f.label)}</span></div><span class="ws-cyc-val" style="opacity:.65">${esc(lbl)}</span></div>`;
+      }
+      gpBody += `<div class="cu-actions"><button class="btn btn-secondary" id="cu-gpreset">Reset P${this._player + 1} Gamepad</button></div>`;
+    }
+
     ov.innerHTML = `
       <div class="ws-panel" role="dialog" aria-label="Controls">
         <div class="ws-head">
@@ -125,11 +148,12 @@ const CONTROLS_UI = {
         <div class="ws-tabs">${pTabs}</div>
         <div class="ws-body">
           ${presetSel}
-          <div class="ws-group" style="margin-top:6px">Bindings ${this._capturing ? '— press a key or click Esc to cancel' : '— click a binding, then press a key/mouse button'}</div>
+          <div class="ws-group" style="margin-top:6px">Keyboard / Mouse ${this._capturing ? '— press a key or click Esc to cancel' : '— click a binding, then press a key/mouse button'}</div>
           ${body}
           ${warn}
+          ${gpBody}
           <div class="cu-actions">
-            <button class="btn btn-secondary" id="cu-reset">Reset P${this._player + 1} to Default</button>
+            <button class="btn btn-secondary" id="cu-reset">Reset P${this._player + 1} Keyboard/Mouse</button>
           </div>
         </div>
       </div>`;
@@ -141,6 +165,9 @@ const CONTROLS_UI = {
     const gp = document.getElementById('cu-gp-preset');
     if (gp) gp.onchange = () => { if (this._game && this._game.input && this._game.input.setControllerPreset) this._game.input.setControllerPreset(gp.value); this._render(); };
     ov.querySelectorAll('.cu-bind').forEach((b) => b.onclick = () => this._beginCapture(b.dataset.action));
+    ov.querySelectorAll('.cu-gpbind').forEach((b) => b.onclick = () => this._beginGpCapture(b.dataset.gpaction));
+    const gpr = document.getElementById('cu-gpreset');
+    if (gpr) gpr.onclick = () => { if (typeof GP_BINDINGS !== 'undefined') GP_BINDINGS.resetPlayer(this._player); this._render(); };
   },
 
   _beginCapture(action) {
@@ -178,7 +205,40 @@ const CONTROLS_UI = {
     }
     this._capturing = null;
   },
-  _cancelCapture() { this._endCapture(); },
+  // §Phase C — gamepad rebind capture: the Gamepad API fires no events, so poll
+  // navigator.getGamepads() each frame and resolve on the first NEWLY-pressed button
+  // (buttons already held at capture-start are ignored). Esc cancels via _cancelCapture.
+  _beginGpCapture(action) {
+    this._cancelCapture();
+    if (typeof GP_BINDINGS === 'undefined' || typeof navigator === 'undefined' || !navigator.getGamepads) return;
+    this._gpCapturing = action;
+    this._render();
+    const readPad = () => { const pads = navigator.getGamepads() || []; for (const p of pads) if (p && p.connected) return p; return null; };
+    const pad0 = readPad();
+    const initial = pad0 ? pad0.buttons.map((b) => !!b.pressed) : [];
+    const poll = () => {
+      if (this._gpCapturing !== action) return;   // cancelled / superseded
+      const pad = readPad();
+      if (pad) {
+        for (let i = 0; i < pad.buttons.length; i++) {
+          if (pad.buttons[i].pressed && !initial[i]) {   // a fresh press
+            GP_BINDINGS.setBinding(this._player, action, i);
+            this._endGpCapture();
+            this._render();
+            return;
+          }
+        }
+      }
+      this._gpPoll = requestAnimationFrame(poll);
+    };
+    this._gpPoll = requestAnimationFrame(poll);
+  },
+  _endGpCapture() {
+    if (this._gpPoll != null && typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(this._gpPoll);
+    this._gpPoll = null;
+    this._gpCapturing = null;
+  },
+  _cancelCapture() { this._endCapture(); this._endGpCapture(); },
 };
 
 if (typeof window !== 'undefined') window.CONTROLS_UI = CONTROLS_UI;

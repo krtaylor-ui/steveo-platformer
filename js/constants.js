@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 181 (Combat/Controls FOLLOW-UP — Phase B: the UP input now also triggers a ledge grab, not just a jump (isJump || isAimUp), so holding Up near a grabbable ledge grabs it in every control scheme — default (J-jump), aim-up-on, and Legacy (Up-jump).)';
+const GAME_VERSION = 'v3 · build 182 (Combat/Controls FOLLOW-UP — Phase C: controller mapping is now shown AND rebindable in the Controls panel — a per-preset button display plus click→press-a-button rebind for the 8 button-actions (GP_BINDINGS), matching the keyboard flow. updateGamepad resolves each action through the binding map (byte-identical by default; the preset face-swap now flows through it). Triggers/sticks/d-pad shown read-only.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

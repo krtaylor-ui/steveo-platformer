@@ -138,20 +138,33 @@ class InputManager {
       // else is read directly. Identity map by default = no behaviour change.
       const btn = (idx) => { const m = (idx >= 0 && idx <= 3) ? this._faceRemap[idx] : idx; return b[m] ? b[m].pressed : false; };
       const val = (idx) => (b[idx] ? b[idx].value   : 0);
+      // §Phase C — rebindable button-actions resolve their physical index through
+      // GP_BINDINGS (per-player override else the preset default, which subsumes the face
+      // swap). `abtn(action, fallbackIdx)` is byte-identical to `btn(fallbackIdx)` when no
+      // override exists and GP_BINDINGS is loaded; falls back to `btn()` (with _faceRemap)
+      // headless. Downstream still reads by name (gp.jump…), so nothing else changes.
+      const player = [this.p1GpSlot, this.p2GpSlot, this.p3GpSlot, this.p4GpSlot].indexOf(i);
+      const abtn = (action, fallbackIdx) => {
+        if (typeof GP_BINDINGS !== 'undefined') {
+          const m = GP_BINDINGS.resolve(player, this._controllerPreset, action);
+          if (m != null) return b[m] ? b[m].pressed : false;
+        }
+        return btn(fallbackIdx);
+      };
       this.gamepads[i] = {
         id:        i,
         connected: true,
         rawId:     gp.id,
-        jump:      btn(0),   // A
-        crouch:    btn(1),   // B
-        attack:    btn(2),   // X
-        place:     btn(3),   // Y
-        prevSlot:  btn(4),   // LB
-        context:   btn(5),   // RB
-        throwBtn:  btn(11),  // R3 (right-stick click) — Trident throw (Smart Mobs §2)
+        jump:      abtn('jump', 0),      // A
+        crouch:    abtn('crouch', 1),    // B
+        attack:    abtn('melee', 2),     // X
+        place:     abtn('place', 3),     // Y
+        prevSlot:  abtn('prevSlot', 4),  // LB
+        context:   abtn('context', 5),   // RB
+        throwBtn:  abtn('throw', 11),    // R3 (right-stick click) — Trident throw (Smart Mobs §2)
         triggerL:  val(6) > GP_DEADZONE_TRIGGER ? val(6) : 0,
         triggerR:  val(7) > GP_DEADZONE_TRIGGER ? val(7) : 0,
-        menu:      btn(9),   // Start
+        menu:      abtn('menu', 9),      // Start
         dpad0:     btn(12),  // Up
         dpad1:     btn(15),  // Right
         dpad2:     btn(13),  // Down
