@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 168 (Bow fires on LEFT-click when selected -- the real fix. Kevin\'s diagnostic PROVED the browser delivers a physical right-click as e.button 0 (LEFT) over the right part of the screen -- an upstream mouse-driver/gesture zone-remap the page cannot see through (no pointer-capture / CSS-zoom in our code; verified). The LEFT button IS delivered correctly everywhere, so when the BOW is the selected weapon a held left button now draws + fires it -- hold to charge, release to loose, aim with the cursor -- and does not melee/mine. Space/gamepad fire it too. Switch to the sword to melee. + builds 165/166/167.)';
+const GAME_VERSION = 'v3 · build 169 (Geometry probe: platformer shows btn:2 across the whole screen but arena shows btn:0 on the RIGHT HALF at the same spot -> NOT the browser (mode-independent) -> the canvas element must not cover the full screen in arena, splitting at the halfway point (same place the cursor used to freeze). Added a canvasRect line to the Debug HUD -- the canvas on-screen bounds (L/R/W), window width, and the exact element under the cursor via elementFromPoint -- to pin what is on the right half in arena. + lastDown/rawBtns lines.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

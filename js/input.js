@@ -245,6 +245,8 @@ class InputManager {
       // releases (Kevin: coords update on right-click but no arrow fires). Since aiming always
       // moves the cursor, this keeps the button state honest every frame.
       this.mouse.rawButtons = e.buttons;   // diagnostic: what the browser reports this move
+      this.mouse._clientX = e.clientX;     // diagnostic: raw screen coords for elementFromPoint
+      this.mouse._clientY = e.clientY;
       this.mouse.down      = (e.buttons & 1) !== 0;
       this.mouse.rightDown = (e.buttons & 2) !== 0;
     });

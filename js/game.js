@@ -6122,6 +6122,12 @@ class Game {
         pl ? `P1 slot${pl.selectedSlot} mode:${pl.weaponMode} bow:${pl.bow || '-'} rng:${pl.rangedOwned ? pl.rangedOwned.length : '?'} hand:${pl.activeHand} draw:${pl.bowDrawing ? 1 : 0} rDn:${this.input.isRangedAttackDown() ? 1 : 0} dual:${this.input.dualInput ? 1 : 0}` : 'no player',
         `mouse rawBtns:${this.input.mouse.rawButtons ?? '?'} rightDown:${this.input.mouse.rightDown ? 1 : 0} down:${this.input.mouse.down ? 1 : 0} p1Gp:${this.input.p1GpSlot}`,
         (() => { const d = this.input.mouse._dbgDown; return d ? `lastDown btn:${d.btn} buttons:${d.buttons} tgt:${d.tgt} inArea:${d.area}` : 'lastDown: (none yet)'; })(),
+        (() => {
+          const r = this.canvas.getBoundingClientRect();
+          let el = '?';
+          try { const e = document.elementFromPoint(this.input.mouse._clientX || 0, this.input.mouse._clientY || 0); el = e ? (e.id || e.tagName) : 'none'; } catch (_) {}
+          return `canvasRect L:${Math.round(r.left)} R:${Math.round(r.right)} W:${Math.round(r.width)} winW:${window.innerWidth} underCursor:${el}`;
+        })(),
         this._dbgAim ? `aim mouse(${this._dbgAim.mx},${this._dbgAim.my}) world(${this._dbgAim.wx},${this._dbgAim.wy}) cell(${this._dbgAim.c},${this._dbgAim.r}) zoom:${(this.camera && this.camera._srZoom || 1).toFixed(2)} shots:${this._dbgShots || 0}${pl ? ` plr(${Math.round(pl.cx)},${Math.round(pl.cy)})` : ''}` : '',
       ];
       ctx.save();
