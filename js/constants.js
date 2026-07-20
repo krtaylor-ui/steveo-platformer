@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 174 (Combat & Controls mega-session — Phase 2 (Controls-Config UI): a full per-player key/mouse rebind panel (KEY_BINDINGS + CONTROLS_UI) with click→press capture, conflict detection, reset, and presets Default / Minecraft (RMB place) / Legacy Jump + gamepad Xbox/Switch. input.js keyboard reads migrated to the binding map, byte-compatible by default. Opened from pause → Settings → Controls.)';
+const GAME_VERSION = 'v3 · build 175 (Combat & Controls mega-session — Phase 3 (Boomerang): a dual-mode weapon — a lower-damage melee swing + an auto-returning throw reusing the guided-projectile substrate. Fast outbound that decelerates from ~75% range, steers to the cursor on both legs but always returns to the player; two looks (2D top-down spin / isometric tumble); opt-in per world with Speed/Range/Look/Decel + candidate steer/return knobs. Unarmed while it is out (mirrors the trident throw rule).)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
@@ -71,9 +71,24 @@ const WEAPON_TRAITS = {
   spear:    { kind: 'melee',  reachMult: 1.55, arcDeg: 65,  cleave: 3,      knockback: 0.7, cooldownMult: 1.15, dmgMult: 0.7, slide: 'launch' },
   axe:      { kind: 'melee',  reachMult: 0.95, arcDeg: 200, cleave: 1,      knockback: 1.9, cooldownMult: 1.7,  dmgMult: 1.45 },
   trident:  { kind: 'melee',  reachMult: 1.45, arcDeg: 90,  cleave: 1,      knockback: 1.2, cooldownMult: 1.35, dmgMult: 1.1, throwable: true },
+  // §Phase 3 — Boomerang: dual-mode. MELEE = a close swing, LOWER damage than Sword
+  // (dmgMult 0.75). RANGED = thrown, AUTO-returning (boomerangThrow), reusing the
+  // guided-projectile substrate. Opt-in per world (new-weapon pattern).
+  boomerang:{ kind: 'melee',  reachMult: 1.0,  arcDeg: 200, cleave: 1,      knockback: 0.8, cooldownMult: 1.0,  dmgMult: 0.75, boomerangThrow: true },
   bow:      { kind: 'ranged', pierce: false, dmgMult: 1.0 },
   crossbow: { kind: 'ranged', pierce: true,  dmgMult: 1.25 },
 };
+// §Phase 3 — Boomerang throw tuning (all overridable per world via _worldAdvSettings).
+// Outbound is FASTER than the trident's throw and DECELERATES toward the arc's end;
+// it auto-returns to the player, steering toward the cursor on BOTH legs.
+const BOOM_RANGE_BLOCKS   = 10;   // outbound reach before it turns back (blocks)
+const BOOM_SPEED          = 17;   // outbound launch speed (px/f) — faster than trident's ~14–26 curve start
+const BOOM_MIN_SPEED_MULT = 0.35; // speed floor at the end of deceleration (× BOOM_SPEED)
+const BOOM_DECEL_PCT      = 0.75; // fraction of the range at which deceleration begins
+const BOOM_RETURN_MULT    = 1.0;  // return-leg speed (× BOOM_SPEED) — separate feel knob
+const BOOM_STEER_PCT      = 30;   // homing/steer intensity toward the cursor (0-100 → up to 0.20 rad/f)
+const BOOM_SPIN_RATE      = 0.5;  // visual spin (rad/frame)
+const BOOM_MAX_LIFE       = 600;  // safety expiry (frames) if it never gets home
 // Sword cleave count by tier: Wood/Stone=1, Iron/Diamond=2, Netherite=3.
 function swordCleaveForTier(tier) { return tier >= 4 ? 3 : tier >= 2 ? 2 : 1; }
 

@@ -907,9 +907,55 @@ class Arrow {
   // hit) until the player walks over it and picks it up.
   _stick() { this._angle = Math.atan2(this.vy, this.vx); this.stuck = true; this.vx = 0; this.vy = 0; }
 
+  // §Phase 3 — Boomerang flight: a FAST outbound that decelerates near the arc end,
+  // then auto-returns to the player. steerGuided() (called each frame by game.js while
+  // `guided`) curves the heading toward the cursor on BOTH legs; here we own the SPEED
+  // (deceleration), the outbound→return phase switch, and the return-pull toward the
+  // player. No terrain collision (it flies over gaps/walls); mob hits ride the normal
+  // playerArrows loop — it `pierce`s so one pass grazes several mobs, and _hitMobs
+  // clears on the turn so it can graze them again on the way home.
+  _updateBoomerang(players, level) {
+    this.age++;
+    this._spin = (this._spin || 0) + (this._spinRate || BOOM_SPIN_RATE);
+    if (this.age > BOOM_MAX_LIFE) { this.alive = false; return; }
+    const tgt   = Array.isArray(players) ? players[0] : players;
+    const range = this._boomRange, base = this._boomSpeed;
+    const minSpd = base * (this._boomMinMult ?? BOOM_MIN_SPEED_MULT);
+    if (!this._boomReturning) {
+      const dist    = Math.hypot(this.x - this._boomOX, this.y - this._boomOY);
+      const decelAt = range * (this._boomDecelPct ?? BOOM_DECEL_PCT);
+      let spd = base;
+      if (dist >= decelAt) {                              // ease speed base→min toward the range end
+        const t = Math.min(1, (dist - decelAt) / Math.max(1, range - decelAt));
+        spd = base * (1 - t) + minSpd * t;
+      }
+      const h = Math.hypot(this.vx, this.vy) || 1;        // keep the steer-set heading, set the speed
+      this.vx = this.vx / h * spd; this.vy = this.vy / h * spd;
+      if (dist >= range) { this._boomReturning = true; if (this._hitMobs) this._hitMobs.clear(); }
+    } else {
+      const retSpd = base * (this._boomReturnMult ?? BOOM_RETURN_MULT);
+      if (tgt) {                                          // pull toward player; steer still curves to cursor
+        const pcx = tgt.x + tgt.width / 2, pcy = tgt.y + tgt.height / 2;
+        const dx = pcx - this.x, dy = pcy - this.y, d = Math.hypot(dx, dy) || 1;
+        const pull = 0.35;                                // convergence-on-player vs. keep the cursor curve
+        const nvx = this.vx * (1 - pull) + (dx / d * retSpd) * pull;
+        const nvy = this.vy * (1 - pull) + (dy / d * retSpd) * pull;
+        const nh = Math.hypot(nvx, nvy) || 1;
+        this.vx = nvx / nh * retSpd; this.vy = nvy / nh * retSpd;
+      }
+    }
+    this.x += this.vx; this.y += this.vy;
+    this._angle = Math.atan2(this.vy, this.vx);
+    if (this._boomReturning && tgt) {                     // caught → game re-arms the slot
+      const pcx = tgt.x + tgt.width / 2, pcy = tgt.y + tgt.height / 2;
+      if (Math.hypot(this.x - pcx, this.y - pcy) < 22) { this._boomCaught = true; this.alive = false; }
+    }
+  }
+
   // players: array of live players (P1-P4) or a single player (normalized).
   update(players, level) {
     if (!this.alive) return;
+    if (this.boomerang) return this._updateBoomerang(players, level);
     // Smart Mobs §6 — a recalled/auto-returning Trident homes back to the owner,
     // ignoring gravity/terrain (checked BEFORE `stuck` so a recalled stuck trident
     // un-sticks and flies back). The pickup check consumes it at the player.
@@ -985,6 +1031,7 @@ class Arrow {
     const sx    = this.x - camera.x;
     const sy    = this.y - camera.y;
     if (sx < camera.viewMinX() - 20 || sx > camera.viewMaxX() + 20) return;
+    if (this.boomerang) return this._drawBoomerang(ctx, sx, sy);
     // Fly (and stick) pointing along travel — straight like an arrow, no spin (§6).
     const angle = this.stuck ? (this._angle || 0) : Math.atan2(this.vy, this.vx);
 
@@ -1014,6 +1061,35 @@ class Arrow {
       ctx.fillRect(-9,  1, 5, 2);
     }
     ctx.restore();
+  }
+
+  // §Phase 3 — Boomerang looks. Two selectable renders (World Settings → "Look"):
+  //   '2d'  — a flat bent bar spinning IN-PLANE (top-down view, even though the camera
+  //           is side-on): rotate the whole shape by the accumulated spin.
+  //   'iso' — a pseudo-3D tumble: foreshorten the width by |cos(spin)| so the blade
+  //           reads as turning THROUGH depth (thin edge when seen side-on) + a wobble.
+  // Both spin continuously; it can't be verified headlessly — build-then-judge by eye.
+  _drawBoomerang(ctx, sx, sy) {
+    const spin = this._spin || 0;
+    ctx.save();
+    ctx.translate(Math.floor(sx), Math.floor(sy));
+    if (this._boomLook === 'iso') {
+      const sc = Math.max(0.12, Math.abs(Math.cos(spin)));
+      ctx.scale(sc, 1);
+      ctx.rotate(Math.sin(spin) * 0.35);
+    } else {
+      ctx.rotate(spin);
+    }
+    this._boomShape(ctx);
+    ctx.restore();
+  }
+  // A bent V-bar boomerang silhouette centred at the origin (~16px wide).
+  _boomShape(ctx) {
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#C98A3A'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(-8, 6); ctx.lineTo(0, -7); ctx.lineTo(8, 6); ctx.stroke();
+    ctx.strokeStyle = '#7A5320'; ctx.lineWidth = 1.5;   // edge
+    ctx.beginPath(); ctx.moveTo(-8, 6); ctx.lineTo(0, -7); ctx.lineTo(8, 6); ctx.stroke();
   }
 }
 
@@ -2030,8 +2106,19 @@ class MobManager {
     if (opts && opts.pierce)      a.pierce      = true; // Smart Mobs §2 — Crossbow trait
     if (opts && opts.trident)     a.isTrident   = true; // Smart Mobs §2 — thrown Trident
     if (opts && opts.recoverable) a.recoverable = true; // Smart Mobs §6 — sticks + collectable on a clean miss
-    if (opts && opts.guided)      a.guided      = true; // Smart Mobs §6 — steerable in flight (trident, future boomerang)
+    if (opts && opts.guided)      a.guided      = true; // Smart Mobs §6 — steerable in flight (trident, boomerang)
     if (opts && opts.gravity != null) a.gravity = opts.gravity; // Trident throw = straight (low gravity)
+    if (opts && opts.boomerang) {                       // §Phase 3 — auto-returning boomerang
+      a.boomerang = true; a.pierce = true; a.gravity = 0; a.guided = true;
+      a._boomOX = x; a._boomOY = y;
+      a._boomRange     = opts.range   != null ? opts.range   : BOOM_RANGE_BLOCKS * BLOCK_SIZE;
+      a._boomSpeed     = opts.speed   != null ? opts.speed   : BOOM_SPEED;
+      a._boomDecelPct  = opts.decelPct!= null ? opts.decelPct: BOOM_DECEL_PCT;
+      a._boomMinMult   = BOOM_MIN_SPEED_MULT;
+      a._boomReturnMult= opts.returnMult != null ? opts.returnMult : BOOM_RETURN_MULT;
+      a._boomLook      = opts.look || '2d';
+      a._spinRate      = BOOM_SPIN_RATE;
+    }
     this.playerArrows.push(a);
     return a; // caller may hold the ref (Trident recovery / stick tracking)
   }

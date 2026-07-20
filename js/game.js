@@ -1397,6 +1397,11 @@ class Game {
     if (this.player && this.player._tridentOut && (!this.player._tridentArrow || !this.player._tridentArrow.alive)) {
       this.player._tridentOut = false; this.player._tridentArrow = null;
     }
+    // §Phase 3 — Boomerang re-arms once it's caught / lands / expires (mirrors the
+    // Trident-in-flight rule: the boomerang stays "yours" but you're unarmed while it's out).
+    if (this.player && this.player._boomOut && (!this.player._boomArrow || !this.player._boomArrow.alive)) {
+      this.player._boomOut = false; this.player._boomArrow = null;
+    }
     // ── Poll gamepad state first (Phase 11K-1) ──────────────
     this.input.updateGamepad();
     // Right stick moves the cursor every frame — before any early returns so it works
@@ -2330,11 +2335,16 @@ class Game {
     // and the Trident stays equipped.
     const _tridentActive = this.player.meleeClass === 'trident' && !this.player._tridentOut &&
                            !!this._meleeTraits(this.player).throwable;
+    // §Phase 3 — Boomerang: throws on the ranged action, auto-returns. Mirrors the
+    // Trident-in-flight rule — while it's out the player is unarmed (`_boomIsOut`).
+    const _boomerangActive = this.player.meleeClass === 'boomerang' && !this.player._boomOut &&
+                             !!this._meleeTraits(this.player).boomerangThrow;
+    const _boomIsOut       = this.player.meleeClass === 'boomerang' && this.player._boomOut;
 
     // Cancel an in-progress charge only when NEITHER a bow nor a trident-throw can
     // continue. BUGFIX #5: this previously fired whenever the player owned no bow,
     // wiping the Trident's charge every frame so the throw never fired.
-    if ((p1CarryingFlag || (!_ownsRanged && !_tridentActive)) && this.player.bowDrawing) {
+    if ((p1CarryingFlag || (!_ownsRanged && !_tridentActive && !_boomerangActive)) && this.player.bowDrawing) {
       this.player.bowDrawing = false; this.player.drawProgress = 0;
     }
 
@@ -2357,13 +2367,15 @@ class Game {
     // toward the cursor — runs before mobManager.update so the new heading is used
     // for this frame's move + swept collision. No-op when nothing is guided.
     // Turn rate from the Guided Turn Speed slider (0-100% → up to 0.20 rad/frame).
-    const _turnPct = this._worldAdvSettings.tridentTurn ?? 30;
-    this.mobManager.steerGuided(world.x, world.y, Math.max(0.01, _turnPct / 100 * 0.20));
+    // A boomerang in flight steers with ITS own intensity; otherwise use the trident's.
+    const _steerPct = _boomIsOut ? (this._worldAdvSettings.boomerangSteer ?? BOOM_STEER_PCT)
+                                 : (this._worldAdvSettings.tridentTurn ?? 30);
+    this.mobManager.steerGuided(world.x, world.y, Math.max(0.01, _steerPct / 100 * 0.20));
 
     // ── Melee (sword / spear / axe / trident thrust) — checked FIRST ──
     if (this._p1RespawnTimer === 0 && !p1CarryingFlag) {
       const traits = this._meleeTraits(this.player);
-      if (meleeNow && this.player.attackCooldown === 0 && !this.player.bowDrawing && !_tridentIsOut) {
+      if (meleeNow && this.player.attackCooldown === 0 && !this.player.bowDrawing && !_tridentIsOut && !_boomIsOut) {
         this.mobManager.playerAttack(this.player, 'p1', traits);
         this._playerAttackDragon();
         this._playerMeleeWither();
@@ -2382,8 +2394,34 @@ class Game {
 
     // ── Ranged: Trident throw (if equipped) else bow/crossbow — right-click,
     //    hold to charge, release to fire. Skipped the frame melee fires. ──
-    if (this._p1RespawnTimer === 0 && !p1CarryingFlag && !_meleeFired && (_ownsRanged || _tridentActive) && !_tridentIsOut && !_mcPlaceNow) {
-      if (_tridentActive) {
+    if (this._p1RespawnTimer === 0 && !p1CarryingFlag && !_meleeFired && (_ownsRanged || _tridentActive || _boomerangActive) && !_tridentIsOut && !_boomIsOut && !_mcPlaceNow) {
+      if (_boomerangActive) {
+        // §Phase 3 — hold to charge (reuse the bow plumbing), release to throw. The
+        // boomerang auto-returns; the player is "unarmed" (_boomOut) until it's caught.
+        if (rangedDown) {
+          this.player.bowDrawing   = true;
+          this.player.activeHand   = 'melee';   // still holding the boomerang (cocked)
+          this.player.drawProgress = Math.min(1, this.player.drawProgress + (1 / BOW_CHARGE_FRAMES));
+        } else if (this.player.bowDrawing) {
+          const charge = this.player.drawProgress;
+          const s      = this._worldAdvSettings;
+          const speed  = (s.boomerangSpeed ?? BOOM_SPEED) * (0.85 + 0.3 * charge);   // charge tweaks launch speed
+          const angle  = Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
+          const traits = this._meleeTraits(this.player);
+          const dmg    = Math.max(1, Math.round(this.player.meleeDamage * (traits.dmgMult || 1) * 1.3));
+          const rangeBl = s.boomerangRange ?? BOOM_RANGE_BLOCKS;
+          this.player._boomArrow = this.mobManager.addPlayerArrow(
+            this.player.cx, this.player.cy, Math.cos(angle) * speed, Math.sin(angle) * speed,
+            dmg, 'p1', { boomerang: true, speed, range: rangeBl * BLOCK_SIZE,
+              decelPct: (s.boomerangDecel != null ? s.boomerangDecel / 100 : BOOM_DECEL_PCT),
+              returnMult: s.boomerangReturnMult ?? BOOM_RETURN_MULT, look: s.boomerangLook || '2d' });
+          this.player._boomOut = true;   // stays "yours"; unarmed until it returns
+          this.player.bowDrawing = false; this.player.drawProgress = 0;
+          this.player.swingTimer = 12;
+          this._playSound('sounds/bow-fire.mp3');
+          this._emitActionNoise(this.player);
+        }
+      } else if (_tridentActive) {
         if (rangedDown) {
           this.player.bowDrawing   = true;   // reuse the charge/aim plumbing
           this.player.activeHand   = 'melee'; // still holding the trident (cocked)
@@ -10911,13 +10949,17 @@ class Game {
   _applyStartingWeapons() {
     const s = this._worldAdvSettings || {};
     // 'sword'/'none' keep just the base wooden sword; others add that weapon.
-    const MELEE  = { spear: 'IRON_SPEAR', axe: 'IRON_AXE', trident: 'TRIDENT' };
+    const MELEE  = { spear: 'IRON_SPEAR', axe: 'IRON_AXE', trident: 'TRIDENT', boomerang: 'BOOMERANG' };
     const RANGED = { bow: 'BOW', crossbow: 'CROSSBOW' };   // 'none' → no starting ranged
     for (const pl of (this.players || [this.player])) {
       if (!pl) continue;
       if (pl.normalizeWeapons) pl.normalizeWeapons();   // fold any deserialized sword/bow into the collections
       if (s.startingMelee  && MELEE[s.startingMelee]   && pl.acquireWeapon) pl.acquireWeapon(MELEE[s.startingMelee]);
       if (s.startingRanged && RANGED[s.startingRanged] && pl.acquireWeapon) pl.acquireWeapon(RANGED[s.startingRanged]);
+      // §Phase 3 — new-weapon opt-in pattern: the Boomerang exists in a world only when
+      // its World-Settings toggle is on. When on, grant it so the player can cycle to it
+      // (distinct from the always-available six weapons, which need no toggle).
+      if (s.weaponBoomerang && pl.acquireWeapon) pl.acquireWeapon('BOOMERANG');
     }
   }
 

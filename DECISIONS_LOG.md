@@ -134,6 +134,36 @@ toggleable (see the "TOGGLE INVENTORY" running list at the bottom of this sectio
   a deeper combat-loop change) — flagged. (iii) All key/mouse CAPTURE is browser-only and needs
   Kevin's hands-on test.
 
+## PHASE 3 — Boomerang (build 175) — DONE (flight headless-tested; visuals + feel browser-UNTESTED)
+- **Dual-mode weapon** on the data-driven weapon path: `WEAPON_TRAITS.boomerang` (melee swing,
+  `dmgMult 0.75` = lower than Sword, `arcDeg 200`, `boomerangThrow:true`) + `TOOL_DATA.BOOMERANG`
+  (type `sword` → melee slot, weaponClass `boomerang`) + `🪃` class icon.
+- **Throw = auto-returning projectile** reusing the guided-arrow substrate. New `Arrow._updateBoomerang`
+  (mobs.js): FAST outbound (default 17 px/f, faster than the trident's curve start) that DECELERATES
+  from ~75% of the range toward a speed floor, then auto-flips to a RETURN leg that pulls back to the
+  player. `steerGuided()` curves the heading toward the cursor on BOTH legs (boomerang is flagged
+  `guided`); the return blends a pull-to-player with that cursor curve, so **aim bends the return path
+  but it always physically returns to the player** (per the brief). Range 10 blocks default. It
+  `pierce`s (grazes several mobs per pass) and clears its hit-set on the turn so it can graze them
+  again on the way home. NO terrain collision (flies over gaps/walls) — documented simplification.
+- **Trident-in-flight rule mirrored (Q0):** the boomerang stays your selected weapon and you are
+  UNARMED (`_boomOut` gates melee + ranged) until it's caught/returns — matching recall-mode trident.
+  Re-arms on catch/expire (`_boomArrow` cleared, same pattern as `_tridentArrow`).
+- **Two looks, selectable ("Look" setting):** `'2d'` = a flat bent-bar boomerang spinning in-plane
+  (top-down look despite the side-on camera); `'iso'` = pseudo-3D tumble via foreshortening the width
+  by `|cos(spin)|` + a wobble (thin edge side-on). **Technique chosen: a single vector silhouette
+  transformed per-look** rather than pre-rendered frames — cheap, no assets; inherently a build-then-
+  judge-by-eye item (can't verify headlessly).
+- **World Settings (Combat → Weapon · Boomerang):** opt-in **Enable Boomerang** toggle (new-weapon
+  pattern — grants it in `_applyStartingWeapons` when on; also a `boomerang` option in Starting Melee),
+  + Look, Range, Speed, Deceleration Point, and two **candidate** knobs flagged `⚗` (Steer Intensity,
+  Return Speed) that Kevin may prune. Charge (hold-to-throw) slightly scales launch speed.
+- **Headless invariants tested** (`test/test-boomerang.js`, 10): outbound holds ~launch speed pre-decel,
+  speed drops past the decel point, flips to return at ~range, is CAUGHT at the player before the
+  safety expiry, and clears its hit-set on the turn.
+- **Browser-untested / flag:** the 2D vs isometric spin look, overall throw/return feel, and the held
+  boomerang sprite (falls back to the generic melee draw — a dedicated held sprite is a follow-up).
+
 ## TOGGLE INVENTORY (running — every independent enable/config added this session)
 Permanent, player-facing unless marked. Phase 1:
 - **Touch Controls** (Auto/On/Off) — pause → Settings → Player. Permanent, per-device.
@@ -142,7 +172,11 @@ Phase 2:
 - **Keyboard/Mouse Preset** (Default / Minecraft / Legacy Jump) — Controls panel. Permanent, per-device.
 - **Gamepad Layout** (Xbox / Switch) — Controls panel (+ existing pause select). Permanent.
 - **Per-action rebindings** (every action, per player) — Controls panel. Permanent, per-device.
-(No temp/debug-only flags added in Phases 1–2.)
+Phase 3:
+- **Enable Boomerang** (opt-in per world) — World Settings → Combat → Weapon · Boomerang. Permanent.
+- Boomerang **Look** (2D/Isometric), **Range**, **Speed**, **Deceleration Point** — permanent, per-world.
+- Boomerang **Steer Intensity ⚗**, **Return Speed ⚗** — CANDIDATE feel knobs (may be pruned), per-world.
+(No temp/debug-only flags added in Phases 1–3; the ⚗ boomerang knobs are permanent-but-prunable, not debug.)
 
 ## Bow-fire "won't fire on the right side" — root cause + fix (2026-07-19, builds 160–165)
 - **Symptom:** in zoomed-out / single-screen play, the bow fired when aiming/right-clicking on the

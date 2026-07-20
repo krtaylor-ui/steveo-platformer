@@ -261,7 +261,7 @@ const WORLD_SETTINGS = {
       a.weapons[cls][field] = v;
     };
     const rows = [
-      { key: 'startingMelee',  tab: 'combat', group: 'Weapons', modes, type: 'cycle', opts: ['sword', 'spear', 'axe', 'trident', 'none'], dflt: 'sword', label: 'Melee Weapon', fmt: cap, hint: 'weapon the player starts holding (None = base wooden sword only)' },
+      { key: 'startingMelee',  tab: 'combat', group: 'Weapons', modes, type: 'cycle', opts: ['sword', 'spear', 'axe', 'trident', 'boomerang', 'none'], dflt: 'sword', label: 'Melee Weapon', fmt: cap, hint: 'weapon the player starts holding (None = base wooden sword only). Boomerang requires its opt-in toggle below.' },
       { key: 'startingRanged', tab: 'combat', group: 'Weapons', modes, type: 'cycle', opts: ['none', 'bow', 'crossbow'], dflt: 'none', label: 'Ranged Weapon', fmt: cap, hint: 'ranged weapon the player starts with (None = none until found/crafted)' },
     ];
     // [field, label, opts|null(→toggle), dflt, fmt] per weapon class.
@@ -289,6 +289,18 @@ const WORLD_SETTINGS = {
         rows.push({ key: 'tridentTurn',        tab: 'combat', group: g, modes, type: 'slider', dflt: 30, label: 'Guided Turn Speed', advanced: true, dependsOn: 'guidedTrident' });
       }
     }
+    // §Phase 3 — Boomerang (new-weapon opt-in pattern): a single toggle grants the weapon
+    // in this world; the rest are feel-tuning knobs. Some are flagged as candidates Kevin
+    // may prune later (steer intensity, return-speed mult) per the brief.
+    const bg = 'Weapon · Boomerang';
+    rows.push({ key: 'weaponBoomerang', tab: 'combat', group: bg, modes, type: 'toggle', dflt: false, label: 'Enable Boomerang', hint: 'grants the dual-mode Boomerang (melee swing + auto-returning throw). Opt-in per world — pick it as the Melee Weapon above, or cycle to it in the hotbar.' });
+    rows.push({ key: 'boomerangLook', tab: 'combat', group: bg, modes, type: 'cycle', opts: ['2d', 'iso'], dflt: '2d', label: 'Look', fmt: (v) => v === 'iso' ? 'Isometric spin' : '2D top-down spin', sub: true, dependsOn: 'weaponBoomerang', hint: '2D = a flat spinning boomerang; Isometric = a pseudo-3D tumble (build-then-judge by eye)' });
+    rows.push({ key: 'boomerangRange', tab: 'combat', group: bg, modes, type: 'cycle', opts: [6, 8, 10, 12, 16], dflt: 10, label: 'Range', fmt: (v) => v + ' bl', sub: true, dependsOn: 'weaponBoomerang', advanced: true });
+    rows.push({ key: 'boomerangSpeed', tab: 'combat', group: bg, modes, type: 'cycle', opts: [12, 14, 17, 20, 24], dflt: 17, label: 'Speed', fmt: (v) => v + ' px/f', sub: true, dependsOn: 'weaponBoomerang', advanced: true });
+    rows.push({ key: 'boomerangDecel', tab: 'combat', group: bg, modes, type: 'cycle', opts: [50, 60, 75, 90], dflt: 75, label: 'Deceleration Point', fmt: (v) => v + '% of range', sub: true, dependsOn: 'weaponBoomerang', advanced: true, hint: 'where in the outbound arc it starts slowing down' });
+    // Candidate knobs (may be pruned later) — flagged per the brief.
+    rows.push({ key: 'boomerangSteer', tab: 'combat', group: bg, modes, type: 'slider', dflt: 30, label: 'Steer Intensity ⚗', sub: true, dependsOn: 'weaponBoomerang', advanced: true, hint: 'homing strength toward the cursor on both legs (candidate — may be pruned)' });
+    rows.push({ key: 'boomerangReturnMult', tab: 'combat', group: bg, modes, type: 'cycle', opts: [0.75, 1.0, 1.25, 1.5], dflt: 1.0, label: 'Return Speed ⚗', fmt: (v) => v.toFixed(2) + 'x', sub: true, dependsOn: 'weaponBoomerang', advanced: true, hint: 'return-leg speed vs outbound (candidate — may be pruned)' });
     return rows;
   },
 
