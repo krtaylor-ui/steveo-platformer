@@ -332,54 +332,74 @@ class InputManager {
 
   _p1gp() { return this.p1GpSlot >= 0 ? (this.gamepads[this.p1GpSlot] ?? this._emptyGamepad(0)) : this._emptyGamepad(0); }
 
+  // ── Rebindable-key resolver (§Phase 2) ──────────────────────
+  // Resolve P1's active-scheme code for an action through KEY_BINDINGS (override else
+  // scheme default). Returns null if KEY_BINDINGS isn't loaded (headless tests) so the
+  // callers fall back to the historical literal — keeping default behaviour identical.
+  _kbCode(action) {
+    if (typeof KEY_BINDINGS === 'undefined') return null;
+    const scheme = (this.p1GpSlot === -2) ? 'kb2' : 'kb1';
+    return KEY_BINDINGS.resolve(0, scheme, action);
+  }
+  _kbDown(action, fallback) { return this.isDown(this._kbCode(action) || fallback); }
+  _kbJust(action, fallback) { return this.isJustDown(this._kbCode(action) || fallback); }
+
   isLeft()   {
-    if (this.dualInput) return this.isDown('KeyA') || this._anyGp().moveX < 0;
+    if (this.dualInput) return this._kbDown('left', 'KeyA') || this._anyGp().moveX < 0;
     const s = this.p1GpSlot;
     if (s >= 0)   return this._p1gp().moveX < 0;
-    if (s === -2) return this.isDown('ArrowLeft');
-    return this.isDown('KeyA');  // KB1
+    if (s === -2) return this._kbDown('left', 'ArrowLeft');
+    return this._kbDown('left', 'KeyA');  // KB1
   }
   isRight()  {
-    if (this.dualInput) return this.isDown('KeyD') || this._anyGp().moveX > 0;
+    if (this.dualInput) return this._kbDown('right', 'KeyD') || this._anyGp().moveX > 0;
     const s = this.p1GpSlot;
     if (s >= 0)   return this._p1gp().moveX > 0;
-    if (s === -2) return this.isDown('ArrowRight');
-    return this.isDown('KeyD');
+    if (s === -2) return this._kbDown('right', 'ArrowRight');
+    return this._kbDown('right', 'KeyD');
   }
   isJump()   {
     // Secondary keyboard jumps (Up Arrow + J) are safe unless a 2nd local player
-    // is sharing the keyboard (P2 on the arrow scheme) — then skip them.
+    // is sharing the keyboard (P2 on the arrow scheme) — then skip them. They apply
+    // only while `jump` is NOT explicitly rebound (a rebind fully takes over).
     const kbExtra = this.p2GpSlot >= 0;
-    const extra = kbExtra && (this.isDown('ArrowUp') || this.isDown('KeyJ'));
-    if (this.dualInput) return this.isDown('KeyW') || this.isDown('ArrowUp') || this.isDown('KeyJ') || this._anyGp().jump;
+    const jumpBound = (typeof KEY_BINDINGS !== 'undefined') && KEY_BINDINGS.hasOverride(0, 'jump');
+    const extra = kbExtra && !jumpBound && (this.isDown('ArrowUp') || this.isDown('KeyJ'));
+    if (this.dualInput) return this._kbDown('jump', 'KeyW') || (!jumpBound && (this.isDown('ArrowUp') || this.isDown('KeyJ'))) || this._anyGp().jump;
     const s = this.p1GpSlot;
     if (s >= 0)   return this._p1gp().jump;
-    if (s === -2) return this.isDown('ArrowUp') || (kbExtra && this.isDown('KeyJ'));
-    return this.isDown('KeyW') || extra;
+    if (s === -2) return this._kbDown('jump', 'ArrowUp') || (kbExtra && !jumpBound && this.isDown('KeyJ'));
+    return this._kbDown('jump', 'KeyW') || extra;
   }
   isCrouch() {
-    if (this.dualInput) return this.isDown('KeyS') || this._anyGp().crouch;
+    if (this.dualInput) return this._kbDown('crouch', 'KeyS') || this._anyGp().crouch;
     const s = this.p1GpSlot;
     if (s >= 0)   return this._p1gp().crouch;
-    if (s === -2) return this.isDown('ArrowDown');
-    return this.isDown('KeyS');
+    if (s === -2) return this._kbDown('crouch', 'ArrowDown');
+    return this._kbDown('crouch', 'KeyS');
+  }
+  // Aim-up / look-up override (§Phase 5b): while held, ranged aiming forces straight up.
+  // Keyboard only (gamepad uses the right stick). Default Up/W; rebindable.
+  isAimUp() {
+    if (this.p1GpSlot >= 0) return false;
+    return this._kbDown('aimUp', this.p1GpSlot === -2 ? 'KeyW' : 'ArrowUp');
   }
   isRun() {
     if (this.dualInput) return this.isDown('ShiftLeft') || this.isDown('ShiftRight');
     if (this.p1GpSlot >= 0) return false;  // gamepad: full-stick deflection auto-runs
-    return this.isDown('ShiftLeft') || this.isDown('ShiftRight');
+    return this._kbDown('run', 'ShiftLeft') || this.isDown('ShiftRight');
   }
   isAttack() {
-    if (this.dualInput) return this.isDown('Space') || this._anyGp().attack || this._anyGp().triggerR > 0.5;
+    if (this.dualInput) return this._kbDown('melee', 'Space') || this._anyGp().attack || this._anyGp().triggerR > 0.5;
     const s = this.p1GpSlot;
     if (s >= 0)   return this._p1gp().attack || this._p1gp().triggerR > 0.5;
-    if (s === -2) return this.isDown('Insert');
-    return this.isDown('Space');  // KB1 — mouse button handled separately in game.js
+    if (s === -2) return this._kbDown('melee', 'Insert');
+    return this._kbDown('melee', 'Space');  // KB1 — mouse button handled separately in game.js
   }
   // Smart Mobs §2 — Trident throw (P1): one-shot. Keyboard 'Q' or gamepad R3.
   // (Right-click is now the ranged attack, so it's no longer a throw trigger.)
   isThrow() {
-    return this.isJustDown('KeyQ') || this.p1JustDown('throwBtn');
+    return this._kbJust('throw', 'KeyQ') || this.p1JustDown('throwBtn');
   }
 
   // ── Dedicated combat inputs (Smart Mobs §2) ─────────────────
@@ -389,28 +409,31 @@ class InputManager {
   // held / gamepad RT. Left/right-click keep working for mouse players; keyboard-
   // only players get Space (melee) and can bind a ranged key in the config later.
   isMeleeAttack() {
-    if (this.dualInput) return this.isDown('Space') || this._anyGp().attack;
+    if (this.dualInput) return this._kbDown('melee', 'Space') || this._anyGp().attack;
     const s = this.p1GpSlot;
     if (s >= 0)   return this._p1gp().attack;
-    if (s === -2) return this.isDown('Insert');
-    return this.isDown('Space');
+    if (s === -2) return this._kbDown('melee', 'Insert');
+    return this._kbDown('melee', 'Space');
   }
-  // Held state (for charging a bow). Right-mouse or gamepad right trigger.
+  // Held state (for charging a bow). The `ranged` binding defaults to Right-Click
+  // (Mouse2) but can be rebound to a key or Left-Click; gamepad right trigger also fires.
   isRangedAttackDown() {
     const rt = this.dualInput ? (this._anyGp().triggerR > 0.5)
              : (this.p1GpSlot >= 0 ? this._p1gp().triggerR > 0.5 : false);
-    return this.mouse.rightDown || rt;
+    const c = this._kbCode('ranged') || 'Mouse2';
+    const codeDown = c === 'Mouse2' ? this.mouse.rightDown : c === 'Mouse0' ? this.mouse.down : this.isDown(c);
+    return codeDown || rt;
   }
   moveX() {
     if (this.dualInput) {
-      const kb = (this.isDown('KeyD') ? 1 : 0) - (this.isDown('KeyA') ? 1 : 0);
+      const kb = (this._kbDown('right', 'KeyD') ? 1 : 0) - (this._kbDown('left', 'KeyA') ? 1 : 0);
       const gp = this._anyGp().moveX * (this._sens(0));
       return Math.abs(kb) >= Math.abs(gp) ? kb : gp;
     }
     const s = this.p1GpSlot;
     if (s >= 0)   return this._p1gp().moveX * (this._sens(0));
-    if (s === -2) return (this.isDown('ArrowRight') ? 1 : 0) - (this.isDown('ArrowLeft') ? 1 : 0);
-    return (this.isDown('KeyD') ? 1 : 0) - (this.isDown('KeyA') ? 1 : 0);
+    if (s === -2) return (this._kbDown('right', 'ArrowRight') ? 1 : 0) - (this._kbDown('left', 'ArrowLeft') ? 1 : 0);
+    return (this._kbDown('right', 'KeyD') ? 1 : 0) - (this._kbDown('left', 'KeyA') ? 1 : 0);
   }
 
   // ── P2 action checks (slot-aware) ────────────────────────
@@ -504,10 +527,11 @@ class InputManager {
     return s >= 0 ? this.gpJustDown(s, btn) : false;
   }
 
-  // Returns 0–8 if a number key 1–9 was just held, else -1
+  // Returns 0–8 if a number key 1–9 was just held, else -1. Each slot is rebindable
+  // (defaults Digit1..Digit9).
   hotbarKey() {
     for (let i = 1; i <= 9; i++) {
-      if (this.isDown(`Digit${i}`)) return i - 1;
+      if (this._kbDown('hotbar' + i, `Digit${i}`)) return i - 1;
     }
     return -1;
   }

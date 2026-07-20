@@ -97,11 +97,52 @@ toggleable (see the "TOGGLE INVENTORY" running list at the bottom of this sectio
   World Settings toggle either now) — acceptable per the brief's intent (companion is a play
   choice, not a level-design concern); flag if Kevin wants a fallback there.
 
+## PHASE 2 — Full Controls-Config rebind UI (build 174) — DONE (logic headless-tested; capture browser-UNTESTED)
+- **Binding map foundation** = new `js/keybindings.js` (`KEY_BINDINGS`, pure logic, unit-tested
+  `test/test-keybindings.js` 40 assertions). Per-player (0–3) override map over per-scheme
+  defaults (kb1=WASD, kb2=Arrows); code tokens are `e.code` + mouse pseudo-codes `Mouse0`/
+  `Mouse2`/`ShiftMouse0`. **Safety principle: with no overrides + Default preset, `resolve()`
+  returns EXACTLY the historical key**, so the migration is byte-compatible (whole suite stayed
+  green). localStorage `steveo_keybinds_v1`; access try/caught so it `require()`s clean in node.
+- **input.js migration:** P1 keyboard reads for left/right/jump/crouch/run/melee/throw/moveX/
+  hotbar1-9 (+ the new `isAimUp()`) now resolve through `KEY_BINDINGS` via `_kbCode`/`_kbDown`
+  helpers, each passing the historical literal as the fallback (so headless tests with no
+  KEY_BINDINGS behave identically). `isRangedAttackDown()` resolves the `ranged` token
+  (Mouse2/Mouse0/key). The legacy secondary-jump keys (ArrowUp/KeyJ) stay ONLY while `jump` is
+  un-rebound (`hasOverride` gate) so an explicit rebind fully takes over.
+- **`isAimUp()` added (Phase 5b hook):** keyboard aim-up action (default Up/W, rebindable). Wired
+  into aiming in Phase 5; defined here so it's in the rebind grid + the Legacy-Jump story.
+- **Controls panel** = new `js/controls-ui.js` (`CONTROLS_UI`) + `#controls-overlay` + `.cu-*`
+  CSS, reusing the `.ws-*` panel look (clean + retro). Per-player tabs, grouped action rows,
+  **click→press-a-key/mouse-button capture** (capture-phase listener, Esc cancels), live
+  **conflict** highlighting + a summary note, **reset-to-default**, and a **preset picker**:
+  Default / Minecraft (RMB place) / Legacy Jump for keyboard-mouse + Xbox/Switch for the gamepad
+  face layout (drives the existing `input.setControllerPreset`). Auto-suggests a gamepad preset
+  from `gamepad.id`. Launched from **pause → Settings → Controls → "⌨ Rebind Keys / Controls"**.
+- **Minecraft mouse preset wired into game.js:** `KEY_BINDINGS.isMinecraftMouse()` → RIGHT-click
+  places (when a placeable item is selected, `weaponMode==='item'`) and LEFT-click attacks/mines
+  (shift no longer needed to place); ranged-fire is suppressed the frame a block is selected so
+  the right-click places instead of firing an owned bow (bow/trident selected still fires on
+  right-click). Default mouse scheme unchanged (Shift+Left place). **Browser-untested — flag.**
+- **Legacy Jump preset** provided now (jump→Up/W, clears any aim-up rebind) so that once Phase 5
+  repurposes Up/W for look-up, players have a one-click way back — as a preset in the rebind
+  system, per the brief, not a bespoke switch.
+- **Judgment calls / flags:** (i) keyboard rebinding is meaningful for P1 (and P2 on a keyboard
+  scheme); P3/P4 are gamepad-only so their grid shows kb1 defaults for reference + the gamepad
+  preset is the real control. (ii) A keyed `place`/`ranged` rebind shows in the grid but only the
+  MOUSE scheme is wired into game.js's place/fire decision this phase (a fully keyed place/mine is
+  a deeper combat-loop change) — flagged. (iii) All key/mouse CAPTURE is browser-only and needs
+  Kevin's hands-on test.
+
 ## TOGGLE INVENTORY (running — every independent enable/config added this session)
 Permanent, player-facing unless marked. Phase 1:
 - **Touch Controls** (Auto/On/Off) — pause → Settings → Player. Permanent, per-device.
 - **Companion** (Off/Easy/Medium/Hard) + **Companion Character** — start splash. Permanent, per-session.
-(No temp/debug-only flags added in Phase 1.)
+Phase 2:
+- **Keyboard/Mouse Preset** (Default / Minecraft / Legacy Jump) — Controls panel. Permanent, per-device.
+- **Gamepad Layout** (Xbox / Switch) — Controls panel (+ existing pause select). Permanent.
+- **Per-action rebindings** (every action, per player) — Controls panel. Permanent, per-device.
+(No temp/debug-only flags added in Phases 1–2.)
 
 ## Bow-fire "won't fire on the right side" — root cause + fix (2026-07-19, builds 160–165)
 - **Symptom:** in zoomed-out / single-screen play, the bow fired when aiming/right-clicking on the

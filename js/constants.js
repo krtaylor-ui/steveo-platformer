@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 173 (Combat & Controls mega-session — Phase 1 (Tier 1 QoL): companion "!" now fires only when genuinely stuck (escapes exhausted) with a different-approach retry + a cyan follow/mirror-mode cue; a Touch Controls Auto/On/Off toggle in pause Settings; and the co-op companion on/off + character choice moved to the Platformer/Normal start splash (off the World Settings Players group).)';
+const GAME_VERSION = 'v3 · build 174 (Combat & Controls mega-session — Phase 2 (Controls-Config UI): a full per-player key/mouse rebind panel (KEY_BINDINGS + CONTROLS_UI) with click→press capture, conflict detection, reset, and presets Default / Minecraft (RMB place) / Legacy Jump + gamepad Xbox/Switch. input.js keyboard reads migrated to the binding map, byte-compatible by default. Opened from pause → Settings → Controls.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

@@ -396,6 +396,17 @@ const PAUSE_MENU = {
     // sensitivity + deadzone (controller-only — shown only when that player is
     // on a gamepad), so tuning is per-player rather than global.
     const ctrlRows = this._assignRows(game);
+    // §Phase 2 — a launcher for the full rebind panel (keyboard/mouse per-player +
+    // presets + conflict detection). Lives with the other control rows.
+    if (typeof CONTROLS_UI !== 'undefined') {
+      const rebindBtn = document.createElement('button');
+      rebindBtn.className = 'btn btn-secondary pause-btn';
+      rebindBtn.textContent = '⌨  Rebind Keys / Controls';
+      rebindBtn.style.marginTop = '4px';
+      rebindBtn.addEventListener('click', () => CONTROLS_UI.open(game));
+      const wrap = document.createElement('div'); wrap.className = 'pause-row'; wrap.appendChild(rebindBtn);
+      ctrlRows.push(wrap);
+    }
     if (ctrlRows.length) body.appendChild(this._section('Controls', ctrlRows));
 
     // Player-scoped display / chat (each player's preference, not the world's).

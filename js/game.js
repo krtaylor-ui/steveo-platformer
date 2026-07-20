@@ -2303,6 +2303,12 @@ class Game {
     //    Inputs are remappable via input.isMeleeAttack()/isRangedAttackDown()
     //    (build 79 adds a rebinding UI). ──
     const _p1Shift    = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight');
+    // §Phase 2 — Minecraft control preset: RIGHT-click places, LEFT-click attacks/mines
+    // (the place gesture moves off Shift+Left onto right-click). When a placeable block is
+    // selected we suppress ranged-fire that frame so the right-click places instead of
+    // firing an owned bow; a bow/trident selected still fires on right-click.
+    const _mcMouse = (typeof KEY_BINDINGS !== 'undefined') && KEY_BINDINGS.isMinecraftMouse();
+    const _mcPlaceNow = _mcMouse && this.player.weaponMode === 'item';
     // Safety: if the active bow got cleared (e.g. a _syncActiveWeapon('ranged') ran while
     // rangedOwned was momentarily empty) but the player still OWNS a ranged weapon, restore
     // it — otherwise right-click fire silently dies until you re-select the bow slot (the
@@ -2316,7 +2322,7 @@ class Game {
     // a click = build). NB: use the mode check directly — `isSandbox` is declared later in
     // _update, so referencing it here would hit the const temporal-dead-zone and crash.
     const meleeNow    = this.input.isMeleeAttack() ||
-                        (this.gameMode !== 'sandbox' && this.input.mouse.clicked && !p1OverMineable && !_p1Shift);
+                        (this.gameMode !== 'sandbox' && this.input.mouse.clicked && !p1OverMineable && (_mcMouse || !_p1Shift));
 
     // A Trident equipped as the melee weapon THROWS on right-click (its ranged
     // action) — but ONLY when its Throwable trait is on (World Settings → Combat →
@@ -2376,7 +2382,7 @@ class Game {
 
     // ── Ranged: Trident throw (if equipped) else bow/crossbow — right-click,
     //    hold to charge, release to fire. Skipped the frame melee fires. ──
-    if (this._p1RespawnTimer === 0 && !p1CarryingFlag && !_meleeFired && (_ownsRanged || _tridentActive) && !_tridentIsOut) {
+    if (this._p1RespawnTimer === 0 && !p1CarryingFlag && !_meleeFired && (_ownsRanged || _tridentActive) && !_tridentIsOut && !_mcPlaceNow) {
       if (_tridentActive) {
         if (rangedDown) {
           this.player.bowDrawing   = true;   // reuse the charge/aim plumbing
@@ -3011,7 +3017,9 @@ class Game {
     // ── Normal mode: Shift+Left-click to place a block (Smart Mobs §2 — plain
     //    left-click is now the melee attack; holding Shift places). Disabled in
     //    platformer. ─────────
-    if (!isSandbox && this.gameMode !== 'platformer' && this.input.mouse.clicked && _p1Shift && target === BLOCK.AIR) {
+    const _placeGesture = _mcMouse ? (this.input.mouse.rightClicked && _mcPlaceNow)
+                                    : (this.input.mouse.clicked && _p1Shift);
+    if (!isSandbox && this.gameMode !== 'platformer' && _placeGesture && target === BLOCK.AIR) {
       const _itemBeforePlace = this.player.selectedItem;
       const placed = this._tryPlace(hoverRow, hoverCol);
       if (placed) {

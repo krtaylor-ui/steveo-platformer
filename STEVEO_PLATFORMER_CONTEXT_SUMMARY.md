@@ -18,6 +18,15 @@ HUD text, menus, or the future Player's Guide. ("Steve" / "Alex" are the sprite 
 gendered term against this before shipping copy.** (Note added 2026-07-14 at Kevin's
 request; also in DECISIONS_LOG + FUTURE_ROADMAP §1.)
 
+## ⚙️ SESSION CONVENTION — overnight / mega-session briefs (added 2026-07-19 at Kevin's request)
+**Overnight and multi-phase "mega-session" briefs must be implemented FULLY, with NO pauses for
+confirmation partway through.** Ask ALL clarifying questions UP FRONT, in one batch, before
+building — then run the whole brief to completion, checkpointing (commit + `DECISIONS_LOG.md`
+note) at the end of every phase. Do not stop to ask "should I continue?" between phases; keep
+going until the entire session is implemented (or a hard blocker is hit, which should be rare if
+questions were front-loaded). Resolve ambiguity with best judgment + document it, rather than
+blocking. (These sessions are designed to run unattended.)
+
 ## CURRENT STATE (2026-07-19) — build 172, MERGED to `main` + DEPLOYED to Railway ✅
 
 **Shipped to production this session** (origin/main fast-forwarded build 113 → 172; Railway
