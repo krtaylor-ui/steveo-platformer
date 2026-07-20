@@ -35,8 +35,17 @@ const TOUCH_CONTROLS = {
       if (ls === '1') return true;
       if (ls === '0') return false;
     } catch (e) {}
-    return (navigator.maxTouchPoints || 0) > 0 ||
-           (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+    // Auto-enable ONLY on touch-primary devices that have NO fine pointer. A hybrid
+    // touchscreen laptop reports touch points AND a mouse/trackpad (a "fine" pointer) —
+    // those users get the desktop mouse scheme, because otherwise the arena aim pad
+    // (.tc-aimpad) overlays the right half of the canvas and swallows mouse right-clicks,
+    // turning them into a left-click/melee (Kevin: right-click dead on the right half in
+    // arena only). Manual override (?touch= / localStorage) above still forces it either way.
+    const mm = (qq) => !!(window.matchMedia && window.matchMedia(qq).matches);
+    const hasTouch = (navigator.maxTouchPoints || 0) > 0;
+    const coarse   = mm('(pointer: coarse)');   // PRIMARY pointer is coarse (finger)
+    const fine     = mm('(any-pointer: fine)'); // a mouse/trackpad exists too
+    return hasTouch && coarse && !fine;
   },
 
   setEnabled(on) {
@@ -95,11 +104,20 @@ const TOUCH_CONTROLS = {
     document.body.appendChild(root);
     this._root = root;
 
+    // Belt-and-suspenders: never let this overlay block a MOUSE. When the live pointer is
+    // a mouse, drop the overlay's pointer-events so clicks pass through to the canvas (so
+    // aim/fire on the right half works); restore it for touch so the pads stay tappable.
+    // CSS alone can't distinguish mouse from touch, so flip it from the active pointer type.
+    // This guarantees the arena aim pad can't eat mouse right-clicks even if touch is on.
+    const setPE = (type) => { if (this._root) this._root.style.pointerEvents = (type === 'mouse') ? 'none' : 'auto'; };
+    window.addEventListener('pointermove', (e) => setPE(e.pointerType), true);
+    window.addEventListener('pointerdown', (e) => setPE(e.pointerType), true);
+
     // Movement / jump / action buttons → hold the mapped key.
     root.querySelectorAll('.tc-btn').forEach(btn => {
       const key = btn.dataset.key;
-      const down = (e) => { e.preventDefault(); this._press(key, true); this._haptic(); btn.classList.add('tc-active'); };
-      const up   = (e) => { e.preventDefault(); this._press(key, false); btn.classList.remove('tc-active'); };
+      const down = (e) => { if (e.pointerType === 'mouse') return; e.preventDefault(); this._press(key, true); this._haptic(); btn.classList.add('tc-active'); };
+      const up   = (e) => { if (e.pointerType === 'mouse') return; e.preventDefault(); this._press(key, false); btn.classList.remove('tc-active'); };
       btn.addEventListener('pointerdown', down);
       btn.addEventListener('pointerup', up);
       btn.addEventListener('pointercancel', up);
@@ -116,11 +134,12 @@ const TOUCH_CONTROLS = {
       inp.mouse.y = (e.clientY - r.top) * (cv.height / r.height);
     };
     pad.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse') return;   // mouse aims/fires via the canvas directly
       e.preventDefault(); const inp = this._input(); if (!inp) return;
       aim(e); inp.mouse.down = true; inp.mouse.clicked = true; this._haptic();
     });
-    pad.addEventListener('pointermove', (e) => { e.preventDefault(); if (this._input()?.mouse.down) aim(e); });
-    const end = (e) => { e.preventDefault(); const inp = this._input(); if (inp) inp.mouse.down = false; };
+    pad.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse') return; e.preventDefault(); if (this._input()?.mouse.down) aim(e); });
+    const end = (e) => { if (e.pointerType === 'mouse') return; e.preventDefault(); const inp = this._input(); if (inp) inp.mouse.down = false; };
     pad.addEventListener('pointerup', end);
     pad.addEventListener('pointercancel', end);
     pad.addEventListener('pointerleave', end);

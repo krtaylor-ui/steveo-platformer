@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 170 (Found it: on the RIGHT half in arena, elementFromPoint returns a DIV (not gameCanvas) -- an unlabelled div overlays the right half of the play area and swallows right-clicks. Improved the Debug HUD under: readout to show the element id+class AND its parent so we can identify exactly which div it is, then remove/disable its pointer-events. + prior diagnostics.)';
+const GAME_VERSION = 'v3 · build 171 (ROOT CAUSE FIXED: the culprit div was .tc-aimpad -- the mobile touch-controls arena aim/fire pad. It overlays the right half of the screen ONLY in arena, and its pointerdown did mouse.down=mouse.clicked=true + preventDefault, so a mouse right-click there was swallowed and turned into a left-click/melee. It was auto-enabled because touch detect() triggered on any touch-capable device even with a mouse. FIXES: (1) detect() auto-enables touch ONLY when there is no fine pointer (mouse/trackpad); (2) touch handlers ignore mouse-type pointers; (3) the overlay drops pointer-events whenever the active pointer is a mouse, so it can never eat mouse clicks. Right-click now works across the whole arena screen.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
