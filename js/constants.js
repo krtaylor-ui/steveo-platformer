@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 175 (Combat & Controls mega-session — Phase 3 (Boomerang): a dual-mode weapon — a lower-damage melee swing + an auto-returning throw reusing the guided-projectile substrate. Fast outbound that decelerates from ~75% range, steers to the cursor on both legs but always returns to the player; two looks (2D top-down spin / isometric tumble); opt-in per world with Speed/Range/Look/Decel + candidate steer/return knobs. Unarmed while it is out (mirrors the trident throw rule).)';
+const GAME_VERSION = 'v3 · build 176 (Combat & Controls mega-session — Phase 4 (Arrow/Bow/Crossbow): independent opt-ins for Straight Arrow Flight (no gravity arc), Arrow Speed, and Charged Shots (hold → 1.0–3.0x damage on release, reusing the bow charge bar). Charge effects resolve through one generic helper (_arrowFireParams) so speed/range/damage can extend later without a rework. Applies to P1 + P2–P4.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

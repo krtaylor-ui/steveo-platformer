@@ -2453,19 +2453,20 @@ class Game {
           this.player.bowDrawing   = true;
           this.player.bowMouseAim  = true;
           this.player.activeHand   = 'ranged';
-          this.player.drawProgress = Math.min(1, this.player.drawProgress + (1 / BOW_CHARGE_FRAMES) * (this.player._fireRateMult || 1));
+          this.player.drawProgress = Math.min(1, this.player.drawProgress + this._chargeFillRate(this.player._fireRateMult));
         } else if (rangedDown && !hasArrows) {
           this.player.bowDrawing = false; this.player.drawProgress = 0;
         } else if (this.player.bowDrawing) {
           const charge = this.player.drawProgress;
-          const speed  = BOW_MIN_SPEED + (BOW_MAX_SPEED - BOW_MIN_SPEED) * charge;
           const angle  = Math.atan2(world.y - this.player.cy, world.x - this.player.cx);
           const rt = this._rangedTraits(this.player);   // Crossbow = pierce
+          // §Phase 4 — straight-flight / arrow-speed / charge-damage resolved centrally.
+          const { speed, gravity, damage } = this._arrowFireParams(charge, PLAYER_ARROW_DAMAGE, rt.dmgMult);
           // Recoverable when not unlimited + the world setting is on (§6).
           const recoverable = !this._worldAdvSettings.unlimitedArrows && !!this._worldAdvSettings.recoverableArrows;
           this.mobManager.addPlayerArrow(
             this.player.cx, this.player.cy, Math.cos(angle) * speed, Math.sin(angle) * speed,
-            Math.max(1, Math.round(PLAYER_ARROW_DAMAGE * (rt.dmgMult || 1))), 'p1', { pierce: rt.pierce, recoverable });
+            damage, 'p1', { pierce: rt.pierce, recoverable, gravity });
           this.player.activeHand = 'ranged';
           this._dbgShots = (this._dbgShots || 0) + 1;   // debug: P1 arrows actually fired
           this._playSound('sounds/bow-fire.mp3');
@@ -2500,19 +2501,21 @@ class Game {
         const hasArrows = this._worldAdvSettings.unlimitedArrows || p.countItem(BLOCK.ARROW) > 0;
         if (attHeld && hasArrows) {
           p.bowDrawing   = true;
-          p.drawProgress = Math.min(1, p.drawProgress + (1 / BOW_CHARGE_FRAMES) * (p._fireRateMult || 1));
+          p.drawProgress = Math.min(1, p.drawProgress + this._chargeFillRate(p._fireRateMult));
         } else if (attHeld && !hasArrows) {
           p.bowDrawing   = false;
           p.drawProgress = 0;
         } else if (p.bowDrawing) {
           const charge = p.drawProgress;
-          const speed  = BOW_MIN_SPEED + (BOW_MAX_SPEED - BOW_MIN_SPEED) * charge;
           const angle  = p._aimAngle;
+          const rt = this._rangedTraits(p);   // §Phase 4 — same straight/speed/charge rules as P1
+          const { speed, gravity, damage } = this._arrowFireParams(charge, PLAYER_ARROW_DAMAGE, rt.dmgMult);
           this.mobManager.addPlayerArrow(
             p.cx, p.cy,
             Math.cos(angle) * speed, Math.sin(angle) * speed,
-            PLAYER_ARROW_DAMAGE,
-            owner
+            damage,
+            owner,
+            { pierce: rt.pierce, gravity }
           );
           this._playSound('sounds/bow-fire.mp3');
           if (!this._worldAdvSettings.unlimitedArrows) this._consumeArrowForPlayer(p);
@@ -10939,6 +10942,25 @@ class Game {
       if (ov.dmgMult != null) t.dmgMult = ov.dmgMult;
     }
     return t;
+  }
+
+  // §Phase 4 — generic charge/flight resolver for a fired arrow. Centralizes the
+  // charge→effect mapping in ONE place so a future session can scale speed/range/damage
+  // off the same `charge` without touching the fire sites. Today: Straight Flight (no
+  // gravity arc), Arrow Speed (× launch speed), and Charged Shots (charge → damage ×,
+  // 1.0→max, default 3.0) — each an independent opt-in.
+  _arrowFireParams(charge, baseDamage, dmgMult) {
+    const s = this._worldAdvSettings || {};
+    const speed   = (BOW_MIN_SPEED + (BOW_MAX_SPEED - BOW_MIN_SPEED) * charge) * (s.arrowSpeedMult ?? 1.0);
+    const gravity = s.arrowStraight ? 0 : BOW_GRAVITY;
+    let dmgFactor = 1;
+    if (s.chargeDamage) dmgFactor = 1 + ((s.chargeDamageMax ?? 3.0) - 1) * charge;
+    const damage  = Math.max(1, Math.round(baseDamage * (dmgMult || 1) * dmgFactor));
+    return { speed, gravity, damage };
+  }
+  // Charge bar fill-per-frame; Charge Speed scales how fast it fills (opt-in tuning).
+  _chargeFillRate(base) {
+    return (1 / BOW_CHARGE_FRAMES) * (base || 1) * (this._worldAdvSettings.chargeSpeedMult ?? 1.0);
   }
 
   // Smart Mobs §2 — equip the world's chosen starting weapons (World Settings →

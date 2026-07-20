@@ -194,6 +194,14 @@ const WORLD_SETTINGS = {
       // walked over to recover. Only meaningful when arrows are finite (hidden when
       // Unlimited Arrows is on).
       { key: 'recoverableArrows', tab: 'combat', group: 'Combat', modes: M.adventure, type: 'toggle', dflt: false, label: 'Recoverable Arrows', advanced: true, showWhen: (g) => !g._worldAdvSettings.unlimitedArrows },
+      // ── §Phase 4 — Bow/Crossbow flight + charged shots. Each is an INDEPENDENT opt-in:
+      //    Straight Flight (no gravity arc) and Charged Shots (charge → damage ×) are
+      //    separate, independently-testable changes. Apply to all ranged users (M.physics).
+      { key: 'arrowStraight', tab: 'combat', group: 'Ranged', modes: M.physics, type: 'toggle', dflt: false, label: 'Straight Arrow Flight', hint: 'arrows fly perfectly straight — no gravity drop/arc' },
+      { key: 'arrowSpeedMult', tab: 'combat', group: 'Ranged', modes: M.physics, type: 'cycle', opts: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0], dflt: 1.0, label: 'Arrow Speed', fmt: (v) => v.toFixed(2) + 'x', advanced: true },
+      { key: 'chargeDamage', tab: 'combat', group: 'Ranged', modes: M.physics, type: 'toggle', dflt: false, label: 'Charged Shots (charge → damage)', hint: 'holding the fire button builds a damage multiplier (up to 3x) applied on release — uses the same charge bar' },
+      { key: 'chargeDamageMax', tab: 'combat', group: 'Ranged', modes: M.physics, type: 'cycle', opts: [1.5, 2.0, 2.5, 3.0], dflt: 3.0, label: 'Max Charge Damage', fmt: (v) => v.toFixed(1) + 'x', sub: true, dependsOn: 'chargeDamage', advanced: true, hint: 'damage multiplier at a full charge' },
+      { key: 'chargeSpeedMult', tab: 'combat', group: 'Ranged', modes: M.physics, type: 'cycle', opts: [0.5, 0.75, 1.0, 1.5, 2.0], dflt: 1.0, label: 'Charge Speed', fmt: (v) => v.toFixed(2) + 'x', sub: true, dependsOn: 'chargeDamage', advanced: true, hint: 'how fast the charge bar fills' },
       // ── Detection (Smart Mobs §4) — additive/opt-in. Master OFF (default) keeps the
       //    classic distance aggro; ON makes mobs detect via sight/sound/action. Per-
       //    axis toggles + ranges are advanced. Ranges are in BLOCKS. ──

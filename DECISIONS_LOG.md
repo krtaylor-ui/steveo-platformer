@@ -164,6 +164,23 @@ toggleable (see the "TOGGLE INVENTORY" running list at the bottom of this sectio
 - **Browser-untested / flag:** the 2D vs isometric spin look, overall throw/return feel, and the held
   boomerang sprite (falls back to the generic melee draw — a dedicated held sprite is a follow-up).
 
+## PHASE 4 — Arrow / Bow / Crossbow updates (build 176) — DONE (logic trivial; feel browser-UNTESTED)
+- **Generic charge architecture (Q3 confirmed):** all charge/flight effects resolve in ONE place,
+  `Game._arrowFireParams(charge, baseDmg, dmgMult) → {speed, gravity, damage}`, plus
+  `_chargeFillRate()`. So a future session can scale speed/range/damage off the same `charge`
+  without touching the fire sites. Used by BOTH the P1 and the P2–P4 bow-fire paths.
+- **Straight Arrow Flight** (own toggle `arrowStraight`): passes `gravity:0` to the fired arrow →
+  no drop/arc. Independent of everything else.
+- **Arrow Speed** (`arrowSpeedMult`, 0.5–2.0×): scales launch speed.
+- **Charged Shots** (own toggle `chargeDamage`, INDEPENDENT of straight-flight): the same
+  `drawProgress` charge (which already scales speed→range) additionally builds a damage multiplier
+  `1 + (max-1)*charge`, max default 3.0 (`chargeDamageMax` 1.5–3.0). **Reuses the existing bow
+  charge bar** (already drawn from `drawProgress`) — no new indicator. `chargeSpeedMult` tunes fill
+  rate. Wired to all ranged users (crossbow keeps pierce via `_rangedTraits`).
+- All rows under Combat → **Ranged** group, `modes: M.physics` (normal/platformer/arena/sandbox).
+- Byte-compatible by default (arrowSpeedMult 1.0, gravity = BOW_GRAVITY, no charge-damage) — suite
+  green with no test changes. Feel (straight arrows, charge damage curve) is browser-untested; flag.
+
 ## TOGGLE INVENTORY (running — every independent enable/config added this session)
 Permanent, player-facing unless marked. Phase 1:
 - **Touch Controls** (Auto/On/Off) — pause → Settings → Player. Permanent, per-device.
@@ -176,7 +193,11 @@ Phase 3:
 - **Enable Boomerang** (opt-in per world) — World Settings → Combat → Weapon · Boomerang. Permanent.
 - Boomerang **Look** (2D/Isometric), **Range**, **Speed**, **Deceleration Point** — permanent, per-world.
 - Boomerang **Steer Intensity ⚗**, **Return Speed ⚗** — CANDIDATE feel knobs (may be pruned), per-world.
-(No temp/debug-only flags added in Phases 1–3; the ⚗ boomerang knobs are permanent-but-prunable, not debug.)
+Phase 4:
+- **Straight Arrow Flight** (own toggle) — World Settings → Combat → Ranged. Permanent, per-world.
+- **Charged Shots** (own toggle, charge→damage) + **Max Charge Damage** + **Charge Speed** — per-world.
+- **Arrow Speed** — per-world.
+(No temp/debug-only flags added in Phases 1–4; the ⚗ boomerang knobs are permanent-but-prunable, not debug.)
 
 ## Bow-fire "won't fire on the right side" — root cause + fix (2026-07-19, builds 160–165)
 - **Symptom:** in zoomed-out / single-screen play, the bow fired when aiming/right-clicking on the
