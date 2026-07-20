@@ -251,6 +251,9 @@ const WORLD_SETTINGS = {
       // overhead+low with the crouch/short height interaction, Forward = +dmg/−knockback,
       // Back = +knockback/−dmg). Applies to PvE + PvP.
       { key: 'advancedAttacks', tab: 'combat', group: 'Special Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Advanced Attacks (directional)', hint: 'hold a direction while attacking: Up = overhead (misses crouchers), Down = low (hits short/crouching), Forward = more damage, Back = more knockback' },
+      // §Phase 7 — per-combo toggles (each independently enabled), generated from the
+      // data-driven COMBOS.DEFS so the list is the SAME source future custom combos extend.
+      ...this._comboRows(M),
       // ── Weapons (Smart Mobs §2) — starting weapon + per-weapon trait config;
       //    the Trident's recall/guided/turn-speed live under Weapon · Trident. ──
       ...this._weaponRows(M, O, x1),
@@ -324,6 +327,18 @@ const WORLD_SETTINGS = {
     rows.push({ key: 'weaponGrapple', tab: 'combat', group: gh, modes, type: 'toggle', dflt: false, label: 'Enable Grappling Hook', hint: 'grants a grappling hook (ranged slot): fire a cable, swing, reel in, climb 1-block ledges. Turns on Look-Up Aim (Up/W = aim up, jump moves to J).' });
     rows.push({ key: 'grappleRange', tab: 'combat', group: gh, modes, type: 'cycle', opts: [6, 8, 10, 12, 16], dflt: 8, label: 'Range', fmt: (v) => v + ' bl', sub: true, dependsOn: 'weaponGrapple', advanced: true, hint: 'hook reach; nothing hit within range → it auto-retracts' });
     return rows;
+  },
+
+  // §Phase 7 — one toggle per combo, built from COMBOS.DEFS (the single data-driven list).
+  // Each combo is enabled independently (Kevin's per-combo granularity); all depend on the
+  // Advanced Attacks master toggle (a combo is a sequence of directional attacks).
+  _comboRows(M) {
+    if (typeof COMBOS === 'undefined') return [];
+    return COMBOS.DEFS.map((d) => ({
+      key: d.enableKey, tab: 'combat', group: 'Combos', modes: M.physics, type: 'toggle', dflt: false,
+      label: d.name, sub: true, dependsOn: 'advancedAttacks',
+      hint: `${d.seq.join(' → ')} → finisher (knocks the target onto its back). Needs Advanced Attacks on.`,
+    }));
   },
 
   // Smart Mobs §8 — per-mob-type low-HP behavior rows. `lowHpAction_<key>` is a VARIABLE

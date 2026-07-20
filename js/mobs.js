@@ -2634,6 +2634,13 @@ class MobManager {
       if (c.mob.takeDamage(damage, c.dir, kbMult)) {
         this.damageNums.push(new DamageNumber(c.mob.cx, c.mob.y - 8, damage, '#FFE040'));
         anyHit = true;
+        // §Phase 7 — combo FINISHER: knock the target onto its back (knockback + rotate),
+        // reusing the slide-launch spin fields + the render wrapper (no new animation).
+        if (t.finisher && c.mob.alive) {
+          const m = c.mob;
+          m.vy = -11; m.vx = (c.dir || 1) * 7; m.knockbackTimer = 44;
+          m._launched = true; m._launchFrames = 40; m._launchSpin = (c.dir || 1) * 0.28; m._spinAngle = 0;
+        }
         // Arena kill attribution for melee blows (arrows credited in update()).
         if (!c.mob.alive) this.onKill?.(owner, c.mob);
       }

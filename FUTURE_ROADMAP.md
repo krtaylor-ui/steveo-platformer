@@ -40,6 +40,24 @@
   — groundwork for Campaign mode. Builds 68–72 = editor fixes + the Return‑to‑Sandbox playtest‑exit fix.
 
 ## 🔜 Still planned (not built)
+- **Combat & Controls mega-session follow-ups (deferred 2026-07-19; from the build 173–179 run):**
+  - **Player / designer-created combos.** Now that Phase 7 ships a **data-driven combo list**
+    (`js/combos.js` `COMBOS.DEFS` — each combo = input sequence + finisher + enable flag), the natural
+    next step is letting players (or Sandbox designers) DEFINE their own input-sequence combos rather
+    than only the two built-ins (Rising Strike / Sweep Slam). **Direct dependency:** builds on Phase 7's
+    `COMBOS.DEFS` schema + `COMBOS.advance()` matcher — a custom combo is just another entry in that list.
+  - **Combo testing mini-game.** A practice space to drill specific combos, and where designers can
+    verify a custom combo (above) is actually executable + feels good. Relevant once custom combos exist.
+  - **Jump Attack.** A melee attack variant triggered during a jump — likely two variants (a normal-jump
+    one and an air/double-jump one). Deferred by Kevin; captured here. Would slot alongside the Phase 6
+    directional-melee system (another `traits.dir`-style context, e.g. an `'air'` variant).
+  - **Directional-melee per-weapon-class ANIMATIONS.** Phase 6 shipped the directional mechanics
+    (targeting, height dodge, damage/knockback/reach) but NOT distinct per-direction/per-weapon-class
+    swing art — `player._attackDir` is set for a future animation pass. This is the flagged art follow-up.
+  - **Grapple polish:** reuse the real ledge-climb (`_hangState`) animation for the 1-block climb-over
+    (currently a self-contained scripted lerp); optional cable-vs-terrain collision. Feel-tune the swing.
+  - **Held-boomerang / held-grapple sprites** (both currently fall back to the generic melee/ranged draw).
+
 - **Session follow-ups (2026-07-19, mentioned but not actioned during the build 114–172 run):**
   - **Companion "!" polish** — when the companion repeats the same failed maneuver twice, try a
     *different* approach before flashing the yellow "!" (summon prompt); and add a **visual cue for

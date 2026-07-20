@@ -27,6 +27,38 @@ going until the entire session is implemented (or a hard blocker is hit, which s
 questions were front-loaded). Resolve ambiguity with best judgment + document it, rather than
 blocking. (These sessions are designed to run unattended.)
 
+## CURRENT STATE (2026-07-19) — builds 173–179, branch `combat-controls-mega` (NOT merged; awaiting playtest)
+
+**The Combat & Controls mega-session (7 phases) is BUILT** on branch `combat-controls-mega` off
+`bot-ai`(==`main` @ build 172). Headless suite **638** (`node test/run.js`, all green; adds
+test-keybindings 40, test-boomerang 10, test-grapple 16, test-directional 7, test-combos 13).
+**Everything is additive/opt-in — default behaviour is byte-identical** (the input rebind migration
+resolves to the historical keys with no overrides). Each phase is its own commit (builds 173→179).
+Full detail + every assumption in `DECISIONS_LOG.md` ("COMBAT & CONTROLS MEGA-SESSION"); the roadmap
+follow-ups are in `FUTURE_ROADMAP.md`. What shipped, one commit each:
+- **Phase 1 (173) — Tier-1 QoL:** companion "!" only when genuinely stuck (escapes exhausted, with a
+  different-approach retry) + a cyan follow/mirror cue; Touch Controls Auto/On/Off toggle; co-op
+  companion on/off + character moved to the start splash (off World Settings).
+- **Phase 2 (174) — Controls-Config UI:** `js/keybindings.js` (per-player key/mouse binding map,
+  byte-compatible defaults) + `js/controls-ui.js` (rebind grid, click→press capture, conflict
+  detection, reset, presets Default/Minecraft/Legacy Jump + gamepad Xbox/Switch). `input.js` migrated.
+- **Phase 3 (175) — Boomerang:** dual-mode melee + auto-returning throw (guided substrate; decelerates,
+  steers to cursor both legs, returns to player; 2D/isometric spin; opt-in per world).
+- **Phase 4 (176) — Arrow/Bow/Crossbow:** independent opt-ins for Straight Flight, Arrow Speed, and
+  Charged Shots (charge→1–3× damage); one generic `_arrowFireParams` charge resolver.
+- **Phase 5 (177) — Grappling Hook:** cast/swing/reel-in/1-block-climb-over/release; `js/grapple.js`
+  pure math with all 5 §5e invariants headless-verified; Up/W = look-up aim (jump→J) across all ranged.
+- **Phase 6 (178) — Directional melee:** one Advanced Attacks toggle; Up/Down/Forward/Back variants +
+  the crouch/short height dodge (PvP + PvE).
+- **Phase 7 (179) — Combos:** data-driven `js/combos.js`; per-combo toggles; Rising Strike + Sweep Slam;
+  cooldown-cancel chaining; finisher reuses the slide-launch toss; gold glow from the 2nd hit.
+
+**Ship path (unchanged):** `node test/run.js` (638) → bump the THREE markers (done through build 179) →
+**Kevin browser-tests** (much of this — grapple swing FEEL, rebind key CAPTURE, boomerang look, combo
+feel, directional animations — is inherently browser-only; the invariants/logic are what's proven) →
+`git checkout main && git merge --ff-only combat-controls-mega` → `git push origin main`. **NEXT / needs
+Kevin's hands-on playtest before "done":** the Grappling Hook and Advanced Combat/Combos especially.
+
 ## CURRENT STATE (2026-07-19) — build 172, MERGED to `main` + DEPLOYED to Railway ✅
 
 **Shipped to production this session** (origin/main fast-forwarded build 113 → 172; Railway

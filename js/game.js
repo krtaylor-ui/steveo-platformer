@@ -2383,6 +2383,12 @@ class Game {
                                  : (this._worldAdvSettings.tridentTurn ?? 30);
     this.mobManager.steerGuided(aimWorld.x, aimWorld.y, Math.max(0.01, _steerPct / 100 * 0.20));
 
+    // §Phase 7 — combo window upkeep (every frame): lapse the chain + fade the glow.
+    if (this.player) {
+      if (this.player._comboTimer > 0 && --this.player._comboTimer <= 0) this.player._comboSeq = [];
+      if (this.player._comboGlow > 0) this.player._comboGlow--;
+    }
+
     // ── Melee (sword / spear / axe / trident thrust) — checked FIRST ──
     if (this._p1RespawnTimer === 0 && !p1CarryingFlag) {
       const traits = this._meleeTraits(this.player);
@@ -2390,8 +2396,10 @@ class Game {
       // the hit-cone + damage/knockback. Forward = less knockback, more damage; Back =
       // more knockback, less damage; Up/Down aim the swing vertically (with the crouch/
       // short height interaction handled in playerAttack). One master toggle covers all.
+      let _comboMd = 'neutral', _comboPre = null, _comboDefs = null;
       if (this._worldAdvSettings.advancedAttacks) {
         const md = this._meleeDirection(this.player);
+        _comboMd = md;
         traits.dir = md;
         // Distinct damage/knockback + a small reach tweak per direction (the "distinct
         // ranges" ask; distinct per-weapon-class ANIMATIONS are the flagged art follow-up).
@@ -2399,9 +2407,18 @@ class Game {
         else if (md === 'back') { traits.dmgMult = (traits.dmgMult || 1) * 0.7; traits.knockback = (traits.knockback == null ? 1 : traits.knockback) * 1.7; }
         else if (md === 'up' || md === 'down') { traits.reachMult = (traits.reachMult || 1) * 0.92; }
         this.player._attackDir = md;   // set for a future per-direction swing animation (playtest art)
+        // §Phase 7 — combo precheck: if THIS hit would complete an enabled combo, mark the
+        // swing as a finisher so playerAttack applies the knock-onto-back toss on a hit.
+        if (typeof COMBOS !== 'undefined') {
+          _comboDefs = COMBOS.enabled(this._worldAdvSettings);
+          if (_comboDefs.length) {
+            _comboPre = COMBOS.advance(this.player._comboSeq || [], md, _comboDefs);
+            if (_comboPre.status === 'finish') traits.finisher = true;
+          }
+        }
       } else { this.player._attackDir = null; }
       if (meleeNow && this.player.attackCooldown === 0 && !this.player.bowDrawing && !_tridentIsOut && !_boomIsOut) {
-        this.mobManager.playerAttack(this.player, 'p1', traits);
+        const _anyHit = this.mobManager.playerAttack(this.player, 'p1', traits);
         this._playerAttackDragon();
         this._playerMeleeWither();
         if (_isOnlineJoiner) {
@@ -2414,6 +2431,19 @@ class Game {
         this.player.swingTimer     = 15;
         this._playSound('sounds/attack-sword.mp3');
         this._emitActionNoise(this.player);   // §4c — attacking alerts nearby mobs
+        // §Phase 7 — combo bookkeeping (only when a directional hit LANDS; any valid target
+        // keeps it alive — Q4). A landed in-sequence hit REMOVES the between-swing cooldown
+        // (chain faster; the player is NOT invulnerable). The finisher toss already fired
+        // in playerAttack; here we advance/reset the sequence, drive the glow + timer.
+        if (_comboPre && _anyHit) {
+          this.player._comboSeq = _comboPre.seq;
+          if (_comboPre.status === 'progress' || _comboPre.status === 'finish') {
+            this.player.attackCooldown = 0;                 // cancel the cooldown → immediate next swing
+            this.player._comboTimer = 45;                   // window to continue the chain
+          }
+          if (_comboPre.seq.length >= 2 || _comboPre.status === 'finish') this.player._comboGlow = 24;
+          if (_comboPre.status === 'finish') { this._playSound('sounds/attack-sword.mp3'); this._notify(_comboPre.def.name + '!', '#FFD24A', 70); }
+        }
       }
     }
 

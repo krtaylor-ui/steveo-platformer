@@ -232,6 +232,29 @@ toggleable (see the "TOGGLE INVENTORY" running list at the bottom of this sectio
   is set for a future animation pass; this is the dedicated playtest-art follow-up the brief calls out.
   The mechanics (targeting, height dodge, damage/knockback/reach) are the substance and are tested.
 
+## PHASE 7 — Combos (build 179) — DONE (state machine headless-tested; feel + glow browser-UNTESTED)
+- **Data-driven combo list** `js/combos.js` (`COMBOS.DEFS`) — NOT hardcoded special-cases, so it's the
+  same list a future player/designer-authored-combo feature extends (FUTURE_ROADMAP §8A). Two built-ins:
+  **Rising Strike** (forward → forward → up) and **Sweep Slam** (back → back → down). Pure matcher
+  `COMBOS.advance(seq, dir, defs)` → finish|progress|none; unit-tested `test/test-combos.js` (13):
+  per-combo enabling, both sequences finishing, broken-chain restart, disabled-never-fires.
+- **Per-combo enable toggles** (Kevin's granularity, NOT one master): generated from `COMBOS.DEFS`
+  into World Settings → Combat → **Combos** (each `dependsOn` the Advanced Attacks master).
+- **Wiring (game.js):** after a DIRECTIONAL melee LANDS (`anyHit`; any valid target keeps it alive —
+  **Q4 confirmed**), `COMBOS.advance` updates `player._comboSeq`. A landed in-sequence hit sets
+  `attackCooldown = 0` → the next swing fires immediately (chain faster); the player is **NOT
+  invulnerable**. A `_comboTimer` (45f) lapses the chain; a wrong/neutral hit resets it.
+- **Finisher** (precheck sets `traits.finisher` on the completing swing): `playerAttack` knocks the hit
+  target **onto its back** by reusing the slide-launch fields (`_launched/_launchSpin/_spinAngle/
+  _launchFrames` + the existing render rotate wrapper) — no new animation, per the brief.
+- **Glow cue** from the 2nd hit: `player._comboGlow` draws a fading gold aura (player.js).
+- **PvP scope (flagged for Kevin's balance call):** combos are built UNIVERSALLY — the finisher toss
+  works on human opponents too (secondary players route through `playerAttack`). The finisher's
+  knockback could be a strong PvP tool; left universal per the brief, flagged for playtest, not
+  silently PvE-only.
+- **Browser-untested:** the chain feel, cooldown-cancel timing, the glow, and the finisher toss all
+  need Kevin's hands-on playtest (the sequence state machine is proven headlessly).
+
 ## TOGGLE INVENTORY (running — every independent enable/config added this session)
 Permanent, player-facing unless marked. Phase 1:
 - **Touch Controls** (Auto/On/Off) — pause → Settings → Player. Permanent, per-device.
@@ -253,7 +276,12 @@ Phase 5:
 - **Look-Up Aim (Up/W)** (own toggle; auto-on with the grapple) — World Settings → Movement → Moves.
 Phase 6:
 - **Advanced Attacks (directional)** — one master toggle for all four variants — World Settings → Combat → Special Moves.
-(No temp/debug-only flags added in Phases 1–6; the ⚗ boomerang knobs are permanent-but-prunable, not debug.)
+Phase 7:
+- **Rising Strike** combo (own toggle) — World Settings → Combat → Combos (dependsOn Advanced Attacks).
+- **Sweep Slam** combo (own toggle) — World Settings → Combat → Combos (dependsOn Advanced Attacks).
+(No temp/debug-only flags added in Phases 1–7; the ⚗ boomerang knobs are permanent-but-prunable, not debug.
+ The brief invited temporary debug flags (§0.7); none proved necessary — the pure headless test modules
+ for grapple/boomerang/combos/keybindings/directional covered the incremental verification instead.)
 
 ## Bow-fire "won't fire on the right side" — root cause + fix (2026-07-19, builds 160–165)
 - **Symptom:** in zoomed-out / single-screen play, the bow fired when aiming/right-clicking on the
