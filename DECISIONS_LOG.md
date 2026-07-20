@@ -33,6 +33,17 @@ Bug-fix + polish follow-up to the mega-session, from Kevin's first playtest. Pha
   at spawn (the mega-session's auto-grant is removed). The explicit "Starting Melee = Boomerang" choice
   stays as a separate intentional grant.
 
+## PHASE E — Ranged combat polish (build 184) — DONE
+- **Charged-shot glow** (`player.js`): while `bowDrawing`, an aura brightens (alpha + blur) and shifts
+  hue yellow(55°)→orange→red(0°) with `drawProgress`. Layered onto the existing charge bar; applies to
+  bow/trident/boomerang charge and all players.
+- **Arrow speed cap 2×→4×:** `arrowSpeedMult` opts extended to `…2.0, 2.5, 3.0, 4.0` (no hard clamp in
+  `_arrowFireParams`, so 4× works).
+- **Settings reorg:** moved **Unlimited Arrows** (and, for coherence, **Recoverable Arrows** — both are
+  arrow settings) from the standalone "Combat" heading to **Ranged**; "Combat" is now empty so its
+  heading no longer renders (the renderer only shows groups with visible rows). Documented moving both
+  rather than leaving a lone arrow toggle under "Combat".
+
 ## PHASE D — Co-op bot/human selector (build 183) — DONE (immediate fix; full redesign → roadmap §23)
 - The pause **Players** selector is now 3-way: **1 Player / 2 Player (Human) / 2 Player (Bot)**.
   `Game._setCoopMode('off'|'human'|'bot')` + `_coopMode()` drive it. Bot reuses the Bot-AI companion

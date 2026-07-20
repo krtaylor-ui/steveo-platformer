@@ -1073,6 +1073,22 @@ class Player {
       ctx.restore();
     }
 
+    // §Phase E — charged-shot glow: an aura that BRIGHTENS and shifts hue yellow → orange
+    // → red as the shot charges (layered onto the existing charge bar). Shown while drawing
+    // a bow / trident / boomerang (all set `bowDrawing` + `drawProgress`), for any player.
+    if (this.bowDrawing && this.drawProgress > 0.02) {
+      const c = Math.min(1, this.drawProgress), w = this.width, h = this.height;
+      const hue = 55 * (1 - c);   // 55° yellow → 0° red (through orange)
+      ctx.save();
+      ctx.globalAlpha = 0.25 + 0.55 * c;
+      ctx.shadowColor = `hsl(${hue}, 100%, 55%)`;
+      ctx.shadowBlur = 6 + 16 * c;
+      ctx.strokeStyle = `hsl(${hue}, 100%, ${62 - 12 * c}%)`;
+      ctx.lineWidth = 2 + 2 * c;
+      ctx.strokeRect(sx - 2, sy - 2, w + 4, h + 4);
+      ctx.restore();
+    }
+
     // §Phase 7 — combo glow: a gold aura around the player from the 2nd chained hit,
     // fading over _comboGlow frames. Signals "a combo is building".
     if (this._comboGlow > 0) {

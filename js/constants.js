@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 183 (Combat/Controls FOLLOW-UP — Phase D: the pause "Players" selector is now 1 Player / 2 Player (Human) / 2 Player (Bot), the Bot case reusing the companion-bot infrastructure (runtime spawn/despawn). Disabled in Sandbox for now. Full co-op UX redesign logged to FUTURE_ROADMAP §23.)';
+const GAME_VERSION = 'v3 · build 184 (Combat/Controls FOLLOW-UP — Phase E (ranged polish): charged-shot glow now brightens + shifts yellow→orange→red with charge; arrow-speed cap raised 2x→4x; Unlimited/Recoverable Arrows moved under the Ranged heading (Combat heading gone).)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
