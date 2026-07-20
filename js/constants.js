@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 186 (Combat/Controls FOLLOW-UP — Phase G (Grappling Hook completion): the hook is now an ACQUIRED item — enabling it in World Settings only makes it available/placeable (Sandbox palette gated by the toggle); the player must pick one up to use it, and Look-Up Aim (jump→J) now flips on only once they are HOLDING a grapple, not merely because the world enables it. Placeable/pickup/persistence reuse the shared tool path.)';
+const GAME_VERSION = 'v3 · build 187 (Combat/Controls FOLLOW-UP — playtest fixes: Boomerang + Grappling Hook now ALWAYS appear under Equipment in the Sandbox palette (ungated); the ledge grab triggers off the Look-Up/Aim-Up key in any scheme (isLookUpHeld, mode-independent); the charged-shot glow moved off the player box onto the BOW/crossbow outline AND the fired arrow (same yellow→orange→red ramp).)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

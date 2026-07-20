@@ -783,10 +783,11 @@ class Player {
     // (solid block; clear above for standing; open outward face + a clear body
     // column beside it). This rejects interior blocks — grabbing one embedded the
     // player and caused the tunneling / speed glitches.
-    // §Phase B — the UP input also triggers a ledge grab, not just a jump. Once aim-up
-    // repurposes Up/W to look-up (jump = J), holding Up near a grabbable ledge must still
-    // grab it; `isAimUp()` covers that case, `isJump()` covers the default + Legacy schemes.
-    const _upOrJump = input.isJump() || (typeof input.isAimUp === 'function' && input.isAimUp());
+    // §Phase B / follow-up — the UP (Look-Up / Aim-Up) key triggers a ledge grab, not just
+    // a jump. `isLookUpHeld()` reads the aim-up KEY regardless of the aim-up MODE gate, so it
+    // works whether Up is currently the jump key (default/Legacy) or the dedicated look-up
+    // key (aim-up on). `isJump()` still covers a J-jump grab.
+    const _upOrJump = input.isJump() || (typeof input.isLookUpHeld === 'function' && input.isLookUpHeld());
     if (!this.onGround && _upOrJump && this.vy > -3) {
       const sideCol = dir > 0 ? Math.floor((this.x + this.width + 1) / BS)
                               : Math.floor((this.x - 1) / BS);
@@ -1086,22 +1087,6 @@ class Player {
       ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillText('!', cx + 1, by + 1);
       ctx.fillStyle = '#FFE23A'; ctx.fillText('!', cx, by);
-      ctx.restore();
-    }
-
-    // §Phase E — charged-shot glow: an aura that BRIGHTENS and shifts hue yellow → orange
-    // → red as the shot charges (layered onto the existing charge bar). Shown while drawing
-    // a bow / trident / boomerang (all set `bowDrawing` + `drawProgress`), for any player.
-    if (this.bowDrawing && this.drawProgress > 0.02) {
-      const c = Math.min(1, this.drawProgress), w = this.width, h = this.height;
-      const hue = 55 * (1 - c);   // 55° yellow → 0° red (through orange)
-      ctx.save();
-      ctx.globalAlpha = 0.25 + 0.55 * c;
-      ctx.shadowColor = `hsl(${hue}, 100%, 55%)`;
-      ctx.shadowBlur = 6 + 16 * c;
-      ctx.strokeStyle = `hsl(${hue}, 100%, ${62 - 12 * c}%)`;
-      ctx.lineWidth = 2 + 2 * c;
-      ctx.strokeRect(sx - 2, sy - 2, w + 4, h + 4);
       ctx.restore();
     }
 
@@ -1635,6 +1620,10 @@ class Player {
     ctx.save();
     ctx.translate(flipX ? sx - 2 : sx + 14, sy + 15);
     if (flipX) ctx.scale(-1, 1);
+    if (this.bowDrawing && charge > 0.02) {   // §Follow-up — charged-shot glow on the crossbow
+      ctx.shadowColor = `hsl(${55 * (1 - Math.min(1, charge))}, 100%, 55%)`;
+      ctx.shadowBlur  = 5 + 12 * Math.min(1, charge);
+    }
     ctx.fillStyle = '#7A5520'; ctx.fillRect(-6, -1.5, 20, 3);          // stock
     ctx.strokeStyle = '#9A9A9A'; ctx.lineWidth = 2.5;                  // front limbs
     ctx.beginPath(); ctx.moveTo(11, -8); ctx.lineTo(16, 0); ctx.lineTo(11, 8); ctx.stroke();
@@ -1658,6 +1647,13 @@ class Player {
     ctx.save();
     ctx.translate(bowX, bowY);
     if (flipX) ctx.scale(-1, 1);
+
+    // §Follow-up — charged-shot glow ON THE BOW itself: the limbs/string glow brighter and
+    // shift hue yellow → orange → red as the shot charges (replaces the old player-box aura).
+    if (this.bowDrawing && charge > 0.02) {
+      ctx.shadowColor = `hsl(${55 * (1 - Math.min(1, charge))}, 100%, 55%)`;
+      ctx.shadowBlur  = 5 + 12 * Math.min(1, charge);
+    }
 
     // Bow limbs
     ctx.strokeStyle = '#8B5C1A';

@@ -405,6 +405,13 @@ class InputManager {
     if (!this._aimUpEnabled || this.p1GpSlot >= 0) return false;
     return this._kbDown('aimUp', this.p1GpSlot === -2 ? 'ArrowUp' : 'KeyW');
   }
+  // Is the LOOK-UP / aim-up KEY physically held? Unlike isAimUp() this ignores the aim-up
+  // MODE gate, so features like the ledge grab fire off the up key in ANY scheme (default:
+  // it's also the jump key; aim-up-on: it's the dedicated look-up key). Keyboard only.
+  isLookUpHeld() {
+    if (this.p1GpSlot >= 0) return false;
+    return this._kbDown('aimUp', this.p1GpSlot === -2 ? 'ArrowUp' : 'KeyW');
+  }
   isRun() {
     if (this.dualInput) return this.isDown('ShiftLeft') || this.isDown('ShiftRight');
     if (this.p1GpSlot >= 0) return false;  // gamepad: full-stick deflection auto-runs

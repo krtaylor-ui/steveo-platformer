@@ -1054,6 +1054,11 @@ class Arrow {
     ctx.save();
     ctx.translate(Math.floor(sx), Math.floor(sy));
     ctx.rotate(angle);
+    // §Follow-up — a charged shot keeps a glow in flight (same yellow→red hue ramp).
+    if (this._chargeGlow > 0.2 && !this.stuck) {
+      ctx.shadowColor = `hsl(${55 * (1 - Math.min(1, this._chargeGlow))}, 100%, 55%)`;
+      ctx.shadowBlur  = 4 + 10 * Math.min(1, this._chargeGlow);
+    }
     if (this.isTrident) {
       // Trident — cyan shaft + 3-prong head, oriented along flight (sticks straight).
       ctx.fillStyle = '#3FB8C0';
@@ -2121,6 +2126,7 @@ class MobManager {
   addPlayerArrow(x, y, vx, vy, damage, owner = 'p1', opts = null) {
     const a = new Arrow(x, y, vx, vy, damage, BOW_GRAVITY, true);
     a.owner = owner; // arena kill attribution ('p1' | 'p2')
+    if (opts && opts.chargeGlow != null) a._chargeGlow = opts.chargeGlow; // §Follow-up — charged arrow glows in flight
     if (opts && opts.pierce)      a.pierce      = true; // Smart Mobs §2 — Crossbow trait
     if (opts && opts.trident)     a.isTrident   = true; // Smart Mobs §2 — thrown Trident
     if (opts && opts.recoverable) a.recoverable = true; // Smart Mobs §6 — sticks + collectable on a clean miss

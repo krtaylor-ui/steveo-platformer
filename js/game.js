@@ -2550,7 +2550,7 @@ class Game {
           const recoverable = !this._worldAdvSettings.unlimitedArrows && !!this._worldAdvSettings.recoverableArrows;
           this.mobManager.addPlayerArrow(
             this.player.cx, this.player.cy, Math.cos(angle) * speed, Math.sin(angle) * speed,
-            damage, 'p1', { pierce: rt.pierce, recoverable, gravity });
+            damage, 'p1', { pierce: rt.pierce, recoverable, gravity, chargeGlow: charge });
           this.player.activeHand = 'ranged';
           this._dbgShots = (this._dbgShots || 0) + 1;   // debug: P1 arrows actually fired
           this._playSound('sounds/bow-fire.mp3');
@@ -2599,7 +2599,7 @@ class Game {
             Math.cos(angle) * speed, Math.sin(angle) * speed,
             damage,
             owner,
-            { pierce: rt.pierce, gravity }
+            { pierce: rt.pierce, gravity, chargeGlow: charge }
           );
           this._playSound('sounds/bow-fire.mp3');
           if (!this._worldAdvSettings.unlimitedArrows) this._consumeArrowForPlayer(p);

@@ -33,6 +33,20 @@ Bug-fix + polish follow-up to the mega-session, from Kevin's first playtest. Pha
   at spawn (the mega-session's auto-grant is removed). The explicit "Starting Melee = Boomerang" choice
   stays as a separate intentional grant.
 
+## PLAYTEST FIXES (build 187) — from Kevin's follow-up pass
+- **Palette:** Boomerang + Grapple now ALWAYS appear under Equipment (gear tab) — removed the
+  world-toggle gating on `_paletteItems()` (they were hidden unless the toggle was on). The
+  `weaponBoomerang`/`weaponGrapple` toggles were re-labelled **"Configure …"** (they now only reveal
+  each weapon's advanced tuning; placement + pickup + no-auto-grant are unchanged).
+- **Ledge grab on the Look-Up key:** the Phase-B fix used `isAimUp()`, which is gated on aim-up MODE
+  being enabled, so the up key didn't grab when mode was off. Added `input.isLookUpHeld()` (reads the
+  aim-up KEY regardless of the mode gate) and `_tryLedgeGrab` now uses `isJump() || isLookUpHeld()` — so
+  the Look-Up/Aim-Up button grabs a ledge in every scheme.
+- **Charged-shot glow relocated:** removed the box-around-the-player aura; the glow now lights the
+  **bow/crossbow outline** (`_drawBow`/`_drawCrossbow` set `shadowColor/shadowBlur` by charge) AND the
+  **fired arrow** carries it in flight (`opts.chargeGlow` → `Arrow._chargeGlow` → glow in `Arrow.draw`).
+  Same yellow→orange→red hue ramp Kevin liked. Suite 689/689.
+
 ## PHASE G — Grappling Hook completion (build 186) — DONE (mostly via Phase F shared work)
 - **Acquired-item model:** already delivered by Phase F's shared changes — the gear palette gates the
   grapple on `weaponGrapple` (available/placeable only when enabled), and the auto-grant was removed

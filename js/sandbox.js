@@ -1133,18 +1133,9 @@ class SandboxManager {
   }
 
   _paletteItems() {
-    if (this.paletteTab === 'other') return OTHER_PALETTE_ITEMS;
-    if (this.paletteTab === 'gear') {
-      // §Phase F/G — the opt-in weapons (Boomerang / Grapple) only appear in the palette
-      // when enabled for this world (enabling = "available content" that can be placed).
-      const aws = (typeof window !== 'undefined' && window.game && window.game._worldAdvSettings) || {};
-      return GEAR_PALETTE_ITEMS.filter((it) => {
-        if (it.weaponClass === 'boomerang') return !!aws.weaponBoomerang;
-        if (it.weaponClass === 'grapple')   return !!aws.weaponGrapple;
-        return true;
-      });
-    }
-    return SANDBOX_PALETTE_BLOCKS[this.paletteTab] || [];
+    return this.paletteTab === 'other' ? OTHER_PALETTE_ITEMS
+         : this.paletteTab === 'gear'  ? GEAR_PALETTE_ITEMS   // Boomerang + Grapple always available under Equipment
+         : (SANDBOX_PALETTE_BLOCKS[this.paletteTab] || []);
   }
 
   _paletteMaxScroll() {
