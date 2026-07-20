@@ -751,11 +751,24 @@ const SANDBOX = {
   },
 
   // ── Editor: open a world in sandbox mode ───────────────────────
-  async editWorld(worldId) {
+  async editWorld(worldId, snapshotData = null) {
     try {
       const local = this._isLocalWorld(worldId);
       let world;
-      if (local) {
+      if (snapshotData) {
+        // §Phase A — reopen from the IN-MEMORY editor snapshot (unsaved edits preserved),
+        // NOT the persisted file. Used by the Test round-trip return path so testing an
+        // unsaved config (e.g. a World Setting) never discards it. Metadata (name /
+        // published / dims / mode) comes from the world already open; the live grid +
+        // worldAdvSettings + placeables come from the snapshot layered on top. Nothing is
+        // written to disk — Save is still the only thing that persists.
+        const meta = this.currentWorldData || {};
+        world = {
+          world_name:  meta.world_name || 'World',
+          is_published: !!meta.is_published,
+          world_data:  Object.assign({}, meta.world_data || {}, snapshotData),
+        };
+      } else if (local) {
         world = LOCAL_WORLDS.get(worldId);
         if (!world) { alert('World not found'); return; }
       } else {

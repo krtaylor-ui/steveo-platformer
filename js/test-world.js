@@ -92,8 +92,12 @@ const TEST_WORLD = {
       // name SANDBOX_UI here silently no-op'd both paths and froze the exit.)
       const loadout = this._loadout;
       if (this._wid && typeof SANDBOX !== 'undefined' && SANDBOX.editWorld) {
+        // §Phase A — reopen the editor from the IN-MEMORY snapshot captured at test-start
+        // (`this._data`), NOT a re-fetch of the saved file, so UNSAVED edits (World
+        // Settings, placed blocks/items) survive the test round-trip. Was `editWorld(wid)`
+        // which re-read the stale file and silently discarded everything not yet Saved.
         // editWorld is async — restore the pre-test hotbar once the editor reloads.
-        Promise.resolve(SANDBOX.editWorld(this._wid)).then(() => {
+        Promise.resolve(SANDBOX.editWorld(this._wid, this._data)).then(() => {
           this._restoreLoadout(window.game && window.game.player, loadout);
         }).catch(() => {});
       } else if (typeof SANDBOX !== 'undefined' && SANDBOX._returnToBrowser) {

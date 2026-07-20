@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 179 (Combat & Controls mega-session — Phase 7 (Combos): data-driven combo list (js/combos.js) with per-combo enable toggles — Rising Strike (fwd,fwd,up) + Sweep Slam (back,back,down). Landing chained hits cancels the between-swing cooldown (not invulnerable); the finisher knocks the target onto its back (reuses the slide-launch toss); a gold glow builds from the 2nd hit. Session complete: builds 173–179, suite 638, awaiting Kevin playtest.)';
+const GAME_VERSION = 'v3 · build 180 (Combat/Controls FOLLOW-UP — Phase A (Sandbox test round-trip): fixed unsaved World Settings (and any editor edit) being discarded when returning from Test. Root cause was NOT the Test launch (it already used the live draft) but the RETURN path re-fetching the saved file; now it reopens the editor from the in-memory snapshot. Nothing writes to disk unless Save is pressed.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

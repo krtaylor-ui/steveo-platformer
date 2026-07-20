@@ -1,6 +1,51 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# COMBAT/CONTROLS FOLLOW-UP (2026-07-20, build 180+, branch `combat-controls-mega`)
+# ═══════════════════════════════════════════════════════════════════════
+Bug-fix + polish follow-up to the mega-session, from Kevin's first playtest. Phases A→G.
+
+## Up-front investigation findings (Section 9), resolved from code before building
+- **Q0 / Phase A root cause — the suspicion was WRONG (documented, then fixed narrower).** Test does
+  NOT read the saved file: `TEST_WORLD.choose` serializes the LIVE editor (`GAME_STATE.serialize(
+  window.game)`) — the same object the World Settings panel mutates and the same source Save uses —
+  and passes it as `templateData`. So an unsaved edit IS carried INTO the test. The real bug is the
+  **return path**: on exit, `TEST_WORLD.exit` → `SANDBOX.editWorld(wid)` rebuilt the editor by
+  RE-FETCHING the persisted file (`LOCAL_WORLDS.get` / server), discarding every unsaved edit — so it
+  read as "reverted, must re-apply." Systemic across ALL editor edits, not just arrows. **Fix:** reopen
+  from the in-memory snapshot (`editWorld(wid, snapshotData)` new branch; exit passes `TEST_WORLD._data`).
+  Nothing writes to disk unless Save is pressed. `test/test-testworld.js` (11).
+- **Q1 / Phase B — ledge-grab trigger:** `player._tryLedgeGrab` fires path (a) on `!onGround &&
+  input.isJump() && vy > -3` near an exposed edge. Once aim-up repurposes Up→look-up (jump=J), Up stops
+  grabbing → fix is `isJump() || isAimUp()` (covers default, aim-up-on, and Legacy-Jump schemes).
+- **Q2 / Phase F item 2 — Trident dual-slot: PRE-EXISTING GAP confirmed.** Both hotbar renderers draw
+  slot 0 from `player.sword`, slot 1 from `player.bow` only. A Trident (no bow) shows slot 0 = trident,
+  slot 1 = empty-bow "craft" ghost — NOT mirrored. The throw already works slot-independently (keys off
+  `meleeClass`). So dual-slot is a pure display/selection change, applied to BOTH Trident + Boomerang.
+- **Q3 / Phase C scope — full controller rebind is FEASIBLE (not just read-only).** Gamepad state is
+  read by semantic field name (`gp.jump`, `'prevSlot'`…) with the physical index hardcoded in ONE
+  function (`updateGamepad`); a `GP_BINDINGS` layer only changes which index fills each named field →
+  zero downstream edits. Plan: read-only per-preset table first (doubles as the defaults table), then
+  full click→press-a-button rebind. No distinct Minecraft CONTROLLER layout (that preset is kb/mouse).
+- **DECISION (flagged): acquisition model.** Phase G is explicit that enabling the Grapple = "available
+  content" (placeable), NOT auto-granted — pickup required. For consistency the SAME now applies to the
+  Boomerang: `weaponGrapple`/`weaponBoomerang` gate AVAILABILITY (sandbox palette), they do NOT auto-grant
+  at spawn (the mega-session's auto-grant is removed). The explicit "Starting Melee = Boomerang" choice
+  stays as a separate intentional grant.
+
+## PHASE A — Sandbox test round-trip preserves unsaved edits (build 180) — DONE (headless-tested)
+- `SANDBOX.editWorld(worldId, snapshotData=null)`: new snapshot branch reopens the editor from the
+  in-memory `world_data` (metadata — name/published/dims/mode — from the already-open world, live grid +
+  worldAdvSettings + placeables from the snapshot layered on top) instead of re-reading the file.
+- `TEST_WORLD.exit` passes `this._data` (the test-start snapshot) → `editWorld(this._wid, this._data)`.
+- Result: change a setting → Test → exit without saving → the saved file is UNCHANGED but the editor
+  still shows the change; re-Test → still in effect; repeated tests keep it. Save remains the only
+  persist. Covers ALL worldAdvSettings + editor edits, not a subset. `test/test-testworld.js` verifies
+  the return path uses the snapshot (not a file re-fetch) + the merge contract.
+
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # COMBAT & CONTROLS MEGA-SESSION (2026-07-19, build 173+, branch `combat-controls-mega`)
 # ═══════════════════════════════════════════════════════════════════════
 Running log for the 7-phase Combat & Controls build. Phases land + checkpoint in order:
