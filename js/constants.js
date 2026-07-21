@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 194 (Combat/Controls FOLLOW-UP — new "Release Momentum" world setting amplifies the velocity you fly off a grapple swing with (default 2x, up to 4x) so you can fling across bigger gaps.)';
+const GAME_VERSION = 'v3 · build 195 (Combat/Controls FOLLOW-UP — grapple Release Momentum split into separate Horizontal (default 2x) and Vertical (default 3x, up to 5x) knobs, so a swing-off can pop you higher than it flings you sideways.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

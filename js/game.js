@@ -11100,10 +11100,13 @@ class Game {
     const p = this.player, g = p._grapple;
     if (g && g.swing && preserveVel) {
       const v = GRAPPLE.releaseVelocity(g.swing);
-      // §follow-up — Release Momentum: amplify the whole release vector so a swing can fling
-      // the player across bigger gaps (world setting; default 2x for a punchier feel).
-      const boost = this._worldAdvSettings.grappleReleaseBoost ?? 2.0;
-      v.vx *= boost; v.vy *= boost;
+      // §follow-up — Release Momentum: amplify the release vector so a swing can fling the
+      // player across gaps. Horizontal + vertical are SEPARATE knobs (vertical defaults higher
+      // for a bigger upward pop). NB: vy is negative when rising, so a bigger vertical boost
+      // launches you higher.
+      const boostH = this._worldAdvSettings.grappleReleaseBoostH ?? 2.0;
+      const boostV = this._worldAdvSettings.grappleReleaseBoostV ?? 3.0;
+      v.vx *= boostH; v.vy *= boostV;
       p.vx = v.vx; p.vy = v.vy;
       // §follow-up — carry the FULL swing velocity vector off the cable (Kevin: if you let go
       // while swinging UP you should keep rising, then arc down under gravity). Two things were
