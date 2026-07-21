@@ -109,6 +109,42 @@ const TEST_WORLD = {
     this._showControls(() => this._launch(mode, arenaGameMode), exit);
   },
 
+  // §Combo Trainer — launch the flat "test gym" from Sandbox (no templateData: the trainer
+  // builds its own flat world). Captures the editor snapshot/loadout so exit reopens cleanly.
+  comboTrainer() {
+    this.hide();
+    this._wid  = (typeof SANDBOX !== 'undefined') ? SANDBOX.selectedWorldId : null;
+    this._data = (typeof GAME_STATE !== 'undefined' && window.game) ? GAME_STATE.serialize(window.game) : null;
+    this._loadout = this._captureLoadout(window.game && window.game.player);
+    this._launchTrainer();
+  },
+  _launchTrainer() {
+    if (window.menu && typeof window.menu._stop === 'function') window.menu._stop();
+    if (window.game && typeof window.game.destroy === 'function') window.game.destroy();
+    const hud = document.getElementById('sandbox-editor-hud');
+    if (hud) hud.style.display = 'none';
+    let _exited = false;
+    const exit = () => {
+      if (_exited) return;
+      _exited = true;
+      this._hideControls();
+      if (window.game && typeof window.game.destroy === 'function') {
+        try { window.game.destroy(); } catch (e) { /* ignore */ }
+      }
+      window.game = null;
+      const loadout = this._loadout;
+      if (this._wid && typeof SANDBOX !== 'undefined' && SANDBOX.editWorld) {
+        Promise.resolve(SANDBOX.editWorld(this._wid, this._data)).then(() => {
+          this._restoreLoadout(window.game && window.game.player, loadout);
+        }).catch(() => {});
+      } else if (typeof SANDBOX !== 'undefined' && SANDBOX._returnToBrowser) {
+        SANDBOX._returnToBrowser();
+      }
+    };
+    window.game = new Game('normal', { comboTrainer: true, testMode: true }, exit);
+    this._showControls(() => this._launchTrainer(), exit);
+  },
+
   _showControls(onRestart, onExit) {
     const hud = document.getElementById('test-hud');
     if (!hud) return;

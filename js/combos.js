@@ -28,6 +28,37 @@ const COMBOS = {
   // Enabled combos for a world (each toggled independently).
   enabled(aws) { return this.DEFS.filter((d) => aws && aws[d.enableKey]); },
 
+  // ── Custom (player/designer-authored) combos — §Combo Creator ──────────────
+  // Stored in localStorage so authored combos persist and are testable in the Combo
+  // Trainer. Each: { id, name, seq:[dirs], effect } (effect is future-facing; the
+  // finisher currently reuses the slide-launch toss). The matcher is unchanged — it
+  // takes whatever `defs` list it's given, so custom combos "just work".
+  STORAGE_KEY: 'steveo_custom_combos',
+  customList: [],
+  _loaded: false,
+  loadCustom() {
+    if (this._loaded) return this.customList;
+    this._loaded = true;
+    try {
+      const raw = (typeof localStorage !== 'undefined') && localStorage.getItem(this.STORAGE_KEY);
+      if (raw) { const a = JSON.parse(raw); if (Array.isArray(a)) this.customList = a.filter((d) => d && Array.isArray(d.seq) && d.seq.length); }
+    } catch (e) { this.customList = []; }
+    return this.customList;
+  },
+  saveCustom() { try { if (typeof localStorage !== 'undefined') localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.customList)); } catch (e) {} },
+  addCustom(def) {
+    this.loadCustom();
+    const id = 'custom_' + (this.customList.reduce((m, d) => Math.max(m, +(String(d.id).replace(/\D/g, '')) || 0), 0) + 1);
+    const entry = { id, name: def.name || 'Custom Combo', seq: def.seq.slice(), effect: def.effect || 'launch', custom: true };
+    this.customList.push(entry); this.saveCustom();
+    return entry;
+  },
+  removeCustom(id) { this.loadCustom(); this.customList = this.customList.filter((d) => d.id !== id); this.saveCustom(); },
+
+  // Every combo available in the Combo Trainer: built-ins + custom (all playable there,
+  // regardless of per-world enable toggles).
+  trainerDefs() { this.loadCustom(); return [...this.DEFS, ...this.customList]; },
+
   // Classify a NEW landed hit `dir` given the running sequence `prevSeq` and the enabled
   // defs. Returns { seq, status, def }:
   //   'finish'   — this hit completes `def` (seq resets to []); fire the finisher.

@@ -106,6 +106,7 @@ const SANDBOX = {
     document.getElementById('sb-test-arena-btn')?.addEventListener('click', () => { if (typeof TEST_WORLD !== 'undefined') TEST_WORLD.choose('arena'); });
     // Universal Test World (Phase 3A.3)
     document.getElementById('sb-test-world-btn')?.addEventListener('click', () => { if (typeof TEST_WORLD !== 'undefined') TEST_WORLD.open(); });
+    document.getElementById('sb-combo-trainer-btn')?.addEventListener('click', () => { if (typeof TEST_WORLD !== 'undefined') TEST_WORLD.comboTrainer(); });
     document.getElementById('test-world-cancel-btn')?.addEventListener('click', () => { if (typeof TEST_WORLD !== 'undefined') TEST_WORLD.hide(); });
     document.querySelectorAll('.test-world-mode').forEach(btn =>
       btn.addEventListener('click', () => { if (typeof TEST_WORLD !== 'undefined') TEST_WORLD.choose(btn.dataset.mode); }));

@@ -27,7 +27,24 @@ going until the entire session is implemented (or a hard blocker is hit, which s
 questions were front-loaded). Resolve ambiguity with best judgment + document it, rather than
 blocking. (These sessions are designed to run unattended.)
 
-## CURRENT STATE (2026-07-21) — builds 196–200, on `main` (LOCAL, tested headless, NOT pushed — bundled per Kevin)
+## CURRENT STATE (2026-07-21) — build 201 COMBO TRAINER on `main` (LOCAL, headless-green, NOT pushed — awaiting Kevin's canvas-UI playtest)
+
+Builds 196–200 (controls + grapple) were **pushed to production** (commit `93d7288`, live on Railway). THEN build 201
+adds the **Combo Trainer** — a Sandbox-launched "test gym" for balancing/authoring combos (all additive, isolated
+behind a button; doesn't touch other modes). Headless suite green (test-combos 19, others unchanged). **Held local**
+because it's heavy ON-CANVAS UI that needs Kevin's browser eyes first; push on his OK.
+- **Launch:** `🥋 Combo Trainer` button on the Sandbox editor HUD → `TEST_WORLD.comboTrainer()` → `new Game('normal', {comboTrainer:true, testMode:true})`. Exit/Restart via the existing test-hud; reopens the editor.
+- **Flat world:** `buildComboTrainerWorld()` (js/world.js) — level ground, player left, mob right, headroom for panels.
+- **`js/combo-trainer.js` (new, `ComboTrainer` class):** on-canvas panels drawn in 800×500 screen space, clicks hit-tested against rebuilt rects (defensive; wrapped in try/catch at the draw site).
+  - RIGHT panel: mob picker (all 8 types, default **Zombie**), **Immortal** (restores HP after reading the damage delta → measures DPS without dying), **Passive/Fights-Back** (passive pins the dummy + disarms it), **Reset Mob**, HP bar.
+  - LEFT/top panel: combo picker (built-ins + custom), **step feedback** (sequence arrows light green as the running landed seq matches, flash gold on finish), **live input readout** (← → ↑ ↓ JMP ATK RNG SPR lamps), **Slow-Mo** (3× via sim-frame skip in `_loop`), **timing window** −/+, **Melee/Ranged weapon cycle**, **＋New Combo** creator.
+  - Bottom strip: **Hits / Finishers / Damage / DPS** (the balance metrics).
+  - Creator: build a directional sequence (Forward/Back/Up/Down buttons), Undo/Clear, Save → `COMBOS.addCustom` (localStorage `steveo_custom_combos`).
+- **Engine hooks:** `_grantAllWeapons` (sword/spear/axe/trident/boomerang + bow/crossbow + grapple/shield/arrows); combo block uses `COMBOS.trainerDefs()` (built-ins + custom) in the gym and calls `_comboTrainer.onComboHit`; the combo continue-window reads the gym's `timingMax`; `_loop` runs `tickUI()` every frame + gates the sim for Slow-Mo; `_render` draws the panel.
+- **`js/combos.js`:** added `loadCustom/saveCustom/addCustom/removeCustom/trainerDefs` (custom combos persisted; matcher unchanged).
+- **Deferred/next:** timing **min** gate is display-only (max is the live knob); "above the player" panel is currently a fixed top-left panel (didn't follow the player on screen); world-attached designer configs still deferred. Kevin explicitly OK'd iterating on the canvas UI.
+
+## CURRENT STATE (2026-07-21) — builds 196–200, PUSHED to production (commit 93d7288)
 
 Working directly on `main` (builds 173–195 already shipped + deployed). This batch is BUILT + headless-green
 (`node test/run.js`, all files pass; **test-gpbindings 27→49**, **test-grapple 18→23**) but intentionally

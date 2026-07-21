@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 200 (Controls polish — aim cursor now persists in single-player dual-input (keyboard+pad) too; trident/boomerang recall on the range button (RT); Grapple-Pull collectibles fly the gem back to you; SANDBOX TOOLS bindable section (undo/redo/copy/paste/pen±/palette) in the Sandbox profile; new per-mode "Directional Aim" option (aim ranged by movement, no cursor). Builds on the per-mode Control Profiles (199).)';
+const GAME_VERSION = 'v3 · build 201 (COMBO TRAINER — a "test gym" launched from Sandbox: flat ground, pick/immortal/passive/reset any mob, all weapons enabled, on-canvas combo picker + live input readout + step feedback, hits/finisher/damage/DPS metrics, slow-mo + timing window, and a Custom Combo creator (build a directional sequence, save, test). Builds on the controls work (196–200).)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

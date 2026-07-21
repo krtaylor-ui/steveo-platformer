@@ -199,6 +199,31 @@ function buildEmptySandboxWorld(width, height) {
   };
 }
 
+// §Combo Trainer — a flat "test gym": level ground across the width, generous headroom for
+// the on-canvas panels, player on the left third, mob spawns handled by the trainer module.
+function buildComboTrainerWorld(width = 42, height = 16) {
+  const grid = Array.from({ length: height }, () => new Array(width).fill(BLOCK.AIR));
+  const gr = height - 4;   // grass surface row (a few rows of ground below)
+  for (let c = 0; c < width; c++) {
+    grid[gr][c]     = BLOCK.GRASS;
+    grid[gr + 1][c] = BLOCK.DIRT;
+    grid[gr + 2][c] = BLOCK.DIRT;
+    grid[height - 1][c] = BLOCK.BEDROCK;
+  }
+  const spawnX = 6 * BLOCK_SIZE;
+  const spawnY = (gr - 3) * BLOCK_SIZE;   // drop onto the ground
+  return {
+    grid, width, height,
+    goalCol: width - 3, goalRow: gr - 1,
+    spawnX, spawnY,
+    redstoneComponents: [],
+    spawnPoints: [],
+    bedPositions: [],
+    portalData: { obsidianSlots: [], cavePortalInterior: [], caveExit: null, netherExit: null },
+    _comboTrainerGroundRow: gr,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────
 // Biome builders
 // ─────────────────────────────────────────────────────────────

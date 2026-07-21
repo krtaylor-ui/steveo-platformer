@@ -63,6 +63,8 @@ class Game {
     this.gameMode        = mode;          // 'normal' | 'sandbox' | 'platformer' | 'speedrunner'
     this._onReturnToMenu = onReturnToMenu;
     this._testMode       = !!(options && options.testMode); // Universal Test World — no persistence
+    this._isComboTrainer = !!(options && options.comboTrainer); // §Combo Trainer — flat test gym
+    this._comboTrainer   = null;                             // set after _buildLevel
     this._zoomOverride   = null; // Z-key manual zoom (sandbox/God): null = prescribed default
     this._zoomOverrideIdx = -1;  // -1 = default; 0..3 = 100/200/300/400%
     this._deathParts     = [];   // body-part scatter on death (all modes; Phase 3A.3)
@@ -286,6 +288,13 @@ class Game {
                           || (options.worldData && options.worldData.provenance) || null;
 
     this._buildLevel();
+
+    // §Combo Trainer — arm the test gym: give the player every weapon class + grapple/shield
+    // so any combo can be tried, then create the on-canvas trainer controller.
+    if (this._isComboTrainer && this.player) {
+      this._grantAllWeapons(this.player);
+      if (typeof ComboTrainer !== 'undefined') this._comboTrainer = new ComboTrainer(this);
+    }
 
     this.state         = 'playing'; // 'playing' | 'won' | 'dead' | 'paused' | 'confirmExit'
     this.totalGameTime = 0;         // persistent total play time (ms); managed by GAME_TIMER
@@ -645,7 +654,9 @@ class Game {
   }
 
   _buildLevel() {
-    const data = this.gameMode === 'arena'
+    const data = this._isComboTrainer
+      ? buildComboTrainerWorld()
+      : this.gameMode === 'arena'
       // Play a user-designed arena from its saved grid, else the built-in default map.
       ? (buildArenaWorldDataFromSave(this._arenaTemplateData) || buildArenaWorldData(this.arenaConfig?.mapName || 'DEATHMATCH_SMALL'))
       // New ARN sandbox world (no grid yet): open the editor on a starter arena
@@ -657,6 +668,7 @@ class Game {
           ? buildEmptySandboxWorld(this._sandboxDims.width, this._sandboxDims.height)
           : buildWorld();
     this.level           = new Level(data);
+    if (this._isComboTrainer) this._comboGroundRow = data._comboTrainerGroundRow || (data.height - 4);
     this.player          = new Player(data.spawnX, data.spawnY);
     this._p2SpawnX = data.spawnX + BLOCK_SIZE * 2;
     this._p2SpawnY = data.spawnY;
@@ -1335,7 +1347,14 @@ class Game {
     // guessed. Near-zero cost when frames are fast. Toggle verbose with window._perfLog.
     const _pnow = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : () => Date.now();
     this._prof = { mobs: 0, mobDraw: 0, redstone: 0, bot: 0 };
-    const _t0 = _pnow(); this._update(deltaMs);
+    // §Combo Trainer — its on-canvas panel handles clicks + input lamps every frame; Slow-Mo
+    // runs the SIM at 1/3 speed by skipping _update on 2 of every 3 frames (render still runs).
+    let _skipSim = false;
+    if (this._comboTrainer) {
+      this._comboTrainer.tickUI();
+      if (this._comboTrainer.slowmo) { this._comboSlowTick = (this._comboSlowTick || 0) + 1; _skipSim = (this._comboSlowTick % 3 !== 0); }
+    }
+    const _t0 = _pnow(); if (!_skipSim) this._update(deltaMs);
     const _t1 = _pnow(); this._render();
     const _t2 = _pnow();
     const upd = _t1 - _t0, ren = _t2 - _t1, tot = _t2 - _t0;
@@ -2188,6 +2207,7 @@ class Game {
       this._updateGrapple();                 // §Phase 5 — advance hook/swing; may own the frame
       this.player.update(this.input, this.level);
     }
+    if (this._comboTrainer) this._comboTrainer.update();   // §Combo Trainer — dummy upkeep + stats
     this._playMovementSfx(this.player);   // Smart Mobs §4 — footstep + landing SFX
     this._updateSlideAttack();            // Smart Mobs §2 — spear slide-attack
     // Smart Mobs §6 — pick up stuck/recalled projectiles the player walks over.
@@ -2467,7 +2487,9 @@ class Game {
         // §Phase 7 — combo precheck: if THIS hit would complete an enabled combo, mark the
         // swing as a finisher so playerAttack applies the knock-onto-back toss on a hit.
         if (typeof COMBOS !== 'undefined') {
-          _comboDefs = COMBOS.enabled(this._worldAdvSettings);
+          // In the Combo Trainer every combo (built-in + custom) is available; otherwise only
+          // the world's enabled ones.
+          _comboDefs = this._comboTrainer ? COMBOS.trainerDefs() : COMBOS.enabled(this._worldAdvSettings);
           if (_comboDefs.length) {
             _comboPre = COMBOS.advance(this.player._comboSeq || [], md, _comboDefs);
             if (_comboPre.status === 'finish') traits.finisher = true;
@@ -2494,9 +2516,11 @@ class Game {
         // in playerAttack; here we advance/reset the sequence, drive the glow + timer.
         if (_comboPre && _anyHit) {
           this.player._comboSeq = _comboPre.seq;
+          if (this._comboTrainer) this._comboTrainer.onComboHit(_comboPre);   // §Combo Trainer stats
           if (_comboPre.status === 'progress' || _comboPre.status === 'finish') {
             this.player.attackCooldown = 0;                 // cancel the cooldown → immediate next swing
-            this.player._comboTimer = 45;                   // window to continue the chain
+            // §Combo Trainer — the continue-window is the tunable timing knob in the gym.
+            this.player._comboTimer = this._comboTrainer ? this._comboTrainer.timingMax : 45;
           }
           if (_comboPre.seq.length >= 2 || _comboPre.status === 'finish') this.player._comboGlow = 24;
           if (_comboPre.status === 'finish') { this._playSound('sounds/attack-sword.mp3'); this._notify(_comboPre.def.name + '!', '#FFD24A', 70); }
@@ -6186,6 +6210,9 @@ class Game {
     if (this.gameMode !== 'speedrunner' && this._deathParts.length) this._drawDeathParts(ctx);
     ctx.restore(); // end world zoom (matches the unconditional save above)
     this._drawHUD(ctx, hoverRow, hoverCol);
+    // §Combo Trainer — the on-canvas test-gym panel over the HUD (guarded so a UI slip can't
+    // break the frame).
+    if (this._comboTrainer) { try { this._comboTrainer.draw(ctx); } catch (e) { /* ignore */ } }
     // Phase 16: Multiplayer HUD (player list + connection badge)
     if (window.multiplayerManager?.isConnected) window.multiplayerManager.drawHUD(ctx);
     // Phase 17-E: Remote mob rendering for online joiners
@@ -11088,6 +11115,21 @@ class Game {
     else                       { vx = p.facing || 1; }            // idle → face direction
     return { x: p.cx + vx * 1000, y: p.cy + vy * 1000 };
   }
+  // §Combo Trainer — grant one of every weapon CLASS (+ grapple/shield/arrows) so every
+  // combo and weapon can be tested. Reuses the normal owned-weapon arrays + _syncActiveWeapon.
+  _grantAllWeapons(p) {
+    if (!p) return;
+    p.meleeOwned  = ['DIAMOND_SWORD', 'DIAMOND_SPEAR', 'DIAMOND_AXE', 'TRIDENT', 'BOOMERANG'];
+    p.rangedOwned = ['BOW', 'CROSSBOW'];
+    p.sword = 'DIAMOND_SWORD'; p.meleeIndex = 0;
+    p.bow   = 'BOW';           p.rangedIndex = 0;
+    p.hasGrapple = true; p.hasShield = true; p.hasFlintSteel = true;
+    if (p.addBlock) for (let i = 0; i < 64; i++) p.addBlock(BLOCK.ARROW);
+    if (p._syncActiveWeapon) p._syncActiveWeapon('melee');
+  }
+  _cycleSelectedWeaponMelee()  { this._selectOrCycleSlot(0); }
+  _cycleSelectedWeaponRanged() { this._selectOrCycleSlot(1); }
+
   _cycleSelectedWeapon() {
     const p = this.player;
     let kind = p.selectedSlot === 0 ? 'melee' : p.selectedSlot === 1 ? 'ranged' : null;

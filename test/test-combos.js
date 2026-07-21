@@ -54,5 +54,22 @@ console.log('Disabled combos never fire:');
   ok(r.status === 'none', 'with the toggle off, the sequence never finishes');
 }
 
+console.log('§Combo Creator — custom combos + trainer defs:');
+{
+  COMBOS.customList = []; COMBOS._loaded = true;   // fresh (localStorage unavailable headless)
+  const nBuiltin = COMBOS.DEFS.length;
+  const c = COMBOS.addCustom({ name: 'Test Uppercut', seq: ['down', 'forward', 'up'] });
+  ok(c && c.id && c.custom === true, 'addCustom returns an entry with an id + custom flag');
+  ok(COMBOS.customList.length === 1, 'custom combo stored');
+  ok(COMBOS.trainerDefs().length === nBuiltin + 1, 'trainerDefs = built-ins + custom');
+  // The pure matcher works on a custom def just like a built-in.
+  const defs = COMBOS.trainerDefs();
+  const r = COMBOS.advance(COMBOS.advance(COMBOS.advance([], 'down', defs).seq, 'forward', defs).seq, 'up', defs);
+  ok(r.status === 'finish' && r.def && r.def.name === 'Test Uppercut', 'custom sequence finishes via advance()');
+  COMBOS.removeCustom(c.id);
+  ok(COMBOS.customList.length === 0, 'removeCustom drops it');
+  ok(COMBOS.trainerDefs().length === nBuiltin, 'trainerDefs back to built-ins only');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
