@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 201 (COMBO TRAINER — a "test gym" launched from Sandbox: flat ground, pick/immortal/passive/reset any mob, all weapons enabled, on-canvas combo picker + live input readout + step feedback, hits/finisher/damage/DPS metrics, slow-mo + timing window, and a Custom Combo creator (build a directional sequence, save, test). Builds on the controls work (196–200).)';
+const GAME_VERSION = 'v3 · build 202 (Combo model v2 — HOLD melee + key a direction sequence (Up/Down/Forward; no "back", no final attack); holding melee LOCKS facing; completing a combo fires a special with a custom weapon arc + success ring. Rising Strike (↓↑) launches the mob up; Sweep Slam (↑↓) knocks it onto its back. Trainer: progressive step lighting + finish flash, mouse-melee now registers on the input readout.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

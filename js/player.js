@@ -394,6 +394,7 @@ class Player {
     if (this.attackCooldown > 0) this.attackCooldown--;
     if (this.iframes        > 0) this.iframes--;
     if (this.swingTimer     > 0) this.swingTimer--;
+    if (this._comboAnim) { this._comboAnim.t++; if (this._comboAnim.t >= this._comboAnim.dur) this._comboAnim = null; }
     if (this._rollFrames    > 0) this._rollFrames--;
     if (this._hangCooldown  > 0) this._hangCooldown--;
 
@@ -1574,6 +1575,16 @@ class Player {
       return flipX ? (-0.4 + swing * 0.3) : (0.4 - swing * 0.3);
     };
 
+    // §Phase 7 v2 — combo special: a big weapon arc. Rising Strike sweeps LOW→HIGH (uppercut),
+    // Sweep Slam sweeps HIGH→LOW (overhead). Drawn as a sword/axe swipe regardless of class.
+    if (this._comboAnim && !rangedActive) {
+      const t2 = Math.min(1, this._comboAnim.t / this._comboAnim.dur);
+      const dir = flipX ? -1 : 1;
+      const a = this._comboAnim.kind === 'rising' ? dir * (1.5 - 3.0 * t2) : dir * (-1.5 + 3.0 * t2);
+      ctx.rotate(a);
+      if (cls === 'axe') this._drawAxeHead(ctx, metal); else this._drawSwordHead(ctx);
+      ctx.restore(); return;
+    }
     if (this._tridentOut && cls === 'trident' && !rangedActive) {
       ctx.restore(); return; // trident is thrown (recall mode) → empty hand until it returns
     } else if (this._mining) {

@@ -88,7 +88,8 @@ class ComboTrainer {
     const up = inp.isAimUp() || inp.isStickUp() || inp.isDown('KeyW') || inp.isDown('ArrowUp');
     const map = {
       jump: inp.isJump(), up, down: inp.isCrouch(), left: inp.isLeft(), right: inp.isRight(),
-      melee: inp.isMeleeAttack(), ranged: inp.isRangedAttackDown(), sprint: inp.isRun(),
+      // Melee also counts the LEFT-CLICK held state (keyboard/mouse players attack with the mouse).
+      melee: inp.isMeleeAttack() || inp.mouse.down, ranged: inp.isRangedAttackDown(), sprint: inp.isRun(),
     };
     for (const k in map) { if (map[k]) this._lamp[k] = 10; else if (this._lamp[k] > 0) this._lamp[k]--; }
   }
@@ -113,12 +114,9 @@ class ComboTrainer {
     if (this._finishFlash > 0) this._finishFlash--;
   }
 
-  // Combo events — game.js calls these from the directional-melee combo block.
-  onComboHit(pre) {
-    if (!pre) return;
-    this.stats.hits++;
-    if (pre.status === 'finish') { this.stats.finishers++; this.stats.combos++; this._finishFlash = 40; }
-  }
+  // Combo events — game.js calls these from the hold-melee combo state machine.
+  onComboStep(pre) { if (pre && (pre.status === 'progress' || pre.status === 'finish')) this.stats.hits++; }  // "hits" = directions keyed
+  onComboFire(def, hit) { this.stats.combos++; if (hit) this.stats.finishers++; this._finishFlash = 44; }
 
   // ── Creator ─────────────────────────────────────────────────
   startCreator() { this._creator = { seq: [], name: 'Combo ' + ((COMBOS.customList ? COMBOS.customList.length : 0) + 1) }; }
@@ -196,7 +194,7 @@ class ComboTrainer {
 
   _drawComboPanel(ctx) {
     const x = 8, y = 8, w = 380;
-    this._panel(ctx, x, y, w, 208, 'COMBO — pick, then chain directional melee hits');
+    this._panel(ctx, x, y, w, 208, 'COMBO — pick, then HOLD melee + key the directions');
     // Combo picker (rows)
     const defs = this._defs();
     let cy = y + 26;
@@ -218,7 +216,7 @@ class ComboTrainer {
       const gly = { forward: '→', back: '←', up: '↑', down: '↓', neutral: '·' };
       for (let i = 0; i < seq.length; i++) {
         const sx = x + 8 + i * 34, sy = cy + 16;
-        const done = i < prog;
+        const done = this._finishFlash > 0 ? true : (i < prog);   // stay lit through the finish flash
         ctx.fillStyle = this._finishFlash > 0 ? '#ffd24a' : (done ? 'rgba(124,220,140,0.95)' : 'rgba(42,47,66,0.95)');
         ctx.strokeStyle = done ? '#cdffcf' : '#3a4055';
         ctx.fillRect(sx, sy, 28, 28); ctx.strokeRect(sx + 0.5, sy + 0.5, 28, 28);
@@ -274,9 +272,9 @@ class ComboTrainer {
     const s = this.stats, secs = Math.max(0.001, s.frames / 60);
     const dps = (s.damage / secs).toFixed(1);
     ctx.fillStyle = '#d5d9e6'; ctx.font = 'bold 12px system-ui, sans-serif';
-    ctx.fillText(`Hits ${s.hits}    Finishers ${s.finishers}    Damage ${Math.round(s.damage)}    DPS ${dps}`, x + 10, y + 8);
+    ctx.fillText(`Steps ${s.hits}    Combos ${s.combos}    Landed ${s.finishers}    Damage ${Math.round(s.damage)}    DPS ${dps}`, x + 10, y + 8);
     ctx.fillStyle = '#8a90a6'; ctx.font = '10px system-ui, sans-serif';
-    ctx.fillText('Combo = land directional melee hits in sequence (e.g. → → ↑). Green steps = matched. Reset Mob clears the run.', x + 10, y + 24);
+    ctx.fillText('HOLD melee (facing locks), then key the direction sequence (e.g. ↓ ↑). Green steps = matched; the special fires automatically.', x + 10, y + 24);
   }
 
   _drawCreator(ctx) {

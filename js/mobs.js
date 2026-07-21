@@ -2668,6 +2668,12 @@ class MobManager {
           m.vy = -11; m.vx = (c.dir || 1) * 7; m.knockbackTimer = 44;
           m._launched = true; m._launchFrames = 40; m._launchSpin = (c.dir || 1) * 0.28; m._spinAngle = 0;
         }
+        // §Phase 7 v2 — Rising Strike LAUNCHES the target up (little horizontal), like the slide attack.
+        if (t.launchUp && c.mob.alive) {
+          const m = c.mob;
+          m.vy = -14; m.vx = (c.dir || 1) * 2; m.knockbackTimer = 46;
+          m._launched = true; m._launchFrames = 44; m._launchSpin = (c.dir || 1) * 0.2; m._spinAngle = 0;
+        }
         // Arena kill attribution for melee blows (arrows credited in update()).
         if (!c.mob.alive) this.onKill?.(owner, c.mob);
       }

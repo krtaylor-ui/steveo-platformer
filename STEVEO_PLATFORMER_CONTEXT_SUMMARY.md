@@ -27,7 +27,25 @@ going until the entire session is implemented (or a hard blocker is hit, which s
 questions were front-loaded). Resolve ambiguity with best judgment + document it, rather than
 blocking. (These sessions are designed to run unattended.)
 
-## CURRENT STATE (2026-07-21) — build 201 COMBO TRAINER on `main` (LOCAL, headless-green, NOT pushed — awaiting Kevin's canvas-UI playtest)
+## CURRENT STATE (2026-07-21) — builds 201–202 COMBO TRAINER + combo model v2 on `main` (LOCAL, headless-green, NOT pushed — awaiting Kevin's playtest)
+
+**Build 202 — combo model REDESIGN (Kevin's playtest of 201):** the combo input changed from "land N
+directional melee HITS" to **HOLD melee + key a direction SEQUENCE** (Up/Down/Forward — **no "back"** in this game,
+**no trailing attack press**). Holding melee **locks facing** (so Up/Down are free to press). Completing a combo fires
+a **special** with a custom weapon arc + a success ring at the player.
+- `combos.js` DEFS re-authored: **Rising Strike = ↓↑** (`effect:'rising'` → launches the mob UP, new `launchUp` trait
+  in `mobs.playerAttack`), **Sweep Slam = ↑↓** (`effect:'sweep'` → the existing finisher back-toss). test-combos 17.
+- `game.js`: removed the old hit-based advance; added `_updateComboInput(meleeHeld)` (hold state machine, one step per
+  distinct press, window = `timingMax`), `_comboDir()` (facing-relative, no back), `_fireComboSpecial(def)` (2× dmg,
+  hit-all, launch/slam + `_comboAnim` + `_comboFx` ring + notify), `_meleeHeld` (mouse.down or melee button), facing
+  lock re-applied after `player.update`, `_drawComboFx` ring. Combos still gated by world enable toggles (trainerDefs in the gym).
+- `player.js`: `_drawWeapon` draws the combo arc (`_comboAnim.kind` rising low→high / sweep high→low), advanced in `update`.
+- Trainer: step tiles stay lit through the finish flash; **melee lamp now includes left-click** (`mouse.down`) so
+  keyboard/mouse melee registers; stats relabelled Steps/Combos/Landed/Damage/DPS.
+- **To verify:** the arc feel + the launch/slam knockback, facing-lock feel, and that holding left-click to combo
+  doesn't fight normal play (only active when combos are enabled).
+
+## CURRENT STATE (2026-07-21) — build 201 COMBO TRAINER on `main` (LOCAL — superseded by 202 above)
 
 Builds 196–200 (controls + grapple) were **pushed to production** (commit `93d7288`, live on Railway). THEN build 201
 adds the **Combo Trainer** — a Sandbox-launched "test gym" for balancing/authoring combos (all additive, isolated

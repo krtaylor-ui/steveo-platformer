@@ -19,10 +19,13 @@ function _arrEq(a, b) { return a.length === b.length && a.every((v, i) => v === 
 function _isPrefix(seq, full) { return seq.length <= full.length && seq.every((v, i) => v === full[i]); }
 
 const COMBOS = {
-  // The two built-in combos for this session (both finishers reuse the slide-launch toss).
+  // Built-in combos. §Phase 7 v2 — the input model is HOLD-melee + a short DIRECTION sequence
+  // (Up / Down / Forward — no "back", no trailing attack press). Completing the sequence fires a
+  // special: Rising Strike LAUNCHES the mob up (low→high uppercut); Sweep Slam knocks it onto its
+  // BACK (high→low overhead). `effect` selects the launch vs. slam behaviour + animation.
   DEFS: [
-    { id: 'risingStrike', name: 'Rising Strike', seq: ['forward', 'forward', 'up'],  enableKey: 'comboRisingStrike' },
-    { id: 'sweepSlam',    name: 'Sweep Slam',    seq: ['back', 'back', 'down'],       enableKey: 'comboSweepSlam' },
+    { id: 'risingStrike', name: 'Rising Strike', seq: ['down', 'up'], effect: 'rising', enableKey: 'comboRisingStrike' },
+    { id: 'sweepSlam',    name: 'Sweep Slam',    seq: ['up', 'down'], effect: 'sweep',  enableKey: 'comboSweepSlam' },
   ],
 
   // Enabled combos for a world (each toggled independently).

@@ -2208,6 +2208,8 @@ class Game {
       this.player.update(this.input, this.level);
     }
     if (this._comboTrainer) this._comboTrainer.update();   // §Combo Trainer — dummy upkeep + stats
+    // §Phase 7 v2 — facing lock while holding melee for a combo (set in _updateComboInput).
+    if (this.player && this.player._comboFacingLock && this.player._comboLockFacing) this.player.facing = this.player._comboLockFacing;
     this._playMovementSfx(this.player);   // Smart Mobs §4 — footstep + landing SFX
     this._updateSlideAttack();            // Smart Mobs §2 — spear slide-attack
     // Smart Mobs §6 — pick up stuck/recalled projectiles the player walks over.
@@ -2405,6 +2407,9 @@ class Game {
     // _update, so referencing it here would hit the const temporal-dead-zone and crash.
     const meleeNow    = this.input.isMeleeAttack() ||
                         (this.gameMode !== 'sandbox' && this.input.mouse.clicked && !p1OverMineable && (_mcMouse || !_p1Shift));
+    // Melee HELD (not just the click edge) — drives the hold-to-combo state machine + facing lock.
+    const _meleeHeld  = this.input.isMeleeAttack() ||
+                        (this.gameMode !== 'sandbox' && this.input.mouse.down && !p1OverMineable && (_mcMouse || !_p1Shift));
 
     // A Trident equipped as the melee weapon THROWS on right-click (its ranged
     // action) — but ONLY when its Throwable trait is on (World Settings → Combat →
@@ -2462,8 +2467,9 @@ class Game {
 
     // §Phase 7 — combo window upkeep (every frame): lapse the chain + fade the glow.
     if (this.player) {
-      if (this.player._comboTimer > 0 && --this.player._comboTimer <= 0) this.player._comboSeq = [];
+      if (this.player._comboTimer > 0 && --this.player._comboTimer <= 0) { this.player._comboSeq = []; this.player._comboLastDir = null; }
       if (this.player._comboGlow > 0) this.player._comboGlow--;
+      if (this._comboFx && ++this._comboFx.t >= this._comboFx.dur) this._comboFx = null;
     }
 
     // ── Melee (sword / spear / axe / trident thrust) — checked FIRST ──
@@ -2473,10 +2479,8 @@ class Game {
       // the hit-cone + damage/knockback. Forward = less knockback, more damage; Back =
       // more knockback, less damage; Up/Down aim the swing vertically (with the crouch/
       // short height interaction handled in playerAttack). One master toggle covers all.
-      let _comboMd = 'neutral', _comboPre = null, _comboDefs = null;
       if (this._worldAdvSettings.advancedAttacks) {
         const md = this._meleeDirection(this.player);
-        _comboMd = md;
         traits.dir = md;
         // Distinct damage/knockback + a small reach tweak per direction (the "distinct
         // ranges" ask; distinct per-weapon-class ANIMATIONS are the flagged art follow-up).
@@ -2484,17 +2488,6 @@ class Game {
         else if (md === 'back') { traits.dmgMult = (traits.dmgMult || 1) * 0.7; traits.knockback = (traits.knockback == null ? 1 : traits.knockback) * 1.7; }
         else if (md === 'up' || md === 'down') { traits.reachMult = (traits.reachMult || 1) * 0.92; }
         this.player._attackDir = md;   // set for a future per-direction swing animation (playtest art)
-        // §Phase 7 — combo precheck: if THIS hit would complete an enabled combo, mark the
-        // swing as a finisher so playerAttack applies the knock-onto-back toss on a hit.
-        if (typeof COMBOS !== 'undefined') {
-          // In the Combo Trainer every combo (built-in + custom) is available; otherwise only
-          // the world's enabled ones.
-          _comboDefs = this._comboTrainer ? COMBOS.trainerDefs() : COMBOS.enabled(this._worldAdvSettings);
-          if (_comboDefs.length) {
-            _comboPre = COMBOS.advance(this.player._comboSeq || [], md, _comboDefs);
-            if (_comboPre.status === 'finish') traits.finisher = true;
-          }
-        }
       } else { this.player._attackDir = null; }
       if (meleeNow && this.player.attackCooldown === 0 && !this.player.bowDrawing && !_tridentIsOut && !_boomIsOut) {
         const _anyHit = this.mobManager.playerAttack(this.player, 'p1', traits);
@@ -2510,23 +2503,13 @@ class Game {
         this.player.swingTimer     = 15;
         this._playSound('sounds/attack-sword.mp3');
         this._emitActionNoise(this.player);   // §4c — attacking alerts nearby mobs
-        // §Phase 7 — combo bookkeeping (only when a directional hit LANDS; any valid target
-        // keeps it alive — Q4). A landed in-sequence hit REMOVES the between-swing cooldown
-        // (chain faster; the player is NOT invulnerable). The finisher toss already fired
-        // in playerAttack; here we advance/reset the sequence, drive the glow + timer.
-        if (_comboPre && _anyHit) {
-          this.player._comboSeq = _comboPre.seq;
-          if (this._comboTrainer) this._comboTrainer.onComboHit(_comboPre);   // §Combo Trainer stats
-          if (_comboPre.status === 'progress' || _comboPre.status === 'finish') {
-            this.player.attackCooldown = 0;                 // cancel the cooldown → immediate next swing
-            // §Combo Trainer — the continue-window is the tunable timing knob in the gym.
-            this.player._comboTimer = this._comboTrainer ? this._comboTrainer.timingMax : 45;
-          }
-          if (_comboPre.seq.length >= 2 || _comboPre.status === 'finish') this.player._comboGlow = 24;
-          if (_comboPre.status === 'finish') { this._playSound('sounds/attack-sword.mp3'); this._notify(_comboPre.def.name + '!', '#FFD24A', 70); }
-        }
       }
     }
+
+    // ── §Phase 7 v2 — Combos: HOLD melee + key a direction sequence (Up / Down / Forward;
+    //    no "back", no final attack press). Completing a combo fires a special move with a
+    //    custom animation. Holding melee LOCKS facing so you can input up/down freely.
+    this._updateComboInput(_meleeHeld);
 
     // ── Ranged: Trident throw (if equipped) else bow/crossbow — right-click,
     //    hold to charge, release to fire. Skipped the frame melee fires. ──
@@ -6209,6 +6192,7 @@ class Game {
     // Death body-part scatter (world-space, scales with zoom). SR draws its own.
     if (this.gameMode !== 'speedrunner' && this._deathParts.length) this._drawDeathParts(ctx);
     ctx.restore(); // end world zoom (matches the unconditional save above)
+    this._drawComboFx(ctx);   // §Phase 7 v2 — combo success ring at the player (world→screen)
     this._drawHUD(ctx, hoverRow, hoverCol);
     // §Combo Trainer — the on-canvas test-gym panel over the HUD (guarded so a UI slip can't
     // break the frame).
@@ -11187,6 +11171,72 @@ class Game {
     const mv = inp.moveX();
     if (Math.abs(mv) > 0.2) return (Math.sign(mv) === Math.sign(player.facing || 1)) ? 'forward' : 'back';
     return 'neutral';
+  }
+
+  // §Phase 7 v2 — combo success ring (expanding, at the player). Gold = launch, orange = slam.
+  _drawComboFx(ctx) {
+    const fx = this._comboFx; if (!fx || !this.camera) return;
+    const s = this.camera.toScreen(fx.x, fx.y);
+    const prog = fx.t / fx.dur, r = 12 + prog * 42;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - prog) * (fx.hit ? 1 : 0.5);
+    ctx.strokeStyle = fx.kind === 'sweep' ? '#ff9a4a' : '#ffe066';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(s.x, s.y - 22, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+
+  // §Phase 7 v2 — Combo INPUT: while the melee button is HELD, key a direction sequence
+  // (Up / Down / Forward — no "back", no final attack press). Completing a combo fires a
+  // special (see _fireComboSpecial). Holding melee locks facing so up/down are free to press.
+  _updateComboInput(meleeHeld) {
+    const p = this.player;
+    if (!p || this._p1RespawnTimer !== 0) { if (p) p._comboFacingLock = false; return; }
+    const defs = this._comboTrainer ? COMBOS.trainerDefs()
+               : (typeof COMBOS !== 'undefined' ? COMBOS.enabled(this._worldAdvSettings) : []);
+    if (!defs.length) { p._comboFacingLock = false; return; }
+    if (!meleeHeld) { p._comboFacingLock = false; p._comboSeq = []; p._comboLastDir = null; return; }
+    if (!p._comboFacingLock) { p._comboFacingLock = true; p._comboLockFacing = p.facing || 1; p._comboSeq = []; p._comboLastDir = null; }
+    const dir = this._comboDir();
+    if (dir === 'neutral') { p._comboLastDir = null; return; }
+    if (dir === p._comboLastDir) return;             // one step per distinct press
+    p._comboLastDir = dir;
+    const pre = COMBOS.advance(p._comboSeq || [], dir, defs);
+    p._comboSeq = pre.seq;
+    p._comboTimer = this._comboTrainer ? this._comboTrainer.timingMax : 45;   // window to key the next step
+    if (pre.status === 'progress' || pre.status === 'finish') p._comboGlow = 24;
+    if (this._comboTrainer) this._comboTrainer.onComboStep(pre);
+    if (pre.status === 'finish') { this._fireComboSpecial(pre.def); p._comboSeq = []; p._comboLastDir = null; }
+  }
+  // Facing-relative combo direction, no "back" (moving away = neutral, ignored).
+  _comboDir() {
+    const inp = this.input, p = this.player;
+    if (inp.isCrouch()) return 'down';
+    const up = inp.isAimUp() || inp.isStickUp() || (!inp._aimUpEnabled && (inp.isDown('KeyW') || inp.isDown('ArrowUp')));
+    if (up) return 'up';
+    const mv = inp.moveX();
+    if (Math.abs(mv) > 0.25 && Math.sign(mv) === Math.sign(p._comboLockFacing || p.facing || 1)) return 'forward';
+    return 'neutral';
+  }
+  // Fire a completed combo: a bigger hit-all melee blow with a custom animation. Rising Strike
+  // LAUNCHES mobs up (like the slide attack); Sweep Slam knocks them onto their BACK (finisher toss).
+  _fireComboSpecial(def) {
+    const p = this.player;
+    const traits = this._meleeTraits(p);
+    traits.dmgMult   = (traits.dmgMult || 1) * 2.0;
+    traits.cleave    = 0;                            // hit everything in reach
+    traits.reachMult = (traits.reachMult || 1) * 1.5;
+    const kind = (def.effect === 'sweep' || def.id === 'sweepSlam') ? 'sweep' : 'rising';
+    if (kind === 'sweep') traits.finisher = true; else traits.launchUp = true;
+    const hit = this.mobManager.playerAttack(p, 'p1', traits);
+    p.activeHand = 'melee';
+    p.swingTimer = 20;
+    p._comboAnim = { kind, t: 0, dur: 22 };          // custom weapon-arc (player.js _drawWeapon)
+    p._comboGlow = 30;
+    this._playSound('sounds/attack-sword.mp3');
+    this._comboFx = { x: p.cx, y: p.cy, t: 0, dur: 20, kind, hit: !!hit };   // success indicator
+    this._notify((hit ? 'COMBO! ' : '') + def.name + '!', hit ? '#FFD24A' : '#c9cf66', 80);
+    if (this._comboTrainer) this._comboTrainer.onComboFire(def, !!hit);
   }
 
   // §Phase 4 — generic charge/flight resolver for a fired arrow. Centralizes the

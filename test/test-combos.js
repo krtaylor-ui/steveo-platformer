@@ -13,37 +13,30 @@ console.log('Per-combo enabling (independent toggles):');
   ok(COMBOS.enabled({ comboRisingStrike: true, comboSweepSlam: true }).length === 2, 'both toggles → both');
 }
 
-console.log('Rising Strike (forward, forward, up → finisher):');
+console.log('Rising Strike (down, up → special):');
 {
   const defs = COMBOS.enabled({ comboRisingStrike: true });
-  let seq = [];
-  let r = COMBOS.advance(seq, 'forward', defs); ok(r.status === 'progress', '1st forward = progress'); seq = r.seq;
-  r = COMBOS.advance(seq, 'forward', defs); ok(r.status === 'progress', '2nd forward = progress'); seq = r.seq;
-  ok(seq.length === 2, 'sequence tracks two hits (glow starts here)');
-  r = COMBOS.advance(seq, 'up', defs); ok(r.status === 'finish' && r.def.id === 'risingStrike', '3rd (up) = FINISH'); seq = r.seq;
-  ok(seq.length === 0, 'sequence resets after the finisher');
+  let r = COMBOS.advance([], 'down', defs); ok(r.status === 'progress', 'down = progress');
+  r = COMBOS.advance(r.seq, 'up', defs); ok(r.status === 'finish' && r.def.id === 'risingStrike', 'down,up = FINISH');
+  ok(r.seq.length === 0, 'sequence resets after the special');
 }
 
-console.log('Sweep Slam (back, back, down → finisher):');
+console.log('Sweep Slam (up, down → special):');
 {
   const defs = COMBOS.enabled({ comboSweepSlam: true });
-  let seq = [];
-  seq = COMBOS.advance(seq, 'back', defs).seq;
-  seq = COMBOS.advance(seq, 'back', defs).seq;
-  const r = COMBOS.advance(seq, 'down', defs);
-  ok(r.status === 'finish' && r.def.id === 'sweepSlam', 'back,back,down finishes Sweep Slam');
+  let r = COMBOS.advance([], 'up', defs);
+  r = COMBOS.advance(r.seq, 'down', defs);
+  ok(r.status === 'finish' && r.def.id === 'sweepSlam', 'up,down finishes Sweep Slam');
 }
 
-console.log('Broken chains + restarts:');
+console.log('Broken chains + restarts (no "back" in this game):');
 {
   const defs = COMBOS.enabled({ comboRisingStrike: true, comboSweepSlam: true });
-  // forward, forward, then BACK: breaks Rising Strike but starts Sweep Slam.
-  let seq = COMBOS.advance([], 'forward', defs).seq;
-  seq = COMBOS.advance(seq, 'forward', defs).seq;
-  const r = COMBOS.advance(seq, 'back', defs);
-  ok(r.status === 'progress' && r.seq.length === 1 && r.seq[0] === 'back', 'a breaking hit restarts as the new combo\'s first step');
-  // a neutral hit that starts nothing → none, seq empty.
-  const n = COMBOS.advance(['forward'], 'neutral', defs);
+  // down, down: the 2nd down isn't Rising's 2nd step (up), but it re-starts a combo's first step.
+  let r = COMBOS.advance([], 'down', defs);
+  r = COMBOS.advance(r.seq, 'down', defs);
+  ok(r.status === 'progress' && r.seq.length === 1 && r.seq[0] === 'down', 'a breaking press restarts as a new first step');
+  const n = COMBOS.advance(['down'], 'neutral', defs);
   ok(n.status === 'none' && n.seq.length === 0, 'a non-combo direction clears the sequence');
 }
 
