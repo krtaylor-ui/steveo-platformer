@@ -33,6 +33,19 @@ Bug-fix + polish follow-up to the mega-session, from Kevin's first playtest. Pha
   at spawn (the mega-session's auto-grant is removed). The explicit "Starting Melee = Boomerang" choice
   stays as a separate intentional grant.
 
+## SANDBOX ghost-P2 + grapple full-vector momentum (build 193) — Kevin's 5th pass
+- **Ghost P2 in Sandbox — cleared for good:** the source was `_syncTwoPlayerAfterLoad` applying the
+  world's stored `twoPlayerMode` (an old save had it true; the build-192 companion gate stopped the BOT
+  but not the P2 OBJECT). Now that function FORCES single-player in sandbox — `twoPlayerMode=false`,
+  `companionBot='off'`, `_applyTwoPlayerMode(false)` (removes any P2) — so no ghost P2, no shared camera,
+  for ANY world (no file edit needed). Re-saving the sandbox world scrubs the stale flags permanently.
+- **Grapple release preserves the FULL velocity vector:** the build-192 launch window still failed
+  because `onGround` was stale-TRUE (the swing skips physics via `_grappleOwn`, so onGround never
+  updated), which (a) made the launch window cancel itself and (b) meant gravity didn't run on vy. Fix:
+  `_endGrapple(true)` sets `p.onGround = false` on release. Now vx carries via the launch window and vy
+  rides normal gravity — so letting go mid-swing keeps you moving in the swing direction, including
+  UPWARD if you release while rising, then arcing down (Kevin's "keep the current-speed vector"). Suite 689.
+
 ## CLEANUP + fixes (build 192) — Kevin's 4th pass (now working directly on `main`)
 - **Dual-slot (Trident/Boomerang) finally shows:** the ranged slot now mirrors the dual-mode melee
   weapon WHENEVER one is equipped (was gated on `!p.bow`) — its throw takes the ranged action over any

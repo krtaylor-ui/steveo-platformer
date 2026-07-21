@@ -4666,6 +4666,15 @@ class Game {
   // ── Phase 12: 2-Player Co-op helpers ──────────────────────
 
   _syncTwoPlayerAfterLoad() {
+    // §follow-up — the Sandbox is a single-player EDITOR: never spawn P2 there, even if an
+    // old save carries a stale twoPlayerMode / companionBot. Forcing it off here (and the
+    // companion spawn already skips sandbox) clears the ghost P2 for good, no file edit needed.
+    if (this.gameMode === 'sandbox') {
+      this._worldAdvSettings.twoPlayerMode = false;
+      this._worldAdvSettings.companionBot  = 'off';
+      this._applyTwoPlayerMode(false, true);
+      return;
+    }
     // If user chose 2P explicitly at launch, override what the save had
     if (this._launchTwoPlayerMode !== undefined) {
       this._worldAdvSettings.twoPlayerMode = this._launchTwoPlayerMode;
@@ -11092,10 +11101,13 @@ class Game {
     if (g && g.swing && preserveVel) {
       const v = GRAPPLE.releaseVelocity(g.swing);
       p.vx = v.vx; p.vy = v.vy;
-      // §follow-up — carry the swing momentum. _handleInput otherwise recomputes vx from
-      // input every frame (and applies friction when idle), which wiped the release velocity
-      // → a straight drop. A launch window preserves the horizontal velocity (with light air
-      // steering) so the player flies off in the swing direction, then gravity (vy) arcs down.
+      // §follow-up — carry the FULL swing velocity vector off the cable (Kevin: if you let go
+      // while swinging UP you should keep rising, then arc down under gravity). Two things were
+      // wiping it: (1) _handleInput recomputes vx from input each frame (friction when idle);
+      // (2) `onGround` is stale-TRUE from launch because the swing skips physics, so the launch
+      // window cancelled itself + gravity didn't run on vy. Fix: mark airborne, and preserve vx
+      // via the launch window while vy rides normal gravity.
+      p.onGround = false;
       p._launchVx = v.vx; p._launchFrames = 45;
     } else if (!preserveVel) { p.vx = 0; p.vy = 0; }
     p._grapple = null; p._grappleOwn = false;

@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 192 (Combat/Controls FOLLOW-UP — cleanup: Trident/Boomerang now mirror into the ranged slot whenever equipped as melee (their throw takes the ranged action); grapple-release momentum now actually carries (launch window preserves horizontal velocity vs the input-driven vx); companion bot no longer spawns in Sandbox; World Settings trimmed (Compact Hotbar + P1/P2 skins → pause Settings; 2-Player Co-op removed; Boss Scaling → Multiplayer Boss Scaling).)';
+const GAME_VERSION = 'v3 · build 193 (Combat/Controls FOLLOW-UP — Sandbox is now forced single-player on load (clears the ghost P2 from an old save with a stale twoPlayerMode/companionBot — re-saving scrubs it for good); and the grapple release now preserves the FULL velocity vector — letting go while swinging up keeps you rising, then gravity arcs you down (the launch window was cancelling itself on a stale onGround from the swing).)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
