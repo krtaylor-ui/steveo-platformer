@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 195 (Combat/Controls FOLLOW-UP — grapple Release Momentum split into separate Horizontal (default 2x) and Vertical (default 3x, up to 5x) knobs, so a swing-off can pop you higher than it flings you sideways.)';
+const GAME_VERSION = 'v3 · build 200 (Controls polish — aim cursor now persists in single-player dual-input (keyboard+pad) too; trident/boomerang recall on the range button (RT); Grapple-Pull collectibles fly the gem back to you; SANDBOX TOOLS bindable section (undo/redo/copy/paste/pen±/palette) in the Sandbox profile; new per-mode "Directional Aim" option (aim ranged by movement, no cursor). Builds on the per-mode Control Profiles (199).)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

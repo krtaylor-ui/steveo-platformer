@@ -87,5 +87,42 @@ console.log('Invariant 5 — cast attaches on a hit, retracts on a miss:');
   ok(up.attached === true, 'a straight-up cast attaches to a ceiling');
 }
 
+// 6 ── Swing Assist adds angular energy (§follow-up). 'lean' pushes toward the held
+//      dir; 'pump' only boosts WITH the motion and scaled by cos(θ); 'none'/0 = no-op.
+console.log('Invariant 6 — swing assist (lean/pump):');
+{
+  // lean adds toward the held direction regardless of current motion sign.
+  const s1 = GRAPPLE.beginSwing(300, 100, 340, 260, 20, 52, 0, 0);   // theta>0 (right of anchor), angVel≈0
+  const before = s1.angVel;
+  GRAPPLE.accelerate(s1, 1, 'lean');
+  ok(s1.angVel > before, `lean right increases angVel (${before.toFixed(4)} → ${s1.angVel.toFixed(4)})`);
+  const s1b = GRAPPLE.beginSwing(300, 100, 340, 260, 20, 52, 0, 0);
+  GRAPPLE.accelerate(s1b, -1, 'lean');
+  ok(s1b.angVel < 0, 'lean left drives angVel negative');
+
+  // pump boosts only WHEN pressing with the current motion.
+  const sWith = GRAPPLE.beginSwing(300, 100, 340, 260, 20, 52, 8, 0);  // moving right (angVel>0)
+  const wBefore = sWith.angVel;
+  GRAPPLE.accelerate(sWith, 1, 'pump');
+  ok(sWith.angVel > wBefore, 'pump WITH the motion adds energy');
+  const sAgainst = GRAPPLE.beginSwing(300, 100, 340, 260, 20, 52, 8, 0); // moving right
+  const aBefore = sAgainst.angVel;
+  GRAPPLE.accelerate(sAgainst, -1, 'pump');
+  ok(sAgainst.angVel === aBefore, 'pump AGAINST the motion is a no-op (must time it right)');
+
+  // no-ops: dir 0, or an unknown mode.
+  const s0 = GRAPPLE.beginSwing(300, 100, 340, 260, 20, 52, 8, 0);
+  const z = s0.angVel;
+  GRAPPLE.accelerate(s0, 0, 'lean');
+  ok(s0.angVel === z, 'dir 0 → no change');
+  GRAPPLE.accelerate(s0, 1, 'none');
+  ok(s0.angVel === z, "mode 'none' → no change");
+
+  // never exceeds the cap.
+  const sCap = GRAPPLE.beginSwing(300, 100, 340, 260, 20, 52, 0, 0);
+  for (let i = 0; i < 500; i++) GRAPPLE.accelerate(sCap, 1, 'lean');
+  ok(sCap.angVel <= GRAPPLE.MAX_ANGVEL + 1e-9, `lean stays clamped to MAX_ANGVEL (${sCap.angVel.toFixed(4)})`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

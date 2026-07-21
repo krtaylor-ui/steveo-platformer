@@ -27,6 +27,82 @@ going until the entire session is implemented (or a hard blocker is hit, which s
 questions were front-loaded). Resolve ambiguity with best judgment + document it, rather than
 blocking. (These sessions are designed to run unattended.)
 
+## CURRENT STATE (2026-07-21) — builds 196–200, on `main` (LOCAL, tested headless, NOT pushed — bundled per Kevin)
+
+Working directly on `main` (builds 173–195 already shipped + deployed). This batch is BUILT + headless-green
+(`node test/run.js`, all files pass; **test-gpbindings 27→49**, **test-grapple 18→23**) but intentionally
+**held local** (Kevin: bundle with the controller pass, push together after his playtest; a live tester is on 195).
+
+**Build 196 — Grapple pass 1 (all additive):**
+- Grapple settings **moved Combat → Movement tab** (group renamed `Grappling Hook`).
+- **Swing Assist** world setting `grappleSwingAssist` = `none | lean | pump` (dflt lean): accelerate a swing
+  with Left/Right. Lean = steady push; Pump = timing boost near the bottom of the arc (`cos θ` scaled, only
+  with the motion). Pure `GRAPPLE.accelerate(s, dir, mode)` (headless-tested), wired in `_updateGrapple` swing branch.
+- **Contextual items usable from ANYWHERE held** (not just the selected hotbar slot): obsidian portal repair,
+  eye of ender, wither skull, soul sand. New `_findHeldSlot`/`_consumeHeldSlot` scan hotbar+backpack.
+
+**Build 197 — Controller pass (the big one; all additive/opt-in):**
+- **Cursor-persist fix:** the right-stick aim reticle was gated on bow mode (vanished off-bow) → now shows
+  whenever a P1 pad is connected in gameplay (`game.js` ~6024). Aims bow/throw/grapple alike.
+- **RT + the 4 D-pad directions are now EDITABLE** (moved out of `GP_BINDINGS.FIXED` into `ACTIONS`).
+- **New bindable gamepad actions** (default-unassigned unless noted): `sprint`, `grapple`, `grapplePull`,
+  `cycleSel` (Change Selected Weapon — context-aware: melee slot→cycle melee, ranged→ranged, else no-op),
+  `nextSlot`/`prevHotbar` (hotbar step), `ranged` (=RT). **LB/RB relabelled + rewired → Change Melee /
+  Change Ranged** (like keys 1/2). `place` (Y) relabelled **Use Item / Place**; the on-screen context prompt
+  now reads the ACTUAL bound button (`_computeContextAction`), so a rebind shows correctly.
+- **Left stick = all 4 combo directions:** `isCrouch()` now also fires on L-stick DOWN (past `InputManager.STICK_DIR`=0.6);
+  new `isStickUp()` feeds the "up" directional-melee/look-up. Buttons still work too.
+- **Button CHORDS:** a binding may be `[modIdx, btnIdx]` (all held to fire). Capture is release-based (hold two,
+  release → chord), `resolve`/`label`/`conflicts` are chord-aware (sorted-set keyed; null/unassigned never conflicts).
+- **Sprint** is now a bindable gamepad button (`isRun()` reads it; unbound = old auto-run) AND the keyboard `run`
+  action relabelled "Sprint (hold)".
+- **Stick-swap** toggle (Move ↔ Aim) in `GP_BINDINGS.swapSticks()`; applied at the axis source in `updateGamepad`.
+- **Controls UI:** gamepad actions now grouped (Movement/Combat/Weapons/D-Pad/System), each row has a ✕ to clear,
+  a Swap-Sticks toggle, and the chord hint. New CSS `.cu-gpbind/.cu-gpclear/.cu-bindwrap/.ws-sub-group`.
+- **Grapple-Pull mechanic** (`grapplePull` action, `_startGrapple(aim,'pull')`): reels the player straight to the
+  anchor (new `reeling` state — vertical traversal / gap-cross / zip to a gem via `_grappleHitEmerald`), and with
+  world toggle **Grapple Enemies** yanks a hooked mob toward you; **Grapple Collectibles** latches emeralds. Both
+  toggles added under the Movement→Grappling Hook group.
+
+**Open / browser-verify:** swing feel (lean vs pump), the L-stick down=duck threshold in real play, chord capture UX,
+grapple-button + grapple-pull feel, cursor persistence, LB/RB=Change-Melee/Ranged, Use-Item prompt reflecting rebinds.
+**Known minor:** a chord's component buttons still also fire their own actions (e.g. Y+RT grapple also triggers Y/RT) —
+Kevin accepted the simple model; component-suppression is a possible refinement. P2–P4 LB/RB kept as slot-step (labels
+say Change Melee/Ranged) — arena-only, left as-is.
+
+**Build 198 — controller-pass fixes (per Kevin's playtest):** D-pad is NO LONGER a bindable "function" (its 4
+directions are just physical buttons / bind targets — read directly again); added discrete **Move Left / Move Right**
+actions (unassigned, so the D-pad can drive movement); **Palette / Inventory** action default = **View (8)**; the ✕
+clear now **truly unassigns** (stores a `-1` sentinel → "—"; conflicts skip -1) instead of resetting to default; the
+rebind list **no longer snaps to top** on capture (scroll preserved across `_render`).
+
+**Build 199 — PER-MODE CONTROL PROFILES (Kevin's game-building-platform vision; see memory `controls-and-platform-vision`):**
+Each game mode (platformer/normal/speedrunner/arena/sandbox) now has a **fully independent** control profile — keyboard
++ gamepad + stick tuning — saved per player across sessions. Implementation:
+- `KEY_BINDINGS` + `GP_BINDINGS` state restructured to `{version:2, byMode:{<mode>:{…}}}` with a `_mode` + `setMode()`
+  and a `_ms()` active-slice accessor; **migration** seeds ALL modes from the old flat v1 config (new storage keys
+  `…_v2`; old `…_v1` read once). `ControllerConfig` likewise: assignments stay global, **sens/aim/deadzone are per-mode**.
+- New coordinator **`CONTROL_PROFILES`** (in keybindings.js): `setMode` (switches all three stores at once — game.js
+  calls it each frame from the live game mode, but SKIPS while the Controls panel is open so the panel owns the mode),
+  `copyFrom(src,dest)` ("Start From"), `exportConfig`/`importConfig` (JSON profile = kb+gp+sticks).
+- **Controls UI** gains a profile bar: **Game Mode** selector, **Start From (copy another mode)**, and **Export ⭳ /
+  Import ⭱** (downloads/uploads `steveo-controls-<mode>.json`). Import sets the mode's default, still editable.
+- Tests: test-gpbindings now **62** (added per-mode isolation, copyFrom, export/import, kb-per-mode). Full suite green.
+- **DEFERRED (agreed):** (1) the **Sandbox Tools** bindable section (undo/redo/copy/paste/pen/eyedropper/fill/palette
+  as bindable actions shown only in sandbox) — needs per-tool wiring, next small pass; (2) **world-attached
+  designer-recommended configs** (offered on load) — sits on top of export/import, the follow-on layer.
+
+**Build 200 — controls polish (Kevin's 2nd playtest):**
+- **Cursor persistence, real fix:** `_p1GpConnected` (render) now also true in single-player **dual-input** (keyboard P1 + any pad connected) — the earlier gate required P1 to be *assigned* a pad slot, so with the default keyboard P1 + a controller the reticle never showed. Now shows regardless of equipped weapon.
+- **Trident/Boomerang recall on the RANGE button:** recall conditions now include `p1JustDown('rangedBtn')` (RT edge), alongside the existing R3/Q throw + mouse-right recall.
+- **Grapple-Pull collectibles:** now pulls the GEM back to the player (fly-in via `_startEmeraldPull`/`_updatePulledEmeralds`, collected on arrival by the normal proximity pickup) instead of reeling the player to it.
+- **Sandbox Tools bindable section:** new GP actions `sbUndo/sbRedo/sbCopy/sbPaste/sbPenUp/sbPenDown/sbPalette` (`modes:['sandbox']`, unassigned by default), shown only in the Sandbox profile (UI + conflicts mode-filtered), wired in the sandbox controller block. Keyboard sandbox shortcuts (Ctrl+Z/Y/C/V, Shift+scroll) unchanged.
+- **Directional Aim** (per-mode personal option `directionalAim`, toggle in Controls panel): aims ranged weapons from the MOVEMENT direction (L/R = horizontal, Up = straight up, Up+L/R = 45°, idle = facing) for players who don't want cursor/stick aim. Stored in the mode's profile (travels with export/import + copy). Wired at `aimWorld` via `_directionalAimPoint()`.
+- `KEY_BINDINGS` gained per-mode `getOpt/setOpt` (gameplay options in the profile slice). test-gpbindings now **67**.
+- Still DEFERRED: world-attached designer-recommended configs (Kevin wants more thought first).
+
+**Ship (all of 196–200 together):** commit + `push origin main` on Kevin's go after his browser playtest.
+
 ## CURRENT STATE (2026-07-20) — builds 180–186, branch `combat-controls-mega` (follow-up; NOT merged)
 
 **Combat/Controls FOLLOW-UP (Kevin's first-playtest bug-fix + polish pass) is BUILT** on the same

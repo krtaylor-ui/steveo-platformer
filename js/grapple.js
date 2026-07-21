@@ -27,6 +27,8 @@ const GRAPPLE = {
   RISE_SPEED: 2.4,           // cable shorten per frame while pressing up (px)
   MIN_LEN: 40,               // shortest cable (≈1.25 blocks) — can't reel to zero
   MAX_ANGVEL: 0.22,          // cap angular velocity so a fast entry can't fling over the top
+  LEAN_ACCEL: 0.0035,        // Swing Assist 'lean' — steady angVel added toward the held dir
+  PUMP_ACCEL: 0.012,         // Swing Assist 'pump' — peak boost at the bottom of the arc
 
   // ── Cast (5a / 5e-5) ────────────────────────────────────────
   // March a straight ray from (sx,sy) along the UNIT dir (dx,dy) up to rangePx,
@@ -80,6 +82,26 @@ const GRAPPLE = {
     let ty = feetY - s.ph;
     if (ty > s.launchY) ty = s.launchY;          // safety (rarely hit — geometry bottoms at launchY)
     return { x: feetCx - s.pw / 2, y: ty };
+  },
+
+  // ── Swing Assist (§follow-up) ───────────────────────────────
+  // Add angular energy to a live swing from a horizontal input `dir` (-1 left, +1
+  // right, 0 none). θ is measured from straight-down, so angVel>0 ⇒ moving right.
+  //   'lean' — a small steady push toward the held direction (forgiving air control).
+  //   'pump' — bigger, but ONLY when pressing WITH the current motion, and scaled by
+  //            cos(θ) so it peaks at the bottom of the arc and fades at the extremes
+  //            (rewards timing, the way you pump a playground swing).
+  // No-ops when dir is 0 or mode is anything else. Result stays clamped to MAX_ANGVEL.
+  accelerate(s, dir, mode) {
+    if (!dir) return s.angVel;
+    if (mode === 'lean') {
+      s.angVel += dir * GRAPPLE.LEAN_ACCEL;
+    } else if (mode === 'pump') {
+      const moving = s.angVel > 0 ? 1 : s.angVel < 0 ? -1 : dir;
+      if (dir === moving) s.angVel += dir * GRAPPLE.PUMP_ACCEL * Math.max(0, Math.cos(s.theta));
+    }
+    s.angVel = Math.max(-GRAPPLE.MAX_ANGVEL, Math.min(GRAPPLE.MAX_ANGVEL, s.angVel));
+    return s.angVel;
   },
 
   // ── Release (5c) ────────────────────────────────────────────

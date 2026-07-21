@@ -24,6 +24,13 @@ const CONTROLS_UI = {
   open(game) {
     this._game = game || window.game || null;
     this._player = 0;
+    // §Controls Profiles — edit the profile for the CURRENT game mode by default; the panel
+    // owns the active mode while open (game.js pauses its per-frame mode switch meanwhile).
+    if (typeof CONTROL_PROFILES !== 'undefined') {
+      const gm = this._game ? (this._game.isArena ? 'arena' : this._game.gameMode) : 'normal';
+      this._mode = CONTROL_PROFILES.normalize(gm);
+      CONTROL_PROFILES.setMode(this._mode);
+    }
     const ov = document.getElementById('controls-overlay');
     if (!ov) return;
     if (this._game) this._game._htmlSettingsOpen = true;   // blocks gameplay input while open
@@ -71,6 +78,9 @@ const CONTROLS_UI = {
   _render() {
     const ov = document.getElementById('controls-overlay');
     if (!ov) return;
+    // Preserve the scroll position across a full re-render (clicking a row to rebind used to
+    // snap the list back to the top — jarring when the row was far down).
+    const _prevScroll = (ov.querySelector('.ws-body') || {}).scrollTop || 0;
     const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const scheme = this._scheme();
     const conflicts = KEY_BINDINGS.conflicts(this._player, scheme);
@@ -79,6 +89,25 @@ const CONTROLS_UI = {
     // Player tabs (P1–P4)
     const pTabs = [0, 1, 2, 3].map((p) =>
       `<button class="ws-tab${p === this._player ? ' active' : ''}" data-p="${p}">P${p + 1}</button>`).join('');
+
+    // §Controls Profiles — game-mode profile bar: pick which mode's controls to edit, seed a
+    // mode from another ("start from"), and export/import the profile as a file.
+    const MODE_LABELS = { platformer: 'Platformer', normal: 'Normal', speedrunner: 'Speed Run', arena: 'Arena', sandbox: 'Sandbox' };
+    let profileBar = '';
+    if (typeof CONTROL_PROFILES !== 'undefined') {
+      const modeOpts = CONTROL_PROFILES.MODES.map((m) => `<option value="${m}"${m === this._mode ? ' selected' : ''}>${MODE_LABELS[m] || m}</option>`).join('');
+      const copyOpts = CONTROL_PROFILES.MODES.filter((m) => m !== this._mode).map((m) => `<option value="${m}">${MODE_LABELS[m] || m}</option>`).join('');
+      profileBar = `
+        <div class="ws-group" style="margin-top:2px">Control Profile — each game mode has its own</div>
+        <div class="ws-row"><div class="ws-label"><span class="ws-lbl">Game Mode</span></div>
+          <select id="cu-mode" class="startup-sel">${modeOpts}</select></div>
+        <div class="ws-row"><div class="ws-label"><span class="ws-lbl">Start From (copy another mode)</span></div>
+          <select id="cu-copyfrom" class="startup-sel"><option value="">— choose —</option>${copyOpts}</select></div>
+        <div class="ws-row"><div class="ws-label"><span class="ws-lbl">Config File</span></div>
+          <span class="cu-bindwrap"><button class="cu-gpbind" id="cu-export">Export ⭳</button><button class="cu-gpbind" id="cu-import">Import ⭱</button></span></div>
+        <div class="ws-row"><div class="ws-label"><span class="ws-lbl">Directional Aim</span><span class="ws-hint-inline"> — aim ranged by movement, no cursor</span></div>
+          <button class="cu-gpbind" id="cu-diraim">${(typeof KEY_BINDINGS !== 'undefined' && KEY_BINDINGS.getOpt('directionalAim', false)) ? 'On' : 'Off'}</button></div>`;
+    }
 
     // Preset row
     const kbPreset = KEY_BINDINGS.currentPreset();
@@ -122,18 +151,30 @@ const CONTROLS_UI = {
     let gpBody = '';
     if (typeof GP_BINDINGS !== 'undefined') {
       const gpConf = GP_BINDINGS.conflicts(this._player, gpPreset);
-      const gpConfIdx = new Set(gpConf.map((c) => c.index));
-      gpBody = `<div class="ws-group" style="margin-top:10px">Gamepad Buttons ${this._gpCapturing ? '— press a button (Esc cancels)' : '— click a button to rebind'}</div>`;
+      const gpConfSet = new Set(gpConf.map((c) => Array.isArray(c.index) ? 'chord:' + [...c.index].sort((x, y) => x - y).join(',') : String(c.index)));
+      gpBody = `<div class="ws-group" style="margin-top:10px">Gamepad Buttons ${this._gpCapturing ? '— press a button, or hold TWO for a chord (Esc cancels)' : '— click a binding, then press a button (hold two = chord). “—” = unassigned'}</div>`;
+      let gpLastGroup = null;
+      const _curMode = (typeof CONTROL_PROFILES !== 'undefined') ? this._mode : null;
       for (const a of GP_BINDINGS.ACTIONS) {
+        if (a.modes && _curMode && !a.modes.includes(_curMode)) continue;   // mode-specific (e.g. Sandbox) — hide elsewhere
+        if (a.group && a.group !== gpLastGroup) { gpBody += `<div class="ws-group ws-sub-group">${esc(a.group)}</div>`; gpLastGroup = a.group; }
         const idx = GP_BINDINGS.resolve(this._player, gpPreset, a.id);
         const cap = this._gpCapturing === a.id;
-        const conf = gpConfIdx.has(idx);
+        // Conflict flag: chords key by their set; single buttons by index (matches GP_BINDINGS.conflicts).
+        const confKey = Array.isArray(idx) ? 'chord:' + [...idx].sort((x, y) => x - y).join(',') : String(idx);
+        const conf = gpConfSet.has(confKey);
         const lbl = cap ? 'press a button…' : GP_BINDINGS.label(idx, gpPreset);
+        const assigned = idx != null && !(typeof idx === 'number' && idx < 0);   // real button/chord bound?
         gpBody += `<div class="ws-row${conf ? ' cu-conflict' : ''}"><div class="ws-label"><span class="ws-lbl">${esc(a.label)}</span>${conf ? ' <span class="cu-warn" title="Shared with another action">⚠</span>' : ''}</div>
-          <button class="cu-gpbind${cap ? ' cu-capturing' : ''}" data-gpaction="${a.id}">${esc(lbl)}</button></div>`;
+          <span class="cu-bindwrap"><button class="cu-gpbind${cap ? ' cu-capturing' : ''}" data-gpaction="${a.id}">${esc(lbl)}</button>${assigned ? `<button class="cu-gpclear" data-gpclear="${a.id}" title="Unassign">✕</button>` : ''}</span></div>`;
       }
-      for (const f of GP_BINDINGS.FIXED) {   // read-only reference rows
-        const lbl = f.note || GP_BINDINGS.label(f.base, gpPreset);
+      gpBody += `<div class="ws-group ws-sub-group">Sticks</div>`;
+      const swapped = GP_BINDINGS.swapSticks && GP_BINDINGS.swapSticks();
+      gpBody += `<div class="ws-row"><div class="ws-label"><span class="ws-lbl">Swap Sticks (Move ↔ Aim)</span></div>
+        <button class="cu-gpbind" id="cu-gpswap">${swapped ? 'Swapped' : 'Normal'}</button></div>`;
+      for (const f of GP_BINDINGS.FIXED) {   // read-only reference rows (the two sticks)
+        const baseLbl = f.note || GP_BINDINGS.label(f.base, gpPreset);
+        const lbl = swapped ? (f.label.startsWith('Move') ? 'Right Stick' : 'Left Stick') : baseLbl;
         gpBody += `<div class="ws-row"><div class="ws-label ws-sub"><span class="ws-lbl">${esc(f.label)}</span></div><span class="ws-cyc-val" style="opacity:.65">${esc(lbl)}</span></div>`;
       }
       gpBody += `<div class="cu-actions"><button class="btn btn-secondary" id="cu-gpreset">Reset P${this._player + 1} Gamepad</button></div>`;
@@ -147,6 +188,7 @@ const CONTROLS_UI = {
         </div>
         <div class="ws-tabs">${pTabs}</div>
         <div class="ws-body">
+          ${profileBar}
           ${presetSel}
           <div class="ws-group" style="margin-top:6px">Keyboard / Mouse ${this._capturing ? '— press a key or click Esc to cancel' : '— click a binding, then press a key/mouse button'}</div>
           ${body}
@@ -165,9 +207,28 @@ const CONTROLS_UI = {
     const gp = document.getElementById('cu-gp-preset');
     if (gp) gp.onchange = () => { if (this._game && this._game.input && this._game.input.setControllerPreset) this._game.input.setControllerPreset(gp.value); this._render(); };
     ov.querySelectorAll('.cu-bind').forEach((b) => b.onclick = () => this._beginCapture(b.dataset.action));
-    ov.querySelectorAll('.cu-gpbind').forEach((b) => b.onclick = () => this._beginGpCapture(b.dataset.gpaction));
+    ov.querySelectorAll('.cu-gpbind[data-gpaction]').forEach((b) => b.onclick = () => this._beginGpCapture(b.dataset.gpaction));
+    // ✕ truly UNASSIGNS (stores the -1 sentinel), rather than resetting to the button's
+    // default — so a face/base action can be turned off, not just reverted. "Reset Gamepad"
+    // clears everything back to defaults.
+    ov.querySelectorAll('.cu-gpclear').forEach((b) => b.onclick = (e) => { e.stopPropagation(); if (typeof GP_BINDINGS !== 'undefined') GP_BINDINGS.setBinding(this._player, b.dataset.gpclear, -1); this._render(); });
+    const gpsw = document.getElementById('cu-gpswap');
+    if (gpsw) gpsw.onclick = () => { if (GP_BINDINGS.setSwapSticks) GP_BINDINGS.setSwapSticks(!GP_BINDINGS.swapSticks()); this._render(); };
     const gpr = document.getElementById('cu-gpreset');
     if (gpr) gpr.onclick = () => { if (typeof GP_BINDINGS !== 'undefined') GP_BINDINGS.resetPlayer(this._player); this._render(); };
+    // §Controls Profiles — mode switch / copy-from / export / import.
+    const cuMode = document.getElementById('cu-mode');
+    if (cuMode) cuMode.onchange = () => { this._cancelCapture(); this._mode = cuMode.value; CONTROL_PROFILES.setMode(this._mode); this._render(); };
+    const cuCopy = document.getElementById('cu-copyfrom');
+    if (cuCopy) cuCopy.onchange = () => { if (cuCopy.value) { CONTROL_PROFILES.copyFrom(cuCopy.value, this._mode); CONTROL_PROFILES.setMode(this._mode); this._render(); } };
+    const cuExp = document.getElementById('cu-export');
+    if (cuExp) cuExp.onclick = () => this._exportProfile();
+    const cuImp = document.getElementById('cu-import');
+    if (cuImp) cuImp.onclick = () => this._importProfile();
+    const cuDir = document.getElementById('cu-diraim');
+    if (cuDir) cuDir.onclick = () => { if (typeof KEY_BINDINGS !== 'undefined') KEY_BINDINGS.setOpt('directionalAim', !KEY_BINDINGS.getOpt('directionalAim', false)); this._render(); };
+    // Restore the scroll position captured at the top of this render.
+    const _nb = ov.querySelector('.ws-body'); if (_nb) _nb.scrollTop = _prevScroll;
   },
 
   _beginCapture(action) {
@@ -216,17 +277,23 @@ const CONTROLS_UI = {
     const readPad = () => { const pads = navigator.getGamepads() || []; for (const p of pads) if (p && p.connected) return p; return null; };
     const pad0 = readPad();
     const initial = pad0 ? pad0.buttons.map((b) => !!b.pressed) : [];
+    // Chord capture (Kevin's release-based model): track the LARGEST set of freshly-pressed
+    // buttons held at once (the "peak"); commit when everything is released. Peak size 1 =
+    // a single button; 2+ = a chord [sorted indices] that must all be held to fire in-game.
+    let peak = [];
     const poll = () => {
       if (this._gpCapturing !== action) return;   // cancelled / superseded
       const pad = readPad();
       if (pad) {
-        for (let i = 0; i < pad.buttons.length; i++) {
-          if (pad.buttons[i].pressed && !initial[i]) {   // a fresh press
-            GP_BINDINGS.setBinding(this._player, action, i);
-            this._endGpCapture();
-            this._render();
-            return;
-          }
+        const fresh = [];
+        for (let i = 0; i < pad.buttons.length; i++) if (pad.buttons[i].pressed && !initial[i]) fresh.push(i);
+        if (fresh.length > peak.length) peak = fresh.slice();
+        if (peak.length && fresh.length === 0) {     // all released → commit the peak set
+          const val = peak.length === 1 ? peak[0] : peak.slice().sort((a, b) => a - b);
+          GP_BINDINGS.setBinding(this._player, action, val);
+          this._endGpCapture();
+          this._render();
+          return;
         }
       }
       this._gpPoll = requestAnimationFrame(poll);
@@ -239,6 +306,40 @@ const CONTROLS_UI = {
     this._gpCapturing = null;
   },
   _cancelCapture() { this._endCapture(); this._endGpCapture(); },
+
+  // §Controls Profiles — download the active mode's profile as a JSON file.
+  _exportProfile() {
+    if (typeof CONTROL_PROFILES === 'undefined') return;
+    try {
+      const data = CONTROL_PROFILES.exportConfig(this._mode);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `steveo-controls-${this._mode}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) { /* ignore */ }
+  },
+  // Pick a JSON file and apply it to the active mode (becomes the new default; still editable).
+  _importProfile() {
+    if (typeof CONTROL_PROFILES === 'undefined') return;
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'application/json,.json';
+    inp.onchange = () => {
+      const f = inp.files && inp.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const obj = JSON.parse(reader.result);
+          if (CONTROL_PROFILES.importConfig(obj, this._mode)) { CONTROL_PROFILES.setMode(this._mode); this._render(); }
+          else if (this._game && this._game._notify) this._game._notify('Not a Steveo control profile', '#ffb454', 120);
+        } catch (e) { if (this._game && this._game._notify) this._game._notify('Could not read that file', '#ffb454', 120); }
+      };
+      reader.readAsText(f);
+    };
+    inp.click();
+  },
 };
 
 if (typeof window !== 'undefined') window.CONTROLS_UI = CONTROLS_UI;

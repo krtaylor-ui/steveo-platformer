@@ -1820,8 +1820,9 @@ class Game {
     }
     this._eChestWas = eNow;
 
-    // ── I key: toggle inventory / sandbox palette (disabled in platformer) ──
-    const iDown = this.input.isDown('KeyI');
+    // ── I key / gamepad Palette-Inventory button (default View): toggle inventory / sandbox
+    //    palette (disabled in platformer + speedrun, which have no inventory). ──
+    const iDown = this.input.isDown('KeyI') || this.input.p1JustDown('inventoryBtn');
     if (iDown && !this._iKeyWas && this.gameMode !== 'platformer' && this.gameMode !== 'speedrunner') {
       if (this.gameMode === 'sandbox' && this.sandbox) {
         this.sandbox.togglePalette();
@@ -2012,6 +2013,14 @@ class Game {
         else if (this.input.isJustDown('KeyC'))              this._sbCopyRegion();
         else if (this.input.isJustDown('KeyV') && this._copyBuffer) { this._pasteMode = true; this._copySelection = null; }
       }
+      // §Controls Profiles — the same sandbox tools on bound gamepad buttons (Sandbox profile).
+      if (this.input.p1JustDown('sbUndoBtn'))  this._historyUndo();
+      if (this.input.p1JustDown('sbRedoBtn'))  this._historyRedo();
+      if (this.input.p1JustDown('sbCopyBtn'))  this._sbCopyRegion();
+      if (this.input.p1JustDown('sbPasteBtn') && this._copyBuffer) { this._pasteMode = true; this._copySelection = null; }
+      if (this.input.p1JustDown('sbPenUpBtn'))   this.sandbox.cycleBrushSize(1);
+      if (this.input.p1JustDown('sbPenDownBtn')) this.sandbox.cycleBrushSize(-1);
+      if (this.input.p1JustDown('sbPaletteBtn')) this.sandbox.togglePalette();
       // Cancel paste mode with Escape or right-click
       if (this._pasteMode && (this.input.isJustDown('Escape') || this.input.mouse.rightClicked)) {
         this._pasteMode = false;
@@ -2071,10 +2080,14 @@ class Game {
       if (this.input.p1JustDown('dpad1')) this._selectOrCycleSlot(1);
       if (this.input.p1JustDown('dpad2')) this.player.selectedSlot = 2;
       if (this.input.p1JustDown('dpad3')) this.player.selectedSlot = 3;
-      // LB: previous hotbar slot
-      if (this.input.p1JustDown('prevSlot')) {
-        this.player.selectedSlot = (this.player.selectedSlot - 1 + 9) % 9;
-      }
+      // §Controller pass — LB/RB now CHANGE the melee/ranged weapon (same as keys 1/2), not
+      // step the hotbar. Hotbar-slot stepping lives on the new Next/Prev Hotbar Slot actions
+      // (default-unassigned); Change Selected cycles whatever weapon slot is currently active.
+      if (this.input.p1JustDown('prevSlot')) this._selectOrCycleSlot(0);   // LB → Change Melee
+      if (this.input.p1JustDown('context'))  this._selectOrCycleSlot(1);   // RB → Change Ranged
+      if (this.input.p1JustDown('nextSlotBtn'))   this.player.selectedSlot = (this.player.selectedSlot + 1) % 9;
+      if (this.input.p1JustDown('prevHotbarBtn')) this.player.selectedSlot = (this.player.selectedSlot - 1 + 9) % 9;
+      if (this.input.p1JustDown('cycleSelBtn'))   this._cycleSelectedWeapon();
     }
 
     // Sandbox-only controller mappings (Phase 11K-2)
@@ -2109,6 +2122,11 @@ class Game {
     this.input.controllerSensitivity    = this._worldAdvSettings.controllerSensitivity    ?? 1.0;
     this.input.controllerAimSensitivity = this._worldAdvSettings.controllerAimSensitivity ?? 1.0;
     this.input.controllerDeadzone       = this._worldAdvSettings.controllerDeadzone       ?? GP_DEADZONE_STICK;
+    // §Controls Profiles — point the binding stores at THIS game mode's profile before any
+    // input is resolved this frame, so each mode uses its own independent controls + tuning.
+    // Skipped while the Controls panel is open — there the panel owns the active mode (so you
+    // can edit any mode's profile without the game loop yanking it back).
+    if (typeof CONTROL_PROFILES !== 'undefined' && !this._htmlSettingsOpen) CONTROL_PROFILES.setMode(this.isArena ? 'arena' : this.gameMode);
     // Sync player input slots from ControllerConfig each frame (P1-P4)
     if (typeof ControllerConfig !== 'undefined') {
       this.input.p1GpSlot = ControllerConfig.getAssignment(1);
@@ -2303,7 +2321,12 @@ class Game {
     // trident / boomerang / grapple + guided steer) forces straight up. `world` still
     // drives mine/place hover (unchanged) — only `aimWorld` is redirected. Left/right
     // movement is read separately (moveX), so you can still run while aiming up.
-    const aimWorld = this.input.isAimUp() ? { x: this.player.cx, y: this.player.cy - 1000 } : world;
+    // §Controls pass — Directional Aim (per-mode personal option): aim ranged weapons from the
+    // MOVEMENT direction instead of the cursor, for players who don't want to use mouse/stick aim.
+    // Left/Right → straight that way; Up → straight up; Up + Left/Right → 45° upward; idle → facing.
+    const _dirAim = this._directionalAimPoint();
+    const aimWorld = _dirAim ? _dirAim
+                   : (this.input.isAimUp() ? { x: this.player.cx, y: this.player.cy - 1000 } : world);
     const hoverCol = Math.floor(world.x / BLOCK_SIZE);
     const hoverRow = Math.floor(world.y / BLOCK_SIZE);
     const target   = this.level.get(hoverRow, hoverCol);
@@ -2348,6 +2371,13 @@ class Game {
     if (_grappleShift && this.input.mouse.rightClicked && !this.player._grapple) {
       this._startGrapple(aimWorld);
     }
+    // §Controller pass — Grappling Hook + Grapple-Pull on bound gamepad buttons (aim = the
+    // right-stick cursor, i.e. the same aimWorld the mouse uses). Default-unassigned, so this
+    // is inert until the player binds it in Controls.
+    if (this.player.hasGrapple && !this.player._grapple) {
+      if (this.input.p1JustDown('grappleBtn'))     this._startGrapple(aimWorld);
+      else if (this.input.p1JustDown('grapplePullBtn')) this._startGrapple(aimWorld, 'pull');
+    }
     const rangedDown  = this.input.isRangedAttackDown();
     // Two-button combat: LEFT-click (or Space / gamepad X) = melee, RIGHT-click (or gamepad
     // RT) = ranged, hold to charge. Left-click melee only outside the sandbox editor (there
@@ -2386,7 +2416,10 @@ class Game {
     // trident stays "yours", boomerang-style. Q / gamepad R3 always recall too.
     const _tridentRecall = !!this._worldAdvSettings.tridentAutoReturn;
     const _tridentIsOut  = this.player.meleeClass === 'trident' && this.player._tridentOut;
-    if ((this.input.isThrow() || (_tridentRecall && this.input.mouse.rightClicked)) &&
+    // §Controller pass — recall also fires on the RANGE ATTACK button (RT edge), matching the
+    // mouse right-click recall, so a controller can bring the trident/boomerang back.
+    const _rangedRecallEdge = this.input.p1JustDown('rangedBtn');
+    if ((this.input.isThrow() || _rangedRecallEdge || (_tridentRecall && this.input.mouse.rightClicked)) &&
         this.player._tridentOut && this.player._tridentArrow && this.player._tridentArrow.alive) {
       this.player._tridentArrow.returning = true;
     }
@@ -2394,7 +2427,7 @@ class Game {
     // is out under 'click' return mode (whether still flying out or waiting at max range).
     if (this.player._boomOut && this.player._boomArrow && this.player._boomArrow.alive &&
         this.player._boomArrow._boomReturnMode === 'click' &&
-        (this.input.isThrow() || this.input.mouse.rightClicked)) {
+        (this.input.isThrow() || _rangedRecallEdge || this.input.mouse.rightClicked)) {
       this.player._boomArrow._boomWaiting = false;
       this.player._boomArrow._boomReturning = true;
     }
@@ -2651,11 +2684,9 @@ class Game {
 
     // ── Gamepad: context actions — must come AFTER _computeContextAction ─────
     this._computeContextAction();
-    // RB: cycle hotbar right (P1)
-    if (this.input.p1JustDown('context')) {
-      this.player.selectedSlot = (this.player.selectedSlot + 1) % 9;
-    }
-    // Y button: Use Item (all modes — sandbox falls back to palette if no action available)
+    // Use Item button (default Y): runs the nearby context action (all modes — sandbox falls
+    // back to toggling the palette if no action is available). The on-screen prompt shows the
+    // ACTUAL bound button (see _computeContextAction), so a rebind is reflected in the HUD.
     if (this.input.p1JustDown('place')) {
       if (this._contextAction) {
         this._executeContextAction(this.player);
@@ -3445,6 +3476,7 @@ class Game {
       // ── Collect emeralds (campaign-prep, opt-in per world) ──
       if (this._emeraldsActive && typeof EMERALD_SYSTEM !== 'undefined') {
         const aws = this._worldAdvSettings;
+        this._updatePulledEmeralds();   // §Controls pass — advance any grapple-pulled gems toward the player
         const got = EMERALD_SYSTEM.checkPickup(this.player, () => {
           this._emeraldsCollected++;
           if (aws.platformerScore) this._score += (aws.emeraldPoints || 0);
@@ -5936,7 +5968,10 @@ class Game {
   _render() {
     window._gameRef = this; // Phase 16: expose for multiplayerManager callbacks
     const ctx      = this.ctx;
-    const _p1GpConnected = this.input.p1GpSlot >= 0 && this.input.gamepads[this.input.p1GpSlot]?.connected;
+    // A controller is driving P1 if P1's slot is a pad, OR (single-player dual-input) any pad
+    // is connected — the right stick moves the cursor in both cases, so the reticle must show.
+    const _p1GpConnected = (this.input.p1GpSlot >= 0 && this.input.gamepads[this.input.p1GpSlot]?.connected)
+      || (this.input.dualInput && this.input.gamepads.some((g) => g && g.connected));
     // Resolve zoom + camera BEFORE converting the cursor to a grid cell, so the
     // highlight lands under the mouse at any zoom (see _syncViewTransform).
     const _activeZoom = this._syncViewTransform();
@@ -6011,8 +6046,10 @@ class Game {
       this.level.drawHover(ctx, hoverRow, hoverCol, this.camera);
     }
 
-    // Bow aim crosshair — visible anywhere (including over air) when P1 controller is connected
-    if (this.player.weaponMode === 'bow' && _p1GpConnected && !this.inventoryOpen) {
+    // Aim crosshair — the right-stick cursor. §Controller pass: it now PERSISTS whenever a P1
+    // controller is connected (was gated on bow mode, so it vanished the moment you weren't on
+    // the bow — the "cursor disappears" bug). It aims the bow, thrown weapons, AND the grapple.
+    if (_p1GpConnected && !this.inventoryOpen && this.gameMode !== 'sandbox') {
       const mx = this.input.mouse.x, my = this.input.mouse.y;
       const r  = 9;
       ctx.save();
@@ -8542,12 +8579,38 @@ class Game {
     }
   }
 
+  // ── Held-item lookup (§follow-up) ──────────────────────────
+  // Contextual placers (obsidian portal repair, eye of ender, wither altar) should
+  // fire from an item the player is HOLDING ANYWHERE — hotbar or backpack — not only
+  // the selected hotbar slot (Kevin: "hold it, it's used when I'm near the spot").
+  // Returns { slots, idx } for the first matching stack, or null.
+  _findHeldSlot(player, blockType) {
+    for (const slots of [player.hotbar, player.inventory]) {
+      if (!slots) continue;
+      for (let i = 0; i < slots.length; i++) {
+        const s = slots[i];
+        if (s && s.type === blockType && (s.count == null || s.count > 0)) return { slots, idx: i };
+      }
+    }
+    return null;
+  }
+
+  // Consume 1 from a { slots, idx } ref returned by _findHeldSlot (clears the stack at 0).
+  _consumeHeldSlot(ref) {
+    if (!ref) return;
+    const s = ref.slots[ref.idx];
+    if (!s) return;
+    if (s.count == null) { ref.slots[ref.idx] = null; return; }
+    s.count--;
+    if (s.count <= 0) ref.slots[ref.idx] = null;
+  }
+
   // ── Ruined Portal repair (Platformer/Normal: hold Obsidian, press U) ──
 
   _tryRepairPortalFromHotbar() {
     if (!this._ruinedPortals.size) return false;
-    const slot = this.player.hotbar[this.player.selectedSlot];
-    if (!slot || slot.type !== BLOCK.OBSIDIAN) return false;
+    const held = this._findHeldSlot(this.player, BLOCK.OBSIDIAN);   // any slot, not just selected
+    if (!held) return false;
 
     const pRow = Math.floor(this.player.cy / BLOCK_SIZE);
     const pCol = Math.floor(this.player.cx / BLOCK_SIZE);
@@ -8564,7 +8627,7 @@ class Game {
         if (this.level.get(r, c) !== BLOCK.OBSIDIAN) {
           this.level.set(r, c, BLOCK.OBSIDIAN);
           this._portalObsidianCells.add(`${c},${r}`);
-          this.player.takeFromSlot(this.player.selectedSlot);
+          this._consumeHeldSlot(held);
 
           const remaining = Game.RP_GAP_OFFSETS.filter(([gdr, gdc]) =>
             this.level.get(anchorRow + gdr, anchorCol + gdc) !== BLOCK.OBSIDIAN
@@ -8584,8 +8647,8 @@ class Game {
   // ── End Portal Eye placement ──────────────────────────────
 
   _tryPlaceEyeFromHotbar() {
-    const slot = this.player.hotbar[this.player.selectedSlot];
-    if (!slot || slot.type !== BLOCK.EYE_OF_ENDER) return;
+    const held = this._findHeldSlot(this.player, BLOCK.EYE_OF_ENDER);   // any slot, not just selected
+    if (!held) return;
     const pCol = Math.floor(this.player.cx / BLOCK_SIZE);
     const pRow = Math.floor(this.player.cy / BLOCK_SIZE);
     for (let dr = -1; dr <= 1; dr++) {
@@ -8594,7 +8657,7 @@ class Game {
         if (this.level.get(r, c) === BLOCK.END_PORTAL_FRAME) {
           // Consume the eye ONLY if it was actually placed; otherwise keep scanning for
           // a frame that can take it (a stray frame no longer wastes the eye).
-          if (this._tryPlaceEye(r, c)) { this.player.takeFromSlot(this.player.selectedSlot); return; }
+          if (this._tryPlaceEye(r, c)) { this._consumeHeldSlot(held); return; }
         }
       }
     }
@@ -11006,6 +11069,35 @@ class Game {
     if (key && TOOL_DATA[key]) this._notify(TOOL_DATA[key].name, TOOL_DATA[key].color || '#ffffff', 90);
   }
 
+  // §Controller pass — "Change Selected Weapon": cycle the weapon in whatever slot is
+  // ACTIVE (melee slot → next melee; ranged slot → next ranged; any other slot → nothing),
+  // WITHOUT changing which slot is selected. Bound to a single gamepad button of choice.
+  // §Controls pass — Directional Aim: returns a far-off aim point derived from the P1 movement
+  // inputs, or null when the option is off (then normal cursor/look-up aim applies). Enabled
+  // per game-mode profile in the Controls panel ("Directional Aim").
+  _directionalAimPoint() {
+    if (typeof KEY_BINDINGS === 'undefined' || !KEY_BINDINGS.getOpt('directionalAim', false)) return null;
+    const inp = this.input, p = this.player;
+    if (!p) return null;
+    const up = inp.isAimUp() || inp.isStickUp() || (!inp._aimUpEnabled && (inp.isDown('KeyW') || inp.isDown('ArrowUp')));
+    const left = inp.isLeft(), right = inp.isRight();
+    let vx = 0, vy = 0;
+    if (up && (left || right)) { vx = right ? 1 : -1; vy = -1; }   // 45° upward
+    else if (up)               { vy = -1; }                       // straight up
+    else if (left || right)    { vx = right ? 1 : -1; }           // horizontal
+    else                       { vx = p.facing || 1; }            // idle → face direction
+    return { x: p.cx + vx * 1000, y: p.cy + vy * 1000 };
+  }
+  _cycleSelectedWeapon() {
+    const p = this.player;
+    let kind = p.selectedSlot === 0 ? 'melee' : p.selectedSlot === 1 ? 'ranged' : null;
+    if (p.selectedSlot === 1 && p.dualModeMelee && p.dualModeMelee()) kind = 'melee';   // mirror → melee
+    if (!kind) return;
+    if (kind === 'melee' || p.bow) p.activeHand = kind;
+    const key = p.cycleWeapon(kind);
+    if (key && TOOL_DATA[key]) this._notify(TOOL_DATA[key].name, TOOL_DATA[key].color || '#ffffff', 90);
+  }
+
   // Smart Mobs §2 — resolve a weapon's active traits: WEAPON_TRAITS[class] base,
   // merged with any per-world overrides in _worldAdvSettings.weapons[class]
   // (set in World Settings → Combat → Weapons). Sword cleave resolves by tier.
@@ -11047,8 +11139,8 @@ class Game {
   // away = back); else neutral. Only consulted when Advanced Attacks is enabled.
   _meleeDirection(player) {
     const inp = this.input;
-    if (inp.isCrouch()) return 'down';
-    const upHeld = inp.isAimUp() || (!inp._aimUpEnabled && (inp.isDown('KeyW') || inp.isDown('ArrowUp')));
+    if (inp.isCrouch()) return 'down';   // §Controller pass — isCrouch() now includes L-stick down
+    const upHeld = inp.isAimUp() || inp.isStickUp() || (!inp._aimUpEnabled && (inp.isDown('KeyW') || inp.isDown('ArrowUp')));
     if (upHeld) return 'up';
     const mv = inp.moveX();
     if (Math.abs(mv) > 0.2) return (Math.sign(mv) === Math.sign(player.facing || 1)) ? 'forward' : 'back';
@@ -11079,14 +11171,45 @@ class Game {
   // block within range, else auto-retracts. On stick the player swings (GRAPPLE math,
   // height-constrained); Up reels in (narrowing the arc) → a scripted climb-over onto an
   // exactly-1-block obstacle; Down disengages; Jump releases with velocity preserved.
-  _startGrapple(aim) {
+  // mode: undefined = normal (swing/attach); 'pull' = reel the player straight to the anchor
+  // (or yank a hooked enemy toward the player), for vertical traversal / crossing gaps.
+  _startGrapple(aim, mode) {
     if (typeof GRAPPLE === 'undefined') return;
     const p = this.player;
     const dx = aim.x - p.cx, dy = aim.y - p.cy, d = Math.hypot(dx, dy) || 1;
     const rangeBl = this._worldAdvSettings.grappleRange ?? GRAPPLE.DEFAULT_RANGE_BLOCKS;
-    p._grapple = { state: 'firing', dx: dx / d, dy: dy / d, hx: p.cx, hy: p.cy, traveled: 0, range: rangeBl * BLOCK_SIZE };
+    p._grapple = { state: 'firing', mode: mode || null, dx: dx / d, dy: dy / d, hx: p.cx, hy: p.cy, traveled: 0, range: rangeBl * BLOCK_SIZE };
     p._grappleOwn = false;
     this._playSound('sounds/bow-fire.mp3');
+  }
+  // §Controller pass — is there a collectible emerald near the hook tip? (for Grapple-Pull's
+  // "grapple collectibles" — reel to the gem). Uses EMERALD_SYSTEM's active-group world cells.
+  _grappleHitEmerald(hx, hy) {
+    if (!this._emeraldsActive || typeof EMERALD_SYSTEM === 'undefined' || !EMERALD_SYSTEM._activeEmeralds) return null;
+    for (const e of EMERALD_SYSTEM._activeEmeralds()) {
+      if (e.collected || e._pull) continue;
+      if (Math.hypot((e.wx ?? 0) - hx, (e.wy ?? 0) - hy) <= BLOCK_SIZE * 0.6) return e;
+    }
+    return null;
+  }
+  // §Controls pass — a hooked collectible flies BACK to the player (not the player to it).
+  // Mark it _pull; _updatePulledEmeralds nudges it toward the player each frame, and the normal
+  // proximity pickup (EMERALD_SYSTEM.checkPickup) collects it on arrival.
+  _startEmeraldPull(e) {
+    if (!e) return;
+    e._pull = true;
+    this._playSound('sounds/bow-fire.mp3', 0.5);
+  }
+  _updatePulledEmeralds() {
+    if (!this._emeraldsActive || typeof EMERALD_SYSTEM === 'undefined' || !EMERALD_SYSTEM._activeEmeralds) return;
+    const p = this.player; if (!p) return;
+    for (const e of EMERALD_SYSTEM._activeEmeralds()) {
+      if (!e._pull || e.collected) continue;
+      const dx = p.cx - e.wx, dy = p.cy - e.wy, d = Math.hypot(dx, dy) || 1;
+      const SPD = 14;
+      if (d <= SPD) { e.wx = p.cx; e.wy = p.cy; }        // arrived — next pickup pass collects it
+      else { e.wx += (dx / d) * SPD; e.wy += (dy / d) * SPD; }
+    }
   }
   _grappleObstacleHeight(ax, ay) {
     const col = Math.floor(ax / BLOCK_SIZE);
@@ -11139,32 +11262,69 @@ class Game {
         const mob = this._grappleHitMob(g.hx, g.hy);
         if (mob) {
           const dir = Math.sign(g.dx) || (p.facing || 1);
-          if (mob.takeDamage) mob.takeDamage(this._worldAdvSettings.grappleDamage ?? 0, dir, 1.8);
+          // §Controller pass — Grapple-Pull vs an enemy (world toggle "Grapple Enemies"):
+          // instead of knocking it away, YANK it toward the player. Otherwise the classic
+          // knockback-and-retract. Both apply the configured Hook Damage (0 = none).
+          const dmg = this._worldAdvSettings.grappleDamage ?? 0;
+          if (g.mode === 'pull' && this._worldAdvSettings.grappleEnemies) {
+            if (mob.takeDamage) mob.takeDamage(dmg, dir, 0);   // damage, no away-knockback
+            const mcx = mob.x + mob.width / 2, mcy = mob.y + mob.height / 2;
+            const yx = p.cx - mcx, yy = p.cy - mcy, ym = Math.hypot(yx, yy) || 1;
+            const spd = 13;
+            if (mob.alive) { mob.vx = (yx / ym) * spd; mob.vy = (yy / ym) * spd - 3; mob.onGround = false; }
+            this._notify('Yanked!', '#C0A070', 60);
+          } else {
+            if (mob.takeDamage) mob.takeDamage(dmg, dir, 1.8);
+            this._notify('Grapple knockback!', '#C0A070', 60);
+          }
           if (!mob.alive && this.mobManager && this.mobManager.onKill) this.mobManager.onKill('p1', mob);
           p._grapple = null; p._grappleOwn = false;           // hook returns to the player
-          this._notify('Grapple knockback!', '#C0A070', 60);
           return;
+        }
+        // §Controller pass — Grapple-Pull can latch a COLLECTIBLE (emerald) and pull IT back to
+        // the player (world toggle "Grapple Collectibles"). Non-solid, so check before terrain.
+        if (g.mode === 'pull' && this._worldAdvSettings.grappleCollectibles) {
+          const em = this._grappleHitEmerald(g.hx, g.hy);
+          if (em) { this._startEmeraldPull(em); p._grapple = null; p._grappleOwn = false; return; }
         }
         const hitRow = Math.floor(g.hy / BLOCK_SIZE), hitCol = Math.floor(g.hx / BLOCK_SIZE);
         if (this.level.isSolid(hitRow, hitCol)) {
           // §follow-up — which FACE did the hook strike? (from its travel direction.) By
           // default the hook only anchors to a block's BOTTOM edge; a world setting widens
           // it to bottom+side or any. A disallowed face = no anchor → the hook retracts.
+          // Grapple-Pull ignores the face gate — you can reel to a ledge from any side.
           const adx = Math.abs(g.dx), ady = Math.abs(g.dy);
           const face = ady >= adx ? (g.dy < 0 ? 'bottom' : 'top') : 'side';
           const mode = this._worldAdvSettings.grappleAttach || 'bottom';
-          const ok = mode === 'any' || (mode === 'bottomSide' && face !== 'top') || (mode === 'bottom' && face === 'bottom');
+          const ok = g.mode === 'pull' || mode === 'any' || (mode === 'bottomSide' && face !== 'top') || (mode === 'bottom' && face === 'bottom');
           if (!ok) { p._grapple = null; p._grappleOwn = false; return; }
           g.hx -= g.dx * step; g.hy -= g.dy * step;      // stick just before the block
           g.ax = g.hx; g.ay = g.hy;
           g.anchorCol = hitCol; g.anchorRow = hitRow;
           g.topClear = !this.level.isSolid(hitRow - 1, hitCol);   // §item4 — clear top to climb onto?
           g.entryVx = p.vx; g.entryVy = p.vy;            // momentum at grab (for when swinging starts)
-          g.state = 'attached';                          // hang — swing does NOT start until Up (§5)
+          g.state = g.mode === 'pull' ? 'reeling' : 'attached';   // pull → reel-in; else hang (swing on Up)
           return;
         }
         if (g.traveled >= g.range) { p._grapple = null; p._grappleOwn = false; return; }  // auto-retract (5e-5)
       }
+      return;
+    }
+
+    // §Controller pass — REELING (Grapple-Pull): pull the player straight toward the anchor
+    // for vertical traversal / crossing gaps / zipping to a collectible. Down cancels; on
+    // arrival the grapple ends carrying a little momentum so you settle onto the ledge/gem.
+    if (g.state === 'reeling') {
+      p._grappleOwn = true;
+      if (down) { this._endGrapple(false); return; }
+      const REEL = 15;
+      const dx = g.ax - p.cx, dy = g.ay - p.cy, dist = Math.hypot(dx, dy) || 1;
+      if (dist <= REEL + 2) { this._endGrapple(false); p.vy = -4; return; }   // arrived → tiny pop
+      const nx = dx / dist, ny = dy / dist;
+      const stepX = nx * REEL, stepY = ny * REEL;
+      if (this._grappleBodyBlocked(p.x + stepX, p.y + stepY, p.width, p.height)) { this._endGrapple(true); return; }
+      p.x += stepX; p.y += stepY;
+      p.vx = stepX; p.vy = stepY;     // carried onto release
       return;
     }
 
@@ -11192,6 +11352,13 @@ class Game {
         this._grappleClimbHandoff(g);
         return;
       }
+    }
+    // §follow-up — Swing Assist: Left/Right feeds angular energy into the swing.
+    // 'lean' = steady push; 'pump' = timed boost near the bottom of the arc.
+    const _assist = this._worldAdvSettings.grappleSwingAssist ?? 'lean';
+    if (_assist !== 'none') {
+      const _dir = inp.isRight() ? 1 : inp.isLeft() ? -1 : 0;
+      if (_dir) GRAPPLE.accelerate(g.swing, _dir, _assist);
     }
     // §item5 — advance the pendulum, then block on terrain: stop dead if BEFORE the midpoint
     // (bottom of the arc), or wall-stop + drift back toward the midpoint if PAST it.
@@ -12730,10 +12897,17 @@ class Game {
       apple:          `${key} Eat Apple`,
     });
 
+    // §Controller pass — the gamepad prompt shows the ACTUAL bound Use Item/Place button
+    // (default Y), so a rebind is reflected on screen instead of a stale "[Y]".
+    const _gpUseLabel = (pl) => {
+      if (typeof GP_BINDINGS === 'undefined' || !this.input.controllerPreset) return 'Y';
+      const pr = this.input.controllerPreset();
+      return GP_BINDINGS.label(GP_BINDINGS.resolve(pl, pr, 'place'), pr);
+    };
     const p1 = this._nearestInteractable(this.player);
     this._contextAction = p1?.type ?? null;
     if (p1) {
-      const key = (this.input.p1GpSlot >= 0 && this.input.gamepads[this.input.p1GpSlot]?.connected) ? '[Y]' : '[U]';
+      const key = (this.input.p1GpSlot >= 0 && this.input.gamepads[this.input.p1GpSlot]?.connected) ? `[${_gpUseLabel(0)}]` : '[U]';
       this._contextPrompt = _makeLabels(key, !!this._chestOpen)[p1.type] ?? null;
     }
 
@@ -12741,7 +12915,7 @@ class Game {
       const p2 = this._nearestInteractable(this.player2);
       this._contextAction2 = p2?.type ?? null;
       if (p2) {
-        const key2 = (this.input.p2GpSlot >= 0 && this.input.gamepads[this.input.p2GpSlot]?.connected) ? '[Y]' : '[U]';
+        const key2 = (this.input.p2GpSlot >= 0 && this.input.gamepads[this.input.p2GpSlot]?.connected) ? `[${_gpUseLabel(1)}]` : '[U]';
         this._contextPrompt2 = _makeLabels(key2, !!this._chestOpen)[p2.type] ?? null;
       }
     }
@@ -12881,23 +13055,24 @@ class Game {
 
     } else if (action === 'wither_altar') {
       if (!this._witherBoss) {
-        const slot = player.hotbar[player.selectedSlot];
-        if (!slot) return;
         const altar = this._findNearbyWitherAltar(pCol, pRow, 4);
         if (!altar) return;
-        if (slot.type === BLOCK.WITHER_SKELETON_HEAD) {
+        // §follow-up — use a skull/soul-sand held ANYWHERE (not just the selected slot).
+        const skullHeld = this._findHeldSlot(player, BLOCK.WITHER_SKELETON_HEAD);
+        const sandHeld  = this._findHeldSlot(player, BLOCK.SOUL_SAND);
+        if (skullHeld) {
           const idx = altar.skulls.indexOf(false);
           if (idx === -1) { this._notify('All skull slots filled', '#886622', 80); return; }
           altar.skulls[idx] = true;
-          player.takeFromSlot(player.selectedSlot);
+          this._consumeHeldSlot(skullHeld);
           this._playSound('sounds/place-block.mp3');
           this._notify(`Wither Skull placed (${altar.skulls.filter(Boolean).length}/3)`, '#AA8833', 120);
           this._checkAltarCompletion(altar);
-        } else if (slot.type === BLOCK.SOUL_SAND) {
+        } else if (sandHeld) {
           const idx = altar.sand.indexOf(false);
           if (idx === -1) { this._notify('All soul sand slots filled', '#886622', 80); return; }
           altar.sand[idx] = true;
-          player.takeFromSlot(player.selectedSlot);
+          this._consumeHeldSlot(sandHeld);
           this._playSound('sounds/place-block.mp3');
           this._notify(`Soul Sand placed (${altar.sand.filter(Boolean).length}/4)`, '#AA8833', 120);
           this._checkAltarCompletion(altar);

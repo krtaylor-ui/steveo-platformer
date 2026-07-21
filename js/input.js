@@ -85,7 +85,12 @@ class InputManager {
     return {
       id, connected: false, rawId: '',
       jump: false, crouch: false, attack: false, place: false,
-      prevSlot: false, context: false, menu: false,
+      prevSlot: false, context: false, menu: false, throwBtn: false,
+      rangedBtn: false, grappleBtn: false, grapplePullBtn: false, sprintBtn: false,
+      cycleSelBtn: false, nextSlotBtn: false, prevHotbarBtn: false,
+      moveLeftBtn: false, moveRightBtn: false, inventoryBtn: false,
+      sbUndoBtn: false, sbRedoBtn: false, sbCopyBtn: false, sbPasteBtn: false,
+      sbPenUpBtn: false, sbPenDownBtn: false, sbPaletteBtn: false,
       dpad0: false, dpad1: false, dpad2: false, dpad3: false,
       moveX: 0, moveY: 0, aimX: 0, aimY: 0,
       triggerL: 0, triggerR: 0,
@@ -144,13 +149,23 @@ class InputManager {
       // override exists and GP_BINDINGS is loaded; falls back to `btn()` (with _faceRemap)
       // headless. Downstream still reads by name (gp.jump…), so nothing else changes.
       const player = [this.p1GpSlot, this.p2GpSlot, this.p3GpSlot, this.p4GpSlot].indexOf(i);
+      // Resolve a named action to its physical button state. A binding may be a single
+      // index, a CHORD [modIdx, btnIdx] (all must be held), or null (unassigned → false).
       const abtn = (action, fallbackIdx) => {
         if (typeof GP_BINDINGS !== 'undefined') {
           const m = GP_BINDINGS.resolve(player, this._controllerPreset, action);
+          if (Array.isArray(m)) return m.every((x) => b[x] && b[x].pressed);   // chord
           if (m != null) return b[m] ? b[m].pressed : false;
+          // resolved to null (unassigned) → only the historical fallback (if any) applies
+          if (GP_BINDINGS.ACTIONS.some((x) => x.id === action)) return fallbackIdx != null ? btn(fallbackIdx) : false;
         }
         return btn(fallbackIdx);
       };
+      // Stick swap: move ↔ aim axes exchange (left/right stick). Read once per pad.
+      const swap = (typeof GP_BINDINGS !== 'undefined' && GP_BINDINGS.swapSticks && GP_BINDINGS.swapSticks());
+      const dz = this._deadzoneForSlot(i);
+      const axMove = swap ? [a[2], a[3]] : [a[0], a[1]];
+      const axAim  = swap ? [a[0], a[1]] : [a[2], a[3]];
       this.gamepads[i] = {
         id:        i,
         connected: true,
@@ -159,9 +174,27 @@ class InputManager {
         crouch:    abtn('crouch', 1),    // B
         attack:    abtn('melee', 2),     // X
         place:     abtn('place', 3),     // Y
-        prevSlot:  abtn('prevSlot', 4),  // LB
-        context:   abtn('context', 5),   // RB
+        prevSlot:  abtn('prevSlot', 4),  // LB — Change Melee Weapon
+        context:   abtn('context', 5),   // RB — Change Ranged Weapon
         throwBtn:  abtn('throw', 11),    // R3 (right-stick click) — Trident throw (Smart Mobs §2)
+        // §Controller pass — new named button-actions (all default-unassigned except ranged /
+        // inventory). The D-pad itself is NOT an action — its 4 directions are plain buttons
+        // (indices 12-15) available as bind TARGETS and read directly below for their built-in uses.
+        rangedBtn: abtn('ranged', 7),    // RT-as-button (also read as an analog trigger below)
+        grappleBtn:    abtn('grapple', null),
+        grapplePullBtn:abtn('grapplePull', null),
+        sprintBtn:     abtn('sprint', null),
+        cycleSelBtn:   abtn('cycleSel', null),
+        nextSlotBtn:   abtn('nextSlot', null),
+        prevHotbarBtn: abtn('prevHotbar', null),
+        moveLeftBtn:   abtn('moveLeft', null),   // e.g. a player who binds Move Left to D-Pad Left
+        moveRightBtn:  abtn('moveRight', null),
+        inventoryBtn:  abtn('inventory', 8),     // View
+        // Sandbox tools (only bound within the sandbox profile).
+        sbUndoBtn:     abtn('sbUndo', null),    sbRedoBtn:  abtn('sbRedo', null),
+        sbCopyBtn:     abtn('sbCopy', null),    sbPasteBtn: abtn('sbPaste', null),
+        sbPenUpBtn:    abtn('sbPenUp', null),   sbPenDownBtn: abtn('sbPenDown', null),
+        sbPaletteBtn:  abtn('sbPalette', null),
         triggerL:  val(6) > GP_DEADZONE_TRIGGER ? val(6) : 0,
         triggerR:  val(7) > GP_DEADZONE_TRIGGER ? val(7) : 0,
         menu:      abtn('menu', 9),      // Start
@@ -169,10 +202,10 @@ class InputManager {
         dpad1:     btn(15),  // Right
         dpad2:     btn(13),  // Down
         dpad3:     btn(14),  // Left
-        moveX: this._applyDeadZone(a[0] ?? 0, this._deadzoneForSlot(i)),
-        moveY: this._applyDeadZone(a[1] ?? 0, this._deadzoneForSlot(i)),
-        aimX:  this._applyDeadZone(a[2] ?? 0, this._deadzoneForSlot(i)),
-        aimY:  this._applyDeadZone(a[3] ?? 0, this._deadzoneForSlot(i)),
+        moveX: this._applyDeadZone(axMove[0] ?? 0, dz),
+        moveY: this._applyDeadZone(axMove[1] ?? 0, dz),
+        aimX:  this._applyDeadZone(axAim[0] ?? 0, dz),
+        aimY:  this._applyDeadZone(axAim[1] ?? 0, dz),
       };
     }
   }
@@ -358,16 +391,16 @@ class InputManager {
   _kbJust(action, fallback) { return this.isJustDown(this._kbCode(action) || fallback); }
 
   isLeft()   {
-    if (this.dualInput) return this._kbDown('left', 'KeyA') || this._anyGp().moveX < 0;
+    if (this.dualInput) return this._kbDown('left', 'KeyA') || this._anyGp().moveX < 0 || this._anyGp().moveLeftBtn;
     const s = this.p1GpSlot;
-    if (s >= 0)   return this._p1gp().moveX < 0;
+    if (s >= 0)   return this._p1gp().moveX < 0 || this._p1gp().moveLeftBtn;   // stick OR a bound Move-Left button
     if (s === -2) return this._kbDown('left', 'ArrowLeft');
     return this._kbDown('left', 'KeyA');  // KB1
   }
   isRight()  {
-    if (this.dualInput) return this._kbDown('right', 'KeyD') || this._anyGp().moveX > 0;
+    if (this.dualInput) return this._kbDown('right', 'KeyD') || this._anyGp().moveX > 0 || this._anyGp().moveRightBtn;
     const s = this.p1GpSlot;
-    if (s >= 0)   return this._p1gp().moveX > 0;
+    if (s >= 0)   return this._p1gp().moveX > 0 || this._p1gp().moveRightBtn;
     if (s === -2) return this._kbDown('right', 'ArrowRight');
     return this._kbDown('right', 'KeyD');
   }
@@ -391,11 +424,20 @@ class InputManager {
     return this._kbDown('jump', 'KeyW') || extra;
   }
   isCrouch() {
-    if (this.dualInput) return this._kbDown('crouch', 'KeyS') || this._anyGp().crouch;
+    // §Controller pass — the LEFT STICK also ducks: pushing down past a firm threshold =
+    // crouch, so all four directional-melee inputs (and duck) live on one stick for combos.
+    // The crouch/shield BUTTON still works too.
+    if (this.dualInput) return this._kbDown('crouch', 'KeyS') || this._anyGp().crouch || this._anyGp().moveY > InputManager.STICK_DIR;
     const s = this.p1GpSlot;
-    if (s >= 0)   return this._p1gp().crouch;
+    if (s >= 0)   return this._p1gp().crouch || this._p1gp().moveY > InputManager.STICK_DIR;
     if (s === -2) return this._kbDown('crouch', 'ArrowDown');
     return this._kbDown('crouch', 'KeyS');
+  }
+  // §Controller pass — LEFT-STICK UP held past the threshold (P1 gamepad). Feeds the "up"
+  // directional-melee / look-up intent so the stick covers up as well as down.
+  isStickUp() {
+    const gp = this.dualInput ? this._anyGp() : (this.p1GpSlot >= 0 ? this._p1gp() : null);
+    return !!(gp && gp.moveY < -InputManager.STICK_DIR);
   }
   // Aim-up / look-up override (§Phase 5b): while held, ranged aiming forces straight up.
   // Keyboard only (gamepad aims with the right stick). Gated on the Aim-Up world toggle
@@ -413,8 +455,10 @@ class InputManager {
     return this._kbDown('aimUp', this.p1GpSlot === -2 ? 'ArrowUp' : 'KeyW');
   }
   isRun() {
-    if (this.dualInput) return this.isDown('ShiftLeft') || this.isDown('ShiftRight');
-    if (this.p1GpSlot >= 0) return false;  // gamepad: full-stick deflection auto-runs
+    // §Controller pass — Sprint is now a bindable gamepad button (default-unassigned); when
+    // bound, holding it sprints. Unbound → false, preserving the old "auto-run on full stick".
+    if (this.dualInput) return this.isDown('ShiftLeft') || this.isDown('ShiftRight') || this._anyGp().sprintBtn;
+    if (this.p1GpSlot >= 0) return this._p1gp().sprintBtn;
     return this._kbDown('run', 'ShiftLeft') || this.isDown('ShiftRight');
   }
   isAttack() {
@@ -446,20 +490,25 @@ class InputManager {
   // Held state (for charging a bow). The `ranged` binding defaults to Right-Click
   // (Mouse2) but can be rebound to a key or Left-Click; gamepad right trigger also fires.
   isRangedAttackDown() {
-    const rt = this.dualInput ? (this._anyGp().triggerR > 0.5)
-             : (this.p1GpSlot >= 0 ? this._p1gp().triggerR > 0.5 : false);
+    // RT (analog) OR the `ranged` button-binding (RT-as-button by default, but the player
+    // may rebind Ranged Attack to any button — §Controller pass).
+    const rt = this.dualInput ? (this._anyGp().triggerR > 0.5 || this._anyGp().rangedBtn)
+             : (this.p1GpSlot >= 0 ? (this._p1gp().triggerR > 0.5 || this._p1gp().rangedBtn) : false);
     const c = this._kbCode('ranged') || 'Mouse2';
     const codeDown = c === 'Mouse2' ? this.mouse.rightDown : c === 'Mouse0' ? this.mouse.down : this.isDown(c);
     return codeDown || rt;
   }
   moveX() {
+    // A bound Move-Left/Right button contributes full deflection (so the D-pad can drive movement).
+    const gpBtn = (g) => (g.moveRightBtn ? 1 : 0) - (g.moveLeftBtn ? 1 : 0);
     if (this.dualInput) {
       const kb = (this._kbDown('right', 'KeyD') ? 1 : 0) - (this._kbDown('left', 'KeyA') ? 1 : 0);
-      const gp = this._anyGp().moveX * (this._sens(0));
+      const g = this._anyGp();
+      const gp = gpBtn(g) || g.moveX * (this._sens(0));
       return Math.abs(kb) >= Math.abs(gp) ? kb : gp;
     }
     const s = this.p1GpSlot;
-    if (s >= 0)   return this._p1gp().moveX * (this._sens(0));
+    if (s >= 0)   { const g = this._p1gp(); return gpBtn(g) || g.moveX * (this._sens(0)); }
     if (s === -2) return (this._kbDown('right', 'ArrowRight') ? 1 : 0) - (this._kbDown('left', 'ArrowLeft') ? 1 : 0);
     return (this._kbDown('right', 'KeyD') ? 1 : 0) - (this._kbDown('left', 'KeyA') ? 1 : 0);
   }
@@ -564,3 +613,8 @@ class InputManager {
     return -1;
   }
 }
+
+// §Controller pass — left-stick deflection past this magnitude counts as a directional
+// press (up = look-up / up-attack, down = crouch / down-attack). Firm enough that ordinary
+// horizontal running (small vertical drift) never triggers a duck.
+InputManager.STICK_DIR = 0.6;

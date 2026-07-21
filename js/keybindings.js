@@ -22,8 +22,18 @@
 // capture flow + the panel rendering live in controls-ui.js (browser-only).
 // ============================================================
 
+// §Controls Profiles — the five game modes each hold an independent control profile
+// (keyboard + gamepad + stick tuning), so a build-anything platform can have wholly
+// different (or deliberately restricted) controls per mode. `all` is a hidden shared
+// fallback used only for migration seeding.
+const CONTROL_MODES = ['platformer', 'normal', 'speedrunner', 'arena', 'sandbox'];
+function _normalizeControlMode(m) { return CONTROL_MODES.includes(m) ? m : 'normal'; }
+
 const KEY_BINDINGS = {
-  STORAGE_KEY: 'steveo_keybinds_v1',
+  STORAGE_KEY: 'steveo_keybinds_v2',
+  OLD_KEY: 'steveo_keybinds_v1',
+  _mode: 'normal',
+  setMode(m) { this._mode = _normalizeControlMode(m); return this._mode; },
 
   // Rebindable actions (id, label, group, kind). `kind:'key'` = keyboard-first;
   // `kind:'mouseOrKey'` = defaults to a mouse button but can be bound to a key too.
@@ -32,7 +42,7 @@ const KEY_BINDINGS = {
     { id: 'right',   label: 'Move Right',     group: 'Movement', kind: 'key' },
     { id: 'jump',    label: 'Jump',           group: 'Movement', kind: 'key' },
     { id: 'crouch',  label: 'Crouch / Down',  group: 'Movement', kind: 'key' },
-    { id: 'run',     label: 'Run (hold)',     group: 'Movement', kind: 'key' },
+    { id: 'run',     label: 'Sprint (hold)',  group: 'Movement', kind: 'key' },
     { id: 'aimUp',   label: 'Look / Aim Up',  group: 'Movement', kind: 'key' },   // Phase 5b
     { id: 'melee',   label: 'Melee Attack',   group: 'Combat',   kind: 'mouseOrKey' },
     { id: 'ranged',  label: 'Ranged Attack',  group: 'Combat',   kind: 'mouseOrKey' },
@@ -61,10 +71,11 @@ const KEY_BINDINGS = {
     },
   },
 
-  // Loaded state: { preset, mouseScheme, players: { 0:{action:code}, … } }.
+  // Loaded state: { version:2, byMode: { <mode>: { preset, mouseScheme, players:{0-3} } } }.
   _state: null,
 
-  _blank() { return { preset: 'default', mouseScheme: 'default', players: { 0: {}, 1: {}, 2: {}, 3: {} } }; },
+  _blankSlice() { return { preset: 'default', mouseScheme: 'default', players: { 0: {}, 1: {}, 2: {}, 3: {} }, opts: {} }; },
+  _blank() { return { version: 2, byMode: {} }; },
 
   load() {
     if (this._state) return this._state;
@@ -73,15 +84,32 @@ const KEY_BINDINGS = {
       const raw = localStorage.getItem(this.STORAGE_KEY);
       if (raw) {
         const p = JSON.parse(raw);
-        if (p && typeof p === 'object') {
-          s.preset = p.preset || 'default';
-          s.mouseScheme = p.mouseScheme || 'default';
-          for (const i of [0, 1, 2, 3]) if (p.players && p.players[i]) s.players[i] = { ...p.players[i] };
+        if (p && p.byMode) { s.byMode = p.byMode; }
+      } else {
+        // Migrate the pre-per-mode flat config: seed EVERY mode with it, so nothing is lost.
+        const old = localStorage.getItem(this.OLD_KEY);
+        if (old) {
+          const p = JSON.parse(old);
+          if (p && typeof p === 'object') {
+            for (const m of CONTROL_MODES) {
+              const slice = this._blankSlice();
+              slice.preset = p.preset || 'default';
+              slice.mouseScheme = p.mouseScheme || 'default';
+              for (const i of [0, 1, 2, 3]) if (p.players && p.players[i]) slice.players[i] = { ...p.players[i] };
+              s.byMode[m] = slice;
+            }
+          }
         }
       }
     } catch (e) { /* corrupt / unavailable → blank */ }
     this._state = s;
     return s;
+  },
+  // The active mode's slice (lazily created from defaults).
+  _ms() {
+    const st = this.load();
+    if (!st.byMode[this._mode]) st.byMode[this._mode] = this._blankSlice();
+    return st.byMode[this._mode];
   },
   save() {
     try { localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.load())); } catch (e) { /* ignore */ }
@@ -98,7 +126,7 @@ const KEY_BINDINGS = {
   // The resolved CODE for (player, scheme, action): the player's override else the
   // scheme default. Always returns a token (never null) for a known action.
   resolve(player, scheme, action) {
-    const st = this.load();
+    const st = this._ms();
     const ov = st.players[player] && st.players[player][action];
     if (ov) return ov;
     return this._schemeDefaults(scheme)[action] || null;
@@ -107,27 +135,32 @@ const KEY_BINDINGS = {
   // A per-player override was explicitly set for this action? (Used so input.js can
   // keep its legacy multi-key convenience keys ONLY while the action is un-rebound.)
   hasOverride(player, action) {
-    const st = this.load();
+    const st = this._ms();
     return !!(st.players[player] && st.players[player][action]);
   },
 
   setBinding(player, action, code) {
-    const st = this.load();
+    const st = this._ms();
     if (!st.players[player]) st.players[player] = {};
     st.players[player][action] = code;
     st.preset = 'custom';
     this.save();
   },
   clearBinding(player, action) {
-    const st = this.load();
+    const st = this._ms();
     if (st.players[player]) delete st.players[player][action];
     this.save();
   },
 
   // Mouse scheme (Minecraft preset swaps place/attack): which mouse button places
   // vs attacks. Read by game.js's place/mine/attack decision.
-  mouseScheme() { return this.load().mouseScheme; },
-  isMinecraftMouse() { return this.load().mouseScheme === 'minecraft'; },
+  mouseScheme() { return this._ms().mouseScheme; },
+  isMinecraftMouse() { return this._ms().mouseScheme === 'minecraft'; },
+
+  // §Controls Profiles — per-mode gameplay options (not key bindings), e.g. Directional Aim.
+  // Stored in the mode slice so they travel with export/import + copy-from.
+  getOpt(key, dflt) { const o = this._ms().opts || {}; return (o[key] === undefined ? dflt : o[key]); },
+  setOpt(key, val) { const st = this._ms(); if (!st.opts) st.opts = {}; st.opts[key] = val; this.save(); },
 
   // ── Presets ─────────────────────────────────────────────────
   // A preset is applied by CLEARING per-player key overrides it owns and setting the
@@ -135,7 +168,7 @@ const KEY_BINDINGS = {
   // jump onto Up/W + clear any aim-up rebind (the escape hatch once Phase 5 moves jump
   // to J). Xbox/Switch are gamepad face presets handled by input.setControllerPreset.
   applyPreset(preset, player = 0) {
-    const st = this.load();
+    const st = this._ms();
     if (preset === 'default') {
       st.players[player] = {};
       st.mouseScheme = 'default';
@@ -153,7 +186,7 @@ const KEY_BINDINGS = {
     this.save();
     return st.preset;
   },
-  currentPreset() { return this.load().preset; },
+  currentPreset() { return this._ms().preset; },
 
   // Suggest a gamepad face preset from a gamepad id string (Nintendo → switch).
   suggestGamepadPreset(gamepadId) {
@@ -206,24 +239,47 @@ const KEY_BINDINGS = {
 // returns the final physical button index for (player, preset, action). Pure + testable.
 // ============================================================
 const GP_BINDINGS = {
-  STORAGE_KEY: 'steveo_gp_binds_v1',
-  // Rebindable button actions with their BASE (Xbox/default) button index.
+  STORAGE_KEY: 'steveo_gp_binds_v2',
+  OLD_KEY: 'steveo_gp_binds_v1',
+  _mode: 'normal',
+  setMode(m) { this._mode = _normalizeControlMode(m); return this._mode; },
+  // Rebindable button actions with their BASE (Xbox/default) button index. base:null =
+  // unassigned by default (still shown as an option; the player can bind it). §Controller
+  // pass: RT + the 4 D-pad directions are now editable (were FIXED), and new actions were
+  // added (Sprint, Grapple, Grapple-Pull, the weapon-switch family). A binding value may be
+  // a single index OR a chord [modIdx, btnIdx] (all must be held) — see resolve()/abtn().
   ACTIONS: [
-    { id: 'jump',     label: 'Jump',                 base: 0,  face: true },
-    { id: 'crouch',   label: 'Crouch / Shield',      base: 1,  face: true },
-    { id: 'melee',    label: 'Melee Attack',         base: 2,  face: true },
-    { id: 'place',    label: 'Place Block',          base: 3,  face: true },
-    { id: 'prevSlot', label: 'Previous Weapon',      base: 4 },
-    { id: 'context',  label: 'Context / Next Weapon', base: 5 },
-    { id: 'throw',    label: 'Throw / Recall',       base: 11 },
-    { id: 'menu',     label: 'Pause',                base: 9 },
+    { id: 'jump',       label: 'Jump',                  group: 'Movement', base: 0,  face: true },
+    { id: 'crouch',     label: 'Crouch / Shield',       group: 'Movement', base: 1,  face: true },
+    { id: 'moveLeft',   label: 'Move Left',             group: 'Movement', base: null },   // e.g. D-Pad Left
+    { id: 'moveRight',  label: 'Move Right',            group: 'Movement', base: null },   // e.g. D-Pad Right
+    { id: 'sprint',     label: 'Sprint (hold)',         group: 'Movement', base: null },
+    { id: 'grapple',    label: 'Grappling Hook',        group: 'Movement', base: null },
+    { id: 'grapplePull',label: 'Grapple — Pull In',     group: 'Movement', base: null },
+    { id: 'melee',      label: 'Melee Attack',          group: 'Combat',   base: 2,  face: true },
+    { id: 'ranged',     label: 'Ranged Attack',         group: 'Combat',   base: 7 },   // RT (was fixed)
+    { id: 'place',      label: 'Use Item / Place',      group: 'Combat',   base: 3,  face: true },
+    { id: 'throw',      label: 'Throw / Recall',        group: 'Combat',   base: 11 },
+    { id: 'prevSlot',   label: 'Change Melee Weapon',   group: 'Weapons',  base: 4 },   // LB
+    { id: 'context',    label: 'Change Ranged Weapon',  group: 'Weapons',  base: 5 },   // RB
+    { id: 'cycleSel',   label: 'Change Selected Weapon',group: 'Weapons',  base: null },
+    { id: 'nextSlot',   label: 'Next Hotbar Slot',      group: 'Weapons',  base: null },
+    { id: 'prevHotbar', label: 'Previous Hotbar Slot',  group: 'Weapons',  base: null },
+    { id: 'inventory',  label: 'Palette / Inventory',   group: 'System',   base: 8 },   // View
+    { id: 'menu',       label: 'Pause',                 group: 'System',   base: 9 },
+    // Sandbox-only tools (shown/bindable only while editing the Sandbox profile).
+    { id: 'sbUndo',     label: 'Undo',                  group: 'Sandbox',  base: null, modes: ['sandbox'] },
+    { id: 'sbRedo',     label: 'Redo',                  group: 'Sandbox',  base: null, modes: ['sandbox'] },
+    { id: 'sbCopy',     label: 'Copy Region',           group: 'Sandbox',  base: null, modes: ['sandbox'] },
+    { id: 'sbPaste',    label: 'Paste',                 group: 'Sandbox',  base: null, modes: ['sandbox'] },
+    { id: 'sbPenUp',    label: 'Pen Size +',            group: 'Sandbox',  base: null, modes: ['sandbox'] },
+    { id: 'sbPenDown',  label: 'Pen Size −',            group: 'Sandbox',  base: null, modes: ['sandbox'] },
+    { id: 'sbPalette',  label: 'Toggle Palette',        group: 'Sandbox',  base: null, modes: ['sandbox'] },
   ],
-  // Fixed (non-rebindable) button reference — shown read-only so players see the full map.
+  // Fixed (non-rebindable) reference — the two analog sticks. Swap them with swapSticks().
   FIXED: [
-    { label: 'Ranged Attack', base: 7 },   // RT (analog trigger)
     { label: 'Aim / Camera',  base: -1, note: 'Right Stick' },
     { label: 'Move',          base: -1, note: 'Left Stick' },
-    { label: 'Weapon Select', base: 12, note: 'D-Pad' },
   ],
   // Face-button swap per preset (base index 0-3 → physical index). 'switch' mirrors A↔B, X↔Y.
   PRESET_FACE: { default: [0, 1, 2, 3], xbox: [0, 1, 2, 3], switch: [1, 0, 3, 2] },
@@ -234,21 +290,39 @@ const GP_BINDINGS = {
   },
 
   _state: null,
-  _blank() { return { players: { 0: {}, 1: {}, 2: {}, 3: {} } }; },
+  _blankSlice() { return { players: { 0: {}, 1: {}, 2: {}, 3: {} }, swapSticks: false }; },
+  _blank() { return { version: 2, byMode: {} }; },
   load() {
     if (this._state) return this._state;
     let s = this._blank();
     try {
       const raw = localStorage.getItem(this.STORAGE_KEY);
-      if (raw) { const p = JSON.parse(raw); if (p && p.players) for (const i of [0, 1, 2, 3]) if (p.players[i]) s.players[i] = { ...p.players[i] }; }
+      if (raw) { const p = JSON.parse(raw); if (p && p.byMode) s.byMode = p.byMode; }
+      else {
+        const old = localStorage.getItem(this.OLD_KEY);
+        if (old) {
+          const p = JSON.parse(old);
+          if (p) for (const m of CONTROL_MODES) {
+            const slice = this._blankSlice();
+            if (p.players) for (const i of [0, 1, 2, 3]) if (p.players[i]) slice.players[i] = { ...p.players[i] };
+            slice.swapSticks = !!p.swapSticks;
+            s.byMode[m] = slice;
+          }
+        }
+      }
     } catch (e) {}
     this._state = s; return s;
   },
+  _ms() { const st = this.load(); if (!st.byMode[this._mode]) st.byMode[this._mode] = this._blankSlice(); return st.byMode[this._mode]; },
+
+  // Left/Right stick swap (move ↔ aim). Per-mode, like the rest of the profile.
+  swapSticks() { return !!this._ms().swapSticks; },
+  setSwapSticks(v) { this._ms().swapSticks = !!v; this.save(); },
   save() { try { localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.load())); } catch (e) {} },
 
   _base(action) { const a = this.ACTIONS.find((x) => x.id === action); return a ? a.base : null; },
   _isFace(action) { const a = this.ACTIONS.find((x) => x.id === action); return !!(a && a.face); },
-  override(player, action) { const st = this.load(); const p = st.players[player]; const v = p && p[action]; return (v == null ? null : v); },
+  override(player, action) { const st = this._ms(); const p = st.players[player]; const v = p && p[action]; return (v == null ? null : v); },
 
   // Final physical button index for (player, preset, action): the player's override, else
   // the preset-adjusted default (face swap for the 4 face buttons).
@@ -260,20 +334,79 @@ const GP_BINDINGS = {
     if (this._isFace(action)) { const map = this.PRESET_FACE[preset] || this.PRESET_FACE.default; return map[base]; }
     return base;
   },
-  setBinding(player, action, index) { const st = this.load(); if (!st.players[player]) st.players[player] = {}; st.players[player][action] = index; this.save(); },
-  clearBinding(player, action) { const st = this.load(); if (st.players[player]) delete st.players[player][action]; this.save(); },
-  resetPlayer(player) { const st = this.load(); st.players[player] = {}; this.save(); },
+  setBinding(player, action, index) { const st = this._ms(); if (!st.players[player]) st.players[player] = {}; st.players[player][action] = index; this.save(); },
+  clearBinding(player, action) { const st = this._ms(); if (st.players[player]) delete st.players[player][action]; this.save(); },
+  resetPlayer(player) { const st = this._ms(); st.players[player] = {}; this.save(); },
 
-  label(index, preset) { if (index == null || index < 0) return '—'; const n = this.NAMES[preset] || this.NAMES.default; return n[index] || ('Btn ' + index); },
+  label(index, preset) {
+    if (Array.isArray(index)) return index.map((i) => this.label(i, preset)).join(' + ');   // chord
+    if (index == null || index < 0) return '—';
+    const n = this.NAMES[preset] || this.NAMES.default; return n[index] || ('Btn ' + index);
+  },
+  isChord(v) { return Array.isArray(v) && v.length > 1; },
 
-  // Conflicts: two rebindable actions resolving to the same physical button.
+  // Conflicts: two rebindable actions resolving to the SAME binding (button or chord).
+  // Unassigned (null) actions never conflict; a chord is keyed by its sorted button set,
+  // so a chord and a lone button only clash when identical.
   conflicts(player, preset) {
-    const byIdx = {};
-    for (const a of this.ACTIONS) { const i = this.resolve(player, preset, a.id); (byIdx[i] = byIdx[i] || []).push(a.id); }
-    const out = []; for (const i in byIdx) if (byIdx[i].length > 1) out.push({ index: +i, actions: byIdx[i] });
+    const byKey = {};
+    for (const a of this.ACTIONS) {
+      if (a.modes && !a.modes.includes(this._mode)) continue;        // mode-specific action not in this mode
+      const r = this.resolve(player, preset, a.id);
+      if (r == null || (typeof r === 'number' && r < 0)) continue;   // unassigned (null or -1) → never conflicts
+      const key = Array.isArray(r) ? 'chord:' + [...r].sort((x, y) => x - y).join(',') : String(r);
+      (byKey[key] = byKey[key] || { r, actions: [] }).actions.push(a.id);
+    }
+    const out = [];
+    for (const k in byKey) if (byKey[k].actions.length > 1) out.push({ index: byKey[k].r, actions: byKey[k].actions });
     return out;
   },
 };
 
-if (typeof window !== 'undefined') { window.KEY_BINDINGS = KEY_BINDINGS; window.GP_BINDINGS = GP_BINDINGS; }
-if (typeof module !== 'undefined' && module.exports) module.exports = { KEY_BINDINGS, GP_BINDINGS };
+// ============================================================
+// CONTROL_PROFILES — coordinator over the three per-mode stores (keyboard, gamepad,
+// stick tuning). Switches all three to the active game mode at once, copies a whole
+// profile between modes ("start from"), and serializes a mode's profile for export/import.
+// A game mode's config is fully independent; export/import files carry kb + gp + sticks.
+// ============================================================
+const CONTROL_PROFILES = {
+  MODES: CONTROL_MODES,
+  normalize: _normalizeControlMode,
+  setMode(m) {
+    const mm = _normalizeControlMode(m);
+    KEY_BINDINGS.setMode(mm); GP_BINDINGS.setMode(mm);
+    if (typeof ControllerConfig !== 'undefined' && ControllerConfig.setMode) ControllerConfig.setMode(mm);
+    return mm;
+  },
+  // Copy an entire profile (kb + gp + sticks) from one mode to another ("start from").
+  copyFrom(src, dest) {
+    src = _normalizeControlMode(src); dest = _normalizeControlMode(dest);
+    if (src === dest) return;
+    const ks = KEY_BINDINGS.load(); if (ks.byMode[src]) { ks.byMode[dest] = JSON.parse(JSON.stringify(ks.byMode[src])); KEY_BINDINGS.save(); }
+    const gs = GP_BINDINGS.load(); if (gs.byMode[src]) { gs.byMode[dest] = JSON.parse(JSON.stringify(gs.byMode[src])); GP_BINDINGS.save(); }
+    if (typeof ControllerConfig !== 'undefined' && ControllerConfig.copyMode) ControllerConfig.copyMode(src, dest);
+  },
+  // Serialize a mode's full profile for export (download as JSON).
+  exportConfig(mode) {
+    mode = _normalizeControlMode(mode);
+    const ks = KEY_BINDINGS.load(), gs = GP_BINDINGS.load();
+    return {
+      steveoControlProfile: 1, mode,
+      kb: ks.byMode[mode] ? JSON.parse(JSON.stringify(ks.byMode[mode])) : KEY_BINDINGS._blankSlice(),
+      gp: gs.byMode[mode] ? JSON.parse(JSON.stringify(gs.byMode[mode])) : GP_BINDINGS._blankSlice(),
+      sticks: (typeof ControllerConfig !== 'undefined' && ControllerConfig.exportSticks) ? ControllerConfig.exportSticks(mode) : null,
+    };
+  },
+  // Apply an imported profile object into a mode (its new default; still fully editable).
+  importConfig(obj, mode) {
+    if (!obj || obj.steveoControlProfile == null) return false;
+    mode = _normalizeControlMode(mode || obj.mode);
+    const ks = KEY_BINDINGS.load(); if (obj.kb) { ks.byMode[mode] = JSON.parse(JSON.stringify(obj.kb)); KEY_BINDINGS.save(); }
+    const gs = GP_BINDINGS.load(); if (obj.gp) { gs.byMode[mode] = JSON.parse(JSON.stringify(obj.gp)); GP_BINDINGS.save(); }
+    if (obj.sticks && typeof ControllerConfig !== 'undefined' && ControllerConfig.importSticks) ControllerConfig.importSticks(obj.sticks, mode);
+    return true;
+  },
+};
+
+if (typeof window !== 'undefined') { window.KEY_BINDINGS = KEY_BINDINGS; window.GP_BINDINGS = GP_BINDINGS; window.CONTROL_PROFILES = CONTROL_PROFILES; window.CONTROL_MODES = CONTROL_MODES; }
+if (typeof module !== 'undefined' && module.exports) module.exports = { KEY_BINDINGS, GP_BINDINGS, CONTROL_PROFILES, CONTROL_MODES };
