@@ -23,9 +23,11 @@ const COMBOS = {
   // (Up / Down / Forward — no "back", no trailing attack press). Completing the sequence fires a
   // special: Rising Strike LAUNCHES the mob up (low→high uppercut); Sweep Slam knocks it onto its
   // BACK (high→low overhead). `effect` selects the launch vs. slam behaviour + animation.
+  // Forward/Back are relative to the player's FACING (which the hold locks), so they read
+  // naturally as toward/away — like a fighting-game motion.
   DEFS: [
-    { id: 'risingStrike', name: 'Rising Strike', seq: ['down', 'up'], effect: 'rising', enableKey: 'comboRisingStrike' },
-    { id: 'sweepSlam',    name: 'Sweep Slam',    seq: ['up', 'down'], effect: 'sweep',  enableKey: 'comboSweepSlam' },
+    { id: 'risingStrike', name: 'Rising Strike', seq: ['forward', 'forward', 'up'], effect: 'rising', enableKey: 'comboRisingStrike' },
+    { id: 'sweepSlam',    name: 'Sweep Slam',    seq: ['back', 'back', 'down'],     effect: 'sweep',  enableKey: 'comboSweepSlam' },
   ],
 
   // Enabled combos for a world (each toggled independently).

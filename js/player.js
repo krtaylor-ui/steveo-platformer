@@ -1105,17 +1105,8 @@ class Player {
       ctx.restore();
     }
 
-    // §Phase 7 — combo glow: a gold aura around the player from the 2nd chained hit,
-    // fading over _comboGlow frames. Signals "a combo is building".
-    if (this._comboGlow > 0) {
-      const w = this.width, h = this.height, a = Math.min(0.6, this._comboGlow / 24 * 0.6);
-      ctx.save();
-      ctx.globalAlpha = a;
-      ctx.shadowColor = '#FFD24A'; ctx.shadowBlur = 12;
-      ctx.strokeStyle = '#FFE58A'; ctx.lineWidth = 3;
-      ctx.strokeRect(sx - 3, sy - 3, w + 6, h + 6);
-      ctx.restore();
-    }
+    // §Phase 7 v2 — the combo cue is the success RING drawn by the game (_drawComboFx), not a
+    // box around the player (Kevin: drop the rectangular glow, keep the circle).
 
     // Bot AI (§1a) — a cyan "follow / repeat-mode" cue on a companion that's mirroring
     // the player's live inputs to thread a tricky spot. Deliberately distinct from the
@@ -1579,9 +1570,12 @@ class Player {
     // Sweep Slam sweeps HIGH→LOW (overhead). Drawn as a sword/axe swipe regardless of class.
     if (this._comboAnim && !rangedActive) {
       const t2 = Math.min(1, this._comboAnim.t / this._comboAnim.dur);
+      const e = t2 * t2 * (3 - 2 * t2);                 // smoothstep → a clean, weighty sweep
       const dir = flipX ? -1 : 1;
-      const a = this._comboAnim.kind === 'rising' ? dir * (1.5 - 3.0 * t2) : dir * (-1.5 + 3.0 * t2);
+      // A big, dramatic arc: Rising sweeps LOW (≈+2.1) → HIGH (≈-2.1); Sweep is the reverse.
+      const a = this._comboAnim.kind === 'rising' ? dir * (2.1 - 4.2 * e) : dir * (-2.1 + 4.2 * e);
       ctx.rotate(a);
+      ctx.scale(1.35, 1.35);                            // beefier weapon during the special
       if (cls === 'axe') this._drawAxeHead(ctx, metal); else this._drawSwordHead(ctx);
       ctx.restore(); return;
     }

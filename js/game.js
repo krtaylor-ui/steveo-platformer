@@ -11192,7 +11192,7 @@ class Game {
   _updateComboInput(meleeHeld) {
     const p = this.player;
     if (!p || this._p1RespawnTimer !== 0) { if (p) p._comboFacingLock = false; return; }
-    const defs = this._comboTrainer ? COMBOS.trainerDefs()
+    const defs = this._comboTrainer ? this._comboTrainer.activeDefs()
                : (typeof COMBOS !== 'undefined' ? COMBOS.enabled(this._worldAdvSettings) : []);
     if (!defs.length) { p._comboFacingLock = false; return; }
     if (!meleeHeld) { p._comboFacingLock = false; p._comboSeq = []; p._comboLastDir = null; return; }
@@ -11208,14 +11208,15 @@ class Game {
     if (this._comboTrainer) this._comboTrainer.onComboStep(pre);
     if (pre.status === 'finish') { this._fireComboSpecial(pre.def); p._comboSeq = []; p._comboLastDir = null; }
   }
-  // Facing-relative combo direction, no "back" (moving away = neutral, ignored).
+  // Combo direction. Facing is LOCKED during the hold, so horizontal reads as FORWARD (toward
+  // the locked facing) / BACK (away) — a natural fighting-game motion.
   _comboDir() {
     const inp = this.input, p = this.player;
     if (inp.isCrouch()) return 'down';
     const up = inp.isAimUp() || inp.isStickUp() || (!inp._aimUpEnabled && (inp.isDown('KeyW') || inp.isDown('ArrowUp')));
     if (up) return 'up';
     const mv = inp.moveX();
-    if (Math.abs(mv) > 0.25 && Math.sign(mv) === Math.sign(p._comboLockFacing || p.facing || 1)) return 'forward';
+    if (Math.abs(mv) > 0.25) return (Math.sign(mv) === Math.sign(p._comboLockFacing || p.facing || 1)) ? 'forward' : 'back';
     return 'neutral';
   }
   // Fire a completed combo: a bigger hit-all melee blow with a custom animation. Rising Strike
@@ -11225,13 +11226,13 @@ class Game {
     const traits = this._meleeTraits(p);
     traits.dmgMult   = (traits.dmgMult || 1) * 2.0;
     traits.cleave    = 0;                            // hit everything in reach
-    traits.reachMult = (traits.reachMult || 1) * 1.5;
+    traits.reachMult = (traits.reachMult || 1) * 2.4;   // combos reach noticeably farther
     const kind = (def.effect === 'sweep' || def.id === 'sweepSlam') ? 'sweep' : 'rising';
     if (kind === 'sweep') traits.finisher = true; else traits.launchUp = true;
     const hit = this.mobManager.playerAttack(p, 'p1', traits);
     p.activeHand = 'melee';
-    p.swingTimer = 20;
-    p._comboAnim = { kind, t: 0, dur: 22 };          // custom weapon-arc (player.js _drawWeapon)
+    p.swingTimer = 26;
+    p._comboAnim = { kind, t: 0, dur: 26 };          // custom weapon-arc (player.js _drawWeapon)
     p._comboGlow = 30;
     this._playSound('sounds/attack-sword.mp3');
     this._comboFx = { x: p.cx, y: p.cy, t: 0, dur: 20, kind, hit: !!hit };   // success indicator

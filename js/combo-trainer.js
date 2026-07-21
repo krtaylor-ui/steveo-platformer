@@ -26,6 +26,7 @@ class ComboTrainer {
     this.immortal = true;
     this.fightsBack = false;       // default: passive dummy
     this.slowmo = false;
+    this.allCombos = false;        // false = only the SELECTED combo is live (focused practice)
     this.timingMin = 0;            // frames between hits (min gate; 0 = none)
     this.timingMax = 45;           // frames the chain stays alive (the difficulty knob)
     this.stats = { hits: 0, combos: 0, finishers: 0, damage: 0, frames: 0 };
@@ -44,6 +45,13 @@ class ComboTrainer {
 
   _defs() { return (typeof COMBOS !== 'undefined' && COMBOS.trainerDefs) ? COMBOS.trainerDefs() : []; }
   _selectedCombo() { return this._defs().find((d) => d.id === this.comboId) || null; }
+  // Which combos are LIVE for input: only the selected one (focused practice), or all if the
+  // "All Combos" toggle is on (free testing). Used by game.js's combo state machine.
+  activeDefs() {
+    if (this.allCombos) return this._defs();
+    const sel = this._selectedCombo();
+    return sel ? [sel] : [];
+  }
 
   // ── Mob ─────────────────────────────────────────────────────
   spawnMob() {
@@ -116,7 +124,7 @@ class ComboTrainer {
 
   // Combo events — game.js calls these from the hold-melee combo state machine.
   onComboStep(pre) { if (pre && (pre.status === 'progress' || pre.status === 'finish')) this.stats.hits++; }  // "hits" = directions keyed
-  onComboFire(def, hit) { this.stats.combos++; if (hit) this.stats.finishers++; this._finishFlash = 44; }
+  onComboFire(def, hit) { this.stats.combos++; if (hit) this.stats.finishers++; if (def && def.id === this.comboId) this._finishFlash = 44; }
 
   // ── Creator ─────────────────────────────────────────────────
   startCreator() { this._creator = { seq: [], name: 'Combo ' + ((COMBOS.customList ? COMBOS.customList.length : 0) + 1) }; }
@@ -205,6 +213,8 @@ class ComboTrainer {
       cy += 26;
     }
     this._btn(ctx, x + 284, y + 26, 88, 22, '＋ New Combo', !!this._creator, () => this.startCreator(), 'rgba(120,160,220,0.9)');
+    // Only the selected combo is live by default (focused practice); toggle to test them all.
+    this._btn(ctx, x + 284, y + 52, 88, 22, this.allCombos ? 'All Combos ✓' : 'Selected Only', this.allCombos, () => { this.allCombos = !this.allCombos; }, 'rgba(150,120,200,0.9)');
 
     // Step feedback for the selected combo.
     const combo = this._selectedCombo();

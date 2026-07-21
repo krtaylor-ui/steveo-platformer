@@ -27,7 +27,15 @@ going until the entire session is implemented (or a hard blocker is hit, which s
 questions were front-loaded). Resolve ambiguity with best judgment + document it, rather than
 blocking. (These sessions are designed to run unattended.)
 
-## CURRENT STATE (2026-07-21) — builds 201–202 COMBO TRAINER + combo model v2 on `main` (LOCAL, headless-green, NOT pushed — awaiting Kevin's playtest)
+## CURRENT STATE (2026-07-21) — builds 201–203 COMBO TRAINER + combo model v2 on `main` (LOCAL, headless-green, NOT pushed — awaiting Kevin's playtest)
+
+**Build 203 — combo tuning (Kevin's 2nd combo playtest):**
+- **forward/back RESTORED** (they're facing-relative now that the hold locks facing): Rising Strike = **forward,forward,up**; Sweep Slam = **back,back,down**. `_comboDir()` returns forward/back vs the locked facing (was neutral-on-away). test-combos 18.
+- **Bigger combo reach** (reachMult ×2.4) and a **more dramatic weapon arc** (smoothstep sweep, angle range ±2.1, weapon scaled 1.35× during the special; dur 26).
+- **Dropped the rectangular glow** box around the player (removed from `player.js`); the only success cue is now the expanding **ring** (`_drawComboFx`).
+- **Trainer practices ONLY the selected combo by default** (`activeDefs()` = [selected] unless the new **All Combos** toggle is on) — so a wrong-order input no longer lights the tracker / reads as success; `onComboFire` only flashes when the fired def is the selected one.
+
+## CURRENT STATE (2026-07-21) — builds 201–202 (superseded by 203 above)
 
 **Build 202 — combo model REDESIGN (Kevin's playtest of 201):** the combo input changed from "land N
 directional melee HITS" to **HOLD melee + key a direction SEQUENCE** (Up/Down/Forward — **no "back"** in this game,

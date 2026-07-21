@@ -13,30 +13,33 @@ console.log('Per-combo enabling (independent toggles):');
   ok(COMBOS.enabled({ comboRisingStrike: true, comboSweepSlam: true }).length === 2, 'both toggles → both');
 }
 
-console.log('Rising Strike (down, up → special):');
+console.log('Rising Strike (forward, forward, up → special):');
 {
   const defs = COMBOS.enabled({ comboRisingStrike: true });
-  let r = COMBOS.advance([], 'down', defs); ok(r.status === 'progress', 'down = progress');
-  r = COMBOS.advance(r.seq, 'up', defs); ok(r.status === 'finish' && r.def.id === 'risingStrike', 'down,up = FINISH');
+  let r = COMBOS.advance([], 'forward', defs); ok(r.status === 'progress', '1st forward = progress');
+  r = COMBOS.advance(r.seq, 'forward', defs); ok(r.status === 'progress', '2nd forward = progress');
+  r = COMBOS.advance(r.seq, 'up', defs); ok(r.status === 'finish' && r.def.id === 'risingStrike', 'forward,forward,up = FINISH');
   ok(r.seq.length === 0, 'sequence resets after the special');
 }
 
-console.log('Sweep Slam (up, down → special):');
+console.log('Sweep Slam (back, back, down → special):');
 {
   const defs = COMBOS.enabled({ comboSweepSlam: true });
-  let r = COMBOS.advance([], 'up', defs);
-  r = COMBOS.advance(r.seq, 'down', defs);
-  ok(r.status === 'finish' && r.def.id === 'sweepSlam', 'up,down finishes Sweep Slam');
+  let s = COMBOS.advance([], 'back', defs).seq;
+  s = COMBOS.advance(s, 'back', defs).seq;
+  const r = COMBOS.advance(s, 'down', defs);
+  ok(r.status === 'finish' && r.def.id === 'sweepSlam', 'back,back,down finishes Sweep Slam');
 }
 
-console.log('Broken chains + restarts (no "back" in this game):');
+console.log('Broken chains + restarts (forward/back are facing-relative):');
 {
   const defs = COMBOS.enabled({ comboRisingStrike: true, comboSweepSlam: true });
-  // down, down: the 2nd down isn't Rising's 2nd step (up), but it re-starts a combo's first step.
-  let r = COMBOS.advance([], 'down', defs);
-  r = COMBOS.advance(r.seq, 'down', defs);
-  ok(r.status === 'progress' && r.seq.length === 1 && r.seq[0] === 'down', 'a breaking press restarts as a new first step');
-  const n = COMBOS.advance(['down'], 'neutral', defs);
+  // forward, forward, then BACK: breaks Rising Strike but starts Sweep Slam (its 1st step).
+  let s = COMBOS.advance([], 'forward', defs).seq;
+  s = COMBOS.advance(s, 'forward', defs).seq;
+  const r = COMBOS.advance(s, 'back', defs);
+  ok(r.status === 'progress' && r.seq.length === 1 && r.seq[0] === 'back', 'a breaking press restarts as the new combo\'s first step');
+  const n = COMBOS.advance(['forward'], 'neutral', defs);
   ok(n.status === 'none' && n.seq.length === 0, 'a non-combo direction clears the sequence');
 }
 
