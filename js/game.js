@@ -11100,6 +11100,10 @@ class Game {
     const p = this.player, g = p._grapple;
     if (g && g.swing && preserveVel) {
       const v = GRAPPLE.releaseVelocity(g.swing);
+      // §follow-up — Release Momentum: amplify the whole release vector so a swing can fling
+      // the player across bigger gaps (world setting; default 2x for a punchier feel).
+      const boost = this._worldAdvSettings.grappleReleaseBoost ?? 2.0;
+      v.vx *= boost; v.vy *= boost;
       p.vx = v.vx; p.vy = v.vy;
       // §follow-up — carry the FULL swing velocity vector off the cable (Kevin: if you let go
       // while swinging UP you should keep rising, then arc down under gravity). Two things were

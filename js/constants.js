@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 193 (Combat/Controls FOLLOW-UP — Sandbox is now forced single-player on load (clears the ghost P2 from an old save with a stale twoPlayerMode/companionBot — re-saving scrubs it for good); and the grapple release now preserves the FULL velocity vector — letting go while swinging up keeps you rising, then gravity arcs you down (the launch window was cancelling itself on a stale onGround from the swing).)';
+const GAME_VERSION = 'v3 · build 194 (Combat/Controls FOLLOW-UP — new "Release Momentum" world setting amplifies the velocity you fly off a grapple swing with (default 2x, up to 4x) so you can fling across bigger gaps.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
