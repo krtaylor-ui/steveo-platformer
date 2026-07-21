@@ -442,7 +442,15 @@ class Player {
     // Horizontal movement — analog-aware (uses left stick magnitude when available)
     const mx = typeof input.moveX === 'function' ? input.moveX()
              : (input.isLeft() ? -1 : input.isRight() ? 1 : 0);
-    if (this._ctrlLock) {
+    if (this.onGround && this._launchFrames > 0) this._launchFrames = 0;   // landed → normal control
+    if (this._launchFrames > 0) {
+      // §follow-up — grapple-release momentum: preserve the launch velocity (with light air
+      // steering) so the swing direction carries; vy is untouched, so gravity arcs it down.
+      this._launchFrames--;
+      if (mx !== 0) { this._launchVx += speed * mx * 0.15; this.facing = mx < 0 ? -1 : 1; }
+      this._launchVx *= 0.99;
+      this.vx = this._launchVx;
+    } else if (this._ctrlLock) {
       // Lock-away wall jump: steering disabled, vx forced away from the wall until
       // landing / hitting a wall / grabbing a ledge (those clear _ctrlLock).
       this.vx = this._lockVx;

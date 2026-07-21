@@ -33,6 +33,25 @@ Bug-fix + polish follow-up to the mega-session, from Kevin's first playtest. Pha
   at spawn (the mega-session's auto-grant is removed). The explicit "Starting Melee = Boomerang" choice
   stays as a separate intentional grant.
 
+## CLEANUP + fixes (build 192) — Kevin's 4th pass (now working directly on `main`)
+- **Dual-slot (Trident/Boomerang) finally shows:** the ranged slot now mirrors the dual-mode melee
+  weapon WHENEVER one is equipped (was gated on `!p.bow`) — its throw takes the ranged action over any
+  bow, so the mirror wins the slot display in both hotbar renderers; the arrow-count overlay is
+  suppressed on a mirrored slot; slot-1 selection redirects to melee whenever a dual-mode weapon is up.
+- **Grapple-release momentum now carries (real fix):** the prior `_endGrapple(true)` set `p.vx` but
+  `_handleInput` recomputes `vx` from input every frame (0.72 friction when idle), wiping it → straight
+  drop. Added a launch window: `_endGrapple` sets `player._launchVx` + `_launchFrames=45`; `_handleInput`
+  preserves that horizontal velocity (with light air-steer, gentle decay), ending on landing. `vy` is
+  untouched so gravity arcs the player down — so you fly off in the swing direction (at the bottom:
+  horizontal + slow descent), exactly as intended.
+- **Companion bot never spawns in Sandbox:** `_spawnCompanion` gate dropped `'sandbox'` (a stale
+  `companionBot` in an old world was spawning a P2 bot in the editor with no off-switch).
+- **World Settings trim:** removed **Compact Hotbar** (→ pause Settings, all modes), **2-Player Co-op**
+  (already in the pause menu), and **P1/P2 Character** (→ pause Settings, Normal/Platformer) from the
+  World tab; renamed the Combat **Boss Scaling** group → **Multiplayer Boss Scaling**. (Skins are still
+  `_worldAdvSettings.p1Char/p2Char`-backed for now; account-level skin choice is the eventual plan.)
+  The character-skin selectors + Compact Hotbar toggle now live in the pause → Settings → Player section.
+
 ## GRAPPLE + edge-climb fixes (build 191) — Kevin's 3rd playtest pass
 - **Edge climb on Up OR Jump (either grabs, either climbs):** `_tryLedgeGrab` already grabs on
   `isJump() || isLookUpHeld()`; now `_updateHang`'s 'hang' state climbs up on the SAME combined edge

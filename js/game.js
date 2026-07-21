@@ -10984,7 +10984,7 @@ class Game {
     // §Phase F — when the ranged slot is only MIRRORING a dual-mode melee weapon (Trident/
     // Boomerang, no real bow), it isn't independently selectable: pressing it acts on the
     // melee slot instead (you swap by changing the melee weapon).
-    if (hk === 1 && !p.bow && p.dualModeMelee && p.dualModeMelee()) hk = 0;
+    if (hk === 1 && p.dualModeMelee && p.dualModeMelee()) hk = 0;
     const kind = hk === 0 ? 'melee' : hk === 1 ? 'ranged' : null;
     if (!kind) { p.selectedSlot = hk; return; }
     // A weapon slot (0 = melee, 1 = ranged): each press selects it, makes that
@@ -11089,8 +11089,15 @@ class Game {
   }
   _endGrapple(preserveVel) {
     const p = this.player, g = p._grapple;
-    if (g && g.swing && preserveVel) { const v = GRAPPLE.releaseVelocity(g.swing); p.vx = v.vx; p.vy = v.vy; }
-    else if (!preserveVel) { p.vx = 0; p.vy = 0; }
+    if (g && g.swing && preserveVel) {
+      const v = GRAPPLE.releaseVelocity(g.swing);
+      p.vx = v.vx; p.vy = v.vy;
+      // §follow-up — carry the swing momentum. _handleInput otherwise recomputes vx from
+      // input every frame (and applies friction when idle), which wiped the release velocity
+      // → a straight drop. A launch window preserves the horizontal velocity (with light air
+      // steering) so the player flies off in the swing direction, then gravity (vy) arcs down.
+      p._launchVx = v.vx; p._launchFrames = 45;
+    } else if (!preserveVel) { p.vx = 0; p.vy = 0; }
     p._grapple = null; p._grappleOwn = false;
   }
   _updateGrapple() {
@@ -12125,9 +12132,9 @@ class Game {
 
       // Weapon slots 0-1 (sword, bow); pickaxe removed (mining is always-active).
       if (i <= 1) {
-        // §Phase F — ranged slot mirrors a dual-mode melee weapon when no real bow.
-        const _mirror  = (i === 1 && !player.bow && player.dualModeMelee) ? player.dualModeMelee() : null;
-        const toolKey  = i === 0 ? player.sword : (player.bow || _mirror);
+        // §Phase F — ranged slot mirrors a dual-mode melee weapon whenever one is equipped.
+        const _mirror  = (i === 1 && player.dualModeMelee) ? player.dualModeMelee() : null;
+        const toolKey  = i === 0 ? player.sword : (_mirror || player.bow);
         const toolData = toolKey ? TOOL_DATA[toolKey] : null;
         const cls = toolData ? (toolData.weaponClass || toolData.type) : (i === 0 ? 'sword' : 'bow');
         const col = toolData ? toolData.color : 'rgba(180,140,80,0.6)';
@@ -12178,9 +12185,10 @@ class Game {
       // Weapon slots 0-1: sword (0), bow (1). Pickaxe removed (mining always-active).
       if (i <= 1) {
         // §Phase F — the ranged slot MIRRORS a dual-mode melee weapon (Trident/Boomerang)
-        // when no real bow is held, so the weapon reads as occupying both slots.
-        const _mirror  = (i === 1 && !p.bow && p.dualModeMelee) ? p.dualModeMelee() : null;
-        const toolKey  = i === 0 ? p.sword : (p.bow || _mirror);
+        // WHENEVER one is equipped as melee — its throw takes the ranged action over any bow,
+        // so it reads as occupying both slots. (Mirror wins over a held bow in the display.)
+        const _mirror  = (i === 1 && p.dualModeMelee) ? p.dualModeMelee() : null;
+        const toolKey  = i === 0 ? p.sword : (_mirror || p.bow);
         // Icon by weapon class (Smart Mobs §2) so a Spear/Axe/Trident/Crossbow
         // reads distinctly in its slot; falls back to the slot's default.
         const toolData = toolKey ? TOOL_DATA[toolKey] : null;
@@ -12227,7 +12235,7 @@ class Game {
         }
         // Arrow count overlay on the bow slot (i===1) — only a REAL bow/crossbow uses arrows
         // (not a mirrored dual-mode weapon, not the grappling hook).
-        if (i === 1 && p.bow && (p.rangedClass === 'bow' || p.rangedClass === 'crossbow') && !this._worldAdvSettings.unlimitedArrows) {
+        if (i === 1 && !_mirror && p.bow && (p.rangedClass === 'bow' || p.rangedClass === 'crossbow') && !this._worldAdvSettings.unlimitedArrows) {
           const arrowCount = p.countItem(BLOCK.ARROW);
           ctx.fillStyle    = arrowCount === 0 ? '#FF5555' : '#FFFFFF';
           ctx.font         = 'bold 10px Courier New';
@@ -15944,7 +15952,9 @@ class Game {
     if (this._companionController) return;
     if (typeof BotController !== 'function' || !BOT_DIFFICULTY_PRESETS || !BOT_DIFFICULTY_PRESETS[diff]) return;
     if (this.isArena || this._onlineGameId) return;
-    if (!['platformer', 'normal', 'sandbox'].includes(this.gameMode)) return;
+    // §follow-up — companion is a PLAY-mode feature; never in the Sandbox editor (a stale
+    // `companionBot` in an old world was spawning a bot P2 with no off-switch there).
+    if (!['platformer', 'normal'].includes(this.gameMode)) return;
     if (!this.player2) this._applyTwoPlayerMode(true, true);   // ensure P2 exists
     const comp = this.getPlayer(1);
     if (!comp) return;

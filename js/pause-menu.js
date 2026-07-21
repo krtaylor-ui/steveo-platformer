@@ -417,7 +417,17 @@ const PAUSE_MENU = {
     // Player-scoped display / chat (each player's preference, not the world's).
     const prows = [
       this._row('Show Player Health Bars', this._toggle(() => aws.showOnlineHealthBars !== false, v => { game._worldAdvSettings.showOnlineHealthBars = v; })),
+      // §follow-up — moved here from World Settings (a display preference, all modes).
+      this._row('Compact Hotbar', this._toggle(() => !!aws.compactHotbar, v => { game._worldAdvSettings.compactHotbar = v; })),
     ];
+    // §follow-up — character skins moved here from World Settings (Normal/Platformer). P1
+    // always; P2 when a 2nd player / companion is present. (A future account-level skin
+    // choice will supersede this — see the online-MP skin unification note.)
+    if (!game.isArena && game.gameMode !== 'sandbox') {
+      const CHAR = [{ v: 'male', label: 'Steve ♂' }, { v: 'female', label: 'Alex ♀' }];
+      prows.push(this._row('P1 Character', this._select(CHAR, () => aws.p1Char || 'male', v => { game._worldAdvSettings.p1Char = v; if (game.player) game.player.charType = v; })));
+      if (game.player2) prows.push(this._row('P2 Character', this._select(CHAR, () => aws.p2Char || 'male', v => { game._worldAdvSettings.p2Char = v; if (game.player2) game.player2.charType = v; })));
+    }
     // (§1b) Touch Controls Auto / Force-On / Force-Off — a per-device preference that
     // makes the build-171 auto-detect explicit + overridable (auto-detect can misfire on
     // hybrid touch+mouse laptops). Stored in localStorage by TOUCH_CONTROLS, not the world.

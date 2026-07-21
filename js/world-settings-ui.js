@@ -110,13 +110,11 @@ const WORLD_SETTINGS = {
       { key: 'nightSpawnRate', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'cycle', opts: [1.5, 2, 3, 4], dflt: 2, label: 'Night Spawn Rate', fmt: (v) => v.toFixed(1) + 'x', sub: true, dependsOn: 'nightSpawnBoost', advanced: true, hint: 'how many more mobs at night' },
       { key: 'fullMoonHpBoost', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'toggle', dflt: false, label: 'Full-Moon Mob HP', hint: 'tougher mobs on full-moon nights' },
       { key: 'fullMoonHpAmount', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'cycle', opts: [1.25, 1.5, 2, 3], dflt: 1.5, label: 'Full-Moon HP Boost', fmt: (v) => v.toFixed(2) + 'x', sub: true, dependsOn: 'fullMoonHpBoost', advanced: true, hint: 'mob HP multiplier on a full moon' },
-      { key: 'compactHotbar', tab: 'world', group: 'Display', modes: M.display, type: 'toggle', dflt: false, label: 'Compact Hotbar' },
       // ── Debug tab — dev overlays (kept for diagnosing perf + navigation; may be hidden later) ──
       { key: 'perfHud', tab: 'debug', group: 'Overlays', modes: M.all, type: 'toggle', dflt: false, label: 'Performance HUD', hint: 'show a live frame-time breakdown (FPS, update/render, mobs/bot/redstone, A* calls) — also auto-appears when frames run slow' },
       { key: 'showBotPaths', tab: 'debug', group: 'Overlays', modes: M.all, type: 'toggle', dflt: false, label: 'Show Bot / Mob Paths', hint: 'draw each AI’s planned route (green), goal (magenta ring), and a red ✕ when it has no path — for debugging navigation' },
       { key: 'showNavGrid', tab: 'debug', group: 'Overlays', modes: M.all, type: 'toggle', dflt: false, label: 'Show Nav Grid (solid cells)', hint: 'outline every cell the pathfinder treats as SOLID (orange) around each bot — if a wall has no outline, the planner isn’t seeing it' },
       { key: 'worldZoom', tab: 'world', group: 'Display', modes: M.display, type: 'cycle', opts: O.zoom, dflt: 1.0, label: 'Default Zoom', fmt: (v) => v.toFixed(2) + 'x' },
-      { key: 'twoPlayerMode', tab: 'world', group: 'Players', modes: M.adventure, type: 'toggle', dflt: false, label: '2-Player Co-op', hint: 'P2 joins with a gamepad' },
       // (§1c) Companion ON/OFF + which-character is now a PER-SESSION choice made on the
       // Platformer/Normal start screen (game-config-startup splash), not a world property —
       // so the `companionBot` cycle was removed from here. The advanced companion tuning
@@ -125,8 +123,6 @@ const WORLD_SETTINGS = {
       { key: 'companionTeleportRange', tab: 'world', group: 'Players', modes: M.adventure, type: 'cycle', opts: [12, 16, 20, 24, 30, 40], dflt: 20, label: 'Summon Distance', fmt: (v) => v + ' blocks', sub: true, hint: 'direct distance (counts vertical) before the “!” appears and you can summon the companion with C' },
       { key: 'companionStuckBehavior', tab: 'world', group: 'Players', modes: M.adventure, type: 'cycle', opts: ['none', 'teleport', 'follow'], dflt: 'follow', label: 'If Companion Gets Stuck', fmt: (v) => ({ none: 'Do nothing', teleport: 'Teleport to you', follow: 'Follow mode' }[v] || v), sub: true, hint: 'used when Teleport is OFF: Follow mode shows a “!”, waits for you to come near, then mirrors your moves through the spot' },
       { key: 'playersPassThrough', tab: 'world', group: 'Players', modes: M.adventure, type: 'toggle', dflt: false, label: 'Players Pass Through', hint: 'players (and the companion) don’t push each other — they overlap / share a spot instead of colliding' },
-      { key: 'p1Char', tab: 'world', group: 'Players', modes: M.adventure, type: 'cycle', opts: ['male', 'female'], dflt: 'male', label: 'P1 Character', fmt: (v) => v === 'female' ? 'Alex ♀' : 'Steve ♂', hint: 'player 1 sprite' },
-      { key: 'p2Char', tab: 'world', group: 'Players', modes: M.adventure, type: 'cycle', opts: ['male', 'female'], dflt: 'male', label: 'P2 (Co-op) Character', fmt: (v) => v === 'female' ? 'Alex' : 'Steve', hint: 'player 2 co-op sprite (the COMPANION’s character is chosen on the start screen)' },
       { key: 'platformerEmeralds', tab: 'world', group: 'Scoring', modes: M.platformer, type: 'toggle', dflt: false, label: 'Collect Emeralds', hint: 'placed emeralds can be picked up and counted' },
       { key: 'platformerScore', tab: 'world', group: 'Scoring', modes: M.platformer, type: 'toggle', dflt: false, label: 'Score / Points', hint: 'track a running score (emeralds + level-clear bonus)' },
       { key: 'emeraldPoints', tab: 'world', group: 'Scoring', modes: M.platformer, type: 'cycle', opts: [50, 100, 200, 500], dflt: 100, label: 'Points / Emerald', fmt: (v) => v + ' pts', sub: true, dependsOn: 'platformerScore', advanced: true, hint: 'score awarded per emerald' },
@@ -189,10 +185,10 @@ const WORLD_SETTINGS = {
       })),
 
       // ── COMBAT ──────────────────────────────────────────────
-      { key: 'bossHealthMultiplier', tab: 'combat', group: 'Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Health', fmt: x1 },
-      { key: 'bossDamageMultiplier', tab: 'combat', group: 'Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Damage', fmt: x1 },
-      { key: 'bossAttackRateMultiplier', tab: 'combat', group: 'Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Attack Rate', fmt: x1, advanced: true },
-      { key: 'disableDragonHealing', tab: 'combat', group: 'Boss Scaling', modes: M.adventure, type: 'toggle', dflt: false, label: 'Disable Dragon Healing', advanced: true },
+      { key: 'bossHealthMultiplier', tab: 'combat', group: 'Multiplayer Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Health', fmt: x1 },
+      { key: 'bossDamageMultiplier', tab: 'combat', group: 'Multiplayer Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Damage', fmt: x1 },
+      { key: 'bossAttackRateMultiplier', tab: 'combat', group: 'Multiplayer Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Attack Rate', fmt: x1, advanced: true },
+      { key: 'disableDragonHealing', tab: 'combat', group: 'Multiplayer Boss Scaling', modes: M.adventure, type: 'toggle', dflt: false, label: 'Disable Dragon Healing', advanced: true },
       // §Phase E — Unlimited Arrows moved from a standalone "Combat" heading to "Ranged"
       // (with the arrow flight/charge settings). Recoverable Arrows moved with it — both are
       // arrow settings and belong together; that empties "Combat", so the heading is gone.
