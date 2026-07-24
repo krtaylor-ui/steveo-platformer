@@ -2205,9 +2205,11 @@ class Game {
     } else {
       this._applyMovementConfig(this.player);
       this._updateGrapple();                 // §Phase 5 — advance hook/swing; may own the frame
+      this.player._preVy = this.player.vy;   // §Classic Blocks — impact speed for force-driven trampoline
       this.player.update(this.input, this.level);
     }
     if (this._comboTrainer) this._comboTrainer.update();   // §Combo Trainer — dummy upkeep + stats
+    this._updateClassicBlocks();             // §Classic Blocks — trampoline/spikes/coin/conveyor/pipe/etc.
     // §Phase 7 v2 — facing lock while holding melee for a combo (set in _updateComboInput).
     if (this.player && this.player._comboFacingLock && this.player._comboLockFacing) this.player.facing = this.player._comboLockFacing;
     this._playMovementSfx(this.player);   // Smart Mobs §4 — footstep + landing SFX
@@ -6018,7 +6020,7 @@ class Game {
       ctx.scale(_activeZoom, _activeZoom);
       ctx.translate(-CANVAS_W / 2, -CANVAS_H / 2);
     }
-    this.level.draw(ctx, this.camera, this.redstone);
+    this.level.draw(ctx, this.camera, this.redstone, this.frameCount, this.gameMode === 'sandbox');
     // Re-draw open chest with lid-open state on top
     if (this._chestOpen) {
       const sx = this._chestOpen.col * BLOCK_SIZE - this.camera.x;
@@ -16800,6 +16802,126 @@ class Game {
         }
       }
     }
+  }
+
+  // ── §Classic Blocks pack (2026-07-24) — per-frame interactions for the new blocks ──
+  // Runs after players update. Covers trampoline bounce, spike/coin overlap, conveyor push,
+  // crumble trigger, warp-pipe descend/teleport, and question/hidden bump-from-below.
+  _updateClassicBlocks() {
+    if (!this.level || this.gameMode === 'sandbox') return;   // editor avatar must not trigger/collect them
+    const players = this.activePlayers ? this.activePlayers() : [this.player];
+    for (const p of players) if (p && p.hp > 0) this._classicBlocksForPlayer(p);
+    // Crumble countdown — cells turn to AIR when their timer lapses.
+    if (this._crumbling) {
+      for (const [key, t] of Array.from(this._crumbling)) {
+        if (t <= 1) {
+          const [r, c] = key.split(',').map(Number);
+          if (this.level.get(r, c) === BLOCK.CRUMBLE_BLOCK) this.level.set(r, c, BLOCK.AIR);
+          this._crumbling.delete(key);
+          this._playSound('sounds/mining.mp3', 0.35);
+        } else this._crumbling.set(key, t - 1);
+      }
+    }
+  }
+
+  _classicBlocksForPlayer(p) {
+    const L = this.level, BS = BLOCK_SIZE;
+    // Warp-pipe descend/teleport animation owns the frame while active.
+    if (p._warp) {
+      const w = p._warp; w.t++;
+      if (w.t < 12)       { p.y += 3; p.vx = 0; p.vy = 0; p.onGround = false; }
+      else if (w.t === 12){ p.x = w.destX; p.y = w.destY + BS; p.vx = 0; p.vy = 0; }
+      else if (w.t < 26)  { p.y -= 2; p.vx = 0; p.vy = 0; }
+      else { p.y = p._warp.destY; p._warp = null; p._warpCooldown = 40; }
+      return;
+    }
+    if (p._warpCooldown > 0) p._warpCooldown--;
+
+    const col0 = Math.floor((p.x + 2) / BS), col1 = Math.floor((p.x + p.width - 2) / BS);
+    const row0 = Math.floor((p.y + 2) / BS), row1 = Math.floor((p.y + p.height - 2) / BS);
+    const feetRow = Math.floor((p.y + p.height) / BS);
+    const headRow = Math.floor((p.y - 1) / BS);
+
+    // Body overlap: spikes (hazard) + coins (collect).
+    for (let r = row0; r <= row1; r++) for (let c = col0; c <= col1; c++) {
+      const b = L.get(r, c);
+      if (b === BLOCK.SPIKES) { if (!p.godMode && p.iframes <= 0 && p.hp > 0) p.takeDamage(3, Math.sign(p.vx) || (p.facing || 1)); }
+      else if (b === BLOCK.COIN) { L.set(r, c, BLOCK.AIR); this._collectCoin(p); }
+    }
+    // Standing-on effects (the row under the feet).
+    if (p.onGround) {
+      for (let c = col0; c <= col1; c++) {
+        const b = L.get(feetRow, c);
+        if (b === BLOCK.TRAMPOLINE) { this._trampolineBounce(p); break; }
+        else if (b === BLOCK.CONVEYOR_LEFT)  p.x -= 1.6;
+        else if (b === BLOCK.CONVEYOR_RIGHT) p.x += 1.6;
+        else if (b === BLOCK.CRUMBLE_BLOCK)  this._crumbleTouch(feetRow, c);
+        else if (b === BLOCK.WARP_PIPE && p === this.player && this.input.isCrouch()) { this._warpEnter(p, feetRow, c); break; }
+      }
+    }
+    // Bump from below (rising into a block above the head).
+    if (p.vy < 0) {
+      for (let c = col0; c <= col1; c++) {
+        const b = L.get(headRow, c);
+        if (b === BLOCK.QUESTION_BLOCK) { L.set(headRow, c, BLOCK.QUESTION_USED); this._questionPop(p); p.vy = 0; }
+        else if (b === BLOCK.HIDDEN_BLOCK) { this._revealHidden(headRow, c); p.vy = 0; }
+      }
+    }
+  }
+
+  _trampolineBounce(p) {
+    // Force-driven (slime-block style): a faster fall launches you higher; a standing step
+    // still gives a small hop. Impact speed captured as _preVy before the landing zeroed it.
+    const impact = Math.max(p._preVy || 0, 0);
+    p.vy = -Math.min(30, Math.max(11, impact * 1.18));
+    p.onGround = false;
+    this._playSound('sounds/jump.mp3', 0.8);
+  }
+  _collectCoin(p) {
+    const aws = this._worldAdvSettings || {};
+    this._coins = (this._coins || 0) + 1;
+    if (aws.platformerScore) this._score = (this._score || 0) + (aws.emeraldPoints || 100);
+    this._playSound('sounds/item-collected.mp3', 0.7);
+    this._notify('+1 Coin', '#f2c531', 50);
+  }
+  _questionPop(p) {
+    // v1: a Question Block yields a coin (designer-configurable contents = noted follow-up).
+    this._collectCoin(p);
+    this._playSound('sounds/item-collected.mp3', 0.85);
+  }
+  _revealHidden(row, col) {
+    // Reveal = swap to a real solid block, so it becomes visible + collidable with no extra state.
+    this.level.set(row, col, BLOCK.QUESTION_USED);
+    this._playSound('sounds/placing-block.mp3', 0.7);
+  }
+  _crumbleTouch(row, col) {
+    if (!this._crumbling) this._crumbling = new Map();
+    const key = row + ',' + col;
+    if (!this._crumbling.has(key)) this._crumbling.set(key, 40);   // ~0.66 s, then it falls away
+  }
+  // Pipes pair in reading order (top-left first): 1st↔2nd, 3rd↔4th, … Place two 1-wide pipes
+  // to make a linked pair. Returns the partner pipe TOP cell, or null.
+  _warpEnter(p, row, col) {
+    if (p._warp || p._warpCooldown > 0) return;
+    const partner = this._pipePartner(row, col);
+    if (!partner) return;
+    p._warp = { t: 0, destX: partner.col * BLOCK_SIZE + BLOCK_SIZE / 2 - p.width / 2, destY: partner.row * BLOCK_SIZE - p.height };
+    this._playSound('sounds/enderman-teleport.mp3', 0.5);
+  }
+  _pipeTops() {
+    const tops = [];
+    for (let r = 0; r < this.level.height; r++) for (let c = 0; c < this.level.width; c++) {
+      if (this.level.get(r, c) === BLOCK.WARP_PIPE && this.level.get(r - 1, c) !== BLOCK.WARP_PIPE
+          && this.level.get(r, c - 1) !== BLOCK.WARP_PIPE) tops.push({ row: r, col: c });   // left edge of each pipe top
+    }
+    return tops;
+  }
+  _pipePartner(row, col) {
+    const tops = this._pipeTops();
+    let idx = tops.findIndex((t) => t.row === row && (t.col === col || t.col === col - 1));
+    if (idx < 0) return null;
+    const partnerIdx = idx % 2 === 0 ? idx + 1 : idx - 1;
+    return tops[partnerIdx] || null;
   }
 
   _srCheckJumpPads() {

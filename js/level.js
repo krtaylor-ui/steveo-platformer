@@ -102,7 +102,7 @@ class Level {
 
   // ── Rendering ──────────────────────────────────────────────
 
-  draw(ctx, camera, redstone = null) {
+  draw(ctx, camera, redstone = null, frame = 0, editor = false) {
     // SR zoom scales around canvas centre, so the visible world region is
     // centred on (camera.x + CANVAS_W/2, camera.y + CANVAS_H/2) and expands
     // symmetrically by 1/z in both directions.  The old formula only expanded
@@ -154,6 +154,11 @@ class Level {
         } else if (block === BLOCK.PISTON_BODY && redstone) {
           const comp = redstone.getAt(c, r);
           if (comp) state = { dir: comp.dir || 'right', inverted: !!comp.inverted };
+        } else if (block === BLOCK.COIN || block === BLOCK.QUESTION_BLOCK ||
+                   block === BLOCK.CONVEYOR_LEFT || block === BLOCK.CONVEYOR_RIGHT) {
+          state = { frame };                       // §Classic Blocks — animation tick
+        } else if (block === BLOCK.HIDDEN_BLOCK) {
+          state = { editor };                      // invisible in play; dashed outline in the editor
         }
 
         drawBlock(ctx, block, screenX, screenY, bp, state);

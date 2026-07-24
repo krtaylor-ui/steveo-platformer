@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 204 (Audio wiring — fixed the place-block→placing-block call (was silent); wired enderman-teleport.mp3 on the Enderman blink and blocked-shot.mp3 on a shield deflect. Combat work 201–203 still local pending playtest.)';
+const GAME_VERSION = 'v3 · build 205 (Classic Blocks pack — a new Sandbox "Blocks" palette tab: Ladders, Jump-Through platforms (hold Down then Jump to drop through), force-driven Trampolines, slippery Ice, Conveyors, Crumbling blocks, Warp Pipes (Down to enter → teleport to a partner pipe), Question blocks (bump from below), Hidden blocks, Coins, and Spikes. Built while Kevin was away — see CLASSIC_BLOCKS_REVIEW.md for assumptions.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

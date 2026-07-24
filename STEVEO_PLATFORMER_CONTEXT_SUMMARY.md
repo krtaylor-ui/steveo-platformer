@@ -27,6 +27,26 @@ going until the entire session is implemented (or a hard blocker is hit, which s
 questions were front-loaded). Resolve ambiguity with best judgment + document it, rather than
 blocking. (These sessions are designed to run unattended.)
 
+## CURRENT STATE (2026-07-24) — builds 204–205 on `main` (LOCAL, headless-green, NOT pushed — awaiting Kevin's playtest)
+
+**Build 204 — audio wiring:** fixed `place-block.mp3`→`placing-block.mp3` (was silent); wired
+`enderman-teleport.mp3` (Enderman blink) + `blocked-shot.mp3` (shield deflect). See the audio inventory
+Kevin asked for; the 12 "referenced but missing" files still don't exist on disk (drop them in `sounds/` to enable).
+
+**Build 205 — CLASSIC BLOCKS pack** (built autonomously while Kevin was away; full assumptions in
+`CLASSIC_BLOCKS_REVIEW.md`). A new Sandbox **"Blocks"** palette tab (block IDs 65–77 in `js/blocks.js`):
+**Ladder** (climb, gravity suspend), **Jump-Through Platform** (solid from above; Down-hold≥10f + Jump = drop
+through, distinct from the slide), **Trampoline** (FORCE-driven bounce off `player._preVy`), **Ice** (slippery
+friction), **Conveyor L/R** (push), **Crumbling Block** (stand→~0.66s→gone), **Warp Pipe** (Down on top → sink +
+teleport to a reading-order partner pipe), **Question Block** (bump from below → pops a coin, becomes Used),
+**Hidden Block** (invisible until bumped → swaps to a solid Used block; dashed ? in the editor), **Coin**
+(collect), **Spikes** (contact damage like lava).
+- Interactions in one per-frame pass `game._updateClassicBlocks()` (skipped in the Sandbox editor); player-physics
+  hooks in `player.js` (ladder/ice/jump-through + `_overlapsBlock`/`_footBlockIs`); `level.draw` gained `frame`+`editor`
+  args; palette tab count 5→6.
+- **Deferred/noted (in the review doc):** coin HUD counter, designer-configurable Question contents, crumble
+  warning shake, multi-wide/linked warp pipes, ladder jump-off, jump-through climb-down animation, mob interactions.
+
 ## CURRENT STATE (2026-07-21) — builds 201–203 COMBO TRAINER + combo model v2 on `main` (LOCAL, headless-green, NOT pushed — awaiting Kevin's playtest)
 
 **Build 203 — combo tuning (Kevin's 2nd combo playtest):**

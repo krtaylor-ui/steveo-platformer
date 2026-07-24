@@ -427,6 +427,8 @@ class Player {
   }
 
   _handleInput(input, level) {
+    // §Classic Blocks — is the player standing on Ice (slippery)? (last-frame onGround is fine.)
+    this._onIce = this.onGround && this._footBlockIs(level, BLOCK.ICE);
     // Existing hyper speed stays 3×; speedMultiplier (1 or 2) stacks on top → 6× at level 2.
     const hsMult = (this.hyperSpeed ? 3 : 1) * (this.speedMultiplier || 1);
     // Sprint (Shift / isRun) doubles ground speed when enabled per-world.
@@ -461,15 +463,15 @@ class Player {
       // coasts sr.vx). Don't let key input or the 0.72 friction here fight it —
       // otherwise vx snaps to a fixed speed and ignores the boost multiplier.
       if (this.vx > 0.01) this.facing = 1;
-    } else if (mx < 0) {
-      this.vx    = speed * mx;   // mx is negative → vx moves left
-      this.facing = -1;
-    } else if (mx > 0) {
-      this.vx    = speed * mx;
-      this.facing = 1;
+    } else if (mx !== 0) {
+      const target = speed * mx;
+      // §Classic Blocks — Ice: ease toward the target speed instead of snapping (momentum/slide).
+      if (this._onIce) this.vx += (target - this.vx) * 0.12;
+      else this.vx = target;
+      this.facing = mx < 0 ? -1 : 1;
     } else {
-      this.vx *= 0.72;
-      if (Math.abs(this.vx) < 0.2) this.vx = 0;
+      this.vx *= this._onIce ? 0.96 : 0.72;   // ice keeps you gliding
+      if (Math.abs(this.vx) < (this._onIce ? 0.05 : 0.2)) this.vx = 0;
     }
 
     // ── Phase-through (noclip) ────────────────────────────────
@@ -508,6 +510,20 @@ class Player {
       return; // skip normal jump/crouch
     }
 
+    // ── §Classic Blocks — Ladder: hold Up/Down to climb; gravity suspended while on it.
+    //    (Climb off the top/bottom or step sideways to leave; jump-off is a noted follow-up.)
+    this._onLadder = this._overlapsBlock(level, BLOCK.LADDER);
+    if (this._onLadder) {
+      const up   = input.isDown('KeyW') || input.isDown('ArrowUp') || (input.isStickUp && input.isStickUp());
+      const down = input.isCrouch();
+      this.vy = up ? -2.4 : down ? 2.4 : 0;
+      this.crouching = false;
+      this.onGround  = false;
+      if (this._jumpBuffer > 0) this._jumpBuffer--;
+      if (this._coyoteTime > 0) this._coyoteTime--;
+      return;   // ladder owns vertical movement this frame (horizontal already applied above)
+    }
+
     // ── Normal (non-flying) ───────────────────────────────────
 
     // Crouching — only on ground
@@ -523,6 +539,10 @@ class Player {
         this.crouching = false;
       }
     }
+
+    // §Classic Blocks — track a Down-hold while standing on a Jump-Through platform (for drop-through).
+    if (this.onGround && input.isCrouch() && this._footBlockIs(level, BLOCK.ONEWAY_PLATFORM)) this._dropHold = (this._dropHold || 0) + 1;
+    else this._dropHold = 0;
 
     // Jump (with coyote time + jump buffer)
     const jumpNow  = input.isJump();
@@ -551,6 +571,16 @@ class Player {
     }
 
     if (jumpEdge) {
+      // §Classic Blocks — drop THROUGH a Jump-Through platform: hold Down for a beat (≥10f),
+      // then Jump. The hold-pause disambiguates it from the (immediate) crouch+jump slide.
+      if (this.onGround && input.isCrouch() && (this._dropHold || 0) >= 10 && this._footBlockIs(level, BLOCK.ONEWAY_PLATFORM)) {
+        this._dropThrough = 14;      // frames the platform is intangible for this player
+        this.onGround = false;
+        this.y += 2;                 // nudge into it so the downward sweep passes through
+        this._jumpBuffer = 0;
+        this._jumpPressed = jumpNow;
+        return;
+      }
       // Start a ground slide: on the ground, holding down, slide enabled.
       if (this.onGround && this._slideEnabled && input.isCrouch()) {
         this._slideDir    = this.facing || 1;
@@ -614,6 +644,23 @@ class Player {
     this._crouchWas = crouchNow;
   }
 
+  // §Classic Blocks — does the player's body overlap any cell of block `id`?
+  _overlapsBlock(level, id) {
+    const BS = BLOCK_SIZE;
+    const c0 = Math.floor((this.x + 4) / BS), c1 = Math.floor((this.x + this.width - 4) / BS);
+    const r0 = Math.floor((this.y + 2) / BS), r1 = Math.floor((this.y + this.height - 2) / BS);
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) if (level.get(r, c) === id) return true;
+    return false;
+  }
+  // Is the row directly under the feet made of block `id` (for standing-on effects)?
+  _footBlockIs(level, id) {
+    const BS = BLOCK_SIZE;
+    const r = Math.floor((this.y + this.height) / BS);
+    const c0 = Math.floor((this.x + 2) / BS), c1 = Math.floor((this.x + this.width - 2) / BS);
+    for (let c = c0; c <= c1; c++) if (level.get(r, c) === id) return true;
+    return false;
+  }
+
   _applyPhysics(level) {
     // ── Phase-through (noclip): move freely, ignore all block collisions ──
     if (this.canPhaseThrough) {
@@ -623,10 +670,11 @@ class Player {
       return;
     }
 
-    // Gravity — disabled while flying
-    if (!this.flying) {
+    // Gravity — disabled while flying or climbing a ladder (§Classic Blocks)
+    if (!this.flying && !this._onLadder) {
       this.vy = Math.min(this.vy + (this._gravityOverride ?? GRAVITY), MAX_FALL_SPEED);
     }
+    if (this._dropThrough > 0) this._dropThrough--;   // §Classic Blocks — one-way platform pass-through window
     // Wall slide: while pressing into a wall in the air, fall slowly (opt-in).
     if (this._wallSliding && this.vy > 0) this.vy = Math.min(this.vy, 2.6);
 
@@ -644,7 +692,12 @@ class Player {
       const rowEnd   = Math.floor((newY     + this.height) / BLOCK_SIZE);
       let stopped = false;
       for (let r = rowStart; r <= rowEnd; r++) {
-        if (level.isSolid(r, bLeft) || level.isSolid(r, bRight)) {
+        // §Classic Blocks — Jump-Through platform: solid ONLY when landing from above (feet at/above
+        // its top), and not during a drop-through. Non-solid to jumps from below + horizontal.
+        const oneWay = !this._dropThrough &&
+          ((level.get(r, bLeft) === BLOCK.ONEWAY_PLATFORM || level.get(r, bRight) === BLOCK.ONEWAY_PLATFORM) &&
+           (this.y + this.height) <= r * BLOCK_SIZE + 6);
+        if (level.isSolid(r, bLeft) || level.isSolid(r, bRight) || oneWay) {
           this.y        = r * BLOCK_SIZE - this.height;
           this.vy       = 0;
           this.onGround = true;

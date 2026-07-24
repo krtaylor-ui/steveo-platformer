@@ -80,6 +80,20 @@ const BLOCK = Object.freeze({
   // the player so it can partly hide them.
   LEAF_SOLID_BACK:        63,
   LEAF_SOLID_FRONT:       64,
+  // §Classic Blocks pack (2026-07-24) — Mario/old-school flexibility blocks.
+  LADDER:                 65,   // non-solid; hold up/down to climb
+  TRAMPOLINE:             66,   // solid; force-driven bounce (higher fall → higher launch)
+  SPIKES:                 67,   // non-solid hazard; contact damages (like lava)
+  COIN:                   68,   // non-solid collectible (scores like an emerald)
+  ICE:                    69,   // solid; slippery (low ground friction)
+  QUESTION_BLOCK:         70,   // solid; bump from below → pops an item, becomes USED
+  QUESTION_USED:          71,   // solid; spent question block
+  HIDDEN_BLOCK:           72,   // invisible + non-solid until bumped from below → solid + visible
+  ONEWAY_PLATFORM:        73,   // jump up THROUGH it, land on top; down+jump drops through
+  WARP_PIPE:              74,   // solid pipe; press Down on top → descend + teleport to a partner pipe
+  CONVEYOR_LEFT:          75,   // solid; pushes whoever stands on it left
+  CONVEYOR_RIGHT:         76,   // solid; pushes right
+  CRUMBLE_BLOCK:          77,   // solid; crumbles away shortly after something stands on it
 });
 
 // Colour palette for decorative foliage (§10). Index 0 = green (default).
@@ -188,6 +202,21 @@ const BLOCK_DATA = {
   [BLOCK.DECO_LEAVES_FRONT]: { name: 'Leaves (Front)',  hardness: 15, mineable: true, solid: false, mineTier: 0, isFoliage: true, foliageShape: 'leaves', foliageFront: true  },
   [BLOCK.LEAF_SOLID_BACK]:   { name: 'Solid Leaves (Behind)', hardness: 15, mineable: true, solid: false, mineTier: 0, isFoliage: true, foliageShape: 'leaves_solid', foliageFront: false },
   [BLOCK.LEAF_SOLID_FRONT]:  { name: 'Solid Leaves (Front)',  hardness: 15, mineable: true, solid: false, mineTier: 0, isFoliage: true, foliageShape: 'leaves_solid', foliageFront: true  },
+  // §Classic Blocks pack. Designer-placeable; most are non-mineable in play (mechanics, not
+  // resources) so they read as fixed level furniture, and are removed with the eraser in Sandbox.
+  [BLOCK.LADDER]:            { name: 'Ladder',          hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
+  [BLOCK.TRAMPOLINE]:        { name: 'Trampoline',      hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
+  [BLOCK.SPIKES]:            { name: 'Spikes',          hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true, hazard: true },
+  [BLOCK.COIN]:              { name: 'Coin',            hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
+  [BLOCK.ICE]:               { name: 'Ice',             hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
+  [BLOCK.QUESTION_BLOCK]:    { name: 'Question Block',  hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
+  [BLOCK.QUESTION_USED]:     { name: 'Used Block',      hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
+  [BLOCK.HIDDEN_BLOCK]:      { name: 'Hidden Block',    hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
+  [BLOCK.ONEWAY_PLATFORM]:   { name: 'Jump-Through',    hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
+  [BLOCK.WARP_PIPE]:         { name: 'Warp Pipe',       hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
+  [BLOCK.CONVEYOR_LEFT]:     { name: 'Conveyor ◀',      hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
+  [BLOCK.CONVEYOR_RIGHT]:    { name: 'Conveyor ▶',      hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
+  [BLOCK.CRUMBLE_BLOCK]:     { name: 'Crumbling Block', hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
 };
 
 // ── Pixel-art block renderers ────────────────────────────────
@@ -265,6 +294,20 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.SPEED_BOOSTER:          _drawSpeedBoosterBlock(ctx, px, py, s);          break;
     case BLOCK.JUMP_PAD:               _drawJumpPadBlock(ctx, px, py, s);               break;
     case BLOCK.SPEED_ITEM:             _drawSpeedItemBlock(ctx, px, py, s);             break;
+    // §Classic Blocks pack
+    case BLOCK.LADDER:                 _drawLadder(ctx, px, py, s);                     break;
+    case BLOCK.TRAMPOLINE:             _drawTrampoline(ctx, px, py, s);                 break;
+    case BLOCK.SPIKES:                 _drawSpikes(ctx, px, py, s);                     break;
+    case BLOCK.COIN:                   _drawCoinBlock(ctx, px, py, s, state.frame || 0);break;
+    case BLOCK.ICE:                    _drawIce(ctx, px, py, s);                        break;
+    case BLOCK.QUESTION_BLOCK:         _drawQuestionBlock(ctx, px, py, s, false, state.frame || 0); break;
+    case BLOCK.QUESTION_USED:          _drawQuestionBlock(ctx, px, py, s, true, 0);     break;
+    case BLOCK.HIDDEN_BLOCK:           _drawHiddenBlock(ctx, px, py, s, !!state.editor);break;
+    case BLOCK.ONEWAY_PLATFORM:        _drawOneWay(ctx, px, py, s);                     break;
+    case BLOCK.WARP_PIPE:              _drawWarpPipe(ctx, px, py, s);                   break;
+    case BLOCK.CONVEYOR_LEFT:          _drawConveyor(ctx, px, py, s, -1, state.frame || 0); break;
+    case BLOCK.CONVEYOR_RIGHT:         _drawConveyor(ctx, px, py, s,  1, state.frame || 0); break;
+    case BLOCK.CRUMBLE_BLOCK:          _drawCrumble(ctx, px, py, s, state.crumbling);   break;
   }
 
   // Mining crack overlay
@@ -1604,4 +1647,108 @@ function _drawSpeedItemBlock(ctx, px, py, s) {
   ctx.strokeStyle = 'rgba(255,230,0,0.35)';
   ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(cx, cy, s / 2 - 2, 0, Math.PI * 2); ctx.stroke();
+}
+
+// ── §Classic Blocks pack renderers (2026-07-24) ─────────────────
+function _drawLadder(ctx, px, py, s) {
+  ctx.strokeStyle = '#9a6b3a'; ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(px + 6, py);      ctx.lineTo(px + 6, py + s);
+  ctx.moveTo(px + s - 6, py);  ctx.lineTo(px + s - 6, py + s);
+  ctx.stroke();
+  ctx.lineWidth = 2;
+  for (let ry = 6; ry < s; ry += 10) { ctx.beginPath(); ctx.moveTo(px + 6, py + ry); ctx.lineTo(px + s - 6, py + ry); ctx.stroke(); }
+}
+function _drawTrampoline(ctx, px, py, s) {
+  ctx.fillStyle = '#2b7d5a'; ctx.fillRect(px, py + s - 10, s, 10);           // base
+  ctx.fillStyle = '#3fd08a'; ctx.fillRect(px + 1, py + 2, s - 2, s - 12);    // springy top
+  ctx.strokeStyle = '#bff5da'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(px + 3, py + 8); ctx.quadraticCurveTo(px + s / 2, py - 1, px + s - 3, py + 8); ctx.stroke();
+  ctx.strokeStyle = '#1f5f43';
+  for (let i = 1; i < 4; i++) { const x = px + i * s / 4; ctx.beginPath(); ctx.moveTo(x, py + s - 9); ctx.lineTo(x, py + s - 2); ctx.stroke(); }
+}
+function _drawSpikes(ctx, px, py, s) {
+  ctx.fillStyle = '#8a9099';
+  const n = 3, w = s / n;
+  for (let i = 0; i < n; i++) {
+    ctx.beginPath();
+    ctx.moveTo(px + i * w, py + s);
+    ctx.lineTo(px + i * w + w / 2, py + 3);
+    ctx.lineTo(px + (i + 1) * w, py + s);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.fillStyle = '#c9d2db';
+  for (let i = 0; i < n; i++) { ctx.beginPath(); ctx.moveTo(px + i * w + w / 2 - 1, py + 3); ctx.lineTo(px + i * w + w / 2 + 2, py + 10); ctx.lineTo(px + i * w + w / 2, py + 12); ctx.closePath(); ctx.fill(); }
+}
+function _drawCoinBlock(ctx, px, py, s, frame) {
+  const cx = px + s / 2, cy = py + s / 2;
+  const w = Math.abs(Math.cos((frame || 0) * 0.08)) * (s / 2 - 4) + 2;   // spin
+  ctx.fillStyle = '#f2c531'; ctx.strokeStyle = '#a5791a'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.ellipse(cx, cy, w, s / 2 - 4, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#fff2b0'; ctx.font = 'bold 10px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (w > 5) ctx.fillText('$', cx, cy + 1);
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+}
+function _drawIce(ctx, px, py, s) {
+  ctx.fillStyle = '#a9dcf0'; ctx.fillRect(px, py, s, s);
+  ctx.fillStyle = '#cdeefb'; ctx.fillRect(px, py, s, 4);
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(px + 5, py + 6); ctx.lineTo(px + 13, py + 16); ctx.moveTo(px + s - 6, py + 5); ctx.lineTo(px + s - 14, py + 14); ctx.stroke();
+  ctx.strokeStyle = 'rgba(90,150,180,0.5)'; ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
+}
+function _drawQuestionBlock(ctx, px, py, s, used, frame) {
+  const bob = used ? 0 : Math.sin((frame || 0) * 0.06) * 1;
+  ctx.fillStyle = used ? '#8a6a3a' : '#e0a52a';
+  ctx.fillRect(px, py + bob, s, s - Math.abs(bob));
+  ctx.strokeStyle = used ? '#5f4826' : '#a5791a'; ctx.lineWidth = 2; ctx.strokeRect(px + 1, py + 1 + bob, s - 2, s - 2);
+  // corner rivets
+  ctx.fillStyle = used ? '#5f4826' : '#7a5a1a';
+  for (const [dx, dy] of [[3, 3], [s - 5, 3], [3, s - 5], [s - 5, s - 5]]) ctx.fillRect(px + dx, py + dy + bob, 2, 2);
+  if (!used) { ctx.fillStyle = '#fff4cf'; ctx.font = 'bold 16px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', px + s / 2, py + s / 2 + bob); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; }
+}
+function _drawHiddenBlock(ctx, px, py, s, editor) {
+  if (!editor) return;   // invisible in play until bumped (the game swaps it visible)
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.setLineDash([4, 3]); ctx.lineWidth = 1;
+  ctx.strokeRect(px + 2.5, py + 2.5, s - 5, s - 5); ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = 'bold 14px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('?', px + s / 2, py + s / 2); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+}
+function _drawOneWay(ctx, px, py, s) {
+  ctx.fillStyle = '#b9853f'; ctx.fillRect(px, py, s, 7);           // thin top platform
+  ctx.fillStyle = '#8a5f27'; ctx.fillRect(px, py + 5, s, 2);
+  ctx.strokeStyle = 'rgba(255,240,200,0.5)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(px + s / 2 - 4, py + 12); ctx.lineTo(px + s / 2, py + 16); ctx.lineTo(px + s / 2 + 4, py + 12); ctx.stroke(); // ↓ hint
+}
+function _drawWarpPipe(ctx, px, py, s) {
+  ctx.fillStyle = '#2fae4e'; ctx.fillRect(px, py, s, s);
+  ctx.fillStyle = '#1f7d38'; ctx.fillRect(px + s - 7, py, 7, s);   // shade
+  ctx.fillStyle = '#7de89a'; ctx.fillRect(px + 2, py, 4, s);       // highlight
+  ctx.fillStyle = '#25913f'; ctx.fillRect(px - 1, py, s + 2, 8);   // rim (lip)
+  ctx.strokeStyle = '#134f22'; ctx.lineWidth = 1; ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
+}
+function _drawConveyor(ctx, px, py, s, dir, frame) {
+  ctx.fillStyle = '#3a3f4a'; ctx.fillRect(px, py, s, s);
+  ctx.fillStyle = '#5a6070'; ctx.fillRect(px, py, s, 9);
+  // moving chevrons
+  ctx.fillStyle = '#aab2c4';
+  const off = ((frame || 0) * 0.6 * dir) % 12;
+  for (let x = -12; x < s + 12; x += 12) {
+    const bx = px + ((x + off) % (s + 12) + (s + 12)) % (s + 12);
+    ctx.beginPath();
+    if (dir > 0) { ctx.moveTo(bx, py + 1); ctx.lineTo(bx + 5, py + 4.5); ctx.lineTo(bx, py + 8); }
+    else         { ctx.moveTo(bx + 5, py + 1); ctx.lineTo(bx, py + 4.5); ctx.lineTo(bx + 5, py + 8); }
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.fillStyle = '#2a2f3a'; ctx.fillRect(px + 3, py + s - 6, 3, 3); ctx.fillRect(px + s - 6, py + s - 6, 3, 3);
+}
+function _drawCrumble(ctx, px, py, s, crumbling) {
+  ctx.fillStyle = crumbling ? '#a06a4a' : '#b98a5a'; ctx.fillRect(px, py, s, s);
+  ctx.strokeStyle = '#7a5330'; ctx.lineWidth = 1;
+  // cracks
+  ctx.beginPath();
+  ctx.moveTo(px + 5, py + 2); ctx.lineTo(px + 9, py + 12); ctx.lineTo(px + 6, py + s - 3);
+  ctx.moveTo(px + s - 4, py + 4); ctx.lineTo(px + s - 10, py + 14); ctx.lineTo(px + s - 5, py + s - 2);
+  ctx.moveTo(px + 12, py + 7); ctx.lineTo(px + s - 12, py + 9);
+  ctx.stroke();
+  if (crumbling) { ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.fillRect(px, py, s, s); }
 }

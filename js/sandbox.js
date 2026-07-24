@@ -24,6 +24,13 @@ const SANDBOX_PALETTE_BLOCKS = {
     BLOCK.DECO_LEAVES_BACK, BLOCK.DECO_LEAVES_FRONT,
     BLOCK.LEAF_SOLID_BACK, BLOCK.LEAF_SOLID_FRONT,
   ],
+  // §Classic Blocks pack (2026-07-24) — old-school platformer mechanics.
+  mechanics: [
+    BLOCK.LADDER, BLOCK.ONEWAY_PLATFORM, BLOCK.TRAMPOLINE, BLOCK.ICE,
+    BLOCK.CONVEYOR_LEFT, BLOCK.CONVEYOR_RIGHT, BLOCK.CRUMBLE_BLOCK,
+    BLOCK.WARP_PIPE, BLOCK.QUESTION_BLOCK, BLOCK.HIDDEN_BLOCK,
+    BLOCK.COIN, BLOCK.SPIKES,
+  ],
 };
 
 const SPAWN_EGG_DEFS = [
@@ -867,7 +874,7 @@ class SandboxManager {
     }
 
     // Tab row
-    const TABS = ['overworld', 'nether', 'decorative', 'gear', 'other'];
+    const TABS = ['overworld', 'nether', 'decorative', 'mechanics', 'gear', 'other'];
     const tg = this._paletteTabGeom();
     for (let i = 0; i < TABS.length; i++) {
       const tx = tg.x0 + i * tg.tabW;
@@ -1121,7 +1128,7 @@ class SandboxManager {
   // Tab-row geometry shared by draw + click (4 tabs filling the panel width).
   _paletteTabGeom() {
     const { px, py, pw } = this._paletteLayout();
-    const tabW = (pw - 16) / 5;
+    const tabW = (pw - 16) / 6;   // §Classic Blocks — 6 tabs now (added "Blocks")
     return { tabW, gap: 4, y: py + 32, h: 26, x0: px + 8 };
   }
 
@@ -1789,6 +1796,7 @@ class SandboxManager {
       { key: 'overworld',  label: 'Overworld', color: '#4CAF50' },
       { key: 'nether',     label: 'Nether',    color: '#FF4400' },
       { key: 'decorative', label: 'Decor',     color: '#8ED07A' },
+      { key: 'mechanics',  label: 'Blocks',    color: '#6FB6FF' },
       { key: 'gear',       label: 'Gear',      color: '#FFD700' },
       { key: 'other',      label: 'Other',     color: '#FF9800' },
     ];
