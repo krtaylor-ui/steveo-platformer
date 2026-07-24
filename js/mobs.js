@@ -1033,6 +1033,7 @@ class Arrow {
           // Shield deflects — reverse direction, now acts as player arrow
           this.vx = -this.vx;
           this.isPlayerArrow = true;
+          this._justDeflected = true;   // MobManager plays the block SFX this frame
         } else {
           p.takeDamage(this.damage, Math.sign(this.vx));
           this.alive = false;
@@ -1813,6 +1814,7 @@ class Enderman extends Mob {
       this.x = newCol * BLOCK_SIZE;
       this.y = (newRow - 3) * BLOCK_SIZE - this.height + BLOCK_SIZE;
       this.vx = 0; this.vy = 0;
+      if (this._mobManager?.soundCallback) this._mobManager.soundCallback('sounds/enderman-teleport.mp3', 0.7);
       return;
     }
     // No valid spot found — despawn
@@ -2450,7 +2452,7 @@ class MobManager {
     this._pathStats = { calls: _MOB_PATH_STATS.calls, ms: _MOB_PATH_STATS.ms, loop: _loopMs, count: this.mobs.length };  // perf HUD
 
     // Skeleton/enemy arrows
-    this.arrows = this.arrows.filter(a => { a.update(allPlayers, level); return a.alive; });
+    this.arrows = this.arrows.filter(a => { a.update(allPlayers, level); if (a._justDeflected) { a._justDeflected = false; this.soundCallback?.('sounds/blocked-shot.mp3', 0.7); } return a.alive; });
 
     // Deflected enemy arrows — check mob collisions
     for (const a of this.arrows) {

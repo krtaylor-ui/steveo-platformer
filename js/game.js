@@ -10788,7 +10788,7 @@ class Game {
       if (idx === -1) { this._notify('All skull slots filled', '#886622', 80); return; }
       altar.skulls[idx] = true;
       this.player.takeFromSlot(this.player.selectedSlot);
-      this._playSound('sounds/place-block.mp3');
+      this._playSound('sounds/placing-block.mp3');
       const n = altar.skulls.filter(Boolean).length;
       this._notify(`Wither Skull placed (${n}/3)`, '#AA8833', 120);
       if (this._onlineGameId && window.multiplayerManager?.isCreator)
@@ -10799,7 +10799,7 @@ class Game {
       if (idx === -1) { this._notify('All soul sand slots filled', '#886622', 80); return; }
       altar.sand[idx] = true;
       this.player.takeFromSlot(this.player.selectedSlot);
-      this._playSound('sounds/place-block.mp3');
+      this._playSound('sounds/placing-block.mp3');
       const n = altar.sand.filter(Boolean).length;
       this._notify(`Soul Sand placed (${n}/4)`, '#AA8833', 120);
       if (this._onlineGameId && window.multiplayerManager?.isCreator)
@@ -13158,7 +13158,7 @@ class Game {
           if (idx === -1) { this._notify('All skull slots filled', '#886622', 80); return; }
           altar.skulls[idx] = true;
           this._consumeHeldSlot(skullHeld);
-          this._playSound('sounds/place-block.mp3');
+          this._playSound('sounds/placing-block.mp3');
           this._notify(`Wither Skull placed (${altar.skulls.filter(Boolean).length}/3)`, '#AA8833', 120);
           this._checkAltarCompletion(altar);
         } else if (sandHeld) {
@@ -13166,7 +13166,7 @@ class Game {
           if (idx === -1) { this._notify('All soul sand slots filled', '#886622', 80); return; }
           altar.sand[idx] = true;
           this._consumeHeldSlot(sandHeld);
-          this._playSound('sounds/place-block.mp3');
+          this._playSound('sounds/placing-block.mp3');
           this._notify(`Soul Sand placed (${altar.sand.filter(Boolean).length}/4)`, '#AA8833', 120);
           this._checkAltarCompletion(altar);
         }
