@@ -1920,6 +1920,11 @@ class Game {
         this._handlePistonConfigPopupInput();
         return;
       }
+      // §Classic Blocks — pipe-destination / block-contents config popup
+      if (this._classicPopup) {
+        this._handleClassicPopupInput();
+        return;
+      }
     }
 
     // Normal inventory open: handle clicks and freeze gameplay
@@ -3020,6 +3025,14 @@ class Game {
           // Ruined portal frame obsidian → open link popup if a ruined portal is registered here
           const rpSbPortal = this.sandbox.findPortalAtCell(hoverRow, hoverCol);
           if (rpSbPortal?.ruined) this.sandbox.openPortalPopup(rpSbPortal.id);
+        } else if (target === BLOCK.WARP_PIPE) {
+          // §Classic Blocks — click a placed Warp Pipe: complete a pending link, else open its popup.
+          if (this._pipeLinkMode) {
+            (this._pipeLinks = this._pipeLinks || new Map()).set(this._pipeLinkMode.fromKey, this._pipeAnchorKey(hoverRow, hoverCol));
+            this._pipeLinkMode = null; this._notify('Pipe linked ✓', '#6FB6FF', 120);
+          } else this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'pipe' };
+        } else if (target === BLOCK.QUESTION_BLOCK || target === BLOCK.BREAKABLE_BLOCK) {
+          this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'contents' };   // §Classic Blocks — pick contents
         } else if (this.sandbox.isDustSelected) {
           // Dust selected — click on existing solid block
           const dustKey = `${hoverCol},${hoverRow}`;
@@ -6224,6 +6237,7 @@ class Game {
       if (this._gateConfigPopup)   this._drawGateConfigPopup(ctx);
       if (this._rxConfigPopup)     this._drawRxConfigPopup(ctx);
       if (this._pistonConfigPopup) this._drawPistonConfigPopup(ctx);
+      if (this._classicPopup) this._drawClassicPopup(ctx);
     }
 
     this._drawBiomeLabel(ctx, biome);
@@ -7606,6 +7620,68 @@ class Game {
       this._gateConfigPopup = null;
       this._notify('Gate configured', '#AAFFAA', 60);
     }
+  }
+
+  // §Classic Blocks — restore saved pipe links + per-block contents on world load.
+  _restoreClassicBlockData(data) {
+    if (data && Array.isArray(data.pipeLinks)) { this._pipeLinks = new Map(); for (const [k, v] of data.pipeLinks) this._pipeLinks.set(k, v); }
+    if (data && Array.isArray(data.blockContents)) { this._blockContents = new Map(); for (const [k, v] of data.blockContents) this._blockContents.set(k, v); }
+  }
+
+  // ── §Classic Blocks config popup (pipe destination / block contents) ─────────
+  _classicPopupButtons() {
+    const p = this._classicPopup; if (!p) return [];
+    if (p.kind === 'pipe') {
+      const key = this._pipeAnchorKey(p.row, p.col);
+      return [
+        { label: 'Pick Destination →', act: () => { this._pipeLinkMode = { fromKey: key }; this._classicPopup = null; this._notify('Now click the destination pipe', '#6FB6FF', 180); } },
+        { label: 'No Destination (obstacle)', act: () => { (this._pipeLinks = this._pipeLinks || new Map()).set(key, 'none'); this._classicPopup = null; this._notify('Pipe set as an obstacle', '#999999', 120); } },
+        { label: 'Clear Link (auto-pair)', act: () => { if (this._pipeLinks) this._pipeLinks.delete(key); this._classicPopup = null; } },
+      ];
+    }
+    const key = p.row + ',' + p.col;
+    const set = (item) => () => { this._blockContents = this._blockContents || new Map(); if (item == null) this._blockContents.delete(key); else this._blockContents.set(key, item); this._classicPopup = null; this._notify('Contents set', '#ffe066', 100); };
+    return [
+      { label: 'Coin',      act: set('coin') },
+      { label: 'Apple',     act: set(BLOCK.APPLE) },
+      { label: 'Arrow',     act: set(BLOCK.ARROW) },
+      { label: 'Glowstone', act: set(BLOCK.GLOWSTONE) },
+      { label: 'Clear (use world default)', act: set(null) },
+    ];
+  }
+  _classicPopupLayout(n) { const pw = 260, ph = 56 + n * 34; return { pw, ph, px: (CANVAS_W - pw) / 2, py: (CANVAS_H - ph) / 2 }; }
+  _handleClassicPopupInput() {
+    if (!this._classicPopup || !this.input.mouse.clicked) return;
+    const btns = this._classicPopupButtons();
+    const { pw, ph, px, py } = this._classicPopupLayout(btns.length);
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    this.input.mouse.clicked = false;
+    if ((mx >= px + pw - 26 && mx <= px + pw - 6 && my >= py + 6 && my <= py + 26) || mx < px || mx > px + pw || my < py || my > py + ph) { this._classicPopup = null; return; }
+    for (let i = 0; i < btns.length; i++) {
+      const by = py + 46 + i * 34;
+      if (mx >= px + 12 && mx <= px + pw - 12 && my >= by && my <= by + 28) { btns[i].act(); return; }
+    }
+  }
+  _drawClassicPopup(ctx) {
+    const p = this._classicPopup; if (!p) return;
+    const btns = this._classicPopupButtons();
+    const { pw, ph, px, py } = this._classicPopupLayout(btns.length);
+    ctx.save(); ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(15,18,28,0.96)'; ctx.fillRect(px, py, pw, ph);
+    ctx.strokeStyle = '#6FB6FF'; ctx.lineWidth = 1; ctx.strokeRect(px + 0.5, py + 0.5, pw, ph);
+    ctx.fillStyle = '#cdd6ff'; ctx.font = 'bold 14px system-ui, sans-serif';
+    ctx.fillText(p.kind === 'pipe' ? 'Warp Pipe' : 'Block Contents', px + 12, py + 10);
+    ctx.fillStyle = '#c66'; ctx.font = 'bold 14px system-ui, sans-serif'; ctx.fillText('✕', px + pw - 20, py + 10);
+    ctx.fillStyle = '#8a90a6'; ctx.font = '11px system-ui, sans-serif';
+    if (p.kind === 'pipe') { const cur = this._pipeLinks && this._pipeLinks.get(this._pipeAnchorKey(p.row, p.col)); ctx.fillText('Destination: ' + (cur === 'none' ? 'None (obstacle)' : cur ? 'linked' : 'auto (reading order)'), px + 12, py + 28); }
+    else { const cur = this._blockContents && this._blockContents.get(p.row + ',' + p.col); ctx.fillText('Now: ' + (cur == null ? 'world default' : cur === 'coin' ? 'Coin' : ((BLOCK_DATA[cur] && BLOCK_DATA[cur].name) || cur)), px + 12, py + 28); }
+    for (let i = 0; i < btns.length; i++) {
+      const by = py + 46 + i * 34;
+      ctx.fillStyle = '#2a2f42'; ctx.fillRect(px + 12, by, pw - 24, 28);
+      ctx.strokeStyle = '#3a4055'; ctx.strokeRect(px + 12.5, by + 0.5, pw - 25, 27);
+      ctx.fillStyle = '#d5d9e6'; ctx.font = 'bold 12px system-ui, sans-serif'; ctx.fillText(btns[i].label, px + 22, by + 7);
+    }
+    ctx.restore();
   }
 
   // ── Piston direction config popup ────────────────────────────
@@ -15421,6 +15497,7 @@ class Game {
       if (typeof this._worldAdvSettings.dayCycleMinutes === 'number')
         this._dayNight.halfCycleMs = this._worldAdvSettings.dayCycleMinutes * 60 * 1000 / 2;
     }
+    this._restoreClassicBlockData(data);   // §Classic Blocks — pipe links + block contents
     // Restore music data (Phase 13.5)
     this._restoreMusicData(data);
     // Restore Wither altars (Phase 14)
@@ -15810,6 +15887,7 @@ class Game {
     if (data.worldAdvSettings && typeof data.worldAdvSettings === 'object') {
       Object.assign(this._worldAdvSettings, data.worldAdvSettings);
     }
+    this._restoreClassicBlockData(data);   // §Classic Blocks — pipe links + block contents
     // Restore music data from sandbox save + normal progress collected discs
     this._restoreMusicData(data);
     this._restoreWitherAltars(data.witherAltars);
@@ -16110,6 +16188,7 @@ class Game {
       if (typeof this._worldAdvSettings.dayCycleMinutes === 'number')
         this._dayNight.halfCycleMs = this._worldAdvSettings.dayCycleMinutes * 60 * 1000 / 2;
     }
+    this._restoreClassicBlockData(data);   // §Classic Blocks — pipe links + block contents
     // ── Campaign-prep: goal-star colours, scoring reset, emerald collectibles ──
     this._goalColorMap = {};
     if (Array.isArray(data.goalStars)) {

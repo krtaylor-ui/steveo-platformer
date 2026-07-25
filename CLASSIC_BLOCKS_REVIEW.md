@@ -172,3 +172,19 @@ Then: want coins in the HUD, configurable Question contents, a crumble warning s
 ## Still next pass (sandbox popup UIs)
 - **Pipe-destination linker** (click pipe → pick destination / none=obstacle) and the **per-block contents
   picker** — both need the canvas popup + world_data persistence. Per-run **conveyor speed** likewise.
+
+---
+# Pass 7 — build 213 (2026-07-25) — the two editor UIs
+
+- **Ladder head over arms** — the back-of-head now draws last, so the shoulders tuck slightly behind it.
+- **Pipe-destination picker** — click a placed **Warp Pipe** in the editor → popup: **Pick Destination →**
+  (enters link mode: click the destination pipe), **No Destination (obstacle)**, **Clear Link (auto-pair)**.
+  Stored in `game._pipeLinks` (keyed by the pipe cluster's top-left cell), read by `_pipeDestination`.
+- **Block-contents picker** — click a placed **Question / Breakable** block → popup: **Coin / Apple / Arrow /
+  Glowstone / Clear (world default)**. Stored in `game._blockContents` (per cell).
+- **Persistence** — both maps serialize into world_data (`pipeLinks`, `blockContents`) and restore on load
+  (`_restoreClassicBlockData`, wired into all load paths).
+- Built on the game-level popup pattern (like the piston config): `_classicPopup` state, `_handleClassicPopupInput`,
+  `_drawClassicPopup`, opened from the sandbox interact chain (next to the portal popup).
+
+**Classic Blocks pack is now feature-complete** (blocks + mechanics + FX + settings + both editor UIs).

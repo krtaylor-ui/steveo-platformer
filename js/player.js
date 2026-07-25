@@ -1399,9 +1399,6 @@ class Player {
     const HAIR = this._charHair(), SHIRT = this.shirtColor || this._charShirt();
     const SKIN = '#F4C78A', PANTS = '#2C5F8A', EDGE = 'rgba(0,0,0,0.35)';
     const ph = Math.sin(this._climbAnim || 0);            // -1..1 climb phase (arms/legs alternate)
-    // Back of the head — all hair, a darker hairline at the bottom, no face.
-    ctx.fillStyle = HAIR; ctx.fillRect(sx + 2, sy, 16, 16);
-    ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(sx + 2, sy + 13, 16, 3);
     if (this._hasPonytail && this._hasPonytail()) { ctx.fillStyle = HAIR; ctx.fillRect(cx - 2, sy + 16, 4, 8); }
     // Torso — a touch wider than before.
     const bx = sx + 3, bw = 14, by = sy + 18, bh = 16;
@@ -1421,6 +1418,10 @@ class Player {
     const hipY = by + bh, legHiY = hipY + 12, legLoY = hipY + 22;
     this._limbBar(ctx, cx - 4, hipY, cx - 4, ph > 0 ? legLoY : legHiY, 6, PANTS, EDGE);
     this._limbBar(ctx, cx + 4, hipY, cx + 4, ph > 0 ? legHiY : legLoY, 6, PANTS, EDGE);
+    // Head LAST — back of the head (all hair, hairline), drawn OVER the arms so the shoulders
+    // tuck slightly behind it.
+    ctx.fillStyle = HAIR; ctx.fillRect(sx + 2, sy, 16, 16);
+    ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(sx + 2, sy + 13, 16, 3);
   }
 
   _drawHangFigure(ctx, sx, sy) {
