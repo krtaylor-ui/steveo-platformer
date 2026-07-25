@@ -188,3 +188,17 @@ Then: want coins in the HUD, configurable Question contents, a crumble warning s
   `_drawClassicPopup`, opened from the sandbox interact chain (next to the portal popup).
 
 **Classic Blocks pack is now feature-complete** (blocks + mechanics + FX + settings + both editor UIs).
+
+---
+# Pass 8 — build 214 (2026-07-25)
+
+- **Ladder bottom → walk mode** — reaching a solid platform under the feet (and not climbing up) hops you off
+  the ladder into normal walk mode instead of clinging at the base.
+- **Ladder top → descend** — standing on a ladder top and pressing **Down** now drops you into the ladder and
+  starts you climbing down.
+- **Block contents as real drops** — Coins still auto-collect, but any OTHER item now **rises up out of a Question
+  block** / **pops out (random direction) from a Breakable block** as a collectible `ItemDrop` you walk over to
+  grab (reuses the mob-drop system: gravity + bounce + pickup).
+- **Broader item picker** — the contents popup is now a 2-column grid of items (Coin, Apple, Arrow, Glowstone,
+  TNT, Blaze Rod, Ender Pearl, Wither Skull, Diamond Sword, Bow, Clear) — more flexible, single-item. (A full
+  chest-style icon grid could be a later polish; this covers the flexibility with a curated set + text labels.)

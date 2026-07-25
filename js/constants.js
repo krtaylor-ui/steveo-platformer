@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 213 (Classic Blocks — the two editor UIs shipped: click a placed Warp Pipe to pick its destination (Pick Destination link mode / No Destination=obstacle / Clear=auto-pair), and click a Question/Breakable block to choose its contents (coin/apple/arrow/glowstone/clear). Saved with the world. Plus: the ladder-climb head now draws OVER the arms.)';
+const GAME_VERSION = 'v3 · build 214 (Ladder: reach the bottom onto a platform = walk mode; press Down at a ladder top to start descending. Block contents: a broader single-item picker (Coin/Apple/Arrow/Glowstone/TNT/Blaze Rod/Ender Pearl/Wither Skull/Diamond Sword/Bow/Clear). Coins auto-collect; other items RISE out of Question blocks and POP (random dir) from Breakables as collectible drops.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

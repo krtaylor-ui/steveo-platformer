@@ -519,38 +519,46 @@ class Player {
     // (walking through it otherwise behaves normally — no floating/bouncing). Once grabbed, you
     // hang (gravity off) until you climb off an end, walk out sideways, or jump off (if enabled).
     const onLadderCell = this._overlapsBlock(level, BLOCK.LADDER);
-    if (!onLadderCell) this._ladderEngaged = false;
-    // Only read ladder inputs when actually overlapping one (keeps this off the hot path + out
-    // of headless test mocks that lack isDown).
-    const ladUp   = onLadderCell && (input.isDown('KeyW') || input.isDown('ArrowUp') || (input.isStickUp && input.isStickUp()));
-    const ladDown = onLadderCell && input.isCrouch();
-    if (onLadderCell && (ladUp || ladDown)) this._ladderEngaged = true;
-    this._onLadder = !!(this._ladderEngaged && onLadderCell);
+    const upHeld   = onLadderCell && (input.isDown('KeyW') || input.isDown('ArrowUp') || (input.isStickUp && input.isStickUp()));
+    const footLadder = !onLadderCell && this.onGround && this._footBlockIs(level, BLOCK.LADDER);  // standing on a ladder top
+    const downHeld = (onLadderCell || footLadder) && input.isCrouch();
+    // Engage: press Up/Down while overlapping a ladder — OR press Down while standing on a ladder
+    // TOP (drop into it and start descending). Otherwise you walk through / stand on top normally.
+    if (footLadder && downHeld && !this._ladderEngaged) { this.y += 4; this._ladderEngaged = true; }
+    else if (!onLadderCell) this._ladderEngaged = false;
+    else if (upHeld || downHeld) this._ladderEngaged = true;
+    this._onLadder = !!(this._ladderEngaged && this._overlapsBlock(level, BLOCK.LADDER));
     if (this._onLadder) {
-      const jumpNow = input.isJump();
-      // Mid-ladder jump-off (opt-in): a jump press leaves the ladder. Otherwise you jump only
-      // after climbing OFF the top (ladder ends → gravity resumes → normal jump).
-      if (this._ladderMidJump && jumpNow && !this._jumpPressed) {
-        this._onLadder = false; this._ladderEngaged = false;
-        this.vy = this._jumpVelocityOverride ?? JUMP_VELOCITY;
-        this.jumpSquish = 1; this._jumpPressed = jumpNow;
+      // Bottom of the ladder: a solid platform under the feet + not climbing up → hop off to WALK
+      // mode (fall through to normal handling). This stops you clinging at the base.
+      const footRow = Math.floor((this.y + this.height + 1) / BLOCK_SIZE);
+      const fc0 = Math.floor((this.x + 2) / BLOCK_SIZE), fc1 = Math.floor((this.x + this.width - 2) / BLOCK_SIZE);
+      let solidBelow = false;
+      for (let c = fc0; c <= fc1; c++) if (level.isSolid(footRow, c)) { solidBelow = true; break; }
+      if (solidBelow && !upHeld) { this._onLadder = false; this._ladderEngaged = false; }
+      else {
+        const jumpNow = input.isJump();
+        if (this._ladderMidJump && jumpNow && !this._jumpPressed) {
+          this._onLadder = false; this._ladderEngaged = false;
+          this.vy = this._jumpVelocityOverride ?? JUMP_VELOCITY;
+          this.jumpSquish = 1; this._jumpPressed = jumpNow;
+          return;
+        }
+        this._jumpPressed = jumpNow;
+        this.vy = upHeld ? -2.4 : downHeld ? 2.4 : 0;   // hang when neither is held
+        if (this._ladderLockX) {
+          const BS = BLOCK_SIZE, cc = Math.floor((this.x + this.width / 2) / BS);
+          this.x = cc * BS + (BS - this.width) / 2; this.vx = 0;
+        }
+        this._climbAnim = (this.vy !== 0) ? ((this._climbAnim || 0) + Math.sign(-this.vy) * 0.18) : (this._climbAnim || 0);
+        this.walkTimer = (this._climbAnim || 0) * 2.2;
+        this.running = this.vy !== 0;
+        this.crouching = false;
+        this.onGround  = false;
+        if (this._jumpBuffer > 0) this._jumpBuffer--;
+        if (this._coyoteTime > 0) this._coyoteTime--;
         return;
       }
-      this._jumpPressed = jumpNow;
-      this.vy = ladUp ? -2.4 : ladDown ? 2.4 : 0;   // hang when neither is held
-      if (this._ladderLockX) {
-        const BS = BLOCK_SIZE, cc = Math.floor((this.x + this.width / 2) / BS);
-        this.x = cc * BS + (BS - this.width) / 2; this.vx = 0;
-      }
-      // Climb animation cadence — drives the limb-swing while moving (first-stab climb anim).
-      this._climbAnim = (this.vy !== 0) ? ((this._climbAnim || 0) + Math.sign(-this.vy) * 0.18) : (this._climbAnim || 0);
-      this.walkTimer = (this._climbAnim || 0) * 2.2;
-      this.running = this.vy !== 0;
-      this.crouching = false;
-      this.onGround  = false;
-      if (this._jumpBuffer > 0) this._jumpBuffer--;
-      if (this._coyoteTime > 0) this._coyoteTime--;
-      return;
     }
 
     // ── Normal (non-flying) ───────────────────────────────────

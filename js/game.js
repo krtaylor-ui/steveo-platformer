@@ -7641,45 +7641,57 @@ class Game {
     }
     const key = p.row + ',' + p.col;
     const set = (item) => () => { this._blockContents = this._blockContents || new Map(); if (item == null) this._blockContents.delete(key); else this._blockContents.set(key, item); this._classicPopup = null; this._notify('Contents set', '#ffe066', 100); };
+    // A broader single-item picker (chest-like). Blocks are ids; tools are TOOL_DATA string keys.
     return [
-      { label: 'Coin',      act: set('coin') },
-      { label: 'Apple',     act: set(BLOCK.APPLE) },
-      { label: 'Arrow',     act: set(BLOCK.ARROW) },
+      { label: 'Coin',   act: set('coin') },
+      { label: 'Apple',  act: set(BLOCK.APPLE) },
+      { label: 'Arrow',  act: set(BLOCK.ARROW) },
       { label: 'Glowstone', act: set(BLOCK.GLOWSTONE) },
-      { label: 'Clear (use world default)', act: set(null) },
+      { label: 'TNT',    act: set(BLOCK.TNT) },
+      { label: 'Blaze Rod', act: set(BLOCK.BLAZE_ROD) },
+      { label: 'Ender Pearl', act: set(BLOCK.ENDER_PEARL) },
+      { label: 'Wither Skull', act: set(BLOCK.WITHER_SKELETON_HEAD) },
+      { label: 'Diamond Sword', act: set('DIAMOND_SWORD') },
+      { label: 'Bow',    act: set('BOW') },
+      { label: 'Clear (world default)', act: set(null) },
     ];
   }
-  _classicPopupLayout(n) { const pw = 260, ph = 56 + n * 34; return { pw, ph, px: (CANVAS_W - pw) / 2, py: (CANVAS_H - ph) / 2 }; }
+  _classicPopupGeom(kind, n) {
+    const cols = kind === 'contents' ? 2 : 1, rows = Math.ceil(n / cols);
+    const bw = kind === 'contents' ? 118 : 236, gap = 6, bh = 28;
+    const pw = 24 + cols * bw + (cols - 1) * gap, ph = 40 + rows * (bh + gap) + 6;
+    return { cols, bw, bh, gap, pw, ph, px: Math.round((CANVAS_W - pw) / 2), py: Math.round((CANVAS_H - ph) / 2) };
+  }
+  _classicBtnRect(g, i) { const c = i % g.cols, r = (i / g.cols) | 0; return { bx: g.px + 12 + c * (g.bw + g.gap), by: g.py + 38 + r * (g.bh + g.gap), bw: g.bw, bh: g.bh }; }
   _handleClassicPopupInput() {
     if (!this._classicPopup || !this.input.mouse.clicked) return;
     const btns = this._classicPopupButtons();
-    const { pw, ph, px, py } = this._classicPopupLayout(btns.length);
+    const g = this._classicPopupGeom(this._classicPopup.kind, btns.length);
     const mx = this.input.mouse.x, my = this.input.mouse.y;
     this.input.mouse.clicked = false;
-    if ((mx >= px + pw - 26 && mx <= px + pw - 6 && my >= py + 6 && my <= py + 26) || mx < px || mx > px + pw || my < py || my > py + ph) { this._classicPopup = null; return; }
+    if ((mx >= g.px + g.pw - 26 && mx <= g.px + g.pw - 6 && my >= g.py + 6 && my <= g.py + 26) || mx < g.px || mx > g.px + g.pw || my < g.py || my > g.py + g.ph) { this._classicPopup = null; return; }
     for (let i = 0; i < btns.length; i++) {
-      const by = py + 46 + i * 34;
-      if (mx >= px + 12 && mx <= px + pw - 12 && my >= by && my <= by + 28) { btns[i].act(); return; }
+      const r = this._classicBtnRect(g, i);
+      if (mx >= r.bx && mx <= r.bx + r.bw && my >= r.by && my <= r.by + r.bh) { btns[i].act(); return; }
     }
   }
   _drawClassicPopup(ctx) {
     const p = this._classicPopup; if (!p) return;
     const btns = this._classicPopupButtons();
-    const { pw, ph, px, py } = this._classicPopupLayout(btns.length);
+    const g = this._classicPopupGeom(p.kind, btns.length);
     ctx.save(); ctx.textBaseline = 'top';
-    ctx.fillStyle = 'rgba(15,18,28,0.96)'; ctx.fillRect(px, py, pw, ph);
-    ctx.strokeStyle = '#6FB6FF'; ctx.lineWidth = 1; ctx.strokeRect(px + 0.5, py + 0.5, pw, ph);
-    ctx.fillStyle = '#cdd6ff'; ctx.font = 'bold 14px system-ui, sans-serif';
-    ctx.fillText(p.kind === 'pipe' ? 'Warp Pipe' : 'Block Contents', px + 12, py + 10);
-    ctx.fillStyle = '#c66'; ctx.font = 'bold 14px system-ui, sans-serif'; ctx.fillText('✕', px + pw - 20, py + 10);
-    ctx.fillStyle = '#8a90a6'; ctx.font = '11px system-ui, sans-serif';
-    if (p.kind === 'pipe') { const cur = this._pipeLinks && this._pipeLinks.get(this._pipeAnchorKey(p.row, p.col)); ctx.fillText('Destination: ' + (cur === 'none' ? 'None (obstacle)' : cur ? 'linked' : 'auto (reading order)'), px + 12, py + 28); }
-    else { const cur = this._blockContents && this._blockContents.get(p.row + ',' + p.col); ctx.fillText('Now: ' + (cur == null ? 'world default' : cur === 'coin' ? 'Coin' : ((BLOCK_DATA[cur] && BLOCK_DATA[cur].name) || cur)), px + 12, py + 28); }
+    ctx.fillStyle = 'rgba(15,18,28,0.96)'; ctx.fillRect(g.px, g.py, g.pw, g.ph);
+    ctx.strokeStyle = '#6FB6FF'; ctx.lineWidth = 1; ctx.strokeRect(g.px + 0.5, g.py + 0.5, g.pw, g.ph);
+    ctx.fillStyle = '#cdd6ff'; ctx.font = 'bold 13px system-ui, sans-serif';
+    let title = 'Warp Pipe — destination';
+    if (p.kind === 'contents') { const cur = this._blockContents && this._blockContents.get(p.row + ',' + p.col); title = 'Contents: ' + (cur == null ? 'world default' : cur === 'coin' ? 'Coin' : ((BLOCK_DATA[cur] && BLOCK_DATA[cur].name) || cur)); }
+    ctx.fillText(title, g.px + 12, g.py + 10);
+    ctx.fillStyle = '#c66'; ctx.fillText('✕', g.px + g.pw - 20, g.py + 10);
     for (let i = 0; i < btns.length; i++) {
-      const by = py + 46 + i * 34;
-      ctx.fillStyle = '#2a2f42'; ctx.fillRect(px + 12, by, pw - 24, 28);
-      ctx.strokeStyle = '#3a4055'; ctx.strokeRect(px + 12.5, by + 0.5, pw - 25, 27);
-      ctx.fillStyle = '#d5d9e6'; ctx.font = 'bold 12px system-ui, sans-serif'; ctx.fillText(btns[i].label, px + 22, by + 7);
+      const r = this._classicBtnRect(g, i);
+      ctx.fillStyle = '#2a2f42'; ctx.fillRect(r.bx, r.by, r.bw, r.bh);
+      ctx.strokeStyle = '#3a4055'; ctx.strokeRect(r.bx + 0.5, r.by + 0.5, r.bw - 1, r.bh - 1);
+      ctx.fillStyle = '#d5d9e6'; ctx.font = 'bold 11px system-ui, sans-serif'; ctx.fillText(btns[i].label, r.bx + 8, r.by + 8);
     }
     ctx.restore();
   }
@@ -17016,20 +17028,28 @@ class Game {
   }
   _popBlockContent(row, col, p) {
     const content = this._blockContentFor(row, col);
+    // Coins auto-collect; anything else RISES UP out of the block as a collectible item.
     if (content === 'coin') { this._collectCoin(p); this._popCoinFx(row, col); }
-    else this._giveBlockItem(content, p);
-    if (this._blockContents) this._blockContents.delete(row + ',' + col);
+    else this._spawnContentDrop(row, col, content, 'rise');
     this._playSound('sounds/item-collected.mp3', 0.85);
   }
-  // A Breakable Block was hit from below: drop any stored content, then shatter.
+  // A Breakable Block was hit from below: shatter + its content POPS OUT (random direction) to land + be collected.
   _breakBlock(row, col, p) {
     const content = this._blockContentFor(row, col);
-    if (content === 'coin') { this._collectCoin(p); this._popCoinFx(row, col); }
-    else this._giveBlockItem(content, p);
-    if (this._blockContents) this._blockContents.delete(row + ',' + col);
     this.level.set(row, col, BLOCK.AIR);
     this._playSound('sounds/mining.mp3', 0.5);
     this._shatterFx(row, col, '#b5642f');
+    if (content === 'coin') { this._collectCoin(p); this._popCoinFx(row, col); }
+    else this._spawnContentDrop(row, col, content, 'pop');
+  }
+  // Spawn the block's content as a ground drop the player walks over to collect. 'rise' = straight
+  // up out of a Question block; 'pop' = the ItemDrop default (random direction) for a Breakable.
+  _spawnContentDrop(row, col, itemKey, mode) {
+    if (itemKey == null || !this.mobManager || !this.mobManager.dropItems) return;
+    const x = col * BLOCK_SIZE + BLOCK_SIZE / 2, y = row * BLOCK_SIZE + BLOCK_SIZE / 2;
+    this.mobManager.dropItems([{ x, y, itemKey, amount: 1, pickupDelay: 0 }]);
+    const arr = this.mobManager.droppedItems, d = arr[arr.length - 1];
+    if (d && mode === 'rise') { d.vx = 0; d.vy = -6; d.y = row * BLOCK_SIZE - 4; }
   }
   // Grant a block/item stored inside a Question/Breakable block to the player.
   _giveBlockItem(item, p) {
