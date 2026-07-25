@@ -720,11 +720,13 @@ class Player {
       const rowEnd   = Math.floor((newY     + this.height) / BLOCK_SIZE);
       let stopped = false;
       for (let r = rowStart; r <= rowEnd; r++) {
-        // §Classic Blocks — Jump-Through platform: solid ONLY when landing from above (feet at/above
-        // its top), and not during a drop-through. Non-solid to jumps from below + horizontal.
-        const oneWay = !this._dropThrough &&
-          ((level.get(r, bLeft) === BLOCK.ONEWAY_PLATFORM || level.get(r, bRight) === BLOCK.ONEWAY_PLATFORM) &&
-           (this.y + this.height) <= r * BLOCK_SIZE + 6);
+        // §Classic Blocks — land-from-above-only surfaces: Jump-Through platforms always, and the
+        // TOP of a Ladder while NOT climbing (so you can stand at a ladder's top without falling).
+        // Both only apply when the feet are at/above the cell top, and not during a drop-through.
+        const feetAbove = (this.y + this.height) <= r * BLOCK_SIZE + 6;
+        const oneWay = !this._dropThrough && feetAbove &&
+          (level.get(r, bLeft) === BLOCK.ONEWAY_PLATFORM || level.get(r, bRight) === BLOCK.ONEWAY_PLATFORM ||
+           (!this._onLadder && (level.get(r, bLeft) === BLOCK.LADDER || level.get(r, bRight) === BLOCK.LADDER)));
         if (level.isSolid(r, bLeft) || level.isSolid(r, bRight) || oneWay) {
           this.y        = r * BLOCK_SIZE - this.height;
           this.vy       = 0;
@@ -1240,6 +1242,9 @@ class Player {
     const crouch    = this.crouching;
     // Ledge hang / climb uses an articulated figure (waist + hip hinges) — its own path.
     if (this._hangState) { this._drawHangFigure(ctx, sx, sy); return; }
+    // §Classic Blocks — Ladder climb: a back-facing pose (hair, no face) with arms/legs
+    // reaching in an alternating rhythm to mimic climbing the rungs.
+    if (this._onLadder) { this._drawLadderClimb(ctx, sx, sy); return; }
     // Special animated poses (opt-in moves). Priority: slide > wall-slide > roll.
     const hanging   = false;
     const sliding   = this._slideFrames > 0;
@@ -1347,6 +1352,36 @@ class Player {
     if (outline) { ctx.fillStyle = outline; ctx.fillRect(-1, -w/2-1, len+2, w+2); }  // dark silhouette edge
     ctx.fillStyle = color; ctx.fillRect(0, -w/2, len, w);   // hard-edged, matches the blocky sprite
     ctx.restore();
+  }
+
+  // §Classic Blocks — back-facing ladder climb. Head shows hair (no eyes) with a hairline at the
+  // bottom; arms reach up + legs step, alternating in sync with the climb cadence (_climbAnim).
+  _drawLadderClimb(ctx, sx, sy) {
+    const w = this.width, cx = sx + w / 2;
+    const hair = this._charHair ? this._charHair() : '#7D4E1A';
+    const shirt = this._charShirt ? this._charShirt() : '#4A8FD4';
+    const skin = '#E8B892', pants = '#39477A', outline = 'rgba(0,0,0,0.35)';
+    const ph = Math.sin(this._climbAnim || 0);            // -1..1 climb phase (arms/legs alternate)
+    // Head — back of the head: mostly hair, a darker hairline strip at the bottom, no face.
+    const hw = 14, hh = 14, hx = cx - hw / 2, hy = sy;
+    ctx.fillStyle = outline; ctx.fillRect(hx - 1, hy - 1, hw + 2, hh + 2);
+    ctx.fillStyle = hair; ctx.fillRect(hx, hy, hw, hh);
+    ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(hx, hy + hh - 3, hw, 3);   // hairline
+    if (this._hasPonytail && this._hasPonytail()) { ctx.fillStyle = hair; ctx.fillRect(cx - 2, hy + hh, 4, 8); }
+    // Torso (shirt, seen from behind).
+    const bw = 14, bh = 19, bx = cx - bw / 2, by = hy + hh;
+    ctx.fillStyle = outline; ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+    ctx.fillStyle = shirt; ctx.fillRect(bx, by, bw, bh);
+    // Arms reach UP toward the rungs, alternating high/low.
+    const shoY = by + 3;
+    const hiY = sy - 5, loY = sy + 6;
+    this._limbBar(ctx, bx + 2, shoY, cx - 7, ph > 0 ? hiY : loY, 5, skin, outline);
+    this._limbBar(ctx, bx + bw - 2, shoY, cx + 7, ph > 0 ? loY : hiY, 5, skin, outline);
+    // Legs step on the rungs, opposite phase to the arms.
+    const hipY = by + bh;
+    const legHiY = hipY + 11, legLoY = hipY + 21;
+    this._limbBar(ctx, cx - 4, hipY, cx - 5, ph > 0 ? legLoY : legHiY, 6, pants, outline);
+    this._limbBar(ctx, cx + 4, hipY, cx + 5, ph > 0 ? legHiY : legLoY, 6, pants, outline);
   }
 
   _drawHangFigure(ctx, sx, sy) {

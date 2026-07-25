@@ -1740,7 +1740,8 @@ function _drawOneWay(ctx, px, py, s) {
 // TOP is open (nothing pipe above) — the enterable opening.
 function _drawWarpPipe(ctx, px, py, s, state = {}, stem = false) {
   const t = !!state.pipeT, b = !!state.pipeB, l = !!state.pipeL, r = !!state.pipeR;
-  ctx.fillStyle = '#2fae4e'; ctx.fillRect(px, py, s, s);
+  // Overdraw 1px INTO connected neighbors so sub-pixel tile rounding can't leave a seam.
+  ctx.fillStyle = '#2fae4e'; ctx.fillRect(px - (l ? 1 : 0), py - (t ? 1 : 0), s + (l ? 1 : 0) + (r ? 1 : 0), s + (t ? 1 : 0) + (b ? 1 : 0));
   if (!r) { ctx.fillStyle = '#1f7d38'; ctx.fillRect(px + s - 7, py, 7, s); }   // shade on the open right edge
   if (!l) { ctx.fillStyle = '#7de89a'; ctx.fillRect(px + 2, py, 4, s); }       // highlight on the open left edge
   if (!stem && !t) { ctx.fillStyle = '#25913f'; ctx.fillRect(px - 1, py, s + 2, 8); ctx.fillStyle = '#134f22'; ctx.fillRect(px - 1, py + 8, s + 2, 2); }  // mouth lip

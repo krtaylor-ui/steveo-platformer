@@ -101,3 +101,23 @@ Then: want coins in the HUD, configurable Question contents, a crumble warning s
 - **Conveyor speed** modal (1/2/3/4, default 2) + apply-to-all-connected-at-same-height.
 - Warp-pipe **2×2 enter** uses the existing top-cell + reading-order pairing (works; explicit link IDs = later).
 - Dedicated **ladder climb pose** (still reuses the walk-cycle limbs) and a **coin HUD counter**.
+
+---
+# Pass 4 — build 208 (2026-07-24)
+
+## Done
+- **Crumbling = 3s of CONTINUAL contact.** Was a fixed countdown from first touch. Now the timer only
+  advances while you're actually standing on the block; **jump off and it resets** (the block stays). 3 s
+  (180 f) of unbroken contact → it falls. **Low-resource:** a per-frame `_crumbleTouched` Set (cleared, not
+  reallocated) marks stood-on cells; `_crumbleContact` only ever holds those (usually 1–2). Cracks/shake now
+  scale to `contact/180`.
+- **Stand on top of a ladder** without falling — a ladder's top is now landable from above (treated like a
+  Jump-Through surface when you're NOT climbing), so you can rest at the top / step off.
+- **Ladder climb animation** — a dedicated **back-facing** pose: hair (no face) with a hairline, torso, and
+  **arms/legs reaching in an alternating rhythm** synced to the climb cadence (`_drawLadderClimb`).
+- **Pipe seams** — overdraw 1px into connected neighbors so sub-pixel tile rounding can't leave a gap.
+
+## Deferred → next pass
+- **2×2 pipe + 1×2 extension as dedicated multi-block pieces** (a single-click stamp, like the Wither Altar).
+  Today you build them from 1×1 cells (which now render seamlessly). Kevin: roll these out, then polish seams there.
+- Customizable block-contents **UI**; **conveyor speed** modal + apply-to-connected (both still pending).

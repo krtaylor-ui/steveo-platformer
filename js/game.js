@@ -16825,19 +16825,26 @@ class Game {
   // crumble trigger, warp-pipe descend/teleport, and question/hidden bump-from-below.
   _updateClassicBlocks() {
     if (!this.level || this.gameMode === 'sandbox') { this._updateBlockFx(); return; }   // editor: FX only
+    this._crumbleTouched = this._crumbleTouched || new Set();
+    this._crumbleTouched.clear();     // reused each frame — no per-frame allocation
     const players = this.activePlayers ? this.activePlayers() : [this.player];
     for (const p of players) if (p && p.hp > 0) this._classicBlocksForPlayer(p);
     this._updateBlockFx();
-    // Crumble countdown — cells turn to AIR when their timer lapses.
-    if (this._crumbling) {
-      for (const [key, t] of Array.from(this._crumbling)) {
-        if (t <= 1) {
-          const [r, c] = key.split(',').map(Number);
-          if (this.level.get(r, c) === BLOCK.CRUMBLE_BLOCK) this.level.set(r, c, BLOCK.AIR);
-          this._crumbling.delete(key);
-          this._playSound('sounds/mining.mp3', 0.35);
-        } else this._crumbling.set(key, t - 1);
-      }
+    // Crumble = 3s of CONTINUAL contact. Only cells touched THIS frame advance; the instant
+    // contact breaks (player jumps off), the cell is dropped from the map → its timer resets.
+    // Low-resource: the map only ever holds actively-stood-on cells (usually 1–2).
+    if (!this._crumbleContact) this._crumbleContact = new Map();
+    for (const key of this._crumbleTouched) {
+      const t = (this._crumbleContact.get(key) || 0) + 1;
+      if (t >= 180) {                 // 3 seconds at 60 fps
+        const i = key.indexOf(','), r = +key.slice(0, i), c = +key.slice(i + 1);
+        if (this.level.get(r, c) === BLOCK.CRUMBLE_BLOCK) { this.level.set(r, c, BLOCK.AIR); this._shatterFx(r, c, '#b98a5a'); }
+        this._crumbleContact.delete(key);
+        this._playSound('sounds/mining.mp3', 0.35);
+      } else this._crumbleContact.set(key, t);
+    }
+    if (this._crumbleContact.size) {  // reset any cell not touched this frame (contact broken)
+      for (const key of this._crumbleContact.keys()) if (!this._crumbleTouched.has(key)) this._crumbleContact.delete(key);
     }
   }
 
@@ -16944,9 +16951,7 @@ class Game {
     this._playSound('sounds/placing-block.mp3', 0.7);
   }
   _crumbleTouch(row, col) {
-    if (!this._crumbling) this._crumbling = new Map();
-    const key = row + ',' + col;
-    if (!this._crumbling.has(key)) this._crumbling.set(key, 40);   // ~0.66 s, then it falls away
+    if (this._crumbleTouched) this._crumbleTouched.add(row + ',' + col);   // marked; timing in _updateClassicBlocks
   }
 
   // ── §Classic Blocks FX — shatter shards, coin pops, crumble cracks ──────────
@@ -16974,12 +16979,12 @@ class Game {
   }
   _drawBlockFx(ctx) {
     if (!this.camera) return;
-    // Crumble cracks — intensify + shake as the block nears collapse (warns the player).
-    if (this._crumbling) {
+    // Crumble cracks — intensify + shake as continual contact nears 3s (warns the player).
+    if (this._crumbleContact) {
       const CR = [[4, 2, 11, 16], [28, 3, 20, 14], [16, 5, 13, 26], [7, 20, 4, 30], [25, 17, 29, 30]];
-      for (const [key, t] of this._crumbling) {
+      for (const [key, t] of this._crumbleContact) {
         const i = key.indexOf(','), r = +key.slice(0, i), c = +key.slice(i + 1);
-        const prog = 1 - t / 40;
+        const prog = t / 180;
         const sx = c * BLOCK_SIZE - this.camera.x, sy = r * BLOCK_SIZE - this.camera.y;
         ctx.save();
         ctx.translate(sx + (Math.random() - 0.5) * prog * prog * 2.5, sy);
