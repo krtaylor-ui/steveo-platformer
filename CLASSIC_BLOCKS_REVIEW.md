@@ -35,3 +35,38 @@ existing worlds. Headless suite green. **On `main`, committed local, NOT pushed*
 Ladder climb feel; Jump-Through drop-through vs. slide (does the Down-hold beat feel right?); trampoline
 launch scaling; ice friction; warp-pipe pairing + the descend/emerge; question/hidden bump; coin/spike/conveyor.
 Then: want coins in the HUD, configurable Question contents, a crumble warning shake, and multi-wide/linked pipes?
+
+---
+# Pass 2 — build 206 (2026-07-24, from Kevin's playtest feedback)
+
+## Fixed / added this pass
+- **Question Block bump FIXED** — the upward collision zeroed `vy` before the interaction pass ran, so
+  the bump never registered. Now gated on the pre-collision fall speed (`player._preVy`). Same path drives
+  the new Breakable + Hidden reveal.
+- **Breakable Block** (id 78) — brick that **shatters when hit from below** (drops any stored content, then
+  turns to AIR + sound). **Pipe Stem** (id 79) — solid pipe body to place under a Warp Pipe to raise it.
+- **Block content storage** (`game._blockContents`, keyed `row,col`) with `_popBlockContent` / `_breakBlock`
+  / `_giveBlockItem` — Question yields the stored item (or a coin by default); Breakable drops it then shatters.
+- **Ladder dark outline FIXED** — added a faint backing so the rungs read on any background (dark biome/night
+  backdrops used to show through the gaps).
+- **Ladder climb animation** (first stab) — drives the limb-swing off a climb cadence while moving.
+- **Ladder world settings** (Movement → Moves): **Lock Sideways** (snap to the ladder column, no drift) and
+  **Jump Off Mid-Climb** (jump to leave anywhere; off = must climb off the top first).
+- **Day / Night backgrounds** — new `backgroundTheme` options: a **static sun (Day) / moon+stars (Night)** pinned
+  top-right, sky pinned bright/dark, clouds unchanged.
+
+## STILL DEFERRED — needs another pass (all flagged for Kevin)
+1. **Customizable block contents UI** — the *storage* is in (`_blockContents`), but there is **no editor yet to
+   place an item inside** a Question/Breakable block or to **clear** it. Contents currently default to a coin.
+   Plan: a Sandbox popup (reuse the portal/music popup infra) to pick/clear the held item per block.
+2. **2×2 Warp Pipes + Pipe Stem raising** — `PIPE_STEM` exists and pipes still work as 1-wide pairs, but the
+   **2×2 pipe shape + extender-raises-the-mouth logic** isn't wired. Plan: detect a 2×2 pipe cluster, enter from
+   its top-centre, treat stems below as body.
+3. **Conveyor ("moving platform") speed** — no per-block/per-group speed yet. Plan: a Sandbox modal with speed
+   **1/2/3/4 (2 = current)** and an **"apply to all connected at the same height"** option (flood-fill the run).
+4. **Slide on a Jump-Through platform** — REPORTED not moving. I could NOT reproduce it from static analysis
+   (the slide sets `vx` and the one-way is non-solid horizontally, so it *should* slide). **Needs a repro** — is
+   Ground Slide enabled, is the platform ≥2 wide, and does it fail on normal ground too? Possible culprit to
+   check next: the new **Down-hold → drop-through** gesture eating the slide when Down was held before the jump.
+5. Minor: Breakable **particle burst** (currently just a notify + sound); a dedicated **ladder climb pose**
+   (currently reuses the walk-cycle limbs); **coin HUD counter**.

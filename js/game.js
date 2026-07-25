@@ -4567,7 +4567,8 @@ class Game {
   _skyBiome() {
     const theme = this._worldAdvSettings?.backgroundTheme;
     if (theme && theme !== 'auto') {
-      return theme === 'sky' ? 'plains' : theme; // 'cave' | 'nether' | 'end' pass through
+      if (theme === 'sky' || theme === 'day' || theme === 'night') return 'plains';   // §Day/Night use the sky backdrop
+      return theme; // 'cave' | 'nether' | 'end' pass through
     }
     return this._playerBiome();
   }
@@ -4952,6 +4953,8 @@ class Game {
     p._ledgeHangEnabled = !!aws.ledgeHangEnabled;
     p._climbSpeed       = aws.climbSpeed || 1;   // ledge climb-up/down animation speed (1 = default)
     p._slideEnabled     = !!aws.slideEnabled;
+    p._ladderLockX      = !!aws.ladderLockX;    // §Classic Blocks — force horizontal position while climbing
+    p._ladderMidJump    = !!aws.ladderMidJump;  // §Classic Blocks — allow jumping off mid-ladder
     p._slideInvincible  = !!aws.slideInvincible;
     p._slideDur         = Math.max(6, Math.min(120, aws.slideDurationFrames ?? 30));
     p._slideMult        = Math.max(1, Math.min(3, aws.slideSpeedMult ?? 1.6));
@@ -6661,7 +6664,7 @@ class Game {
     // 'sky' → always full sky (t=0), 'cave' → always full cave (t=1).
     const _theme = this._worldAdvSettings?.backgroundTheme;
     const t = (_theme === 'cave') ? 1
-            : (_theme === 'sky')  ? 0
+            : (_theme === 'sky' || _theme === 'day' || _theme === 'night') ? 0
             : Math.max(0, Math.min(1,
                 (this.player.cy - 24 * BLOCK_SIZE) / (4 * BLOCK_SIZE)
               ));
@@ -6671,6 +6674,9 @@ class Game {
       const dn = this._dayNight;
       const progress = Math.min(1, dn.timer / dn.halfCycleMs);
       let skyBlend = 0; // 0 = full day, 1 = full night
+      // §Day/Night themes pin the sky (ignore the moving day-cycle).
+      if (_theme === 'day' || _theme === 'night') skyBlend = (_theme === 'night') ? 1 : 0;
+      else {
       if (dn.isDay) {
         skyBlend = progress < (DAWN_DUSK_MS / dn.halfCycleMs)
           ? 1 - (progress / (DAWN_DUSK_MS / dn.halfCycleMs)) // dawn: night→day
@@ -6679,6 +6685,7 @@ class Game {
         skyBlend = progress < (DAWN_DUSK_MS / dn.halfCycleMs)
           ? progress / (DAWN_DUSK_MS / dn.halfCycleMs)       // dusk: day→night
           : 1;
+      }
       }
 
       // Day sky
@@ -6785,6 +6792,14 @@ class Game {
   }
 
   _drawCelestial(ctx) {
+    // §Day/Night themes — a STATIC sun (day) or moon+stars (night) pinned top-right; no arc.
+    const _theme = this._worldAdvSettings?.backgroundTheme;
+    if (_theme === 'day' || _theme === 'night') {
+      const sx = CANVAS_W - 72, sy = 68;
+      if (_theme === 'night') { this._drawStars(ctx, 1); this._drawMoon(ctx, sx, sy, 1); }
+      else this._drawSun(ctx, sx, sy, 1);
+      return;
+    }
     const dn        = this._dayNight;
     const progress  = Math.min(1, dn.timer / dn.halfCycleMs);
     const dawnFrac  = DAWN_DUSK_MS / dn.halfCycleMs;
@@ -16859,14 +16874,46 @@ class Game {
         else if (b === BLOCK.WARP_PIPE && p === this.player && this.input.isCrouch()) { this._warpEnter(p, feetRow, c); break; }
       }
     }
-    // Bump from below (rising into a block above the head).
-    if (p.vy < 0) {
+    // Bump from below. NB: the upward collision zeroes vy BEFORE this pass runs, so gate on the
+    // pre-collision fall speed (_preVy) captured before player.update, not the current vy.
+    if ((p._preVy || 0) < -1) {
+      // Solid bumpables (Question / Breakable): the block just above the head (player stopped below it).
+      const hr = Math.floor((p.y - 1) / BS);
       for (let c = col0; c <= col1; c++) {
-        const b = L.get(headRow, c);
-        if (b === BLOCK.QUESTION_BLOCK) { L.set(headRow, c, BLOCK.QUESTION_USED); this._questionPop(p); p.vy = 0; }
-        else if (b === BLOCK.HIDDEN_BLOCK) { this._revealHidden(headRow, c); p.vy = 0; }
+        const b = L.get(hr, c);
+        if (b === BLOCK.QUESTION_BLOCK) { L.set(hr, c, BLOCK.QUESTION_USED); this._popBlockContent(hr, c, p); }
+        else if (b === BLOCK.BREAKABLE_BLOCK) { this._breakBlock(hr, c, p); }
+      }
+      // Hidden (non-solid): the block the head passed into → reveal + settle just below it.
+      const hr2 = Math.floor((p.y + 2) / BS);
+      for (let c = col0; c <= col1; c++) {
+        if (L.get(hr2, c) === BLOCK.HIDDEN_BLOCK) { this._revealHidden(hr2, c); p.y = (hr2 + 1) * BS; p.vy = 0; }
       }
     }
+  }
+
+  // A Question Block was bumped: give its stored content (or a coin by default), then it's Used.
+  _popBlockContent(row, col, p) {
+    const key = row + ',' + col;
+    const content = this._blockContents && this._blockContents.get(key);
+    if (content != null) { this._giveBlockItem(content, p); this._blockContents.delete(key); }
+    else this._collectCoin(p);
+    this._playSound('sounds/item-collected.mp3', 0.85);
+  }
+  // A Breakable Block was hit from below: drop any stored content, then shatter.
+  _breakBlock(row, col, p) {
+    const key = row + ',' + col;
+    const content = this._blockContents && this._blockContents.get(key);
+    if (content != null) { this._giveBlockItem(content, p); this._blockContents.delete(key); }
+    this.level.set(row, col, BLOCK.AIR);
+    this._playSound('sounds/mining.mp3', 0.5);
+    this._notify('Smash!', '#c98a5a', 40);   // (particle burst = noted follow-up)
+  }
+  // Grant a block/item stored inside a Question/Breakable block to the player.
+  _giveBlockItem(item, p) {
+    if (item === BLOCK.COIN || item == null) { this._collectCoin(p); return; }
+    if (p && p.addBlock) p.addBlock(item);
+    this._notify((BLOCK_DATA[item] && BLOCK_DATA[item].name || 'Item') + '!', '#ffe066', 60);
   }
 
   _trampolineBounce(p) {

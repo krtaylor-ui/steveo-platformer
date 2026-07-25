@@ -94,6 +94,8 @@ const BLOCK = Object.freeze({
   CONVEYOR_LEFT:          75,   // solid; pushes whoever stands on it left
   CONVEYOR_RIGHT:         76,   // solid; pushes right
   CRUMBLE_BLOCK:          77,   // solid; crumbles away shortly after something stands on it
+  BREAKABLE_BLOCK:        78,   // solid brick; shatters when hit from below (may hold an item)
+  PIPE_STEM:              79,   // solid pipe body/extender (goes under a Warp Pipe to raise it)
 });
 
 // Colour palette for decorative foliage (§10). Index 0 = green (default).
@@ -217,6 +219,8 @@ const BLOCK_DATA = {
   [BLOCK.CONVEYOR_LEFT]:     { name: 'Conveyor ◀',      hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
   [BLOCK.CONVEYOR_RIGHT]:    { name: 'Conveyor ▶',      hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
   [BLOCK.CRUMBLE_BLOCK]:     { name: 'Crumbling Block', hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
+  [BLOCK.BREAKABLE_BLOCK]:   { name: 'Breakable Block', hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
+  [BLOCK.PIPE_STEM]:         { name: 'Pipe Stem',       hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
 };
 
 // ── Pixel-art block renderers ────────────────────────────────
@@ -308,6 +312,8 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.CONVEYOR_LEFT:          _drawConveyor(ctx, px, py, s, -1, state.frame || 0); break;
     case BLOCK.CONVEYOR_RIGHT:         _drawConveyor(ctx, px, py, s,  1, state.frame || 0); break;
     case BLOCK.CRUMBLE_BLOCK:          _drawCrumble(ctx, px, py, s, state.crumbling);   break;
+    case BLOCK.BREAKABLE_BLOCK:        _drawBreakable(ctx, px, py, s, !!state.hasItem); break;
+    case BLOCK.PIPE_STEM:              _drawPipeStem(ctx, px, py, s);                   break;
   }
 
   // Mining crack overlay
@@ -1651,6 +1657,11 @@ function _drawSpeedItemBlock(ctx, px, py, s) {
 
 // ── §Classic Blocks pack renderers (2026-07-24) ─────────────────
 function _drawLadder(ctx, px, py, s) {
+  // Faint backing so the rungs read the same on ANY background (a dark biome/night backdrop
+  // used to show through the gaps and look like a black outline). Kept subtle so it's clearly
+  // a ladder, not a solid block.
+  ctx.fillStyle = 'rgba(150,110,60,0.14)';
+  ctx.fillRect(px + 4, py, s - 8, s);
   ctx.strokeStyle = '#9a6b3a'; ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.moveTo(px + 6, py);      ctx.lineTo(px + 6, py + s);
@@ -1751,4 +1762,24 @@ function _drawCrumble(ctx, px, py, s, crumbling) {
   ctx.moveTo(px + 12, py + 7); ctx.lineTo(px + s - 12, py + 9);
   ctx.stroke();
   if (crumbling) { ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.fillRect(px, py, s, s); }
+}
+function _drawBreakable(ctx, px, py, s, hasItem) {
+  ctx.fillStyle = '#b5642f'; ctx.fillRect(px, py, s, s);
+  ctx.strokeStyle = '#7d4520'; ctx.lineWidth = 1;
+  // brick courses
+  for (let ry = 0; ry < s; ry += 8) {
+    ctx.beginPath(); ctx.moveTo(px, py + ry + 0.5); ctx.lineTo(px + s, py + ry + 0.5); ctx.stroke();
+    const off = (ry / 8) % 2 === 0 ? 0 : s / 2;
+    ctx.beginPath(); ctx.moveTo(px + off + 0.5, py + ry); ctx.lineTo(px + off + 0.5, py + ry + 8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px + (off + s / 2) % s + 0.5, py + ry); ctx.lineTo(px + (off + s / 2) % s + 0.5, py + ry + 8); ctx.stroke();
+  }
+  ctx.strokeStyle = '#d98a4f'; ctx.strokeRect(px + 1, py + 1, s - 2, 2);
+  if (hasItem) { ctx.fillStyle = 'rgba(255,240,160,0.85)'; ctx.beginPath(); ctx.arc(px + s / 2, py + s / 2, 3, 0, Math.PI * 2); ctx.fill(); }
+}
+function _drawPipeStem(ctx, px, py, s) {
+  ctx.fillStyle = '#2fae4e'; ctx.fillRect(px, py, s, s);
+  ctx.fillStyle = '#1f7d38'; ctx.fillRect(px + s - 7, py, 7, s);
+  ctx.fillStyle = '#7de89a'; ctx.fillRect(px + 2, py, 4, s);
+  ctx.strokeStyle = '#134f22'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(px + 0.5, py); ctx.lineTo(px + 0.5, py + s); ctx.moveTo(px + s - 0.5, py); ctx.lineTo(px + s - 0.5, py + s); ctx.stroke();
 }

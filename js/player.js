@@ -514,9 +514,30 @@ class Player {
     //    (Climb off the top/bottom or step sideways to leave; jump-off is a noted follow-up.)
     this._onLadder = this._overlapsBlock(level, BLOCK.LADDER);
     if (this._onLadder) {
+      // Mid-ladder jump-off (opt-in world setting): a jump press leaves the ladder. Otherwise
+      // you can only jump once you've climbed OFF the top (ladder ends → gravity → normal jump).
+      const jumpNow = input.isJump();
+      if (this._ladderMidJump && jumpNow && !this._jumpPressed) {
+        this._onLadder = false;
+        this.vy = this._jumpVelocityOverride ?? JUMP_VELOCITY;
+        this.jumpSquish = 1; this._jumpPressed = jumpNow;
+        return;
+      }
+      this._jumpPressed = jumpNow;
       const up   = input.isDown('KeyW') || input.isDown('ArrowUp') || (input.isStickUp && input.isStickUp());
       const down = input.isCrouch();
       this.vy = up ? -2.4 : down ? 2.4 : 0;
+      // Force horizontal position (opt-in): snap to the ladder's column centre, no side drift.
+      if (this._ladderLockX) {
+        const BS = BLOCK_SIZE, cc = Math.floor((this.x + this.width / 2) / BS);
+        this.x = cc * BS + (BS - this.width) / 2;
+        this.vx = 0;
+      }
+      // Climb animation cadence — advances only while actually moving on the ladder, and drives
+      // the existing limb-swing so arms/legs alternate as you climb (first-stab climb anim).
+      this._climbAnim = (this.vy !== 0) ? ((this._climbAnim || 0) + Math.sign(-this.vy) * 0.18) : (this._climbAnim || 0);
+      this.walkTimer = (this._climbAnim || 0) * 2.2;
+      this.running = this.vy !== 0;
       this.crouching = false;
       this.onGround  = false;
       if (this._jumpBuffer > 0) this._jumpBuffer--;

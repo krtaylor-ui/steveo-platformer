@@ -104,7 +104,7 @@ const WORLD_SETTINGS = {
     const pct1 = (v) => v.toFixed(2), x1 = (v) => v.toFixed(1) + 'x', xf = (v) => v + 'x';
     return [
       // ── WORLD ───────────────────────────────────────────────
-      { key: 'backgroundTheme', tab: 'world', group: 'Look', modes: M.display, type: 'cycle', opts: ['auto', 'sky', 'cave', 'nether', 'end'], dflt: 'auto', label: 'Background', fmt: this._cap, hint: 'force a biome backdrop everywhere, or Auto (by position)' },
+      { key: 'backgroundTheme', tab: 'world', group: 'Look', modes: M.display, type: 'cycle', opts: ['auto', 'sky', 'day', 'night', 'cave', 'nether', 'end'], dflt: 'auto', label: 'Background', fmt: this._cap, hint: 'force a backdrop everywhere (Day/Night pin a static sun/moon top-right), or Auto (by position)' },
       { key: 'dayCycleMinutes', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'cycle', opts: O.day, dflt: 10, label: 'Day Length', fmt: (v) => v + ' min', hint: 'length of a full day+night cycle' },
       { key: 'nightSpawnBoost', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'toggle', dflt: false, label: 'Night Spawn Boost', hint: 'more mobs spawn at night' },
       { key: 'nightSpawnRate', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'cycle', opts: [1.5, 2, 3, 4], dflt: 2, label: 'Night Spawn Rate', fmt: (v) => v.toFixed(1) + 'x', sub: true, dependsOn: 'nightSpawnBoost', advanced: true, hint: 'how many more mobs at night' },
@@ -144,6 +144,8 @@ const WORLD_SETTINGS = {
       { key: 'wallJumpLockAway', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Wall-Jump Lock-Away', sub: true, dependsOn: 'wallSlideEnabled', advanced: true, hint: 'jump forces away, no steering till you land' },
       { key: 'ledgeHangEnabled', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Ledge Hang', hint: 'grab & climb block edges' },
       { key: 'climbSpeed', tab: 'movement', group: 'Moves', modes: M.physics, type: 'cycle', opts: [0.5, 0.75, 1, 1.5, 2, 3], dflt: 1, label: 'Climb Speed', fmt: (v) => v.toFixed(2).replace(/\.?0+$/, '') + 'x', sub: true, dependsOn: 'ledgeHangEnabled', advanced: true, hint: 'how fast the ledge climb-up animation plays (1x = default)' },
+      { key: 'ladderLockX', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Ladder: Lock Sideways', hint: 'while climbing a Ladder, snap to its column — no side drift' },
+      { key: 'ladderMidJump', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Ladder: Jump Off Mid-Climb', hint: 'press Jump to leap off a Ladder anywhere; off = you must climb off the top first' },
       { key: 'slideEnabled', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Ground Slide', hint: 'jump + down to slide' },
       { key: 'slideInvincible', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Slide Invincible', sub: true, dependsOn: 'slideEnabled', advanced: true },
       { key: 'slideDurationFrames', tab: 'movement', group: 'Moves', modes: M.physics, type: 'cycle', opts: O.slideDur, dflt: 30, label: 'Slide Length', fmt: (v) => v + 'f', sub: true, dependsOn: 'slideEnabled', advanced: true },
