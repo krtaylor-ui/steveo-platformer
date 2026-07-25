@@ -6023,7 +6023,7 @@ class Game {
       ctx.scale(_activeZoom, _activeZoom);
       ctx.translate(-CANVAS_W / 2, -CANVAS_H / 2);
     }
-    this.level.draw(ctx, this.camera, this.redstone, this.frameCount, this.gameMode === 'sandbox');
+    this.level.draw(ctx, this.camera, this.redstone, this.frameCount, this.gameMode === 'sandbox', this._trampFx);
     // Re-draw open chest with lid-open state on top
     if (this._chestOpen) {
       const sx = this._chestOpen.col * BLOCK_SIZE - this.camera.x;
@@ -16845,6 +16845,10 @@ class Game {
       } else this._crumbleContact.set(key, t);
     }
     this._crumbleLimit = limit;   // for the crack-progress draw
+    // Trampoline/Slime spring compression — count down each cell's animation frames.
+    if (this._trampFx && this._trampFx.size) {
+      for (const [key, t] of this._trampFx) { if (t <= 0) this._trampFx.delete(key); else this._trampFx.set(key, t - 1); }
+    }
   }
 
   _classicBlocksForPlayer(p) {
@@ -16859,7 +16863,7 @@ class Game {
         if (p.y >= w.entryTopY + 6) { p.x = w.destX; p.y = w.destTopY + 6; w.phase = 'emerge'; }   // head in → warp
       } else {                                   // emerge — rise until standing on the dest mouth
         p.x = w.destX; p.y -= 3.2;
-        if (p.y <= w.destTopY - p.height) { p.y = w.destTopY - p.height; p.onGround = true; p._warp = null; p._pipePose = false; p._warpCooldown = 40; }
+        if (p.y <= w.destTopY - p.height) { p.y = w.destTopY - p.height; p.onGround = true; p._warp = null; p._pipePose = false; p._pipeOwn = false; p._warpCooldown = 40; }
       }
       return;
     }
@@ -16880,7 +16884,7 @@ class Game {
     if (p.onGround) {
       for (let c = col0; c <= col1; c++) {
         const b = L.get(feetRow, c);
-        if (b === BLOCK.TRAMPOLINE) { this._trampolineBounce(p); break; }
+        if (b === BLOCK.TRAMPOLINE || b === BLOCK.SLIME_BLOCK) { this._trampolineBounce(p, feetRow, c); break; }
         else if (b === BLOCK.CONVEYOR_LEFT)  p.x -= (this._worldAdvSettings.conveyorSpeed ?? 2) * 0.8;
         else if (b === BLOCK.CONVEYOR_RIGHT) p.x += (this._worldAdvSettings.conveyorSpeed ?? 2) * 0.8;
         else if (b === BLOCK.CRUMBLE_BLOCK)  this._crumbleTouch(feetRow, c);
@@ -16906,18 +16910,27 @@ class Game {
   }
 
   // A Question Block was bumped: give its stored content (or a coin by default), then it's Used.
+  // The item a Question/Breakable block yields: a per-cell content set in the editor (future
+  // picker UI) else the world's default (Contents setting). Returns a BLOCK id or 'coin'.
+  _blockContentFor(row, col) {
+    const c = this._blockContents && this._blockContents.get(row + ',' + col);
+    if (c != null) return c;
+    const map = { coin: 'coin', apple: BLOCK.APPLE, arrow: BLOCK.ARROW, glowstone: BLOCK.GLOWSTONE };
+    return map[this._worldAdvSettings.questionContents] ?? 'coin';
+  }
   _popBlockContent(row, col, p) {
-    const key = row + ',' + col;
-    const content = this._blockContents && this._blockContents.get(key);
-    if (content != null && content !== BLOCK.COIN) { this._giveBlockItem(content, p); this._blockContents.delete(key); }
-    else { this._collectCoin(p); this._popCoinFx(row, col); if (this._blockContents) this._blockContents.delete(key); }
+    const content = this._blockContentFor(row, col);
+    if (content === 'coin') { this._collectCoin(p); this._popCoinFx(row, col); }
+    else this._giveBlockItem(content, p);
+    if (this._blockContents) this._blockContents.delete(row + ',' + col);
     this._playSound('sounds/item-collected.mp3', 0.85);
   }
   // A Breakable Block was hit from below: drop any stored content, then shatter.
   _breakBlock(row, col, p) {
-    const key = row + ',' + col;
-    const content = this._blockContents && this._blockContents.get(key);
-    if (content != null) { this._giveBlockItem(content, p); this._blockContents.delete(key); }
+    const content = this._blockContentFor(row, col);
+    if (content === 'coin') { this._collectCoin(p); this._popCoinFx(row, col); }
+    else this._giveBlockItem(content, p);
+    if (this._blockContents) this._blockContents.delete(row + ',' + col);
     this.level.set(row, col, BLOCK.AIR);
     this._playSound('sounds/mining.mp3', 0.5);
     this._shatterFx(row, col, '#b5642f');
@@ -16929,12 +16942,17 @@ class Game {
     this._notify((BLOCK_DATA[item] && BLOCK_DATA[item].name || 'Item') + '!', '#ffe066', 60);
   }
 
-  _trampolineBounce(p) {
-    // Force-driven (slime-block style): a faster fall launches you higher; a standing step
-    // still gives a small hop. Impact speed captured as _preVy before the landing zeroed it.
+  _trampolineBounce(p, row, col) {
+    // Crouch to cancel the bounce (stand on it), like a Minecraft slime block.
+    if (p.crouching) return;
+    // Force-driven (slime-block style): a faster fall launches you higher. CONSERVES energy
+    // (returns the impact speed) rather than adding it — the old ×1.18 gained energy every
+    // bounce and eventually launched you off ("stopped working"). Small floor for a step-on hop.
     const impact = Math.max(p._preVy || 0, 0);
-    p.vy = -Math.min(30, Math.max(11, impact * 1.18));
+    p.vy = -Math.min(26, Math.max(9, impact));
     p.onGround = false;
+    if (!this._trampFx) this._trampFx = new Map();
+    this._trampFx.set(row + ',' + col, 10);             // spring compression frames (draw + tick)
     this._playSound('sounds/jump.mp3', 0.8);
   }
   _collectCoin(p) {
@@ -17025,7 +17043,7 @@ class Game {
     };
     p._warp = { phase: 'descend', entryX: cx(row, col), entryTopY: row * BLOCK_SIZE,
       destX: cx(dest.row, dest.col), destTopY: dest.row * BLOCK_SIZE };
-    p.x = p._warp.entryX; p.vx = 0; p.vy = 0; p._pipePose = true;
+    p.x = p._warp.entryX; p.vx = 0; p.vy = 0; p._pipePose = true; p._pipeOwn = true;
     this._playSound('sounds/enderman-teleport.mp3', 0.5);
   }
   // A pipe's destination: an explicit link set in the editor (or 'none' = obstacle), else the

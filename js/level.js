@@ -102,7 +102,7 @@ class Level {
 
   // ── Rendering ──────────────────────────────────────────────
 
-  draw(ctx, camera, redstone = null, frame = 0, editor = false) {
+  draw(ctx, camera, redstone = null, frame = 0, editor = false, trampFx = null) {
     // SR zoom scales around canvas centre, so the visible world region is
     // centred on (camera.x + CANVAS_W/2, camera.y + CANVAS_H/2) and expands
     // symmetrically by 1/z in both directions.  The old formula only expanded
@@ -162,6 +162,9 @@ class Level {
         } else if (block === BLOCK.WARP_PIPE || block === BLOCK.PIPE_STEM) {
           const pipe = (rr, cc) => { const b = (rr >= 0 && rr < this.height && cc >= 0 && cc < this.width) ? this.grid[rr][cc] : 0; return b === BLOCK.WARP_PIPE || b === BLOCK.PIPE_STEM; };
           state = { pipeT: pipe(r - 1, c), pipeB: pipe(r + 1, c), pipeL: pipe(r, c - 1), pipeR: pipe(r, c + 1) };
+        } else if (block === BLOCK.TRAMPOLINE || block === BLOCK.SLIME_BLOCK) {
+          const f = trampFx && trampFx.get(r + ',' + c);   // 0..10 compression frames
+          state = { compress: f ? f / 10 : 0 };
         }
 
         drawBlock(ctx, block, screenX, screenY, bp, state);

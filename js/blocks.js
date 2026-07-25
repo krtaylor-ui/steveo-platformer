@@ -95,7 +95,8 @@ const BLOCK = Object.freeze({
   CONVEYOR_RIGHT:         76,   // solid; pushes right
   CRUMBLE_BLOCK:          77,   // solid; crumbles away shortly after something stands on it
   BREAKABLE_BLOCK:        78,   // solid brick; shatters when hit from below (may hold an item)
-  PIPE_STEM:              79,   // solid pipe body/extender (goes under a Warp Pipe to raise it)
+  PIPE_STEM:              79,   // (retired — the seamless 1×1 Warp Pipe replaces it; kept for old saves)
+  SLIME_BLOCK:            80,   // solid bouncy block (same physics as the Trampoline, slime look)
 });
 
 // Colour palette for decorative foliage (§10). Index 0 = green (default).
@@ -221,6 +222,7 @@ const BLOCK_DATA = {
   [BLOCK.CRUMBLE_BLOCK]:     { name: 'Crumbling Block', hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
   [BLOCK.BREAKABLE_BLOCK]:   { name: 'Breakable Block', hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
   [BLOCK.PIPE_STEM]:         { name: 'Pipe Stem',       hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
+  [BLOCK.SLIME_BLOCK]:       { name: 'Slime Block',     hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
 };
 
 // ── Pixel-art block renderers ────────────────────────────────
@@ -300,7 +302,8 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.SPEED_ITEM:             _drawSpeedItemBlock(ctx, px, py, s);             break;
     // §Classic Blocks pack
     case BLOCK.LADDER:                 _drawLadder(ctx, px, py, s);                     break;
-    case BLOCK.TRAMPOLINE:             _drawTrampoline(ctx, px, py, s);                 break;
+    case BLOCK.TRAMPOLINE:             _drawTrampoline(ctx, px, py, s, state.compress || 0); break;
+    case BLOCK.SLIME_BLOCK:            _drawSlime(ctx, px, py, s, state.compress || 0);      break;
     case BLOCK.SPIKES:                 _drawSpikes(ctx, px, py, s);                     break;
     case BLOCK.COIN:                   _drawCoinBlock(ctx, px, py, s, state.frame || 0);break;
     case BLOCK.ICE:                    _drawIce(ctx, px, py, s);                        break;
@@ -1674,13 +1677,39 @@ function _drawLadder(ctx, px, py, s) {
   ctx.lineWidth = 2;
   for (let ry = 6; ry < s; ry += 10) { ctx.beginPath(); ctx.moveTo(px + 6, py + ry); ctx.lineTo(px + s - 6, py + ry); ctx.stroke(); }
 }
-function _drawTrampoline(ctx, px, py, s) {
-  ctx.fillStyle = '#2b7d5a'; ctx.fillRect(px, py + s - 10, s, 10);           // base
-  ctx.fillStyle = '#3fd08a'; ctx.fillRect(px + 1, py + 2, s - 2, s - 12);    // springy top
-  ctx.strokeStyle = '#bff5da'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(px + 3, py + 8); ctx.quadraticCurveTo(px + s / 2, py - 1, px + s - 3, py + 8); ctx.stroke();
-  ctx.strokeStyle = '#1f5f43';
-  for (let i = 1; i < 4; i++) { const x = px + i * s / 4; ctx.beginPath(); ctx.moveTo(x, py + s - 9); ctx.lineTo(x, py + s - 2); ctx.stroke(); }
+// Trampoline: two parallel plates with a coil SPRING between them. `compress` 0..1 squashes the
+// spring (top plate dips) — driven by the game when a player lands (spring compresses → launch).
+function _drawTrampoline(ctx, px, py, s, compress = 0) {
+  const plateH = 5;
+  const restTop = py + 3, botY = py + s - plateH;
+  const topY = restTop + compress * 9;                 // top plate dips when compressed
+  const coilTop = topY + plateH, coilBot = botY;
+  const coilH = Math.max(2, coilBot - coilTop);
+  // Coil spring (zig-zag) between the plates.
+  ctx.strokeStyle = '#c9ced8'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  const coils = 4, midx = px + s / 2, amp = s / 2 - 5;
+  for (let i = 0; i <= coils; i++) {
+    const y = coilTop + (coilH * i) / coils;
+    const x = midx + (i % 2 === 0 ? -amp : amp);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  // Bottom plate (dark base) + top plate (bouncy surface).
+  ctx.fillStyle = '#5a6472'; ctx.fillRect(px, botY, s, plateH);
+  ctx.fillStyle = '#7a8798'; ctx.fillRect(px, botY, s, 2);
+  ctx.fillStyle = '#3fd08a'; ctx.fillRect(px, topY, s, plateH);
+  ctx.fillStyle = '#bff5da'; ctx.fillRect(px, topY, s, 2);
+  ctx.strokeStyle = '#1f5f43'; ctx.strokeRect(px + 0.5, topY + 0.5, s - 1, plateH - 1);
+}
+// Slime block — same bounce physics, Minecraft-slime look (translucent green cube + inner core).
+function _drawSlime(ctx, px, py, s, compress = 0) {
+  const dip = compress * 6;
+  ctx.fillStyle = 'rgba(90,200,110,0.55)'; ctx.fillRect(px, py + dip, s, s - dip);
+  ctx.fillStyle = 'rgba(70,170,90,0.65)'; ctx.strokeStyle = 'rgba(40,120,60,0.8)'; ctx.lineWidth = 1.5;
+  ctx.strokeRect(px + 1.5, py + 1.5 + dip, s - 3, s - 3 - dip);
+  ctx.fillStyle = 'rgba(60,150,80,0.9)'; ctx.fillRect(px + 9, py + 9 + dip, s - 18, s - 18 - dip);   // inner core
+  ctx.fillStyle = 'rgba(200,255,210,0.5)'; ctx.fillRect(px + 4, py + 4 + dip, 5, 5);                 // highlight
 }
 function _drawSpikes(ctx, px, py, s) {
   ctx.fillStyle = '#8a9099';

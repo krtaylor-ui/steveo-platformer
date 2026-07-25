@@ -146,3 +146,29 @@ Then: want coins in the HUD, configurable Question contents, a crumble warning s
 2. **Customizable block contents picker** — click a Question/Breakable block → choose the item inside (or clear).
    Storage (`_blockContents`) is wired; needs the picker UI + persistence. (Defaults to a coin today.)
 3. **Per-block / per-run Conveyor speed** with apply-to-connected — today it's the single world setting above.
+
+---
+# Pass 6 — build 210 (2026-07-25)
+
+## Fixed
+- **Pipe-warp FREEZE.** The animation moved the player, but `player.update`'s collision fought it every
+  frame (re-landing them on the pipe) → freeze. The warp now **owns the frame** (`player._pipeOwn`, gated in
+  `update()` like the grapple), so the sink/rise runs cleanly: centre on the mouth → face camera → sink →
+  teleport (camera follows) → rise out.
+- **Trampoline RUNAWAY** ("stops working"). The ×1.18 added energy every bounce until it launched you off.
+  It now **conserves** the impact speed (still force-driven: a harder fall = higher bounce, capped) and
+  **crouch cancels the bounce** (stand on it, like a slime block).
+- **Front-facing pipe sprite** redrawn to the design-doc face: hair dropping down both sides, white eyes with
+  black pupils, a 2-dash mouth, normal body proportions, arms at the sides with hands, legs with feet.
+
+## Added
+- **Trampoline redesign** — two parallel plates with a **coil spring** between; the spring **compresses** when
+  you land and extends as it launches (per-cell `_trampFx` animation, driven from the bounce).
+- **Slime Block** (`BLOCK.SLIME_BLOCK`, Overworld tab) — same bounce physics, translucent-green slime look
+  (also compresses).
+- **Block Contents world setting** (coin / apple / arrow / glowstone) — a testable global default for what
+  Question/Breakable blocks yield (a per-block picker is still the planned UI).
+
+## Still next pass (sandbox popup UIs)
+- **Pipe-destination linker** (click pipe → pick destination / none=obstacle) and the **per-block contents
+  picker** — both need the canvas popup + world_data persistence. Per-run **conveyor speed** likewise.

@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 209 (Classic Blocks pass 5 — FIXED the slide on jump-through (the crawl edge-guard read the non-solid platform as a cliff and froze it); pipe descend/emerge animation with a front-facing pose (both eyes) + camera shift; crumble timer now PAUSES on leaving (cumulative) + is a world setting (default 2s); Conveyor Speed setting; removed Pipe Stem (not needed); Plumbing palette tab. Pipe-link + block-contents pickers = next pass.)';
+const GAME_VERSION = 'v3 · build 210 (Classic Blocks pass 6 — FIXED the pipe-warp freeze (the animation now owns the frame so collision cannot fight it) + a nicer front-facing pipe sprite; FIXED the trampoline runaway (conserves energy now, crouch to cancel); trampoline redesigned as two plates + a compressing spring; new Slime Block (same bounce) in the Overworld tab; Block Contents world setting. Per-block pipe-link + contents pickers = next pass.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

@@ -403,6 +403,9 @@ class Player {
     // §Phase 5 — while the grapple owns the frame (swinging / rising / climbing), the
     // game's _updateGrapple() has already set position; skip gravity/collision.
     if (this._grappleOwn) { this._animate(input); return; }
+    // §Classic Blocks — a Warp Pipe animation owns the frame too (the game pass drives the
+    // sink/rise); skip normal physics so collision doesn't fight the descent (was a freeze).
+    if (this._pipeOwn) { this._animate(input); return; }
 
     this._detectWallSlide(input, level);   // sets _wallSliding (used by jump + physics)
     this._handleInput(input, level);
@@ -1366,19 +1369,33 @@ class Player {
     const cx = sx + this.width / 2;
     const hair = this._charHair ? this._charHair() : '#7D4E1A';
     const shirt = this._charShirt ? this._charShirt() : '#4A8FD4';
-    const skin = '#E8B892', pants = '#39477A', outline = 'rgba(0,0,0,0.35)';
-    const hw = 14, hh = 14, hx = cx - hw / 2, hy = sy;
+    const skin = '#E8B892', pants = '#39477A', shoe = '#3a2a1a', outline = 'rgba(0,0,0,0.35)';
+    // ── Head (front) — hair on top + dropping slightly down both sides; a skin face. ──
+    const hw = 15, hh = 14, hx = cx - hw / 2, hy = sy;
     ctx.fillStyle = outline; ctx.fillRect(hx - 1, hy - 1, hw + 2, hh + 2);
-    ctx.fillStyle = skin; ctx.fillRect(hx, hy, hw, hh);                 // face
-    ctx.fillStyle = hair; ctx.fillRect(hx, hy, hw, 5);                  // hair on top
-    ctx.fillStyle = '#1a1a22';                                         // both eyes
-    ctx.fillRect(cx - 4, hy + 7, 2, 3); ctx.fillRect(cx + 2, hy + 7, 2, 3);
-    if (this._hasPonytail && this._hasPonytail()) { ctx.fillStyle = hair; ctx.fillRect(hx - 2, hy + 4, 2, 8); ctx.fillRect(hx + hw, hy + 4, 2, 8); }
-    const bw = 14, bh = 19, bx = cx - bw / 2, by = hy + hh;
+    ctx.fillStyle = skin; ctx.fillRect(hx, hy, hw, hh);
+    ctx.fillStyle = hair;
+    ctx.fillRect(hx, hy, hw, 5);                         // top fringe
+    ctx.fillRect(hx, hy, 3, 9); ctx.fillRect(hx + hw - 3, hy, 3, 9);   // sideburns dropping down both sides
+    // Eyes — white with black pupils.
+    ctx.fillStyle = '#fff'; ctx.fillRect(cx - 5, hy + 7, 4, 4); ctx.fillRect(cx + 1, hy + 7, 4, 4);
+    ctx.fillStyle = '#1a1a22'; ctx.fillRect(cx - 4, hy + 8, 2, 2); ctx.fillRect(cx + 2, hy + 8, 2, 2);
+    // "2-dash" mustache/mouth.
+    ctx.fillStyle = '#6b4a2a'; ctx.fillRect(cx - 4, hy + 12, 3, 1); ctx.fillRect(cx + 1, hy + 12, 3, 1);
+    if (this._hasPonytail && this._hasPonytail()) { ctx.fillStyle = hair; ctx.fillRect(hx - 2, hy + 5, 2, 9); ctx.fillRect(hx + hw, hy + 5, 2, 9); }
+    // ── Torso (same proportions as the normal sprite). ──
+    const bw = 16, bh = 18, bx = cx - bw / 2, by = hy + hh;
     ctx.fillStyle = outline; ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
     ctx.fillStyle = shirt; ctx.fillRect(bx, by, bw, bh);
-    ctx.fillStyle = skin; ctx.fillRect(bx - 3, by + 1, 3, 13); ctx.fillRect(bx + bw, by + 1, 3, 13);   // arms at sides
-    ctx.fillStyle = pants; ctx.fillRect(cx - 6, by + bh, 5, 16); ctx.fillRect(cx + 1, by + bh, 5, 16); // legs together
+    // Arms straight at the sides, hands (skin) at the ends.
+    ctx.fillStyle = outline; ctx.fillRect(bx - 5, by, 5, bh + 1); ctx.fillRect(bx + bw, by, 5, bh + 1);
+    ctx.fillStyle = shirt; ctx.fillRect(bx - 4, by, 4, bh - 5); ctx.fillRect(bx + bw, by, 4, bh - 5);   // sleeves
+    ctx.fillStyle = skin; ctx.fillRect(bx - 4, by + bh - 5, 4, 5); ctx.fillRect(bx + bw, by + bh - 5, 4, 5); // hands
+    // Legs straight down, feet (shoes) visible.
+    const hipY = by + bh, legH = 14;
+    ctx.fillStyle = outline; ctx.fillRect(cx - 7, hipY, 7, legH + 4); ctx.fillRect(cx, hipY, 7, legH + 4);
+    ctx.fillStyle = pants; ctx.fillRect(cx - 6, hipY, 5, legH); ctx.fillRect(cx + 1, hipY, 5, legH);
+    ctx.fillStyle = shoe; ctx.fillRect(cx - 7, hipY + legH, 6, 4); ctx.fillRect(cx + 1, hipY + legH, 6, 4);  // feet
   }
 
   // §Classic Blocks — back-facing ladder climb. Head shows hair (no eyes) with a hairline at the
