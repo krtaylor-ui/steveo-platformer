@@ -3025,14 +3025,14 @@ class Game {
           // Ruined portal frame obsidian → open link popup if a ruined portal is registered here
           const rpSbPortal = this.sandbox.findPortalAtCell(hoverRow, hoverCol);
           if (rpSbPortal?.ruined) this.sandbox.openPortalPopup(rpSbPortal.id);
-        } else if (target === BLOCK.WARP_PIPE) {
-          // §Classic Blocks — click a placed Warp Pipe: complete a pending link, else open its popup.
-          if (this._pipeLinkMode) {
-            (this._pipeLinks = this._pipeLinks || new Map()).set(this._pipeLinkMode.fromKey, this._pipeAnchorKey(hoverRow, hoverCol));
-            this._pipeLinkMode = null; this._notify('Pipe linked ✓', '#6FB6FF', 120);
-          } else this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'pipe' };
-        } else if (target === BLOCK.QUESTION_BLOCK || target === BLOCK.BREAKABLE_BLOCK) {
-          this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'contents' };   // §Classic Blocks — pick contents
+        } else if (target === BLOCK.WARP_PIPE && this._pipeLinkMode) {
+          // Completing a destination link — works regardless of the selected block.
+          (this._pipeLinks = this._pipeLinks || new Map()).set(this._pipeLinkMode.fromKey, this._pipeAnchorKey(hoverRow, hoverCol));
+          this._pipeLinkMode = null; this._notify('Pipe linked ✓', '#6FB6FF', 120);
+        } else if (target === BLOCK.WARP_PIPE && this.sandbox.selectedBlock === BLOCK.WARP_PIPE) {
+          this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'pipe' };        // config only with the pipe SELECTED
+        } else if ((target === BLOCK.QUESTION_BLOCK || target === BLOCK.BREAKABLE_BLOCK) && this.sandbox.selectedBlock === target) {
+          this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'contents' };     // config only with the matching block SELECTED
         } else if (this.sandbox.isDustSelected) {
           // Dust selected — click on existing solid block
           const dustKey = `${hoverCol},${hoverRow}`;
@@ -7629,6 +7629,19 @@ class Game {
   }
 
   // ── §Classic Blocks config popup (pipe destination / block contents) ─────────
+  // Data-driven content choices — a curated base of items/tools PLUS every power-up defined in
+  // SB_POWERUP_TYPES, so any future power-up shows up in the picker automatically. Content values:
+  // 'coin' | a BLOCK id | a TOOL_DATA string key | 'pu:<TYPE>' for a power-up.
+  _contentItemChoices() {
+    const items = [
+      { label: 'Coin', key: 'coin' }, { label: 'Apple', key: BLOCK.APPLE }, { label: 'Arrow', key: BLOCK.ARROW },
+      { label: 'Glowstone', key: BLOCK.GLOWSTONE }, { label: 'TNT', key: BLOCK.TNT }, { label: 'Blaze Rod', key: BLOCK.BLAZE_ROD },
+      { label: 'Ender Pearl', key: BLOCK.ENDER_PEARL }, { label: 'Wither Skull', key: BLOCK.WITHER_SKELETON_HEAD },
+      { label: 'Diamond Sword', key: 'DIAMOND_SWORD' }, { label: 'Bow', key: 'BOW' },
+    ];
+    if (typeof SB_POWERUP_TYPES !== 'undefined') for (const pu of SB_POWERUP_TYPES) items.push({ label: pu.label + ' ⚡', key: 'pu:' + pu.type });
+    return items;
+  }
   _classicPopupButtons() {
     const p = this._classicPopup; if (!p) return [];
     if (p.kind === 'pipe') {
@@ -7637,24 +7650,15 @@ class Game {
         { label: 'Pick Destination →', act: () => { this._pipeLinkMode = { fromKey: key }; this._classicPopup = null; this._notify('Now click the destination pipe', '#6FB6FF', 180); } },
         { label: 'No Destination (obstacle)', act: () => { (this._pipeLinks = this._pipeLinks || new Map()).set(key, 'none'); this._classicPopup = null; this._notify('Pipe set as an obstacle', '#999999', 120); } },
         { label: 'Clear Link (auto-pair)', act: () => { if (this._pipeLinks) this._pipeLinks.delete(key); this._classicPopup = null; } },
+        { label: '🗑 Remove Pipe Cell', act: () => { this.level.set(p.row, p.col, BLOCK.AIR); if (this._pipeLinks) this._pipeLinks.delete(key); this._classicPopup = null; this._notify('Pipe cell removed', '#c66', 90); } },
       ];
     }
     const key = p.row + ',' + p.col;
     const set = (item) => () => { this._blockContents = this._blockContents || new Map(); if (item == null) this._blockContents.delete(key); else this._blockContents.set(key, item); this._classicPopup = null; this._notify('Contents set', '#ffe066', 100); };
-    // A broader single-item picker (chest-like). Blocks are ids; tools are TOOL_DATA string keys.
-    return [
-      { label: 'Coin',   act: set('coin') },
-      { label: 'Apple',  act: set(BLOCK.APPLE) },
-      { label: 'Arrow',  act: set(BLOCK.ARROW) },
-      { label: 'Glowstone', act: set(BLOCK.GLOWSTONE) },
-      { label: 'TNT',    act: set(BLOCK.TNT) },
-      { label: 'Blaze Rod', act: set(BLOCK.BLAZE_ROD) },
-      { label: 'Ender Pearl', act: set(BLOCK.ENDER_PEARL) },
-      { label: 'Wither Skull', act: set(BLOCK.WITHER_SKELETON_HEAD) },
-      { label: 'Diamond Sword', act: set('DIAMOND_SWORD') },
-      { label: 'Bow',    act: set('BOW') },
-      { label: 'Clear (world default)', act: set(null) },
-    ];
+    const list = this._contentItemChoices().map((it) => ({ label: it.label, act: set(it.key) }));
+    list.push({ label: 'Clear (world default)', act: set(null) });
+    list.push({ label: '🗑 Remove Block', act: () => { this.level.set(p.row, p.col, BLOCK.AIR); if (this._blockContents) this._blockContents.delete(key); this._classicPopup = null; this._notify('Block removed', '#c66', 90); } });
+    return list;
   }
   _classicPopupGeom(kind, n) {
     const cols = kind === 'contents' ? 2 : 1, rows = Math.ceil(n / cols);
@@ -7684,7 +7688,7 @@ class Game {
     ctx.strokeStyle = '#6FB6FF'; ctx.lineWidth = 1; ctx.strokeRect(g.px + 0.5, g.py + 0.5, g.pw, g.ph);
     ctx.fillStyle = '#cdd6ff'; ctx.font = 'bold 13px system-ui, sans-serif';
     let title = 'Warp Pipe — destination';
-    if (p.kind === 'contents') { const cur = this._blockContents && this._blockContents.get(p.row + ',' + p.col); title = 'Contents: ' + (cur == null ? 'world default' : cur === 'coin' ? 'Coin' : ((BLOCK_DATA[cur] && BLOCK_DATA[cur].name) || cur)); }
+    if (p.kind === 'contents') { const cur = this._blockContents && this._blockContents.get(p.row + ',' + p.col); title = 'Contents: ' + (cur == null ? 'world default' : cur === 'coin' ? 'Coin' : this._isPowerupContent(cur) ? cur.slice(3).replace(/_/g, ' ') + ' ⚡' : ((BLOCK_DATA[cur] && BLOCK_DATA[cur].name) || cur)); }
     ctx.fillText(title, g.px + 12, g.py + 10);
     ctx.fillStyle = '#c66'; ctx.fillText('✕', g.px + g.pw - 20, g.py + 10);
     for (let i = 0; i < btns.length; i++) {
@@ -17026,10 +17030,17 @@ class Game {
     const map = { coin: 'coin', apple: BLOCK.APPLE, arrow: BLOCK.ARROW, glowstone: BLOCK.GLOWSTONE };
     return map[this._worldAdvSettings.questionContents] ?? 'coin';
   }
+  _isPowerupContent(c) { return typeof c === 'string' && c.slice(0, 3) === 'pu:'; }
+  _grantPowerup(type, p) {
+    if (typeof POWERUP_SYSTEM !== 'undefined' && POWERUP_SYSTEM._apply) POWERUP_SYSTEM._apply(type, p);
+    this._notify(String(type).replace(/_/g, ' ') + ' power-up!', '#9b59b6', 110);
+    this._playSound('sounds/item-collected.mp3', 0.85);
+  }
   _popBlockContent(row, col, p) {
     const content = this._blockContentFor(row, col);
-    // Coins auto-collect; anything else RISES UP out of the block as a collectible item.
+    // Coins auto-collect; power-ups apply on hit; anything else RISES UP as a collectible item.
     if (content === 'coin') { this._collectCoin(p); this._popCoinFx(row, col); }
+    else if (this._isPowerupContent(content)) this._grantPowerup(content.slice(3), p);
     else this._spawnContentDrop(row, col, content, 'rise');
     this._playSound('sounds/item-collected.mp3', 0.85);
   }
@@ -17040,6 +17051,7 @@ class Game {
     this._playSound('sounds/mining.mp3', 0.5);
     this._shatterFx(row, col, '#b5642f');
     if (content === 'coin') { this._collectCoin(p); this._popCoinFx(row, col); }
+    else if (this._isPowerupContent(content)) this._grantPowerup(content.slice(3), p);
     else this._spawnContentDrop(row, col, content, 'pop');
   }
   // Spawn the block's content as a ground drop the player walks over to collect. 'rise' = straight

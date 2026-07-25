@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 214 (Ladder: reach the bottom onto a platform = walk mode; press Down at a ladder top to start descending. Block contents: a broader single-item picker (Coin/Apple/Arrow/Glowstone/TNT/Blaze Rod/Ender Pearl/Wither Skull/Diamond Sword/Bow/Clear). Coins auto-collect; other items RISE out of Question blocks and POP (random dir) from Breakables as collectible drops.)';
+const GAME_VERSION = 'v3 · build 215 (Block-contents picker is now data-driven — a curated item/tool set PLUS every power-up from SB_POWERUP_TYPES (future power-ups auto-appear); power-up contents apply their effect on hit. Removal: the config popup opens ONLY when the matching block is selected (otherwise a click erases it), and there is a Remove Block button in each popup.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

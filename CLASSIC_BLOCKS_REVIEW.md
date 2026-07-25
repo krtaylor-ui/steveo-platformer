@@ -202,3 +202,13 @@ Then: want coins in the HUD, configurable Question contents, a crumble warning s
 - **Broader item picker** — the contents popup is now a 2-column grid of items (Coin, Apple, Arrow, Glowstone,
   TNT, Blaze Rod, Ender Pearl, Wither Skull, Diamond Sword, Bow, Clear) — more flexible, single-item. (A full
   chest-style icon grid could be a later polish; this covers the flexibility with a curated set + text labels.)
+
+---
+# Pass 9 — build 215 (2026-07-25)
+
+- **Data-driven contents picker** — the list is now built from a curated item/tool base PLUS **every entry in
+  `SB_POWERUP_TYPES`**, so any future power-up added there shows up in the picker automatically (that's how it
+  "picks what to include"). Power-up contents (`pu:<TYPE>`) **apply their effect on hit** (via `POWERUP_SYSTEM._apply`).
+- **Removing these blocks:** the config popup now opens **only when the matching block is selected** in the
+  palette (e.g. Question Block selected → click a placed Question Block to edit it) — otherwise a click **erases**
+  it like any block. AND each popup has a **🗑 Remove Block** button as a direct option.
