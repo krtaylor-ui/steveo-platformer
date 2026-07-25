@@ -1403,13 +1403,20 @@ class Player {
     ctx.fillStyle = HAIR; ctx.fillRect(sx + 2, sy, 16, 16);
     ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(sx + 2, sy + 13, 16, 3);
     if (this._hasPonytail && this._hasPonytail()) { ctx.fillStyle = HAIR; ctx.fillRect(cx - 2, sy + 16, 4, 8); }
-    // Torso.
-    const bx = sx + 4, bw = 12, by = sy + 18, bh = 16;
+    // Torso — a touch wider than before.
+    const bx = sx + 3, bw = 14, by = sy + 18, bh = 16;
     ctx.fillStyle = SHIRT; ctx.fillRect(bx, by, bw, bh);
-    // Arms — shoulders on the SIDES of the body (bx / bx+bw), reaching up alternating.
+    // Arms — shoulders pushed OUT past the body sides; hands stay on the ladder rungs, so the arm
+    // angles inward. Each arm is a SHIRT sleeve (upper ~65%) + a SKIN hand (lower), like the normal
+    // sprite, rather than a solid skin bar.
     const shoY = by + 2, hiY = sy - 4, loY = sy + 7;
-    this._limbBar(ctx, bx, shoY, cx - 6, ph > 0 ? hiY : loY, 5, SKIN, EDGE);
-    this._limbBar(ctx, bx + bw, shoY, cx + 6, ph > 0 ? loY : hiY, 5, SKIN, EDGE);
+    const arm = (shoX, handX, handY) => {
+      const mx = shoX + (handX - shoX) * 0.62, my = shoY + (handY - shoY) * 0.62;
+      this._limbBar(ctx, shoX, shoY, mx, my, 5, SHIRT, EDGE);   // sleeve
+      this._limbBar(ctx, mx, my, handX, handY, 5, SKIN, EDGE);  // hand
+    };
+    arm(sx + 1,  cx - 5, ph > 0 ? hiY : loY);
+    arm(sx + 19, cx + 5, ph > 0 ? loY : hiY);
     // Legs step on the rungs (opposite phase).
     const hipY = by + bh, legHiY = hipY + 12, legLoY = hipY + 22;
     this._limbBar(ctx, cx - 4, hipY, cx - 4, ph > 0 ? legLoY : legHiY, 6, PANTS, EDGE);

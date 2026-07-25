@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 211 (Classic Blocks polish — the player now drops BEHIND a Warp Pipe (pipe redrawn over the sprite while warping); the pipe + ladder poses now use the normal sprite proportions (head 16x16, body 12x16, real colors); ladder-climb arms now connect at the SIDES of the body. Classic Blocks feature-complete — next: pipe-destination picker + per-block contents selector UIs.)';
+const GAME_VERSION = 'v3 · build 212 (Ladder climb polish — wider torso; shoulders pushed out past the body (hands stay on the rungs so the arms angle in); arms now render as a shirt sleeve + skin hand like the normal sprite instead of a solid skin bar.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
