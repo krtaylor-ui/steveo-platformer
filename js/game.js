@@ -6197,6 +6197,7 @@ class Game {
     // Death body-part scatter (world-space, scales with zoom). SR draws its own.
     if (this.gameMode !== 'speedrunner' && this._deathParts.length) this._drawDeathParts(ctx);
     ctx.restore(); // end world zoom (matches the unconditional save above)
+    this._drawBlockFx(ctx);   // §Classic Blocks — shatter shards / coin pops / crumble cracks
     this._drawComboFx(ctx);   // §Phase 7 v2 — combo success ring at the player (world→screen)
     this._drawHUD(ctx, hoverRow, hoverCol);
     // §Combo Trainer — the on-canvas test-gym panel over the HUD (guarded so a UI slip can't
@@ -16823,9 +16824,10 @@ class Game {
   // Runs after players update. Covers trampoline bounce, spike/coin overlap, conveyor push,
   // crumble trigger, warp-pipe descend/teleport, and question/hidden bump-from-below.
   _updateClassicBlocks() {
-    if (!this.level || this.gameMode === 'sandbox') return;   // editor avatar must not trigger/collect them
+    if (!this.level || this.gameMode === 'sandbox') { this._updateBlockFx(); return; }   // editor: FX only
     const players = this.activePlayers ? this.activePlayers() : [this.player];
     for (const p of players) if (p && p.hp > 0) this._classicBlocksForPlayer(p);
+    this._updateBlockFx();
     // Crumble countdown — cells turn to AIR when their timer lapses.
     if (this._crumbling) {
       for (const [key, t] of Array.from(this._crumbling)) {
@@ -16896,8 +16898,8 @@ class Game {
   _popBlockContent(row, col, p) {
     const key = row + ',' + col;
     const content = this._blockContents && this._blockContents.get(key);
-    if (content != null) { this._giveBlockItem(content, p); this._blockContents.delete(key); }
-    else this._collectCoin(p);
+    if (content != null && content !== BLOCK.COIN) { this._giveBlockItem(content, p); this._blockContents.delete(key); }
+    else { this._collectCoin(p); this._popCoinFx(row, col); if (this._blockContents) this._blockContents.delete(key); }
     this._playSound('sounds/item-collected.mp3', 0.85);
   }
   // A Breakable Block was hit from below: drop any stored content, then shatter.
@@ -16907,7 +16909,7 @@ class Game {
     if (content != null) { this._giveBlockItem(content, p); this._blockContents.delete(key); }
     this.level.set(row, col, BLOCK.AIR);
     this._playSound('sounds/mining.mp3', 0.5);
-    this._notify('Smash!', '#c98a5a', 40);   // (particle burst = noted follow-up)
+    this._shatterFx(row, col, '#b5642f');
   }
   // Grant a block/item stored inside a Question/Breakable block to the player.
   _giveBlockItem(item, p) {
@@ -16945,6 +16947,60 @@ class Game {
     if (!this._crumbling) this._crumbling = new Map();
     const key = row + ',' + col;
     if (!this._crumbling.has(key)) this._crumbling.set(key, 40);   // ~0.66 s, then it falls away
+  }
+
+  // ── §Classic Blocks FX — shatter shards, coin pops, crumble cracks ──────────
+  _shatterFx(row, col, color) {
+    if (!this._blockFx) this._blockFx = [];
+    const cx = col * BLOCK_SIZE + BLOCK_SIZE / 2, cy = row * BLOCK_SIZE + BLOCK_SIZE / 2;
+    for (let i = 0; i < 8; i++) {                    // 8 pieces flying out + up, then falling off-screen
+      const ang = (i / 8) * Math.PI * 2;
+      this._blockFx.push({ x: cx + Math.cos(ang) * 6, y: cy + Math.sin(ang) * 6,
+        vx: Math.cos(ang) * (1.4 + Math.random() * 1.6), vy: -3.5 - Math.random() * 2,
+        vr: (Math.random() - 0.5) * 0.5, rot: 0, life: 120, color, size: 6 + Math.random() * 3, kind: 'shard' });
+    }
+  }
+  _popCoinFx(row, col) {
+    if (!this._blockFx) this._blockFx = [];
+    this._blockFx.push({ x: col * BLOCK_SIZE + BLOCK_SIZE / 2, y: row * BLOCK_SIZE + BLOCK_SIZE / 2 - 4,
+      vx: 0, vy: -6.5, vr: 0, rot: 0, life: 44, color: '#f2c531', size: 11, kind: 'coin' });
+  }
+  _updateBlockFx() {
+    if (!this._blockFx || !this._blockFx.length) return;
+    const g = this._worldAdvSettings?.physicsGravity ?? GRAVITY;
+    for (const p of this._blockFx) { p.vy += g * 0.55; p.x += p.vx; p.y += p.vy; p.rot += p.vr; p.life--; }
+    const botLimit = (this.camera ? this.camera.y : 0) + CANVAS_H + 80;
+    this._blockFx = this._blockFx.filter((p) => p.life > 0 && p.y < botLimit);
+  }
+  _drawBlockFx(ctx) {
+    if (!this.camera) return;
+    // Crumble cracks — intensify + shake as the block nears collapse (warns the player).
+    if (this._crumbling) {
+      const CR = [[4, 2, 11, 16], [28, 3, 20, 14], [16, 5, 13, 26], [7, 20, 4, 30], [25, 17, 29, 30]];
+      for (const [key, t] of this._crumbling) {
+        const i = key.indexOf(','), r = +key.slice(0, i), c = +key.slice(i + 1);
+        const prog = 1 - t / 40;
+        const sx = c * BLOCK_SIZE - this.camera.x, sy = r * BLOCK_SIZE - this.camera.y;
+        ctx.save();
+        ctx.translate(sx + (Math.random() - 0.5) * prog * prog * 2.5, sy);
+        ctx.strokeStyle = `rgba(45,28,12,${0.35 + prog * 0.5})`; ctx.lineWidth = 1 + prog * 1.3;
+        const n = 1 + Math.floor(prog * 4);
+        for (let k = 0; k < n && k < CR.length; k++) { const [x1, y1, x2, y2] = CR[k]; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+        ctx.restore();
+      }
+    }
+    if (this._blockFx) for (const p of this._blockFx) {
+      const sx = p.x - this.camera.x, sy = p.y - this.camera.y;
+      ctx.save(); ctx.globalAlpha = Math.min(1, p.life / 22);
+      if (p.kind === 'coin') {
+        ctx.fillStyle = p.color; ctx.strokeStyle = '#a5791a'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.ellipse(sx, sy, p.size * 0.55, p.size, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      } else {
+        ctx.translate(sx, sy); ctx.rotate(p.rot); ctx.fillStyle = p.color; ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+        ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.strokeRect(-p.size / 2, -p.size / 2, p.size, p.size);
+      }
+      ctx.restore();
+    }
   }
   // Pipes pair in reading order (top-left first): 1st↔2nd, 3rd↔4th, … Place two 1-wide pipes
   // to make a linked pair. Returns the partner pipe TOP cell, or null.

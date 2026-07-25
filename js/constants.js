@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 206 (Classic Blocks pass 2 — FIXED Question blocks bumped from below (collision zeroed vy before the check); added Breakable blocks (shatter from below) + Pipe Stem; Ladder dark-outline fix + a climb animation + two world settings (Lock Sideways / Jump Off Mid-Climb); Day & Night backgrounds (static sun/moon top-right). See CLASSIC_BLOCKS_REVIEW.md for deferred items.)';
+const GAME_VERSION = 'v3 · build 207 (Classic Blocks pass 3 — FIXED the ladder (only grabs on Up/Down, walk through otherwise), the SLIDE-on-jump-through (drop-through gesture was eating it), and the black block-outline (edge-shadow now skips see-through blocks). Added: breakable shatter into 8 falling pieces, crumble cracks that warn, coin pop-up from Question blocks, and seamless 2x2 pipes + 1-tall Pipe Stem extenders.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

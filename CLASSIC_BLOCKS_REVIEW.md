@@ -70,3 +70,34 @@ Then: want coins in the HUD, configurable Question contents, a crumble warning s
    check next: the new **Down-hold → drop-through** gesture eating the slide when Down was held before the jump.
 5. Minor: Breakable **particle burst** (currently just a notify + sound); a dedicated **ladder climb pose**
    (currently reuses the walk-cycle limbs); **coin HUD counter**.
+
+---
+# Pass 3 — build 207 (2026-07-24, second round of playtest feedback)
+
+## Fixed
+- **Ladder (critical regression)** — it engaged the moment you *touched* it (gravity off → floating/
+  bouncing, couldn't walk through). Now you only **grab it by pressing Up/Down** while overlapping; walk
+  straight through otherwise. Leave by climbing off an end, stepping sideways, or Jump-Off (if the setting's on).
+- **Slide on a Jump-Through platform** — ROOT-CAUSED: the new Down-hold→drop-through gesture was eating the
+  slide (you hold Down then Jump to slide, which matched drop-through → you fell straight through, crouched =
+  "slide look", no horizontal). Drop-through now needs a **longer hold (≥16f) AND being stationary**; a slide
+  has a direction, so it wins. Quick/moving crouch+jump slides; a deliberate stationary hold drops through.
+- **Black outline on all blocks** — it was the global "edge shadow" (`rgba(0,0,0,0.28)` box) stroked on every
+  cell; invisible on solid blocks but a black box on the see-through ones (and it made Hidden blocks visible).
+  Now skipped for Ladder / Hidden / Jump-Through / Coin / Spikes.
+
+## Added
+- **Breakable shatter** — breaking spawns **8 shard pieces** that fly out, tumble, and fall off-screen
+  (new `_blockFx` particle system: shards + coin pops, gravity + rotation).
+- **Crumble cracks** — a crumbling block now shows **intensifying cracks + a shake** as it nears collapse (warning).
+- **Coin pop from Question blocks** — bumping one now **pops a coin up that arcs and falls** before it's tallied.
+- **Seamless 2×2 pipes + Pipe Stem** — pipe cells are now **neighbor-aware**: internal seams between adjacent
+  Warp-Pipe/Stem cells are erased, side highlights/shade only on outer edges, and the **mouth lip** draws only
+  on a Warp-Pipe cell with open top. Place a 2-wide Warp Pipe and stack **Pipe Stems** (1×1, merge seamlessly —
+  put two side-by-side per row) underneath to raise it to any height.
+
+## Still deferred (unchanged from pass 2)
+- Customizable block-contents **UI** (storage is in; no editor to set/clear yet — Question/Breakable default to coin).
+- **Conveyor speed** modal (1/2/3/4, default 2) + apply-to-all-connected-at-same-height.
+- Warp-pipe **2×2 enter** uses the existing top-cell + reading-order pairing (works; explicit link IDs = later).
+- Dedicated **ladder climb pose** (still reuses the walk-cycle limbs) and a **coin HUD counter**.

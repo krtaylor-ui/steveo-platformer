@@ -512,29 +512,34 @@ class Player {
 
     // ── §Classic Blocks — Ladder: hold Up/Down to climb; gravity suspended while on it.
     //    (Climb off the top/bottom or step sideways to leave; jump-off is a noted follow-up.)
-    this._onLadder = this._overlapsBlock(level, BLOCK.LADDER);
+    // §Classic Blocks — Ladder. You only GRAB the ladder by pressing Up/Down while overlapping it
+    // (walking through it otherwise behaves normally — no floating/bouncing). Once grabbed, you
+    // hang (gravity off) until you climb off an end, walk out sideways, or jump off (if enabled).
+    const onLadderCell = this._overlapsBlock(level, BLOCK.LADDER);
+    if (!onLadderCell) this._ladderEngaged = false;
+    // Only read ladder inputs when actually overlapping one (keeps this off the hot path + out
+    // of headless test mocks that lack isDown).
+    const ladUp   = onLadderCell && (input.isDown('KeyW') || input.isDown('ArrowUp') || (input.isStickUp && input.isStickUp()));
+    const ladDown = onLadderCell && input.isCrouch();
+    if (onLadderCell && (ladUp || ladDown)) this._ladderEngaged = true;
+    this._onLadder = !!(this._ladderEngaged && onLadderCell);
     if (this._onLadder) {
-      // Mid-ladder jump-off (opt-in world setting): a jump press leaves the ladder. Otherwise
-      // you can only jump once you've climbed OFF the top (ladder ends → gravity → normal jump).
       const jumpNow = input.isJump();
+      // Mid-ladder jump-off (opt-in): a jump press leaves the ladder. Otherwise you jump only
+      // after climbing OFF the top (ladder ends → gravity resumes → normal jump).
       if (this._ladderMidJump && jumpNow && !this._jumpPressed) {
-        this._onLadder = false;
+        this._onLadder = false; this._ladderEngaged = false;
         this.vy = this._jumpVelocityOverride ?? JUMP_VELOCITY;
         this.jumpSquish = 1; this._jumpPressed = jumpNow;
         return;
       }
       this._jumpPressed = jumpNow;
-      const up   = input.isDown('KeyW') || input.isDown('ArrowUp') || (input.isStickUp && input.isStickUp());
-      const down = input.isCrouch();
-      this.vy = up ? -2.4 : down ? 2.4 : 0;
-      // Force horizontal position (opt-in): snap to the ladder's column centre, no side drift.
+      this.vy = ladUp ? -2.4 : ladDown ? 2.4 : 0;   // hang when neither is held
       if (this._ladderLockX) {
         const BS = BLOCK_SIZE, cc = Math.floor((this.x + this.width / 2) / BS);
-        this.x = cc * BS + (BS - this.width) / 2;
-        this.vx = 0;
+        this.x = cc * BS + (BS - this.width) / 2; this.vx = 0;
       }
-      // Climb animation cadence — advances only while actually moving on the ladder, and drives
-      // the existing limb-swing so arms/legs alternate as you climb (first-stab climb anim).
+      // Climb animation cadence — drives the limb-swing while moving (first-stab climb anim).
       this._climbAnim = (this.vy !== 0) ? ((this._climbAnim || 0) + Math.sign(-this.vy) * 0.18) : (this._climbAnim || 0);
       this.walkTimer = (this._climbAnim || 0) * 2.2;
       this.running = this.vy !== 0;
@@ -542,7 +547,7 @@ class Player {
       this.onGround  = false;
       if (this._jumpBuffer > 0) this._jumpBuffer--;
       if (this._coyoteTime > 0) this._coyoteTime--;
-      return;   // ladder owns vertical movement this frame (horizontal already applied above)
+      return;
     }
 
     // ── Normal (non-flying) ───────────────────────────────────
@@ -592,9 +597,11 @@ class Player {
     }
 
     if (jumpEdge) {
-      // §Classic Blocks — drop THROUGH a Jump-Through platform: hold Down for a beat (≥10f),
-      // then Jump. The hold-pause disambiguates it from the (immediate) crouch+jump slide.
-      if (this.onGround && input.isCrouch() && (this._dropHold || 0) >= 10 && this._footBlockIs(level, BLOCK.ONEWAY_PLATFORM)) {
+      // §Classic Blocks — drop THROUGH a Jump-Through platform: hold Down a beat (≥16f) WHILE
+      // STATIONARY, then Jump. Being stationary + the longer hold disambiguates it from the
+      // crouch+jump SLIDE (which is a directional move) — the two used to collide on one-ways.
+      if (this.onGround && input.isCrouch() && (this._dropHold || 0) >= 16 && Math.abs(mx) < 0.2 &&
+          this._footBlockIs(level, BLOCK.ONEWAY_PLATFORM)) {
         this._dropThrough = 14;      // frames the platform is intangible for this player
         this.onGround = false;
         this.y += 2;                 // nudge into it so the downward sweep passes through

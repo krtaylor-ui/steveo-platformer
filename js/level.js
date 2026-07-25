@@ -159,6 +159,9 @@ class Level {
           state = { frame };                       // §Classic Blocks — animation tick
         } else if (block === BLOCK.HIDDEN_BLOCK) {
           state = { editor };                      // invisible in play; dashed outline in the editor
+        } else if (block === BLOCK.WARP_PIPE || block === BLOCK.PIPE_STEM) {
+          const pipe = (rr, cc) => { const b = (rr >= 0 && rr < this.height && cc >= 0 && cc < this.width) ? this.grid[rr][cc] : 0; return b === BLOCK.WARP_PIPE || b === BLOCK.PIPE_STEM; };
+          state = { pipeT: pipe(r - 1, c), pipeB: pipe(r + 1, c), pipeL: pipe(r, c - 1), pipeR: pipe(r, c + 1) };
         }
 
         drawBlock(ctx, block, screenX, screenY, bp, state);

@@ -308,12 +308,12 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.QUESTION_USED:          _drawQuestionBlock(ctx, px, py, s, true, 0);     break;
     case BLOCK.HIDDEN_BLOCK:           _drawHiddenBlock(ctx, px, py, s, !!state.editor);break;
     case BLOCK.ONEWAY_PLATFORM:        _drawOneWay(ctx, px, py, s);                     break;
-    case BLOCK.WARP_PIPE:              _drawWarpPipe(ctx, px, py, s);                   break;
+    case BLOCK.WARP_PIPE:              _drawWarpPipe(ctx, px, py, s, state);            break;
     case BLOCK.CONVEYOR_LEFT:          _drawConveyor(ctx, px, py, s, -1, state.frame || 0); break;
     case BLOCK.CONVEYOR_RIGHT:         _drawConveyor(ctx, px, py, s,  1, state.frame || 0); break;
     case BLOCK.CRUMBLE_BLOCK:          _drawCrumble(ctx, px, py, s, state.crumbling);   break;
     case BLOCK.BREAKABLE_BLOCK:        _drawBreakable(ctx, px, py, s, !!state.hasItem); break;
-    case BLOCK.PIPE_STEM:              _drawPipeStem(ctx, px, py, s);                   break;
+    case BLOCK.PIPE_STEM:              _drawWarpPipe(ctx, px, py, s, state, true);      break;
   }
 
   // Mining crack overlay
@@ -343,11 +343,15 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     ctx.restore();
   }
 
-  // Edge shadow — skip for partial-fill blocks and TX/RX (draw their own border)
+  // Edge shadow — skip for partial-fill blocks and TX/RX (draw their own border), and for the
+  // see-through §Classic Blocks (the 0.28-black box outlined them against the backdrop — and
+  // made Hidden blocks visible in play).
   if (type !== BLOCK.LEVER && type !== BLOCK.TRAPDOOR &&
       type !== BLOCK.PRESSURE_PLATE && type !== 33 /* REDSTONE_DUST */ &&
       type !== BLOCK.TRANSMITTER && type !== BLOCK.RECEIVER &&
-      type !== BLOCK.RESPAWN_ANCHOR) {
+      type !== BLOCK.RESPAWN_ANCHOR &&
+      type !== BLOCK.LADDER && type !== BLOCK.HIDDEN_BLOCK && type !== BLOCK.ONEWAY_PLATFORM &&
+      type !== BLOCK.COIN && type !== BLOCK.SPIKES) {
     ctx.strokeStyle = 'rgba(0,0,0,0.28)';
     ctx.lineWidth = 0.5;
     ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
@@ -1730,12 +1734,22 @@ function _drawOneWay(ctx, px, py, s) {
   ctx.strokeStyle = 'rgba(255,240,200,0.5)'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(px + s / 2 - 4, py + 12); ctx.lineTo(px + s / 2, py + 16); ctx.lineTo(px + s / 2 + 4, py + 12); ctx.stroke(); // ↓ hint
 }
-function _drawWarpPipe(ctx, px, py, s) {
+// One pipe cell (Warp Pipe or Pipe Stem). Seamless: edges/highlights/mouth are drawn ONLY on
+// sides with no adjacent pipe (state.pipeT/B/L/R), so a 2×N cluster reads as one continuous pipe.
+// `stem` = a body-only cell (never draws the mouth lip). The mouth shows on a Warp Pipe cell whose
+// TOP is open (nothing pipe above) — the enterable opening.
+function _drawWarpPipe(ctx, px, py, s, state = {}, stem = false) {
+  const t = !!state.pipeT, b = !!state.pipeB, l = !!state.pipeL, r = !!state.pipeR;
   ctx.fillStyle = '#2fae4e'; ctx.fillRect(px, py, s, s);
-  ctx.fillStyle = '#1f7d38'; ctx.fillRect(px + s - 7, py, 7, s);   // shade
-  ctx.fillStyle = '#7de89a'; ctx.fillRect(px + 2, py, 4, s);       // highlight
-  ctx.fillStyle = '#25913f'; ctx.fillRect(px - 1, py, s + 2, 8);   // rim (lip)
-  ctx.strokeStyle = '#134f22'; ctx.lineWidth = 1; ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
+  if (!r) { ctx.fillStyle = '#1f7d38'; ctx.fillRect(px + s - 7, py, 7, s); }   // shade on the open right edge
+  if (!l) { ctx.fillStyle = '#7de89a'; ctx.fillRect(px + 2, py, 4, s); }       // highlight on the open left edge
+  if (!stem && !t) { ctx.fillStyle = '#25913f'; ctx.fillRect(px - 1, py, s + 2, 8); ctx.fillStyle = '#134f22'; ctx.fillRect(px - 1, py + 8, s + 2, 2); }  // mouth lip
+  ctx.strokeStyle = '#134f22'; ctx.lineWidth = 1; ctx.beginPath();             // outline OUTER edges only
+  if (!t) { ctx.moveTo(px, py + 0.5); ctx.lineTo(px + s, py + 0.5); }
+  if (!b) { ctx.moveTo(px, py + s - 0.5); ctx.lineTo(px + s, py + s - 0.5); }
+  if (!l) { ctx.moveTo(px + 0.5, py); ctx.lineTo(px + 0.5, py + s); }
+  if (!r) { ctx.moveTo(px + s - 0.5, py); ctx.lineTo(px + s - 0.5, py + s); }
+  ctx.stroke();
 }
 function _drawConveyor(ctx, px, py, s, dir, frame) {
   ctx.fillStyle = '#3a3f4a'; ctx.fillRect(px, py, s, s);
@@ -1775,11 +1789,4 @@ function _drawBreakable(ctx, px, py, s, hasItem) {
   }
   ctx.strokeStyle = '#d98a4f'; ctx.strokeRect(px + 1, py + 1, s - 2, 2);
   if (hasItem) { ctx.fillStyle = 'rgba(255,240,160,0.85)'; ctx.beginPath(); ctx.arc(px + s / 2, py + s / 2, 3, 0, Math.PI * 2); ctx.fill(); }
-}
-function _drawPipeStem(ctx, px, py, s) {
-  ctx.fillStyle = '#2fae4e'; ctx.fillRect(px, py, s, s);
-  ctx.fillStyle = '#1f7d38'; ctx.fillRect(px + s - 7, py, 7, s);
-  ctx.fillStyle = '#7de89a'; ctx.fillRect(px + 2, py, 4, s);
-  ctx.strokeStyle = '#134f22'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(px + 0.5, py); ctx.lineTo(px + 0.5, py + s); ctx.moveTo(px + s - 0.5, py); ctx.lineTo(px + s - 0.5, py + s); ctx.stroke();
 }
