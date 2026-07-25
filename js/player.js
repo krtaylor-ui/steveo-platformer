@@ -804,13 +804,17 @@ class Player {
       if (!stopped) this.x = newX;
     }
 
-    // Crawl edge-guard: while crouching on the ground, don't walk off a ledge —
-    // clamp to the lip so you can reach the exact edge (and drop into a ledge hang).
-    if (this.crouching && wasOnGround && this.vx !== 0) {
+    // Crawl edge-guard: while crouching on the ground, don't walk off a ledge — clamp to the
+    // lip. SKIPPED during a slide (a slide should carry you off edges). §Classic Blocks: a
+    // Jump-Through platform / Ladder top counts as ground here (they're non-solid, so the old
+    // isSolid-only check wrongly saw a cliff edge and froze a slide dead on those platforms).
+    if (this.crouching && wasOnGround && this.vx !== 0 && this._slideFrames <= 0) {
       const footRow = Math.floor((this.y + this.height + 1) / BLOCK_SIZE);
       const leadCol = this.vx > 0 ? Math.floor((this.x + this.width - 1) / BLOCK_SIZE)
                                   : Math.floor(this.x / BLOCK_SIZE);
-      if (!level.isSolid(footRow, leadCol)) {
+      const fb = level.get(footRow, leadCol);
+      const grounded = level.isSolid(footRow, leadCol) || fb === BLOCK.ONEWAY_PLATFORM || fb === BLOCK.LADDER;
+      if (!grounded) {
         this.x = this.vx > 0 ? leadCol * BLOCK_SIZE - this.width : (leadCol + 1) * BLOCK_SIZE;
         this.vx = 0;
       }
@@ -1245,6 +1249,8 @@ class Player {
     // §Classic Blocks — Ladder climb: a back-facing pose (hair, no face) with arms/legs
     // reaching in an alternating rhythm to mimic climbing the rungs.
     if (this._onLadder) { this._drawLadderClimb(ctx, sx, sy); return; }
+    // §Classic Blocks — entering/leaving a Warp Pipe: face the camera (both eyes) while sinking/rising.
+    if (this._pipePose) { this._drawPipePose(ctx, sx, sy); return; }
     // Special animated poses (opt-in moves). Priority: slide > wall-slide > roll.
     const hanging   = false;
     const sliding   = this._slideFrames > 0;
@@ -1352,6 +1358,27 @@ class Player {
     if (outline) { ctx.fillStyle = outline; ctx.fillRect(-1, -w/2-1, len+2, w+2); }  // dark silhouette edge
     ctx.fillStyle = color; ctx.fillRect(0, -w/2, len, w);   // hard-edged, matches the blocky sprite
     ctx.restore();
+  }
+
+  // §Classic Blocks — front-facing pose for a Warp Pipe (both eyes toward the camera), arms at
+  // the sides, legs together — used while sinking into / rising out of a pipe.
+  _drawPipePose(ctx, sx, sy) {
+    const cx = sx + this.width / 2;
+    const hair = this._charHair ? this._charHair() : '#7D4E1A';
+    const shirt = this._charShirt ? this._charShirt() : '#4A8FD4';
+    const skin = '#E8B892', pants = '#39477A', outline = 'rgba(0,0,0,0.35)';
+    const hw = 14, hh = 14, hx = cx - hw / 2, hy = sy;
+    ctx.fillStyle = outline; ctx.fillRect(hx - 1, hy - 1, hw + 2, hh + 2);
+    ctx.fillStyle = skin; ctx.fillRect(hx, hy, hw, hh);                 // face
+    ctx.fillStyle = hair; ctx.fillRect(hx, hy, hw, 5);                  // hair on top
+    ctx.fillStyle = '#1a1a22';                                         // both eyes
+    ctx.fillRect(cx - 4, hy + 7, 2, 3); ctx.fillRect(cx + 2, hy + 7, 2, 3);
+    if (this._hasPonytail && this._hasPonytail()) { ctx.fillStyle = hair; ctx.fillRect(hx - 2, hy + 4, 2, 8); ctx.fillRect(hx + hw, hy + 4, 2, 8); }
+    const bw = 14, bh = 19, bx = cx - bw / 2, by = hy + hh;
+    ctx.fillStyle = outline; ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+    ctx.fillStyle = shirt; ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = skin; ctx.fillRect(bx - 3, by + 1, 3, 13); ctx.fillRect(bx + bw, by + 1, 3, 13);   // arms at sides
+    ctx.fillStyle = pants; ctx.fillRect(cx - 6, by + bh, 5, 16); ctx.fillRect(cx + 1, by + bh, 5, 16); // legs together
   }
 
   // §Classic Blocks — back-facing ladder climb. Head shows hair (no eyes) with a hairline at the

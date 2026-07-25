@@ -121,3 +121,28 @@ Then: want coins in the HUD, configurable Question contents, a crumble warning s
 - **2×2 pipe + 1×2 extension as dedicated multi-block pieces** (a single-click stamp, like the Wither Altar).
   Today you build them from 1×1 cells (which now render seamlessly). Kevin: roll these out, then polish seams there.
 - Customizable block-contents **UI**; **conveyor speed** modal + apply-to-connected (both still pending).
+
+---
+# Pass 5 — build 209 (2026-07-24)
+
+## Done
+- **Slide on Jump-Through FIXED (real root cause).** The **crawl edge-guard** (stops a *crouching* player
+  walking off a ledge) checked `isSolid` for ground ahead — a Jump-Through platform / Ladder top is non-solid,
+  so it read a cliff edge and clamped the slider dead. Now those count as ground there, and the guard is
+  skipped entirely during a slide (a slide should carry you off edges).
+- **Pipe descend/emerge animation** — pressing Down on a pipe now: centres you on the mouth, **faces the camera
+  (both eyes, `_drawPipePose`)**, sinks you in; when your head is inside it **teleports (camera follows = the
+  screen shift)** and you **rise out** at the destination back to standing.
+- **Crumble timer PAUSES on leaving** (cumulative, not reset) — stand 1s, step off, come back → 1s already
+  elapsed. And **Crumble Block Time is a world setting** (1–5s, default **2s**).
+- **Conveyor Speed world setting** (1–4×, default 2 = the previous speed).
+- **Removed Pipe Stem** (the seamless 1×1 Warp Pipe makes it unnecessary) and renamed the palette tab **Plumbing**.
+
+## Deferred → next pass (sandbox popup UIs — building these untested is risky, doing them as a focused pass)
+1. **Pipe destination linker** — click a pipe → pick its destination pipe (or "none" = obstacle). Foundation is
+   in: `_pipeDestination` already honours an explicit `_pipeLinks` map (keyed by the pipe cluster's top-left
+   cell) and falls back to reading-order pairing; **odd/unpaired pipes are already obstacles**. Needs the editor
+   UI + world_data persistence.
+2. **Customizable block contents picker** — click a Question/Breakable block → choose the item inside (or clear).
+   Storage (`_blockContents`) is wired; needs the picker UI + persistence. (Defaults to a coin today.)
+3. **Per-block / per-run Conveyor speed** with apply-to-connected — today it's the single world setting above.

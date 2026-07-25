@@ -16830,33 +16830,37 @@ class Game {
     const players = this.activePlayers ? this.activePlayers() : [this.player];
     for (const p of players) if (p && p.hp > 0) this._classicBlocksForPlayer(p);
     this._updateBlockFx();
-    // Crumble = 3s of CONTINUAL contact. Only cells touched THIS frame advance; the instant
-    // contact breaks (player jumps off), the cell is dropped from the map → its timer resets.
-    // Low-resource: the map only ever holds actively-stood-on cells (usually 1–2).
+    // Crumble = cumulative contact time. The timer ADVANCES only while stood on, but PERSISTS
+    // when you leave (stand 1s, leave, come back → 1s already elapsed). Duration is a world
+    // setting (default 2s). Low-resource: only touched/partially-elapsed cells are tracked.
     if (!this._crumbleContact) this._crumbleContact = new Map();
+    const limit = Math.round((this._worldAdvSettings.crumbleSeconds ?? 2) * 60);
     for (const key of this._crumbleTouched) {
       const t = (this._crumbleContact.get(key) || 0) + 1;
-      if (t >= 180) {                 // 3 seconds at 60 fps
+      if (t >= limit) {
         const i = key.indexOf(','), r = +key.slice(0, i), c = +key.slice(i + 1);
         if (this.level.get(r, c) === BLOCK.CRUMBLE_BLOCK) { this.level.set(r, c, BLOCK.AIR); this._shatterFx(r, c, '#b98a5a'); }
         this._crumbleContact.delete(key);
         this._playSound('sounds/mining.mp3', 0.35);
       } else this._crumbleContact.set(key, t);
     }
-    if (this._crumbleContact.size) {  // reset any cell not touched this frame (contact broken)
-      for (const key of this._crumbleContact.keys()) if (!this._crumbleTouched.has(key)) this._crumbleContact.delete(key);
-    }
+    this._crumbleLimit = limit;   // for the crack-progress draw
   }
 
   _classicBlocksForPlayer(p) {
     const L = this.level, BS = BLOCK_SIZE;
-    // Warp-pipe descend/teleport animation owns the frame while active.
+    // Warp-pipe animation owns the frame: centre on the mouth + face the camera, sink until the
+    // head is inside the pipe → teleport (camera follows = the screen shift) → rise out at the dest.
     if (p._warp) {
-      const w = p._warp; w.t++;
-      if (w.t < 12)       { p.y += 3; p.vx = 0; p.vy = 0; p.onGround = false; }
-      else if (w.t === 12){ p.x = w.destX; p.y = w.destY + BS; p.vx = 0; p.vy = 0; }
-      else if (w.t < 26)  { p.y -= 2; p.vx = 0; p.vy = 0; }
-      else { p.y = p._warp.destY; p._warp = null; p._warpCooldown = 40; }
+      const w = p._warp;
+      p.vx = 0; p.vy = 0; p.onGround = false; p._grappleOwn = false;
+      if (w.phase === 'descend') {
+        p.x = w.entryX; p.y += 3.5;
+        if (p.y >= w.entryTopY + 6) { p.x = w.destX; p.y = w.destTopY + 6; w.phase = 'emerge'; }   // head in → warp
+      } else {                                   // emerge — rise until standing on the dest mouth
+        p.x = w.destX; p.y -= 3.2;
+        if (p.y <= w.destTopY - p.height) { p.y = w.destTopY - p.height; p.onGround = true; p._warp = null; p._pipePose = false; p._warpCooldown = 40; }
+      }
       return;
     }
     if (p._warpCooldown > 0) p._warpCooldown--;
@@ -16877,8 +16881,8 @@ class Game {
       for (let c = col0; c <= col1; c++) {
         const b = L.get(feetRow, c);
         if (b === BLOCK.TRAMPOLINE) { this._trampolineBounce(p); break; }
-        else if (b === BLOCK.CONVEYOR_LEFT)  p.x -= 1.6;
-        else if (b === BLOCK.CONVEYOR_RIGHT) p.x += 1.6;
+        else if (b === BLOCK.CONVEYOR_LEFT)  p.x -= (this._worldAdvSettings.conveyorSpeed ?? 2) * 0.8;
+        else if (b === BLOCK.CONVEYOR_RIGHT) p.x += (this._worldAdvSettings.conveyorSpeed ?? 2) * 0.8;
         else if (b === BLOCK.CRUMBLE_BLOCK)  this._crumbleTouch(feetRow, c);
         else if (b === BLOCK.WARP_PIPE && p === this.player && this.input.isCrouch()) { this._warpEnter(p, feetRow, c); break; }
       }
@@ -16984,7 +16988,7 @@ class Game {
       const CR = [[4, 2, 11, 16], [28, 3, 20, 14], [16, 5, 13, 26], [7, 20, 4, 30], [25, 17, 29, 30]];
       for (const [key, t] of this._crumbleContact) {
         const i = key.indexOf(','), r = +key.slice(0, i), c = +key.slice(i + 1);
-        const prog = t / 180;
+        const prog = t / (this._crumbleLimit || 120);
         const sx = c * BLOCK_SIZE - this.camera.x, sy = r * BLOCK_SIZE - this.camera.y;
         ctx.save();
         ctx.translate(sx + (Math.random() - 0.5) * prog * prog * 2.5, sy);
@@ -17011,10 +17015,36 @@ class Game {
   // to make a linked pair. Returns the partner pipe TOP cell, or null.
   _warpEnter(p, row, col) {
     if (p._warp || p._warpCooldown > 0) return;
-    const partner = this._pipePartner(row, col);
-    if (!partner) return;
-    p._warp = { t: 0, destX: partner.col * BLOCK_SIZE + BLOCK_SIZE / 2 - p.width / 2, destY: partner.row * BLOCK_SIZE - p.height };
+    const dest = this._pipeDestination(row, col);
+    if (!dest) return;                       // no destination → this pipe is just an obstacle
+    const cx = (rr, cc) => {                  // centre-x of the pipe mouth (contiguous WARP_PIPE at rr)
+      let l = cc, r = cc;
+      while (this.level.get(rr, l - 1) === BLOCK.WARP_PIPE) l--;
+      while (this.level.get(rr, r + 1) === BLOCK.WARP_PIPE) r++;
+      return ((l + r + 1) / 2) * BLOCK_SIZE - p.width / 2;
+    };
+    p._warp = { phase: 'descend', entryX: cx(row, col), entryTopY: row * BLOCK_SIZE,
+      destX: cx(dest.row, dest.col), destTopY: dest.row * BLOCK_SIZE };
+    p.x = p._warp.entryX; p.vx = 0; p.vy = 0; p._pipePose = true;
     this._playSound('sounds/enderman-teleport.mp3', 0.5);
+  }
+  // A pipe's destination: an explicit link set in the editor (or 'none' = obstacle), else the
+  // reading-order partner as a fallback. Keyed by the pipe cluster's top-left cell.
+  _pipeDestination(row, col) {
+    const key = this._pipeAnchorKey(row, col);
+    if (this._pipeLinks && this._pipeLinks.has(key)) {
+      const dk = this._pipeLinks.get(key);
+      if (!dk || dk === 'none') return null;
+      const i = dk.indexOf(','); return { row: +dk.slice(0, i), col: +dk.slice(i + 1) };
+    }
+    return this._pipePartner(row, col);
+  }
+  // Normalize any pipe cell to its cluster's top-left WARP_PIPE cell (stable id for links).
+  _pipeAnchorKey(row, col) {
+    let r = row, c = col;
+    while (this.level.get(r - 1, c) === BLOCK.WARP_PIPE) r--;
+    while (this.level.get(r, c - 1) === BLOCK.WARP_PIPE) c--;
+    return r + ',' + c;
   }
   _pipeTops() {
     const tops = [];

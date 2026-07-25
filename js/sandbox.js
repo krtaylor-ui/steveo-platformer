@@ -28,7 +28,7 @@ const SANDBOX_PALETTE_BLOCKS = {
   mechanics: [
     BLOCK.LADDER, BLOCK.ONEWAY_PLATFORM, BLOCK.TRAMPOLINE, BLOCK.ICE,
     BLOCK.CONVEYOR_LEFT, BLOCK.CONVEYOR_RIGHT, BLOCK.CRUMBLE_BLOCK,
-    BLOCK.WARP_PIPE, BLOCK.PIPE_STEM, BLOCK.QUESTION_BLOCK, BLOCK.BREAKABLE_BLOCK,
+    BLOCK.WARP_PIPE, BLOCK.QUESTION_BLOCK, BLOCK.BREAKABLE_BLOCK,
     BLOCK.HIDDEN_BLOCK, BLOCK.COIN, BLOCK.SPIKES,
   ],
 };
@@ -1796,7 +1796,7 @@ class SandboxManager {
       { key: 'overworld',  label: 'Overworld', color: '#4CAF50' },
       { key: 'nether',     label: 'Nether',    color: '#FF4400' },
       { key: 'decorative', label: 'Decor',     color: '#8ED07A' },
-      { key: 'mechanics',  label: 'Blocks',    color: '#6FB6FF' },
+      { key: 'mechanics',  label: 'Plumbing',  color: '#6FB6FF' },
       { key: 'gear',       label: 'Gear',      color: '#FFD700' },
       { key: 'other',      label: 'Other',     color: '#FF9800' },
     ];
