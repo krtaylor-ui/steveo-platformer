@@ -1,6 +1,6 @@
-## CURRENT STATE (2026-07-25) — build 216 (Classic-Blocks cleanup batch) LOCAL, headless-green, NOT pushed — awaiting Kevin's playtest
+## CURRENT STATE (2026-07-25) — builds 216 + 217 SHIPPED to `main` + deployed ✅ (Classic-Blocks cleanup batch)
 
-**Build 216** is a "one last cleanup batch before Campaign mode" (committed locally, suite green, NOT yet pushed):
+Pushed to production `origin/main` @ ffaaacb (Railway auto-deploy). **Build 217** adds Hidden-Block contents (Hidden blocks now use the same contents picker as Question/Breakable — an explicit item/power-up pops on reveal; a plain Hidden block still just reveals). **Build 216** was the "one last cleanup batch before Campaign mode":
 1. **Jump-Through** now renders as a filled, visually-distinct block (solid top plank + translucent slatted body + ↑ hint) AND the **grappling hook attaches to it** (previously passed through).
 2. **Dropped items** (mob/block drops) now render the **real block icon** (scaled `drawBlock`) or a coloured tool token instead of the old yellow ✦ square.
 3. **Grapple + Crumbling block:** hanging/swinging from a Crumble block now wears it down as if standing on it; when it crumbles the grapple lets go (momentum preserved).
