@@ -27,7 +27,15 @@ going until the entire session is implemented (or a hard blocker is hit, which s
 questions were front-loaded). Resolve ambiguity with best judgment + document it, rather than
 blocking. (These sessions are designed to run unattended.)
 
-## CURRENT STATE (2026-07-24) — builds 204–205 on `main` (LOCAL, headless-green, NOT pushed — awaiting Kevin's playtest)
+## CURRENT STATE (2026-07-24) — builds 204–206 on `main` (LOCAL, headless-green, NOT pushed — awaiting Kevin's playtest)
+
+**Build 206 — Classic Blocks pass 2** (Kevin's playtest feedback; full detail + DEFERRED list in `CLASSIC_BLOCKS_REVIEW.md`):
+FIXED Question-block bump (upward collision zeroed `vy` before the pass → now gates on `player._preVy`); added
+**Breakable Block** (shatter from below) + **Pipe Stem**; block **content storage** (`_blockContents`, defaults to coin —
+setting UI deferred); **Ladder** dark-outline fix (faint backing) + climb animation + world settings **Lock Sideways** /
+**Jump Off Mid-Climb**; **Day / Night** backgrounds (static sun/moon top-right, pinned sky). **Deferred (next pass):**
+customizable-contents UI, 2×2 pipes + stem-raising, conveyor speed modal + apply-to-connected, and the **slide-on-jump-through
+repro** (couldn't reproduce statically — flagged). Suite green.
 
 **Build 204 — audio wiring:** fixed `place-block.mp3`→`placing-block.mp3` (was silent); wired
 `enderman-teleport.mp3` (Enderman blink) + `blocked-shot.mp3` (shield deflect). See the audio inventory
