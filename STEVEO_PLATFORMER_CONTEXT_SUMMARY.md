@@ -1,3 +1,13 @@
+## CURRENT STATE (2026-07-25) — builds 196–215 ALL SHIPPED to `main` + deployed ✅
+
+Everything through **build 215** is live on Railway (`origin/main` @ 866d450). This spans the Combat & Controls
+work (196–200: per-mode control profiles, controller overhaul, grapple extras) + the Combat Trainer / combo
+model v2 (201–203) + audio fixes (204) + the full **Classic Blocks pack** (205–215): Ladder / Jump-Through /
+Trampoline+Slime (spring) / Ice / Conveyor / Crumbling / Warp Pipes (2×2, animated warp, destination linker) /
+Question & Breakable blocks (data-driven contents picker incl. power-ups, item rise/pop drops) / Hidden / Coin /
+Spikes, plus Day/Night backgrounds and the two editor popups. Full detail in `CLASSIC_BLOCKS_REVIEW.md`.
+Nothing is pending a push. Suite green. Next work starts fresh from here.
+
 # Steveo Platformer — Context Summary
 
 **Updated:** 2026-07-10. See the **CURRENT STATE** section immediately below for
