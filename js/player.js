@@ -1366,66 +1366,54 @@ class Player {
   // §Classic Blocks — front-facing pose for a Warp Pipe (both eyes toward the camera), arms at
   // the sides, legs together — used while sinking into / rising out of a pipe.
   _drawPipePose(ctx, sx, sy) {
-    const cx = sx + this.width / 2;
-    const hair = this._charHair ? this._charHair() : '#7D4E1A';
-    const shirt = this._charShirt ? this._charShirt() : '#4A8FD4';
-    const skin = '#E8B892', pants = '#39477A', shoe = '#3a2a1a', outline = 'rgba(0,0,0,0.35)';
-    // ── Head (front) — hair on top + dropping slightly down both sides; a skin face. ──
-    const hw = 15, hh = 14, hx = cx - hw / 2, hy = sy;
-    ctx.fillStyle = outline; ctx.fillRect(hx - 1, hy - 1, hw + 2, hh + 2);
-    ctx.fillStyle = skin; ctx.fillRect(hx, hy, hw, hh);
-    ctx.fillStyle = hair;
-    ctx.fillRect(hx, hy, hw, 5);                         // top fringe
-    ctx.fillRect(hx, hy, 3, 9); ctx.fillRect(hx + hw - 3, hy, 3, 9);   // sideburns dropping down both sides
-    // Eyes — white with black pupils.
-    ctx.fillStyle = '#fff'; ctx.fillRect(cx - 5, hy + 7, 4, 4); ctx.fillRect(cx + 1, hy + 7, 4, 4);
-    ctx.fillStyle = '#1a1a22'; ctx.fillRect(cx - 4, hy + 8, 2, 2); ctx.fillRect(cx + 2, hy + 8, 2, 2);
-    // "2-dash" mustache/mouth.
-    ctx.fillStyle = '#6b4a2a'; ctx.fillRect(cx - 4, hy + 12, 3, 1); ctx.fillRect(cx + 1, hy + 12, 3, 1);
-    if (this._hasPonytail && this._hasPonytail()) { ctx.fillStyle = hair; ctx.fillRect(hx - 2, hy + 5, 2, 9); ctx.fillRect(hx + hw, hy + 5, 2, 9); }
-    // ── Torso (same proportions as the normal sprite). ──
-    const bw = 16, bh = 18, bx = cx - bw / 2, by = hy + hh;
-    ctx.fillStyle = outline; ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
-    ctx.fillStyle = shirt; ctx.fillRect(bx, by, bw, bh);
-    // Arms straight at the sides, hands (skin) at the ends.
-    ctx.fillStyle = outline; ctx.fillRect(bx - 5, by, 5, bh + 1); ctx.fillRect(bx + bw, by, 5, bh + 1);
-    ctx.fillStyle = shirt; ctx.fillRect(bx - 4, by, 4, bh - 5); ctx.fillRect(bx + bw, by, 4, bh - 5);   // sleeves
-    ctx.fillStyle = skin; ctx.fillRect(bx - 4, by + bh - 5, 4, 5); ctx.fillRect(bx + bw, by + bh - 5, 4, 5); // hands
-    // Legs straight down, feet (shoes) visible.
-    const hipY = by + bh, legH = 14;
-    ctx.fillStyle = outline; ctx.fillRect(cx - 7, hipY, 7, legH + 4); ctx.fillRect(cx, hipY, 7, legH + 4);
-    ctx.fillStyle = pants; ctx.fillRect(cx - 6, hipY, 5, legH); ctx.fillRect(cx + 1, hipY, 5, legH);
-    ctx.fillStyle = shoe; ctx.fillRect(cx - 7, hipY + legH, 6, 4); ctx.fillRect(cx + 1, hipY + legH, 6, 4);  // feet
+    // Same proportions as the normal sprite (_drawStanding): head 16×16 @ sx+2/sy, body 12×16
+    // @ sx+4/sy+18, arms outside the body at sx & sx+16, legs to sy+52. Front view.
+    const SKIN = '#F4C78A', PANTS = '#2C5F8A', SHOE = '#3D1C02';
+    const HAIR = this._charHair();
+    const SHIRT = this.shirtColor || this._charShirt();
+    // Head + hair (top + dropping down both sides).
+    ctx.fillStyle = SKIN;  ctx.fillRect(sx + 2, sy, 16, 16);
+    ctx.fillStyle = HAIR;  ctx.fillRect(sx + 2, sy, 16, 5);
+    ctx.fillRect(sx + 2, sy + 5, 3, 5); ctx.fillRect(sx + 15, sy + 5, 3, 5);
+    // Eyes (white + pupils) + a 2-dash mouth.
+    ctx.fillStyle = '#fff'; ctx.fillRect(sx + 5, sy + 6, 4, 4); ctx.fillRect(sx + 11, sy + 6, 4, 4);
+    ctx.fillStyle = '#1A50C0'; ctx.fillRect(sx + 6, sy + 7, 2, 2); ctx.fillRect(sx + 12, sy + 7, 2, 2);
+    ctx.fillStyle = '#7a4a2a'; ctx.fillRect(sx + 6, sy + 12, 3, 1); ctx.fillRect(sx + 11, sy + 12, 3, 1);
+    if (this._hasPonytail && this._hasPonytail()) { ctx.fillStyle = HAIR; ctx.fillRect(sx, sy + 5, 2, 9); ctx.fillRect(sx + 18, sy + 5, 2, 9); }
+    // Arms at the sides (shirt + skin hands).
+    ctx.fillStyle = SHIRT; ctx.fillRect(sx, sy + 18, 4, 12); ctx.fillRect(sx + 16, sy + 18, 4, 12);
+    ctx.fillStyle = SKIN;  ctx.fillRect(sx, sy + 30, 4, 4);  ctx.fillRect(sx + 16, sy + 30, 4, 4);
+    // Body + belt.
+    ctx.fillStyle = SHIRT; ctx.fillRect(sx + 4, sy + 18, 12, 16);
+    ctx.fillStyle = PANTS; ctx.fillRect(sx + 4, sy + 31, 12, 3);
+    // Legs straight down + shoes.
+    ctx.fillStyle = PANTS; ctx.fillRect(sx + 4, sy + 34, 5, 14); ctx.fillRect(sx + 11, sy + 34, 5, 14);
+    ctx.fillStyle = SHOE;  ctx.fillRect(sx + 3, sy + 48, 6, 4);  ctx.fillRect(sx + 11, sy + 48, 6, 4);
   }
 
   // §Classic Blocks — back-facing ladder climb. Head shows hair (no eyes) with a hairline at the
   // bottom; arms reach up + legs step, alternating in sync with the climb cadence (_climbAnim).
   _drawLadderClimb(ctx, sx, sy) {
-    const w = this.width, cx = sx + w / 2;
-    const hair = this._charHair ? this._charHair() : '#7D4E1A';
-    const shirt = this._charShirt ? this._charShirt() : '#4A8FD4';
-    const skin = '#E8B892', pants = '#39477A', outline = 'rgba(0,0,0,0.35)';
+    // Normal-sprite proportions (head 16×16 @ sx+2, body 12×16 @ sx+4/sy+18), seen from behind.
+    const cx = sx + this.width / 2;
+    const HAIR = this._charHair(), SHIRT = this.shirtColor || this._charShirt();
+    const SKIN = '#F4C78A', PANTS = '#2C5F8A', EDGE = 'rgba(0,0,0,0.35)';
     const ph = Math.sin(this._climbAnim || 0);            // -1..1 climb phase (arms/legs alternate)
-    // Head — back of the head: mostly hair, a darker hairline strip at the bottom, no face.
-    const hw = 14, hh = 14, hx = cx - hw / 2, hy = sy;
-    ctx.fillStyle = outline; ctx.fillRect(hx - 1, hy - 1, hw + 2, hh + 2);
-    ctx.fillStyle = hair; ctx.fillRect(hx, hy, hw, hh);
-    ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(hx, hy + hh - 3, hw, 3);   // hairline
-    if (this._hasPonytail && this._hasPonytail()) { ctx.fillStyle = hair; ctx.fillRect(cx - 2, hy + hh, 4, 8); }
-    // Torso (shirt, seen from behind).
-    const bw = 14, bh = 19, bx = cx - bw / 2, by = hy + hh;
-    ctx.fillStyle = outline; ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
-    ctx.fillStyle = shirt; ctx.fillRect(bx, by, bw, bh);
-    // Arms reach UP toward the rungs, alternating high/low.
-    const shoY = by + 3;
-    const hiY = sy - 5, loY = sy + 6;
-    this._limbBar(ctx, bx + 2, shoY, cx - 7, ph > 0 ? hiY : loY, 5, skin, outline);
-    this._limbBar(ctx, bx + bw - 2, shoY, cx + 7, ph > 0 ? loY : hiY, 5, skin, outline);
-    // Legs step on the rungs, opposite phase to the arms.
-    const hipY = by + bh;
-    const legHiY = hipY + 11, legLoY = hipY + 21;
-    this._limbBar(ctx, cx - 4, hipY, cx - 5, ph > 0 ? legLoY : legHiY, 6, pants, outline);
-    this._limbBar(ctx, cx + 4, hipY, cx + 5, ph > 0 ? legHiY : legLoY, 6, pants, outline);
+    // Back of the head — all hair, a darker hairline at the bottom, no face.
+    ctx.fillStyle = HAIR; ctx.fillRect(sx + 2, sy, 16, 16);
+    ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(sx + 2, sy + 13, 16, 3);
+    if (this._hasPonytail && this._hasPonytail()) { ctx.fillStyle = HAIR; ctx.fillRect(cx - 2, sy + 16, 4, 8); }
+    // Torso.
+    const bx = sx + 4, bw = 12, by = sy + 18, bh = 16;
+    ctx.fillStyle = SHIRT; ctx.fillRect(bx, by, bw, bh);
+    // Arms — shoulders on the SIDES of the body (bx / bx+bw), reaching up alternating.
+    const shoY = by + 2, hiY = sy - 4, loY = sy + 7;
+    this._limbBar(ctx, bx, shoY, cx - 6, ph > 0 ? hiY : loY, 5, SKIN, EDGE);
+    this._limbBar(ctx, bx + bw, shoY, cx + 6, ph > 0 ? loY : hiY, 5, SKIN, EDGE);
+    // Legs step on the rungs (opposite phase).
+    const hipY = by + bh, legHiY = hipY + 12, legLoY = hipY + 22;
+    this._limbBar(ctx, cx - 4, hipY, cx - 4, ph > 0 ? legLoY : legHiY, 6, PANTS, EDGE);
+    this._limbBar(ctx, cx + 4, hipY, cx + 4, ph > 0 ? legHiY : legLoY, 6, PANTS, EDGE);
   }
 
   _drawHangFigure(ctx, sx, sy) {

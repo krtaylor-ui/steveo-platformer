@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 210 (Classic Blocks pass 6 — FIXED the pipe-warp freeze (the animation now owns the frame so collision cannot fight it) + a nicer front-facing pipe sprite; FIXED the trampoline runaway (conserves energy now, crouch to cancel); trampoline redesigned as two plates + a compressing spring; new Slime Block (same bounce) in the Overworld tab; Block Contents world setting. Per-block pipe-link + contents pickers = next pass.)';
+const GAME_VERSION = 'v3 · build 211 (Classic Blocks polish — the player now drops BEHIND a Warp Pipe (pipe redrawn over the sprite while warping); the pipe + ladder poses now use the normal sprite proportions (head 16x16, body 12x16, real colors); ladder-climb arms now connect at the SIDES of the body. Classic Blocks feature-complete — next: pipe-destination picker + per-block contents selector UIs.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

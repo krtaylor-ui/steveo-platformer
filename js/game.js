@@ -6142,6 +6142,7 @@ class Game {
     const _p1Hidden = (this.gameMode === 'speedrunner' && this._sr?.dead)
                       || this._p1RespawnTimer > 0 || this.state === 'dead';
     if (!_p1Hidden) this.player.draw(ctx, this.camera);
+    this._drawPipeOverlay(ctx);   // §Classic Blocks — redraw pipe cells OVER a warping player (drops behind the pipe)
     this._drawGrapple(ctx);   // §Phase 5 — cable + hook over the player
     // Phase 16: Draw other multiplayer players (behind P2 labels)
     if (window.multiplayerManager?.isConnected)
@@ -16906,6 +16907,22 @@ class Game {
       for (let c = col0; c <= col1; c++) {
         if (L.get(hr2, c) === BLOCK.HIDDEN_BLOCK) { this._revealHidden(hr2, c); p.y = (hr2 + 1) * BS; p.vy = 0; }
       }
+    }
+  }
+
+  // §Classic Blocks — while a player is animating through a Warp Pipe, redraw the pipe cells around
+  // them OVER the sprite, so they visibly sink BEHIND the pipe instead of in front of it.
+  _drawPipeOverlay(ctx) {
+    const p = this.player;
+    if (!p || !p._warp || !this.camera || typeof drawBlock === 'undefined') return;
+    const BS = BLOCK_SIZE;
+    const c0 = Math.floor(p.x / BS) - 1, c1 = Math.floor((p.x + p.width) / BS) + 1;
+    const r0 = Math.floor(p.y / BS) - 1, r1 = Math.floor((p.y + p.height) / BS) + 2;
+    const pipe = (rr, cc) => { const b = this.level.get(rr, cc); return b === BLOCK.WARP_PIPE || b === BLOCK.PIPE_STEM; };
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+      if (this.level.get(r, c) !== BLOCK.WARP_PIPE) continue;
+      drawBlock(ctx, BLOCK.WARP_PIPE, c * BS - this.camera.x, r * BS - this.camera.y, 0,
+        { pipeT: pipe(r - 1, c), pipeB: pipe(r + 1, c), pipeL: pipe(r, c - 1), pipeR: pipe(r, c + 1) });
     }
   }
 
