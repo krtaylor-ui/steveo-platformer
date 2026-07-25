@@ -87,6 +87,8 @@ class Player {
     this._hangX = 0; this._hangY = 0; this._hangSide = 0;
     this._standX = 0; this._standY = 0;   // on-ledge standing pos (climb target)
     this._climbT = 0; this._climbDur = 16; this._climbProg = 0;
+    // §Classic Blocks — Bar (monkey-bar hang). _barState = {row,col} while gripping; else null.
+    this._barState = null; this._barSwing = 0; this._barCooldown = 0;
     this._gripX = 0; this._gripY = 0;  // world coords of the ledge corner the hands hold
     this._hangCooldown = 0;            // frames after a drop before re-grabbing
     this._downWas = false;             // edge-detect the down press for climb-down
@@ -352,6 +354,8 @@ class Player {
     this.iframes = IFRAMES * 3;
     this.bowDrawing   = false;
     this.drawProgress = 0;
+    this._barState = null; this._barSwing = 0; this._barCooldown = 0;   // §Classic Blocks — drop any bar grip
+    this._hangState = null; this._onLadder = false;
   }
 
   get width()  { return PLAYER_W; }
@@ -406,11 +410,15 @@ class Player {
     // §Classic Blocks — a Warp Pipe animation owns the frame too (the game pass drives the
     // sink/rise); skip normal physics so collision doesn't fight the descent (was a freeze).
     if (this._pipeOwn) { this._animate(input); return; }
+    // §Classic Blocks — Bar hang owns the frame (no gravity/collision): traverse + swing + release.
+    if (this._barCooldown > 0) this._barCooldown--;
+    if (this._barState) { this._updateBar(input, level); this._animate(input); return; }
 
     this._detectWallSlide(input, level);   // sets _wallSliding (used by jump + physics)
     this._handleInput(input, level);
     this._applyPhysics(level);
     this._tryLedgeGrab(input, level);      // grab from air / climb down from a ledge
+    this._tryBarGrab(input, level);        // §Classic Blocks — grip a monkey-bar when hands reach it
     this._animate(input);
   }
 
@@ -578,7 +586,7 @@ class Player {
     }
 
     // §Classic Blocks — track a Down-hold while standing on a Jump-Through platform (for drop-through).
-    if (this.onGround && input.isCrouch() && this._footBlockIs(level, BLOCK.ONEWAY_PLATFORM)) this._dropHold = (this._dropHold || 0) + 1;
+    if (this.onGround && input.isCrouch() && (this._footBlockIs(level, BLOCK.ONEWAY_PLATFORM) || this._footBlockIs(level, BLOCK.BAR_PLATFORM))) this._dropHold = (this._dropHold || 0) + 1;
     else this._dropHold = 0;
 
     // Jump (with coyote time + jump buffer)
@@ -612,7 +620,7 @@ class Player {
       // STATIONARY, then Jump. Being stationary + the longer hold disambiguates it from the
       // crouch+jump SLIDE (which is a directional move) — the two used to collide on one-ways.
       if (this.onGround && input.isCrouch() && (this._dropHold || 0) >= 16 && Math.abs(mx) < 0.2 &&
-          this._footBlockIs(level, BLOCK.ONEWAY_PLATFORM)) {
+          (this._footBlockIs(level, BLOCK.ONEWAY_PLATFORM) || this._footBlockIs(level, BLOCK.BAR_PLATFORM))) {
         this._dropThrough = 14;      // frames the platform is intangible for this player
         this.onGround = false;
         this.y += 2;                 // nudge into it so the downward sweep passes through
@@ -700,6 +708,74 @@ class Player {
     return false;
   }
 
+  // §Classic Blocks — Bar. Where a Bar cell's grab line sits (bottom of the cell, matching the
+  // renderer's barY = row*BS + BS - 5). Hands grip here; the body hangs below.
+  _barLineY(row) { return row * BLOCK_SIZE + BLOCK_SIZE - 5; }
+
+  // Grip a monkey-bar when the hands rise/fall onto it. Automatic unless the world requires Up
+  // (_barRequireGrab). Skipped while already gripping, on cooldown, on a ladder, hanging, or
+  // grappling (the grapple hands off to the bar itself). Bars can sit in a row → traverse across.
+  _tryBarGrab(input, level) {
+    if (this._isBot) return;   // bots/companions don't auto-grip bars (they'd hang forever — no bar pathing)
+    if (this._barState || this._barCooldown > 0 || this._onLadder || this._hangState || this._grappleOwn || this._pipeOwn) return;
+    const BS = BLOCK_SIZE;
+    const handY = this.y + 2;                         // the reach of the hands (top of the sprite)
+    const cx = this.x + this.width / 2;
+    const c0 = Math.floor((this.x + this.width * 0.3) / BS), c1 = Math.floor((this.x + this.width * 0.7) / BS);
+    const row = Math.round((handY - BS + 5) / BS);    // the cell whose bar line is nearest the hands
+    for (let c = c0; c <= c1; c++) {
+      const b = level.get(row, c);
+      if (b !== BLOCK.BAR && b !== BLOCK.BAR_PLATFORM) continue;
+      const barY = this._barLineY(row);
+      if (handY >= barY - 10 && handY <= barY + 12) {
+        const upHeld = (input.isDown && (input.isDown('KeyW') || input.isDown('ArrowUp'))) || (input.isStickUp && input.isStickUp());
+        if (this._barRequireGrab && !upHeld) return;
+        this._grabBar(row, Math.floor(cx / BS), barY, input);
+        return;
+      }
+    }
+  }
+  _grabBar(row, col, barY, input) {
+    this._barState = { row, col };
+    this.y = barY - 2; this.vx = 0; this.vy = 0;
+    this.onGround = false; this.crouching = false; this.flying = false;
+    this._barSwing = 0; this._onLadder = false;
+    this._jumpPressed = input ? input.isJump() : true;   // don't fire the jump-off from the same press that got you here
+  }
+  // Hang physics: traverse Left/Right along the bar with a body swing; Jump = launch off with the
+  // double-jump flip; Down+Jump = let go and drop straight down. Owns the frame (no gravity here).
+  _updateBar(input, level) {
+    const BS = BLOCK_SIZE, b = this._barState;
+    this.vy = 0; this.onGround = false; this.crouching = false; this.flying = false;
+    const jump = input.isJump(), jumpEdge = jump && !this._jumpPressed, down = input.isCrouch();
+    this._jumpPressed = jump;
+    if (jumpEdge && down) {                    // Down+Jump → release, drop straight down
+      this._barState = null; this._barCooldown = 16; this._barSwing = 0; this.vx = 0; this.vy = 2;
+      return;
+    }
+    if (jumpEdge) {                            // Jump → launch off with the double-jump 2nd-stage flip
+      this._barState = null; this._barCooldown = 16; this._barSwing = 0;
+      this.vy = this._jumpVelocityOverride ?? JUMP_VELOCITY;
+      this.onGround = false; this.jumpSquish = 1;
+      this._airJumpsUsed = 0;                                          // fresh air jump after the launch
+      this._rollFrames = 24; this._rollTotal = 24; this._rollDir = this.facing || 1;   // the flip
+      return;
+    }
+    const dir = input.isRight() ? 1 : input.isLeft() ? -1 : 0;
+    if (dir) {
+      const nx = this.x + dir * 2.4;
+      const col = Math.floor((nx + this.width / 2) / BS);
+      const nb = level.get(b.row, col);
+      if (nb === BLOCK.BAR || nb === BLOCK.BAR_PLATFORM) { this.x = nx; b.col = col; }   // stay on the bar row
+      this.facing = dir;
+      this._barSwing = Math.max(-0.5, Math.min(0.5, (this._barSwing || 0) + dir * 0.07));
+      this.walkTimer = (this.walkTimer || 0) + 0.25;
+    } else {
+      this._barSwing = (this._barSwing || 0) * 0.86;    // ease back toward vertical when idle
+    }
+    this.y = this._barLineY(b.row) - 2;                 // hands locked to the bar line
+  }
+
   _applyPhysics(level) {
     // ── Phase-through (noclip): move freely, ignore all block collisions ──
     if (this.canPhaseThrough) {
@@ -737,6 +813,7 @@ class Player {
         const feetAbove = (this.y + this.height) <= r * BLOCK_SIZE + 6;
         const oneWay = !this._dropThrough && feetAbove &&
           (level.get(r, bLeft) === BLOCK.ONEWAY_PLATFORM || level.get(r, bRight) === BLOCK.ONEWAY_PLATFORM ||
+           level.get(r, bLeft) === BLOCK.BAR_PLATFORM || level.get(r, bRight) === BLOCK.BAR_PLATFORM ||
            (!this._onLadder && (level.get(r, bLeft) === BLOCK.LADDER || level.get(r, bRight) === BLOCK.LADDER)));
         if (level.isSolid(r, bLeft) || level.isSolid(r, bRight) || oneWay) {
           this.y        = r * BLOCK_SIZE - this.height;
@@ -824,7 +901,7 @@ class Player {
       const leadCol = this.vx > 0 ? Math.floor((this.x + this.width - 1) / BLOCK_SIZE)
                                   : Math.floor(this.x / BLOCK_SIZE);
       const fb = level.get(footRow, leadCol);
-      const grounded = level.isSolid(footRow, leadCol) || fb === BLOCK.ONEWAY_PLATFORM || fb === BLOCK.LADDER;
+      const grounded = level.isSolid(footRow, leadCol) || fb === BLOCK.ONEWAY_PLATFORM || fb === BLOCK.BAR_PLATFORM || fb === BLOCK.LADDER;
       if (!grounded) {
         this.x = this.vx > 0 ? leadCol * BLOCK_SIZE - this.width : (leadCol + 1) * BLOCK_SIZE;
         this.vx = 0;
@@ -1257,6 +1334,9 @@ class Player {
     const crouch    = this.crouching;
     // Ledge hang / climb uses an articulated figure (waist + hip hinges) — its own path.
     if (this._hangState) { this._drawHangFigure(ctx, sx, sy); return; }
+    // §Classic Blocks — Bar: hang from a monkey-bar with arms reaching UP to the grip and the
+    // body swinging as a pendulum under it (physics-driven swing angle set in _updateBar).
+    if (this._barState) { this._drawBarFigure(ctx, sx, sy); return; }
     // §Classic Blocks — Ladder climb: a back-facing pose (hair, no face) with arms/legs
     // reaching in an alternating rhythm to mimic climbing the rungs.
     if (this._onLadder) { this._drawLadderClimb(ctx, sx, sy); return; }
@@ -1463,6 +1543,23 @@ class Player {
     const handY = this._gripY + (natY - this._gripY) * rel;
 
     this._drawFigureAt(ctx, SX(hipX), SY(hipY), torso, leg, SX(handX), SY(handY), facing);
+  }
+
+  // §Classic Blocks — Bar hang. Hands grip the bar at the top of the sprite; the hip hangs
+  // ~R below on a pendulum (swing angle `_barSwing`, + toward the current traverse direction),
+  // torso leaning INTO the swing and legs trailing the OTHER way for a natural arc. Reuses
+  // _drawFigureAt so limb proportions match the normal sprite (arms just reach UP to the bar).
+  _drawBarFigure(ctx, sx, sy) {
+    const facing = this.facing || 1;
+    const swing = this._barSwing || 0;
+    const handX = sx + this.width / 2, handY = sy + 2;   // grip = top-centre of the sprite
+    const R = 40;                                        // hand→hip reach (keeps limbs proportional)
+    const hipX = handX + Math.sin(swing) * R;
+    const hipY = handY + Math.cos(swing) * R;
+    const torso = swing * 0.55;                          // lean into the swing
+    const legTrail = Math.sin(this.walkTimer || 0) * 0.18 * (Math.abs(swing) > 0.02 ? 1 : 0);
+    const leg = -swing * 0.7 + legTrail;                 // legs trail the swing (+ a little kick when moving)
+    this._drawFigureAt(ctx, hipX, hipY, torso, leg, handX, handY, facing);
   }
 
   // Draw the blocky figure from a hip point with a waist angle (torso+head) and a

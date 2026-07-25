@@ -97,6 +97,8 @@ const BLOCK = Object.freeze({
   BREAKABLE_BLOCK:        78,   // solid brick; shatters when hit from below (may hold an item)
   PIPE_STEM:              79,   // (retired — the seamless 1×1 Warp Pipe replaces it; kept for old saves)
   SLIME_BLOCK:            80,   // solid bouncy block (same physics as the Trampoline, slime look)
+  BAR:                    81,   // non-solid monkey-bar; hang from the BAR at the block's BOTTOM, swing L/R, jump off
+  BAR_PLATFORM:           82,   // Bar + a Jump-Through platform on top: stand on top, drop through onto the bar
 });
 
 // Colour palette for decorative foliage (§10). Index 0 = green (default).
@@ -223,6 +225,8 @@ const BLOCK_DATA = {
   [BLOCK.BREAKABLE_BLOCK]:   { name: 'Breakable Block', hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
   [BLOCK.PIPE_STEM]:         { name: 'Pipe Stem',       hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
   [BLOCK.SLIME_BLOCK]:       { name: 'Slime Block',     hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
+  [BLOCK.BAR]:               { name: 'Bar',             hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
+  [BLOCK.BAR_PLATFORM]:      { name: 'Bar + Platform',  hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
 };
 
 // ── Pixel-art block renderers ────────────────────────────────
@@ -317,6 +321,8 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.CRUMBLE_BLOCK:          _drawCrumble(ctx, px, py, s, state.crumbling);   break;
     case BLOCK.BREAKABLE_BLOCK:        _drawBreakable(ctx, px, py, s, !!state.hasItem); break;
     case BLOCK.PIPE_STEM:              _drawWarpPipe(ctx, px, py, s, state, true);      break;
+    case BLOCK.BAR:                    _drawBar(ctx, px, py, s, false);                 break;
+    case BLOCK.BAR_PLATFORM:           _drawBar(ctx, px, py, s, true);                  break;
   }
 
   // Mining crack overlay
@@ -353,8 +359,9 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
       type !== BLOCK.PRESSURE_PLATE && type !== 33 /* REDSTONE_DUST */ &&
       type !== BLOCK.TRANSMITTER && type !== BLOCK.RECEIVER &&
       type !== BLOCK.RESPAWN_ANCHOR &&
-      type !== BLOCK.LADDER && type !== BLOCK.HIDDEN_BLOCK && type !== BLOCK.ONEWAY_PLATFORM &&
-      type !== BLOCK.COIN && type !== BLOCK.SPIKES) {
+      type !== BLOCK.LADDER && type !== BLOCK.HIDDEN_BLOCK && type !== BLOCK.COIN && type !== BLOCK.SPIKES &&
+      type !== BLOCK.TRAMPOLINE && type !== BLOCK.SLIME_BLOCK &&
+      type !== BLOCK.BAR && type !== BLOCK.BAR_PLATFORM) {   // springs/mostly-empty leave gaps → the box shows through
     ctx.strokeStyle = 'rgba(0,0,0,0.28)';
     ctx.lineWidth = 0.5;
     ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
@@ -1757,16 +1764,42 @@ function _drawHiddenBlock(ctx, px, py, s, editor) {
   ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = 'bold 14px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('?', px + s / 2, py + s / 2); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
 }
+// Jump-Through platform — now a FULL block (so the grapple/other mechanics see a surface), but
+// visually distinct: a solid top plank + a lighter, semi-transparent "slatted" body so it reads
+// as pass-through-from-below rather than a solid wall.
 function _drawOneWay(ctx, px, py, s) {
-  ctx.fillStyle = '#b9853f'; ctx.fillRect(px, py, s, 7);           // thin top platform
-  ctx.fillStyle = '#8a5f27'; ctx.fillRect(px, py + 5, s, 2);
-  ctx.strokeStyle = 'rgba(255,240,200,0.5)'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(px + s / 2 - 4, py + 12); ctx.lineTo(px + s / 2, py + 16); ctx.lineTo(px + s / 2 + 4, py + 12); ctx.stroke(); // ↓ hint
+  ctx.fillStyle = '#b9853f'; ctx.fillRect(px, py, s, 6);            // solid top plank (the stand-on surface)
+  ctx.fillStyle = '#8a5f27'; ctx.fillRect(px, py + 5, s, 2);       // plank underside line
+  ctx.fillStyle = 'rgba(160,120,60,0.45)'; ctx.fillRect(px, py + 7, s, s - 7);   // translucent body
+  ctx.strokeStyle = 'rgba(120,85,40,0.55)'; ctx.lineWidth = 1;     // vertical slats (see-through look)
+  for (let x = 5; x < s; x += 7) { ctx.beginPath(); ctx.moveTo(px + x + 0.5, py + 8); ctx.lineTo(px + x + 0.5, py + s - 1); ctx.stroke(); }
+  ctx.strokeStyle = 'rgba(255,240,200,0.6)'; ctx.beginPath();      // ↑ hint (jump up through)
+  ctx.moveTo(px + s / 2 - 4, py + s - 5); ctx.lineTo(px + s / 2, py + s - 9); ctx.lineTo(px + s / 2 + 4, py + s - 5); ctx.stroke();
 }
 // One pipe cell (Warp Pipe or Pipe Stem). Seamless: edges/highlights/mouth are drawn ONLY on
 // sides with no adjacent pipe (state.pipeT/B/L/R), so a 2×N cluster reads as one continuous pipe.
 // `stem` = a body-only cell (never draws the mouth lip). The mouth shows on a Warp Pipe cell whose
 // TOP is open (nothing pipe above) — the enterable opening.
+// Monkey-bar. The GRAB bar is a horizontal steel bar at the BOTTOM of the cell (so a grapple
+// anchoring to the block's bottom edge lines up with where you hang). `withPlatform` adds a
+// Jump-Through plank on top (the BAR_PLATFORM variant): stand on the plank, drop through onto
+// the bar. See-through everywhere except the plank + bar.
+function _drawBar(ctx, px, py, s, withPlatform) {
+  if (withPlatform) {
+    ctx.fillStyle = '#b9853f'; ctx.fillRect(px, py, s, 5);           // stand-on plank
+    ctx.fillStyle = '#8a5f27'; ctx.fillRect(px, py + 4, s, 2);
+  }
+  ctx.strokeStyle = 'rgba(150,152,160,0.55)'; ctx.lineWidth = 2;     // mounting posts down to the bar
+  const postTop = py + (withPlatform ? 6 : 1);
+  ctx.beginPath();
+  ctx.moveTo(px + 5.5, postTop); ctx.lineTo(px + 5.5, py + s - 5);
+  ctx.moveTo(px + s - 5.5, postTop); ctx.lineTo(px + s - 5.5, py + s - 5);
+  ctx.stroke();
+  const barY = py + s - 5;                                           // bar at the BOTTOM edge
+  ctx.fillStyle = '#8e9199'; ctx.fillRect(px, barY, s, 4);
+  ctx.fillStyle = '#c7ccd4'; ctx.fillRect(px, barY, s, 1);          // highlight
+  ctx.fillStyle = '#5c6068'; ctx.fillRect(px, barY + 3, s, 1);      // shade
+}
 function _drawWarpPipe(ctx, px, py, s, state = {}, stem = false) {
   const t = !!state.pipeT, b = !!state.pipeB, l = !!state.pipeL, r = !!state.pipeR;
   // Overdraw 1px INTO connected neighbors so sub-pixel tile rounding can't leave a seam.

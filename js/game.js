@@ -4968,6 +4968,7 @@ class Game {
     p._slideEnabled     = !!aws.slideEnabled;
     p._ladderLockX      = !!aws.ladderLockX;    // §Classic Blocks — force horizontal position while climbing
     p._ladderMidJump    = !!aws.ladderMidJump;  // §Classic Blocks — allow jumping off mid-ladder
+    p._barRequireGrab   = !!aws.barRequireGrab; // §Classic Blocks — Bar: require pressing Up to grab (else auto)
     p._slideInvincible  = !!aws.slideInvincible;
     p._slideDur         = Math.max(6, Math.min(120, aws.slideDurationFrames ?? 30));
     p._slideMult        = Math.max(1, Math.min(3, aws.slideSpeedMult ?? 1.6));
@@ -11492,7 +11493,10 @@ class Game {
           if (em) { this._startEmeraldPull(em); p._grapple = null; p._grappleOwn = false; return; }
         }
         const hitRow = Math.floor(g.hy / BLOCK_SIZE), hitCol = Math.floor(g.hx / BLOCK_SIZE);
-        if (this.level.isSolid(hitRow, hitCol)) {
+        // §Classic Blocks — the hook also grabs non-solid Jump-Through platforms (and grab Bars),
+        // so the grapple works on them even though the player can pass through.
+        const _hb = this.level.get(hitRow, hitCol);
+        if (this.level.isSolid(hitRow, hitCol) || _hb === BLOCK.ONEWAY_PLATFORM || _hb === BLOCK.BAR || _hb === BLOCK.BAR_PLATFORM) {
           // §follow-up — which FACE did the hook strike? (from its travel direction.) By
           // default the hook only anchors to a block's BOTTOM edge; a world setting widens
           // it to bottom+side or any. A disallowed face = no anchor → the hook retracts.
@@ -11562,7 +11566,8 @@ class Game {
     const _assist = this._worldAdvSettings.grappleSwingAssist ?? 'lean';
     if (_assist !== 'none') {
       const _dir = inp.isRight() ? 1 : inp.isLeft() ? -1 : 0;
-      if (_dir) GRAPPLE.accelerate(g.swing, _dir, _assist);
+      const _strength = this._worldAdvSettings.grappleSwingStrength ?? 0.5;   // world setting; lean was too strong at 1
+      if (_dir) GRAPPLE.accelerate(g.swing, _dir, _assist, _strength);
     }
     // §item5 — advance the pendulum, then block on terrain: stop dead if BEFORE the midpoint
     // (bottom of the arc), or wall-stop + drift back toward the midpoint if PAST it.
@@ -11589,6 +11594,15 @@ class Game {
   _grappleClimbHandoff(g) {
     const p = this.player, BS = BLOCK_SIZE;
     const acol = g.anchorCol, arow = g.anchorRow;
+    // §Classic Blocks — climbing the rope all the way to a BAR ends in a hang FROM the bar (you
+    // don't stand on top of a bar / can't climb up onto a Bar-Platform). Hand off to the bar state.
+    const _ab = this.level.get(arow, acol);
+    if (_ab === BLOCK.BAR || _ab === BLOCK.BAR_PLATFORM) {
+      this._endGrapple(false);
+      p._barCooldown = 0;
+      p._grabBar(arow, acol, p._barLineY(arow), this.input);
+      return;
+    }
     const blockTopY = arow * BS, blockCx = acol * BS + BS / 2;
     const side = Math.sign(blockCx - p.cx) || (p.facing || 1);   // climb toward the block
     p._hangSide = side;
@@ -16965,6 +16979,33 @@ class Game {
     }
     if (p._warpCooldown > 0) p._warpCooldown--;
 
+    // §Grapple + Crumble — a player hanging/swinging from a crumble block wears it down exactly as
+    // if standing on it; the moment it crumbles away the anchor is gone, so the grapple lets go
+    // (momentum preserved). Grapple is single-player, so this only applies to this.player.
+    if (p === this.player && p._grapple && p._grappleOwn && p._grapple.anchorRow != null &&
+        (p._grapple.state === 'attached' || p._grapple.state === 'swinging' || p._grapple.state === 'reeling')) {
+      const ar = p._grapple.anchorRow, ac = p._grapple.anchorCol, ab = L.get(ar, ac);
+      if (ab === BLOCK.CRUMBLE_BLOCK) this._crumbleTouch(ar, ac);
+      else if (ab === BLOCK.AIR) this._endGrapple(true);
+    }
+
+    // §Trampoline Jump-to-Boost — while the post-bounce window is open, a fresh Jump press timed
+    // to the upward motion adds a big extra boost. (Window/flags only exist when the world setting
+    // is on; see _trampolineBounce.)
+    if (p === this.player && p._trampWindow > 0) {
+      p._trampWindow--;
+      const jn = this.input && this.input.isJump();
+      if (!p._trampBoosted && jn && !p._trampJumpPrev && p.vy < 0 && !p.onGround) {
+        const boost = Math.min(11, 4 + (p._trampBaseLaunch || 9) * 0.28);
+        p.vy = Math.max(-34, p.vy - boost);
+        p._trampBoosted = true; p._trampWindow = 0;
+        if (this._notify) this._notify('Boost!', '#7fe08a', 40);
+        this._playSound('sounds/jump.mp3', 0.5);
+      }
+      p._trampJumpPrev = jn;
+      if (p.onGround) p._trampWindow = 0;
+    }
+
     const col0 = Math.floor((p.x + 2) / BS), col1 = Math.floor((p.x + p.width - 2) / BS);
     const row0 = Math.floor((p.y + 2) / BS), row1 = Math.floor((p.y + p.height - 2) / BS);
     const feetRow = Math.floor((p.y + p.height) / BS);
@@ -17076,9 +17117,22 @@ class Game {
     // Force-driven (slime-block style): a faster fall launches you higher. CONSERVES energy
     // (returns the impact speed) rather than adding it — the old ×1.18 gained energy every
     // bounce and eventually launched you off ("stopped working"). Small floor for a step-on hop.
+    const aws = this._worldAdvSettings || {};
     const impact = Math.max(p._preVy || 0, 0);
-    p.vy = -Math.min(26, Math.max(9, impact));
+    let launch = Math.min(26, Math.max(9, impact));
+    const primary = (p === this.player);
+    // §Early Jump Penalty (world setting) — HOLDING Jump at the instant the spring fires means
+    // you jumped too soon; the spring gives back less. Timing the button beats mashing it.
+    if (aws.trampEarlyPenalty && primary && this.input && this.input.isJump()) launch *= 0.6;
+    p.vy = -launch;
     p.onGround = false;
+    // §Jump to Boost (world setting) — open a short window; a FRESH jump press WHILE still rising
+    // adds a big upward boost (see the per-frame handler in _classicBlocksForPlayer). Seed the
+    // prev-jump flag TRUE so a button already held (the early-penalty case) can't auto-boost —
+    // you must release and re-press, timed to the upward motion.
+    if (primary && aws.trampJumpBoost) {
+      p._trampWindow = 14; p._trampBaseLaunch = launch; p._trampBoosted = false; p._trampJumpPrev = true;
+    }
     if (!this._trampFx) this._trampFx = new Map();
     this._trampFx.set(row + ',' + col, 10);             // spring compression frames (draw + tick)
     this._playSound('sounds/jump.mp3', 0.8);

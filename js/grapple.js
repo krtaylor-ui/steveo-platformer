@@ -29,6 +29,7 @@ const GRAPPLE = {
   MAX_ANGVEL: 0.22,          // cap angular velocity so a fast entry can't fling over the top
   LEAN_ACCEL: 0.0035,        // Swing Assist 'lean' — steady angVel added toward the held dir
   PUMP_ACCEL: 0.012,         // Swing Assist 'pump' — peak boost at the bottom of the arc
+  MAX_SWING_ANGLE: 1.5,      // hard arc limit (~86° from bottom) — can't swing OVER the anchor (no loop)
 
   // ── Cast (5a / 5e-5) ────────────────────────────────────────
   // March a straight ray from (sx,sy) along the UNIT dir (dx,dy) up to rangePx,
@@ -77,6 +78,11 @@ const GRAPPLE = {
     s.angVel = Math.max(-GRAPPLE.MAX_ANGVEL, Math.min(GRAPPLE.MAX_ANGVEL, s.angVel));
     s.theta += s.theta > Math.PI ? -2 * Math.PI : s.theta < -Math.PI ? 2 * Math.PI : 0; // wrap
     s.theta += s.angVel;
+    // Arc limit — can't swing over the top (no looping). Reflect back into the swing with damping
+    // so momentum still carries; gravity + this cap keep it a pendulum, not a merry-go-round.
+    const M = GRAPPLE.MAX_SWING_ANGLE;
+    if (s.theta > M) { s.theta = M; s.angVel = -Math.abs(s.angVel) * 0.5; }
+    else if (s.theta < -M) { s.theta = -M; s.angVel = Math.abs(s.angVel) * 0.5; }
     const feetCx = s.ax + s.len * Math.sin(s.theta);
     const feetY  = s.ay + s.len * Math.cos(s.theta);
     let ty = feetY - s.ph;
@@ -92,13 +98,15 @@ const GRAPPLE = {
   //            cos(θ) so it peaks at the bottom of the arc and fades at the extremes
   //            (rewards timing, the way you pump a playground swing).
   // No-ops when dir is 0 or mode is anything else. Result stays clamped to MAX_ANGVEL.
-  accelerate(s, dir, mode) {
+  // `strength` (default 1) scales how much energy the assist adds (World Setting → Swing Assist
+  // Strength). The MAX_SWING_ANGLE clamp in stepSwing then stops it looping regardless of strength.
+  accelerate(s, dir, mode, strength = 1) {
     if (!dir) return s.angVel;
     if (mode === 'lean') {
-      s.angVel += dir * GRAPPLE.LEAN_ACCEL;
+      s.angVel += dir * GRAPPLE.LEAN_ACCEL * strength;
     } else if (mode === 'pump') {
       const moving = s.angVel > 0 ? 1 : s.angVel < 0 ? -1 : dir;
-      if (dir === moving) s.angVel += dir * GRAPPLE.PUMP_ACCEL * Math.max(0, Math.cos(s.theta));
+      if (dir === moving) s.angVel += dir * GRAPPLE.PUMP_ACCEL * strength * Math.max(0, Math.cos(s.theta));
     }
     s.angVel = Math.max(-GRAPPLE.MAX_ANGVEL, Math.min(GRAPPLE.MAX_ANGVEL, s.angVel));
     return s.angVel;

@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 215 (Block-contents picker is now data-driven — a curated item/tool set PLUS every power-up from SB_POWERUP_TYPES (future power-ups auto-appear); power-up contents apply their effect on hit. Removal: the config popup opens ONLY when the matching block is selected (otherwise a click erases it), and there is a Remove Block button in each popup.)';
+const GAME_VERSION = 'v3 · build 216 (Cleanup batch: Jump-Through now reads as a filled block + the grapple attaches to it; dropped items render the real block/tool icon instead of a yellow square; a swing from a Crumbling block still crumbles it (and lets go when it falls); Swing-Assist strength is a world setting + a hard arc limit stops the loop-around; Trampoline Jump-to-Boost + Early-Jump Penalty settings; NEW Bar block (monkey-bar hang + traverse + flip-off, grapple works on it) plus a Bar+Platform variant.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

@@ -1,3 +1,18 @@
+## CURRENT STATE (2026-07-25) — build 216 (Classic-Blocks cleanup batch) LOCAL, headless-green, NOT pushed — awaiting Kevin's playtest
+
+**Build 216** is a "one last cleanup batch before Campaign mode" (committed locally, suite green, NOT yet pushed):
+1. **Jump-Through** now renders as a filled, visually-distinct block (solid top plank + translucent slatted body + ↑ hint) AND the **grappling hook attaches to it** (previously passed through).
+2. **Dropped items** (mob/block drops) now render the **real block icon** (scaled `drawBlock`) or a coloured tool token instead of the old yellow ✦ square.
+3. **Grapple + Crumbling block:** hanging/swinging from a Crumble block now wears it down as if standing on it; when it crumbles the grapple lets go (momentum preserved).
+4. **Swing-Assist strength** is now a world setting (`grappleSwingStrength`, default 0.5 — the old feel was an implicit 1.0 that looped the sprite) + a **hard arc limit** (`GRAPPLE.MAX_SWING_ANGLE = 1.5 rad`) so it can't swing over the top no matter how hard it's driven (gravity + reflect-at-cap). Tested (grapple invariant 7).
+5. **Trampoline "Jump to Boost"** + **"Early-Jump Penalty"** world settings: a fresh Jump timed to the upward bounce adds a big boost; holding Jump at contact (too soon) saps the launch.
+6. **NEW Bar block** (monkey-bar): non-solid; hang from the bar at the BOTTOM of the cell, ←→ traverse a row of bars with a physics body-swing (reuses `_drawFigureAt`), **Jump = launch off with the double-jump flip**, **Down+Jump = drop straight down**; auto-grip with a world setting (`barRequireGrab`) to require Up; the **grapple works on it** (climb the rope all the way → hang from the bar). Plus a **Bar+Platform** variant (Jump-Through plank on top: stand on it, drop through onto the bar, can't climb bar→platform). Bots skip auto-grip.
+7. Fixed the recurring **black edge-lines on Trampoline/Slime** (added to the see-through edge-shadow exclusion).
+Deferred to `FUTURE_ROADMAP.md`: dedicated per-mode front-ends, GOD-mode designer settings list.
+New blocks: `BLOCK.BAR = 81`, `BLOCK.BAR_PLATFORM = 82`. New settings: `grappleSwingStrength`, `trampJumpBoost`, `trampEarlyPenalty`, `barRequireGrab`.
+
+---
+
 ## CURRENT STATE (2026-07-25) — builds 196–215 ALL SHIPPED to `main` + deployed ✅
 
 Everything through **build 215** is live on Railway (`origin/main` @ 866d450). This spans the Combat & Controls

@@ -1900,17 +1900,26 @@ class ItemDrop {
     const sy  = Math.floor(this.y - camera.y + bob);
     if (sx < camera.viewMinX() - 20 || sx > camera.viewMaxX() + 20) return;
 
-    // Glowing item block
     const alpha = this.life < 300 ? (this.life / 300) : 1;
+    const SZ = 20, key = this.itemKey;
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.fillStyle   = '#FFD700';
-    ctx.fillRect(sx - 6, sy - 6, 12, 12);
-    ctx.fillStyle = '#FFF';
-    ctx.font = '8px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(this.amount > 1 ? this.amount : '✦', sx, sy);
+    // Render the ACTUAL item so a drop reads like the placed item: block ids via drawBlock
+    // (scaled/centred), tools/other as a coloured token with an initial.
+    if (typeof key === 'number' && key !== 0 && typeof drawBlock === 'function') {
+      ctx.save();
+      ctx.translate(sx - SZ / 2, sy - SZ / 2); ctx.scale(SZ / BLOCK_SIZE, SZ / BLOCK_SIZE);
+      try { drawBlock(ctx, key, 0, 0, 0, {}); } catch (e) { /* ignore */ }
+      ctx.restore();
+    } else {
+      const td = (typeof TOOL_DATA !== 'undefined') ? TOOL_DATA[key] : null;
+      ctx.fillStyle = (td && td.color) || '#FFD700';
+      ctx.fillRect(sx - 8, sy - 8, 16, 16);
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.strokeRect(sx - 8.5, sy - 8.5, 16, 16);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText((((td && td.name) || String(key)) + '?').charAt(0), sx, sy);
+    }
+    if (this.amount > 1) { ctx.fillStyle = '#fff'; ctx.font = 'bold 8px monospace'; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'; ctx.fillText(this.amount, sx + 10, sy + 11); }
     ctx.restore();
   }
 }

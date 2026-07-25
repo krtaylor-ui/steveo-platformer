@@ -124,5 +124,30 @@ console.log('Invariant 6 — swing assist (lean/pump):');
   ok(sCap.angVel <= GRAPPLE.MAX_ANGVEL + 1e-9, `lean stays clamped to MAX_ANGVEL (${sCap.angVel.toFixed(4)})`);
 }
 
+// 7 ── Swing Assist STRENGTH scales the push (World Setting), and the ARC LIMIT stops the
+//      swing looping over the top no matter how hard it's driven (§cleanup — lean was too strong).
+console.log('Invariant 7 — assist strength + arc limit (no loop):');
+{
+  // strength scales the lean push linearly.
+  const sA = GRAPPLE.beginSwing(300, 100, 340, 260, 20, 52, 0, 0);
+  const sB = GRAPPLE.beginSwing(300, 100, 340, 260, 20, 52, 0, 0);
+  const base0 = sA.angVel;
+  GRAPPLE.accelerate(sA, 1, 'lean', 0.5);
+  GRAPPLE.accelerate(sB, 1, 'lean', 1.0);
+  const dA = sA.angVel - base0, dB = sB.angVel - base0;
+  ok(Math.abs(dB - 2 * dA) < 1e-9, `strength 1.0 pushes 2× a 0.5 push (${dA.toFixed(4)} vs ${dB.toFixed(4)})`);
+
+  // hammer the swing at full strength for a long time; |theta| must never pass the arc limit.
+  const s = GRAPPLE.beginSwing(300, 100, 340, 260, 20, 52, 0, 0);
+  let maxAbs = 0;
+  for (let i = 0; i < 4000; i++) {
+    GRAPPLE.accelerate(s, 1, 'lean', 2);        // drive hard, always to the right
+    GRAPPLE.stepSwing(s, 0.66);
+    maxAbs = Math.max(maxAbs, Math.abs(s.theta));
+  }
+  ok(maxAbs <= GRAPPLE.MAX_SWING_ANGLE + 1e-6, `theta never exceeds the arc limit (max |θ|=${maxAbs.toFixed(3)} ≤ ${GRAPPLE.MAX_SWING_ANGLE})`);
+  ok(maxAbs < Math.PI, 'never swings over the top (|θ| < π) — no merry-go-round');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
