@@ -3031,7 +3031,7 @@ class Game {
           this._pipeLinkMode = null; this._notify('Pipe linked ✓', '#6FB6FF', 120);
         } else if (target === BLOCK.WARP_PIPE && this.sandbox.selectedBlock === BLOCK.WARP_PIPE) {
           this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'pipe' };        // config only with the pipe SELECTED
-        } else if ((target === BLOCK.QUESTION_BLOCK || target === BLOCK.BREAKABLE_BLOCK) && this.sandbox.selectedBlock === target) {
+        } else if ((target === BLOCK.QUESTION_BLOCK || target === BLOCK.BREAKABLE_BLOCK || target === BLOCK.HIDDEN_BLOCK) && this.sandbox.selectedBlock === target) {
           this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'contents' };     // config only with the matching block SELECTED
         } else if (this.sandbox.isDustSelected) {
           // Dust selected — click on existing solid block
@@ -17041,7 +17041,7 @@ class Game {
       // Hidden (non-solid): the block the head passed into → reveal + settle just below it.
       const hr2 = Math.floor((p.y + 2) / BS);
       for (let c = col0; c <= col1; c++) {
-        if (L.get(hr2, c) === BLOCK.HIDDEN_BLOCK) { this._revealHidden(hr2, c); p.y = (hr2 + 1) * BS; p.vy = 0; }
+        if (L.get(hr2, c) === BLOCK.HIDDEN_BLOCK) { this._revealHidden(hr2, c, p); p.y = (hr2 + 1) * BS; p.vy = 0; }
       }
     }
   }
@@ -17149,10 +17149,15 @@ class Game {
     this._collectCoin(p);
     this._playSound('sounds/item-collected.mp3', 0.85);
   }
-  _revealHidden(row, col) {
+  _revealHidden(row, col, p) {
     // Reveal = swap to a real solid block, so it becomes visible + collidable with no extra state.
+    // If the designer assigned CONTENTS, pop them just like a Question Block (coins auto-collect,
+    // power-ups apply, anything else rises out). Only an EXPLICIT assignment pops — a plain Hidden
+    // block just reveals (no world-default coin), preserving its classic secret-block behaviour.
+    const hasContent = !!(this._blockContents && this._blockContents.has(row + ',' + col));
     this.level.set(row, col, BLOCK.QUESTION_USED);
     this._playSound('sounds/placing-block.mp3', 0.7);
+    if (hasContent && p) this._popBlockContent(row, col, p);
   }
   _crumbleTouch(row, col) {
     if (this._crumbleTouched) this._crumbleTouched.add(row + ',' + col);   // marked; timing in _updateClassicBlocks
