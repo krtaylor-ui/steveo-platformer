@@ -90,7 +90,7 @@ class Player {
     // §Classic Blocks — Bar (monkey-bar hang). _barState = {row,col} while gripping; else null.
     this._barState = null; this._barSwing = 0; this._barCooldown = 0;
     this._barMoving = false; this._barMoveDir = 1; this._barReleasedRow = null;
-    this._barHands = null; this._barReach = -1;
+    this._barHands = null; this._barReach = -1; this._barAnchorX = null;
     this._gripX = 0; this._gripY = 0;  // world coords of the ledge corner the hands hold
     this._hangCooldown = 0;            // frames after a drop before re-grabbing
     this._downWas = false;             // edge-detect the down press for climb-down
@@ -753,7 +753,7 @@ class Player {
     const bodyX = this.x + this.width / 2;
     this._barHands = [ { x: bodyX - 4, y: 0, planted: true, from: 0, to: 0, t: 1 },
                        { x: bodyX + 4, y: 0, planted: true, from: 0, to: 0, t: 1 } ];
-    this._barReach = -1;
+    this._barReach = -1; this._barAnchorX = bodyX;
     this._jumpPressed = input ? input.isJump() : true;   // don't fire the jump-off from the same press that got you here
   }
   // Style presets for the Bar traverse animation (World Setting → Bar: Traverse Style). stride =
@@ -767,8 +767,8 @@ class Player {
       lunge:        { stride: 42, bodyShift: 0.66, rock: 7,   lift: 11, legSwing: 0.55, leanAmp: 0.85, bob: 4,   reachFactor: 2.4 },
       // Hybrids (Kevin): Big-Swing / Lunge body & leg motion, but Smooth's tight stride + a low
       // hand-lift so the hands stay near the bar instead of arcing high above it.
-      compactswing: { stride: 24, bodyShift: 0.78, rock: 6,   lift: 5,  legSwing: 0.42, leanAmp: 0.9,  bob: 4,   reachFactor: 1.6 },
-      compactlunge: { stride: 24, bodyShift: 0.66, rock: 6,   lift: 4,  legSwing: 0.55, leanAmp: 0.8,  bob: 4,   reachFactor: 2.4 },
+      compactswing: { stride: 24, bodyShift: 0.5,  rock: 5,   lift: 5,  legSwing: 0.42, leanAmp: 0.8,  bob: 4,   reachFactor: 1.6 },
+      compactlunge: { stride: 24, bodyShift: 0.44, rock: 5,   lift: 4,  legSwing: 0.55, leanAmp: 0.7,  bob: 4,   reachFactor: 2.4 },
     };
     return S[this._barTraverseStyle] || S.brachiation;
   }
@@ -781,27 +781,32 @@ class Player {
       hs[0].x += (bodyX - 4 - hs[0].x) * 0.2; hs[0].y *= 0.7; hs[0].planted = true;
       hs[1].x += (bodyX + 4 - hs[1].x) * 0.2; hs[1].y *= 0.7; hs[1].planted = true;
       this._barReach = -1;
-      return;
-    }
-    const base = this._barMoveSpeed || 2.4;
-    if (this._barReach < 0) {                     // decide when the trailing hand reaches ahead
-      const rear = (dir > 0) ? (hs[0].x <= hs[1].x ? 0 : 1) : (hs[0].x >= hs[1].x ? 0 : 1);
-      const front = 1 - rear;
-      if ((bodyX - hs[rear].x) * dir > st.stride * 0.55) {
-        const h = hs[rear];
-        h.from = h.x; h.to = hs[front].x + dir * st.stride; h.t = 0; h.planted = false;
-        this._barReach = rear;
+    } else {
+      const base = this._barMoveSpeed || 2.4;
+      if (this._barReach < 0) {                   // decide when the trailing hand reaches ahead
+        const rear = (dir > 0) ? (hs[0].x <= hs[1].x ? 0 : 1) : (hs[0].x >= hs[1].x ? 0 : 1);
+        const front = 1 - rear;
+        if ((bodyX - hs[rear].x) * dir > st.stride * 0.55) {
+          const h = hs[rear];
+          h.from = h.x; h.to = hs[front].x + dir * st.stride; h.t = 0; h.planted = false;
+          this._barReach = rear;
+        }
+      }
+      if (this._barReach >= 0) {                  // animate the reaching hand along a lifted arc
+        const h = hs[this._barReach];
+        h.t += (base / st.stride) * st.reachFactor;
+        const t = Math.min(1, h.t);
+        const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;   // ease-in-out
+        h.x = h.from + (h.to - h.from) * e;
+        h.y = -st.lift * Math.sin(Math.PI * t);
+        if (t >= 1) { h.y = 0; h.planted = true; this._barReach = -1; }
       }
     }
-    if (this._barReach >= 0) {                     // animate the reaching hand along a lifted arc
-      const h = hs[this._barReach];
-      h.t += (base / st.stride) * st.reachFactor;
-      const t = Math.min(1, h.t);
-      const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;   // ease-in-out
-      h.x = h.from + (h.to - h.from) * e;
-      h.y = -st.lift * Math.sin(Math.PI * t);
-      if (t >= 1) { h.y = 0; h.planted = true; this._barReach = -1; }
-    }
+    // Smoothed weight-shift anchor (world x). The raw anchor JUMPS when a hand lifts (planted set
+    // changes); easing toward it stops the hip from snapping between hands — that was the chop.
+    const planted = hs.filter(h => h.planted);
+    const target = planted.length ? planted.reduce((s, h) => s + h.x, 0) / planted.length : bodyX;
+    this._barAnchorX = (this._barAnchorX == null) ? target : this._barAnchorX + (target - this._barAnchorX) * 0.22;
   }
   // Hang physics: traverse Left/Right along the bar with a body swing; Jump = launch off with the
   // double-jump flip; Down+Jump = let go and drop straight down. Owns the frame (no gravity here).
@@ -1635,8 +1640,8 @@ class Player {
     const hands = (this._barHands || [{ x: this.x + this.width / 2 - 4, y: 0, planted: true },
                                        { x: this.x + this.width / 2 + 4, y: 0, planted: true }])
       .map(h => ({ sx: h.x + w2s, sy: barY + (h.y || 0), planted: h.planted }));
-    const planted = hands.filter(h => h.planted);
-    const anchorX = planted.length ? planted.reduce((s, h) => s + h.sx, 0) / planted.length : cx;
+    // Smoothed anchor (from _barStyleStep) → screen; eases the hip's weight-shift, no snapping.
+    const anchorX = (this._barAnchorX != null) ? this._barAnchorX + w2s : cx;
 
     // Continuous rock phase from body travel; hip shifts onto the anchor hand.
     const phase = (this.x + this.width / 2) / st.stride * Math.PI;
