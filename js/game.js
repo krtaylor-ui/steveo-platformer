@@ -4969,6 +4969,7 @@ class Game {
     p._ladderLockX      = !!aws.ladderLockX;    // §Classic Blocks — force horizontal position while climbing
     p._ladderMidJump    = !!aws.ladderMidJump;  // §Classic Blocks — allow jumping off mid-ladder
     p._barRequireGrab   = !!aws.barRequireGrab; // §Classic Blocks — Bar: require pressing Up to grab (else auto)
+    p._barMoveSpeed     = aws.barMoveSpeed || 2.4; // §Classic Blocks — Bar: hand-over-hand traverse speed
     p._slideInvincible  = !!aws.slideInvincible;
     p._slideDur         = Math.max(6, Math.min(120, aws.slideDurationFrames ?? 30));
     p._slideMult        = Math.max(1, Math.min(3, aws.slideSpeedMult ?? 1.6));

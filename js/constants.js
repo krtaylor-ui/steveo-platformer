@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 217 (Hidden Blocks can now hold contents too — set an item/power-up in the editor (same picker as Question/Breakable) and it pops when the hidden block is revealed from below; a plain Hidden block still just reveals with no drop. Build 216: Jump-Through fill + grapple; real dropped-item icons; grapple+crumble; Swing-Assist strength + arc limit; Trampoline Jump-to-Boost/Early-Penalty; NEW Bar + Bar+Platform blocks.)';
+const GAME_VERSION = 'v3 · build 218 (Bar polish: dropping straight down now catches the bar below (release cooldown is scoped to the bar you left); hand-over-hand two-arm traverse animation (one hand plants while the other reaches ahead; both grip at rest); a Bar Traverse Speed world setting; and a jump off the bar now counts as your second jump — no double-jump after it.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
