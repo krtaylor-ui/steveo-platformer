@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 219 (Bar traverse STYLES: a proper grip simulation (hands plant on the bar in world space, the hip shifts onto the weight-bearing hand, the torso rocks) with 4 selectable styles as a world setting — Smooth / Brachiation (default) / Big Swing / Lunge. See the style-lab comparison page.)';
+const GAME_VERSION = 'v3 · build 220 (Bar traverse styles: added two HYBRIDS — Compact Swing (default) = Big Swing’s body/leg motion with Smooth’s tight handholds + low hand-lift, and Compact Lunge = Lunge’s leg kick with tight handholds. Six styles total in the world setting; see the style-lab comparison page.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

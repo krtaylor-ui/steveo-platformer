@@ -761,10 +761,14 @@ class Player {
   // rock/bob = torso sway; lift = free-hand arc height; reachFactor = snatch briskness.
   _barStyleParams() {
     const S = {
-      smooth:      { stride: 24, bodyShift: 0.12, rock: 1.5, lift: 5,  legSwing: 0.08, leanAmp: 0.4,  bob: 1.2, reachFactor: 1.7 },
-      brachiation: { stride: 36, bodyShift: 0.55, rock: 6,   lift: 9,  legSwing: 0.24, leanAmp: 0.75, bob: 3,   reachFactor: 1.5 },
-      bigswing:    { stride: 48, bodyShift: 0.82, rock: 10,  lift: 13, legSwing: 0.42, leanAmp: 1.0,  bob: 5,   reachFactor: 1.35 },
-      lunge:       { stride: 42, bodyShift: 0.66, rock: 7,   lift: 11, legSwing: 0.55, leanAmp: 0.85, bob: 4,   reachFactor: 2.4 },
+      smooth:       { stride: 24, bodyShift: 0.12, rock: 1.5, lift: 5,  legSwing: 0.08, leanAmp: 0.4,  bob: 1.2, reachFactor: 1.7 },
+      brachiation:  { stride: 36, bodyShift: 0.55, rock: 6,   lift: 9,  legSwing: 0.24, leanAmp: 0.75, bob: 3,   reachFactor: 1.5 },
+      bigswing:     { stride: 48, bodyShift: 0.82, rock: 10,  lift: 13, legSwing: 0.42, leanAmp: 1.0,  bob: 5,   reachFactor: 1.35 },
+      lunge:        { stride: 42, bodyShift: 0.66, rock: 7,   lift: 11, legSwing: 0.55, leanAmp: 0.85, bob: 4,   reachFactor: 2.4 },
+      // Hybrids (Kevin): Big-Swing / Lunge body & leg motion, but Smooth's tight stride + a low
+      // hand-lift so the hands stay near the bar instead of arcing high above it.
+      compactswing: { stride: 24, bodyShift: 0.78, rock: 6,   lift: 5,  legSwing: 0.42, leanAmp: 0.9,  bob: 4,   reachFactor: 1.6 },
+      compactlunge: { stride: 24, bodyShift: 0.66, rock: 6,   lift: 4,  legSwing: 0.55, leanAmp: 0.8,  bob: 4,   reachFactor: 2.4 },
     };
     return S[this._barTraverseStyle] || S.brachiation;
   }
