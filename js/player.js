@@ -770,7 +770,7 @@ class Player {
       compactswing: { stride: 24, bodyShift: 0.5,  rock: 5,   lift: 5,  legSwing: 0.42, leanAmp: 0.8,  bob: 4,   reachFactor: 1.6 },
       compactlunge: { stride: 24, bodyShift: 0.44, rock: 5,   lift: 4,  legSwing: 0.55, leanAmp: 0.7,  bob: 4,   reachFactor: 2.4 },
     };
-    return S[this._barTraverseStyle] || S.brachiation;
+    return S[this._barTraverseStyle] || S.compactlunge;
   }
   // Advance the hand-over-hand grip simulation one frame. `dir` = traverse input (-1/0/1), `bodyX`
   // = the body-centre world x. Idle → both hands ease to a grip beside the body.
@@ -1656,17 +1656,20 @@ class Player {
     const hdX = shX + (HEAD * 0.55) * Math.sin(tA), hdY = shY - (HEAD * 0.55) * Math.cos(tA);
     const ftX = hipX + LL * Math.sin(legA), ftY = hipY + LL * Math.cos(legA);  // feet
 
-    // Draw order: back hand behind the head, front hand in front (sort by screen x).
-    const ordered = hands.slice().sort((a, b) => a.sx - b.sx);
+    // STABLE z-order: hand[0] is ALWAYS the back arm (drawn behind the head), hand[1] ALWAYS the
+    // front arm (drawn in front). Because each hand keeps its own layer, the reaching arm no longer
+    // pops in front of the head when it swings past — the depth stays consistent through the cycle.
+    const back = hands[0], front = hands[1];
     // Legs + shoes
     this._limbBar(ctx, hipX - 3 * facing, hipY, ftX - 3 * facing, ftY, 8, PANTS, EDGE);
     this._limbBar(ctx, hipX + 3 * facing, hipY, ftX + 3 * facing, ftY, 8, PANTS, EDGE);
     this._limbBar(ctx, ftX - 3 * facing, ftY, ftX - 3 * facing + 5 * facing, ftY + 2, 8, SHOE, EDGE);
     this._limbBar(ctx, ftX + 3 * facing, ftY, ftX + 3 * facing + 5 * facing, ftY + 2, 8, SHOE, EDGE);
+    // Back arm + back hand (behind the head)
+    this._limbBar(ctx, shX - 3 * facing, shY, back.sx, back.sy, 6, SHIRT, EDGE);
+    this._limbBar(ctx, back.sx - 2, back.sy, back.sx + 2, back.sy, 5, SKIN, EDGE);
     // Torso
     this._limbBar(ctx, hipX, hipY, shX, shY, 12, SHIRT, EDGE);
-    // Back arm → back hand
-    this._limbBar(ctx, shX - 3 * facing, shY, ordered[0].sx, ordered[0].sy, 6, SHIRT, EDGE);
     // Head
     ctx.save(); ctx.translate(hdX, hdY); ctx.rotate(tA);
     ctx.fillStyle = EDGE; ctx.fillRect(-HEAD / 2 - 1, -HEAD / 2 - 1, HEAD + 2, HEAD + 2);
@@ -1676,9 +1679,9 @@ class Player {
     ctx.fillStyle = '#1A50C0'; ctx.fillRect(3 * facing, -1, 2, 2);
     if (this._hasPonytail()) { const px = facing === 1 ? -HEAD / 2 - 2 : HEAD / 2; ctx.fillStyle = HAIR; ctx.fillRect(px, -1, 2, HEAD * 0.6); }
     ctx.restore();
-    // Front arm → front hand, then both hands
-    this._limbBar(ctx, shX + 3 * facing, shY, ordered[1].sx, ordered[1].sy, 6, SHIRT, EDGE);
-    for (const h of hands) this._limbBar(ctx, h.sx - 2, h.sy, h.sx + 2, h.sy, 5, SKIN, EDGE);
+    // Front arm + front hand (in front of the head)
+    this._limbBar(ctx, shX + 3 * facing, shY, front.sx, front.sy, 6, SHIRT, EDGE);
+    this._limbBar(ctx, front.sx - 2, front.sy, front.sx + 2, front.sy, 5, SKIN, EDGE);
   }
 
   // Draw the blocky figure from a hip point with a waist angle (torso+head) and a

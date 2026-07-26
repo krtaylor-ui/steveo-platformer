@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 221 (Bar traverse: softened the hybrids — reduced Compact Swing/Lunge body-shift and added a smoothed weight-shift anchor so the hip eases between hands instead of snapping (fixes the exaggerated/choppy look). Compact Swing is the default.)';
+const GAME_VERSION = 'v3 · build 222 (Bar traverse: stable arm z-order — each hand keeps a fixed front/back layer so the reaching arm no longer pops in front of the head. All six styles shipped; default is Compact Lunge.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
