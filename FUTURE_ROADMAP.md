@@ -40,6 +40,16 @@
   — groundwork for Campaign mode. Builds 68–72 = editor fixes + the Return‑to‑Sandbox playtest‑exit fix.
 
 ## 🔜 Still planned (not built)
+- **▶ CAMPAIGN MODE (§12) — THE NEXT MAJOR INITIATIVE.** As of 2026-07-26, Kevin is drafting a **large,
+  detailed prompt** that will cover: (a) the **Campaign Builder** (how designers sequence existing worlds
+  into a campaign — Kevin leans toward an explicit per-exit level *graph*, not a rigid ordered list —
+  assign which world each coloured Goal-Star exit routes to, flag bonus/secret levels); (b) **how you
+  play through** a campaign (progression save, cross-level carry-over of inventory/points/emeralds/lives
+  with health reset per level, game-over on zero lives); and (c) **likely changes to the main landing
+  page** (Campaign becoming a flagship entry point — see the §"Landing page / hub" notes below). Phase 1
+  groundwork already shipped (builds 67–72: multi-colour Goal Stars, `_wonExitColor`, scoring). **Do not
+  start building until Kevin's prompt lands** — the builder needs to be well thought out (his words). Full
+  design detail in §12 below.
 - **Dedicated per-mode front-ends ("Speed Runner" app + "Platformer" app)** *(idea captured 2026-07-25; deferred by Kevin until fleshed-out dedicated levels exist)* — streamlined landing/entry pages that present ONE mode as a finished game rather than the full build-platform. Feasible TODAY with no data-model change: worlds are already tagged by `mode`, auth is shared Supabase, and the community browser already filters by mode. **Recommended Approach B:** separate entry pages (e.g. `speedrun.html` / `platformer.html`) that boot straight into a mode-filtered curated list + leaderboard, hiding Sandbox/editor chrome; same accounts + same DB underneath. Est. ~one session per app (low–medium). **Blocked on:** a set of dedicated, fully-fleshed-out levels worth fronting — revisit once Campaign mode has produced them.
 - **GOD-mode designer settings list (Platformer)** *(idea captured 2026-07-25)* — hide the many minute UX/feel toggles (the "advanced" world settings) behind a **God/Designer mode** so a normal player sees a clean, short settings list while a designer can flip into the full expert set. Essentially a visibility tier on top of the existing `advanced: true` flag each setting already carries — likely a single "Designer Mode" switch that reveals all `advanced` rows regardless of their `dependsOn`. Low effort; deferred by Kevin ("future work for now").
 - **Combat & Controls mega-session follow-ups (deferred 2026-07-19; from the build 173–179 run):**
@@ -601,7 +611,11 @@ Movement config keys to fold in: `airJumpEnabled`, `autoStepUp`, `wallSlideEnabl
 
 ---
 
-## 12. Campaign mode — sequenced levels with branching exits  *(vision agreed 2026‑07‑07; Phase 1 SHIPPED to main, builds 67–72)*
+## 12. Campaign mode — sequenced levels with branching exits  *(vision agreed 2026‑07‑07; Phase 1 SHIPPED, builds 67–72; **Phase 2+ = NEXT — awaiting Kevin's detailed prompt, 2026‑07‑26**)*
+
+> **STATUS 2026-07-26:** This is the next thing we build. Kevin is writing a large, detailed prompt for the
+> **Campaign Builder + campaign playthrough + main-landing-page changes**. Everything below is the standing
+> vision; treat Kevin's incoming prompt as authoritative where it differs. Don't start until it lands.
 
 Kevin's vision: a playable **sequence of levels** (Mario-Bros-style) where each level leads to the next,
 with **secret levels** and **skip paths** — the different coloured Goal Stars are the branch exits. This is

@@ -212,3 +212,44 @@ Then: want coins in the HUD, configurable Question contents, a crumble warning s
 - **Removing these blocks:** the config popup now opens **only when the matching block is selected** in the
   palette (e.g. Question Block selected → click a placed Question Block to edit it) — otherwise a click **erases**
   it like any block. AND each popup has a **🗑 Remove Block** button as a direct option.
+
+---
+# Pass 10 — builds 216–222 (2026-07-26) — cleanup batch + the Bar block
+
+## Cleanup batch (build 216)
+- **Jump-Through** now renders as a **filled, visually-distinct block** (solid top plank + translucent slatted
+  body + ↑ hint) and the **grapple attaches to it** (was passing through — the hook now latches non-solid
+  ONEWAY_PLATFORM at its bottom edge).
+- **Dropped items** render the **real item** — a scaled `drawBlock` for block ids, a coloured tool token for
+  tool keys — instead of the old gold ✦ square (`ItemDrop.draw`).
+- **Grapple + Crumble** — hanging/swinging from a Crumble block wears it down as if stood on it; when it
+  crumbles the grapple lets go (momentum preserved) — see `_classicBlocksForPlayer`.
+- **Swing-Assist strength** world setting (`grappleSwingStrength`, dflt 0.5) + a hard **arc limit**
+  (`GRAPPLE.MAX_SWING_ANGLE = 1.5`) so it can't loop over the top (grapple invariant 7 covers it).
+- **Trampoline** `trampJumpBoost` + `trampEarlyPenalty` world settings (timed jump = boost; too-early = weaker).
+- Fixed the recurring **black edge-lines** on Trampoline/Slime springs (added to the see-through exclusion).
+
+## Hidden-Block contents (build 217)
+- Hidden blocks now use the **same contents picker** as Question/Breakable. `_revealHidden(row,col,p)` pops an
+  **explicitly-assigned** item/power-up on reveal (coins auto-collect, power-ups apply, else it rises); a plain
+  Hidden block with no assignment still just reveals — classic secret-block behaviour preserved.
+
+## The Bar block (builds 216–222)
+- **`BLOCK.BAR` (81)** + **`BLOCK.BAR_PLATFORM` (82)** — non-solid monkey-bar; the grab bar sits at the
+  **bottom** of the cell so a grapple anchoring to the block's bottom edge lines up with the hang. BAR_PLATFORM
+  adds a Jump-Through plank on top (stand on it, drop through onto the bar; can't climb bar→platform).
+- **Hang mechanics** (`_updateBar`, owns the frame like the ladder/warp): auto-grip when the hands reach a bar
+  (world setting `barRequireGrab` to require Up); **←→ traverse** a row of bars; **Jump** launches off with the
+  double-jump flip and **counts as the second jump** (no double-jump after); **Down+Jump** drops straight down.
+  Grapple works on it — climbing the rope all the way hands off into the hang. Bots skip auto-grip.
+- **Drop-catch fix (218):** the release cooldown is **scoped to the bar you just left** (by row) so dropping
+  straight down catches the bar below immediately, without sticking to the one you released.
+- **Hand-over-hand traverse (219–222):** a world-space **grip simulation** — each hand plants on the bar while
+  the body slides past, then lifts + reaches to the next hold; the hip **shifts onto the weight-bearing hand**
+  (smoothed anchor, no snap) and the torso rocks. **Six styles** in `barTraverseStyle` (default **Compact
+  Lunge**): Compact Lunge · Compact Swing · Smooth · Brachiation · Big Swing · Lunge, plus a `barMoveSpeed`
+  setting. **Stable arm z-order** — each hand keeps a fixed front/back draw layer so the reaching arm never
+  pops in front of the head. A **style-lab** page (scratchpad `bar-traverse-styles.html`, published as an
+  Artifact) mirrors the exact rendering for comparison/tuning.
+
+All builds 216–222 shipped to `main` + deployed. Suite green (67/67; grapple invariant 7 added).
