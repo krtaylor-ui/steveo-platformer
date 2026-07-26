@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 218 (Bar polish: dropping straight down now catches the bar below (release cooldown is scoped to the bar you left); hand-over-hand two-arm traverse animation (one hand plants while the other reaches ahead; both grip at rest); a Bar Traverse Speed world setting; and a jump off the bar now counts as your second jump — no double-jump after it.)';
+const GAME_VERSION = 'v3 · build 219 (Bar traverse STYLES: a proper grip simulation (hands plant on the bar in world space, the hip shifts onto the weight-bearing hand, the torso rocks) with 4 selectable styles as a world setting — Smooth / Brachiation (default) / Big Swing / Lunge. See the style-lab comparison page.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
