@@ -840,3 +840,64 @@ Currently 2-player co-op for Platformer/Normal is toggled from the Settings page
   infrastructure) is the interim solution until this redesign happens.
 
 **Effort:** LARGE — tied to the broader dashboard rebuild, not a standalone change.
+
+---
+
+## Moving Platforms + redstone Target Block  *(vision captured 2026‑07‑27; in design — Kevin to write a detailed prompt after we align on the redstone overlap)*
+
+**Kevin's vision.** Platforms that ride a designer‑drawn TRACK:
+- **Movement triggers:** (a) moves only while the player STANDS on it (stops when they step off);
+  (b) moves on its own automatically; (c) triggered by the player stepping on — then it does NOT stop.
+- **Path behaviour:** ONE‑WAY (doesn't return) or BOUNCE (back‑and‑forth along the path).
+- **The platform** = connected blocks the creator places.
+- **The track** = a separate PATH (reuse the Travel‑Tube placement engine — click waypoints).
+  Shown as a solid track, a non‑solid track, or an invisible non‑solid path.
+- **Direction blocks** (hit by the sprite OR shot with a ranged weapon) → flip the platform's
+  direction along the track.
+- **Conditional / switchable track pieces** that appear/rotate when a CONDITION is met:
+  a pressure plate pressed, a target block hit by an arrow, a block hit by the player. A piece can
+  **rotate down like a drawbridge** to connect two paths (if it isn't closed in time the platform
+  falls); or **appear out of a wall**. Switchable pieces can be invisible if the main track is.
+- **Redstone compatibility (the key ask):** the trigger blocks (direction‑turn + track
+  appear/disappear/rotate) should work with redstone. For consistency a transmitter/receiver can
+  pass a signal — BUT the main requirement: **if an ACTIVATED redstone‑dust path is TOUCHING a
+  trigger block, that should activate the block too** (even if it wasn't physically hit).
+- **New redstone item to add alongside: the TARGET BLOCK.** Hit by an arrow → sends a redstone
+  pulse, OR (designer option) toggles ON; if toggle mode, hitting it again with any attack
+  (arrow / trident / melee) turns it OFF.
+
+**Extra ideas (my additions for the platform system):**
+- Speed + easing per platform (constant, or ease at the ends of a bounce).
+- Pause‑at‑waypoints (dwell N frames at a marked stop) — great for timed puzzles.
+- "Sticky top" so riders (player, mobs, dropped items) move WITH the platform cleanly (the build‑225
+  depenetration already stops carry‑through‑solids; carrying needs a proper rider‑delta apply).
+- Carry mobs + dropped items, not just the player.
+- Multiple platforms per track (spaced) / a platform that spans a gap only while a drawbridge is down.
+- Collision: a platform pushing a player into a wall should shove/stop them (reuse depenetration).
+- Fall behaviour when a drawbridge times out (platform + rider drop; rider takes fall damage or not,
+  per setting).
+
+**MY RECOMMENDATION on the redstone question (do we flesh out redstone first?): YES — build a small
+redstone FOUNDATION first, then the platform is a clean consumer of it.** Reasons:
+1. The whole "trigger blocks → turn direction / show‑hide / rotate track" system IS a redstone
+   consumer. If we model triggers as redstone SINKS from day one, the drawbridge/appear/direction
+   logic all runs off one signal path — no bespoke wiring, and it composes with existing
+   levers/plates/pistons.
+2. The **Target Block** is a natural redstone SOURCE (pulse or toggle) — build it as part of the
+   foundation; it then powers platform triggers, pistons, doors, anything, for free.
+3. The "activated dust touching a trigger powers it" rule is a general **redstone‑adjacency** rule —
+   worth adding to the redstone engine once (helps all consumers), not special‑cased to platforms.
+
+**Suggested phase order:**
+- **Phase R (redstone foundation):** Target Block (pulse + toggle‑off‑on‑hit); the
+  adjacent‑activated‑dust‑powers‑a‑consumer rule; confirm transmitter/receiver still bridge. Small.
+- **Phase P1 (platform core):** platform = connected blocks; track via the tube placement engine
+  (solid/non‑solid/invisible); movement modes (rider‑powered / auto / triggered‑continuous);
+  one‑way vs bounce; rider carry (player first). Medium‑large.
+- **Phase P2 (triggers):** direction blocks (hit or shoot) + redstone‑driven direction flip.
+- **Phase P3 (switchable track):** drawbridge‑rotate, appear‑from‑wall, condition‑to‑show, invisible
+  switchables — all driven by the Phase‑R redstone signals; timeout‑fall behaviour.
+
+**Open questions for the detailed prompt:** how a platform's block‑group is authored + bound to a
+track; how the track direction maps to platform facing on turns; whether platforms collide with
+each other; multiplayer (do all riders move; who "owns" a rider‑powered platform).
