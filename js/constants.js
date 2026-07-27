@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 231 (Travel Tube v8: FIXED pass-in-front layering (glass now draws BEHIND the blocks, so the world reads in front of it; pass-behind = world behind glass; flyer always inside). BRANCHING more forgiving — wider catch radius + a steer buffer so holding a direction into a mid-tube junction reliably diverts; sandbox shows a YELLOW junction ring where a branch connects. New "Block Style" tube setting keeps the classic per-cell look; removed the mouth circles + made the end lips ~3.5x chunkier; both styles get the lip + rounded-bend support.)';
+const GAME_VERSION = 'v3 · build 232 (Travel Tube v9: proper FLOW GRAPH — a tube end meeting another tube’s MIDDLE now connects (you keep flowing through a merge instead of stopping/dropping), and the system remembers your per-axis direction so a merge defaults to the way you were going (steer to override). Mouth lips sit at the opening in both styles + are skipped at internal connections. Rounded bends rebuilt as a small fillet on BOTH inner + outer corners (flat mouths), in smooth AND block style.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

@@ -17501,48 +17501,80 @@ class Game {
   }
   // Dispatch a tube's glass to the SMOOTH band or classic BLOCK style (world setting), then the lips.
   _drawTubeGlass(ctx, tube) {
-    if (this._worldAdvSettings.tubeBlockStyle) this._drawTubeBlocksStyle(ctx, tube);
-    else this._drawTubeStroke(ctx, tube);
+    const block = !!this._worldAdvSettings.tubeBlockStyle;
+    const rounded = !!this._worldAdvSettings.tubeRoundedCorners;
+    this._fillTubeBand(ctx, tube, {
+      width: BLOCK_SIZE * 2.7,
+      corner: rounded ? (block ? 6 : 8) : 0,   // SMALL fillet on the bends (not the pipe radius)
+      fill: 'rgba(150,205,232,0.30)',
+      rim: 'rgba(190,225,242,0.6)',
+      seams: block,                            // block style overlays a cell grid
+    });
     this._drawTubeMouths(ctx, tube);
   }
-  // Smooth style — a continuous translucent band (rim + body) along the centerline; rounded joins
-  // when "Rounded Bends" is on. Body a touch narrower than the 3-cell footprint.
-  _drawTubeStroke(ctx, tube) {
-    const pts = this._tubePts(tube); if (pts.length < 2) return;
-    const cam = this.camera, BS = BLOCK_SIZE;
-    const rounded = !!this._worldAdvSettings.tubeRoundedCorners;
-    const bodyW = BS * 2.55;
-    ctx.save();
-    ctx.lineJoin = rounded ? 'round' : 'miter';
-    ctx.lineCap = rounded ? 'round' : 'butt';
-    const trace = () => { ctx.beginPath(); pts.forEach((p, i) => { const x = p.x - cam.x, y = p.y - cam.y; i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }); };
-    trace(); ctx.strokeStyle = 'rgba(190,225,242,0.5)'; ctx.lineWidth = bodyW + 3; ctx.stroke();   // rim
-    trace(); ctx.strokeStyle = 'rgba(150,205,232,0.30)'; ctx.lineWidth = bodyW; ctx.stroke();      // glass body
-    ctx.restore();
-  }
-  // Classic BLOCK style — per-cell translucent glass squares (slightly inset = a touch narrow body);
-  // "Rounded Bends" softens each cell to a rounded square.
-  _drawTubeBlocksStyle(ctx, tube) {
-    const cam = this.camera, BS = BLOCK_SIZE, inset = 2;
-    const rounded = !!this._worldAdvSettings.tubeRoundedCorners;
-    for (const key of this._tubeFoot(tube)) {
-      const i = key.indexOf(','), col = +key.slice(0, i), row = +key.slice(i + 1);
-      const x = col * BS - cam.x + inset, y = row * BS - cam.y + inset, w = BS - inset * 2, h = BS - inset * 2;
-      ctx.fillStyle = 'rgba(150,205,232,0.30)';
-      if (rounded && typeof _roundRect === 'function') { _roundRect(ctx, x, y, w, h, 6); ctx.fill(); } else ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = 'rgba(220,240,250,0.16)'; ctx.fillRect(x + 1, y + 1, w - 2, 3);
-      ctx.strokeStyle = 'rgba(190,225,242,0.55)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  // Fill a tube as one translucent band along its centerline. The outline is offset ±half-width and
+  // its BEND corners are rounded with a SMALL fillet (both inner + outer); the MOUTH ends stay FLAT
+  // (radius 0 — the lip covers them). Ends are extended half a cell so the band reaches the opening.
+  _fillTubeBand(ctx, tube, opts) {
+    const pts0 = this._tubePts(tube); if (pts0.length < 2) return;
+    const cam = this.camera, BS = BLOCK_SIZE, hw = opts.width / 2, r = opts.corner || 0;
+    const P = pts0.map(p => ({ x: p.x - cam.x, y: p.y - cam.y }));
+    const N = P.length;
+    const d0 = this._norm(P[1].x - P[0].x, P[1].y - P[0].y), dL = this._norm(P[N - 1].x - P[N - 2].x, P[N - 1].y - P[N - 2].y);
+    P[0] = { x: P[0].x - d0.x * BS / 2, y: P[0].y - d0.y * BS / 2 };             // extend ends to the opening face
+    P[N - 1] = { x: P[N - 1].x + dL.x * BS / 2, y: P[N - 1].y + dL.y * BS / 2 };
+    const dirs = []; for (let i = 0; i < N - 1; i++) dirs.push(this._norm(P[i + 1].x - P[i].x, P[i + 1].y - P[i].y));
+    const vpt = (i, side) => {
+      const a = dirs[Math.max(0, i - 1)], b = dirs[Math.min(dirs.length - 1, i)];
+      const na = { x: -a.y, y: a.x }, nb = { x: -b.y, y: b.x };
+      let mx = na.x + nb.x, my = na.y + nb.y; const ml = Math.hypot(mx, my) || 1; mx /= ml; my /= ml;
+      const len = hw / Math.max(0.35, na.x * mx + na.y * my);   // miter length
+      return { x: P[i].x + side * mx * len, y: P[i].y + side * my * len };
+    };
+    const left = [], right = [];
+    for (let i = 0; i < N; i++) { left.push(vpt(i, 1)); right.push(vpt(i, -1)); }
+    const outline = left.concat(right.reverse()), m = outline.length;
+    const radii = new Array(m).fill(r);
+    radii[0] = 0; radii[N - 1] = 0; radii[N] = 0; radii[m - 1] = 0;   // the 4 flat mouth-cap corners
+    const trace = () => {
+      ctx.beginPath();
+      ctx.moveTo((outline[m - 1].x + outline[0].x) / 2, (outline[m - 1].y + outline[0].y) / 2);
+      for (let i = 0; i < m; i++) { const c = outline[i], nx = outline[(i + 1) % m]; ctx.arcTo(c.x, c.y, (c.x + nx.x) / 2, (c.y + nx.y) / 2, radii[i]); }
+      ctx.closePath();
+    };
+    trace(); ctx.fillStyle = opts.fill; ctx.fill();
+    if (opts.seams) {   // block-style cell grid, clipped to the band
+      ctx.save(); trace(); ctx.clip();
+      ctx.strokeStyle = 'rgba(120,170,200,0.35)'; ctx.lineWidth = 1;
+      let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
+      for (const o of outline) { minx = Math.min(minx, o.x); miny = Math.min(miny, o.y); maxx = Math.max(maxx, o.x); maxy = Math.max(maxy, o.y); }
+      for (let x = Math.ceil((cam.x + minx) / BS) * BS; x < cam.x + maxx; x += BS) { const sx = x - cam.x; ctx.beginPath(); ctx.moveTo(sx, miny); ctx.lineTo(sx, maxy); ctx.stroke(); }
+      for (let y = Math.ceil((cam.y + miny) / BS) * BS; y < cam.y + maxy; y += BS) { const sy = y - cam.y; ctx.beginPath(); ctx.moveTo(minx, sy); ctx.lineTo(maxx, sy); ctx.stroke(); }
+      ctx.restore();
     }
+    trace(); ctx.strokeStyle = opts.rim; ctx.lineWidth = 1.5; ctx.stroke();
   }
-  // A chunky "pipe end" lip across each mouth (full width + a little overhang) — both styles. No cap
-  // circle; just the lip so the ends read as an opening.
+  // Is this mouth internally CONNECTED to another tube (a join/junction)? → no lip there.
+  _tubeMouthConnected(tube, m) {
+    if (!this._travelTubes) return false;
+    for (const o of this._travelTubes) {
+      if (o === tube) continue;
+      const np = TRAVEL_TUBE.nearest(this._tubePts(o), m.x, m.y);
+      if (np && Math.hypot(np.x - m.x, np.y - m.y) < BLOCK_SIZE * 1.4) return true;
+    }
+    return false;
+  }
+  // A chunky "pipe end" lip across each OPEN mouth — sat at the opening face (half a cell out from
+  // the centre point so it lines up in both styles). Skipped where a tube connects to another.
   _drawTubeMouths(ctx, tube) {
     const pts = this._tubePts(tube); if (pts.length < 2) return;
-    const cam = this.camera, BS = BLOCK_SIZE, lipLen = BS * 3 + 8, lipThick = 14;
+    const cam = this.camera, BS = BLOCK_SIZE, lipLen = BS * 3 + 6, lipThick = 14;
     for (const m of TRAVEL_TUBE.mouths(pts)) {
-      const mx = m.x - cam.x, my = m.y - cam.y, px = -m.dir.y, py = m.dir.x;
+      if (this._tubeMouthConnected(tube, m)) continue;   // internal connection → no lip
+      const ox = m.x + m.dir.x * BS / 2, oy = m.y + m.dir.y * BS / 2, px = -m.dir.y, py = m.dir.x;
+      const mx = ox - cam.x, my = oy - cam.y;
       ctx.save();
-      ctx.strokeStyle = 'rgba(120,170,205,0.85)'; ctx.lineWidth = lipThick; ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(120,170,205,0.9)'; ctx.lineWidth = lipThick; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(mx + px * lipLen / 2, my + py * lipLen / 2); ctx.lineTo(mx - px * lipLen / 2, my - py * lipLen / 2); ctx.stroke();
       ctx.restore();
     }
@@ -17573,6 +17605,7 @@ class Game {
     p._tubeDist = (m.end === 'start') ? 0 : TRAVEL_TUBE.length(pts);
     p._tubeDir = (m.end === 'start') ? 1 : -1;
     p._tubeBranchCD = 6;   // brief no-branch window so you don't instantly divert at the entry
+    p._tubeHeadingX = 0; p._tubeHeadingY = 0;   // reset the remembered flow direction for this ride
     p.vx = 0; p.vy = 0; p.onGround = false; p._grappleOwn = false;
     this._playSound('sounds/jump.mp3', 0.5);
   }
@@ -17604,6 +17637,12 @@ class Game {
     p.x = at.x - p.width / 2; p.y = at.y - p.height / 2;
     p._tubeAngle = at.ang + (p._tubeDir < 0 ? Math.PI : 0);   // head-first heading (for the draw)
     p.vx = 0; p.vy = 0; p.onGround = false;
+    // Remember the travel heading per axis (persists across branches until you exit) → used as the
+    // DEFAULT direction at a merge if you don't steer (e.g. entered moving left, detoured up, and
+    // reconnect to a horizontal tube → keep going left).
+    const mvx = Math.cos(at.ang) * p._tubeDir, mvy = Math.sin(at.ang) * p._tubeDir;
+    if (Math.abs(mvx) > 0.5) p._tubeHeadingX = Math.sign(mvx);
+    if (Math.abs(mvy) > 0.5) p._tubeHeadingY = Math.sign(mvy);
     // Steer buffer — remember the last held direction briefly, so holding a way (or a tap just
     // before the junction) reliably registers when we reach the branch mouth.
     const inp = this.input;
@@ -17627,46 +17666,54 @@ class Game {
     // nothing connects, this is an exit → eject. Each tube keeps its own mode, so a solid tube can
     // flow into a pass-behind one and back, all as a single ride.
     const ms = TRAVEL_TUBE.mouths(pts), m = (p._tubeDist <= 0) ? ms[0] : ms[1];
-    const next = this._tubeContinuation(tube, m);
-    if (next) {
-      p._tubeId = next.tube.id;
-      const nL = TRAVEL_TUBE.length(this._tubePts(next.tube));
-      if (next.end === 'start') { p._tubeDist = 0; p._tubeDir = 1; }
-      else { p._tubeDist = nL; p._tubeDir = -1; }
-      return;
-    }
+    const next = this._tubeFlowAt(tube, m, p);
+    if (next) { p._tubeId = next.tube.id; p._tubeDist = next.dist; p._tubeDir = next.dir; p._tubeBranchCD = 8; return; }
     p.x = m.x - p.width / 2 + m.dir.x * BLOCK_SIZE;
     p.y = m.y - p.height / 2 + m.dir.y * BLOCK_SIZE;
     p.vx = m.dir.x * 5; p.vy = m.dir.y * 5 + (m.dir.y < 0 ? -2 : 0);   // eject with a little pop
     p._tubeOwn = false; p._tubeId = null; p._tubeCooldown = 18;
     this._playSound('sounds/jump.mp3', 0.4);
   }
-  // Find the tube to flow into when leaving `fromTube` at `exitMouth` (another tube's mouth within
-  // ~1 cell). Multiple candidates = a junction: pick by held input direction, else the straightest.
-  _tubeContinuation(fromTube, exitMouth) {
+  _norm(x, y) { const m = Math.hypot(x, y) || 1; return { x: x / m, y: y / m }; }
+  // Where to FLOW when leaving `fromTube` at `exitMouth`. Candidates = other tubes' mouths at this
+  // node (mouth-to-mouth join) AND any tube whose MIDDLE this node lands on (a T-merge → continue
+  // along it in either direction). Pick: held input > remembered per-axis heading > straightest.
+  // Returns { tube, dist, dir } or null (→ exit/eject). This is what makes merges keep flowing
+  // (instead of dropping the player) and honours a default direction across branches.
+  _tubeFlowAt(fromTube, exitMouth, p) {
     if (!this._travelTubes) return null;
-    const cands = [];
+    const node = exitMouth, cands = [];
     for (const t of this._travelTubes) {
       const pts = this._tubePts(t); if (pts.length < 2) continue;
-      for (const mm of TRAVEL_TUBE.mouths(pts)) {
-        if (t === fromTube && mm.end === exitMouth.end) continue;   // don't bounce back out the way we came
-        if (Math.hypot(mm.x - exitMouth.x, mm.y - exitMouth.y) > BLOCK_SIZE * 1.2) continue;
-        cands.push({ tube: t, end: mm.end, inDir: { x: -mm.dir.x, y: -mm.dir.y } });   // inward = into that tube
+      const L = TRAVEL_TUBE.length(pts);
+      for (const mm of TRAVEL_TUBE.mouths(pts)) {   // endpoint join
+        if (t === fromTube && mm.end === exitMouth.end) continue;
+        if (Math.hypot(mm.x - node.x, mm.y - node.y) > BLOCK_SIZE * 1.4) continue;
+        cands.push({ tube: t, dist: mm.end === 'start' ? 0 : L, dir: mm.end === 'start' ? 1 : -1, idir: { x: -mm.dir.x, y: -mm.dir.y } });
+      }
+      if (t !== fromTube) {                          // mid-tube T-merge: node lands on t's centerline
+        const np = TRAVEL_TUBE.nearest(pts, node.x, node.y);
+        if (np && Math.hypot(np.x - node.x, np.y - node.y) < BLOCK_SIZE * 0.9 && np.d > BLOCK_SIZE * 0.5 && np.d < L - BLOCK_SIZE * 0.5) {
+          const fwd = TRAVEL_TUBE.pointAt(pts, Math.min(L, np.d + 4)), bwd = TRAVEL_TUBE.pointAt(pts, Math.max(0, np.d - 4));
+          cands.push({ tube: t, dist: np.d, dir: 1, idir: this._norm(fwd.x - np.x, fwd.y - np.y) });
+          cands.push({ tube: t, dist: np.d, dir: -1, idir: this._norm(bwd.x - np.x, bwd.y - np.y) });
+        }
       }
     }
     if (!cands.length) return null;
     const inp = this.input;
     const ix = (inp.isRight() ? 1 : 0) - (inp.isLeft() ? 1 : 0);
-    const up = (inp.isStickUp && inp.isStickUp()) || inp.isDown('KeyW') || inp.isDown('ArrowUp');
-    const iy = (inp.isCrouch() ? 1 : 0) - (up ? 1 : 0);
-    if (ix || iy) {                                  // steer: the branch whose direction you're pressing
-      let best = null, bestDot = 0.3;
-      for (const c of cands) { const d = c.inDir.x * ix + c.inDir.y * iy; if (d > bestDot) { bestDot = d; best = c; } }
-      if (best) return best;
+    const iy = (inp.isCrouch() ? 1 : 0) - (((inp.isStickUp && inp.isStickUp()) || inp.isDown('KeyW') || inp.isDown('ArrowUp')) ? 1 : 0);
+    const fwd = node.dir;   // the direction we were exiting (for the straightest tiebreak)
+    const headMatch = (c) => (Math.abs(c.idir.x) >= Math.abs(c.idir.y))
+      ? (p._tubeHeadingX && Math.sign(c.idir.x) === p._tubeHeadingX ? 1 : -1)
+      : (p._tubeHeadingY && Math.sign(c.idir.y) === p._tubeHeadingY ? 1 : -1);
+    let best = null, bestKey = -Infinity;
+    for (const c of cands) {
+      const si = (ix || iy) ? (c.idir.x * ix + c.idir.y * iy) : null;
+      const key = (si != null && si > 0.3) ? (1000 + si) : (100 * headMatch(c) + (c.idir.x * fwd.x + c.idir.y * fwd.y));
+      if (key > bestKey) { bestKey = key; best = c; }
     }
-    const fwd = exitMouth.dir;                       // default: keep going straightest
-    let best = cands[0], bestDot = -Infinity;
-    for (const c of cands) { const d = c.inDir.x * fwd.x + c.inDir.y * fwd.y; if (d > bestDot) { bestDot = d; best = c; } }
     return best;
   }
   // Item pickup while flying. Tube-DATA items (stored on the tube, not the grid) leave NO gap when
