@@ -2221,6 +2221,10 @@ class Game {
     if (this._comboTrainer) this._comboTrainer.update();   // §Combo Trainer — dummy upkeep + stats
     this._updateClassicBlocks();             // §Classic Blocks — trampoline/spikes/coin/conveyor/pipe/etc.
     this._updateTravelTubes();               // §Travel Tube — entry / fly-through / exit
+    // §Moving-platform collision — if a platform/piston/pushed block carried a player INTO a solid
+    // (tube wall, block, piston head), push them back out. Fixes "carried through the tube mouth"
+    // and, generally, collision not running when the player is displaced by something else.
+    if (this.gameMode !== 'sandbox') for (const pl of this.activePlayers()) this._resolveSolidOverlap(pl);
     // §Phase 7 v2 — facing lock while holding melee for a combo (set in _updateComboInput).
     if (this.player && this.player._comboFacingLock && this.player._comboLockFacing) this.player.facing = this.player._comboLockFacing;
     this._playMovementSfx(this.player);   // Smart Mobs §4 — footstep + landing SFX
@@ -6224,6 +6228,7 @@ class Game {
     if ((this._worldAdvSettings.showBotPaths || this._worldAdvSettings.showNavGrid) && this._botControllers && this._botControllers.length) this._drawBotDebug(ctx);
     // Sandbox WORLD overlays (placed eggs/emeralds/power-ups/hill/spawn-lines/items
     // + portal labels) must scale with the zoom too — draw them inside the transform.
+    try { this._drawTravelTubesFront(ctx); } catch (e) { /* ignore */ }   // §Travel Tube — pass-behind glass over entities
     if (this.gameMode === 'sandbox' && this.sandbox && this.sandbox.drawWorld) {
       this.sandbox.drawWorld(ctx, this.camera, this.frameCount);
       try { this._drawTravelTubesSandbox(ctx); if (this._tubeDraft) this._drawTubeDraft(ctx); } catch (e) { /* ignore */ }  // §Travel Tube outlines + draft
@@ -7651,7 +7656,8 @@ class Game {
     // §Travel Tube — the TUBE_WALL footprint cells restore with the grid; this restores the
     // fly-through PATHS (waypoints + speed) so travel works after a reload.
     if (data && Array.isArray(data.travelTubes)) {
-      this._travelTubes = data.travelTubes.map(t => ({ id: t.id, cells: t.cells || [], speed: t.speed || 7, visible: t.visible !== false }));
+      this._travelTubes = data.travelTubes.map(t => ({ id: t.id, cells: t.cells || [], speed: t.speed || 7,
+        mode: t.mode || (t.visible === false ? 'invisible' : 'solid') }));   // migrate old `visible` flag
       this._nextTubeId = this._travelTubes.reduce((m, t) => Math.max(m, t.id || 0), 0);
     }
   }
@@ -17197,6 +17203,35 @@ class Game {
     if (this._crumbleTouched) this._crumbleTouched.add(row + ',' + col);   // marked; timing in _updateClassicBlocks
   }
 
+  // §Moving-platform collision safety net. If `p`'s body box has become EMBEDDED in a solid (because
+  // a moving platform / piston / pushed block carried them into it — their own movement is already
+  // resolved by _applyPhysics), nudge them out along the nearest free axis and kill that velocity.
+  // Skipped while an owned-frame state (tube/pipe/grapple/bar/hang) is driving position itself.
+  _resolveSolidOverlap(p) {
+    if (!p || p.hp <= 0) return;
+    if (p._tubeOwn || p._pipeOwn || p._warp || p._grappleOwn || p._barState || p._hangState) return;
+    const BS = BLOCK_SIZE, L = this.level;
+    const embedded = (x, y) => {
+      const c0 = Math.floor((x + 4) / BS), c1 = Math.floor((x + p.width - 4) / BS);
+      const r0 = Math.floor((y + 4) / BS), r1 = Math.floor((y + p.height - 4) / BS);
+      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) if (L.isSolid(r, c)) return true;
+      return false;
+    };
+    if (!embedded(p.x, p.y)) return;
+    const max = BS + 8;                        // deepest push we'll attempt (≈ one cell)
+    let best = null;
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {   // prefer horizontal (the usual carry axis)
+      for (let d = 1; d <= max; d++) {
+        if (!embedded(p.x + dx * d, p.y + dy * d)) { if (!best || d < best.d) best = { dx, dy, d }; break; }
+      }
+    }
+    if (!best) return;
+    p.x += best.dx * best.d; p.y += best.dy * best.d;
+    if (best.dx) p.vx = 0;
+    if (best.dy < 0) { if (p.vy > 0) p.vy = 0; p.onGround = true; }   // pushed up → landed on the platform
+    else if (best.dy > 0 && p.vy < 0) p.vy = 0;                       // pushed down → bonk
+  }
+
   // ── §Travel Tube (v1) — placeable transparent path you fly through head-first ────────────
   // Cached centerline polyline for a tube (rebuilt if the waypoints change).
   _tubePts(tube) {
@@ -17222,7 +17257,7 @@ class Game {
     }
     this._travelTubes = this._travelTubes || [];
     this._nextTubeId = (this._nextTubeId || 0) + 1;
-    this._travelTubes.push({ id: this._nextTubeId, cells: d.cells.slice(), speed: this._worldAdvSettings.tubeDefaultSpeed || 7, visible: true });
+    this._travelTubes.push({ id: this._nextTubeId, cells: d.cells.slice(), speed: this._worldAdvSettings.tubeDefaultSpeed || 7, mode: 'solid' });
     this._notify('Travel Tube placed ✓ — click it to edit / delete', '#8fd0e6', 150);
   }
   // §Shared pipe-entry mechanic (Travel Tubes AND green Warp Pipes use the SAME rule). Returns true
@@ -17267,14 +17302,17 @@ class Game {
     for (const t of this._travelTubes) if (this._tubeFoot(t).has(key)) return t;
     return null;
   }
-  // Paint (or clear) a tube's footprint blocks to match its visibility. Invisible tubes leave AIR
-  // (the path still works — a hidden bonus route); visible tubes are solid glass.
-  _applyTubeVisibility(tube) {
+  // Paint (or clear) a tube's footprint blocks to match its MODE:
+  //   'solid'      → TUBE_WALL glass cells (collidable, drawn BEHIND the player).
+  //   'passBehind' → AIR (non-solid, you walk through) + glass drawn in FRONT (you pass behind it).
+  //   'invisible'  → AIR, no glass (a hidden-bonus route; only the sandbox dashed outline shows it).
+  _applyTubeMode(tube) {
+    const solid = (tube.mode || 'solid') === 'solid';
     for (const key of this._tubeFoot(tube)) {
       const i = key.indexOf(','), col = +key.slice(0, i), row = +key.slice(i + 1);
       const b = this.level.get(row, col);
-      if (tube.visible === false) { if (b === BLOCK.TUBE_WALL) this.level.set(row, col, BLOCK.AIR); }
-      else if (b === BLOCK.AIR || b === BLOCK.TUBE_WALL) this.level.set(row, col, BLOCK.TUBE_WALL);
+      if (solid) { if (b === BLOCK.AIR || b === BLOCK.TUBE_WALL) this.level.set(row, col, BLOCK.TUBE_WALL); }
+      else if (b === BLOCK.TUBE_WALL) this.level.set(row, col, BLOCK.AIR);
     }
   }
   _deleteTube(tube) {
@@ -17297,7 +17335,11 @@ class Game {
     if (hit(px + pw - 30, py + 6, 24, 24) || mx < px || mx > px + pw || my < py || my > py + ph) { this._tubePopup = null; return; }
     const speeds = [5, 7, 10, 14];
     if (hit(px + 14, py + 54, pw - 28, 32)) { const i = speeds.indexOf(tube.speed); tube.speed = speeds[(i + 1) % speeds.length] || 7; return; }
-    if (hit(px + 14, py + 92, pw - 28, 32)) { tube.visible = (tube.visible === false); this._applyTubeVisibility(tube); return; }
+    if (hit(px + 14, py + 92, pw - 28, 32)) {
+      const modes = ['solid', 'passBehind', 'invisible'];
+      tube.mode = modes[(modes.indexOf(tube.mode || 'solid') + 1) % modes.length];
+      this._applyTubeMode(tube); return;
+    }
     if (hit(px + 14, py + ph - 44, pw - 28, 32)) { this._deleteTube(tube); this._tubePopup = null; this._notify('Tube deleted', '#c66', 100); return; }
   }
   _drawTubePopup(ctx) {
@@ -17317,8 +17359,9 @@ class Game {
       ctx.fillStyle = warn ? '#d7a6f0' : '#e7f4fa'; ctx.font = 'bold 12px system-ui, sans-serif';
       ctx.textAlign = 'right'; ctx.fillText(val, px + pw - 26, y + 9); ctx.textAlign = 'left';
     };
+    const LOOK = { solid: 'Solid glass', passBehind: 'Pass-behind (walk behind)', invisible: 'Invisible (hidden bonus)' };
     row(py + 54, 'Speed', (tube.speed || 7) + ' px', false);
-    row(py + 92, 'Look', tube.visible === false ? 'Invisible (hidden bonus)' : 'Visible', tube.visible === false);
+    row(py + 92, 'Look', LOOK[tube.mode || 'solid'], (tube.mode || 'solid') !== 'solid');
     ctx.fillStyle = '#4a1f2a'; _roundRect(ctx, px + 14, py + ph - 44, pw - 28, 32, 6); ctx.fill();
     ctx.fillStyle = '#ffb3c0'; ctx.font = 'bold 12px system-ui, sans-serif';
     ctx.textAlign = 'center'; ctx.fillText('🗑  Delete Tube', px + pw / 2, py + ph - 35); ctx.textAlign = 'left';
@@ -17329,10 +17372,11 @@ class Game {
   _drawTravelTubesSandbox(ctx) {
     if (!this._travelTubes || !this._travelTubes.length) return;
     const cam = this.camera;
+    const COL = { solid: 'rgba(140,208,230,0.65)', passBehind: 'rgba(120,220,180,0.85)', invisible: 'rgba(168,130,235,0.9)' };
     ctx.save(); ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
     for (const t of this._travelTubes) {
       const pts = this._tubePts(t); if (pts.length < 2) continue;
-      ctx.strokeStyle = (t.visible === false) ? 'rgba(168,130,235,0.9)' : 'rgba(140,208,230,0.65)';
+      ctx.strokeStyle = COL[t.mode || 'solid'] || COL.solid;
       ctx.beginPath();
       pts.forEach((p, i) => { const x = p.x - cam.x, y = p.y - cam.y; i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
       ctx.stroke();
@@ -17340,6 +17384,22 @@ class Game {
       for (const m of TRAVEL_TUBE.mouths(pts)) { ctx.beginPath(); ctx.arc(m.x - cam.x, m.y - cam.y, 4, 0, Math.PI * 2); ctx.fill(); }
     }
     ctx.setLineDash([]); ctx.restore();
+  }
+  // Front glass pass (after entities): pass-behind tubes draw their glass OVER the player so an
+  // out-of-tube player appears to walk BEHIND the tube. Drawn inside the world zoom transform.
+  _drawTravelTubesFront(ctx) {
+    if (!this._travelTubes) return;
+    const cam = this.camera, BS = BLOCK_SIZE;
+    for (const t of this._travelTubes) {
+      if ((t.mode || 'solid') !== 'passBehind') continue;
+      for (const key of this._tubeFoot(t)) {
+        const i = key.indexOf(','), col = +key.slice(0, i), row = +key.slice(i + 1);
+        const x = col * BS - cam.x, y = row * BS - cam.y;
+        ctx.fillStyle = 'rgba(150,205,232,0.30)'; ctx.fillRect(x, y, BS, BS);
+        ctx.fillStyle = 'rgba(220,240,250,0.16)'; ctx.fillRect(x + 2, y + 2, BS - 4, 3);
+        ctx.strokeStyle = 'rgba(190,225,242,0.55)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, BS - 1, BS - 1);
+      }
+    }
   }
   _enterTube(p, tube, pts, m) {
     p._tubeOwn = true; p._tubeId = tube.id;

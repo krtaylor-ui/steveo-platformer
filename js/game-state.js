@@ -246,7 +246,7 @@ const GAME_STATE = {
       pipeLinks:      game._pipeLinks ? [...game._pipeLinks.entries()] : [],
       pipeEntry:      game._pipeEntry ? [...game._pipeEntry.entries()] : [],
       blockContents:  game._blockContents ? [...game._blockContents.entries()] : [],
-      travelTubes:    game._travelTubes ? game._travelTubes.map(t => ({ id: t.id, cells: t.cells, speed: t.speed, visible: t.visible !== false })) : [],
+      travelTubes:    game._travelTubes ? game._travelTubes.map(t => ({ id: t.id, cells: t.cells, speed: t.speed, mode: t.mode || 'solid' })) : [],
       worldAdvSettings: game._worldAdvSettings
         ? JSON.parse(JSON.stringify(game._worldAdvSettings))
         : null,
