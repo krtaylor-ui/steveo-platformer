@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 233 (Travel Tube v10: SEAMLESS junctions — connected tubes are now filled as one UNION (rim behind, glass on top) so a branch merges into the main tube like a real T-junction (rounded if enabled) instead of visibly intersecting, with no darker overlap patch. Lips only on open ends. Should be the last tube pass before going live.)';
+const GAME_VERSION = 'v3 · build 234 (Travel Tube v11: FIXED solid-wall break — a non-solid tube can no longer punch a hole in a SOLID tube where they meet (grid is rebuilt so any solid tube’s cell always wins), so you can’t fall in at the join. Union rendering now forces consistent winding (same-mode overlaps truly merge instead of showing a seam), and a pass-behind tube’s glass is clipped OUT of solid-tube cells so it connects INTO a solid pipe without doubling up.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

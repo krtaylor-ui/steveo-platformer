@@ -7681,6 +7681,7 @@ class Game {
       this._travelTubes = data.travelTubes.map(t => ({ id: t.id, cells: t.cells || [], speed: t.speed || 7,
         mode: t.mode || (t.visible === false ? 'invisible' : 'solid'), items: t.items || [] }));   // migrate old `visible` flag
       this._nextTubeId = this._travelTubes.reduce((m, t) => Math.max(m, t.id || 0), 0);
+      this._tubeCells = null; this._reapplyTubeGrid();   // sync solid walls + init tracking
     }
   }
 
@@ -17282,7 +17283,7 @@ class Game {
     this._nextTubeId = (this._nextTubeId || 0) + 1;
     const tube = { id: this._nextTubeId, cells: d.cells.slice(), speed: this._worldAdvSettings.tubeDefaultSpeed || 7, mode: 'solid' };
     this._travelTubes.push(tube);
-    this._applyTubeMode(tube);   // paints the glass (solid = only over empty, item-free cells)
+    this._reapplyTubeGrid();
     this._notify('Travel Tube placed ✓ — click it to edit / delete', '#8fd0e6', 150);
   }
   // Is a non-grid item (emerald / power-up / dropped item / spawn egg) placed at this cell? Solid
@@ -17344,33 +17345,39 @@ class Game {
   //   'solid'      → TUBE_WALL glass cells (collidable, drawn BEHIND the player).
   //   'passBehind' → AIR (non-solid, you walk through) + glass drawn in FRONT (you pass behind it).
   //   'invisible'  → AIR, no glass (a hidden-bonus route; only the sandbox dashed outline shows it).
-  _applyTubeMode(tube) {
-    const solid = (tube.mode || 'solid') === 'solid';
-    for (const key of this._tubeFoot(tube)) {
-      const i = key.indexOf(','), col = +key.slice(0, i), row = +key.slice(i + 1);
-      const b = this.level.get(row, col);
-      // Solid glass only goes over EMPTY, item-free cells — it can't pass through blocks or items.
-      if (solid) { if ((b === BLOCK.AIR || b === BLOCK.TUBE_WALL) && !this._cellHasPlacedItem(row, col)) this.level.set(row, col, BLOCK.TUBE_WALL); }
-      else if (b === BLOCK.TUBE_WALL) this.level.set(row, col, BLOCK.AIR);
+  // Rebuild the TUBE_WALL collision grid from ALL tubes at once. A cell is solid iff ANY SOLID tube
+  // covers it — so a non-solid tube crossing a solid one can NEVER punch a hole in the solid wall
+  // (that was the "player falls into the solid tube at the join" bug). Stale cells (from a moved /
+  // deleted tube) are cleared. Solid glass still won't overwrite real blocks or placed items.
+  _reapplyTubeGrid() {
+    const solidCells = new Set();
+    for (const t of this._travelTubes || []) {
+      if ((t.mode || 'solid') !== 'solid') continue;
+      for (const key of this._tubeFoot(t)) solidCells.add(key);
     }
-  }
-  _clearTubeBlocks(tube) {   // clear a tube's glass cells (keeps the tube record)
-    for (const key of this._tubeFoot(tube)) {
+    const prev = this._tubeCells || new Set();
+    for (const key of prev) if (!solidCells.has(key)) {   // no longer solid → clear our old wall cell
       const i = key.indexOf(','), col = +key.slice(0, i), row = +key.slice(i + 1);
       if (this.level.get(row, col) === BLOCK.TUBE_WALL) this.level.set(row, col, BLOCK.AIR);
     }
+    const now = new Set();
+    for (const key of solidCells) {
+      const i = key.indexOf(','), col = +key.slice(0, i), row = +key.slice(i + 1);
+      const b = this.level.get(row, col);
+      if ((b === BLOCK.AIR || b === BLOCK.TUBE_WALL) && !this._cellHasPlacedItem(row, col)) { this.level.set(row, col, BLOCK.TUBE_WALL); now.add(key); }
+    }
+    this._tubeCells = now;
   }
   _deleteTube(tube) {
-    this._clearTubeBlocks(tube);
     this._travelTubes = (this._travelTubes || []).filter(t => t !== tube);
     if (this._tubeEditNodes && this._tubeEditNodes.id === tube.id) this._tubeEditNodes = null;
+    this._reapplyTubeGrid();
   }
   // ── §Travel Tube node editing — drag the path's waypoints without redrawing it ──
   _moveTubeNode(tube, idx, col, row) {
-    this._clearTubeBlocks(tube);              // remove old glass (from the cached footprint)
     tube.cells[idx] = { col, row };
     tube._pts = null; tube._foot = null;      // invalidate derived geometry → recomputed on next use
-    this._applyTubeMode(tube);                // repaint glass at the new footprint
+    this._reapplyTubeGrid();
   }
   _tubeNodeEditClick(row, col) {
     const ed = this._tubeEditNodes;
@@ -17393,11 +17400,10 @@ class Game {
     }
   }
   _extendTubeNode(tube, end, col, row) {
-    this._clearTubeBlocks(tube);
     if (end === 'end') tube.cells.push({ col, row });
     else tube.cells.unshift({ col, row });
     tube._pts = null; tube._foot = null;
-    this._applyTubeMode(tube);
+    this._reapplyTubeGrid();
   }
   _drawTubeNodeEdit(ctx) {
     const ed = this._tubeEditNodes; if (!ed) return;
@@ -17430,7 +17436,7 @@ class Game {
     if (hit(px + 14, py + 92, pw - 28, 32)) {
       const modes = ['solid', 'passBehind', 'passFront', 'invisible'];
       tube.mode = modes[(modes.indexOf(tube.mode || 'solid') + 1) % modes.length];
-      this._applyTubeMode(tube); return;
+      this._reapplyTubeGrid(); return;
     }
     if (hit(px + 14, py + 130, pw - 28, 32)) {   // Edit Nodes → node-drag mode
       this._tubeEditNodes = { id: tube.id, sel: -1 }; this._tubePopup = null;
@@ -17525,6 +17531,10 @@ class Game {
     const outline = left.concat(right.reverse()), m = outline.length;
     const radii = new Array(m).fill(r);
     radii[0] = 0; radii[N - 1] = 0; radii[N] = 0; radii[m - 1] = 0;   // the 4 flat mouth-cap corners
+    // Force a CONSISTENT winding across all tubes so overlapping subpaths UNION under nonzero fill
+    // (opposite windings would cancel to a hole where two tubes cross). Reverse outline + radii together.
+    let area = 0; for (let i = 0; i < m; i++) { const a = outline[i], b = outline[(i + 1) % m]; area += a.x * b.y - b.x * a.y; }
+    if (area > 0) { outline.reverse(); radii.reverse(); }
     ctx.moveTo((outline[m - 1].x + outline[0].x) / 2, (outline[m - 1].y + outline[0].y) / 2);
     for (let i = 0; i < m; i++) { const c = outline[i], nx = outline[(i + 1) % m]; ctx.arcTo(c.x, c.y, (c.x + nx.x) / 2, (c.y + nx.y) / 2, radii[i]); }
     ctx.closePath();
@@ -17588,7 +17598,21 @@ class Game {
   // appears BEHIND the glass.
   _drawTravelTubesFront(ctx) {
     if (!this._travelTubes) return;
-    this._drawTubeGroup(ctx, this._travelTubes.filter(t => (t.mode || 'solid') === 'passBehind'));
+    const tubes = this._travelTubes.filter(t => (t.mode || 'solid') === 'passBehind');
+    if (!tubes.length) return;
+    // Clip OUT solid-tube cells so a pass-behind tube's glass stops at a solid tube's wall instead of
+    // drawing a second layer of glass over it (that was the "doubling up at the join" look). The
+    // solid tube keeps its own glass (drawn in the back pass); the pass-behind tube reads as
+    // connecting INTO it.
+    ctx.save();
+    if (this._tubeCells && this._tubeCells.size) {
+      const cam = this.camera, BS = BLOCK_SIZE;
+      ctx.beginPath(); ctx.rect(-100000, -100000, 200000, 200000);
+      for (const key of this._tubeCells) { const i = key.indexOf(','), c = +key.slice(0, i), r = +key.slice(i + 1); ctx.rect(c * BS - cam.x, r * BS - cam.y, BS, BS); }
+      ctx.clip('evenodd');
+    }
+    this._drawTubeGroup(ctx, tubes);
+    ctx.restore();
   }
   // The tube the player is FLYING through gets its glass drawn OVER the player (solid + pass-in-front;
   // pass-behind is already covered by the front pass) so the traveler always looks INSIDE the glass.
@@ -17791,10 +17815,9 @@ class Game {
   }
   _deleteTubeNode(tube, idx) {
     if (!tube || tube.cells.length <= 2) { this._notify('Can’t delete — a tube needs 2 points', '#c66', 100); return; }
-    this._clearTubeBlocks(tube);
     tube.cells.splice(idx, 1);
     tube._pts = null; tube._foot = null;
-    this._applyTubeMode(tube);
+    this._reapplyTubeGrid();
     this._notify('Node deleted', '#8fd0e6', 80);
   }
   // Draft preview (sandbox): the waypoint path being drawn.
