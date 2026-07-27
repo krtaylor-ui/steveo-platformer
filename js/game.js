@@ -17500,35 +17500,24 @@ class Game {
     ctx.restore();
   }
   // Dispatch a tube's glass to the SMOOTH band or classic BLOCK style (world setting), then the lips.
-  _drawTubeGlass(ctx, tube) {
-    const block = !!this._worldAdvSettings.tubeBlockStyle;
-    const rounded = !!this._worldAdvSettings.tubeRoundedCorners;
-    this._fillTubeBand(ctx, tube, {
-      width: BLOCK_SIZE * 2.7,
-      corner: rounded ? (block ? 6 : 8) : 0,   // SMALL fillet on the bends (not the pipe radius)
-      fill: 'rgba(150,205,232,0.30)',
-      rim: 'rgba(190,225,242,0.6)',
-      seams: block,                            // block style overlays a cell grid
-    });
-    this._drawTubeMouths(ctx, tube);
-  }
-  // Fill a tube as one translucent band along its centerline. The outline is offset ±half-width and
-  // its BEND corners are rounded with a SMALL fillet (both inner + outer); the MOUTH ends stay FLAT
-  // (radius 0 — the lip covers them). Ends are extended half a cell so the band reaches the opening.
-  _fillTubeBand(ctx, tube, opts) {
+  // Add ONE tube's band outline (offset ±half-width, small filleted bends, FLAT mouth caps, ends
+  // extended half a cell to the opening) as a closed subpath to the CURRENT ctx path — no fill/stroke.
+  // Filling several tubes' subpaths together with nonzero winding UNIONS them (overlaps count once),
+  // which is what makes connected tubes merge seamlessly instead of stacking a darker overlap.
+  _addTubeBandPath(ctx, tube, width, corner) {
     const pts0 = this._tubePts(tube); if (pts0.length < 2) return;
-    const cam = this.camera, BS = BLOCK_SIZE, hw = opts.width / 2, r = opts.corner || 0;
+    const cam = this.camera, BS = BLOCK_SIZE, hw = width / 2, r = corner || 0;
     const P = pts0.map(p => ({ x: p.x - cam.x, y: p.y - cam.y }));
     const N = P.length;
     const d0 = this._norm(P[1].x - P[0].x, P[1].y - P[0].y), dL = this._norm(P[N - 1].x - P[N - 2].x, P[N - 1].y - P[N - 2].y);
-    P[0] = { x: P[0].x - d0.x * BS / 2, y: P[0].y - d0.y * BS / 2 };             // extend ends to the opening face
+    P[0] = { x: P[0].x - d0.x * BS / 2, y: P[0].y - d0.y * BS / 2 };
     P[N - 1] = { x: P[N - 1].x + dL.x * BS / 2, y: P[N - 1].y + dL.y * BS / 2 };
     const dirs = []; for (let i = 0; i < N - 1; i++) dirs.push(this._norm(P[i + 1].x - P[i].x, P[i + 1].y - P[i].y));
     const vpt = (i, side) => {
       const a = dirs[Math.max(0, i - 1)], b = dirs[Math.min(dirs.length - 1, i)];
       const na = { x: -a.y, y: a.x }, nb = { x: -b.y, y: b.x };
       let mx = na.x + nb.x, my = na.y + nb.y; const ml = Math.hypot(mx, my) || 1; mx /= ml; my /= ml;
-      const len = hw / Math.max(0.35, na.x * mx + na.y * my);   // miter length
+      const len = hw / Math.max(0.35, na.x * mx + na.y * my);
       return { x: P[i].x + side * mx * len, y: P[i].y + side * my * len };
     };
     const left = [], right = [];
@@ -17536,23 +17525,32 @@ class Game {
     const outline = left.concat(right.reverse()), m = outline.length;
     const radii = new Array(m).fill(r);
     radii[0] = 0; radii[N - 1] = 0; radii[N] = 0; radii[m - 1] = 0;   // the 4 flat mouth-cap corners
-    const trace = () => {
-      ctx.beginPath();
-      ctx.moveTo((outline[m - 1].x + outline[0].x) / 2, (outline[m - 1].y + outline[0].y) / 2);
-      for (let i = 0; i < m; i++) { const c = outline[i], nx = outline[(i + 1) % m]; ctx.arcTo(c.x, c.y, (c.x + nx.x) / 2, (c.y + nx.y) / 2, radii[i]); }
-      ctx.closePath();
-    };
-    trace(); ctx.fillStyle = opts.fill; ctx.fill();
-    if (opts.seams) {   // block-style cell grid, clipped to the band
-      ctx.save(); trace(); ctx.clip();
-      ctx.strokeStyle = 'rgba(120,170,200,0.35)'; ctx.lineWidth = 1;
-      let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
-      for (const o of outline) { minx = Math.min(minx, o.x); miny = Math.min(miny, o.y); maxx = Math.max(maxx, o.x); maxy = Math.max(maxy, o.y); }
-      for (let x = Math.ceil((cam.x + minx) / BS) * BS; x < cam.x + maxx; x += BS) { const sx = x - cam.x; ctx.beginPath(); ctx.moveTo(sx, miny); ctx.lineTo(sx, maxy); ctx.stroke(); }
-      for (let y = Math.ceil((cam.y + miny) / BS) * BS; y < cam.y + maxy; y += BS) { const sy = y - cam.y; ctx.beginPath(); ctx.moveTo(minx, sy); ctx.lineTo(maxx, sy); ctx.stroke(); }
+    ctx.moveTo((outline[m - 1].x + outline[0].x) / 2, (outline[m - 1].y + outline[0].y) / 2);
+    for (let i = 0; i < m; i++) { const c = outline[i], nx = outline[(i + 1) % m]; ctx.arcTo(c.x, c.y, (c.x + nx.x) / 2, (c.y + nx.y) / 2, radii[i]); }
+    ctx.closePath();
+  }
+  // Draw a set of tubes as ONE seamless glass shape. A slightly-wider rim UNION goes down first, the
+  // body UNION on top — so overlaps merge (uniform alpha) and the rim only shows on the OUTER edge of
+  // the whole network → connected tubes read as a real T-junction (rounded too, if enabled).
+  _drawTubeGroup(ctx, tubes) {
+    if (!tubes || !tubes.length) return;
+    const block = !!this._worldAdvSettings.tubeBlockStyle;
+    const rounded = !!this._worldAdvSettings.tubeRoundedCorners;
+    const BS = BLOCK_SIZE, bodyW = BS * 2.7, corner = rounded ? (block ? 6 : 8) : 0, cam = this.camera;
+    ctx.beginPath(); for (const t of tubes) this._addTubeBandPath(ctx, t, bodyW + 3, corner);   // rim union (bright outer edge)
+    ctx.fillStyle = 'rgba(210,236,249,0.45)'; ctx.fill('nonzero');
+    ctx.beginPath(); for (const t of tubes) this._addTubeBandPath(ctx, t, bodyW, corner);       // glass body union
+    ctx.fillStyle = 'rgba(130,195,226,0.22)'; ctx.fill('nonzero');
+    if (block) {   // cell grid, clipped to the glass union, bounded to the tubes' footprints
+      ctx.save(); ctx.clip('nonzero');
+      ctx.strokeStyle = 'rgba(120,170,200,0.3)'; ctx.lineWidth = 1;
+      let minC = 1e9, minR = 1e9, maxC = -1e9, maxR = -1e9;
+      for (const t of tubes) for (const key of this._tubeFoot(t)) { const i = key.indexOf(','), c = +key.slice(0, i), r = +key.slice(i + 1); minC = Math.min(minC, c); maxC = Math.max(maxC, c); minR = Math.min(minR, r); maxR = Math.max(maxR, r); }
+      for (let c = minC; c <= maxC + 1; c++) { const sx = c * BS - cam.x; ctx.beginPath(); ctx.moveTo(sx, minR * BS - cam.y); ctx.lineTo(sx, (maxR + 1) * BS - cam.y); ctx.stroke(); }
+      for (let r = minR; r <= maxR + 1; r++) { const sy = r * BS - cam.y; ctx.beginPath(); ctx.moveTo(minC * BS - cam.x, sy); ctx.lineTo((maxC + 1) * BS - cam.x, sy); ctx.stroke(); }
       ctx.restore();
     }
-    trace(); ctx.strokeStyle = opts.rim; ctx.lineWidth = 1.5; ctx.stroke();
+    for (const t of tubes) this._drawTubeMouths(ctx, t);   // lips on OPEN mouths (skipped at joins)
   }
   // Is this mouth internally CONNECTED to another tube (a join/junction)? → no lip there.
   _tubeMouthConnected(tube, m) {
@@ -17584,13 +17582,13 @@ class Game {
   // draws nothing, just collides.)
   _drawTravelTubesBack(ctx) {
     if (!this._travelTubes) return;
-    for (const t of this._travelTubes) { const m = t.mode || 'solid'; if (m === 'solid' || m === 'passFront') this._drawTubeGlass(ctx, t); }
+    this._drawTubeGroup(ctx, this._travelTubes.filter(t => { const m = t.mode || 'solid'; return m === 'solid' || m === 'passFront'; }));
   }
   // FRONT pass (after entities): Pass-behind tubes draw their glass OVER the world → the world
   // appears BEHIND the glass.
   _drawTravelTubesFront(ctx) {
     if (!this._travelTubes) return;
-    for (const t of this._travelTubes) if ((t.mode || 'solid') === 'passBehind') this._drawTubeGlass(ctx, t);
+    this._drawTubeGroup(ctx, this._travelTubes.filter(t => (t.mode || 'solid') === 'passBehind'));
   }
   // The tube the player is FLYING through gets its glass drawn OVER the player (solid + pass-in-front;
   // pass-behind is already covered by the front pass) so the traveler always looks INSIDE the glass.
@@ -17598,7 +17596,7 @@ class Game {
     const p = this.player; if (!p || !p._tubeOwn) return;
     const tube = this._travelTubes && this._travelTubes.find(t => t.id === p._tubeId);
     const mode = tube && (tube.mode || 'solid');
-    if (tube && (mode === 'solid' || mode === 'passFront')) this._drawTubeGlass(ctx, tube);
+    if (tube && (mode === 'solid' || mode === 'passFront')) this._drawTubeGroup(ctx, [tube]);
   }
   _enterTube(p, tube, pts, m) {
     p._tubeOwn = true; p._tubeId = tube.id;
