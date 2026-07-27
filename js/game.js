@@ -1925,6 +1925,11 @@ class Game {
         this._handleClassicPopupInput();
         return;
       }
+      // §Travel Tube — edit / delete modal
+      if (this._tubePopup) {
+        this._handleTubePopupInput();
+        return;
+      }
     }
 
     // Normal inventory open: handle clicks and freeze gameplay
@@ -2875,9 +2880,14 @@ class Game {
       } else {
       this._historyBegin(hoverRow, hoverCol);
       // §Travel Tube — with the Tube selected, clicks collect a waypoint PATH (multi-click); click
-      // the last point again to finish. (Otherwise fall through to normal placement/eyedropper.)
-      if (this.sandbox.selectedBlock === BLOCK.TUBE_WALL && !this.input.mouse.altClicked) {
+      // the last point again to finish. Clicking an EXISTING tube opens its edit/delete modal (and a
+      // visible tube intercepts any tool's click so you can't erase blocks and leave a phantom path).
+      const _tubeSel = this.sandbox.selectedBlock === BLOCK.TUBE_WALL;
+      const _tubeHit = (!this.input.mouse.altClicked) ? this._tubeAtCell(hoverRow, hoverCol) : null;
+      if (_tubeSel && !this.input.mouse.altClicked && (this._tubeDraft || !_tubeHit)) {
         this._tubeDraftClick(hoverRow, hoverCol);
+      } else if (_tubeHit && !this._tubeDraft && (_tubeSel || target === BLOCK.TUBE_WALL)) {
+        this._openTubePopup(_tubeHit);
       } else
       // Alt+Click → eyedropper: pick block under cursor
       if (this.input.mouse.altClicked) {
@@ -6216,7 +6226,7 @@ class Game {
     // + portal labels) must scale with the zoom too — draw them inside the transform.
     if (this.gameMode === 'sandbox' && this.sandbox && this.sandbox.drawWorld) {
       this.sandbox.drawWorld(ctx, this.camera, this.frameCount);
-      if (this._tubeDraft) { try { this._drawTubeDraft(ctx); } catch (e) { /* ignore */ } }  // §Travel Tube draft
+      try { this._drawTravelTubesSandbox(ctx); if (this._tubeDraft) this._drawTubeDraft(ctx); } catch (e) { /* ignore */ }  // §Travel Tube outlines + draft
     }
     // Death body-part scatter (world-space, scales with zoom). SR draws its own.
     if (this.gameMode !== 'speedrunner' && this._deathParts.length) this._drawDeathParts(ctx);
@@ -6248,6 +6258,7 @@ class Game {
       if (this._rxConfigPopup)     this._drawRxConfigPopup(ctx);
       if (this._pistonConfigPopup) this._drawPistonConfigPopup(ctx);
       if (this._classicPopup) this._drawClassicPopup(ctx);
+      if (this._tubePopup) this._drawTubePopup(ctx);
     }
 
     this._drawBiomeLabel(ctx, biome);
@@ -7635,11 +7646,12 @@ class Game {
   // §Classic Blocks — restore saved pipe links + per-block contents on world load.
   _restoreClassicBlockData(data) {
     if (data && Array.isArray(data.pipeLinks)) { this._pipeLinks = new Map(); for (const [k, v] of data.pipeLinks) this._pipeLinks.set(k, v); }
+    if (data && Array.isArray(data.pipeEntry)) { this._pipeEntry = new Map(); for (const [k, v] of data.pipeEntry) this._pipeEntry.set(k, v); }
     if (data && Array.isArray(data.blockContents)) { this._blockContents = new Map(); for (const [k, v] of data.blockContents) this._blockContents.set(k, v); }
     // §Travel Tube — the TUBE_WALL footprint cells restore with the grid; this restores the
     // fly-through PATHS (waypoints + speed) so travel works after a reload.
     if (data && Array.isArray(data.travelTubes)) {
-      this._travelTubes = data.travelTubes.map(t => ({ id: t.id, cells: t.cells || [], speed: t.speed || 7 }));
+      this._travelTubes = data.travelTubes.map(t => ({ id: t.id, cells: t.cells || [], speed: t.speed || 7, visible: t.visible !== false }));
       this._nextTubeId = this._travelTubes.reduce((m, t) => Math.max(m, t.id || 0), 0);
     }
   }
@@ -7662,7 +7674,12 @@ class Game {
     const p = this._classicPopup; if (!p) return [];
     if (p.kind === 'pipe') {
       const key = this._pipeAnchorKey(p.row, p.col);
+      const OPEN = { up: 'Top (press Down)', down: 'Bottom (jump up)', left: 'Left (walk in)', right: 'Right (walk in)' };
       return [
+        { label: 'Entry Side: ' + (OPEN[this._pipeOpening(p.row, p.col)] || 'Top'), act: () => {
+            const order = ['up', 'right', 'down', 'left'], cur = this._pipeOpening(p.row, p.col);
+            (this._pipeEntry = this._pipeEntry || new Map()).set(key, order[(order.indexOf(cur) + 1) % 4]);
+          } },   // cycles in place (doesn't close the popup)
         { label: 'Pick Destination →', act: () => { this._pipeLinkMode = { fromKey: key }; this._classicPopup = null; this._notify('Now click the destination pipe', '#6FB6FF', 180); } },
         { label: 'No Destination (obstacle)', act: () => { (this._pipeLinks = this._pipeLinks || new Map()).set(key, 'none'); this._classicPopup = null; this._notify('Pipe set as an obstacle', '#999999', 120); } },
         { label: 'Clear Link (auto-pair)', act: () => { if (this._pipeLinks) this._pipeLinks.delete(key); this._classicPopup = null; } },
@@ -17040,9 +17057,11 @@ class Game {
         else if (b === BLOCK.CONVEYOR_LEFT)  p.x -= (this._worldAdvSettings.conveyorSpeed ?? 2) * 0.8;
         else if (b === BLOCK.CONVEYOR_RIGHT) p.x += (this._worldAdvSettings.conveyorSpeed ?? 2) * 0.8;
         else if (b === BLOCK.CRUMBLE_BLOCK)  this._crumbleTouch(feetRow, c);
-        else if (b === BLOCK.WARP_PIPE && p === this.player && this.input.isCrouch()) { this._warpEnter(p, feetRow, c); break; }
       }
     }
+    // §Unified pipe entry — Warp Pipes use the SAME mouth mechanic as Travel Tubes, on a designer-
+    // selectable face (default top / Down). Checked every frame (not just when standing on top).
+    if (p === this.player) this._tryWarpEntry(p);
     // Bump from below. NB: the upward collision zeroes vy BEFORE this pass runs, so gate on the
     // pre-collision fall speed (_preVy) captured before player.update, not the current vy.
     if ((p._preVy || 0) < -1) {
@@ -17203,27 +17222,124 @@ class Game {
     }
     this._travelTubes = this._travelTubes || [];
     this._nextTubeId = (this._nextTubeId || 0) + 1;
-    this._travelTubes.push({ id: this._nextTubeId, cells: d.cells.slice(), speed: this._worldAdvSettings.tubeDefaultSpeed || 7 });
-    this._notify('Travel Tube placed ✓', '#8fd0e6', 140);
+    this._travelTubes.push({ id: this._nextTubeId, cells: d.cells.slice(), speed: this._worldAdvSettings.tubeDefaultSpeed || 7, visible: true });
+    this._notify('Travel Tube placed ✓ — click it to edit / delete', '#8fd0e6', 150);
   }
-  // Per-frame: fly the traveler through, else watch each mouth for an entry (orientation rule).
+  // §Shared pipe-entry mechanic (Travel Tubes AND green Warp Pipes use the SAME rule). Returns true
+  // when `p` is pressed up against a mouth at (mx,my) that opens toward `dir` (outward unit vector)
+  // and is pressing INWARD. The trigger point is one cell OUTSIDE the opening, so the solid pipe wall
+  // doesn't block the approach (that was why walking/ducking in felt finicky).
+  //   opening faces LEFT  → walk RIGHT into it;  RIGHT → walk LEFT;
+  //   opening faces UP    → press DOWN (stand on top);  DOWN → press JUMP/UP (from below).
+  _pipeEntryTriggered(p, mx, my, dir) {
+    const bs = BLOCK_SIZE;
+    const tx = mx + dir.x * bs, ty = my + dir.y * bs;                 // just OUTSIDE the opening
+    if (Math.hypot(p.x + p.width / 2 - tx, p.y + p.height / 2 - ty) > bs * 1.15) return false;
+    const inp = this.input, card = TRAVEL_TUBE.cardinal(dir);
+    if (card === 'left')  return inp.isRight();
+    if (card === 'right') return inp.isLeft();
+    if (card === 'up')    return inp.isCrouch();
+    if (card === 'down')  return inp.isJump();
+    return false;
+  }
+  // Per-frame: fly the traveler through, else watch each mouth for an entry (shared rule above).
   _updateTravelTubes() {
     if (this.gameMode === 'sandbox' || !this._travelTubes || !this._travelTubes.length) return;
     const p = this.player; if (!p || p.hp <= 0) return;
     if (p._tubeOwn) { this._advanceTube(p); return; }
     if (p._tubeCooldown > 0) { p._tubeCooldown--; return; }
-    const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2, inp = this.input;
     for (const tube of this._travelTubes) {
       const pts = this._tubePts(tube);
       if (pts.length < 2) continue;
       for (const m of TRAVEL_TUBE.mouths(pts)) {
-        if (Math.hypot(pcx - m.x, pcy - m.y) > BLOCK_SIZE * 0.95) continue;
-        const card = TRAVEL_TUBE.cardinal(m.dir);   // which way the opening faces
-        const enter = (card === 'left' && inp.isRight()) || (card === 'right' && inp.isLeft()) ||
-                      (card === 'up' && inp.isCrouch()) || (card === 'down' && inp.isJump());
-        if (enter) { this._enterTube(p, tube, pts, m); return; }
+        if (this._pipeEntryTriggered(p, m.x, m.y, m.dir)) { this._enterTube(p, tube, pts, m); return; }
       }
     }
+  }
+  // Footprint cell-set for a tube (cached). Used for hit-testing clicks + rewriting on visibility.
+  _tubeFoot(tube) {
+    if (!tube._foot) tube._foot = TRAVEL_TUBE.footprint(this._tubePts(tube), BLOCK_SIZE);
+    return tube._foot;
+  }
+  _tubeAtCell(row, col) {
+    if (!this._travelTubes) return null;
+    const key = col + ',' + row;
+    for (const t of this._travelTubes) if (this._tubeFoot(t).has(key)) return t;
+    return null;
+  }
+  // Paint (or clear) a tube's footprint blocks to match its visibility. Invisible tubes leave AIR
+  // (the path still works — a hidden bonus route); visible tubes are solid glass.
+  _applyTubeVisibility(tube) {
+    for (const key of this._tubeFoot(tube)) {
+      const i = key.indexOf(','), col = +key.slice(0, i), row = +key.slice(i + 1);
+      const b = this.level.get(row, col);
+      if (tube.visible === false) { if (b === BLOCK.TUBE_WALL) this.level.set(row, col, BLOCK.AIR); }
+      else if (b === BLOCK.AIR || b === BLOCK.TUBE_WALL) this.level.set(row, col, BLOCK.TUBE_WALL);
+    }
+  }
+  _deleteTube(tube) {
+    for (const key of this._tubeFoot(tube)) {   // clear its glass cells
+      const i = key.indexOf(','), col = +key.slice(0, i), row = +key.slice(i + 1);
+      if (this.level.get(row, col) === BLOCK.TUBE_WALL) this.level.set(row, col, BLOCK.AIR);
+    }
+    this._travelTubes = (this._travelTubes || []).filter(t => t !== tube);
+  }
+  // ── §Travel Tube edit/delete modal (self-contained, like the piston popup) ──
+  _openTubePopup(tube) { this._tubePopup = { id: tube.id }; }
+  _handleTubePopupInput() {
+    const tp = this._tubePopup; if (!tp) return;
+    const tube = (this._travelTubes || []).find(t => t.id === tp.id);
+    if (!tube) { this._tubePopup = null; return; }
+    if (!this.input.mouse.clicked) return;
+    const pw = 250, ph = 196, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
+    if (hit(px + pw - 30, py + 6, 24, 24) || mx < px || mx > px + pw || my < py || my > py + ph) { this._tubePopup = null; return; }
+    const speeds = [5, 7, 10, 14];
+    if (hit(px + 14, py + 54, pw - 28, 32)) { const i = speeds.indexOf(tube.speed); tube.speed = speeds[(i + 1) % speeds.length] || 7; return; }
+    if (hit(px + 14, py + 92, pw - 28, 32)) { tube.visible = (tube.visible === false); this._applyTubeVisibility(tube); return; }
+    if (hit(px + 14, py + ph - 44, pw - 28, 32)) { this._deleteTube(tube); this._tubePopup = null; this._notify('Tube deleted', '#c66', 100); return; }
+  }
+  _drawTubePopup(ctx) {
+    const tp = this._tubePopup; if (!tp) return;
+    const tube = (this._travelTubes || []).find(t => t.id === tp.id);
+    if (!tube) { this._tubePopup = null; return; }
+    const pw = 250, ph = 196, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    ctx.save(); ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.fillStyle = '#0f1620'; _roundRect(ctx, px, py, pw, ph, 8); ctx.fill();
+    ctx.strokeStyle = '#8fd0e6'; ctx.lineWidth = 2; _roundRect(ctx, px, py, pw, ph, 8); ctx.stroke();
+    ctx.fillStyle = '#cfe9f4'; ctx.font = 'bold 14px system-ui, sans-serif'; ctx.fillText('Travel Tube', px + 14, py + 12);
+    ctx.fillStyle = '#c77'; ctx.font = 'bold 16px system-ui, sans-serif'; ctx.fillText('✕', px + pw - 26, py + 9);
+    const row = (y, label, val, warn) => {
+      ctx.fillStyle = '#1c2a34'; _roundRect(ctx, px + 14, y, pw - 28, 32, 6); ctx.fill();
+      ctx.fillStyle = '#9fc4d6'; ctx.font = '12px system-ui, sans-serif'; ctx.fillText(label, px + 24, y + 9);
+      ctx.fillStyle = warn ? '#d7a6f0' : '#e7f4fa'; ctx.font = 'bold 12px system-ui, sans-serif';
+      ctx.textAlign = 'right'; ctx.fillText(val, px + pw - 26, y + 9); ctx.textAlign = 'left';
+    };
+    row(py + 54, 'Speed', (tube.speed || 7) + ' px', false);
+    row(py + 92, 'Look', tube.visible === false ? 'Invisible (hidden bonus)' : 'Visible', tube.visible === false);
+    ctx.fillStyle = '#4a1f2a'; _roundRect(ctx, px + 14, py + ph - 44, pw - 28, 32, 6); ctx.fill();
+    ctx.fillStyle = '#ffb3c0'; ctx.font = 'bold 12px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.fillText('🗑  Delete Tube', px + pw / 2, py + ph - 35); ctx.textAlign = 'left';
+    ctx.restore();
+  }
+  // Sandbox overlay: dotted centerline + mouths for EVERY tube (so invisible tubes stay visible to
+  // the designer). Invisible tubes get a distinct purple dash.
+  _drawTravelTubesSandbox(ctx) {
+    if (!this._travelTubes || !this._travelTubes.length) return;
+    const cam = this.camera;
+    ctx.save(); ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
+    for (const t of this._travelTubes) {
+      const pts = this._tubePts(t); if (pts.length < 2) continue;
+      ctx.strokeStyle = (t.visible === false) ? 'rgba(168,130,235,0.9)' : 'rgba(140,208,230,0.65)';
+      ctx.beginPath();
+      pts.forEach((p, i) => { const x = p.x - cam.x, y = p.y - cam.y; i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
+      ctx.stroke();
+      ctx.fillStyle = ctx.strokeStyle;
+      for (const m of TRAVEL_TUBE.mouths(pts)) { ctx.beginPath(); ctx.arc(m.x - cam.x, m.y - cam.y, 4, 0, Math.PI * 2); ctx.fill(); }
+    }
+    ctx.setLineDash([]); ctx.restore();
   }
   _enterTube(p, tube, pts, m) {
     p._tubeOwn = true; p._tubeId = tube.id;
@@ -17333,6 +17449,27 @@ class Game {
   }
   // Pipes pair in reading order (top-left first): 1st↔2nd, 3rd↔4th, … Place two 1-wide pipes
   // to make a linked pair. Returns the partner pipe TOP cell, or null.
+  // A Warp Pipe's designer-selected opening face ('up' default = press Down on top, the classic feel).
+  _pipeOpening(row, col) {
+    const key = this._pipeAnchorKey(row, col);
+    return (this._pipeEntry && this._pipeEntry.get(key)) || 'up';
+  }
+  // Watch every Warp Pipe near the player for an entry on its configured face (shared mechanic with
+  // Travel Tubes). Only FACE cells (the exposed edge of the cluster) count, so you enter from outside.
+  _tryWarpEntry(p) {
+    if (p._warp || p._warpCooldown > 0 || p._pipeOwn) return;
+    const BS = BLOCK_SIZE, L = this.level;
+    const dirs = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
+    const c0 = Math.floor((p.x - BS) / BS), c1 = Math.floor((p.x + p.width + BS) / BS);
+    const r0 = Math.floor((p.y - BS) / BS), r1 = Math.floor((p.y + p.height + BS) / BS);
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+      if (L.get(r, c) !== BLOCK.WARP_PIPE) continue;
+      const open = this._pipeOpening(r, c), d = dirs[open];
+      // this cell must be on the OPENING face of its cluster (nothing pipe on that side)
+      if (L.get(r + d.y, c + d.x) === BLOCK.WARP_PIPE) continue;
+      if (this._pipeEntryTriggered(p, c * BS + BS / 2, r * BS + BS / 2, d)) { this._warpEnter(p, r, c); return; }
+    }
+  }
   _warpEnter(p, row, col) {
     if (p._warp || p._warpCooldown > 0) return;
     const dest = this._pipeDestination(row, col);

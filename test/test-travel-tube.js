@@ -40,19 +40,19 @@ console.log('Invariant 2 — pointAt position + heading:');
   ok(near(TT.pointAt(corner, TT.length(corner) / 2).ang, Math.PI / 2), 'vertical heading is +y (π/2)');
 }
 
-// 3 ── The 2-wide footprint covers both tracks of a straight run and nothing far off it.
-console.log('Invariant 3 — 2-wide footprint:');
+// 3 ── The 3-wide footprint covers the centre track (fly-through) + both walls, nothing farther.
+console.log('Invariant 3 — 3-wide footprint (fly the middle):');
 {
   const pts = TT.buildPolyline([{ col: 1, row: 5 }, { col: 6, row: 5 }]);   // horizontal at row 5
   const fp = TT.footprint(pts);
-  // row 5 across cols 1..6 must be covered (the centre track)
+  // centre track (row 5) across cols 1..6 must be covered — this is the fly-through lane
   let centreOk = true;
   for (let c = 1; c <= 6; c++) if (!fp.has(c + ',5')) centreOk = false;
-  ok(centreOk, 'centre track (row 5) fully covered');
-  // it should be ~2 cells tall → at least one of row 4 / row 6 present along the run
-  ok(fp.has('3,4') || fp.has('3,6'), 'a second track is covered (2-wide)');
-  // nothing 3 rows away
-  ok(!fp.has('3,8') && !fp.has('3,2'), 'no cells far off the path');
+  ok(centreOk, 'centre track (row 5) fully covered — the fly lane');
+  // both walls (row 4 AND row 6) covered along the run → 3 cells tall
+  ok(fp.has('3,4') && fp.has('3,6'), 'both wall tracks (rows 4 & 6) covered (3-wide)');
+  // nothing 2 rows away from centre
+  ok(!fp.has('3,7') && !fp.has('3,3'), 'no cells beyond the 3-wide band');
 }
 
 // 4 ── Mouths point OUTWARD, snapped to the right cardinal for the enter rule.

@@ -63,8 +63,9 @@ const TRAVEL_TUBE = {
     return { x: last.x, y: last.y, ang: 0, seg: pts.length - 2 };
   },
 
-  // §3 — The 2-block-wide footprint: every "col,row" cell within one cell (perpendicular) of the
-  // centerline. Used for collision (solid tube) + rendering + item snapping. Samples at bs/2 steps.
+  // §3 — The 3-block-wide footprint: the centerline cell (the MIDDLE track you fly through) plus one
+  // cell to each side (perpendicular) = the two walls. 3-wide so the traveler flies cleanly down the
+  // middle block rather than threading a between-cells seam. Samples at bs/2 steps.
   footprint(pts, bs = TRAVEL_TUBE.BS) {
     const cells = new Set();
     if (!pts.length) return cells;
@@ -74,7 +75,7 @@ const TRAVEL_TUBE = {
     for (let d = 0; d <= L + 1e-6; d += step) {
       const p = this.pointAt(pts, Math.min(d, L));
       const nx = -Math.sin(p.ang), ny = Math.cos(p.ang);   // unit normal to the flow
-      for (const o of [-0.5, 0, 0.5]) { add(p.x + nx * o * bs, p.y + ny * o * bs); }
+      for (const o of [-1, 0, 1]) { add(p.x + nx * o * bs, p.y + ny * o * bs); }   // centre + both walls
     }
     return cells;
   },

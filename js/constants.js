@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 223 (Travel Tube v1 — a NEW placeable transparent tube you fly through head-first, distinct from the instant Warp Pipe. Select "Travel Tube" in the Plumbing palette, click waypoints, click the last point again to finish; enter at a mouth (walk into a side mouth / Down on an up-mouth / Jump into a down-mouth) and fly to the exit at a per-tube speed. STAGE 1: single path, solid, side-view. Branches, items, non-solid z-layering, per-tube edit + top-down = follow-ups.)';
+const GAME_VERSION = 'v3 · build 224 (Travel Tube v2 + unified pipe entry: 3-wide tube (fly the MIDDLE cell); FIXED entry (trigger from a cell OUTSIDE the mouth so walking/ducking in works); edit/DELETE modal on click (Speed / Visible↔Invisible-bonus / Delete) so paths can no longer be orphaned by erasing blocks; invisible tubes still show a dashed outline in sandbox. Warp Pipes now use the SAME entry mechanic with a designer-selectable Entry Side (top/bottom/left/right). Tubes + pipe entry sides now saved in all save/test paths.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
