@@ -6080,8 +6080,8 @@ class Game {
       ctx.scale(_activeZoom, _activeZoom);
       ctx.translate(-CANVAS_W / 2, -CANVAS_H / 2);
     }
+    try { this._drawTravelTubesBack(ctx); } catch (e) { /* ignore */ }   // §Travel Tube — Pass-In-Front/Solid glass BEHIND the blocks (so the world reads in front of it)
     this.level.draw(ctx, this.camera, this.redstone, this.frameCount, this.gameMode === 'sandbox', this._trampFx);
-    try { this._drawTravelTubesBack(ctx); } catch (e) { /* ignore */ }   // §Travel Tube — Pass-In-Front glass (behind the world)
     // Re-draw open chest with lid-open state on top
     if (this._chestOpen) {
       const sx = this._chestOpen.col * BLOCK_SIZE - this.camera.x;
@@ -17482,52 +17482,91 @@ class Game {
       ctx.fillStyle = ctx.strokeStyle;
       for (const m of TRAVEL_TUBE.mouths(pts)) { ctx.beginPath(); ctx.arc(m.x - cam.x, m.y - cam.y, 4, 0, Math.PI * 2); ctx.fill(); }
     }
-    ctx.setLineDash([]); ctx.restore();
+    // Junction rings (yellow): a mouth that lands on another tube = a recognised BRANCH point. Draw
+    // a second tube's mouth onto the main tube's path and this ring confirms you can steer into it.
+    ctx.setLineDash([]); ctx.lineWidth = 2; ctx.strokeStyle = '#ffd166';
+    for (const t of this._travelTubes) {
+      const pts = this._tubePts(t); if (pts.length < 2) continue;
+      for (const m of TRAVEL_TUBE.mouths(pts)) {
+        let jn = false;
+        for (const o of this._travelTubes) {
+          if (o === t) continue;
+          const np = TRAVEL_TUBE.nearest(this._tubePts(o), m.x, m.y);
+          if (np && Math.hypot(np.x - m.x, np.y - m.y) < BLOCK_SIZE * 1.4) { jn = true; break; }
+        }
+        if (jn) { ctx.beginPath(); ctx.arc(m.x - cam.x, m.y - cam.y, 9, 0, Math.PI * 2); ctx.stroke(); }
+      }
+    }
+    ctx.restore();
   }
-  // Draw a tube as a continuous translucent "glass" band along its centerline — a rim (slightly
-  // wider), the body (a touch narrower than the 3-cell footprint), and full-width rounded MOUTH caps
-  // with an end "lip" line. World Setting "Rounded Bends" turns 90° corners into smooth ones.
+  // Dispatch a tube's glass to the SMOOTH band or classic BLOCK style (world setting), then the lips.
+  _drawTubeGlass(ctx, tube) {
+    if (this._worldAdvSettings.tubeBlockStyle) this._drawTubeBlocksStyle(ctx, tube);
+    else this._drawTubeStroke(ctx, tube);
+    this._drawTubeMouths(ctx, tube);
+  }
+  // Smooth style — a continuous translucent band (rim + body) along the centerline; rounded joins
+  // when "Rounded Bends" is on. Body a touch narrower than the 3-cell footprint.
   _drawTubeStroke(ctx, tube) {
     const pts = this._tubePts(tube); if (pts.length < 2) return;
     const cam = this.camera, BS = BLOCK_SIZE;
     const rounded = !!this._worldAdvSettings.tubeRoundedCorners;
-    const bodyW = BS * 2.55, mouthW = BS * 3;   // body slightly narrow; mouths full 3-wide
+    const bodyW = BS * 2.55;
     ctx.save();
     ctx.lineJoin = rounded ? 'round' : 'miter';
-    ctx.lineCap = 'butt';
+    ctx.lineCap = rounded ? 'round' : 'butt';
     const trace = () => { ctx.beginPath(); pts.forEach((p, i) => { const x = p.x - cam.x, y = p.y - cam.y; i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }); };
     trace(); ctx.strokeStyle = 'rgba(190,225,242,0.5)'; ctx.lineWidth = bodyW + 3; ctx.stroke();   // rim
     trace(); ctx.strokeStyle = 'rgba(150,205,232,0.30)'; ctx.lineWidth = bodyW; ctx.stroke();      // glass body
-    for (const m of TRAVEL_TUBE.mouths(pts)) {   // full-width rounded mouth + a "pipe end" lip
-      const mx = m.x - cam.x, my = m.y - cam.y, px = -m.dir.y, py = m.dir.x;
-      ctx.fillStyle = 'rgba(150,205,232,0.30)';
-      ctx.beginPath(); ctx.arc(mx, my, mouthW / 2, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = 'rgba(120,170,205,0.75)'; ctx.lineWidth = 4;
-      ctx.beginPath(); ctx.moveTo(mx + px * mouthW / 2, my + py * mouthW / 2); ctx.lineTo(mx - px * mouthW / 2, my - py * mouthW / 2); ctx.stroke();
-    }
     ctx.restore();
   }
-  // BACK pass (right after the level, before objects/entities): SOLID + Pass-In-Front tubes draw
-  // their glass BEHIND the world → the walking player + objects appear in FRONT of the glass.
-  // (Solid tubes render only here now — the TUBE_WALL block itself draws nothing, just collides.)
+  // Classic BLOCK style — per-cell translucent glass squares (slightly inset = a touch narrow body);
+  // "Rounded Bends" softens each cell to a rounded square.
+  _drawTubeBlocksStyle(ctx, tube) {
+    const cam = this.camera, BS = BLOCK_SIZE, inset = 2;
+    const rounded = !!this._worldAdvSettings.tubeRoundedCorners;
+    for (const key of this._tubeFoot(tube)) {
+      const i = key.indexOf(','), col = +key.slice(0, i), row = +key.slice(i + 1);
+      const x = col * BS - cam.x + inset, y = row * BS - cam.y + inset, w = BS - inset * 2, h = BS - inset * 2;
+      ctx.fillStyle = 'rgba(150,205,232,0.30)';
+      if (rounded && typeof _roundRect === 'function') { _roundRect(ctx, x, y, w, h, 6); ctx.fill(); } else ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = 'rgba(220,240,250,0.16)'; ctx.fillRect(x + 1, y + 1, w - 2, 3);
+      ctx.strokeStyle = 'rgba(190,225,242,0.55)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    }
+  }
+  // A chunky "pipe end" lip across each mouth (full width + a little overhang) — both styles. No cap
+  // circle; just the lip so the ends read as an opening.
+  _drawTubeMouths(ctx, tube) {
+    const pts = this._tubePts(tube); if (pts.length < 2) return;
+    const cam = this.camera, BS = BLOCK_SIZE, lipLen = BS * 3 + 8, lipThick = 14;
+    for (const m of TRAVEL_TUBE.mouths(pts)) {
+      const mx = m.x - cam.x, my = m.y - cam.y, px = -m.dir.y, py = m.dir.x;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(120,170,205,0.85)'; ctx.lineWidth = lipThick; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(mx + px * lipLen / 2, my + py * lipLen / 2); ctx.lineTo(mx - px * lipLen / 2, my - py * lipLen / 2); ctx.stroke();
+      ctx.restore();
+    }
+  }
+  // BACK pass (before the blocks): SOLID + Pass-In-Front tubes draw their glass BEHIND the world →
+  // walking player + objects appear in FRONT of the glass. (Solid tubes render only here; TUBE_WALL
+  // draws nothing, just collides.)
   _drawTravelTubesBack(ctx) {
     if (!this._travelTubes) return;
-    for (const t of this._travelTubes) { const m = t.mode || 'solid'; if (m === 'solid' || m === 'passFront') this._drawTubeStroke(ctx, t); }
+    for (const t of this._travelTubes) { const m = t.mode || 'solid'; if (m === 'solid' || m === 'passFront') this._drawTubeGlass(ctx, t); }
   }
-  // FRONT pass (after entities): Pass-behind tubes draw their glass OVER the world → the walking
-  // player + objects appear BEHIND the glass.
+  // FRONT pass (after entities): Pass-behind tubes draw their glass OVER the world → the world
+  // appears BEHIND the glass.
   _drawTravelTubesFront(ctx) {
     if (!this._travelTubes) return;
-    for (const t of this._travelTubes) if ((t.mode || 'solid') === 'passBehind') this._drawTubeStroke(ctx, t);
+    for (const t of this._travelTubes) if ((t.mode || 'solid') === 'passBehind') this._drawTubeGlass(ctx, t);
   }
-  // Whatever tube the player is FLYING through gets its glass drawn OVER the player (all modes) so
-  // the traveler always appears INSIDE / behind the glass. Pass-behind already covers it in the
-  // front pass; invisible has no glass — so this only adds the overlay for solid + pass-in-front.
+  // The tube the player is FLYING through gets its glass drawn OVER the player (solid + pass-in-front;
+  // pass-behind is already covered by the front pass) so the traveler always looks INSIDE the glass.
   _drawFlyingTubeGlass(ctx) {
     const p = this.player; if (!p || !p._tubeOwn) return;
     const tube = this._travelTubes && this._travelTubes.find(t => t.id === p._tubeId);
     const mode = tube && (tube.mode || 'solid');
-    if (tube && (mode === 'solid' || mode === 'passFront')) this._drawTubeStroke(ctx, tube);
+    if (tube && (mode === 'solid' || mode === 'passFront')) this._drawTubeGlass(ctx, tube);
   }
   _enterTube(p, tube, pts, m) {
     p._tubeOwn = true; p._tubeId = tube.id;
@@ -17540,19 +17579,17 @@ class Game {
   // Mid-flight branch: if the traveler is passing another tube's mouth and is PRESSING toward it,
   // divert into that tube (a T-junction you steer into). This is what makes "press up at the branch"
   // work while flying PAST it (the endpoint join in _advanceTube only fires at a tube's ends).
-  _tubeBranchAt(fromTube, x, y) {
-    const inp = this.input;
-    const ix = (inp.isRight() ? 1 : 0) - (inp.isLeft() ? 1 : 0);
-    const up = (inp.isStickUp && inp.isStickUp()) || inp.isDown('KeyW') || inp.isDown('ArrowUp');
-    const iy = (inp.isCrouch() ? 1 : 0) - (up ? 1 : 0);
+  _tubeBranchAt(fromTube, x, y, p) {
+    const ix = (p._steerT > 0) ? (p._steerX || 0) : 0;
+    const iy = (p._steerT > 0) ? (p._steerY || 0) : 0;
     if (!ix && !iy) return null;                     // only divert when actively steering
     for (const t of this._travelTubes) {
       if (t === fromTube) continue;
       const pts = this._tubePts(t); if (pts.length < 2) continue;
       for (const mm of TRAVEL_TUBE.mouths(pts)) {
-        if (Math.hypot(mm.x - x, mm.y - y) > BLOCK_SIZE * 0.9) continue;
+        if (Math.hypot(mm.x - x, mm.y - y) > BLOCK_SIZE * 1.4) continue;   // near this branch mouth
         const inDir = { x: -mm.dir.x, y: -mm.dir.y };   // into that tube
-        if (inDir.x * ix + inDir.y * iy > 0.5) return { tube: t, end: mm.end };
+        if (inDir.x * ix + inDir.y * iy > 0.35) return { tube: t, end: mm.end };
       }
     }
     return null;
@@ -17567,12 +17604,18 @@ class Game {
     p.x = at.x - p.width / 2; p.y = at.y - p.height / 2;
     p._tubeAngle = at.ang + (p._tubeDir < 0 ? Math.PI : 0);   // head-first heading (for the draw)
     p.vx = 0; p.vy = 0; p.onGround = false;
+    // Steer buffer — remember the last held direction briefly, so holding a way (or a tap just
+    // before the junction) reliably registers when we reach the branch mouth.
+    const inp = this.input;
+    const sx = (inp.isRight() ? 1 : 0) - (inp.isLeft() ? 1 : 0);
+    const sy = (inp.isCrouch() ? 1 : 0) - (((inp.isStickUp && inp.isStickUp()) || inp.isDown('KeyW') || inp.isDown('ArrowUp')) ? 1 : 0);
+    if (sx || sy) { p._steerX = sx; p._steerY = sy; p._steerT = 12; } else if (p._steerT > 0) p._steerT--;
     // Mid-flight branch: steer into a T-junction you're passing (press its direction).
     if (p._tubeBranchCD > 0) p._tubeBranchCD--;
     else {
-      const br = this._tubeBranchAt(tube, at.x, at.y);
+      const br = this._tubeBranchAt(tube, at.x, at.y, p);
       if (br) {
-        p._tubeId = br.tube.id; p._tubeBranchCD = 10;
+        p._tubeId = br.tube.id; p._tubeBranchCD = 12; p._steerT = 0;
         const nL = TRAVEL_TUBE.length(this._tubePts(br.tube));
         if (br.end === 'start') { p._tubeDist = 0; p._tubeDir = 1; } else { p._tubeDist = nL; p._tubeDir = -1; }
         return;
