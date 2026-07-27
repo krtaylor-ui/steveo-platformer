@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 228 (Travel Tube v5: items are now TUBE DATA — pick a coin/emerald/power-up and click a tube to drop it; it snaps to the middle fly-track and, when collected, leaves NO gap (the glass stays). A solid tube can no longer be placed over an object — the draft line turns RED with an ✕ at the blocker and won’t place until you move the end (only Pass-behind may cross objects, tinting the blocks behind its glass). Edit Nodes: select a node + press Delete to remove it (reconnecting neighbours).)';
+const GAME_VERSION = 'v3 · build 229 (Travel Tube v6: the flying player now appears BEHIND the glass in EVERY tube mode (inside look). BRANCHING fixed — you can now steer into a mid-tube T-junction by holding its direction as you fly past it. New "Pass-in-front" look (4 modes: Solid / Pass-behind / Pass-in-front / Invisible): pass-in-front draws the glass BEHIND the walking player + objects (they’re in front of it), while a flyer is still shown behind the glass.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
