@@ -17484,28 +17484,41 @@ class Game {
     }
     ctx.setLineDash([]); ctx.restore();
   }
-  // Draw one tube's glass over its footprint cells (translucent so you see through it).
-  _drawTubeGlassCells(ctx, tube) {
+  // Draw a tube as a continuous translucent "glass" band along its centerline — a rim (slightly
+  // wider), the body (a touch narrower than the 3-cell footprint), and full-width rounded MOUTH caps
+  // with an end "lip" line. World Setting "Rounded Bends" turns 90° corners into smooth ones.
+  _drawTubeStroke(ctx, tube) {
+    const pts = this._tubePts(tube); if (pts.length < 2) return;
     const cam = this.camera, BS = BLOCK_SIZE;
-    for (const key of this._tubeFoot(tube)) {
-      const i = key.indexOf(','), col = +key.slice(0, i), row = +key.slice(i + 1);
-      const x = col * BS - cam.x, y = row * BS - cam.y;
-      ctx.fillStyle = 'rgba(150,205,232,0.30)'; ctx.fillRect(x, y, BS, BS);
-      ctx.fillStyle = 'rgba(220,240,250,0.16)'; ctx.fillRect(x + 2, y + 2, BS - 4, 3);
-      ctx.strokeStyle = 'rgba(190,225,242,0.55)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, BS - 1, BS - 1);
+    const rounded = !!this._worldAdvSettings.tubeRoundedCorners;
+    const bodyW = BS * 2.55, mouthW = BS * 3;   // body slightly narrow; mouths full 3-wide
+    ctx.save();
+    ctx.lineJoin = rounded ? 'round' : 'miter';
+    ctx.lineCap = 'butt';
+    const trace = () => { ctx.beginPath(); pts.forEach((p, i) => { const x = p.x - cam.x, y = p.y - cam.y; i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }); };
+    trace(); ctx.strokeStyle = 'rgba(190,225,242,0.5)'; ctx.lineWidth = bodyW + 3; ctx.stroke();   // rim
+    trace(); ctx.strokeStyle = 'rgba(150,205,232,0.30)'; ctx.lineWidth = bodyW; ctx.stroke();      // glass body
+    for (const m of TRAVEL_TUBE.mouths(pts)) {   // full-width rounded mouth + a "pipe end" lip
+      const mx = m.x - cam.x, my = m.y - cam.y, px = -m.dir.y, py = m.dir.x;
+      ctx.fillStyle = 'rgba(150,205,232,0.30)';
+      ctx.beginPath(); ctx.arc(mx, my, mouthW / 2, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(120,170,205,0.75)'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(mx + px * mouthW / 2, my + py * mouthW / 2); ctx.lineTo(mx - px * mouthW / 2, my - py * mouthW / 2); ctx.stroke();
     }
+    ctx.restore();
   }
-  // BACK pass (right after the level, before objects/entities): Pass-In-Front tubes draw their
-  // glass BEHIND the world → the walking player + objects appear in FRONT of the glass.
+  // BACK pass (right after the level, before objects/entities): SOLID + Pass-In-Front tubes draw
+  // their glass BEHIND the world → the walking player + objects appear in FRONT of the glass.
+  // (Solid tubes render only here now — the TUBE_WALL block itself draws nothing, just collides.)
   _drawTravelTubesBack(ctx) {
     if (!this._travelTubes) return;
-    for (const t of this._travelTubes) if ((t.mode || 'solid') === 'passFront') this._drawTubeGlassCells(ctx, t);
+    for (const t of this._travelTubes) { const m = t.mode || 'solid'; if (m === 'solid' || m === 'passFront') this._drawTubeStroke(ctx, t); }
   }
   // FRONT pass (after entities): Pass-behind tubes draw their glass OVER the world → the walking
   // player + objects appear BEHIND the glass.
   _drawTravelTubesFront(ctx) {
     if (!this._travelTubes) return;
-    for (const t of this._travelTubes) if ((t.mode || 'solid') === 'passBehind') this._drawTubeGlassCells(ctx, t);
+    for (const t of this._travelTubes) if ((t.mode || 'solid') === 'passBehind') this._drawTubeStroke(ctx, t);
   }
   // Whatever tube the player is FLYING through gets its glass drawn OVER the player (all modes) so
   // the traveler always appears INSIDE / behind the glass. Pass-behind already covers it in the
@@ -17514,7 +17527,7 @@ class Game {
     const p = this.player; if (!p || !p._tubeOwn) return;
     const tube = this._travelTubes && this._travelTubes.find(t => t.id === p._tubeId);
     const mode = tube && (tube.mode || 'solid');
-    if (tube && (mode === 'solid' || mode === 'passFront')) this._drawTubeGlassCells(ctx, tube);
+    if (tube && (mode === 'solid' || mode === 'passFront')) this._drawTubeStroke(ctx, tube);
   }
   _enterTube(p, tube, pts, m) {
     p._tubeOwn = true; p._tubeId = tube.id;

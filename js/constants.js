@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 229 (Travel Tube v6: the flying player now appears BEHIND the glass in EVERY tube mode (inside look). BRANCHING fixed — you can now steer into a mid-tube T-junction by holding its direction as you fly past it. New "Pass-in-front" look (4 modes: Solid / Pass-behind / Pass-in-front / Invisible): pass-in-front draws the glass BEHIND the walking player + objects (they’re in front of it), while a flyer is still shown behind the glass.)';
+const GAME_VERSION = 'v3 · build 230 (Travel Tube v7 — pipe look: tubes now render as a continuous translucent band along the centerline, with a new "Rounded Bends" world setting that smooths the corners (blocky game, rounded pipe — the unthinkable). Full-width rounded MOUTHS with an end "lip" line, and the body runs a touch narrower than the ends. TUBE_WALL cells no longer draw per-cell squares (just collide).)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

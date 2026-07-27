@@ -1803,15 +1803,10 @@ function _drawBar(ctx, px, py, s, withPlatform) {
   ctx.fillStyle = '#c7ccd4'; ctx.fillRect(px, barY, s, 1);          // highlight
   ctx.fillStyle = '#5c6068'; ctx.fillRect(px, barY + 3, s, 1);      // shade
 }
-// §Travel Tube — a footprint cell of a fly-through tube. Translucent "glass" so the player is
-// visible travelling inside; a light rim reads as the tube wall. Adjacent tube cells blend into a
-// continuous 2-wide tube. (v1: one look for all cells; seam-aware rims are a later polish.)
-function _drawTubeWall(ctx, px, py, s) {
-  ctx.fillStyle = 'rgba(150,205,232,0.26)'; ctx.fillRect(px, py, s, s);          // glass body
-  ctx.fillStyle = 'rgba(220,240,250,0.18)'; ctx.fillRect(px + 2, py + 2, s - 4, 3); // top sheen
-  ctx.strokeStyle = 'rgba(190,225,242,0.5)'; ctx.lineWidth = 1;                   // rim
-  ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
-}
+// §Travel Tube — a footprint cell of a fly-through tube. Draws NOTHING: the tube is rendered as a
+// continuous translucent band (with optional rounded bends + mouth caps) by the game's tube passes
+// (_drawTubeStroke), so per-cell squares would fight the rounded look. This block only COLLIDES.
+function _drawTubeWall(ctx, px, py, s) { /* rendered by the tube stroke passes, not per-cell */ }
 function _drawWarpPipe(ctx, px, py, s, state = {}, stem = false) {
   const t = !!state.pipeT, b = !!state.pipeB, l = !!state.pipeL, r = !!state.pipeR;
   // Overdraw 1px INTO connected neighbors so sub-pixel tile rounding can't leave a seam.
