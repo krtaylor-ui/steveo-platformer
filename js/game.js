@@ -2862,6 +2862,13 @@ class Game {
 
     const isSandbox = this.gameMode === 'sandbox' && this.sandbox;
 
+    // §Travel Tube — keyboard helpers: Esc finishes node-editing / cancels a draft; Backspace
+    // removes the last draft waypoint (adjust without starting over).
+    if (isSandbox && this.input.isJustDown) {
+      if (this._tubeEditNodes && this.input.isJustDown('Escape')) { this._tubeEditNodes = null; this._notify('Done editing nodes', '#8fd0e6', 90); }
+      else if (this._tubeDraft && this.input.isJustDown('Escape')) { this._tubeDraft = null; this._notify('Tube cancelled', '#c66', 80); }
+      else if (this._tubeDraft && this.input.isJustDown('Backspace')) { this._tubeDraft.cells.pop(); if (!this._tubeDraft.cells.length) this._tubeDraft = null; }
+    }
     // ── Sandbox: click-to-place / click-to-remove / egg popup ──
     if (isSandbox && this.input.mouse.clicked && !_sbHotbarConsumed) {
       const _ctrlClick  = (this.input.isDown('ControlLeft') || this.input.isDown('ControlRight')) && !this.input.mouse.altClicked;
@@ -2888,7 +2895,9 @@ class Game {
       // visible tube intercepts any tool's click so you can't erase blocks and leave a phantom path).
       const _tubeSel = this.sandbox.selectedBlock === BLOCK.TUBE_WALL;
       const _tubeHit = (!this.input.mouse.altClicked) ? this._tubeAtCell(hoverRow, hoverCol) : null;
-      if (_tubeSel && !this.input.mouse.altClicked && (this._tubeDraft || !_tubeHit)) {
+      if (this._tubeEditNodes && !this.input.mouse.altClicked) {
+        this._tubeNodeEditClick(hoverRow, hoverCol);
+      } else if (_tubeSel && !this.input.mouse.altClicked && (this._tubeDraft || !_tubeHit)) {
         this._tubeDraftClick(hoverRow, hoverCol);
       } else if (_tubeHit && !this._tubeDraft && (_tubeSel || target === BLOCK.TUBE_WALL)) {
         this._openTubePopup(_tubeHit);
@@ -6231,7 +6240,7 @@ class Game {
     try { this._drawTravelTubesFront(ctx); } catch (e) { /* ignore */ }   // §Travel Tube — pass-behind glass over entities
     if (this.gameMode === 'sandbox' && this.sandbox && this.sandbox.drawWorld) {
       this.sandbox.drawWorld(ctx, this.camera, this.frameCount);
-      try { this._drawTravelTubesSandbox(ctx); if (this._tubeDraft) this._drawTubeDraft(ctx); } catch (e) { /* ignore */ }  // §Travel Tube outlines + draft
+      try { this._drawTravelTubesSandbox(ctx); if (this._tubeDraft) this._drawTubeDraft(ctx); if (this._tubeEditNodes) this._drawTubeNodeEdit(ctx); } catch (e) { /* ignore */ }  // §Travel Tube outlines + draft + node edit
     }
     // Death body-part scatter (world-space, scales with zoom). SR draws its own.
     if (this.gameMode !== 'speedrunner' && this._deathParts.length) this._drawDeathParts(ctx);
@@ -17001,6 +17010,9 @@ class Game {
 
   _classicBlocksForPlayer(p) {
     const L = this.level, BS = BLOCK_SIZE;
+    // §Travel Tube — while flying, skip ground effects/hazards (you're safe inside) but still collect
+    // items on the path. (Emeralds/power-ups are collected by their own per-frame overlap systems.)
+    if (p._tubeOwn) { this._collectTubeItems(p); return; }
     // Warp-pipe animation owns the frame: centre on the mouth + face the camera, sink until the
     // head is inside the pipe → teleport (camera follows = the screen shift) → rise out at the dest.
     if (p._warp) {
@@ -17271,10 +17283,13 @@ class Game {
     const tx = mx + dir.x * bs, ty = my + dir.y * bs;                 // just OUTSIDE the opening
     if (Math.hypot(p.x + p.width / 2 - tx, p.y + p.height / 2 - ty) > bs * 1.15) return false;
     const inp = this.input, card = TRAVEL_TUBE.cardinal(dir);
+    // You must PUSH in the tube's flow direction (into the mouth). For a mouth above (opening down)
+    // that means holding Up — so you jump AND press up to go up into it, not merely jump past it.
+    const upHeld = (inp.isStickUp && inp.isStickUp()) || inp.isDown('KeyW') || inp.isDown('ArrowUp');
     if (card === 'left')  return inp.isRight();
     if (card === 'right') return inp.isLeft();
-    if (card === 'up')    return inp.isCrouch();
-    if (card === 'down')  return inp.isJump();
+    if (card === 'up')    return inp.isCrouch();   // opening on top → press Down into it
+    if (card === 'down')  return upHeld;           // opening below → hold Up (jump up into it)
     return false;
   }
   // Per-frame: fly the traveler through, else watch each mouth for an entry (shared rule above).
@@ -17315,12 +17330,44 @@ class Game {
       else if (b === BLOCK.TUBE_WALL) this.level.set(row, col, BLOCK.AIR);
     }
   }
-  _deleteTube(tube) {
-    for (const key of this._tubeFoot(tube)) {   // clear its glass cells
+  _clearTubeBlocks(tube) {   // clear a tube's glass cells (keeps the tube record)
+    for (const key of this._tubeFoot(tube)) {
       const i = key.indexOf(','), col = +key.slice(0, i), row = +key.slice(i + 1);
       if (this.level.get(row, col) === BLOCK.TUBE_WALL) this.level.set(row, col, BLOCK.AIR);
     }
+  }
+  _deleteTube(tube) {
+    this._clearTubeBlocks(tube);
     this._travelTubes = (this._travelTubes || []).filter(t => t !== tube);
+    if (this._tubeEditNodes && this._tubeEditNodes.id === tube.id) this._tubeEditNodes = null;
+  }
+  // ── §Travel Tube node editing — drag the path's waypoints without redrawing it ──
+  _moveTubeNode(tube, idx, col, row) {
+    this._clearTubeBlocks(tube);              // remove old glass (from the cached footprint)
+    tube.cells[idx] = { col, row };
+    tube._pts = null; tube._foot = null;      // invalidate derived geometry → recomputed on next use
+    this._applyTubeMode(tube);                // repaint glass at the new footprint
+  }
+  _tubeNodeEditClick(row, col) {
+    const ed = this._tubeEditNodes;
+    const tube = (this._travelTubes || []).find(t => t.id === ed.id);
+    if (!tube) { this._tubeEditNodes = null; return; }
+    const idx = tube.cells.findIndex(c => c.col === col && c.row === row);
+    if (ed.sel < 0) { if (idx >= 0) ed.sel = idx; }        // pick up the node under the cursor
+    else { this._moveTubeNode(tube, ed.sel, col, row); ed.sel = -1; }   // drop it on the clicked cell
+  }
+  _drawTubeNodeEdit(ctx) {
+    const ed = this._tubeEditNodes; if (!ed) return;
+    const tube = (this._travelTubes || []).find(t => t.id === ed.id); if (!tube) return;
+    const cam = this.camera, BS = BLOCK_SIZE;
+    ctx.save();
+    tube.cells.forEach((c, i) => {
+      const x = c.col * BS + BS / 2 - cam.x, y = c.row * BS + BS / 2 - cam.y;
+      ctx.fillStyle = (i === ed.sel) ? '#ffd166' : '#8fd0e6';
+      ctx.beginPath(); ctx.arc(x, y, i === ed.sel ? 7 : 5, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#0b1a22'; ctx.lineWidth = 2; ctx.stroke();
+    });
+    ctx.restore();
   }
   // ── §Travel Tube edit/delete modal (self-contained, like the piston popup) ──
   _openTubePopup(tube) { this._tubePopup = { id: tube.id }; }
@@ -17329,7 +17376,7 @@ class Game {
     const tube = (this._travelTubes || []).find(t => t.id === tp.id);
     if (!tube) { this._tubePopup = null; return; }
     if (!this.input.mouse.clicked) return;
-    const pw = 250, ph = 196, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const pw = 250, ph = 236, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     const mx = this.input.mouse.x, my = this.input.mouse.y;
     const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
     if (hit(px + pw - 30, py + 6, 24, 24) || mx < px || mx > px + pw || my < py || my > py + ph) { this._tubePopup = null; return; }
@@ -17340,13 +17387,17 @@ class Game {
       tube.mode = modes[(modes.indexOf(tube.mode || 'solid') + 1) % modes.length];
       this._applyTubeMode(tube); return;
     }
+    if (hit(px + 14, py + 130, pw - 28, 32)) {   // Edit Nodes → node-drag mode
+      this._tubeEditNodes = { id: tube.id, sel: -1 }; this._tubePopup = null;
+      this._notify('Edit nodes: click a node, then click a new spot. Esc when done.', '#8fd0e6', 200); return;
+    }
     if (hit(px + 14, py + ph - 44, pw - 28, 32)) { this._deleteTube(tube); this._tubePopup = null; this._notify('Tube deleted', '#c66', 100); return; }
   }
   _drawTubePopup(ctx) {
     const tp = this._tubePopup; if (!tp) return;
     const tube = (this._travelTubes || []).find(t => t.id === tp.id);
     if (!tube) { this._tubePopup = null; return; }
-    const pw = 250, ph = 196, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const pw = 250, ph = 236, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     ctx.save(); ctx.textBaseline = 'top';
     ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     ctx.fillStyle = '#0f1620'; _roundRect(ctx, px, py, pw, ph, 8); ctx.fill();
@@ -17362,6 +17413,9 @@ class Game {
     const LOOK = { solid: 'Solid glass', passBehind: 'Pass-behind (walk behind)', invisible: 'Invisible (hidden bonus)' };
     row(py + 54, 'Speed', (tube.speed || 7) + ' px', false);
     row(py + 92, 'Look', LOOK[tube.mode || 'solid'], (tube.mode || 'solid') !== 'solid');
+    ctx.fillStyle = '#243a2a'; _roundRect(ctx, px + 14, py + 130, pw - 28, 32, 6); ctx.fill();   // Edit Nodes
+    ctx.fillStyle = '#b7e6c4'; ctx.font = 'bold 12px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.fillText('✎  Edit Nodes (move the path)', px + pw / 2, py + 139); ctx.textAlign = 'left';
     ctx.fillStyle = '#4a1f2a'; _roundRect(ctx, px + 14, py + ph - 44, pw - 28, 32, 6); ctx.fill();
     ctx.fillStyle = '#ffb3c0'; ctx.font = 'bold 12px system-ui, sans-serif';
     ctx.textAlign = 'center'; ctx.fillText('🗑  Delete Tube', px + pw / 2, py + ph - 35); ctx.textAlign = 'left';
@@ -17418,22 +17472,62 @@ class Game {
     p.x = at.x - p.width / 2; p.y = at.y - p.height / 2;
     p._tubeAngle = at.ang + (p._tubeDir < 0 ? Math.PI : 0);   // head-first heading (for the draw)
     p.vx = 0; p.vy = 0; p.onGround = false;
-    // Auto-collect coins/emeralds you fly over (items-in-tube v1: reuse the classic overlap pass).
-    if (typeof this._classicBlocksForPlayer === 'function') { try { this._collectTubeItems(p); } catch (e) { /* ignore */ } }
-    if (done) {
-      const ms = TRAVEL_TUBE.mouths(pts), m = (p._tubeDist <= 0) ? ms[0] : ms[1];
-      p.x = m.x - p.width / 2 + m.dir.x * BLOCK_SIZE;
-      p.y = m.y - p.height / 2 + m.dir.y * BLOCK_SIZE;
-      p.vx = m.dir.x * 5; p.vy = m.dir.y * 5 + (m.dir.y < 0 ? -2 : 0);   // eject with a little pop
-      p._tubeOwn = false; p._tubeId = null; p._tubeCooldown = 18;
-      this._playSound('sounds/jump.mp3', 0.4);
+    if (!done) return;
+    // Reached a mouth. If another tube's mouth meets this point, FLOW into it (mouth-to-mouth join);
+    // if several do, it's a junction — steer with the held direction, else take the straightest. If
+    // nothing connects, this is an exit → eject. Each tube keeps its own mode, so a solid tube can
+    // flow into a pass-behind one and back, all as a single ride.
+    const ms = TRAVEL_TUBE.mouths(pts), m = (p._tubeDist <= 0) ? ms[0] : ms[1];
+    const next = this._tubeContinuation(tube, m);
+    if (next) {
+      p._tubeId = next.tube.id;
+      const nL = TRAVEL_TUBE.length(this._tubePts(next.tube));
+      if (next.end === 'start') { p._tubeDist = 0; p._tubeDir = 1; }
+      else { p._tubeDist = nL; p._tubeDir = -1; }
+      return;
     }
+    p.x = m.x - p.width / 2 + m.dir.x * BLOCK_SIZE;
+    p.y = m.y - p.height / 2 + m.dir.y * BLOCK_SIZE;
+    p.vx = m.dir.x * 5; p.vy = m.dir.y * 5 + (m.dir.y < 0 ? -2 : 0);   // eject with a little pop
+    p._tubeOwn = false; p._tubeId = null; p._tubeCooldown = 18;
+    this._playSound('sounds/jump.mp3', 0.4);
   }
-  // v1 item pickup while flying: coins on the path auto-collect (mirrors the classic coin overlap).
+  // Find the tube to flow into when leaving `fromTube` at `exitMouth` (another tube's mouth within
+  // ~1 cell). Multiple candidates = a junction: pick by held input direction, else the straightest.
+  _tubeContinuation(fromTube, exitMouth) {
+    if (!this._travelTubes) return null;
+    const cands = [];
+    for (const t of this._travelTubes) {
+      const pts = this._tubePts(t); if (pts.length < 2) continue;
+      for (const mm of TRAVEL_TUBE.mouths(pts)) {
+        if (t === fromTube && mm.end === exitMouth.end) continue;   // don't bounce back out the way we came
+        if (Math.hypot(mm.x - exitMouth.x, mm.y - exitMouth.y) > BLOCK_SIZE * 1.2) continue;
+        cands.push({ tube: t, end: mm.end, inDir: { x: -mm.dir.x, y: -mm.dir.y } });   // inward = into that tube
+      }
+    }
+    if (!cands.length) return null;
+    const inp = this.input;
+    const ix = (inp.isRight() ? 1 : 0) - (inp.isLeft() ? 1 : 0);
+    const up = (inp.isStickUp && inp.isStickUp()) || inp.isDown('KeyW') || inp.isDown('ArrowUp');
+    const iy = (inp.isCrouch() ? 1 : 0) - (up ? 1 : 0);
+    if (ix || iy) {                                  // steer: the branch whose direction you're pressing
+      let best = null, bestDot = 0.3;
+      for (const c of cands) { const d = c.inDir.x * ix + c.inDir.y * iy; if (d > bestDot) { bestDot = d; best = c; } }
+      if (best) return best;
+    }
+    const fwd = exitMouth.dir;                       // default: keep going straightest
+    let best = cands[0], bestDot = -Infinity;
+    for (const c of cands) { const d = c.inDir.x * fwd.x + c.inDir.y * fwd.y; if (d > bestDot) { bestDot = d; best = c; } }
+    return best;
+  }
+  // Item pickup while flying: coins + emeralds on the path auto-collect as you pass their cell.
+  // (Placed emeralds/power-up OBJECTS are collected by EMERALD_SYSTEM / POWERUP_SYSTEM each frame.)
   _collectTubeItems(p) {
     const BS = BLOCK_SIZE, L = this.level;
     const c = Math.floor((p.x + p.width / 2) / BS), r = Math.floor((p.y + p.height / 2) / BS);
-    if (L.get(r, c) === BLOCK.COIN) { L.set(r, c, BLOCK.AIR); this._collectCoin(p); }
+    const b = L.get(r, c);
+    if (b === BLOCK.COIN) { L.set(r, c, BLOCK.AIR); this._collectCoin(p); }
+    else if (b === BLOCK.EMERALD && this._worldAdvSettings.platformerEmeralds) { L.set(r, c, BLOCK.AIR); this._collectCoin(p); }
   }
   // Draft preview (sandbox): the waypoint path being drawn.
   _drawTubeDraft(ctx) {

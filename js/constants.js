@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 225 (Moving-platform collision fix + Travel Tube pass-behind: a depenetration safety net now pushes a player back out when a moving platform/piston/pushed block carries them INTO any solid (fixes being carried through the tube mouth). Travel Tube "Look" is now a 3-way mode in its modal — Solid glass / Pass-behind (walk behind it) / Invisible (hidden bonus). Remaining tube feature = branches/multiple paths, next build.)';
+const GAME_VERSION = 'v3 · build 226 (Travel Tube v3: BRANCHING + mouth-to-mouth JOIN — connect tubes end-to-end (mix solid + pass-behind and they flow as one ride); where 3+ ends meet it is a junction (steer with the held direction, else straightest). Edit Nodes mode (drag a tube path’s waypoints; Esc when done; Backspace undoes a draft point). Entry now requires PUSHING the tube’s direction (hold Up to go up into a mouth above). Coins + emeralds collect in flight (power-ups/emeralds via their own pickup). This completes the tube feature set — ready to merge after playtest.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
