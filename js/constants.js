@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 226 (Travel Tube v3: BRANCHING + mouth-to-mouth JOIN — connect tubes end-to-end (mix solid + pass-behind and they flow as one ride); where 3+ ends meet it is a junction (steer with the held direction, else straightest). Edit Nodes mode (drag a tube path’s waypoints; Esc when done; Backspace undoes a draft point). Entry now requires PUSHING the tube’s direction (hold Up to go up into a mouth above). Coins + emeralds collect in flight (power-ups/emeralds via their own pickup). This completes the tube feature set — ready to merge after playtest.)';
+const GAME_VERSION = 'v3 · build 227 (Travel Tube v4: Esc now ends tube-edit/draft FIRST (only opens the menu if not editing). Items in tubes — place items, lay a PASS-BEHIND tube over them: the item shows behind the glass and only the item vanishes when collected (glass stays). Solid tubes no longer pass through blocks or placed items (they skip those cells). Edit Nodes: DOUBLE-CLICK an end node (turns green) to CONTINUE the tube — keep adding nodes like the initial draw until Esc.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

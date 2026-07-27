@@ -1521,6 +1521,13 @@ class Game {
     // Animate death body-part scatter (all modes; runs even on the death/end screen).
     this._updateDeathParts();
 
+    // §Travel Tube — Esc ends tube editing / cancels a draft FIRST, and consumes the press so the
+    // pause menu doesn't also open on the same tap (it only opens if we're NOT editing a tube).
+    if (this.gameMode === 'sandbox' && this.input.isDown('Escape') && !this._escWas && (this._tubeEditNodes || this._tubeDraft)) {
+      if (this._tubeEditNodes) { this._tubeEditNodes = null; this._notify('Done editing nodes', '#8fd0e6', 90); }
+      else { this._tubeDraft = null; this._notify('Tube cancelled', '#c66', 80); }
+      this._escWas = true;   // consume this Esc edge → escEdge below stays false, menu stays closed
+    }
     // ── ESC: pause / unpause (not on win screen) ───────────────
     const escNow  = this.input.isDown('Escape');
     const escEdge = (escNow && !this._escWas) || this.input.p1JustDown('menu');
@@ -2864,10 +2871,8 @@ class Game {
 
     // §Travel Tube — keyboard helpers: Esc finishes node-editing / cancels a draft; Backspace
     // removes the last draft waypoint (adjust without starting over).
-    if (isSandbox && this.input.isJustDown) {
-      if (this._tubeEditNodes && this.input.isJustDown('Escape')) { this._tubeEditNodes = null; this._notify('Done editing nodes', '#8fd0e6', 90); }
-      else if (this._tubeDraft && this.input.isJustDown('Escape')) { this._tubeDraft = null; this._notify('Tube cancelled', '#c66', 80); }
-      else if (this._tubeDraft && this.input.isJustDown('Backspace')) { this._tubeDraft.cells.pop(); if (!this._tubeDraft.cells.length) this._tubeDraft = null; }
+    if (isSandbox && this._tubeDraft && this.input.isJustDown && this.input.isJustDown('Backspace')) {
+      this._tubeDraft.cells.pop(); if (!this._tubeDraft.cells.length) this._tubeDraft = null;   // undo last draft point
     }
     // ── Sandbox: click-to-place / click-to-remove / egg popup ──
     if (isSandbox && this.input.mouse.clicked && !_sbHotbarConsumed) {
@@ -17261,16 +17266,22 @@ class Game {
   _finishTubeDraft() {
     const d = this._tubeDraft; this._tubeDraft = null;
     if (!d || d.cells.length < 2) { this._notify('A tube needs at least 2 points', '#c66', 100); return; }
-    const pts = TRAVEL_TUBE.buildPolyline(d.cells, BLOCK_SIZE);
-    for (const key of TRAVEL_TUBE.footprint(pts, BLOCK_SIZE)) {   // key = "col,row"
-      const i = key.indexOf(','), col = +key.slice(0, i), row = +key.slice(i + 1);
-      const b = this.level.get(row, col);
-      if (b === BLOCK.AIR || b === BLOCK.TUBE_WALL) this.level.set(row, col, BLOCK.TUBE_WALL);
-    }
     this._travelTubes = this._travelTubes || [];
     this._nextTubeId = (this._nextTubeId || 0) + 1;
-    this._travelTubes.push({ id: this._nextTubeId, cells: d.cells.slice(), speed: this._worldAdvSettings.tubeDefaultSpeed || 7, mode: 'solid' });
+    const tube = { id: this._nextTubeId, cells: d.cells.slice(), speed: this._worldAdvSettings.tubeDefaultSpeed || 7, mode: 'solid' };
+    this._travelTubes.push(tube);
+    this._applyTubeMode(tube);   // paints the glass (solid = only over empty, item-free cells)
     this._notify('Travel Tube placed ✓ — click it to edit / delete', '#8fd0e6', 150);
+  }
+  // Is a non-grid item (emerald / power-up / dropped item / spawn egg) placed at this cell? Solid
+  // tubes must not engulf those (or blocks); pass-behind/invisible tubes may sit over them.
+  _cellHasPlacedItem(row, col) {
+    const sb = this.sandbox; if (!sb) return false;
+    const wx = col * BLOCK_SIZE + BLOCK_SIZE / 2, wy = row * BLOCK_SIZE + BLOCK_SIZE / 2;
+    return (sb.hitTestEmeralds && sb.hitTestEmeralds(wx, wy) >= 0) ||
+           (sb.hitTestPowerups && sb.hitTestPowerups(wx, wy) >= 0) ||
+           (sb.hitTestItems && sb.hitTestItems(wx, wy) >= 0) ||
+           (sb.hitTestEggs && sb.hitTestEggs(wx, wy) >= 0);
   }
   // §Shared pipe-entry mechanic (Travel Tubes AND green Warp Pipes use the SAME rule). Returns true
   // when `p` is pressed up against a mouth at (mx,my) that opens toward `dir` (outward unit vector)
@@ -17326,7 +17337,8 @@ class Game {
     for (const key of this._tubeFoot(tube)) {
       const i = key.indexOf(','), col = +key.slice(0, i), row = +key.slice(i + 1);
       const b = this.level.get(row, col);
-      if (solid) { if (b === BLOCK.AIR || b === BLOCK.TUBE_WALL) this.level.set(row, col, BLOCK.TUBE_WALL); }
+      // Solid glass only goes over EMPTY, item-free cells — it can't pass through blocks or items.
+      if (solid) { if ((b === BLOCK.AIR || b === BLOCK.TUBE_WALL) && !this._cellHasPlacedItem(row, col)) this.level.set(row, col, BLOCK.TUBE_WALL); }
       else if (b === BLOCK.TUBE_WALL) this.level.set(row, col, BLOCK.AIR);
     }
   }
@@ -17352,19 +17364,40 @@ class Game {
     const ed = this._tubeEditNodes;
     const tube = (this._travelTubes || []).find(t => t.id === ed.id);
     if (!tube) { this._tubeEditNodes = null; return; }
+    if (ed.extend) { this._extendTubeNode(tube, ed.extend, col, row); return; }   // continuing → append/prepend
     const idx = tube.cells.findIndex(c => c.col === col && c.row === row);
-    if (ed.sel < 0) { if (idx >= 0) ed.sel = idx; }        // pick up the node under the cursor
-    else { this._moveTubeNode(tube, ed.sel, col, row); ed.sel = -1; }   // drop it on the clicked cell
+    if (idx >= 0) {
+      const isEnd = (idx === 0 || idx === tube.cells.length - 1);
+      // DOUBLE-click an endpoint → enter "continue" mode: keep adding nodes off that end (Esc to stop).
+      if (isEnd && ed._lastIdx === idx && (this.frameCount - (ed._lastFrame || -99)) <= 24) {
+        ed.extend = (idx === 0) ? 'start' : 'end'; ed.sel = -1; ed._lastIdx = -1;
+        this._notify('Continuing the tube — click to add nodes, Esc when done', '#7fe08a', 200);
+        return;
+      }
+      ed._lastIdx = idx; ed._lastFrame = this.frameCount;
+      ed.sel = idx;                                        // single click: pick the node up to move it
+    } else if (ed.sel >= 0) {
+      this._moveTubeNode(tube, ed.sel, col, row); ed.sel = -1;   // drop the held node here
+    }
+  }
+  _extendTubeNode(tube, end, col, row) {
+    this._clearTubeBlocks(tube);
+    if (end === 'end') tube.cells.push({ col, row });
+    else tube.cells.unshift({ col, row });
+    tube._pts = null; tube._foot = null;
+    this._applyTubeMode(tube);
   }
   _drawTubeNodeEdit(ctx) {
     const ed = this._tubeEditNodes; if (!ed) return;
     const tube = (this._travelTubes || []).find(t => t.id === ed.id); if (!tube) return;
     const cam = this.camera, BS = BLOCK_SIZE;
     ctx.save();
+    const extIdx = ed.extend === 'start' ? 0 : ed.extend === 'end' ? tube.cells.length - 1 : -1;
     tube.cells.forEach((c, i) => {
       const x = c.col * BS + BS / 2 - cam.x, y = c.row * BS + BS / 2 - cam.y;
-      ctx.fillStyle = (i === ed.sel) ? '#ffd166' : '#8fd0e6';
-      ctx.beginPath(); ctx.arc(x, y, i === ed.sel ? 7 : 5, 0, Math.PI * 2); ctx.fill();
+      const isExt = (i === extIdx);
+      ctx.fillStyle = isExt ? '#7fe08a' : (i === ed.sel) ? '#ffd166' : '#8fd0e6';
+      ctx.beginPath(); ctx.arc(x, y, (isExt || i === ed.sel) ? 7 : 5, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = '#0b1a22'; ctx.lineWidth = 2; ctx.stroke();
     });
     ctx.restore();
