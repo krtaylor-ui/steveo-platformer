@@ -92,6 +92,20 @@ const TRAVEL_TUBE = {
     ];
   },
 
+  // Nearest point ON the centerline to (x,y) — used to snap a placed item to the middle track (the
+  // fly path). Returns {x,y,d} (d = distance along the polyline). Samples every half-cell.
+  nearest(pts, x, y, bs = TRAVEL_TUBE.BS) {
+    if (!pts.length) return { x, y, d: 0 };
+    if (pts.length === 1) return { x: pts[0].x, y: pts[0].y, d: 0 };
+    const L = this.length(pts); let best = null;
+    for (let d = 0; d <= L + 1e-6; d += bs / 2) {
+      const p = this.pointAt(pts, Math.min(d, L));
+      const dist = Math.hypot(p.x - x, p.y - y);
+      if (!best || dist < best.dist) best = { x: p.x, y: p.y, d: Math.min(d, L), dist };
+    }
+    return best;
+  },
+
   // Snap an outward direction to the nearest cardinal ('left'|'right'|'up'|'down') — for the
   // orientation-based ENTER rule (walk into a side mouth, Down into an up mouth, Up into a down mouth).
   cardinal(dir) {

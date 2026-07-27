@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 227 (Travel Tube v4: Esc now ends tube-edit/draft FIRST (only opens the menu if not editing). Items in tubes — place items, lay a PASS-BEHIND tube over them: the item shows behind the glass and only the item vanishes when collected (glass stays). Solid tubes no longer pass through blocks or placed items (they skip those cells). Edit Nodes: DOUBLE-CLICK an end node (turns green) to CONTINUE the tube — keep adding nodes like the initial draw until Esc.)';
+const GAME_VERSION = 'v3 · build 228 (Travel Tube v5: items are now TUBE DATA — pick a coin/emerald/power-up and click a tube to drop it; it snaps to the middle fly-track and, when collected, leaves NO gap (the glass stays). A solid tube can no longer be placed over an object — the draft line turns RED with an ✕ at the blocker and won’t place until you move the end (only Pass-behind may cross objects, tinting the blocks behind its glass). Edit Nodes: select a node + press Delete to remove it (reconnecting neighbours).)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

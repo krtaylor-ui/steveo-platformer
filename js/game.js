@@ -2874,6 +2874,11 @@ class Game {
     if (isSandbox && this._tubeDraft && this.input.isJustDown && this.input.isJustDown('Backspace')) {
       this._tubeDraft.cells.pop(); if (!this._tubeDraft.cells.length) this._tubeDraft = null;   // undo last draft point
     }
+    // §Travel Tube — Delete removes the SELECTED node (auto-reconnects its neighbours); Esc-handled above.
+    if (isSandbox && this._tubeEditNodes && this._tubeEditNodes.sel >= 0 && this.input.isJustDown && this.input.isJustDown('Delete')) {
+      const t = (this._travelTubes || []).find(x => x.id === this._tubeEditNodes.id);
+      if (t) { this._deleteTubeNode(t, this._tubeEditNodes.sel); this._tubeEditNodes.sel = -1; }
+    }
     // ── Sandbox: click-to-place / click-to-remove / egg popup ──
     if (isSandbox && this.input.mouse.clicked && !_sbHotbarConsumed) {
       const _ctrlClick  = (this.input.isDown('ControlLeft') || this.input.isDown('ControlRight')) && !this.input.mouse.altClicked;
@@ -2902,6 +2907,8 @@ class Game {
       const _tubeHit = (!this.input.mouse.altClicked) ? this._tubeAtCell(hoverRow, hoverCol) : null;
       if (this._tubeEditNodes && !this.input.mouse.altClicked) {
         this._tubeNodeEditClick(hoverRow, hoverCol);
+      } else if (_tubeHit && !this._tubeDraft && !this.input.mouse.altClicked && this._selectedTubeItemKind()) {
+        this._addTubeItem(_tubeHit, hoverRow, hoverCol);          // item selected + clicked a tube → drop it IN the tube
       } else if (_tubeSel && !this.input.mouse.altClicked && (this._tubeDraft || !_tubeHit)) {
         this._tubeDraftClick(hoverRow, hoverCol);
       } else if (_tubeHit && !this._tubeDraft && (_tubeSel || target === BLOCK.TUBE_WALL)) {
@@ -6242,7 +6249,7 @@ class Game {
     if ((this._worldAdvSettings.showBotPaths || this._worldAdvSettings.showNavGrid) && this._botControllers && this._botControllers.length) this._drawBotDebug(ctx);
     // Sandbox WORLD overlays (placed eggs/emeralds/power-ups/hill/spawn-lines/items
     // + portal labels) must scale with the zoom too — draw them inside the transform.
-    try { this._drawTravelTubesFront(ctx); } catch (e) { /* ignore */ }   // §Travel Tube — pass-behind glass over entities
+    try { this._drawTravelTubeItems(ctx); this._drawTravelTubesFront(ctx); } catch (e) { /* ignore */ }   // §Travel Tube — items (behind glass) + pass-behind glass over entities
     if (this.gameMode === 'sandbox' && this.sandbox && this.sandbox.drawWorld) {
       this.sandbox.drawWorld(ctx, this.camera, this.frameCount);
       try { this._drawTravelTubesSandbox(ctx); if (this._tubeDraft) this._drawTubeDraft(ctx); if (this._tubeEditNodes) this._drawTubeNodeEdit(ctx); } catch (e) { /* ignore */ }  // §Travel Tube outlines + draft + node edit
@@ -7671,7 +7678,7 @@ class Game {
     // fly-through PATHS (waypoints + speed) so travel works after a reload.
     if (data && Array.isArray(data.travelTubes)) {
       this._travelTubes = data.travelTubes.map(t => ({ id: t.id, cells: t.cells || [], speed: t.speed || 7,
-        mode: t.mode || (t.visible === false ? 'invisible' : 'solid') }));   // migrate old `visible` flag
+        mode: t.mode || (t.visible === false ? 'invisible' : 'solid'), items: t.items || [] }));   // migrate old `visible` flag
       this._nextTubeId = this._travelTubes.reduce((m, t) => Math.max(m, t.id || 0), 0);
     }
   }
@@ -17264,8 +17271,12 @@ class Game {
     if (d.cells.length === 1) this._notify('Tube start — click corners, click the last point again to finish', '#8fd0e6', 170);
   }
   _finishTubeDraft() {
-    const d = this._tubeDraft; this._tubeDraft = null;
-    if (!d || d.cells.length < 2) { this._notify('A tube needs at least 2 points', '#c66', 100); return; }
+    const d = this._tubeDraft;
+    if (!d || d.cells.length < 2) { this._tubeDraft = null; this._notify('A tube needs at least 2 points', '#c66', 100); return; }
+    // A tube can't be placed over another object (default = solid). Keep the draft OPEN so the
+    // designer can Backspace / move the end; the exception is Pass-behind (set after placing).
+    if (this._tubeFirstObstacle(d.cells)) { this._notify('Blocked by an object — move the end (Pass-behind can cross it later)', '#e06666', 170); return; }
+    this._tubeDraft = null;
     this._travelTubes = this._travelTubes || [];
     this._nextTubeId = (this._nextTubeId || 0) + 1;
     const tube = { id: this._nextTubeId, cells: d.cells.slice(), speed: this._worldAdvSettings.tubeDefaultSpeed || 7, mode: 'solid' };
@@ -17553,21 +17564,97 @@ class Game {
     for (const c of cands) { const d = c.inDir.x * fwd.x + c.inDir.y * fwd.y; if (d > bestDot) { bestDot = d; best = c; } }
     return best;
   }
-  // Item pickup while flying: coins + emeralds on the path auto-collect as you pass their cell.
-  // (Placed emeralds/power-up OBJECTS are collected by EMERALD_SYSTEM / POWERUP_SYSTEM each frame.)
+  // Item pickup while flying. Tube-DATA items (stored on the tube, not the grid) leave NO gap when
+  // collected — the glass stays. Also picks up any legacy coin/emerald grid block on the path.
   _collectTubeItems(p) {
     const BS = BLOCK_SIZE, L = this.level;
-    const c = Math.floor((p.x + p.width / 2) / BS), r = Math.floor((p.y + p.height / 2) / BS);
-    const b = L.get(r, c);
+    const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+    const c = Math.floor(pcx / BS), r = Math.floor(pcy / BS), b = L.get(r, c);
     if (b === BLOCK.COIN) { L.set(r, c, BLOCK.AIR); this._collectCoin(p); }
     else if (b === BLOCK.EMERALD && this._worldAdvSettings.platformerEmeralds) { L.set(r, c, BLOCK.AIR); this._collectCoin(p); }
+    const tube = this._travelTubes && this._travelTubes.find(t => t.id === p._tubeId);
+    if (tube && tube.items && tube.items.length) {
+      for (let i = tube.items.length - 1; i >= 0; i--) {
+        const it = tube.items[i];
+        if (Math.hypot(pcx - it.x, pcy - it.y) < 16) {
+          tube.items.splice(i, 1);
+          if (it.kind === 'powerup') this._grantPowerup(it.type || 'HEALTH', p);
+          else this._collectCoin(p);      // coin + emerald both count as a collect
+        }
+      }
+    }
+  }
+  // Which collectible is selected in the palette (for dropping into a tube)? null = none.
+  _selectedTubeItemKind() {
+    const sb = this.sandbox; if (!sb) return null;
+    if (sb.isEmeraldSelected) return 'emerald';
+    if (sb.isPowerupSelected) return 'powerup';
+    if (sb.selectedBlock === BLOCK.COIN) return 'coin';
+    return null;
+  }
+  // Drop the selected collectible INTO a tube: snap it to the middle track (the fly path) so the
+  // traveler passes right through it. Stored as tube data → no grid cell, no gap on collect.
+  _addTubeItem(tube, row, col) {
+    const kind = this._selectedTubeItemKind(); if (!kind) return;
+    const np = TRAVEL_TUBE.nearest(this._tubePts(tube), col * BLOCK_SIZE + BLOCK_SIZE / 2, row * BLOCK_SIZE + BLOCK_SIZE / 2);
+    tube.items = tube.items || [];
+    const it = { x: np.x, y: np.y, kind };
+    if (kind === 'powerup') it.type = 'HEALTH';
+    tube.items.push(it);
+    this._notify(kind + ' added inside the tube', '#8fd0e6', 90);
+  }
+  // Draw tube-data items on the centerline (before the front glass, so a pass-behind tube's glass
+  // sits over them = they read as "inside / behind the glass").
+  _drawTravelTubeItems(ctx) {
+    if (!this._travelTubes) return;
+    const cam = this.camera, S = 18;
+    for (const t of this._travelTubes) {
+      if (!t.items) continue;
+      for (const it of t.items) {
+        const x = it.x - cam.x, y = it.y - cam.y;
+        if ((it.kind === 'coin' || it.kind === 'emerald') && typeof drawBlock === 'function') {
+          ctx.save(); ctx.translate(x - S / 2, y - S / 2); ctx.scale(S / BLOCK_SIZE, S / BLOCK_SIZE);
+          try { drawBlock(ctx, it.kind === 'coin' ? BLOCK.COIN : BLOCK.EMERALD, 0, 0, 0, {}); } catch (e) { /* ignore */ }
+          ctx.restore();
+        } else {
+          ctx.fillStyle = '#c86bd6'; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+        }
+      }
+    }
+  }
+  // First obstacle along a candidate SOLID path (a non-tube block or a placed item anywhere in the
+  // 3-wide band), or null. Used to red-flag + block a draft — a solid tube can't cross objects.
+  _tubeFirstObstacle(cells) {
+    const pts = TRAVEL_TUBE.buildPolyline(cells, BLOCK_SIZE); if (pts.length < 2) return null;
+    const L = TRAVEL_TUBE.length(pts), BS = BLOCK_SIZE;
+    for (let d = 0; d <= L + 1e-6; d += BS / 2) {
+      const p = TRAVEL_TUBE.pointAt(pts, Math.min(d, L));
+      const nx = -Math.sin(p.ang), ny = Math.cos(p.ang);
+      for (const o of [-1, 0, 1]) {
+        const cc = Math.floor((p.x + nx * o * BS) / BS), rr = Math.floor((p.y + ny * o * BS) / BS);
+        const bl = this.level.get(rr, cc);
+        if ((bl !== BLOCK.AIR && bl !== BLOCK.TUBE_WALL) || this._cellHasPlacedItem(rr, cc)) return { x: p.x, y: p.y };
+      }
+    }
+    return null;
+  }
+  _deleteTubeNode(tube, idx) {
+    if (!tube || tube.cells.length <= 2) { this._notify('Can’t delete — a tube needs 2 points', '#c66', 100); return; }
+    this._clearTubeBlocks(tube);
+    tube.cells.splice(idx, 1);
+    tube._pts = null; tube._foot = null;
+    this._applyTubeMode(tube);
+    this._notify('Node deleted', '#8fd0e6', 80);
   }
   // Draft preview (sandbox): the waypoint path being drawn.
   _drawTubeDraft(ctx) {
     const d = this._tubeDraft; if (!d || !d.cells.length) return;
     const cam = this.camera, BS = BLOCK_SIZE;
+    const obs = d.cells.length >= 2 ? this._tubeFirstObstacle(d.cells) : null;   // path crosses an object?
+    const col = obs ? 'rgba(230,90,90,0.95)' : 'rgba(140,208,230,0.9)';
     ctx.save();
-    ctx.strokeStyle = 'rgba(140,208,230,0.85)'; ctx.lineWidth = 3; ctx.setLineDash([6, 5]);
+    ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.setLineDash([6, 5]);
     ctx.beginPath();
     d.cells.forEach((c, i) => {
       const x = c.col * BS + BS / 2 - cam.x, y = c.row * BS + BS / 2 - cam.y;
@@ -17576,7 +17663,12 @@ class Game {
     ctx.stroke(); ctx.setLineDash([]);
     for (const c of d.cells) {
       const x = c.col * BS + BS / 2 - cam.x, y = c.row * BS + BS / 2 - cam.y;
-      ctx.fillStyle = '#8fd0e6'; ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+    }
+    if (obs) {   // ✕ at the blocking object + a hint
+      const x = obs.x - cam.x, y = obs.y - cam.y;
+      ctx.strokeStyle = '#ff5555'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(x - 7, y - 7); ctx.lineTo(x + 7, y + 7); ctx.moveTo(x + 7, y - 7); ctx.lineTo(x - 7, y + 7); ctx.stroke();
     }
     ctx.restore();
   }
