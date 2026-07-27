@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 222 (Bar traverse: stable arm z-order — each hand keeps a fixed front/back layer so the reaching arm no longer pops in front of the head. All six styles shipped; default is Compact Lunge.)';
+const GAME_VERSION = 'v3 · build 223 (Travel Tube v1 — a NEW placeable transparent tube you fly through head-first, distinct from the instant Warp Pipe. Select "Travel Tube" in the Plumbing palette, click waypoints, click the last point again to finish; enter at a mouth (walk into a side mouth / Down on an up-mouth / Jump into a down-mouth) and fly to the exit at a per-tube speed. STAGE 1: single path, solid, side-view. Branches, items, non-solid z-layering, per-tube edit + top-down = follow-ups.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

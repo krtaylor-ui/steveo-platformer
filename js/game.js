@@ -2215,6 +2215,7 @@ class Game {
     }
     if (this._comboTrainer) this._comboTrainer.update();   // §Combo Trainer — dummy upkeep + stats
     this._updateClassicBlocks();             // §Classic Blocks — trampoline/spikes/coin/conveyor/pipe/etc.
+    this._updateTravelTubes();               // §Travel Tube — entry / fly-through / exit
     // §Phase 7 v2 — facing lock while holding melee for a combo (set in _updateComboInput).
     if (this.player && this.player._comboFacingLock && this.player._comboLockFacing) this.player.facing = this.player._comboLockFacing;
     this._playMovementSfx(this.player);   // Smart Mobs §4 — footstep + landing SFX
@@ -2873,6 +2874,11 @@ class Game {
         this._pasteMode = false;
       } else {
       this._historyBegin(hoverRow, hoverCol);
+      // §Travel Tube — with the Tube selected, clicks collect a waypoint PATH (multi-click); click
+      // the last point again to finish. (Otherwise fall through to normal placement/eyedropper.)
+      if (this.sandbox.selectedBlock === BLOCK.TUBE_WALL && !this.input.mouse.altClicked) {
+        this._tubeDraftClick(hoverRow, hoverCol);
+      } else
       // Alt+Click → eyedropper: pick block under cursor
       if (this.input.mouse.altClicked) {
         this._sandboxEyedropper(hoverRow, hoverCol);
@@ -6210,6 +6216,7 @@ class Game {
     // + portal labels) must scale with the zoom too — draw them inside the transform.
     if (this.gameMode === 'sandbox' && this.sandbox && this.sandbox.drawWorld) {
       this.sandbox.drawWorld(ctx, this.camera, this.frameCount);
+      if (this._tubeDraft) { try { this._drawTubeDraft(ctx); } catch (e) { /* ignore */ } }  // §Travel Tube draft
     }
     // Death body-part scatter (world-space, scales with zoom). SR draws its own.
     if (this.gameMode !== 'speedrunner' && this._deathParts.length) this._drawDeathParts(ctx);
@@ -7629,6 +7636,12 @@ class Game {
   _restoreClassicBlockData(data) {
     if (data && Array.isArray(data.pipeLinks)) { this._pipeLinks = new Map(); for (const [k, v] of data.pipeLinks) this._pipeLinks.set(k, v); }
     if (data && Array.isArray(data.blockContents)) { this._blockContents = new Map(); for (const [k, v] of data.blockContents) this._blockContents.set(k, v); }
+    // §Travel Tube — the TUBE_WALL footprint cells restore with the grid; this restores the
+    // fly-through PATHS (waypoints + speed) so travel works after a reload.
+    if (data && Array.isArray(data.travelTubes)) {
+      this._travelTubes = data.travelTubes.map(t => ({ id: t.id, cells: t.cells || [], speed: t.speed || 7 }));
+      this._nextTubeId = this._travelTubes.reduce((m, t) => Math.max(m, t.id || 0), 0);
+    }
   }
 
   // ── §Classic Blocks config popup (pipe destination / block contents) ─────────
@@ -17163,6 +17176,106 @@ class Game {
   }
   _crumbleTouch(row, col) {
     if (this._crumbleTouched) this._crumbleTouched.add(row + ',' + col);   // marked; timing in _updateClassicBlocks
+  }
+
+  // ── §Travel Tube (v1) — placeable transparent path you fly through head-first ────────────
+  // Cached centerline polyline for a tube (rebuilt if the waypoints change).
+  _tubePts(tube) {
+    if (!tube._pts) tube._pts = TRAVEL_TUBE.buildPolyline(tube.cells, BLOCK_SIZE);
+    return tube._pts;
+  }
+  // Placement: each click adds a waypoint; clicking the LAST point again finishes (double-tap).
+  _tubeDraftClick(row, col) {
+    const d = (this._tubeDraft = this._tubeDraft || { cells: [] });
+    const last = d.cells[d.cells.length - 1];
+    if (last && last.col === col && last.row === row) { this._finishTubeDraft(); return; }
+    d.cells.push({ col, row });
+    if (d.cells.length === 1) this._notify('Tube start — click corners, click the last point again to finish', '#8fd0e6', 170);
+  }
+  _finishTubeDraft() {
+    const d = this._tubeDraft; this._tubeDraft = null;
+    if (!d || d.cells.length < 2) { this._notify('A tube needs at least 2 points', '#c66', 100); return; }
+    const pts = TRAVEL_TUBE.buildPolyline(d.cells, BLOCK_SIZE);
+    for (const key of TRAVEL_TUBE.footprint(pts, BLOCK_SIZE)) {   // key = "col,row"
+      const i = key.indexOf(','), col = +key.slice(0, i), row = +key.slice(i + 1);
+      const b = this.level.get(row, col);
+      if (b === BLOCK.AIR || b === BLOCK.TUBE_WALL) this.level.set(row, col, BLOCK.TUBE_WALL);
+    }
+    this._travelTubes = this._travelTubes || [];
+    this._nextTubeId = (this._nextTubeId || 0) + 1;
+    this._travelTubes.push({ id: this._nextTubeId, cells: d.cells.slice(), speed: this._worldAdvSettings.tubeDefaultSpeed || 7 });
+    this._notify('Travel Tube placed ✓', '#8fd0e6', 140);
+  }
+  // Per-frame: fly the traveler through, else watch each mouth for an entry (orientation rule).
+  _updateTravelTubes() {
+    if (this.gameMode === 'sandbox' || !this._travelTubes || !this._travelTubes.length) return;
+    const p = this.player; if (!p || p.hp <= 0) return;
+    if (p._tubeOwn) { this._advanceTube(p); return; }
+    if (p._tubeCooldown > 0) { p._tubeCooldown--; return; }
+    const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2, inp = this.input;
+    for (const tube of this._travelTubes) {
+      const pts = this._tubePts(tube);
+      if (pts.length < 2) continue;
+      for (const m of TRAVEL_TUBE.mouths(pts)) {
+        if (Math.hypot(pcx - m.x, pcy - m.y) > BLOCK_SIZE * 0.95) continue;
+        const card = TRAVEL_TUBE.cardinal(m.dir);   // which way the opening faces
+        const enter = (card === 'left' && inp.isRight()) || (card === 'right' && inp.isLeft()) ||
+                      (card === 'up' && inp.isCrouch()) || (card === 'down' && inp.isJump());
+        if (enter) { this._enterTube(p, tube, pts, m); return; }
+      }
+    }
+  }
+  _enterTube(p, tube, pts, m) {
+    p._tubeOwn = true; p._tubeId = tube.id;
+    p._tubeDist = (m.end === 'start') ? 0 : TRAVEL_TUBE.length(pts);
+    p._tubeDir = (m.end === 'start') ? 1 : -1;
+    p.vx = 0; p.vy = 0; p.onGround = false; p._grappleOwn = false;
+    this._playSound('sounds/jump.mp3', 0.5);
+  }
+  _advanceTube(p) {
+    const tube = this._travelTubes.find(t => t.id === p._tubeId);
+    if (!tube) { p._tubeOwn = false; return; }
+    const pts = this._tubePts(tube), L = TRAVEL_TUBE.length(pts);
+    p._tubeDist += p._tubeDir * (tube.speed || 7);
+    const done = p._tubeDist <= 0 || p._tubeDist >= L;
+    const at = TRAVEL_TUBE.pointAt(pts, Math.max(0, Math.min(L, p._tubeDist)));
+    p.x = at.x - p.width / 2; p.y = at.y - p.height / 2;
+    p._tubeAngle = at.ang + (p._tubeDir < 0 ? Math.PI : 0);   // head-first heading (for the draw)
+    p.vx = 0; p.vy = 0; p.onGround = false;
+    // Auto-collect coins/emeralds you fly over (items-in-tube v1: reuse the classic overlap pass).
+    if (typeof this._classicBlocksForPlayer === 'function') { try { this._collectTubeItems(p); } catch (e) { /* ignore */ } }
+    if (done) {
+      const ms = TRAVEL_TUBE.mouths(pts), m = (p._tubeDist <= 0) ? ms[0] : ms[1];
+      p.x = m.x - p.width / 2 + m.dir.x * BLOCK_SIZE;
+      p.y = m.y - p.height / 2 + m.dir.y * BLOCK_SIZE;
+      p.vx = m.dir.x * 5; p.vy = m.dir.y * 5 + (m.dir.y < 0 ? -2 : 0);   // eject with a little pop
+      p._tubeOwn = false; p._tubeId = null; p._tubeCooldown = 18;
+      this._playSound('sounds/jump.mp3', 0.4);
+    }
+  }
+  // v1 item pickup while flying: coins on the path auto-collect (mirrors the classic coin overlap).
+  _collectTubeItems(p) {
+    const BS = BLOCK_SIZE, L = this.level;
+    const c = Math.floor((p.x + p.width / 2) / BS), r = Math.floor((p.y + p.height / 2) / BS);
+    if (L.get(r, c) === BLOCK.COIN) { L.set(r, c, BLOCK.AIR); this._collectCoin(p); }
+  }
+  // Draft preview (sandbox): the waypoint path being drawn.
+  _drawTubeDraft(ctx) {
+    const d = this._tubeDraft; if (!d || !d.cells.length) return;
+    const cam = this.camera, BS = BLOCK_SIZE;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(140,208,230,0.85)'; ctx.lineWidth = 3; ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    d.cells.forEach((c, i) => {
+      const x = c.col * BS + BS / 2 - cam.x, y = c.row * BS + BS / 2 - cam.y;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke(); ctx.setLineDash([]);
+    for (const c of d.cells) {
+      const x = c.col * BS + BS / 2 - cam.x, y = c.row * BS + BS / 2 - cam.y;
+      ctx.fillStyle = '#8fd0e6'; ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
   }
 
   // ── §Classic Blocks FX — shatter shards, coin pops, crumble cracks ──────────

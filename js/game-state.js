@@ -245,6 +245,7 @@ const GAME_STATE = {
       // §Classic Blocks — pipe destination links + per-block (Question/Breakable) contents.
       pipeLinks:      game._pipeLinks ? [...game._pipeLinks.entries()] : [],
       blockContents:  game._blockContents ? [...game._blockContents.entries()] : [],
+      travelTubes:    game._travelTubes ? game._travelTubes.map(t => ({ id: t.id, cells: t.cells, speed: t.speed })) : [],
       worldAdvSettings: game._worldAdvSettings
         ? JSON.parse(JSON.stringify(game._worldAdvSettings))
         : null,

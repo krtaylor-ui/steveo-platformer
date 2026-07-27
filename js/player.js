@@ -413,6 +413,9 @@ class Player {
     // §Classic Blocks — a Warp Pipe animation owns the frame too (the game pass drives the
     // sink/rise); skip normal physics so collision doesn't fight the descent (was a freeze).
     if (this._pipeOwn) { this._animate(input); return; }
+    // §Travel Tube — while flying through a tube the game's _updateTravelTubes() owns position;
+    // skip normal physics so collision doesn't fight the path.
+    if (this._tubeOwn) { this._animate(input); return; }
     // §Classic Blocks — Bar hang owns the frame (no gravity/collision): traverse + swing + release.
     if (this._barCooldown > 0) this._barCooldown--;
     if (this._barState) { this._updateBar(input, level); this._animate(input); return; }
@@ -1412,6 +1415,14 @@ class Player {
     const crouch    = this.crouching;
     // Ledge hang / climb uses an articulated figure (waist + hip hinges) — its own path.
     if (this._hangState) { this._drawHangFigure(ctx, sx, sy); return; }
+    // §Travel Tube — flying head-first: rotate the standing sprite to the travel heading.
+    if (this._tubeOwn) {
+      const ccx = sx + this.width / 2, ccy = sy + this.height / 2;
+      ctx.save(); ctx.translate(ccx, ccy); ctx.rotate((this._tubeAngle || 0) + Math.PI / 2); ctx.translate(-ccx, -ccy);
+      this._drawStanding(ctx, sx, sy, 0);
+      ctx.restore();
+      return;
+    }
     // §Classic Blocks — Bar: hang from a monkey-bar with arms reaching UP to the grip and the
     // body swinging as a pendulum under it (physics-driven swing angle set in _updateBar).
     if (this._barState) { this._drawBarFigure(ctx, sx, sy); return; }

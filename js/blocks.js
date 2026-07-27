@@ -99,6 +99,7 @@ const BLOCK = Object.freeze({
   SLIME_BLOCK:            80,   // solid bouncy block (same physics as the Trampoline, slime look)
   BAR:                    81,   // non-solid monkey-bar; hang from the BAR at the block's BOTTOM, swing L/R, jump off
   BAR_PLATFORM:           82,   // Bar + a Jump-Through platform on top: stand on top, drop through onto the bar
+  TUBE_WALL:              83,   // §Travel Tube — a placed transparent tube you fly through; footprint cells (solid glass)
 });
 
 // Colour palette for decorative foliage (§10). Index 0 = green (default).
@@ -227,6 +228,7 @@ const BLOCK_DATA = {
   [BLOCK.SLIME_BLOCK]:       { name: 'Slime Block',     hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
   [BLOCK.BAR]:               { name: 'Bar',             hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.BAR_PLATFORM]:      { name: 'Bar + Platform',  hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
+  [BLOCK.TUBE_WALL]:         { name: 'Travel Tube',     hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
 };
 
 // ── Pixel-art block renderers ────────────────────────────────
@@ -323,6 +325,7 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.PIPE_STEM:              _drawWarpPipe(ctx, px, py, s, state, true);      break;
     case BLOCK.BAR:                    _drawBar(ctx, px, py, s, false);                 break;
     case BLOCK.BAR_PLATFORM:           _drawBar(ctx, px, py, s, true);                  break;
+    case BLOCK.TUBE_WALL:              _drawTubeWall(ctx, px, py, s);                   break;
   }
 
   // Mining crack overlay
@@ -361,7 +364,7 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
       type !== BLOCK.RESPAWN_ANCHOR &&
       type !== BLOCK.LADDER && type !== BLOCK.HIDDEN_BLOCK && type !== BLOCK.COIN && type !== BLOCK.SPIKES &&
       type !== BLOCK.TRAMPOLINE && type !== BLOCK.SLIME_BLOCK &&
-      type !== BLOCK.BAR && type !== BLOCK.BAR_PLATFORM) {   // springs/mostly-empty leave gaps → the box shows through
+      type !== BLOCK.BAR && type !== BLOCK.BAR_PLATFORM && type !== BLOCK.TUBE_WALL) {   // springs/glass/mostly-empty leave gaps → the box shows through
     ctx.strokeStyle = 'rgba(0,0,0,0.28)';
     ctx.lineWidth = 0.5;
     ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
@@ -1799,6 +1802,15 @@ function _drawBar(ctx, px, py, s, withPlatform) {
   ctx.fillStyle = '#8e9199'; ctx.fillRect(px, barY, s, 4);
   ctx.fillStyle = '#c7ccd4'; ctx.fillRect(px, barY, s, 1);          // highlight
   ctx.fillStyle = '#5c6068'; ctx.fillRect(px, barY + 3, s, 1);      // shade
+}
+// §Travel Tube — a footprint cell of a fly-through tube. Translucent "glass" so the player is
+// visible travelling inside; a light rim reads as the tube wall. Adjacent tube cells blend into a
+// continuous 2-wide tube. (v1: one look for all cells; seam-aware rims are a later polish.)
+function _drawTubeWall(ctx, px, py, s) {
+  ctx.fillStyle = 'rgba(150,205,232,0.26)'; ctx.fillRect(px, py, s, s);          // glass body
+  ctx.fillStyle = 'rgba(220,240,250,0.18)'; ctx.fillRect(px + 2, py + 2, s - 4, 3); // top sheen
+  ctx.strokeStyle = 'rgba(190,225,242,0.5)'; ctx.lineWidth = 1;                   // rim
+  ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
 }
 function _drawWarpPipe(ctx, px, py, s, state = {}, stem = false) {
   const t = !!state.pipeT, b = !!state.pipeB, l = !!state.pipeL, r = !!state.pipeR;
