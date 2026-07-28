@@ -68,6 +68,7 @@ class Game {
     this._zoomOverride   = null; // Z-key manual zoom (sandbox/God): null = prescribed default
     this._zoomOverrideIdx = -1;  // -1 = default; 0..3 = 100/200/300/400%
     this._deathParts     = [];   // body-part scatter on death (all modes; Phase 3A.3)
+    this._platformDebris = [];   // §Moving Platforms — shattered-platform blocks (bounce on ground, settle, fade)
     this._running        = true;
 
     // Must be initialized before _buildLevel() which reads twoPlayerMode (Phase 12)
@@ -1544,6 +1545,7 @@ class Game {
 
     // Animate death body-part scatter (all modes; runs even on the death/end screen).
     this._updateDeathParts();
+    this._updatePlatformDebris();   // §Moving Platforms — shattered-platform block physics
 
     // §Travel Tube — Esc ends tube editing / cancels a draft FIRST, and consumes the press so the
     // pause menu doesn't also open on the same tap (it only opens if we're NOT editing a tube).
@@ -6423,6 +6425,7 @@ class Game {
     }
     // Death body-part scatter (world-space, scales with zoom). SR draws its own.
     if (this.gameMode !== 'speedrunner' && this._deathParts.length) this._drawDeathParts(ctx);
+    if (this._platformDebris.length) this._drawPlatformDebris(ctx);   // §Moving Platforms — shatter debris
     ctx.restore(); // end world zoom (matches the unconditional save above)
     this._drawBlockFx(ctx);   // §Classic Blocks — shatter shards / coin pops / crumble cracks
     this._drawComboFx(ctx);   // §Phase 7 v2 — combo success ring at the player (world→screen)
@@ -18062,6 +18065,17 @@ class Game {
   // In SANDBOX the blocks stay in the grid (editable); only a direction arrow + anchor marker draw.
   // ══════════════════════════════════════════════════════════════════════════════════════════
   _platformRail(pl) { return this._railById(pl.railId); }
+  // Render state for a stateful block riding a platform — reads the redstone component/overlay at the
+  // block's STATIC (anchor-relative) cell so a platform-mounted lamp/lever shows its real on/off.
+  _platformCellState(pl, c) {
+    const col = pl.anchorCol + c.dcol, row = pl.anchorRow + c.drow, b = c.blockType;
+    if (b === BLOCK.REDSTONE_LAMP) { const cp = this.redstone.getAt(col, row); return { on: cp ? !!cp.on : false, colorIdx: cp ? (cp.color || 0) : 0 }; }
+    if (b === BLOCK.LEVER)         { const cp = this.redstone.getAt(col, row); return { on: cp ? !!cp.on : false }; }
+    if (b === BLOCK.TRAPDOOR)      { const cp = this.redstone.getAt(col, row); return { open: cp ? !!cp.open : false }; }
+    if (b === BLOCK.PRESSURE_PLATE){ const cp = this.redstone.getAt(col, row); return { pressed: cp ? !!cp.on : false }; }
+    if (b === BLOCK.PULSE_CONVERTER){ const cp = this.redstone.getAt(col, row); return { on: cp ? !!cp.on : false, dir: cp ? (cp.dir || 'right') : 'right' }; }
+    return {};
+  }
   _platformAt(row, col) { return (this._platforms || []).find(p => p.anchorRow === row && p.anchorCol === col) || null; }
 
   // Placement / config entry: click a rail with the Anchor selected → bind a platform there; click an
@@ -18117,6 +18131,13 @@ class Game {
         }
       }
       pl._weight = null;   // recompute on demand (§6/§9/§13)
+      // §rider physics — topmost cell per column (offset), for the SMOOTH surface a rider rests on.
+      pl._topByCol = {};
+      for (const c of pl.cells) if (pl._topByCol[c.dcol] === undefined || c.drow < pl._topByCol[c.dcol]) pl._topByCol[c.dcol] = c.drow;
+      // Rail span in px (its cell width) — used to separate colliding platforms cleanly.
+      let mnx = Infinity, mxx = -Infinity;
+      for (const c of pl.cells) { mnx = Math.min(mnx, c.dcol); mxx = Math.max(mxx, c.dcol); }
+      pl._halfSpan = pl.cells.length ? (mxx - mnx + 1) * BLOCK_SIZE / 2 : BLOCK_SIZE;
       // Runtime state.
       pl._dist = pl.anchorDist || 0;
       pl._dir = pl.initialDir || 1;
@@ -18303,10 +18324,12 @@ class Game {
   }
   _resolvePlatformCollisions() {
     const plats = (this._platforms || []).filter(p => !p._disabled && !p._destroyed && p.cells && p.cells.length);
+    for (const p of plats) if (p._collideCd > 0) p._collideCd--;
     for (let i = 0; i < plats.length; i++) {
       for (let j = i + 1; j < plats.length; j++) {
         const a = plats[i], b = plats[j];
         if (a.railId !== b.railId) continue;
+        if (a._collideCd > 0 || b._collideCd > 0) continue;          // recently bounced — let them separate
         const rail = this._platformRail(a); if (!rail) continue;
         if (!this._platformsTouch(a, b)) continue;                   // full-platform overlap test
         const mode = rail.collideMode || 'passthrough';
@@ -18317,10 +18340,20 @@ class Game {
           if (wb > wa) { this._destroyPlatform(a); continue; }
           // tie → behave like Redirect
         }
-        // redirect (also the destroy-tie case): both reverse + separate so they don't re-collide instantly.
-        const mid = (a._dist + b._dist) / 2, gap = BLOCK_SIZE * 0.7;
-        if (a._dist <= b._dist) { a._dist = mid - gap; b._dist = mid + gap; } else { a._dist = mid + gap; b._dist = mid - gap; }
-        a._dir = -a._dir; b._dir = -b._dir;
+        // Redirect (also the destroy-tie): reverse BOTH, then shove them apart by their combined
+        // half-spans + a margin so they no longer overlap, and set a cooldown so they don't jitter.
+        const sep = (a._halfSpan || BLOCK_SIZE) + (b._halfSpan || BLOCK_SIZE) + BLOCK_SIZE * 0.5;
+        const mid = (a._dist + b._dist) / 2;
+        const aLow = a._dist <= b._dist;
+        a._dist = mid + (aLow ? -sep / 2 : sep / 2);
+        b._dist = mid + (aLow ?  sep / 2 : -sep / 2);
+        a._dir = aLow ? -1 : 1;                                      // send each AWAY from the meeting point
+        b._dir = aLow ?  1 : -1;
+        a._collideCd = b._collideCd = 24;
+        // Re-seat anchor positions immediately so the carry delta this frame isn't a huge jump.
+        const pts = this._railPts(rail);
+        let at = TRAVEL_TUBE.pointAt(pts, a._dist); a._ax = at.x; a._ay = at.y; a._pax = at.x; a._pay = at.y;
+        at = TRAVEL_TUBE.pointAt(pts, b._dist); b._ax = at.x; b._ay = at.y; b._pax = at.x; b._pay = at.y;
       }
     }
   }
@@ -18332,21 +18365,62 @@ class Game {
   // §11 — a platform that crashes / misses every catch breaks apart: each block is flung outward like
   // the player death-scatter and falls off-screen (reuses the _deathParts particle system).
   _shatterPlatform(pl) {
-    const now = (typeof Date !== 'undefined' && Date.now) ? Date.now() : this.frameCount * 16;
     const ox = (pl._ax != null ? pl._ax : pl.anchorCol * BLOCK_SIZE) - BLOCK_SIZE / 2;
     const oy = (pl._ay != null ? pl._ay : pl.anchorRow * BLOCK_SIZE) - BLOCK_SIZE / 2;
     for (const c of (pl._shatterCells || pl.cells || [])) {
-      const bx = ox + c.dcol * BLOCK_SIZE, by = oy + c.drow * BLOCK_SIZE;
-      const angle = Math.random() * Math.PI * 2, speed = 2 + Math.random() * 5;
-      this._deathParts.push({
-        x: bx + BLOCK_SIZE / 2, y: by + BLOCK_SIZE / 2,
-        vx: Math.cos(angle) * speed + (pl._vx || 0) * 0.5, vy: Math.sin(angle) * speed - 4 + (pl._vy || 0) * 0.5,
-        rot: (Math.random() - 0.5) * 0.5, rotV: (Math.random() - 0.5) * 0.25,
-        w: BLOCK_SIZE - 6, h: BLOCK_SIZE - 6, color: this._blockScatterColor(c.blockType), alpha: 1.0, born: now,
+      const bx = ox + c.dcol * BLOCK_SIZE + BLOCK_SIZE / 2, by = oy + c.drow * BLOCK_SIZE + BLOCK_SIZE / 2;
+      const angle = Math.random() * Math.PI * 2, speed = 1.5 + Math.random() * 4;
+      // Each block disconnects, gets flung up-and-out (carrying a little of the platform's momentum),
+      // then falls under gravity, BOUNCES off solid ground, settles, and fades a few seconds later.
+      this._platformDebris.push({
+        x: bx, y: by, size: BLOCK_SIZE - 4,
+        vx: Math.cos(angle) * speed + (pl._vx || 0) * 0.4,
+        vy: Math.sin(angle) * speed - (3 + Math.random() * 3) + (pl._vy || 0) * 0.4,   // upward "rise from the crash"
+        rot: (Math.random() - 0.5) * 0.6, rotV: (Math.random() - 0.5) * 0.3,
+        color: this._blockScatterColor(c.blockType), blockType: c.blockType, alpha: 1, age: 0, settle: 0,
       });
     }
-    if (this._deathParts.length > 160) this._deathParts.splice(0, this._deathParts.length - 160);
+    if (this._platformDebris.length > 240) this._platformDebris.splice(0, this._platformDebris.length - 240);
     pl._destroyed = true; pl.cells = []; pl._solidCells = []; pl._airborne = false;
+  }
+  // §Destruction animation — physics for shattered-platform blocks: gravity, ground bounce (with
+  // damping + friction), settle, then fade out after resting (or a max lifetime); removed off-level.
+  _updatePlatformDebris() {
+    if (!this._platformDebris.length) return;
+    const H = this.level.pixelHeight, W = this.level.pixelWidth;
+    const solid = (x, y) => { const r = Math.floor(y / BLOCK_SIZE), c = Math.floor(x / BLOCK_SIZE); if (r < 0 || c < 0 || c >= this.level.width || r >= this.level.height) return false; return this.level.isSolid(r, c); };
+    for (const d of this._platformDebris) {
+      d.age++;
+      d.vy = Math.min(16, d.vy + 0.4); d.vx *= 0.99;
+      d.x += d.vx; d.y += d.vy; d.rot += d.rotV;
+      const half = d.size / 2;
+      // Ground bounce: solid directly below the piece while descending.
+      if (d.vy > 0 && solid(d.x, d.y + half + d.vy)) {
+        d.y = Math.floor((d.y + half) / BLOCK_SIZE) * BLOCK_SIZE - half;
+        if (d.vy > 1.4) { d.vy *= -0.42; d.vx *= 0.6; d.rotV *= 0.6; }   // bounce
+        else { d.vy = 0; d.vx *= 0.75; d.rotV *= 0.8; d.settle++; }       // settling
+      } else { d.settle = 0; }
+      // Side nudge off walls (keeps pieces from tunnelling into a wall as they skitter).
+      if (d.vx !== 0 && solid(d.x + Math.sign(d.vx) * (half + Math.abs(d.vx)), d.y)) { d.vx *= -0.4; }
+      // Fade after it's rested a beat (~1.5s) or a hard max life (~10s); or once it drops off-level.
+      if (d.settle > 90 || d.age > 600) d.alpha -= 0.02;
+      if (d.y > H + 120 || d.x < -120 || d.x > W + 120) d.alpha = 0;
+    }
+    this._platformDebris = this._platformDebris.filter(d => d.alpha > 0);
+  }
+  _drawPlatformDebris(ctx) {
+    if (!this._platformDebris.length) return;
+    for (const d of this._platformDebris) {
+      const sx = d.x - this.camera.x, sy = d.y - this.camera.y;
+      if (sx < -40 || sx > CANVAS_W + 40 || sy < -40 || sy > CANVAS_H + 40) continue;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, d.alpha));
+      ctx.translate(sx, sy); ctx.rotate(d.rot);
+      try { drawBlock(ctx, d.blockType, -d.size / 2, -d.size / 2, 0, {}); }
+      catch (e) { ctx.fillStyle = d.color; ctx.fillRect(-d.size / 2, -d.size / 2, d.size, d.size); }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
   }
   _blockScatterColor(type) {
     const map = { }; // a few representative tints; fallback is a neutral stone-brown
@@ -18397,59 +18471,92 @@ class Game {
     return false;
   }
 
-  // How is an entity riding this platform? 'top' (standing on it), 'side' (grabbing/climbing the edge),
-  // or null. A GRAPPLING-HOOK link never counts (per Kevin — grapple shouldn't power a Rider platform).
-  _entityRideKind(e, pl) {
-    if (!e || e.hp <= 0) return null;
-    if (e._grappleOwn || e._grapple || e._grappleState) return null;   // grapple never counts as a rider
-    const cells = pl._solidCells; if (!cells || !cells.length) return null;
-    const occ = new Set(cells.map(c => c.col + ',' + c.row));
-    const c0 = Math.floor((e.x + 3) / BLOCK_SIZE), c1 = Math.floor((e.x + e.width - 3) / BLOCK_SIZE);
-    // TOP: feet just above a platform cell.
-    const footRow = Math.floor((e.y + e.height + 2) / BLOCK_SIZE);
-    for (let c = c0; c <= c1; c++) if (occ.has(c + ',' + footRow)) return 'top';
-    // SIDE (grab/climb): a platform cell is directly beside the body, within its vertical span.
-    const r0 = Math.floor((e.y + 2) / BLOCK_SIZE), r1 = Math.floor((e.y + e.height - 2) / BLOCK_SIZE);
-    const lc = Math.floor((e.x - 2) / BLOCK_SIZE), rc = Math.floor((e.x + e.width + 2) / BLOCK_SIZE);
-    for (let r = r0; r <= r1; r++) if (occ.has(lc + ',' + r) || occ.has(rc + ',' + r)) return 'side';
-    return null;
+  // The SMOOTH top-surface world-Y of a platform at a given world X (from the platform's true geometry,
+  // NOT the rounded collision cells) — the key to a jerk-free ride on verticals AND diagonals. Returns
+  // null if X is outside the platform's column span.
+  _platformSurfaceAt(pl, worldX) {
+    if (!pl._topByCol) return null;
+    const dcol = Math.round((worldX - pl._ax) / BLOCK_SIZE);
+    const top = pl._topByCol[dcol];
+    if (top === undefined) return null;
+    return pl._ay - BLOCK_SIZE / 2 + top * BLOCK_SIZE;   // top edge of the topmost cell in that column
   }
-  // Is anyone riding (top OR grabbing the edge)? — drives Rider-Powered + One-Touch so grabbing the
-  // back edge starts it moving WITH the player instead of leaving them behind.
+  // Is the entity's body directly beside a platform cell (an edge-grab / climb)? Used so grabbing the
+  // back edge counts as riding — the platform starts + carries the player instead of leaving them behind.
+  _entitySideGrabs(e, pl) {
+    if (!pl._solidCells) return false;
+    const occ = new Set(pl._solidCells.map(c => c.col + ',' + c.row));
+    const r0 = Math.floor((e.y + 2) / BLOCK_SIZE), r1 = Math.floor((e.y + e.height - 2) / BLOCK_SIZE);
+    const lc = Math.floor((e.x - 3) / BLOCK_SIZE), rc = Math.floor((e.x + e.width + 3) / BLOCK_SIZE);
+    for (let r = r0; r <= r1; r++) if (occ.has(lc + ',' + r) || occ.has(rc + ',' + r)) return true;
+    return false;
+  }
+  // Anyone riding (standing on top OR grabbing an edge)? Drives Rider-Powered / One-Touch. Grapple never counts.
   _platformHasRider(pl) {
-    if (!pl._solidCells || !pl._solidCells.length) return false;
-    for (const p of this.activePlayers()) if (this._entityRideKind(p, pl)) return true;
-    if (this.mobManager && this.mobManager.mobs) for (const m of this.mobManager.mobs) if (this._entityRideKind(m, pl)) return true;
+    const check = (e) => {
+      if (!e || e.hp <= 0 || e._grappleOwn || e._grapple) return false;
+      if (e._platRideId === pl.id) return true;
+      const surf = this._platformSurfaceAt(pl, e.x + e.width / 2);
+      const feet = e.y + e.height;
+      if (surf != null && feet >= surf - 8 && feet <= surf + 12) return true;
+      return this._entitySideGrabs(e, pl);
+    };
+    for (const p of this.activePlayers()) if (check(p)) return true;
+    if (this.mobManager && this.mobManager.mobs) for (const m of this.mobManager.mobs) if (check(m)) return true;
     return false;
   }
 
-  // Carry riders: move any entity standing on a platform by that platform's per-frame anchor delta,
-  // then let normal collision / depenetration settle it (§build-225 pattern).
+  // Carry riders. Uses a PERSISTENT attachment (e._platRideId): once an entity lands on a platform it
+  // stays glued to the smooth surface — moving with the platform on any axis — until it jumps or walks
+  // off the platform's span. This is what keeps the ride smooth on diagonals (no cell-rounding drop-out)
+  // and keeps an edge-grabber attached. Grapple links never attach.
   _carryPlatformRiders() {
-    for (const pl of this._platforms || []) {
-      if (pl._destroyed) continue;
-      const dx = pl._ax - pl._pax, dy = pl._ay - pl._pay;
-      if (!pl._solidCells || !pl._solidCells.length) continue;
-      const occ = new Set(pl._solidCells.map(c => c.col + ',' + c.row));
-      // Smooth top surface (px) at a given grid column, from the cell's pre-rounded smoothTopY —
-      // this is what kills the jerky cell-by-cell snapping when a platform rises/falls.
-      const surfaceY = (col) => { let best = Infinity; for (const c of pl._solidCells) if (c.col === col && c.smoothTopY < best) best = c.smoothTopY; return best; };
-      const carry = (e) => {
-        const kind = this._entityRideKind(e, pl);
-        if (!kind) return;
-        if (dx || dy) { e.x += dx; e.y += dy; }          // move with the platform (both top + side/grab)
-        if (kind === 'top') {                            // glue feet to the SMOOTH surface (anti-jerk)
-          const c0 = Math.floor((e.x + 3) / BLOCK_SIZE), c1 = Math.floor((e.x + e.width - 3) / BLOCK_SIZE);
-          let topY = Infinity;
-          for (let c = c0; c <= c1; c++) { const s = surfaceY(c); if (s < topY) topY = s; }
-          if (topY !== Infinity) { e.y = topY - e.height; if (e.vy > 0) e.vy = 0; e.onGround = true; }
+    const carry = (e) => {
+      if (!e || e.hp <= 0) return;
+      if (e._grappleOwn || e._grapple) { e._platRideId = null; return; }
+      // If already attached, service that platform first.
+      let pl = (e._platRideId != null) ? (this._platforms || []).find(p => p.id === e._platRideId && !p._destroyed) : null;
+      if (pl) {
+        const surf = this._platformSurfaceAt(pl, e.x + e.width / 2);
+        const jumped = e.vy < -0.5;                                    // player pushed off
+        if (surf == null || jumped) {                                  // walked off the edge / jumped → detach (side-grab may re-grab below)
+          if (surf == null || jumped) e._platRideId = null;
+        } else {
+          const dx = pl._ax - pl._pax;
+          e.x += dx;                                                   // follow horizontally (still free to walk)
+          e.y = surf - e.height; if (e.vy > 0) e.vy = 0; e.onGround = true;
+          return;
         }
-      };
-      for (const p of this.activePlayers()) carry(p);
-      if (this.mobManager && this.mobManager.mobs) for (const m of this.mobManager.mobs) carry(m);
-      if (dx || dy) {
-        const items = this._platformerItems || this._normalDrops || null;
-        if (Array.isArray(items)) for (const it of items) { if (it && it.wy != null) { const fr = Math.floor((it.wy + 8) / BLOCK_SIZE), ic = Math.floor(it.wx / BLOCK_SIZE); if (occ.has(ic + ',' + fr)) { it.wx += dx; it.wy += dy; } } }
+      }
+      // Not attached (or just detached) — try to attach to any platform we're resting on.
+      for (const cand of this._platforms || []) {
+        if (cand._destroyed || !cand._topByCol) continue;
+        const surf = this._platformSurfaceAt(cand, e.x + e.width / 2);
+        if (surf == null) continue;
+        const feet = e.y + e.height;
+        if (feet >= surf - 6 && feet <= surf + 12 && e.vy >= -0.5) {   // resting on / settling onto it
+          e._platRideId = cand.id;
+          const dx = cand._ax - cand._pax;
+          e.x += dx; e.y = surf - e.height; if (e.vy > 0) e.vy = 0; e.onGround = true;
+          return;
+        }
+      }
+      // Edge-grab follow: not on top of any platform, but gripping a side → move WITH it (both axes).
+      for (const cand of this._platforms || []) {
+        if (cand._destroyed) continue;
+        if (this._entitySideGrabs(e, cand)) { e.x += (cand._ax - cand._pax); e.y += (cand._ay - cand._pay); return; }
+      }
+    };
+    for (const p of this.activePlayers()) carry(p);
+    if (this.mobManager && this.mobManager.mobs) for (const m of this.mobManager.mobs) carry(m);
+    // Dropped items ride the top surface too.
+    const items = this._platformerItems || this._normalDrops || null;
+    if (Array.isArray(items)) for (const it of items) {
+      if (!it || it.wy == null) continue;
+      for (const pl of this._platforms || []) {
+        if (pl._destroyed) continue;
+        const surf = this._platformSurfaceAt(pl, it.wx);
+        if (surf != null && Math.abs((it.wy + 8) - surf) < 10) { it.wx += (pl._ax - pl._pax); it.wy += (pl._ay - pl._pay); break; }
       }
     }
   }
@@ -18581,7 +18688,7 @@ class Game {
         const ox = pl._ax - BLOCK_SIZE / 2, oy = pl._ay - BLOCK_SIZE / 2;
         for (const c of pl.cells) {
           const px = ox + c.dcol * BLOCK_SIZE - this.camera.x, py = oy + c.drow * BLOCK_SIZE - this.camera.y;
-          try { drawBlock(ctx, c.blockType, px, py, 0, {}); } catch (e) { ctx.fillStyle = '#888'; ctx.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE); }
+          try { drawBlock(ctx, c.blockType, px, py, 0, this._platformCellState(pl, c)); } catch (e) { ctx.fillStyle = '#888'; ctx.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE); }
         }
         ctx.restore();
       }
