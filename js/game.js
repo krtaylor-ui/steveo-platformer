@@ -7547,8 +7547,8 @@ class Game {
       const on = this._lampGroupPowered(comp);
       if (comp.on !== on) {
         comp.on = on;
-        // re-evaluate neighbouring lamps so the whole panel updates together.
-        for (const [dr, dc] of DIRS) { const n = this.redstone.getAt(comp.col + dc, comp.row + dr); if (n && n.type === 'lamp') this._rsEnqueue({ type: 'device', comp: n, frame: this.frameCount + this._rsStepFrames() }); }
+        // re-evaluate same-colour neighbouring lamps so a panel updates together (other colours independent).
+        for (const [dr, dc] of DIRS) { const n = this.redstone.getAt(comp.col + dc, comp.row + dr); if (n && n.type === 'lamp' && (n.color || 0) === (comp.color || 0)) this._rsEnqueue({ type: 'device', comp: n, frame: this.frameCount + this._rsStepFrames() }); }
       }
     }
   }
@@ -7556,6 +7556,7 @@ class Game {
   // lamp in it has an adjacent dust-on or bare adjacent generator.
   _lampGroupPowered(start) {
     const DIRS = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+    const col0 = start.color || 0;   // conduct ONLY through same-colour lamps → different colours stay independent
     const seen = new Set([start.col + ',' + start.row]);
     const stack = [start];
     let guard = 0;
@@ -7565,7 +7566,7 @@ class Game {
       if (dustAdj || this._adjacentGeneratorPower(c.col, c.row)) return true;
       for (const [dr, dc] of DIRS) {
         const n = this.redstone.getAt(c.col + dc, c.row + dr);
-        if (n && n.type === 'lamp' && !seen.has(n.col + ',' + n.row)) { seen.add(n.col + ',' + n.row); stack.push(n); }
+        if (n && n.type === 'lamp' && (n.color || 0) === col0 && !seen.has(n.col + ',' + n.row)) { seen.add(n.col + ',' + n.row); stack.push(n); }
       }
     }
     return false;
@@ -18076,7 +18077,10 @@ class Game {
   // Render state for a stateful block riding a platform — reads the redstone component/overlay at the
   // block's STATIC (anchor-relative) cell so a platform-mounted lamp/lever shows its real on/off.
   _platformCellState(pl, c) {
-    const col = pl.anchorCol + c.dcol, row = pl.anchorRow + c.drow, b = c.blockType;
+    // Use the CURRENT anchor cell (redstone rides the platform, so the component moved with it) — not
+    // the authored anchorCol/Row, or the lookup misses once the platform moves and lamps render off.
+    const acol = Math.round((pl._ax - BLOCK_SIZE / 2) / BLOCK_SIZE), arow = Math.round((pl._ay - BLOCK_SIZE / 2) / BLOCK_SIZE);
+    const col = acol + c.dcol, row = arow + c.drow, b = c.blockType;
     if (b === BLOCK.REDSTONE_LAMP) { const cp = this.redstone.getAt(col, row); return { on: cp ? !!cp.on : false, colorIdx: cp ? (cp.color || 0) : 0 }; }
     if (b === BLOCK.LEVER)         { const cp = this.redstone.getAt(col, row); return { on: cp ? !!cp.on : false }; }
     if (b === BLOCK.TRAPDOOR)      { const cp = this.redstone.getAt(col, row); return { open: cp ? !!cp.open : false }; }

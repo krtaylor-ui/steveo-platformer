@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 build 263 (moving-redstone follow-ups): platform DUST now RENDERS — it is drawn on top of the platform blocks (the global dust overlay draws before platforms, so a platform painted over its own dust → invisible). Launch Accel now offers 1.0x (previous floor was 1.5x). Removing an Anchor now drops its platform binding, and removing a Direction Controller clears its config. Prev 262 MOVING REDSTONE (dust/levers/plates/gates/TX-RX ride + function on a moving platform; plates press; physical L/R on the Direction Controller).';
+const GAME_VERSION = 'v3 build 264 (platform-lamp fixes): (1) platform lamps now stay lit WHILE MOVING — the render was reading the lamp at its authored cell, but redstone rides the platform so the component moved; it now reads the current cell. (2) Lamp conduction now respects COLOUR — adjacent lamps only light together if they are the SAME colour, so recolour a lamp (click it with the Lamp selected) to keep it independent; same-colour panels still light as one. Prev 263 platform dust renders + 1.0x launch accel.';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
