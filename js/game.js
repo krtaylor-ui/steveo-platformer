@@ -2994,6 +2994,9 @@ class Game {
             this.sandbox.placeItem(world.x, world.y);
           } else if (this.sandbox.isMultiBlock) {
             this._sandboxPlaceMulti(hoverRow, hoverCol);
+          } else if (this.sandbox.selectedBlock === BLOCK.TRANSMITTER || this.sandbox.selectedBlock === BLOCK.RECEIVER) {
+            // §Overlay TX/RX — like dust/gates, they mount on a solid block surface (click a block, not empty air).
+            this._notify('Transmitter/Receiver must be placed on a solid block — click a block surface', '#CC4444', 130);
           } else {
             const sb = this.sandbox.selectedBlock;
             if (this.sandbox.brushSize > 1 && this.sandbox.isBrushApplicable) {
@@ -3127,15 +3130,39 @@ class Game {
           } else {
             this._notify('Cannot place dust on this block type', '#CC4444', 80);
           }
-        } else if (target === BLOCK.RECEIVER) {
-          // Click on any receiver → open config popup
-          this._rxConfigPopup = { col: hoverCol, row: hoverRow };
-        } else if (target === BLOCK.TRANSMITTER &&
-                   !this.sandbox.isEggSelected && !this.sandbox.isToolSelected &&
-                   this.sandbox.selectedBlock === BLOCK.TRANSMITTER) {
-          // Click on transmitter with transmitter selected → show info only
-          const tx = this._transmitters.get(`${hoverCol},${hoverRow}`);
-          if (tx) this._notify(`Transmitter #${tx.number} — select a different block to remove`, '#CC5555', 120);
+        } else if (this.sandbox.selectedBlock === BLOCK.RECEIVER &&
+                   !this.sandbox.isEggSelected && !this.sandbox.isToolSelected && !this.sandbox.isDustSelected && !this.sandbox.isGateSelected) {
+          // §Overlay Receiver — mount on a solid block (co-exists with dust/gate); re-click to reconfigure.
+          const key = `${hoverCol},${hoverRow}`;
+          if (this._receivers.has(key)) {
+            this._rxConfigPopup = { col: hoverCol, row: hoverRow };
+          } else if (this._isDustValidTarget(target)) {
+            this._receivers.set(key, { col: hoverCol, row: hoverRow, listenTo: new Set(), powered: false });
+            this._rxConfigPopup = { col: hoverCol, row: hoverRow };
+            this._dustConnDirty = true;
+          } else {
+            this._notify('Receiver must be placed on a solid block', '#CC4444', 100);
+          }
+        } else if (this.sandbox.selectedBlock === BLOCK.TRANSMITTER &&
+                   !this.sandbox.isEggSelected && !this.sandbox.isToolSelected && !this.sandbox.isDustSelected && !this.sandbox.isGateSelected) {
+          // §Overlay Transmitter — mount on a solid block (co-exists with dust/gate); re-click shows info.
+          const key = `${hoverCol},${hoverRow}`;
+          if (this._transmitters.has(key)) {
+            const tx = this._transmitters.get(key);
+            this._notify(`Transmitter #${tx.number} — select a different block to remove`, '#CC5555', 120);
+          } else if (this._isDustValidTarget(target)) {
+            const num = this._txAssignNumber();
+            if (num === null) {
+              this._notify('Maximum 99 transmitters reached', '#FF4444', 120);
+            } else {
+              this._transmitters.set(key, { col: hoverCol, row: hoverRow, number: num, powered: false });
+              this._dustConnDirty = true;
+              this._rsActivateTransmitter(hoverCol, hoverRow, this.frameCount + this._rsStepFrames());   // pick up already-powered dust
+              this._notify(`Transmitter #${num} placed`, '#CC5555', 90);
+            }
+          } else {
+            this._notify('Transmitter must be placed on a solid block', '#CC4444', 100);
+          }
         } else if (this.sandbox.isGateSelected) {
           const gateKey = `${hoverCol},${hoverRow}`;
           if (this._gateBlocks.has(gateKey)) {
@@ -7160,8 +7187,8 @@ class Game {
       if (dust && (dust.on !== powered || !powered)) {
         this._rsEnqueue({ col: c, row: r, powered, frame: this.frameCount + this._rsStepFrames() });
       }
-      // Adjacent transmitter block
-      if (this.level.get(r, c) === BLOCK.TRANSMITTER) {
+      // Adjacent transmitter overlay
+      if (this._transmitters.has(`${c},${r}`)) {
         this._rsEnqueue({ type: 'transmitter', col: c, row: r, frame: this.frameCount + this._rsStepFrames() });
       }
       // Adjacent gate with input facing this source
@@ -7222,6 +7249,11 @@ class Game {
       dust.on = entry.powered;
       dust.everTriggered = true; // visible after ANY first state change, not just when powered
 
+      // §Overlay TX — a transmitter co-located with this dust reads its power directly (no adjacency needed).
+      if (this._transmitters.has(`${entry.col},${entry.row}`)) {
+        this._rsEnqueue({ type: 'transmitter', col: entry.col, row: entry.row, frame: entry.frame + 6 });
+      }
+
       const GD = Game.GATE_DIRS;
       for (const [dr, dc] of DIRS) {
         const nc = entry.col + dc, nr = entry.row + dr;
@@ -7236,8 +7268,8 @@ class Game {
         if (devComp && (devComp.type === 'trapdoor' || devComp.type === 'tnt' || devComp.type === 'piston' || devComp.type === 'target' || devComp.type === 'pulse_converter' || devComp.type === 'lamp')) {
           this._rsEnqueue({ type: 'device', comp: devComp, frame: entry.frame + 6 });
         }
-        // Transmitter block at neighbor
-        if (this.level.get(nr, nc) === BLOCK.TRANSMITTER) {
+        // Transmitter overlay at neighbor
+        if (this._transmitters.has(`${nc},${nr}`)) {
           this._rsEnqueue({ type: 'transmitter', col: nc, row: nr, frame: entry.frame + 6 });
         }
         // Gate at neighbor with input facing this dust
@@ -7395,7 +7427,8 @@ class Game {
     const tx = this._transmitters.get(`${col},${row}`);
     if (!tx) return;
     const DIRS = [[0,1],[0,-1],[1,0],[-1,0]];
-    const anyDustOn = DIRS.some(([dr, dc]) => {
+    const sameCell = this._dustBlocks.get(`${col},${row}`);         // §Overlay — co-located dust powers the TX directly
+    const anyDustOn = (sameCell && sameCell.on) || DIRS.some(([dr, dc]) => {
       const d = this._dustBlocks.get(`${col+dc},${row+dr}`);
       return d && d.on;
     });
@@ -7427,6 +7460,11 @@ class Game {
   _rsStartFromReceiver(col, row, powered, frame) {
     const f = frame ?? (this.frameCount + this._rsStepFrames());
     const DIRS = [[0,1],[0,-1],[1,0],[-1,0]];
+    // §Overlay — a receiver powers dust co-located on its own cell, then propagates outward.
+    const sameDust = this._dustBlocks.get(`${col},${row}`);
+    if (sameDust && sameDust.on !== powered) {
+      this._rsEnqueue({ col, row, powered, frame: f });
+    }
     for (const [dr, dc] of DIRS) {
       const nc = col + dc, nr = row + dr;
       const dust = this._dustBlocks.get(`${nc},${nr}`);
@@ -7471,39 +7509,36 @@ class Game {
   // ── TX/RX block rendering ─────────────────────────────────────
 
   _drawTxRxBlocks(ctx) {
-    const startCol = Math.max(0,            Math.floor(this.camera.x / BLOCK_SIZE) - 1);
-    const endCol   = Math.min(this.level.width-1,  Math.ceil((this.camera.x + CANVAS_W) / BLOCK_SIZE) + 1);
-    const startRow = Math.max(0,            Math.floor(this.camera.y / BLOCK_SIZE) - 1);
-    const endRow   = Math.min(this.level.height-1, Math.ceil((this.camera.y + CANVAS_H) / BLOCK_SIZE) + 1);
+    // §Overlay TX/RX — drawn from the Maps (not the grid) so they layer on top of their support
+    // block (and any co-located dust/gate). Culled to the visible viewport.
+    const minC = Math.floor(this.camera.x / BLOCK_SIZE) - 1;
+    const maxC = Math.ceil((this.camera.x + CANVAS_W) / BLOCK_SIZE) + 1;
+    const minR = Math.floor(this.camera.y / BLOCK_SIZE) - 1;
+    const maxR = Math.ceil((this.camera.y + CANVAS_H) / BLOCK_SIZE) + 1;
+    const inView = (c, r) => c >= minC && c <= maxC && r >= minR && r <= maxR;
 
-    for (let r = startRow; r <= endRow; r++) {
-      for (let c = startCol; c <= endCol; c++) {
-        const block = this.level.grid[r][c];
-        if (block !== BLOCK.TRANSMITTER && block !== BLOCK.RECEIVER) continue;
-        const sx = c * BLOCK_SIZE - this.camera.x;
-        const sy = r * BLOCK_SIZE - this.camera.y;
-        if (block === BLOCK.TRANSMITTER) {
-          const tx = this._transmitters.get(`${c},${r}`);
-          _drawTransmitter(ctx, sx, sy, BLOCK_SIZE, tx?.number, tx?.powered);
-        } else {
-          const rx = this._receivers.get(`${c},${r}`);
-          const nums = rx ? [...rx.listenTo].sort((a,b)=>a-b) : [];
-          _drawReceiver(ctx, sx, sy, BLOCK_SIZE, nums, rx?.powered);
-        }
-        // Number badge in sandbox — always show
-        if (this.gameMode === 'sandbox' && block === BLOCK.TRANSMITTER) {
-          const tx = this._transmitters.get(`${c},${r}`);
-          if (tx) {
-            ctx.save();
-            ctx.fillStyle = 'rgba(0,0,0,0.65)';
-            ctx.fillRect(sx, sy - 12, 20, 12);
-            ctx.fillStyle = '#FF8888';
-            ctx.font = 'bold 8px Courier New';
-            ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-            ctx.fillText(`#${tx.number}`, sx + 2, sy - 12);
-            ctx.restore();
-          }
-        }
+    for (const rx of this._receivers.values()) {
+      if (!inView(rx.col, rx.row)) continue;
+      const sx = rx.col * BLOCK_SIZE - this.camera.x;
+      const sy = rx.row * BLOCK_SIZE - this.camera.y;
+      const nums = [...rx.listenTo].sort((a, b) => a - b);
+      _drawReceiver(ctx, sx, sy, BLOCK_SIZE, nums, rx.powered);
+    }
+    for (const tx of this._transmitters.values()) {
+      if (!inView(tx.col, tx.row)) continue;
+      const sx = tx.col * BLOCK_SIZE - this.camera.x;
+      const sy = tx.row * BLOCK_SIZE - this.camera.y;
+      _drawTransmitter(ctx, sx, sy, BLOCK_SIZE, tx.number, tx.powered);
+      // Number badge in sandbox — always show
+      if (this.gameMode === 'sandbox') {
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.65)';
+        ctx.fillRect(sx, sy - 12, 20, 12);
+        ctx.fillStyle = '#FF8888';
+        ctx.font = 'bold 8px Courier New';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        ctx.fillText(`#${tx.number}`, sx + 2, sy - 12);
+        ctx.restore();
       }
     }
   }
@@ -7614,8 +7649,8 @@ class Game {
     if (mx>=px+12&&mx<=px+pw-12&&my>=remY&&my<=remY+28) {
       const col=this._rxConfigPopup.col, row=this._rxConfigPopup.row;
       this._rxConfigPopup=null;
-      this._sandboxRemoveBlock(row, col, BLOCK.RECEIVER);
-      this.level.set(row, col, BLOCK.AIR);
+      this._receivers.delete(`${col},${row}`);   // §Overlay — remove the receiver, keep its support block
+      this._dustConnDirty = true;
     }
   }
 
@@ -8698,7 +8733,9 @@ class Game {
           this._closeChest();
         }
       }
-      if (blockType === BLOCK.TRANSMITTER) {
+      // §Overlay TX/RX — keyed off the Maps (not the grid block), since removing the SUPPORT block
+      // at this cell should also clear any transmitter/receiver mounted on it.
+      if (this._transmitters.has(`${col},${row}`)) {
         const tx = this._transmitters.get(`${col},${row}`);
         if (tx) {
           // Deactivate any receivers that were solely powered by this transmitter
@@ -8713,9 +8750,11 @@ class Game {
           }
         }
         this._transmitters.delete(`${col},${row}`);
+        this._dustConnDirty = true;
       }
-      if (blockType === BLOCK.RECEIVER) {
+      if (this._receivers.has(`${col},${row}`)) {
         this._receivers.delete(`${col},${row}`);
+        this._dustConnDirty = true;
       }
       if (blockType === BLOCK.MUSIC_PLAYER) {
         const mpk = `${col},${row}`;
@@ -12213,6 +12252,17 @@ class Game {
   // so a Lamp/Target/Converter reverted to defaults in test/play (e.g. every lamp went red).
   _restoreRsExtras(data) {
     if (!data || !this.redstone) return;
+    // §Overlay migration — TX/RX used to be solid grid blocks; they are now overlays stored in the
+    // _transmitters/_receivers Maps (restored from data.transmitters/receivers on every load path).
+    // Strip any legacy TRANSMITTER/RECEIVER cells left in the grid so they don't render/collide twice.
+    if (this.level && this.level.grid) {
+      const g = this.level.grid;
+      for (let r = 0; r < this.level.height; r++) {
+        for (let c = 0; c < this.level.width; c++) {
+          if (g[r][c] === BLOCK.TRANSMITTER || g[r][c] === BLOCK.RECEIVER) g[r][c] = BLOCK.AIR;
+        }
+      }
+    }
     for (const t of (Array.isArray(data.sandboxTargets) ? data.sandboxTargets : [])) {
       if (typeof t.col !== 'number' || typeof t.row !== 'number') continue;
       const comp = this.redstone.getAt(t.col, t.row);
@@ -12919,10 +12969,10 @@ class Game {
   // facingDr/facingDc = direction the gate at (nc,nr) must face back toward this dust.
   _dustConnects(nc, nr, facingDr, facingDc) {
     if (this._dustBlocks.has(`${nc},${nr}`)) return true;
+    if (this._transmitters.has(`${nc},${nr}`) || this._receivers.has(`${nc},${nr}`)) return true;   // §Overlay TX/RX
     const bt = this.level.get(nr, nc);
     if (bt === BLOCK.LEVER || bt === BLOCK.PRESSURE_PLATE ||
-        bt === BLOCK.TRAPDOOR || bt === BLOCK.TNT ||
-        bt === BLOCK.TRANSMITTER || bt === BLOCK.RECEIVER) return true;
+        bt === BLOCK.TRAPDOOR || bt === BLOCK.TNT) return true;
     const g = this._gateBlocks.get(`${nc},${nr}`);
     if (g) {
       const GD = Game.GATE_DIRS;
