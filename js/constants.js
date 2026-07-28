@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 234 (Travel Tube v11: FIXED solid-wall break — a non-solid tube can no longer punch a hole in a SOLID tube where they meet (grid is rebuilt so any solid tube’s cell always wins), so you can’t fall in at the join. Union rendering now forces consistent winding (same-mode overlaps truly merge instead of showing a seam), and a pass-behind tube’s glass is clipped OUT of solid-tube cells so it connects INTO a solid pipe without doubling up.)';
+const GAME_VERSION = 'v3 · build 235 (Phase R foundation (WIP, local): NEW Target Block (arrow hit → redstone pulse, or Toggle mode) + Pulse Converter (one pulse→toggle mechanism, shared with Target toggle mode). Placeable in the Redstone palette; arrow-hit reaction + pulse timer wired. STILL TO DO before Phase R is done: config modal (pulse/toggle + duration), links, the DUST integration (target powers adjacent dust + the "activated dust adjacent to a trigger powers it" rule R3), config persistence.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

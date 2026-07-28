@@ -100,6 +100,8 @@ const BLOCK = Object.freeze({
   BAR:                    81,   // non-solid monkey-bar; hang from the BAR at the block's BOTTOM, swing L/R, jump off
   BAR_PLATFORM:           82,   // Bar + a Jump-Through platform on top: stand on top, drop through onto the bar
   TUBE_WALL:              83,   // §Travel Tube — a placed transparent tube you fly through; footprint cells (solid glass)
+  TARGET_BLOCK:           84,   // §Phase R — redstone SOURCE: arrow/attack hit → pulse OR toggle; powers its links + adjacent dust
+  PULSE_CONVERTER:        85,   // §Phase R — converts an incoming redstone PULSE into a persistent toggle (on/off/on…)
 });
 
 // Colour palette for decorative foliage (§10). Index 0 = green (default).
@@ -229,6 +231,8 @@ const BLOCK_DATA = {
   [BLOCK.BAR]:               { name: 'Bar',             hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.BAR_PLATFORM]:      { name: 'Bar + Platform',  hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.TUBE_WALL]:         { name: 'Travel Tube',     hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
+  [BLOCK.TARGET_BLOCK]:      { name: 'Target Block',    hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
+  [BLOCK.PULSE_CONVERTER]:   { name: 'Pulse Converter', hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
 };
 
 // ── Pixel-art block renderers ────────────────────────────────
@@ -326,6 +330,8 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.BAR:                    _drawBar(ctx, px, py, s, false);                 break;
     case BLOCK.BAR_PLATFORM:           _drawBar(ctx, px, py, s, true);                  break;
     case BLOCK.TUBE_WALL:              _drawTubeWall(ctx, px, py, s);                   break;
+    case BLOCK.TARGET_BLOCK:           _drawTargetBlock(ctx, px, py, s, state.on);      break;
+    case BLOCK.PULSE_CONVERTER:        _drawPulseConverter(ctx, px, py, s, state.on);   break;
   }
 
   // Mining crack overlay
@@ -1807,6 +1813,27 @@ function _drawBar(ctx, px, py, s, withPlatform) {
 // continuous translucent band (with optional rounded bends + mouth caps) by the game's tube passes
 // (_drawTubeStroke), so per-cell squares would fight the rounded look. This block only COLLIDES.
 function _drawTubeWall(ctx, px, py, s) { /* rendered by the tube stroke passes, not per-cell */ }
+// §Phase R — Target Block: a bullseye that lights up while ON/pulsing. Hit by an arrow or attack.
+function _drawTargetBlock(ctx, px, py, s, on) {
+  ctx.fillStyle = '#c9c2b4'; ctx.fillRect(px, py, s, s);                 // stone-ish body
+  ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
+  const cx = px + s / 2, cy = py + s / 2;
+  const rings = [[s * 0.42, on ? '#ff5a44' : '#a94434'], [s * 0.30, '#efe7d6'], [s * 0.17, on ? '#ff7a4a' : '#b8563a']];
+  for (const [r, col] of rings) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = on ? '#fff2c0' : '#7a2f22'; ctx.beginPath(); ctx.arc(cx, cy, s * 0.07, 0, Math.PI * 2); ctx.fill();  // bullseye
+  if (on) { ctx.strokeStyle = 'rgba(255,120,80,0.7)'; ctx.lineWidth = 2; ctx.strokeRect(px + 1.5, py + 1.5, s - 3, s - 3); }
+}
+// §Phase R — Pulse Converter: a small toggle latch; a dot flips side + colour with its state.
+function _drawPulseConverter(ctx, px, py, s, on) {
+  ctx.fillStyle = '#3a4652'; ctx.fillRect(px, py, s, s);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
+  ctx.fillStyle = '#1d242c'; ctx.fillRect(px + 5, py + s / 2 - 5, s - 10, 10);   // latch track
+  ctx.fillStyle = on ? '#57e0a0' : '#c25a5a';
+  const kx = on ? px + s - 12 : px + 6;
+  ctx.beginPath(); ctx.arc(kx + 3, py + s / 2, 5, 0, Math.PI * 2); ctx.fill();     // latch knob
+  ctx.fillStyle = '#cdd6e0'; ctx.font = `${Math.round(s * 0.28)}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText(on ? 'ON' : 'OFF', px + s / 2, py + 2); ctx.textAlign = 'left';
+}
 function _drawWarpPipe(ctx, px, py, s, state = {}, stem = false) {
   const t = !!state.pipeT, b = !!state.pipeB, l = !!state.pipeL, r = !!state.pipeR;
   // Overdraw 1px INTO connected neighbors so sub-pixel tile rounding can't leave a seam.

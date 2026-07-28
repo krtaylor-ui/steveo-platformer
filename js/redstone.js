@@ -156,6 +156,50 @@ class RedstoneSystem {
       if (signal && !comp.fuse) {
         comp.fuse = 120;
       }
+    } else if (comp.type === 'pulse_converter') {
+      // §Phase R (R2) — the ONE pulse→toggle mechanism: a RISING input edge flips a held state.
+      const rising = signal && !comp._lastIn;
+      comp._lastIn = signal;
+      if (rising) this._toggleFlip(comp, level);
+    } else if (comp.type === 'target') {
+      // A Target Block can ALSO be driven by redstone (adjacency rule / a link) — same as a hit.
+      const rising = signal && !comp._lastIn;
+      comp._lastIn = signal;
+      if (rising) this.hitTarget(comp.col, comp.row, level);
+    }
+  }
+
+  // §Phase R — the single toggle-conversion primitive (used by the Pulse Converter AND a Target
+  // Block in Toggle mode, so there is exactly ONE pulse→toggle implementation in the engine).
+  _toggleFlip(comp, level) {
+    comp.on = !comp.on;
+    this._propagate(comp, level);
+    if (this.soundCallback) this.soundCallback('sounds/lever.mp3', 0.5);
+  }
+
+  // §Phase R (R1) — a Target Block was hit (by an arrow, or in Toggle mode any attack). Pulse mode
+  // emits a timed pulse; Toggle mode flips a held state via the shared _toggleFlip. Returns true if
+  // a target was actually here. `byAttack` = a melee/thrown hit (only toggles OFF an already-on
+  // toggle target; a Pulse target reacts to projectiles, per Kevin's spec).
+  hitTarget(col, row, level, byAttack) {
+    const comp = this.getAt(col, row);
+    if (!comp || comp.type !== 'target') return false;
+    if ((comp.mode || 'pulse') === 'toggle') {
+      this._toggleFlip(comp, level);
+    } else {
+      if (byAttack) return true;                 // pulse targets only fire on a projectile hit
+      comp.on = true; comp._pulseTimer = comp.pulseDur || 30;
+      this._propagate(comp, level);
+      if (this.soundCallback) this.soundCallback('sounds/blocked-shot.mp3', 0.5);
+    }
+    return true;
+  }
+
+  // Per-frame: count down active Target-Block pulses; drop to OFF (and propagate) when done.
+  tickTargets(level) {
+    for (const comp of this.components) {
+      if (comp.type !== 'target' || !comp._pulseTimer) continue;
+      if (--comp._pulseTimer <= 0) { comp._pulseTimer = 0; if (comp.on) { comp.on = false; this._propagate(comp, level); } }
     }
   }
 

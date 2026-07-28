@@ -2806,6 +2806,8 @@ class Game {
     }
     this.mobManager.explosionEvents = [];
     this.redstone.tickTnt(this.level, this.mobManager);
+    this.redstone.tickTargets(this.level);   // §Phase R — count down Target-Block pulses
+    this._processArrowTargetHits();          // §Phase R — a player arrow that struck a Target Block fires it
     // Remove dust/gate overlays whose block was destroyed (e.g. by TNT).
     // Rate-limited: only scan every 30 frames — TNT has a 120-frame fuse so this is plenty.
     if (this.frameCount % 30 === 0) {
@@ -12128,6 +12130,10 @@ class Game {
           this.redstone.addComponent({type: 'tnt',            col: c, row: r, fuse: 0,      links: [], sandboxPlaced: true});
         else if (b === BLOCK.PISTON_BODY    && !this.redstone.getAt(c, r))
           this.redstone.addComponent({type: 'piston',         col: c, row: r, dir: 'right', inverted: false, extended: false, links: [], sandboxPlaced: true});
+        else if (b === BLOCK.TARGET_BLOCK   && !this.redstone.getAt(c, r))   // §Phase R (R1)
+          this.redstone.addComponent({type: 'target',         col: c, row: r, on: false, mode: 'pulse', pulseDur: 30, links: [], sandboxPlaced: true});
+        else if (b === BLOCK.PULSE_CONVERTER && !this.redstone.getAt(c, r))  // §Phase R (R2)
+          this.redstone.addComponent({type: 'pulse_converter', col: c, row: r, on: false, links: [], sandboxPlaced: true});
       }
     }
   }
@@ -17227,6 +17233,18 @@ class Game {
   }
   _crumbleTouch(row, col) {
     if (this._crumbleTouched) this._crumbleTouched.add(row + ',' + col);   // marked; timing in _updateClassicBlocks
+  }
+
+  // §Phase R (R1) — a player arrow that struck a Target Block cell fires it (pulse or toggle). Guarded
+  // by _blockHitDone so one arrow fires once; recoverable arrows stick in the block and stay collectable.
+  _processArrowTargetHits() {
+    if (!this.redstone || !this.mobManager || !this.mobManager.playerArrows) return;
+    for (const a of this.mobManager.playerArrows) {
+      if (!a._blockHit || a._blockHitDone) continue;
+      a._blockHitDone = true;
+      const { row, col } = a._blockHit;
+      if (this.level.get(row, col) === BLOCK.TARGET_BLOCK) this.redstone.hitTarget(col, row, this.level, false);
+    }
   }
 
   // §Moving-platform collision safety net. If `p`'s body box has become EMBEDDED in a solid (because

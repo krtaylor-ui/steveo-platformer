@@ -89,6 +89,8 @@ const OTHER_PALETTE_ITEMS = [
   { kind: 'gate',     gateType: 'and', name: 'AND Gate',   color: '#CC7700' },
   { kind: 'block',    blockType: BLOCK.TRANSMITTER,        },
   { kind: 'block',    blockType: BLOCK.RECEIVER,           },
+  { kind: 'block',    blockType: BLOCK.TARGET_BLOCK,       },
+  { kind: 'block',    blockType: BLOCK.PULSE_CONVERTER,    },
   // ── Pistons ───────────────────────────────────────────────────
   { kind: 'block', blockType: BLOCK.PISTON_BODY },
   // ── Storage ───────────────────────────────────────────────────

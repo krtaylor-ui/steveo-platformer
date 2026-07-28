@@ -1008,6 +1008,7 @@ class Arrow {
         const pt = (s - 1) / steps;            // back up to the last free sub-step
         this.x = px + (nx - px) * pt;
         this.y = py + (ny - py) * pt;
+        this._blockHit = { row: Math.floor(cy / BLOCK_SIZE), col: Math.floor(cx / BLOCK_SIZE) };  // §Phase R — for Target Blocks
         hit = true;
         break;
       }
