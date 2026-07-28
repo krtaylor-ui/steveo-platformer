@@ -8018,7 +8018,7 @@ class Game {
     // §Moving Platforms — restore rails + platforms (waypoint paths + anchor-bound block groups).
     if (data && Array.isArray(data.rails)) {
       this._rails = data.rails.map(r => ({ id: r.id, cells: r.cells || [], vis: r.vis || 'visible', loop: !!r.loop, angled: !!r.angled,
-        pauseNodes: r.pauseNodes || [], collideMode: r.collideMode || 'passthrough', speedSegments: r.speedSegments || [], launchAt: r.launchAt ?? null }));
+        pauseNodes: r.pauseNodes || [], collideMode: r.collideMode || 'passthrough', speedSegments: r.speedSegments || [], launchAt: r.launchAt ?? null, launchDir: r.launchDir ?? null }));
       this._nextRailId = this._rails.reduce((m, r) => Math.max(m, r.id || 0), 0);
       this._railCells = null; this._reapplyRailGrid();
     }
@@ -18262,11 +18262,15 @@ class Game {
     if (rail.launchAt < a - 0.001 || rail.launchAt > b + 0.001) return false;
     const pts = this._railPts(rail);
     const at = TRAVEL_TUBE.pointAt(pts, rail.launchAt);
-    const travelAng = pl._dir >= 0 ? at.ang : at.ang + Math.PI;
-    const speed = Math.max(3, pl._curSpeed || 3) * 3.2;      // scale rail speed → launch punch
-    const RAMP_UP = 0.7;                                     // the ramp tips the launch upward
-    pl._vx = Math.cos(travelAng) * speed;
-    pl._vy = Math.sin(travelAng) * speed - Math.abs(speed) * RAMP_UP;
+    // Directional launch: horizontal sign = the RAMP's direction (not travel dir), so it's predictable
+    // and flippable. Magnitudes are World-Settings-tunable (default matches the prior feel).
+    const aws = this._worldAdvSettings || {};
+    const accel = aws.platformLaunchAccel ?? 3;              // horizontal punch / distance
+    const lift  = aws.platformLaunchLift  ?? 2;              // vertical "jump intensity"
+    const base = Math.max(3, pl._curSpeed || 3);
+    const sign = rail.launchDir === 'left' ? -1 : 1;
+    pl._vx = sign * base * accel;
+    pl._vy = -base * lift;                                   // straight-up component (a clean parabola)
     pl._ax = at.x; pl._ay = at.y;
     pl._airborne = true; pl._airFrames = 0;
     pl._shatterCells = pl.cells.slice();                    // snapshot for a possible shatter
@@ -18416,10 +18420,10 @@ class Game {
       // Ground contact: solid directly below the piece while descending.
       if (d.vy > 0 && solid(d.x, d.y + half + d.vy)) {
         d.y = Math.floor((d.y + half) / BLOCK_SIZE) * BLOCK_SIZE - half;   // sit exactly on the surface
-        if (d.vy > 2.2) { d.vy *= -0.30; d.vx *= 0.55; d.rotV *= 0.5; }    // a real bounce (low restitution → few hops)
-        else {                                                            // too slow to bounce → settle
-          d.vy = 0; d.vx *= 0.5; d.rotV *= 0.5;
-          if (Math.abs(d.vx) < 0.35) { d.vx = 0; d.rotV = 0; d.resting = true; }   // come to a natural rest
+        if (d.vy > 4.5) { d.vy *= -0.16; d.vx *= 0.4; d.rotV *= 0.35; }    // one small inelastic hop only on a hard landing
+        else {                                                            // otherwise it just STOPS (dead thud)
+          d.vy = 0; d.vx *= 0.4; d.rotV *= 0.4;
+          if (Math.abs(d.vx) < 0.6) { d.vx = 0; d.rotV = 0; d.resting = true; }   // come to rest
         }
       }
       // Side nudge off walls (keeps pieces from tunnelling into a wall as they skitter).
@@ -19060,9 +19064,15 @@ class Game {
     if (!rail) { this._notify('Launch Ramp must be placed on a rail', '#CC4444', 130); return; }
     const wx = col * BLOCK_SIZE + BLOCK_SIZE / 2, wy = row * BLOCK_SIZE + BLOCK_SIZE / 2;
     const d = this._railNearestDist(rail, wx, wy);
-    if (rail.launchAt != null && Math.abs(rail.launchAt - d) < BLOCK_SIZE) { rail.launchAt = null; this._notify('Launch Ramp removed', '#c66', 100); return; }
-    rail.launchAt = d;
-    this._notify('Launch Ramp set — a platform reaching here is flung on a ballistic arc', '#ffb050', 220);
+    // Clicking a ramp CYCLES its horizontal launch direction: (none) → Right → Left → (none).
+    // The direction the icon points is the way the platform is flung, independent of travel direction.
+    if (rail.launchAt != null && Math.abs(rail.launchAt - d) < BLOCK_SIZE) {
+      if (rail.launchDir === 'right') { rail.launchDir = 'left'; this._notify('Launch Ramp → flings LEFT ◀', '#ffb050', 130); }
+      else { rail.launchAt = null; rail.launchDir = null; this._notify('Launch Ramp removed', '#c66', 100); }
+      return;
+    }
+    rail.launchAt = d; rail.launchDir = 'right';
+    this._notify('Launch Ramp set — flings RIGHT ▶ (click again to flip Left, again to remove). Tune power in World Settings ▸ Physics', '#ffb050', 300);
   }
   _drawLaunchRamps(ctx) {
     if (this.gameMode !== 'sandbox' || !this._rails) return;
@@ -19071,10 +19081,15 @@ class Game {
       if (rail.launchAt == null) continue;
       const at = TRAVEL_TUBE.pointAt(this._railPts(rail), rail.launchAt);
       const x = at.x - this.camera.x, y = at.y - this.camera.y;
+      const left = rail.launchDir === 'left';
+      // Ramp triangle points UP toward the launch direction (hypotenuse faces the fling side).
       ctx.fillStyle = '#ffb050'; ctx.strokeStyle = '#a0542a'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(x - 8, y + 7); ctx.lineTo(x + 8, y + 7); ctx.lineTo(x + 8, y - 7); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath();
+      if (left) { ctx.moveTo(x + 8, y + 7); ctx.lineTo(x - 8, y + 7); ctx.lineTo(x - 8, y - 7); }
+      else      { ctx.moveTo(x - 8, y + 7); ctx.lineTo(x + 8, y + 7); ctx.lineTo(x + 8, y - 7); }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.fillStyle = '#fff'; ctx.font = 'bold 10px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('↗', x + 3, y);
+      ctx.fillText(left ? '↖' : '↗', x + (left ? -3 : 3), y);
     }
     ctx.restore();
   }

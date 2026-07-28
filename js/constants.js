@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 build 260 (two polish fixes): (1) shatter debris now SETTLES naturally — lower bounce restitution (few hops), and once a piece is slow on the ground it kills its velocity + spin, rests flat for a beat, then fades (no more long jittery bouncing). (2) EDGE-GRAB now travels with the platform — a ledge-hang used to re-pin to fixed coords each frame; if the gripped ledge belongs to a platform, the hang anchors (and the climb-up target) now shift with the platform, so you ride it while hanging and climb up onto it instead of falling back. Prev 259 ride jitter + destroy animation.';
+const GAME_VERSION = 'v3 build 261 (Launch Ramp controls + debris realism): the LAUNCH RAMP (the platform "jump block") is now DIRECTIONAL — click it to cycle Right ▶ / Left ◀ / off, and the icon points the way it flings; the launch goes THAT direction regardless of travel direction. Two new World Settings ▸ Movement ▸ Physics: "Platform Launch Accel" (horizontal punch/distance) and "Platform Launch Lift" (vertical jump intensity), so you can dial in how far/high it throws. Shatter debris is now clearly INELASTIC — a single small hop only on a hard landing, otherwise a dead thud that rests and fades. Next: the full moving-redstone build. Prev 260 debris settle + edge-grab tracking.';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

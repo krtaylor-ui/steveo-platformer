@@ -134,6 +134,8 @@ const WORLD_SETTINGS = {
       { key: 'physicsGravity', tab: 'movement', group: 'Physics', modes: M.physics, type: 'cycle', opts: O.gravity, dflt: 0.66, label: 'Gravity', fmt: pct1 },
       { key: 'jumpHeightBlocks', tab: 'movement', group: 'Physics', modes: M.physics, type: 'cycle', opts: O.jumpH, dflt: null, label: 'Jump Height', fmt: (v) => v == null ? 'Default' : v + ' bl' },
       { key: 'jumpPadVForce', tab: 'movement', group: 'Physics', modes: M.physics, type: 'cycle', opts: O.jumpPad, dflt: -18, label: 'Jump-Pad Force', fmt: String, advanced: true },
+      { key: 'platformLaunchAccel', tab: 'movement', group: 'Physics', modes: M.physics, type: 'cycle', opts: [1.5, 2, 3, 4, 5, 6], dflt: 3, label: 'Platform Launch Accel', fmt: (v) => v.toFixed(1) + 'x', advanced: true, hint: 'horizontal punch / distance when a moving platform hits a Launch Ramp' },
+      { key: 'platformLaunchLift', tab: 'movement', group: 'Physics', modes: M.physics, type: 'cycle', opts: [1, 1.5, 2, 2.5, 3, 4], dflt: 2, label: 'Platform Launch Lift', fmt: (v) => v.toFixed(1) + 'x', advanced: true, hint: 'vertical “jump intensity” of a Launch-Ramp fling' },
       { key: 'redstoneSpeed', tab: 'movement', group: 'Physics', modes: M.physics, type: 'cycle', opts: O.redstone, dflt: 1.0, label: 'Redstone Speed', fmt: xf, advanced: true, hint: 'faster pistons / traps' },
       { key: 'disableXpSpeedBoost', tab: 'movement', group: 'Physics', modes: M.physics, type: 'toggle', dflt: false, label: 'Disable XP Speed Boost', advanced: true },
       { key: 'sprintEnabled', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', label: 'Sprint', get: (a) => a.sprintEnabled !== false, set: (a, v) => { a.sprintEnabled = v; }, hint: 'hold Shift for 2× speed' },
