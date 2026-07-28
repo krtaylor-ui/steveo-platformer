@@ -3109,3 +3109,84 @@ restored (the companion is placed separately, so it looked correct — Kevin's e
   clean "never played" marker. Reverted the build-155 `last_played_at:null` on restart (that
   column may be NOT NULL → would have errored).
 - Suite 554, all green. Browser/DB-UNTESTED (verified against server code).
+
+## Moving Platforms — full system, P1+P2+P3 mega session (builds 245–253)
+Overnight mega-session implementing the entire remaining moving-platform brief. Kevin was
+asleep; per the "ask up front, no mid-run pauses" convention I surfaced the questions +
+proceeded on documented assumptions, committing per numbered section. **Every build is
+browser-UNTESTED** (headless suite green throughout, incl. new `test-moving-platform.js`, 24
+assertions). All work is on `main`, live on Railway. Additive + dormant unless the new blocks
+are used.
+
+**New pure module** `js/moving-platform.js` (advance/weight/centre-of-mass/ballistic/launch/
+tilt/flood-fill) — all the tricky math, headless-tested. Rail geometry REUSES the Travel-Tube
+polyline (`TRAVEL_TUBE.pointAt`) per Kevin's note to leverage the tube implementation.
+
+**Shipped, by section:**
+- **§1 Rail (b245):** waypoint path reusing the tube click-corners UX; 3 visibility states
+  (Visible+Solid / Visible+Non-solid default / Invisible); closed LOOPS (finish on the first
+  point); node editor; config modal. Solid rails paint standable RAIL grid cells.
+- **§2/§3/§4 Anchor + Platform + Carrying (b246):** Anchor-on-rail binds a platform =
+  flood-fill of the connected block group (computed at play load). Movement modes
+  (Continuous / Rider-Powered / One-Touch / Redstone + Sustained|Toggle) via a built-in hidden
+  receiver (`_anchorSignal` reads adjacent dust / bare generators / listened TX channels).
+  Return mode, per-platform speed, reposition, remove. In play the group LIFTS out of the grid,
+  rides the rail, registers cells in `_platformSolidCells` (checked by the isSolid patch so all
+  existing physics treat it as ground), and carries riders (players/mobs/items) by the per-frame
+  delta + depenetration (build-225 pattern).
+- **§5 Pause Nodes (b247):** right-click a waypoint in the node editor → No Pause / Duration /
+  Until-Anchor-reactivated.
+- **§6 Multi-platform + weight collision (b248):** rail-level Pass Through / Redirect / Destroy
+  Smaller (tie = Redirect). One per-block-type weight system (default 1 = block count), shared
+  by §6/§9/§13.
+- **§8 Direction Controller (b249):** L/R inputs via TX channels; edge-triggered; both = toggle.
+- **§9 Speed Control Segment (b250):** paint a rail zone; smoothstep-ramps + PERSISTS speed.
+- **§11 Launch Platform (b251, HIGH RISK):** real ballistic rigid-body sim off a Launch Ramp;
+  catches the first rail touched; wall/OOB → shatter (reuses the death-scatter particles).
+- **§13 Center of Gravity (b252, HIGH RISK):** opt-in tilt from anchor→centre-of-mass; rider
+  mass counts; tilts render + (rounded) collision; static-seesaw via a 1-point rail.
+- **§7-Gate + §10 (b253):** RAIL_GATE blocks/allows passage by redstone channel or weight
+  threshold (Instant).
+
+**Open questions (§14) — resolutions:**
+- **Q0 (Toggle dependency for reactivate-pause):** WARN, don't hard-block. A rail's pause nodes
+  serve every platform on it (many-to-many), so I can't auto-fix one anchor. The reactivate
+  resumes on a rising edge of the platform's anchor signal; the modals (pause + anchor) warn
+  that Signal Response = Toggle is needed for a discrete re-pulse.
+- **Q1 (Direction Controller edge-triggering):** store `_prevL/_prevR`; evaluate ONLY when an
+  input changes; both-high → toggle, one-high → set, both-low → no-op. Kills the idle-both-low-
+  reads-as-equal toggle-every-frame trap.
+- **Q2 (static seesaw):** confirmed — a degenerate 1-point rail keeps the anchor fixed while
+  mass shifts; same tilt math, no separate implementation.
+- **Q3 (launch out-of-bounds):** reuse the existing void bound (`level.pixelHeight`/`pixelWidth`);
+  crossing it → the same shatter/scatter as a crash.
+- **Q4 (findings that changed wiring):** rails/tubes persist only via `GAME_STATE.serialize`,
+  NOT the localStorage `SandboxSaves` path, and the SpeedRunner load restored NEITHER — so I
+  wired rails+platforms+controllers+speed-segs+gates into `GAME_STATE`, `SandboxSaves`, AND added
+  `_restoreClassicBlockData` to the SpeedRunner path. Collision reuses the cell-based `isSolid`
+  monkey-patch (moving platforms register rounded solid cells) rather than a new pixel collider.
+
+**Deliberate SIMPLIFICATIONS / DEFERRALS (documented, not silent):**
+- **Section order:** built §7/§10 AFTER §8/§9/§11/§13. Only hard dependency in the brief was
+  Launch←Speed; §8/§9 are self-contained and unblock the §11 showcase, so I front-loaded them.
+- **§7 Switch (fork/branching) mode + the 4 animated visual styles** (drawbridge / rise / extend
+  / dissolve, incl. the "arrived mid-transition → platform falls" race): DEFERRED. The rail data
+  model is a single linear `cells` polyline; true branching is a real data-model change. Shipped
+  the Instant Gate mechanic (the core) + all of §10. → FUTURE_ROADMAP.
+- **Direction Controller uses WIRELESS TX channels, not on-platform physical redstone.** A moving
+  platform can't stay wired to static grid dust (redstone is grid-anchored). Wire any source →
+  transmitter → the controller's channel. On-platform physical pressure-plates are the same
+  moving-redstone limitation tied to the deferred live-connectivity recompute.
+- **Detached-platform rule:** the flood-fill treats any connected non-air/non-rail block as
+  platform. A platform touching terrain would absorb it, so a fill >300 blocks is REFUSED (not
+  lifted) with a notify. Designers must build platforms detached.
+- **Collision is cell-granular** (smooth visual, collision rounded to the platform's current
+  cells) — the standard tile-engine moving-platform compromise; lets all existing physics + the
+  depenetration carry work unchanged. CoG tilt collision is likewise stepped/approximate.
+- **§13 slide-off DECISION (brief said don't decide silently):** riders DO slide downhill on a
+  steep tilt (a gentle nudge past ~9°).
+
+**Honest status on the HIGH-RISK pair:** both §11 (ballistic launch) and §13 (CoG tilt) are
+fully implemented and headless-green for their pure math, but NEITHER is browser-tested — the
+emergent feel (arc tuning, catch reliability, tilt collision fidelity, slide-off strength) needs
+Kevin's playtest and will likely want number-tuning. They are the most likely to need iteration.

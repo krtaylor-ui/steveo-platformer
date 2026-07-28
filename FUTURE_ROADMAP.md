@@ -901,3 +901,32 @@ redstone FOUNDATION first, then the platform is a clean consumer of it.** Reason
 **Open questions for the detailed prompt:** how a platform's block‑group is authored + bound to a
 track; how the track direction maps to platform facing on turns; whether platforms collide with
 each other; multiplayer (do all riders move; who "owns" a rider‑powered platform).
+
+---
+
+## Moving Platforms — deferred follow-ups (from the P1+P2+P3 mega session, builds 245–253)
+
+The core moving-platform system shipped (rail, anchor, platform, carrying, pause nodes,
+multi-platform weight collision, direction controller, speed segments, launch platform,
+center of gravity, rail gate). These pieces were deliberately deferred:
+
+- **§7 Switchable Rail Segment — SWITCH (fork/branching) mode.** Needs the rail data model to
+  support a junction with two downstream continuations. Rails are currently a single linear
+  `cells` polyline. Shipped: the Gate (block/allow) mechanic. To do: a real branch node +
+  per-branch geometry + a signal selecting the active branch.
+- **§7 — the 4 ANIMATED visual styles** (Drawbridge / Rise-from-Below / Extend-Retract /
+  Dissolve-Materialize) and the transition-duration "arrived too early → platform falls" race.
+  Shipped: Instant (zero-duration) only. To do: per-style tween + the fall-through when a
+  platform reaches a segment mid-transition.
+- **§12 TNT Launcher** — a placeable that launches TNT at incoming mobs/platforms. This is also
+  the feature that motivates LIVE/dynamic platform-connectivity recompute (platform blocks can be
+  destroyed mid-game), which the current "flood-fill once at load" model does not do.
+- **§12 In-game / player-buildable platforms** (e.g. Normal mode) — this session is Sandbox-only
+  authoring; platforms are frozen once a level is played. A player-side build mode is a future idea.
+- **§12 One-Way Gate segments** and **Platform Coupling** (two platforms temporarily linking on
+  collision) — discussed, deliberately out of scope; captured here only.
+- **On-platform physical redstone** (pressure plates / dust that MOVE with the platform). The
+  Direction Controller uses wireless transmitter channels instead, because redstone is grid-
+  anchored and can't ride a moving group. Tied to the same live-recompute work as the TNT Launcher.
+- **Per-block-type weights** — the weight system is built (`_blockWeight`) but every type is 1
+  today. Tuning individual block weights needs only a lookup table, no rework.

@@ -1,4 +1,35 @@
-## CURRENT STATE (2026-07-27) — TRAVEL TUBE feature SHIPPED (builds 223–234) to `main` + deployed ✅
+## CURRENT STATE (2026-07-28) — MOVING PLATFORMS system SHIPPED (builds 245–253) to `main` + deployed ⚠️ browser-UNTESTED
+
+Overnight mega-session (P1+P2+P3) built the entire remaining moving-platform system, on `main`,
+live on Railway. **All builds 245–253 are browser-UNTESTED** — the headless suite is green
+throughout (added `test-moving-platform.js`, 24 assertions) but nothing has been playtested;
+Kevin will playtest and iterate. The feature is additive + dormant unless the new blocks are used.
+
+- **Pure module** `js/moving-platform.js` (advance / weight / centre-of-mass / ballistic / launch
+  / tilt / flood-fill), reusing the Travel-Tube polyline geometry for the rail centerline.
+- **New blocks (ids 87–92):** RAIL, ANCHOR_BLOCK, DIRECTION_CONTROLLER, SPEED_SEGMENT, LAUNCH_RAMP,
+  RAIL_GATE — all in the Mechanics palette tab.
+- **Shipped:** §1 Rail (3 vis states + loops + node editor), §2/§3/§4 Anchor+Platform+Carrying
+  (flood-fill group lifted out of the grid, rides the rail, cell-rounded solid collision via the
+  isSolid patch, rider carry + depenetration), §5 Pause Nodes, §6 multi-platform weight collision,
+  §8 Direction Controller (edge-triggered L/R via TX channels), §9 Speed Segment (eased+persistent),
+  §11 Launch Platform (ballistic sim, HIGH RISK), §13 Center of Gravity (tilt, HIGH RISK), §7-Gate +
+  §10 Rail Gate (redstone/weight block).
+- **DEFERRED (see FUTURE_ROADMAP + DECISIONS_LOG):** §7 Switch/branching mode + the 4 animated
+  visual styles; §12 TNT Launcher / player-buildable platforms / One-Way Gate / Platform Coupling;
+  on-platform physical redstone; per-block-type weight tuning.
+- **KEY LIMITATIONS to know when playtesting:** build platforms DETACHED from terrain (a flood-fill
+  >300 blocks is refused); the Direction Controller is WIRELESS (source→transmitter→channel);
+  collision is cell-granular (smooth visual, rounded collision); §11/§13 emergent feel needs tuning.
+- **Playtest checklist (from the brief §15):** all 4 Anchor movement modes + both Signal Response
+  variants; the Direction Controller toggle feel; Speed Segments feeding Launch exit velocity; the
+  full Launch sim (catches / wall hits / clean crashes); CoG tilt + slide-off; Rail Gate by redstone
+  and by weight; Pause Nodes (duration + reactivate). Full rationale + all assumptions in
+  `DECISIONS_LOG.md` ("Moving Platforms — full system" entry).
+
+---
+
+## PRIOR STATE (2026-07-27) — TRAVEL TUBE feature SHIPPED (builds 223–234) to `main` + deployed ✅
 
 Pushed to production `origin/main` @ 1ed30d6 (Railway auto-deploy). **Travel Tube** = a new placeable "fly-through" pipe (distinct from the instant Warp Pipe), built + iterated across builds 223–234:
 - **Pure module** `js/travel-tube.js` (headless-tested, test-travel-tube.js — 18 assertions): polyline/elbow build, pointAt, 3-wide footprint, mouths+cardinal, nearest-point.
