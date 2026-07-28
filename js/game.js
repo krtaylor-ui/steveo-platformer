@@ -7206,6 +7206,8 @@ class Game {
         }
       }
     }
+    // §Adjacency power — this source (lever/plate/target) also drives any bare adjacent sink directly.
+    this._powerAdjacentSinks(srcCol, srcRow);
   }
 
   // Add an entry to the queue, skipping true duplicates.
@@ -7302,7 +7304,9 @@ class Game {
       const d = this._dustBlocks.get(`${c},${r}`);
       if (d) return d.on;
       const comp = this.redstone.getAt(c, r);
-      if (comp && (comp.type === 'lever' || comp.type === 'pressure_plate')) return !!comp.on;
+      if (comp && (comp.type === 'lever' || comp.type === 'pressure_plate' || comp.type === 'target')) return !!comp.on;   // §Adjacency — target is a generator too
+      const rx = this._receivers.get(`${c},${r}`);   // §Adjacency — a powered receiver feeds a gate input directly
+      if (rx) return !!rx.powered;
       const srcGate = this._gateBlocks.get(`${c},${r}`);
       if (srcGate && srcGate.outputSide) {
         const [ogdr, ogdc] = GD[srcGate.outputSide];
@@ -7328,8 +7332,12 @@ class Game {
       this._rsEnqueue({ col: outCol, row: outRow, powered: newOutput, frame: sourceFrame + 6 });
     }
     const outDev = this.redstone.getAt(outCol, outRow);
-    if (outDev && (outDev.type === 'trapdoor' || outDev.type === 'tnt' || outDev.type === 'piston')) {
+    if (outDev && (outDev.type === 'trapdoor' || outDev.type === 'tnt' || outDev.type === 'piston' ||
+                   outDev.type === 'target' || outDev.type === 'pulse_converter' || outDev.type === 'lamp')) {   // §Adjacency — gate output drives any sink
       this._rsEnqueue({ type: 'device', comp: outDev, frame: sourceFrame + 6 });
+    }
+    if (this._transmitters.has(`${outCol},${outRow}`)) {   // §Adjacency — gate output drives an adjacent transmitter
+      this._rsEnqueue({ type: 'transmitter', col: outCol, row: outRow, frame: sourceFrame + 6 });
     }
     const outGate = this._gateBlocks.get(`${outCol},${outRow}`);
     if (outGate && outGate.inputSide) {
@@ -7347,12 +7355,68 @@ class Game {
   }
 
   // Apply OR-gate logic to a device: open/trigger if any adjacent dust is powered.
+  // §Adjacency power — true when a POWERED generator sits directly beside (col,row) and drives it,
+  // with NO redstone dust in between. Simple generators (lever/plate/target/receiver) power all four
+  // neighbours; gates and pulse converters only power the neighbour on their OUTPUT side.
+  _adjacentGeneratorPower(col, row) {
+    const GD = Game.GATE_DIRS;
+    const DIRS = [[0,1],[0,-1],[1,0],[-1,0]];   // [dr,dc]
+    for (const [dr, dc] of DIRS) {
+      const nc = col + dc, nr = row + dr;
+      const comp = this.redstone.getAt(nc, nr);
+      if (comp) {
+        if ((comp.type === 'lever' || comp.type === 'pressure_plate' || comp.type === 'target') && comp.on) return true;
+        if (comp.type === 'pulse_converter') {
+          const cdir = comp.dir || (comp.axis === 'v' ? 'down' : 'right');
+          const [pdr, pdc] = GD[cdir] || GD.right;   // pulse side
+          const tdr = -pdr, tdc = -pdc;              // toggle side = opposite
+          if (comp._pulseTimer > 0 && nc + pdc === col && nr + pdr === row) return true;
+          if (comp._held        && nc + tdc === col && nr + tdr === row) return true;
+        }
+      }
+      const rx = this._receivers.get(`${nc},${nr}`);
+      if (rx && rx.powered) return true;
+      const gate = this._gateBlocks.get(`${nc},${nr}`);
+      if (gate && gate.outputPowered && gate.outputSide) {
+        const [ogdr, ogdc] = GD[gate.outputSide];
+        if (nc + ogdc === col && nr + ogdr === row) return true;
+      }
+    }
+    return false;
+  }
+
+  // §Adjacency power — re-evaluate every SINK sitting directly beside (col,row) after a generator
+  // here changes state, so a lamp/piston/TX/gate wired with no dust still updates.
+  _powerAdjacentSinks(col, row, frame) {
+    const f = frame ?? (this.frameCount + this._rsStepFrames());
+    const GD = Game.GATE_DIRS;
+    const DIRS = [[0,1],[0,-1],[1,0],[-1,0]];
+    for (const [dr, dc] of DIRS) {
+      const nc = col + dc, nr = row + dr;
+      const comp = this.redstone.getAt(nc, nr);
+      if (comp && (comp.type === 'trapdoor' || comp.type === 'tnt' || comp.type === 'piston' ||
+                   comp.type === 'target' || comp.type === 'pulse_converter' || comp.type === 'lamp')) {
+        this._rsEnqueue({ type: 'device', comp, frame: f });
+      }
+      if (this._transmitters.has(`${nc},${nr}`)) {
+        this._rsEnqueue({ type: 'transmitter', col: nc, row: nr, frame: f });
+      }
+      const gate = this._gateBlocks.get(`${nc},${nr}`);
+      if (gate) {
+        const faces = (side) => { if (!side) return false; const [gdr, gdc] = GD[side]; return nc + gdc === col && nr + gdr === row; };
+        if (faces(gate.inputSide) || (gate.type === 'and' && faces(gate.inputSide2))) {
+          this._rsEnqueue({ type: 'gate', col: nc, row: nr, frame: f });
+        }
+      }
+    }
+  }
+
   _rsApplyDevice(comp) {
     const DIRS = [[0,1],[0,-1],[1,0],[-1,0]];
     const anyOn = DIRS.some(([dr, dc]) => {
       const d = this._dustBlocks.get(`${comp.col + dc},${comp.row + dr}`);
       return d && d.on;
-    });
+    }) || this._adjacentGeneratorPower(comp.col, comp.row);   // §Adjacency power — dust OR a bare adjacent generator
     if (comp.type === 'trapdoor') {
       comp.open = anyOn;
     } else if (comp.type === 'tnt' && anyOn && !comp.fuse) {
@@ -7431,7 +7495,7 @@ class Game {
     const anyDustOn = (sameCell && sameCell.on) || DIRS.some(([dr, dc]) => {
       const d = this._dustBlocks.get(`${col+dc},${row+dr}`);
       return d && d.on;
-    });
+    }) || this._adjacentGeneratorPower(col, row);   // §Adjacency power — a bare adjacent generator also powers the TX
     const wasPowered = tx.powered;
     tx.powered = anyDustOn;
     if (tx.powered === wasPowered) return;
@@ -7476,6 +7540,8 @@ class Game {
         this._rsEnqueue({ type: 'device', comp: devComp, frame: f });
       }
     }
+    // §Adjacency power — a powered receiver also drives bare adjacent sinks (TX/gate) directly.
+    this._powerAdjacentSinks(col, row, f);
   }
 
   // ── Ruined portal inactive interior overlay ───────────────────
@@ -17440,9 +17506,17 @@ class Game {
       if (!comp.dir) comp.dir = (comp.axis === 'v' ? 'down' : 'right');       // migrate old axis
       const [pdr, pdc] = D[comp.dir] || D.right;      // pulse side
       const tdr = -pdr, tdc = -pdc;                   // toggle side = opposite
-      const dustOn = (dr, dc) => { const d = this._dustBlocks.get(`${comp.col + dc},${comp.row + dr}`); return d ? !!d.on : false; };
-      const extToggle = dustOn(tdr, tdc) && !comp._droveT;   // external input (not our own held output)
-      const extPulse = dustOn(pdr, pdc) && !comp._droveP;    // external input (not our own pulse output)
+      // §Adjacency power — an input side reads powered dust OR a bare adjacent generator (lever/plate/target/RX).
+      const sideOn = (dr, dc) => {
+        const d = this._dustBlocks.get(`${comp.col + dc},${comp.row + dr}`);
+        if (d) return !!d.on;
+        const g = this.redstone.getAt(comp.col + dc, comp.row + dr);
+        if (g && (g.type === 'lever' || g.type === 'pressure_plate' || g.type === 'target') && g.on) return true;
+        const rx = this._receivers.get(`${comp.col + dc},${comp.row + dr}`);
+        return !!(rx && rx.powered);
+      };
+      const extToggle = sideOn(tdr, tdc) && !comp._droveT;   // external input (not our own held output)
+      const extPulse = sideOn(pdr, pdc) && !comp._droveP;    // external input (not our own pulse output)
       // After ANY action, LOCK new inputs long enough to outlast the pulse + dust-propagation lag so
       // the device's own lagging output can't be read back as a fresh edge and self-loop.
       if (comp._lock > 0) {
@@ -17457,6 +17531,11 @@ class Game {
       comp.on = pulseOut || toggleOut;                       // for rendering
       this._driveDustSide(comp, comp.col + pdc, comp.row + pdr, pulseOut, '_droveP');
       this._driveDustSide(comp, comp.col + tdc, comp.row + tdr, toggleOut, '_droveT');
+      // §Adjacency power — when an output side changes, re-evaluate bare sinks beside the converter.
+      if (pulseOut !== comp._prevPulseOut || toggleOut !== comp._prevToggleOut) {
+        this._powerAdjacentSinks(comp.col, comp.row);
+        comp._prevPulseOut = pulseOut; comp._prevToggleOut = toggleOut;
+      }
     }
   }
   // Drive a side ON when outputting; when off, only RELEASE a cell WE drove (so an input source on
