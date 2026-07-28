@@ -18023,21 +18023,62 @@ class Game {
   }
 
   // Rebuild the set of grid cells currently occupied by any moving platform (rounded from the smooth
-  // anchor position). Checked by the isSolid patch so physics treats platforms as ground.
+  // anchor position, and rotated by the Center-of-Gravity tilt when enabled). Checked by the isSolid
+  // patch so physics treats platforms as ground.
   _rebuildPlatformSolidCells() {
     const set = new Set();
     for (const pl of this._platforms || []) {
-      if (!pl.cells) continue;
-      const acol = Math.round((pl._ax - BLOCK_SIZE / 2) / BLOCK_SIZE);
-      const arow = Math.round((pl._ay - BLOCK_SIZE / 2) / BLOCK_SIZE);
+      if (!pl.cells || pl._destroyed) continue;
+      const tilt = pl.cog ? (pl._tilt || 0) : 0;
+      const cos = Math.cos(tilt), sin = Math.sin(tilt);
       pl._solidCells = [];
       for (const c of pl.cells) {
-        const cc = acol + c.dcol, rr = arow + c.drow;
+        // cell centre relative to the anchor centre, rotated by tilt, back to a world cell.
+        const lx = c.dcol * BLOCK_SIZE, ly = c.drow * BLOCK_SIZE;
+        const wx = pl._ax + lx * cos - ly * sin, wy = pl._ay + lx * sin + ly * cos;
+        const cc = Math.round((wx - BLOCK_SIZE / 2) / BLOCK_SIZE), rr = Math.round((wy - BLOCK_SIZE / 2) / BLOCK_SIZE);
         set.add(cc + ',' + rr);
         pl._solidCells.push({ col: cc, row: rr });
       }
     }
     this._platformSolidCells = set;
+  }
+
+  // §13 — Center of Gravity: entities currently standing on this platform (for rider weight + carry).
+  _platformRiders(pl) {
+    const out = [];
+    if (!pl._solidCells || !pl._solidCells.length) return out;
+    const top = new Set(pl._solidCells.map(c => c.col + ',' + c.row));
+    const onIt = (e) => {
+      if (!e || e.hp <= 0) return false;
+      const footRow = Math.floor((e.y + e.height + 2) / BLOCK_SIZE);
+      const c0 = Math.floor((e.x + 3) / BLOCK_SIZE), c1 = Math.floor((e.x + e.width - 3) / BLOCK_SIZE);
+      for (let c = c0; c <= c1; c++) if (top.has(c + ',' + footRow)) return true;
+      return false;
+    };
+    for (const p of this.activePlayers()) if (onIt(p)) out.push(p);
+    if (this.mobManager && this.mobManager.mobs) for (const m of this.mobManager.mobs) if (onIt(m)) out.push(m);
+    return out;
+  }
+
+  // §13 — opt-in per-platform tilt from the anchor→centre-of-mass horizontal offset (block weights +
+  // rider point masses via the shared §6 weight system). Static platforms (degenerate 1-point rail)
+  // become a seesaw sharing this exact math. Also nudges riders downhill when the tilt is steep.
+  _updateCoG(pl) {
+    if (!pl.cog || pl._destroyed || !pl.cells || !pl.cells.length) { pl._tilt = 0; return; }
+    const ox = pl._ax, oy = pl._ay;
+    let wx = 0, tw = 0;
+    for (const c of pl.cells) { const w = this._blockWeight(c.blockType); wx += (ox + c.dcol * BLOCK_SIZE) * w; tw += w; }
+    const riders = this._platformRiders(pl);
+    const RIDER_W = 4;
+    for (const r of riders) { wx += (r.x + r.width / 2) * RIDER_W; tw += RIDER_W; }
+    const comX = tw > 0 ? wx / tw : ox;
+    pl._tilt = MOVING_PLATFORM.tiltAngle(ox, comX, 0.5, 0.006);   // ±~28° max
+    // Slide-off: a steep tilt nudges riders downhill (decided ON per §13's "flag it" — documented).
+    if (Math.abs(pl._tilt) > 0.16) {
+      const push = Math.sign(pl._tilt) * (Math.abs(pl._tilt) - 0.14) * 6;
+      for (const r of riders) { if (r.vx != null) r.x += push; }
+    }
   }
 
   // Per-frame movement + rider carry. Runs in play modes only.
@@ -18068,6 +18109,7 @@ class Game {
       pl._ax = at.x; pl._ay = at.y;
     }
     this._resolvePlatformCollisions();      // §6 — two platforms meeting on one rail
+    for (const pl of this._platforms) this._updateCoG(pl);   // §13 — tilt from centre of mass
     this._rebuildPlatformSolidCells();
     this._carryPlatformRiders();
   }
@@ -18396,13 +18438,17 @@ class Game {
         ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(6, -5); ctx.lineTo(6, 5); ctx.closePath(); ctx.fill();
         ctx.restore();
       } else {
-        // Play: draw the lifted block group at its smooth position.
-        if (!pl.cells) continue;
+        // Play: draw the lifted block group at its smooth position (rotated by the CoG tilt if enabled).
+        if (!pl.cells || pl._destroyed) continue;
+        const tilt = pl.cog ? (pl._tilt || 0) : 0;
+        ctx.save();
+        if (tilt) { ctx.translate(pl._ax - this.camera.x, pl._ay - this.camera.y); ctx.rotate(tilt); ctx.translate(-(pl._ax - this.camera.x), -(pl._ay - this.camera.y)); }
         const ox = pl._ax - BLOCK_SIZE / 2, oy = pl._ay - BLOCK_SIZE / 2;
         for (const c of pl.cells) {
           const px = ox + c.dcol * BLOCK_SIZE - this.camera.x, py = oy + c.drow * BLOCK_SIZE - this.camera.y;
           try { drawBlock(ctx, c.blockType, px, py, 0, {}); } catch (e) { ctx.fillStyle = '#888'; ctx.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE); }
         }
+        ctx.restore();
       }
     }
   }
@@ -18414,7 +18460,7 @@ class Game {
     if (!pl) { this._anchorPopup = null; return; }
     if (!this.input.mouse.clicked) return;
     const mx = this.input.mouse.x, my = this.input.mouse.y;
-    const pw = 340, ph = 300, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const pw = 340, ph = 334, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
     if (hit(px + pw - 30, py + 8, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._anchorPopup = null; this.input.mouse.clicked = false; return; }
     const rowY = (i) => py + 44 + i * 34;
@@ -18423,8 +18469,9 @@ class Game {
     else if (pl.mode === 'redstone' && hit(px + 16, rowY(2), pw - 32, 28)) { pl.signalResponse = pl.signalResponse === 'toggle' ? 'sustained' : 'toggle'; }
     else if (hit(px + 16, rowY(3), pw - 32, 28)) { pl.returnMode = pl.returnMode === 'oneway' ? 'roundtrip' : 'oneway'; }
     else if (hit(px + 16, rowY(4), pw - 32, 28)) { const speeds = [0.5, 1, 1.5, 2, 3, 4, 6]; const i = speeds.findIndex(s => s >= pl.speed); pl.speed = speeds[(i + 1) % speeds.length]; }
-    else if (hit(px + 16, rowY(5), (pw - 40) / 2, 28)) { this._anchorRepositionMode = pl.id; this._anchorPopup = null; this._notify('Reposition: click a new point on the rail', '#3a6ea5', 160); }
-    else if (hit(px + 24 + (pw - 40) / 2, rowY(5), (pw - 40) / 2, 28)) { this._removePlatform(pl); this._anchorPopup = null; this._notify('Platform removed', '#c66', 100); }
+    else if (hit(px + 16, rowY(5), pw - 32, 28)) { pl.cog = !pl.cog; }                            // §13 — Center of Gravity toggle
+    else if (hit(px + 16, rowY(6), (pw - 40) / 2, 28)) { this._anchorRepositionMode = pl.id; this._anchorPopup = null; this._notify('Reposition: click a new point on the rail', '#3a6ea5', 160); }
+    else if (hit(px + 24 + (pw - 40) / 2, rowY(6), (pw - 40) / 2, 28)) { this._removePlatform(pl); this._anchorPopup = null; this._notify('Platform removed', '#c66', 100); }
     this.input.mouse.clicked = false;
   }
   _removePlatform(pl) {
@@ -18448,7 +18495,7 @@ class Game {
     if (!this._anchorPopup) return;
     const pl = this._platformAt(this._anchorPopup.row, this._anchorPopup.col);
     if (!pl) { this._anchorPopup = null; return; }
-    const pw = 340, ph = 300, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const pw = 340, ph = 334, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     this._roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#12202e'; ctx.fill(); ctx.strokeStyle = '#3a6ea5'; ctx.lineWidth = 2; ctx.stroke();
@@ -18463,9 +18510,10 @@ class Game {
     btn(2, pl.mode === 'redstone' ? ('Signal: ' + (pl.signalResponse === 'toggle' ? 'Toggle' : 'Sustained')) : '(Signal — Redstone mode only)', pl.mode === 'redstone');
     btn(3, 'Return: ' + (pl.returnMode === 'oneway' ? 'One-Way' : 'Round-Trip'));
     btn(4, 'Speed: ' + pl.speed);
+    btn(5, 'Center of Gravity (tilt): ' + (pl.cog ? 'On' : 'Off'), pl.cog);
     // reposition + remove on one row
-    this._roundRect(ctx, px + 16, rowY(5), (pw - 40) / 2, 28, 5); ctx.fillStyle = '#1d3346'; ctx.fill(); ctx.strokeStyle = '#3a6ea5'; ctx.stroke(); ctx.fillStyle = '#d8ecff'; ctx.fillText('Reposition', px + 16 + (pw - 40) / 4, rowY(5) + 14);
-    this._roundRect(ctx, px + 24 + (pw - 40) / 2, rowY(5), (pw - 40) / 2, 28, 5); ctx.fillStyle = '#3a1d1d'; ctx.fill(); ctx.strokeStyle = '#a55'; ctx.stroke(); ctx.fillStyle = '#f0c0c0'; ctx.fillText('Remove', px + 24 + (pw - 40) * 0.75, rowY(5) + 14);
+    this._roundRect(ctx, px + 16, rowY(6), (pw - 40) / 2, 28, 5); ctx.fillStyle = '#1d3346'; ctx.fill(); ctx.strokeStyle = '#3a6ea5'; ctx.stroke(); ctx.fillStyle = '#d8ecff'; ctx.fillText('Reposition', px + 16 + (pw - 40) / 4, rowY(6) + 14);
+    this._roundRect(ctx, px + 24 + (pw - 40) / 2, rowY(6), (pw - 40) / 2, 28, 5); ctx.fillStyle = '#3a1d1d'; ctx.fill(); ctx.strokeStyle = '#a55'; ctx.stroke(); ctx.fillStyle = '#f0c0c0'; ctx.fillText('Remove', px + 24 + (pw - 40) * 0.75, rowY(6) + 14);
     if (pl.mode === 'redstone' && pl.signalResponse === 'sustained') { ctx.fillStyle = '#e0b050'; ctx.font = '9px Courier New'; ctx.fillText('Toggle needed for pause-until-reactivate nodes', px + pw / 2, py + ph - 12); }
     ctx.restore();
   }
