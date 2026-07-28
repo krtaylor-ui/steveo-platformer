@@ -342,7 +342,7 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.BAR_PLATFORM:           _drawBar(ctx, px, py, s, true);                  break;
     case BLOCK.TUBE_WALL:              _drawTubeWall(ctx, px, py, s, state);            break;
     case BLOCK.TARGET_BLOCK:           _drawTargetBlock(ctx, px, py, s, state.on);      break;
-    case BLOCK.PULSE_CONVERTER:        _drawPulseConverter(ctx, px, py, s, state.on, state.axis); break;
+    case BLOCK.PULSE_CONVERTER:        _drawPulseConverter(ctx, px, py, s, state.on, state.dir); break;
     case BLOCK.REDSTONE_LAMP:          _drawRedstoneLamp(ctx, px, py, s, state.on, state.colorIdx); break;
   }
 
@@ -1840,16 +1840,18 @@ function _drawTargetBlock(ctx, px, py, s, on) {
   ctx.fillStyle = on ? '#fff2c0' : '#7a2f22'; ctx.beginPath(); ctx.arc(cx, cy, s * 0.07, 0, Math.PI * 2); ctx.fill();  // bullseye
   if (on) { ctx.strokeStyle = 'rgba(255,120,80,0.7)'; ctx.lineWidth = 2; ctx.strokeRect(px + 1.5, py + 1.5, s - 3, s - 3); }
 }
-// §Phase R — Pulse Converter: directional pulse↔toggle latch. Labels the TOGGLE (T) and PULSE (P)
-// sides per its axis; a centre dot lights when it's outputting.
-function _drawPulseConverter(ctx, px, py, s, on, axis) {
-  const v = axis === 'v';
+// §Phase R — Pulse Converter: directional pulse↔toggle latch. `dir` = the PULSE (P) side; the
+// TOGGLE (T) side is opposite. Labels placed on those two edges; a centre dot lights when outputting.
+function _drawPulseConverter(ctx, px, py, s, on, dir) {
+  dir = dir || 'right';
   ctx.fillStyle = '#3a4652'; ctx.fillRect(px, py, s, s);
   ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
   ctx.fillStyle = on ? '#57e0a0' : '#2a333c'; ctx.beginPath(); ctx.arc(px + s / 2, py + s / 2, s * 0.16, 0, Math.PI * 2); ctx.fill();
+  const pos = { right: [0.82, 0.5], left: [0.18, 0.5], down: [0.5, 0.82], up: [0.5, 0.18] };
+  const opp = { right: 'left', left: 'right', down: 'up', up: 'down' };
+  const [pfx, pfy] = pos[dir], [tfx, tfy] = pos[opp[dir]];
   ctx.fillStyle = '#cdd6e0'; ctx.font = `bold ${Math.round(s * 0.26)}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  if (v) { ctx.fillText('T', px + s / 2, py + s * 0.18); ctx.fillText('P', px + s / 2, py + s * 0.82); }   // toggle=up, pulse=down
-  else   { ctx.fillText('T', px + s * 0.18, py + s / 2); ctx.fillText('P', px + s * 0.82, py + s / 2); }   // toggle=left, pulse=right
+  ctx.fillText('P', px + s * pfx, py + s * pfy); ctx.fillText('T', px + s * tfx, py + s * tfy);
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
 }
 // §Phase R — Redstone Lamp: a coloured glass lamp, dim when off, glowing when powered.

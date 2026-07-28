@@ -158,8 +158,8 @@ class Level {
           const comp = redstone.getAt(c, r);
           state = { on: comp ? !!comp.on : false, colorIdx: comp ? (comp.color || 0) : 0 };   // §Phase R
         } else if (block === BLOCK.PULSE_CONVERTER && redstone) {
-          const comp = redstone.getAt(c, r);
-          state = { on: comp ? !!comp.on : false, axis: comp ? (comp.axis || 'h') : 'h' };     // §Phase R
+          const _cmp = redstone.getAt(c, r);
+          state = { on: _cmp ? !!_cmp.on : false, dir: _cmp ? (_cmp.dir || (_cmp.axis === 'v' ? 'down' : 'right')) : 'right' };   // §Phase R
         } else if (block === BLOCK.COIN || block === BLOCK.QUESTION_BLOCK ||
                    block === BLOCK.CONVEYOR_LEFT || block === BLOCK.CONVEYOR_RIGHT) {
           state = { frame };                       // §Classic Blocks — animation tick

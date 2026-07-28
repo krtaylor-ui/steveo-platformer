@@ -3101,8 +3101,12 @@ class Game {
           const comp = this.redstone.getAt(hoverCol, hoverRow);                          // §Phase R — cycle lamp colour
           if (comp) { comp.color = ((comp.color || 0) + 1) % 9; this._notify('Lamp colour changed', '#ffd166', 70); }
         } else if (target === BLOCK.PULSE_CONVERTER && this.sandbox.selectedBlock === BLOCK.PULSE_CONVERTER) {
-          const comp = this.redstone.getAt(hoverCol, hoverRow);                          // §Phase R — rotate the Converter's Toggle/Pulse axis
-          if (comp) { comp.axis = comp.axis === 'v' ? 'h' : 'v'; this._notify(comp.axis === 'v' ? 'Converter: Toggle=up / Pulse=down' : 'Converter: Toggle=left / Pulse=right', '#8fd0e6', 120); }
+          const comp = this.redstone.getAt(hoverCol, hoverRow);                          // §Phase R — rotate: cycle the PULSE side through the 4 directions
+          if (comp) {
+            const order = ['right', 'down', 'left', 'up'];
+            comp.dir = order[(order.indexOf(comp.dir || (comp.axis === 'v' ? 'down' : 'right')) + 1) % 4]; comp.axis = undefined;
+            this._notify('Converter: Pulse side → ' + comp.dir + ' (Toggle opposite)', '#8fd0e6', 120);
+          }
         } else if (this.sandbox.isDustSelected) {
           // Dust selected — click on existing solid block
           const dustKey = `${hoverCol},${hoverRow}`;
@@ -12218,9 +12222,10 @@ class Game {
     }
     for (const cv of (Array.isArray(data.sandboxConverters) ? data.sandboxConverters : [])) {
       if (typeof cv.col !== 'number' || typeof cv.row !== 'number') continue;
+      const dir = cv.dir || (cv.axis === 'v' ? 'down' : 'right');
       const comp = this.redstone.getAt(cv.col, cv.row);
-      if (comp && comp.type === 'pulse_converter') comp.axis = cv.axis || 'h';
-      else if (!comp) this.redstone.addComponent({ type: 'pulse_converter', col: cv.col, row: cv.row, on: false, axis: cv.axis || 'h', links: [], sandboxPlaced: true });
+      if (comp && comp.type === 'pulse_converter') comp.dir = dir;
+      else if (!comp) this.redstone.addComponent({ type: 'pulse_converter', col: cv.col, row: cv.row, on: false, dir, links: [], sandboxPlaced: true });
     }
   }
   _rebuildRedstoneFromGrid() {
@@ -17367,36 +17372,43 @@ class Game {
     if (this._crumbleTouched) this._crumbleTouched.add(row + ',' + col);   // marked; timing in _updateClassicBlocks
   }
 
-  // §Phase R — directional Pulse Converter. TWO named sides (axis 'h' = toggle←left / pulse→right,
-  // 'v' = toggle←up / pulse→down). Polled each frame from the adjacent dust on each side, with the
-  // device's OWN output masked out so it can't re-trigger itself:
+  // §Phase R — directional Pulse Converter. `dir` names the PULSE side (right/down/left/up); the
+  // TOGGLE side is opposite. Polled each frame; the device's OWN output is masked out of its input
+  // reads AND it only ever RELEASES a side it drove (never forces an input side off):
   //   • a RISING edge on the TOGGLE side → emit a timed pulse out the PULSE side;
   //   • a RISING edge on the PULSE side → flip a HELD state, output on the TOGGLE side.
   _updatePulseConverters() {
     if (!this.redstone) return;
+    const D = { right: [0, 1], down: [1, 0], left: [0, -1], up: [-1, 0] };   // [dr,dc]
     for (const comp of this.redstone.components) {
       if (comp.type !== 'pulse_converter') continue;
-      const v = comp.axis === 'v';
-      const tdr = v ? -1 : 0, tdc = v ? 0 : -1;   // toggle side offset
-      const pdr = v ? 1 : 0, pdc = v ? 0 : 1;     // pulse side offset
+      if (!comp.dir) comp.dir = (comp.axis === 'v' ? 'down' : 'right');       // migrate old axis
+      const [pdr, pdc] = D[comp.dir] || D.right;      // pulse side
+      const tdr = -pdr, tdc = -pdc;                   // toggle side = opposite
       const dustOn = (dr, dc) => { const d = this._dustBlocks.get(`${comp.col + dc},${comp.row + dr}`); return d ? !!d.on : false; };
-      const extToggle = dustOn(tdr, tdc) && !comp._held;              // ignore our own held output
-      const extPulse = dustOn(pdr, pdc) && !(comp._pulseTimer > 0);   // ignore our own pulse output
-      // After ANY action, LOCK new inputs for a spell (longer than the pulse + the dust-propagation
-      // lag) so the device's OWN lagging output can't be read back as a fresh edge and self-loop.
+      const extToggle = dustOn(tdr, tdc) && !comp._droveT;   // external input (not our own held output)
+      const extPulse = dustOn(pdr, pdc) && !comp._droveP;    // external input (not our own pulse output)
+      // After ANY action, LOCK new inputs long enough to outlast the pulse + dust-propagation lag so
+      // the device's own lagging output can't be read back as a fresh edge and self-loop.
       if (comp._lock > 0) {
         comp._lock--;
       } else {
         if (extToggle && !comp._lastExtToggle) { comp._pulseTimer = comp.pulseDur || 20; comp._lock = (comp.pulseDur || 20) + 12; }   // toggle rising → pulse out
         if (extPulse && !comp._lastExtPulse) { comp._held = !comp._held; comp._lock = 24; }                                            // pulse rising → flip held
       }
-      comp._lastExtToggle = extToggle; comp._lastExtPulse = extPulse;   // keep edge state current (incl. during the lock)
+      comp._lastExtToggle = extToggle; comp._lastExtPulse = extPulse;
       if (comp._pulseTimer > 0) comp._pulseTimer--;
       const pulseOut = comp._pulseTimer > 0, toggleOut = !!comp._held;
       comp.on = pulseOut || toggleOut;                       // for rendering
-      this._setDustSide(comp.col + pdc, comp.row + pdr, pulseOut);
-      this._setDustSide(comp.col + tdc, comp.row + tdr, toggleOut);
+      this._driveDustSide(comp, comp.col + pdc, comp.row + pdr, pulseOut, '_droveP');
+      this._driveDustSide(comp, comp.col + tdc, comp.row + tdr, toggleOut, '_droveT');
     }
+  }
+  // Drive a side ON when outputting; when off, only RELEASE a cell WE drove (so an input source on
+  // that side is never forced off — that was the "toggle input inverted back to the source" bug).
+  _driveDustSide(comp, col, row, powered, flag) {
+    if (powered) { this._setDustSide(col, row, true); comp[flag] = true; }
+    else if (comp[flag]) { this._setDustSide(col, row, false); comp[flag] = false; }
   }
   _setDustSide(col, row, powered) {
     const d = this._dustBlocks.get(`${col},${row}`);

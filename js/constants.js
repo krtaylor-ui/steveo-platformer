@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 240 (Fixes: Redstone Lamp colour now actually persists into PLAY — the config restore (lamp colour, target mode, converter axis) only ran on the sandbox load path, so test/play reverted every lamp to red; now restored on all load paths. Pulse Converter no longer self-loops — after it fires it LOCKS new inputs long enough to outlast its own output + the dust-propagation lag (your "disable the other direction after triggering").)';
+const GAME_VERSION = 'v3 · build 241 (Redstone fixes: LAMP colour now actually shows — redstone.draw() was over-painting lamps (and converters) on top of level.draw with a default (no-colour) copy, so every lamp rendered red; those two are now skipped there. Pulse Converter no longer inverts its INPUT back to the source — it only releases a side it drove, never forces an input side off. Converter now supports all 4 DIRECTIONS (click to cycle the Pulse side right→down→left→up; T/P labels move with it), saved with the world.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

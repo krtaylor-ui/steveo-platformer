@@ -284,7 +284,11 @@ class RedstoneSystem {
   // correct state, so skip them here to avoid double-painting.
   draw(ctx, camera, level) {
     for (const comp of this.components) {
-      if (comp.type === 'lever' || comp.type === 'trapdoor' || comp.type === 'pressure_plate') continue;
+      // Lever/trapdoor/plate — and (§Phase R) lamp/pulse_converter — are drawn by level.draw() with
+      // their FULL state (lamp colour, converter axis); drawing them here too would overpaint that
+      // with a default-state copy (this made every lamp render red + every converter render axis 'h').
+      if (comp.type === 'lever' || comp.type === 'trapdoor' || comp.type === 'pressure_plate' ||
+          comp.type === 'lamp' || comp.type === 'pulse_converter') continue;
 
       if (comp.type === 'piston') {
         // Body is drawn by level.draw() with direction state.

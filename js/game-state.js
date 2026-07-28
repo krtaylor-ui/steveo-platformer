@@ -131,7 +131,7 @@ const GAME_STATE = {
     const sandboxConverters = game.redstone
       ? game.redstone.components
           .filter(c => c.type === 'pulse_converter')
-          .map(c => ({ col: c.col, row: c.row, axis: c.axis || 'h' }))
+          .map(c => ({ col: c.col, row: c.row, dir: c.dir || (c.axis === 'v' ? 'down' : 'right') }))
       : [];
 
     // World items (single items placed on the ground). BUGFIX: in the SANDBOX
