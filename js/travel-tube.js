@@ -21,14 +21,16 @@ const TRAVEL_TUBE = {
   // §1 — Expand clicked waypoint cells → a polyline of centre points (world px). Consecutive
   // clicks that are neither same-row nor same-column get an elbow point (horizontal then vertical)
   // so every leg is axis-aligned (the grid-based path the design calls for).
-  buildPolyline(cells, bs = TRAVEL_TUBE.BS) {
+  buildPolyline(cells, bs = TRAVEL_TUBE.BS, diagonal = false) {
     const pt = (c) => ({ x: c.col * bs + bs / 2, y: c.row * bs + bs / 2 });
     if (!cells || cells.length === 0) return [];
     if (cells.length === 1) return [pt(cells[0])];
     const out = [pt(cells[0])];
     for (let i = 1; i < cells.length; i++) {
       const a = cells[i - 1], b = cells[i];
-      if (a.col !== b.col && a.row !== b.row) out.push(pt({ col: b.col, row: a.row })); // elbow
+      // §Angled mode — connect waypoints DIRECTLY (a straight diagonal). Otherwise insert an elbow
+      // (horizontal leg first) so every segment is axis-aligned.
+      if (!diagonal && a.col !== b.col && a.row !== b.row) out.push(pt({ col: b.col, row: a.row }));
       out.push(pt(b));
     }
     // Drop any zero-length duplicates (a click on the same cell).

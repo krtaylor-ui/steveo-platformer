@@ -7929,13 +7929,13 @@ class Game {
     // fly-through PATHS (waypoints + speed) so travel works after a reload.
     if (data && Array.isArray(data.travelTubes)) {
       this._travelTubes = data.travelTubes.map(t => ({ id: t.id, cells: t.cells || [], speed: t.speed || 7,
-        mode: t.mode || (t.visible === false ? 'invisible' : 'solid'), items: t.items || [] }));   // migrate old `visible` flag
+        mode: t.mode || (t.visible === false ? 'invisible' : 'solid'), items: t.items || [], angled: !!t.angled }));   // migrate old `visible` flag
       this._nextTubeId = this._travelTubes.reduce((m, t) => Math.max(m, t.id || 0), 0);
       this._tubeCells = null; this._reapplyTubeGrid();   // sync solid walls + init tracking
     }
     // §Moving Platforms — restore rails + platforms (waypoint paths + anchor-bound block groups).
     if (data && Array.isArray(data.rails)) {
-      this._rails = data.rails.map(r => ({ id: r.id, cells: r.cells || [], vis: r.vis || 'visible', loop: !!r.loop,
+      this._rails = data.rails.map(r => ({ id: r.id, cells: r.cells || [], vis: r.vis || 'visible', loop: !!r.loop, angled: !!r.angled,
         pauseNodes: r.pauseNodes || [], collideMode: r.collideMode || 'passthrough', speedSegments: r.speedSegments || [], launchAt: r.launchAt ?? null }));
       this._nextRailId = this._rails.reduce((m, r) => Math.max(m, r.id || 0), 0);
       this._railCells = null; this._reapplyRailGrid();
@@ -17734,7 +17734,7 @@ class Game {
   // Sandbox-only; the path/config is frozen once a level is played.
   // ══════════════════════════════════════════════════════════════════════════════════════════
   _railPts(rail) {
-    if (!rail._pts) rail._pts = TRAVEL_TUBE.buildPolyline(rail.cells, BLOCK_SIZE);
+    if (!rail._pts) rail._pts = TRAVEL_TUBE.buildPolyline(rail.cells, BLOCK_SIZE, !!rail.angled);
     return rail._pts;
   }
   _railFoot(rail) {
@@ -17770,8 +17770,9 @@ class Game {
     return n ? n.d : 0;
   }
   // Is this rail a closed loop? (last waypoint coincides with the first.)
+  // A rail is a closed loop iff its first and last waypoints COINCIDE — purely automatic (connect the
+  // ends → loop; move an end apart → open). No manual flag (that made "switch back to Open" a no-op).
   _railIsLoop(rail) {
-    if (rail.loop) return true;
     const c = rail.cells;
     return c.length > 2 && c[0].col === c[c.length - 1].col && c[0].row === c[c.length - 1].row;
   }
@@ -18072,7 +18073,8 @@ class Game {
         const wx = pl._ax + lx * cos - ly * sin, wy = pl._ay + lx * sin + ly * cos;
         const cc = Math.round((wx - BLOCK_SIZE / 2) / BLOCK_SIZE), rr = Math.round((wy - BLOCK_SIZE / 2) / BLOCK_SIZE);
         set.add(cc + ',' + rr);
-        pl._solidCells.push({ col: cc, row: rr });
+        // smoothTopY = the cell's smooth top edge (pre-rounding) so riders can rest on it smoothly.
+        pl._solidCells.push({ col: cc, row: rr, dcol: c.dcol, drow: c.drow, smoothTopY: wy - BLOCK_SIZE / 2 });
       }
     }
     this._platformSolidCells = set;
@@ -18082,16 +18084,8 @@ class Game {
   _platformRiders(pl) {
     const out = [];
     if (!pl._solidCells || !pl._solidCells.length) return out;
-    const top = new Set(pl._solidCells.map(c => c.col + ',' + c.row));
-    const onIt = (e) => {
-      if (!e || e.hp <= 0) return false;
-      const footRow = Math.floor((e.y + e.height + 2) / BLOCK_SIZE);
-      const c0 = Math.floor((e.x + 3) / BLOCK_SIZE), c1 = Math.floor((e.x + e.width - 3) / BLOCK_SIZE);
-      for (let c = c0; c <= c1; c++) if (top.has(c + ',' + footRow)) return true;
-      return false;
-    };
-    for (const p of this.activePlayers()) if (onIt(p)) out.push(p);
-    if (this.mobManager && this.mobManager.mobs) for (const m of this.mobManager.mobs) if (onIt(m)) out.push(m);
+    for (const p of this.activePlayers()) if (this._entityRideKind(p, pl) === 'top') out.push(p);
+    if (this.mobManager && this.mobManager.mobs) for (const m of this.mobManager.mobs) if (this._entityRideKind(m, pl) === 'top') out.push(m);
     return out;
   }
 
@@ -18216,6 +18210,18 @@ class Game {
     return pl._weight;
   }
   // §6 — resolve two platforms meeting on the SAME rail, per the rail's track-level collision setting.
+  // Meeting is tested on the FULL platforms — any solid cell of one within 1 cell of any solid cell of
+  // the other — so they bounce the instant ANY part touches, not only when the anchors are close.
+  _platformsTouch(a, b) {
+    if (!a._solidCells || !b._solidCells) return false;
+    const bset = new Set(b._solidCells.map(c => c.col + ',' + c.row));
+    for (const c of a._solidCells) {
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        if (bset.has((c.col + dc) + ',' + (c.row + dr))) return true;
+      }
+    }
+    return false;
+  }
   _resolvePlatformCollisions() {
     const plats = (this._platforms || []).filter(p => !p._disabled && !p._destroyed && p.cells && p.cells.length);
     for (let i = 0; i < plats.length; i++) {
@@ -18223,8 +18229,7 @@ class Game {
         const a = plats[i], b = plats[j];
         if (a.railId !== b.railId) continue;
         const rail = this._platformRail(a); if (!rail) continue;
-        // Meeting = anchors within ~1.2 cells along the rail. (Approximate — platforms are small groups.)
-        if (Math.abs(a._dist - b._dist) > BLOCK_SIZE * 1.2) continue;
+        if (!this._platformsTouch(a, b)) continue;                   // full-platform overlap test
         const mode = rail.collideMode || 'passthrough';
         if (mode === 'passthrough') continue;
         if (mode === 'destroy') {
@@ -18313,19 +18318,29 @@ class Game {
     return false;
   }
 
-  // Is a player / mob standing on this platform (feet just above one of its solid cells)?
+  // How is an entity riding this platform? 'top' (standing on it), 'side' (grabbing/climbing the edge),
+  // or null. A GRAPPLING-HOOK link never counts (per Kevin — grapple shouldn't power a Rider platform).
+  _entityRideKind(e, pl) {
+    if (!e || e.hp <= 0) return null;
+    if (e._grappleOwn || e._grapple || e._grappleState) return null;   // grapple never counts as a rider
+    const cells = pl._solidCells; if (!cells || !cells.length) return null;
+    const occ = new Set(cells.map(c => c.col + ',' + c.row));
+    const c0 = Math.floor((e.x + 3) / BLOCK_SIZE), c1 = Math.floor((e.x + e.width - 3) / BLOCK_SIZE);
+    // TOP: feet just above a platform cell.
+    const footRow = Math.floor((e.y + e.height + 2) / BLOCK_SIZE);
+    for (let c = c0; c <= c1; c++) if (occ.has(c + ',' + footRow)) return 'top';
+    // SIDE (grab/climb): a platform cell is directly beside the body, within its vertical span.
+    const r0 = Math.floor((e.y + 2) / BLOCK_SIZE), r1 = Math.floor((e.y + e.height - 2) / BLOCK_SIZE);
+    const lc = Math.floor((e.x - 2) / BLOCK_SIZE), rc = Math.floor((e.x + e.width + 2) / BLOCK_SIZE);
+    for (let r = r0; r <= r1; r++) if (occ.has(lc + ',' + r) || occ.has(rc + ',' + r)) return 'side';
+    return null;
+  }
+  // Is anyone riding (top OR grabbing the edge)? — drives Rider-Powered + One-Touch so grabbing the
+  // back edge starts it moving WITH the player instead of leaving them behind.
   _platformHasRider(pl) {
     if (!pl._solidCells || !pl._solidCells.length) return false;
-    const top = new Set(pl._solidCells.map(c => c.col + ',' + c.row));
-    const onIt = (e) => {
-      if (!e || e.hp <= 0) return false;
-      const footRow = Math.floor((e.y + e.height + 2) / BLOCK_SIZE);
-      const c0 = Math.floor((e.x + 3) / BLOCK_SIZE), c1 = Math.floor((e.x + e.width - 3) / BLOCK_SIZE);
-      for (let c = c0; c <= c1; c++) if (top.has(c + ',' + footRow)) return true;
-      return false;
-    };
-    for (const p of this.activePlayers()) if (onIt(p)) return true;
-    if (this.mobManager && this.mobManager.mobs) for (const m of this.mobManager.mobs) if (onIt(m)) return true;
+    for (const p of this.activePlayers()) if (this._entityRideKind(p, pl)) return true;
+    if (this.mobManager && this.mobManager.mobs) for (const m of this.mobManager.mobs) if (this._entityRideKind(m, pl)) return true;
     return false;
   }
 
@@ -18333,24 +18348,30 @@ class Game {
   // then let normal collision / depenetration settle it (§build-225 pattern).
   _carryPlatformRiders() {
     for (const pl of this._platforms || []) {
+      if (pl._destroyed) continue;
       const dx = pl._ax - pl._pax, dy = pl._ay - pl._pay;
-      if (dx === 0 && dy === 0) continue;
       if (!pl._solidCells || !pl._solidCells.length) continue;
-      const top = new Set(pl._solidCells.map(c => c.col + ',' + c.row));
+      const occ = new Set(pl._solidCells.map(c => c.col + ',' + c.row));
+      // Smooth top surface (px) at a given grid column, from the cell's pre-rounded smoothTopY —
+      // this is what kills the jerky cell-by-cell snapping when a platform rises/falls.
+      const surfaceY = (col) => { let best = Infinity; for (const c of pl._solidCells) if (c.col === col && c.smoothTopY < best) best = c.smoothTopY; return best; };
       const carry = (e) => {
-        if (!e || e.hp <= 0) return;
-        const footRow = Math.floor((e.y + e.height + 2) / BLOCK_SIZE);
-        const c0 = Math.floor((e.x + 3) / BLOCK_SIZE), c1 = Math.floor((e.x + e.width - 3) / BLOCK_SIZE);
-        let on = false;
-        for (let c = c0; c <= c1; c++) if (top.has(c + ',' + footRow)) { on = true; break; }
-        if (!on) return;
-        e.x += dx; e.y += dy;
+        const kind = this._entityRideKind(e, pl);
+        if (!kind) return;
+        if (dx || dy) { e.x += dx; e.y += dy; }          // move with the platform (both top + side/grab)
+        if (kind === 'top') {                            // glue feet to the SMOOTH surface (anti-jerk)
+          const c0 = Math.floor((e.x + 3) / BLOCK_SIZE), c1 = Math.floor((e.x + e.width - 3) / BLOCK_SIZE);
+          let topY = Infinity;
+          for (let c = c0; c <= c1; c++) { const s = surfaceY(c); if (s < topY) topY = s; }
+          if (topY !== Infinity) { e.y = topY - e.height; if (e.vy > 0) e.vy = 0; e.onGround = true; }
+        }
       };
       for (const p of this.activePlayers()) carry(p);
       if (this.mobManager && this.mobManager.mobs) for (const m of this.mobManager.mobs) carry(m);
-      // Dropped items ride too (they store world x/y).
-      const items = this._platformerItems || this._normalDrops || null;
-      if (Array.isArray(items)) for (const it of items) { if (it && it.wy != null) { const fr = Math.floor((it.wy + 8) / BLOCK_SIZE), ic = Math.floor(it.wx / BLOCK_SIZE); if (top.has(ic + ',' + fr)) { it.wx += dx; it.wy += dy; } } }
+      if (dx || dy) {
+        const items = this._platformerItems || this._normalDrops || null;
+        if (Array.isArray(items)) for (const it of items) { if (it && it.wy != null) { const fr = Math.floor((it.wy + 8) / BLOCK_SIZE), ic = Math.floor(it.wx / BLOCK_SIZE); if (occ.has(ic + ',' + fr)) { it.wx += dx; it.wy += dy; } } }
+      }
     }
   }
 
@@ -18513,18 +18534,30 @@ class Game {
     if (this.level.get(pl.anchorRow, pl.anchorCol) === BLOCK.ANCHOR_BLOCK) this.level.set(pl.anchorRow, pl.anchorCol, BLOCK.AIR);
     this._platforms = (this._platforms || []).filter(p => p !== pl);
   }
+  // Move the WHOLE platform (anchor + its connected block group) to a new point on the same rail —
+  // shift every construction block by the same delta so the platform stays intact (a single unit).
   _repositionAnchor(row, col) {
     const pl = (this._platforms || []).find(p => p.id === this._anchorRepositionMode);
     this._anchorRepositionMode = null;
     if (!pl) return;
     const rail = this._platformRail(pl);
-    if (!rail || !this._railAtCell(row, col) || this._railAtCell(row, col).id !== rail.id) { this._notify('Must click a point on the SAME rail', '#CC4444', 130); return; }
-    if (this.level.get(pl.anchorRow, pl.anchorCol) === BLOCK.ANCHOR_BLOCK) this.level.set(pl.anchorRow, pl.anchorCol, BLOCK.AIR);
+    const hitRail = this._railAtCell(row, col);
+    if (!rail || !hitRail || hitRail.id !== rail.id) { this._notify('Must click a point on the SAME rail', '#CC4444', 130); return; }
+    const dCol = col - pl.anchorCol, dRow = row - pl.anchorRow;
+    if (dCol === 0 && dRow === 0) return;
+    // Snapshot the connected group from the grid (sandbox blocks are still in place here).
+    const isPlatBlock = (c, r) => { if (r < 0 || r >= this.level.height || c < 0 || c >= this.level.width) return false; const b = this.level.get(r, c); return b !== BLOCK.AIR && b !== BLOCK.RAIL; };
+    const group = MOVING_PLATFORM.floodFill(pl.anchorCol, pl.anchorRow, isPlatBlock, 400);
+    const snap = group.map(g => ({ col: g.col, row: g.row, type: this.level.get(g.row, g.col) }));
+    // Clear old cells, then stamp at +delta (carries the anchor + any dir-controller/etc. blocks).
+    for (const g of snap) this.level.set(g.row, g.col, BLOCK.AIR);
+    for (const g of snap) { const nc = g.col + dCol, nr = g.row + dRow; if (nr >= 0 && nr < this.level.height && nc >= 0 && nc < this.level.width) this.level.set(nr, nc, g.type); }
+    // Move any Direction-Controller configs anchored to those cells.
+    for (const g of snap) { const k = g.col + ',' + g.row; if (this._dirControllers.has(k)) { const d = this._dirControllers.get(k); this._dirControllers.delete(k); d.col += dCol; d.row += dRow; this._dirControllers.set(d.col + ',' + d.row, d); } }
     const wx = col * BLOCK_SIZE + BLOCK_SIZE / 2, wy = row * BLOCK_SIZE + BLOCK_SIZE / 2;
     pl.anchorDist = this._railNearestDist(rail, wx, wy);
     pl.anchorCol = col; pl.anchorRow = row;
-    this.level.set(row, col, BLOCK.ANCHOR_BLOCK);
-    this._notify('Anchor repositioned', '#3a6ea5', 110);
+    this._notify('Platform repositioned (whole group moved)', '#3a6ea5', 130);
   }
   _drawAnchorPopup(ctx) {
     if (!this._anchorPopup) return;
@@ -18865,7 +18898,7 @@ class Game {
     // close (X or outside)
     if (hit(px + pw - 30, py + 8, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._railPopup = null; this.input.mouse.clicked = false; return; }
     if (hit(px + 20, py + 44, pw - 40, 28)) { this._cycleRailVis(rail); }
-    else if (hit(px + 20, py + 78, pw - 40, 28)) { rail.loop = !this._railIsLoop(rail); if (rail.loop && (rail.cells[0].col !== rail.cells[rail.cells.length-1].col || rail.cells[0].row !== rail.cells[rail.cells.length-1].row)) rail.cells.push({col:rail.cells[0].col,row:rail.cells[0].row}); this._invalidateRailGeom(rail); this._reapplyRailGrid(); this._notify(this._railIsLoop(rail)?'Rail: closed loop':'Rail: open path','#c9a54a',110); }
+    else if (hit(px + 20, py + 78, pw - 40, 28)) { rail.angled = !rail.angled; this._invalidateRailGeom(rail); this._reapplyRailGrid(); this._notify(rail.angled ? 'Rail: Angled (direct diagonals)' : 'Rail: Right-angle (grid)', '#c9a54a', 120); }
     else if (hit(px + 20, py + 112, pw - 40, 28)) { const o = ['passthrough', 'redirect', 'destroy']; rail.collideMode = o[(o.indexOf(rail.collideMode || 'passthrough') + 1) % 3]; this._notify('Platform collision: ' + rail.collideMode, '#c9a54a', 110); }
     else if (hit(px + 20, py + 146, pw - 40, 28)) { this._railEditNodes = { id: rail.id, sel: -1 }; this._railPopup = null; this._notify('Editing rail nodes — drag waypoints; right-click a waypoint for a Pause Node; double-click an end to extend; Esc when done', '#c9a54a', 240); }
     else if (hit(px + 20, py + 180, pw - 40, 28)) { this._deleteRail(rail); this._railPopup = null; this._notify('Rail deleted', '#c66', 100); }
@@ -18886,7 +18919,7 @@ class Game {
     const visLabel = rail.vis === 'solid' ? 'Visible + Solid' : rail.vis === 'invisible' ? 'Invisible' : 'Visible + Non-solid';
     const colLabel = { passthrough: 'Pass Through', redirect: 'Redirect', destroy: 'Destroy Smaller' }[rail.collideMode || 'passthrough'];
     btn(py + 44, 'Visibility: ' + visLabel);
-    btn(py + 78, 'Loop: ' + (this._railIsLoop(rail) ? 'Closed' : 'Open'));
+    btn(py + 78, 'Path: ' + (rail.angled ? 'Angled (diagonal)' : 'Right-angle') + (this._railIsLoop(rail) ? '  ·  LOOP' : ''));
     btn(py + 112, 'Platforms Meet: ' + colLabel);
     btn(py + 146, 'Edit Nodes');
     btn(py + 180, 'Delete Rail');
@@ -18894,7 +18927,7 @@ class Game {
   }
 
   _tubePts(tube) {
-    if (!tube._pts) tube._pts = TRAVEL_TUBE.buildPolyline(tube.cells, BLOCK_SIZE);
+    if (!tube._pts) tube._pts = TRAVEL_TUBE.buildPolyline(tube.cells, BLOCK_SIZE, !!tube.angled);
     return tube._pts;
   }
   // Placement: each click adds a waypoint; clicking the LAST point again finishes (double-tap).
@@ -19060,7 +19093,7 @@ class Game {
     const tube = (this._travelTubes || []).find(t => t.id === tp.id);
     if (!tube) { this._tubePopup = null; return; }
     if (!this.input.mouse.clicked) return;
-    const pw = 250, ph = 236, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const pw = 250, ph = 274, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     const mx = this.input.mouse.x, my = this.input.mouse.y;
     const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
     if (hit(px + pw - 30, py + 6, 24, 24) || mx < px || mx > px + pw || my < py || my > py + ph) { this._tubePopup = null; return; }
@@ -19071,7 +19104,11 @@ class Game {
       tube.mode = modes[(modes.indexOf(tube.mode || 'solid') + 1) % modes.length];
       this._reapplyTubeGrid(); return;
     }
-    if (hit(px + 14, py + 130, pw - 28, 32)) {   // Edit Nodes → node-drag mode
+    if (hit(px + 14, py + 130, pw - 28, 32)) {   // §Angled — direct diagonals vs right-angle elbows
+      tube.angled = !tube.angled; tube._pts = null; tube._foot = null; this._reapplyTubeGrid();
+      this._notify(tube.angled ? 'Tube: Angled (direct diagonals)' : 'Tube: Right-angle', '#8fd0e6', 120); return;
+    }
+    if (hit(px + 14, py + 168, pw - 28, 32)) {   // Edit Nodes → node-drag mode
       this._tubeEditNodes = { id: tube.id, sel: -1 }; this._tubePopup = null;
       this._notify('Edit nodes: click a node, then click a new spot. Esc when done.', '#8fd0e6', 200); return;
     }
@@ -19081,7 +19118,7 @@ class Game {
     const tp = this._tubePopup; if (!tp) return;
     const tube = (this._travelTubes || []).find(t => t.id === tp.id);
     if (!tube) { this._tubePopup = null; return; }
-    const pw = 250, ph = 236, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const pw = 250, ph = 274, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     ctx.save(); ctx.textBaseline = 'top';
     ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     ctx.fillStyle = '#0f1620'; _roundRect(ctx, px, py, pw, ph, 8); ctx.fill();
@@ -19097,9 +19134,10 @@ class Game {
     const LOOK = { solid: 'Solid glass', passBehind: 'Pass-behind (walk behind)', passFront: 'Pass-in-front (walk in front)', invisible: 'Invisible (hidden bonus)' };
     row(py + 54, 'Speed', (tube.speed || 7) + ' px', false);
     row(py + 92, 'Look', LOOK[tube.mode || 'solid'], (tube.mode || 'solid') !== 'solid');
-    ctx.fillStyle = '#243a2a'; _roundRect(ctx, px + 14, py + 130, pw - 28, 32, 6); ctx.fill();   // Edit Nodes
+    row(py + 130, 'Path', tube.angled ? 'Angled (diagonal)' : 'Right-angle', !!tube.angled);
+    ctx.fillStyle = '#243a2a'; _roundRect(ctx, px + 14, py + 168, pw - 28, 32, 6); ctx.fill();   // Edit Nodes
     ctx.fillStyle = '#b7e6c4'; ctx.font = 'bold 12px system-ui, sans-serif';
-    ctx.textAlign = 'center'; ctx.fillText('✎  Edit Nodes (move the path)', px + pw / 2, py + 139); ctx.textAlign = 'left';
+    ctx.textAlign = 'center'; ctx.fillText('✎  Edit Nodes (move the path)', px + pw / 2, py + 177); ctx.textAlign = 'left';
     ctx.fillStyle = '#4a1f2a'; _roundRect(ctx, px + 14, py + ph - 44, pw - 28, 32, 6); ctx.fill();
     ctx.fillStyle = '#ffb3c0'; ctx.font = 'bold 12px system-ui, sans-serif';
     ctx.textAlign = 'center'; ctx.fillText('🗑  Delete Tube', px + pw / 2, py + ph - 35); ctx.textAlign = 'left';

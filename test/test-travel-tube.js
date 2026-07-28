@@ -22,6 +22,10 @@ console.log('Invariant 1 — polyline build + elbow insertion:');
 
   const dup = TT.buildPolyline([{ col: 2, row: 2 }, { col: 2, row: 2 }, { col: 2, row: 6 }]);
   ok(dup.length === 2, `duplicate clicks are dropped (got ${dup.length})`);
+
+  // §Angled — diagonal=true connects waypoints DIRECTLY (no elbow inserted).
+  const diag = TT.buildPolyline([{ col: 0, row: 0 }, { col: 4, row: 3 }], BS, true);
+  ok(diag.length === 2, `angled build skips the elbow (2 points, got ${diag.length})`);
 }
 
 // 2 ── pointAt: endpoints, midpoint, clamping, and heading around a corner.
