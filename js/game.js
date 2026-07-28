@@ -1332,7 +1332,7 @@ class Game {
   // Redstone propagation step in frames (coarse per-world cadence; Phase 3A.2).
   // Baseline 6 frames; higher rate → fewer frames (faster), min 1. 'instant' → 0 (drained same frame).
   _rsStepFrames() {
-    if (this._rsInstant()) return 0;
+    if (this._rsInstant() || this._platformRedstoneActive) return 0;   // platform redstone must resolve same-frame
     return Math.max(1, Math.round(6 / this._rsRate()));
   }
 
@@ -2910,7 +2910,7 @@ class Game {
     // ── Redstone dust propagation queue ────────────────────
     // §Instant redstone — drain same-frame chains (stepFrames=0 enqueues at the current frame, but one
     // pass won't revisit entries pushed mid-iteration), capped so a feedback loop can't hang the frame.
-    if (this._rsInstant()) { let guard = 64; do { this._rsProcessQueue(); } while (--guard > 0 && this._rsQueue.some(e => e.frame <= this.frameCount)); }
+    if (this._rsInstant() || this._platformRedstoneActive) { let guard = 64; do { this._rsProcessQueue(); } while (--guard > 0 && this._rsQueue.some(e => e.frame <= this.frameCount)); }
     else this._rsProcessQueue();
     // Detect pressure plate state changes and start dust propagation.
     // Initialise _rsWasOn on first encounter to avoid a spurious trigger on frame 1.
@@ -7372,7 +7372,7 @@ class Game {
 
       // §Overlay TX — a transmitter co-located with this dust reads its power directly (no adjacency needed).
       if (this._transmitters.has(`${entry.col},${entry.row}`)) {
-        this._rsEnqueue({ type: 'transmitter', col: entry.col, row: entry.row, frame: entry.frame + 6 });
+        this._rsEnqueue({ type: 'transmitter', col: entry.col, row: entry.row, frame: entry.frame + this._rsStepFrames() });
       }
 
       const GD = Game.GATE_DIRS;
@@ -7381,30 +7381,30 @@ class Game {
         // Continue dust chain
         const next = this._dustBlocks.get(`${nc},${nr}`);
         if (next && next.on !== entry.powered) {
-          this._rsEnqueue({ col: nc, row: nr, powered: entry.powered, frame: entry.frame + 6 });
+          this._rsEnqueue({ col: nc, row: nr, powered: entry.powered, frame: entry.frame + this._rsStepFrames() });
         }
         // Device at neighbor. §Phase R (R3): a Target Block / Pulse Converter touched by powered
         // dust activates too, even though nothing "hit" it.
         const devComp = this.redstone.getAt(nc, nr);
         if (devComp && (devComp.type === 'trapdoor' || devComp.type === 'tnt' || devComp.type === 'piston' || devComp.type === 'target' || devComp.type === 'pulse_converter' || devComp.type === 'lamp')) {
-          this._rsEnqueue({ type: 'device', comp: devComp, frame: entry.frame + 6 });
+          this._rsEnqueue({ type: 'device', comp: devComp, frame: entry.frame + this._rsStepFrames() });
         }
         // Transmitter overlay at neighbor
         if (this._transmitters.has(`${nc},${nr}`)) {
-          this._rsEnqueue({ type: 'transmitter', col: nc, row: nr, frame: entry.frame + 6 });
+          this._rsEnqueue({ type: 'transmitter', col: nc, row: nr, frame: entry.frame + this._rsStepFrames() });
         }
         // Gate at neighbor with input facing this dust
         const gate = this._gateBlocks.get(`${nc},${nr}`);
         if (gate && gate.inputSide) {
           const [gdr, gdc] = GD[gate.inputSide];
           if (nc + gdc === entry.col && nr + gdr === entry.row) {
-            this._rsEnqueue({ type: 'gate', col: nc, row: nr, frame: entry.frame + 6 });
+            this._rsEnqueue({ type: 'gate', col: nc, row: nr, frame: entry.frame + this._rsStepFrames() });
           }
         }
         if (gate && gate.type === 'and' && gate.inputSide2) {
           const [gdr2, gdc2] = GD[gate.inputSide2];
           if (nc + gdc2 === entry.col && nr + gdr2 === entry.row) {
-            this._rsEnqueue({ type: 'gate', col: nc, row: nr, frame: entry.frame + 6 });
+            this._rsEnqueue({ type: 'gate', col: nc, row: nr, frame: entry.frame + this._rsStepFrames() });
           }
         }
       }
@@ -7448,27 +7448,27 @@ class Game {
 
     const outDust = this._dustBlocks.get(`${outCol},${outRow}`);
     if (outDust && outDust.on !== newOutput) {
-      this._rsEnqueue({ col: outCol, row: outRow, powered: newOutput, frame: sourceFrame + 6 });
+      this._rsEnqueue({ col: outCol, row: outRow, powered: newOutput, frame: sourceFrame + this._rsStepFrames() });
     }
     const outDev = this.redstone.getAt(outCol, outRow);
     if (outDev && (outDev.type === 'trapdoor' || outDev.type === 'tnt' || outDev.type === 'piston' ||
                    outDev.type === 'target' || outDev.type === 'pulse_converter' || outDev.type === 'lamp')) {   // §Adjacency — gate output drives any sink
-      this._rsEnqueue({ type: 'device', comp: outDev, frame: sourceFrame + 6 });
+      this._rsEnqueue({ type: 'device', comp: outDev, frame: sourceFrame + this._rsStepFrames() });
     }
     if (this._transmitters.has(`${outCol},${outRow}`)) {   // §Adjacency — gate output drives an adjacent transmitter
-      this._rsEnqueue({ type: 'transmitter', col: outCol, row: outRow, frame: sourceFrame + 6 });
+      this._rsEnqueue({ type: 'transmitter', col: outCol, row: outRow, frame: sourceFrame + this._rsStepFrames() });
     }
     const outGate = this._gateBlocks.get(`${outCol},${outRow}`);
     if (outGate && outGate.inputSide) {
       const [igdr, igdc] = GD[outGate.inputSide];
       if (outGate.col + igdc === gCol && outGate.row + igdr === gRow) {
-        this._rsEnqueue({ type: 'gate', col: outCol, row: outRow, frame: sourceFrame + 6 });
+        this._rsEnqueue({ type: 'gate', col: outCol, row: outRow, frame: sourceFrame + this._rsStepFrames() });
       }
     }
     if (outGate && outGate.type === 'and' && outGate.inputSide2) {
       const [igdr2, igdc2] = GD[outGate.inputSide2];
       if (outGate.col + igdc2 === gCol && outGate.row + igdr2 === gRow) {
-        this._rsEnqueue({ type: 'gate', col: outCol, row: outRow, frame: sourceFrame + 6 });
+        this._rsEnqueue({ type: 'gate', col: outCol, row: outRow, frame: sourceFrame + this._rsStepFrames() });
       }
     }
   }
@@ -7645,10 +7645,10 @@ class Game {
     for (const rx of this._receivers.values()) {
       if (!rx.listenTo.has(tx.number)) continue;
       if (tx.powered) {
-        if (!rx.powered) this._rsEnqueue({ type: 'receiver', col: rx.col, row: rx.row, powered: true,  frame: frame + 6 });
+        if (!rx.powered) this._rsEnqueue({ type: 'receiver', col: rx.col, row: rx.row, powered: true,  frame: frame + this._rsStepFrames() });
       } else {
         if (!this._isReceiverStillPowered(rx)) {
-          this._rsEnqueue({ type: 'receiver', col: rx.col, row: rx.row, powered: false, frame: frame + 6 });
+          this._rsEnqueue({ type: 'receiver', col: rx.col, row: rx.row, powered: false, frame: frame + this._rsStepFrames() });
         }
       }
     }
@@ -18205,6 +18205,12 @@ class Game {
       }
     }
     if (play) this._rebuildPlatformSolidCells();
+    // §Moving Redstone — if any platform carries redstone, force INSTANT propagation. The queue is
+    // frame-delayed + position-keyed; a platform moving a cell DURING the delay leaves its pending
+    // entries pointing at stale cells, which breaks the chain (and lights wrong blocks). Instant
+    // completes each frame at current positions, before the platform moves again.
+    this._platformRedstoneActive = play && (this._platforms || []).some(p => p._carriedRs &&
+      (p._carriedRs.comps.length || p._carriedRs.dust.length || p._carriedRs.gates.length || p._carriedRs.tx.length || p._carriedRs.rx.length));
   }
 
   // Rebuild the set of grid cells currently occupied by any moving platform (rounded from the smooth
