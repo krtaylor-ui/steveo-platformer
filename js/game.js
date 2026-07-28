@@ -509,6 +509,8 @@ class Game {
     this._nextPlatformId = 0;
     this._dirControllers = new Map(); // "col,row" → {col,row,lCh,rCh} — Direction Controller L/R transmitter channels
     this._speedSegs    = [];       // §9 — [{id, railId, d0, d1, targetSpeed}] speed-ramp zones along a rail
+    this._railGates    = [];       // §7/§10 — [{id, railId, cells, condition, channel, threshold}] passage gates
+    this._railGatePopup = null;
     this._anchorPopup   = null;    // null | { col,row } — anchor config modal
     this._dirCtrlPopup  = null;    // null | { col,row } — direction controller modal
     this._speedSegPopup = null;    // null | { id } — speed segment modal
@@ -1994,6 +1996,11 @@ class Game {
         this._handleSpeedSegPopupInput();
         return;
       }
+      // §Moving Platforms — rail-gate config modal
+      if (this._railGatePopup) {
+        this._handleRailGatePopupInput();
+        return;
+      }
     }
 
     // Normal inventory open: handle clicks and freeze gameplay
@@ -3001,6 +3008,8 @@ class Game {
         this._placeSpeedSeg(hoverRow, hoverCol);                        // §Moving Platforms — paint a speed-ramp zone on a rail
       } else if (this.sandbox.selectedBlock === BLOCK.LAUNCH_RAMP && !this.input.mouse.altClicked) {
         this._placeLaunchRamp(hoverRow, hoverCol);                      // §Moving Platforms — set a rail's ballistic launch point
+      } else if (this.sandbox.selectedBlock === BLOCK.RAIL_GATE && !this.input.mouse.altClicked) {
+        this._placeRailGate(hoverRow, hoverCol);                        // §Moving Platforms — passage gate (redstone / weight)
       } else
       // Alt+Click → eyedropper: pick block under cursor
       if (this.input.mouse.altClicked) {
@@ -6401,7 +6410,7 @@ class Game {
     // Sandbox WORLD overlays (placed eggs/emeralds/power-ups/hill/spawn-lines/items
     // + portal labels) must scale with the zoom too — draw them inside the transform.
     try { this._drawTravelTubeItems(ctx); this._drawTravelTubesFront(ctx); this._drawFlyingTubeGlass(ctx); } catch (e) { /* ignore */ }   // §Travel Tube — items + pass-behind glass + flying-player-behind-glass overlay
-    try { this._drawRails(ctx); this._drawSpeedSegs(ctx); this._drawLaunchRamps(ctx); this._drawPlatforms(ctx); } catch (e) { /* ignore */ }   // §Moving Platforms — rail overlay + speed zones + launch ramps + moving platform groups
+    try { this._drawRails(ctx); this._drawSpeedSegs(ctx); this._drawRailGates(ctx); this._drawLaunchRamps(ctx); this._drawPlatforms(ctx); } catch (e) { /* ignore */ }   // §Moving Platforms — rail overlay + zones + gates + launch ramps + moving platform groups
     if (this.gameMode === 'sandbox' && this.sandbox && this.sandbox.drawWorld) {
       this.sandbox.drawWorld(ctx, this.camera, this.frameCount);
       try { this._drawTravelTubesSandbox(ctx); if (this._tubeDraft) this._drawTubeDraft(ctx); if (this._tubeEditNodes) this._drawTubeNodeEdit(ctx); } catch (e) { /* ignore */ }  // §Travel Tube outlines + draft + node edit
@@ -6443,6 +6452,7 @@ class Game {
       if (this._pauseNodePopup) this._drawPauseNodePopup(ctx);
       if (this._dirCtrlPopup) this._drawDirCtrlPopup(ctx);
       if (this._speedSegPopup) this._drawSpeedSegPopup(ctx);
+      if (this._railGatePopup) this._drawRailGatePopup(ctx);
     }
 
     this._drawBiomeLabel(ctx, biome);
@@ -7944,6 +7954,10 @@ class Game {
       this._speedSegs = data.speedSegs.map(s => ({ id: s.id, railId: s.railId, cells: s.cells || [], targetSpeed: s.targetSpeed }));
       this._nextSpeedSegId = this._speedSegs.reduce((m, s) => Math.max(m, s.id || 0), 0);
     }
+    if (data && Array.isArray(data.railGates)) {
+      this._railGates = data.railGates.map(g => ({ id: g.id, railId: g.railId, cells: g.cells || [], condition: g.condition || 'redstone', channel: g.channel ?? null, threshold: g.threshold ?? 4 }));
+      this._nextRailGateId = this._railGates.reduce((m, g) => Math.max(m, g.id || 0), 0);
+    }
     // Platforms runtime must init AFTER controllers/speed-segs are restored (it attaches them).
     if (data && Array.isArray(data.platforms)) this._initPlatformsRuntime();
   }
@@ -9022,7 +9036,7 @@ class Game {
       this._dragon, this._endCrystals, this._dragonDefeated,
       this._mobDropSettings, this._worldAdvSettings,
       this._collectedDiscs, this._musicPlayerBlocks, this._witherAltars,
-      this._rails, this._platforms, this._dirControllers, this._speedSegs
+      this._rails, this._platforms, this._dirControllers, this._speedSegs, this._railGates
     );
     if (!result.ok) { this._notify('Export failed: ' + (result.error || '?'), '#FF4444', 240); return; }
     const raw = localStorage.getItem(SandboxSaves.key(pName, wName));
@@ -15537,7 +15551,7 @@ class Game {
     if (!pName || !wName) return;
     this._sbPlayerName = pName;
     this._sbWorldName  = wName;
-    const result = SandboxSaves.save(pName, wName, this.level, this.sandbox, this.player, this.redstone, this._dustBlocks, this._gateBlocks, this._transmitters, this._receivers, this._chests, this._ruinedPortals, this._endPortalAnchors, this._dragon, this._endCrystals, this._dragonDefeated, this._mobDropSettings, this._worldAdvSettings, this._collectedDiscs, this._musicPlayerBlocks, this._witherAltars, this._rails, this._platforms, this._dirControllers, this._speedSegs);
+    const result = SandboxSaves.save(pName, wName, this.level, this.sandbox, this.player, this.redstone, this._dustBlocks, this._gateBlocks, this._transmitters, this._receivers, this._chests, this._ruinedPortals, this._endPortalAnchors, this._dragon, this._endCrystals, this._dragonDefeated, this._mobDropSettings, this._worldAdvSettings, this._collectedDiscs, this._musicPlayerBlocks, this._witherAltars, this._rails, this._platforms, this._dirControllers, this._speedSegs, this._railGates);
     if (result.ok) {
       this._historyStack = []; this._historyPos = -1; // clear history on successful save
       this._notify(`Saved: ${pName} — ${wName}`, '#44FF88', 300);
@@ -18103,6 +18117,7 @@ class Game {
         pl._dist = res.dist; pl._dir = res.dir;
         if (res.stopped && pl.returnMode === 'oneway') pl._moving = false;
         this._checkPlatformPauseArrival(pl, rail);      // §5 — did we reach a pause node?
+        this._applyRailGates(pl, rail);                 // §7/§10 — a closed gate blocks passage
         if (this._checkLaunch(pl, rail)) continue;      // §11 — crossed the launch ramp → now airborne
       }
       const at = TRAVEL_TUBE.pointAt(pts, pl._dist);
@@ -18659,6 +18674,104 @@ class Game {
     btn(py + 100, 'Remove', true);
     ctx.restore();
   }
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // §Moving Platforms §7 (Gate) + §10 (Weight-Sensitive Trigger). A rail GATE SEGMENT that blocks or
+  // allows a platform's passage, by either a redstone channel (§7 Gate mode) or a platform WEIGHT
+  // threshold (§10). Instant visual (show/hide). NOTE: the Switch (fork/branching) mode and the four
+  // ANIMATED styles (drawbridge / rise / extend / dissolve, with the "arrived-too-early → fall" race)
+  // are DEFERRED — the rail model is linear; see DECISIONS_LOG. This ships the core blocking mechanic.
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  _railGateAtCell(row, col) { for (const g of this._railGates || []) if (g.cells.some(c => c.col === col && c.row === row)) return g; return null; }
+  _railGateRange(g) {
+    if (g._d0 != null && g._rangeN === g.cells.length) return { d0: g._d0, d1: g._d1 };
+    const rail = this._railById(g.railId); if (!rail) return { d0: 0, d1: 0 };
+    const pts = this._railPts(rail); let lo = Infinity, hi = -Infinity;
+    for (const c of g.cells) { const n = TRAVEL_TUBE.nearest(pts, c.col * BLOCK_SIZE + BLOCK_SIZE / 2, c.row * BLOCK_SIZE + BLOCK_SIZE / 2, BLOCK_SIZE); if (n) { lo = Math.min(lo, n.d); hi = Math.max(hi, n.d); } }
+    g._d0 = lo - BLOCK_SIZE / 2; g._d1 = hi + BLOCK_SIZE / 2; g._rangeN = g.cells.length;
+    return { d0: g._d0, d1: g._d1 };
+  }
+  _placeRailGate(row, col) {
+    const existing = this._railGateAtCell(row, col);
+    if (existing) { this._railGatePopup = { id: existing.id }; return; }
+    const rail = this._railAtCell(row, col);
+    if (!rail) { this._notify('Rail Gate must be placed on a rail', '#CC4444', 130); return; }
+    let g = (this._railGates || []).find(s => s.railId === rail.id && s.cells.some(c => Math.abs(c.col - col) + Math.abs(c.row - row) === 1));
+    if (g) { g.cells.push({ col, row }); g._d0 = null; }
+    else {
+      this._nextRailGateId = (this._nextRailGateId || 0) + 1;
+      g = { id: this._nextRailGateId, railId: rail.id, cells: [{ col, row }], condition: 'redstone', channel: null, threshold: 4 };
+      this._railGates.push(g);
+      this._railGatePopup = { id: g.id };
+    }
+    this._notify('Rail Gate — click it to set its open condition', '#d05555', 150);
+  }
+  // Is this gate currently OPEN for a given platform? (redstone gate ignores the platform.)
+  _railGateOpenFor(g, pl) {
+    if (g.condition === 'redstone') return this._channelPowered(g.channel);
+    const w = this._platformWeight(pl);
+    if (g.condition === 'weight-above') return w >= g.threshold;
+    if (g.condition === 'weight-below') return w <= g.threshold;
+    return true;
+  }
+  // Block a platform from crossing a CLOSED gate: clamp it to the near edge; reverse if round-trip.
+  _applyRailGates(pl, rail) {
+    for (const g of this._railGates || []) {
+      if (g.railId !== rail.id || !g.cells.length) continue;
+      if (this._railGateOpenFor(g, pl)) continue;                 // open → free passage
+      const { d0, d1 } = this._railGateRange(g);
+      const prev = pl._prevDist ?? pl._dist;
+      // crossing INTO the gate from below or above?
+      if (prev <= d0 && pl._dist > d0) { pl._dist = d0; if (pl.returnMode !== 'oneway') pl._dir = -1; else pl._moving = false; }
+      else if (prev >= d1 && pl._dist < d1) { pl._dist = d1; if (pl.returnMode !== 'oneway') pl._dir = 1; else pl._moving = false; }
+      else if (pl._dist > d0 && pl._dist < d1) { pl._dist = (prev <= d0) ? d0 : d1; }   // started inside → shove out
+    }
+  }
+  _handleRailGatePopupInput() {
+    if (!this._railGatePopup) return;
+    const g = (this._railGates || []).find(s => s.id === this._railGatePopup.id);
+    if (!g) { this._railGatePopup = null; return; }
+    if (!this.input.mouse.clicked) return;
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const pw = 320, ph = 230, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
+    if (hit(px + pw - 30, py + 8, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._railGatePopup = null; this.input.mouse.clicked = false; return; }
+    if (hit(px + 20, py + 48, pw - 40, 28)) { const o = ['redstone', 'weight-above', 'weight-below']; g.condition = o[(o.indexOf(g.condition) + 1) % 3]; }
+    else if (g.condition === 'redstone' && hit(px + 20, py + 84, pw - 40, 28)) { const nums = [null, ...new Set([...this._transmitters.values()].map(t => t.number))].sort((a, b) => (a ?? -1) - (b ?? -1)); g.channel = nums[(nums.indexOf(g.channel) + 1) % nums.length]; }
+    else if (g.condition !== 'redstone' && hit(px + 20, py + 84, pw - 40, 28)) { const th = [1, 2, 4, 6, 8, 12, 16, 24]; const i = th.findIndex(t => t >= g.threshold); g.threshold = th[(i + 1) % th.length]; }
+    else if (hit(px + 20, py + 140, pw - 40, 28)) { this._railGates = this._railGates.filter(s => s !== g); this._railGatePopup = null; this._notify('Rail Gate removed', '#c66', 100); }
+    this.input.mouse.clicked = false;
+  }
+  _drawRailGatePopup(ctx) {
+    if (!this._railGatePopup) return;
+    const g = (this._railGates || []).find(s => s.id === this._railGatePopup.id);
+    if (!g) { this._railGatePopup = null; return; }
+    const pw = 320, ph = 230, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    this._roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#2a1414'; ctx.fill(); ctx.strokeStyle = '#d05555'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#f0a0a0'; ctx.font = 'bold 13px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('RAIL GATE (' + g.cells.length + ' cells)', px + pw / 2, py + 20);
+    ctx.fillStyle = '#aaa'; ctx.font = 'bold 12px Courier New'; ctx.fillText('✕', px + pw - 19, py + 19);
+    const btn = (y, label, danger) => { this._roundRect(ctx, px + 20, y, pw - 40, 28, 5); ctx.fillStyle = danger ? '#3a1d1d' : '#3a2020'; ctx.fill(); ctx.strokeStyle = danger ? '#a55' : '#d05555'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = danger ? '#f0c0c0' : '#f0d0d0'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 14); };
+    const condLbl = { redstone: 'Redstone signal', 'weight-above': 'Weight ≥ threshold', 'weight-below': 'Weight ≤ threshold' }[g.condition];
+    btn(py + 48, 'Opens on: ' + condLbl);
+    btn(py + 84, g.condition === 'redstone' ? ('Channel: ' + (g.channel == null ? 'None' : '#' + g.channel)) : ('Threshold: ' + g.threshold));
+    btn(py + 140, 'Remove', true);
+    ctx.fillStyle = '#c89090'; ctx.font = '9px Courier New';
+    ctx.fillText('Closed = platform stops / reverses at the edge. (Switch mode + animated styles: see roadmap.)', px + pw / 2, py + ph - 12);
+    ctx.restore();
+  }
+  _drawRailGates(ctx) {
+    if (this.gameMode !== 'sandbox' || !this._railGates || !this._railGates.length) return;
+    ctx.save();
+    for (const g of this._railGates) for (const c of g.cells) {
+      const x = c.col * BLOCK_SIZE - this.camera.x, y = c.row * BLOCK_SIZE - this.camera.y;
+      ctx.fillStyle = 'rgba(208,85,85,0.28)'; ctx.fillRect(x, y, BLOCK_SIZE, BLOCK_SIZE);
+      ctx.strokeStyle = '#d05555'; ctx.lineWidth = 1; ctx.strokeRect(x + 1, y + 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2);
+    }
+    ctx.restore();
+  }
+
   // §11 — mark a rail's launch point (a platform reaching it while moving toward it is flung).
   _placeLaunchRamp(row, col) {
     const rail = this._railAtCell(row, col);

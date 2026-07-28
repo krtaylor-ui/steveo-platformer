@@ -108,6 +108,7 @@ const BLOCK = Object.freeze({
   DIRECTION_CONTROLLER:   89,   // §Moving Platforms — placed on a platform; L/R redstone inputs steer travel direction
   SPEED_SEGMENT:          90,   // §Moving Platforms — rail zone that smoothly ramps platform speed as it passes through
   LAUNCH_RAMP:            91,   // §Moving Platforms — rail end that flings the platform on a real ballistic arc
+  RAIL_GATE:              92,   // §Moving Platforms — rail segment that blocks/allows passage by redstone or platform weight
 });
 
 // §Phase R — Redstone Lamp colours (click a placed lamp with the Lamp selected to cycle). One hue
@@ -256,6 +257,7 @@ const BLOCK_DATA = {
   [BLOCK.DIRECTION_CONTROLLER]: { name: 'Direction Controller', hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.SPEED_SEGMENT]:     { name: 'Speed Segment',   hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.LAUNCH_RAMP]:       { name: 'Launch Ramp',     hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
+  [BLOCK.RAIL_GATE]:         { name: 'Rail Gate',       hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
 };
 
 // ── Pixel-art block renderers ────────────────────────────────
@@ -361,6 +363,7 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.DIRECTION_CONTROLLER:   _drawDirectionController(ctx, px, py, s);       break;
     case BLOCK.SPEED_SEGMENT:          _drawSpeedSegment(ctx, px, py, s);              break;
     case BLOCK.LAUNCH_RAMP:            _drawLaunchRamp(ctx, px, py, s);                break;
+    case BLOCK.RAIL_GATE:             _drawRailGate(ctx, px, py, s);                  break;
   }
 
   // Mining crack overlay
@@ -1924,6 +1927,12 @@ function _drawLaunchRamp(ctx, px, py, s) {
   ctx.strokeStyle = '#ffcf9a'; ctx.lineWidth = 1.5; ctx.stroke();
   ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.floor(s * 0.34)}px Courier New`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('↗', px + s * 0.62, py + s * 0.5);
+}
+function _drawRailGate(ctx, px, py, s) {
+  ctx.fillStyle = 'rgba(200,80,80,0.30)'; ctx.fillRect(px, py, s, s);
+  ctx.strokeStyle = '#d05555'; ctx.lineWidth = 1.5; ctx.strokeRect(px + 1, py + 1, s - 2, s - 2);
+  ctx.strokeStyle = '#f0a0a0'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(px + 4, py + 4); ctx.lineTo(px + s - 4, py + s - 4); ctx.moveTo(px + s - 4, py + 4); ctx.lineTo(px + 4, py + s - 4); ctx.stroke();
 }
 function _drawWarpPipe(ctx, px, py, s, state = {}, stem = false) {
   const t = !!state.pipeT, b = !!state.pipeB, l = !!state.pipeL, r = !!state.pipeR;

@@ -39,7 +39,7 @@ const SandboxSaves = {
   // sandbox  — SandboxManager instance (has .placedEggs)
   // player   — Player instance (has .x, .y)
   // Returns { ok: true } or { ok: false, error: string }
-  save(playerName, worldName, level, sandbox, player, redstone, dustBlocks, gateBlocks, transmitters, receivers, chestsMap = null, ruinedPortals = null, endPortalAnchors = null, dragon = null, endCrystals = null, dragonDefeated = false, mobDropSettings = null, worldAdvSettings = null, collectedDiscs = null, musicPlayerBlocks = null, witherAltars = null, rails = null, platforms = null, dirControllers = null, speedSegs = null) {
+  save(playerName, worldName, level, sandbox, player, redstone, dustBlocks, gateBlocks, transmitters, receivers, chestsMap = null, ruinedPortals = null, endPortalAnchors = null, dragon = null, endCrystals = null, dragonDefeated = false, mobDropSettings = null, worldAdvSettings = null, collectedDiscs = null, musicPlayerBlocks = null, witherAltars = null, rails = null, platforms = null, dirControllers = null, speedSegs = null, railGates = null) {
     const grid = level.grid.map(row => Array.from(row));
 
     const spawnEggs = sandbox
@@ -136,6 +136,7 @@ const SandboxSaves = {
       platforms: platforms ? platforms.map(p => ({ id: p.id, railId: p.railId, anchorCol: p.anchorCol, anchorRow: p.anchorRow, anchorDist: p.anchorDist, cells: p.cells, initialDir: p.initialDir, mode: p.mode, signalResponse: p.signalResponse, returnMode: p.returnMode, speed: p.speed, dirCtrl: p.dirCtrl || null, cog: !!p.cog })) : [],
       dirControllers: dirControllers ? [...dirControllers.values()].map(d => ({ col: d.col, row: d.row, lCh: d.lCh ?? null, rCh: d.rCh ?? null })) : [],
       speedSegs: speedSegs ? speedSegs.map(s => ({ id: s.id, railId: s.railId, cells: s.cells, targetSpeed: s.targetSpeed })) : [],
+      railGates: railGates ? railGates.map(g => ({ id: g.id, railId: g.railId, cells: g.cells, condition: g.condition, channel: g.channel ?? null, threshold: g.threshold })) : [],
       playerPx:   Math.floor(player.x),
       playerPy:   Math.floor(player.y),
       sbHotbar,
