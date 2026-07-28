@@ -1927,6 +1927,11 @@ class Game {
         this._handlePistonConfigPopupInput();
         return;
       }
+      // §Phase R — Target Block config popup (pulse/toggle + duration)
+      if (this._targetConfigPopup) {
+        this._handleTargetConfigPopupInput();
+        return;
+      }
       // §Classic Blocks — pipe-destination / block-contents config popup
       if (this._classicPopup) {
         this._handleClassicPopupInput();
@@ -2833,7 +2838,9 @@ class Game {
     // Detect pressure plate state changes and start dust propagation.
     // Initialise _rsWasOn on first encounter to avoid a spurious trigger on frame 1.
     for (const comp of this.redstone.components) {
-      if (comp.type === 'pressure_plate') {
+      // §Phase R — Target Blocks + Pulse Converters are SOURCES too: whenever their state flips
+      // (arrow hit, toggle, or pulse expiry), power adjacent dust exactly like a lever/plate.
+      if (comp.type === 'pressure_plate' || comp.type === 'target' || comp.type === 'pulse_converter') {
         if (comp._rsWasOn === undefined) { comp._rsWasOn = comp.on; continue; }
         if (comp.on !== comp._rsWasOn) {
           comp._rsWasOn = comp.on;
@@ -3045,6 +3052,11 @@ class Game {
                 });
                 this._pistonConfigPopup = { col: hoverCol, row: hoverRow };
               }
+            } else if (sb === BLOCK.TARGET_BLOCK) {
+              if (!this.redstone.getAt(hoverCol, hoverRow)) {
+                this.redstone.addComponent({ type: 'target', col: hoverCol, row: hoverRow, on: false, mode: 'pulse', pulseDur: 30, links: [], sandboxPlaced: true });
+              }
+              this._targetConfigPopup = { col: hoverCol, row: hoverRow };   // configure mode/duration
             } else if (sb === BLOCK.MUSIC_PLAYER) {
               const mpk = `${hoverCol},${hoverRow}`;
               if (!this._musicPlayerBlocks.has(mpk)) {
@@ -3076,6 +3088,8 @@ class Game {
           this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'pipe' };        // config only with the pipe SELECTED
         } else if ((target === BLOCK.QUESTION_BLOCK || target === BLOCK.BREAKABLE_BLOCK || target === BLOCK.HIDDEN_BLOCK) && this.sandbox.selectedBlock === target) {
           this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'contents' };     // config only with the matching block SELECTED
+        } else if (target === BLOCK.TARGET_BLOCK && this.sandbox.selectedBlock === BLOCK.TARGET_BLOCK) {
+          this._targetConfigPopup = { col: hoverCol, row: hoverRow };                  // §Phase R — reconfigure a placed Target
         } else if (this.sandbox.isDustSelected) {
           // Dust selected — click on existing solid block
           const dustKey = `${hoverCol},${hoverRow}`;
@@ -6286,6 +6300,7 @@ class Game {
       if (this._gateConfigPopup)   this._drawGateConfigPopup(ctx);
       if (this._rxConfigPopup)     this._drawRxConfigPopup(ctx);
       if (this._pistonConfigPopup) this._drawPistonConfigPopup(ctx);
+      if (this._targetConfigPopup) this._drawTargetConfigPopup(ctx);
       if (this._classicPopup) this._drawClassicPopup(ctx);
       if (this._tubePopup) this._drawTubePopup(ctx);
     }
@@ -7193,9 +7208,10 @@ class Game {
         if (next && next.on !== entry.powered) {
           this._rsEnqueue({ col: nc, row: nr, powered: entry.powered, frame: entry.frame + 6 });
         }
-        // Device at neighbor
+        // Device at neighbor. §Phase R (R3): a Target Block / Pulse Converter touched by powered
+        // dust activates too, even though nothing "hit" it.
         const devComp = this.redstone.getAt(nc, nr);
-        if (devComp && (devComp.type === 'trapdoor' || devComp.type === 'tnt' || devComp.type === 'piston')) {
+        if (devComp && (devComp.type === 'trapdoor' || devComp.type === 'tnt' || devComp.type === 'piston' || devComp.type === 'target' || devComp.type === 'pulse_converter')) {
           this._rsEnqueue({ type: 'device', comp: devComp, frame: entry.frame + 6 });
         }
         // Transmitter block at neighbor
@@ -7289,6 +7305,14 @@ class Game {
       comp.fuse = 120;
     } else if (comp.type === 'piston') {
       this.redstone._activate(comp, anyOn, this.level);
+    } else if (comp.type === 'target' || comp.type === 'pulse_converter') {
+      // §Phase R (R3) — powered adjacent dust drives these on its RISING edge, same as a real hit.
+      const rising = anyOn && !comp._dustPowered;
+      comp._dustPowered = anyOn;
+      if (rising) {
+        if (comp.type === 'pulse_converter') this.redstone._toggleFlip(comp, this.level);
+        else this.redstone.hitTarget(comp.col, comp.row, this.level, false);
+      }
     }
   }
 
@@ -7761,6 +7785,55 @@ class Game {
       ctx.strokeStyle = '#3a4055'; ctx.strokeRect(r.bx + 0.5, r.by + 0.5, r.bw - 1, r.bh - 1);
       ctx.fillStyle = '#d5d9e6'; ctx.font = 'bold 11px system-ui, sans-serif'; ctx.fillText(btns[i].label, r.bx + 8, r.by + 8);
     }
+    ctx.restore();
+  }
+
+  // ── §Phase R — Target Block config popup (Pulse vs Toggle + pulse duration) ──
+  _handleTargetConfigPopupInput() {
+    const tp = this._targetConfigPopup; if (!tp) return;
+    const comp = this.redstone.getAt(tp.col, tp.row);
+    if (!comp || comp.type !== 'target') { this._targetConfigPopup = null; return; }
+    if (!this.input.mouse.clicked) return;
+    const pw = 260, ph = 200, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
+    this.input.mouse.clicked = false;
+    if (hit(px + pw - 28, py + 6, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._targetConfigPopup = null; return; }
+    if (hit(px + 14, py + 52, pw - 28, 32)) { comp.mode = (comp.mode === 'toggle') ? 'pulse' : 'toggle'; return; }
+    if (hit(px + 14, py + 92, pw - 28, 32)) {   // pulse duration (only meaningful in pulse mode)
+      const opts = [10, 20, 30, 45, 60, 90]; const i = opts.indexOf(comp.pulseDur || 30);
+      comp.pulseDur = opts[(i + 1) % opts.length]; return;
+    }
+    if (hit(px + 14, py + ph - 44, pw - 28, 32)) {   // remove
+      this.level.set(tp.row, tp.col, BLOCK.AIR); this.redstone.removeAt(tp.col, tp.row);
+      this._targetConfigPopup = null; this._notify('Target Block removed', '#c66', 90); return;
+    }
+  }
+  _drawTargetConfigPopup(ctx) {
+    const tp = this._targetConfigPopup; if (!tp) return;
+    const comp = this.redstone.getAt(tp.col, tp.row);
+    if (!comp || comp.type !== 'target') { this._targetConfigPopup = null; return; }
+    const pw = 260, ph = 200, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    ctx.save(); ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.fillStyle = '#1a1410'; _roundRect(ctx, px, py, pw, ph, 8); ctx.fill();
+    ctx.strokeStyle = '#e08a5a'; ctx.lineWidth = 2; _roundRect(ctx, px, py, pw, ph, 8); ctx.stroke();
+    ctx.fillStyle = '#f4d9c4'; ctx.font = 'bold 14px system-ui, sans-serif'; ctx.fillText('Target Block', px + 14, py + 12);
+    ctx.fillStyle = '#c77'; ctx.font = 'bold 16px system-ui, sans-serif'; ctx.fillText('✕', px + pw - 24, py + 9);
+    const toggle = comp.mode === 'toggle';
+    const row = (y, label, val, dim) => {
+      ctx.fillStyle = '#2a2018'; _roundRect(ctx, px + 14, y, pw - 28, 32, 6); ctx.fill();
+      ctx.fillStyle = '#caa'; ctx.font = '12px system-ui, sans-serif'; ctx.fillText(label, px + 24, y + 9);
+      ctx.fillStyle = dim ? '#7a6a5a' : '#ffe3c8'; ctx.font = 'bold 12px system-ui, sans-serif';
+      ctx.textAlign = 'right'; ctx.fillText(val, px + pw - 26, y + 9); ctx.textAlign = 'left';
+    };
+    row(py + 52, 'Mode', toggle ? 'Toggle (on / off on hit)' : 'Pulse (timed on hit)', false);
+    row(py + 92, 'Pulse Length', toggle ? '— (toggle)' : ((comp.pulseDur || 30) + ' frames'), toggle);
+    ctx.fillStyle = '#9aa'; ctx.font = '11px system-ui, sans-serif';
+    ctx.fillText('Shoot it to fire. Powers redstone dust placed next to it.', px + 16, py + 132);
+    ctx.fillStyle = '#4a1f2a'; _roundRect(ctx, px + 14, py + ph - 44, pw - 28, 32, 6); ctx.fill();
+    ctx.fillStyle = '#ffb3c0'; ctx.font = 'bold 12px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.fillText('🗑  Remove', px + pw / 2, py + ph - 35); ctx.textAlign = 'left';
     ctx.restore();
   }
 
@@ -15489,6 +15562,15 @@ class Game {
             extended: !!p.extended, sandboxPlaced: true,
           });
         }
+      }
+    }
+    // §Phase R — restore Target Block config (update the ensure-scan component, or add it)
+    if (Array.isArray(data.sandboxTargets)) {
+      for (const t of data.sandboxTargets) {
+        if (typeof t.col !== 'number' || typeof t.row !== 'number') continue;
+        const comp = this.redstone.getAt(t.col, t.row);
+        if (comp && comp.type === 'target') { comp.mode = t.mode || 'pulse'; comp.pulseDur = t.pulseDur || 30; }
+        else if (!comp) this.redstone.addComponent({ type: 'target', col: t.col, row: t.row, on: false, mode: t.mode || 'pulse', pulseDur: t.pulseDur || 30, links: [], sandboxPlaced: true });
       }
     }
 

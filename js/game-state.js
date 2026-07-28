@@ -117,6 +117,12 @@ const GAME_STATE = {
           .filter(c => c.type === 'piston' && c.sandboxPlaced)
           .map(c => ({ col: c.col, row: c.row, dir: c.dir || 'right', inverted: !!c.inverted, extended: !!c.extended }))
       : [];
+    // §Phase R — Target Blocks carry their own config (pulse/toggle + pulse length)
+    const sandboxTargets = game.redstone
+      ? game.redstone.components
+          .filter(c => c.type === 'target')
+          .map(c => ({ col: c.col, row: c.row, mode: c.mode || 'pulse', pulseDur: c.pulseDur || 30 }))
+      : [];
 
     // World items (single items placed on the ground). BUGFIX: in the SANDBOX
     // EDITOR these live in game.sandbox.placedItems; game._platformerItems is only
@@ -229,6 +235,7 @@ const GAME_STATE = {
       sandboxLevers,
       sandboxTrapdoors,
       sandboxPistons,
+      sandboxTargets,
       dustBlocks,
       transmitters,
       receivers,
