@@ -497,6 +497,7 @@ class Game {
     this._transmitters = new Map(); // "col,row" → {col,row,number,powered}
     this._receivers    = new Map(); // "col,row" → {col,row,listenTo:Set,powered}
     this._rxConfigPopup      = null;   // null | {col,row}
+    this._txConfigPopup      = null;   // null | {col,row}
     this._pistonConfigPopup  = null;   // null | {col,row} — direction selection for sandbox pistons
     // §Moving Platforms — rails (waypoint paths) + platforms bound to anchors that ride them.
     this._rails       = [];        // [{id, cells:[{col,row}], vis:'solid'|'visible'|'invisible', loop, pauseNodes, ...}]
@@ -1946,6 +1947,11 @@ class Game {
         this._handleGateConfigPopupInput();
         return;
       }
+      // Transmitter config popup
+      if (this._txConfigPopup) {
+        this._handleTxConfigPopupInput();
+        return;
+      }
       // Receiver config popup
       if (this._rxConfigPopup) {
         this._handleRxConfigPopupInput();
@@ -3235,8 +3241,7 @@ class Game {
           // §Overlay Transmitter — mount on a solid block (co-exists with dust/gate); re-click shows info.
           const key = `${hoverCol},${hoverRow}`;
           if (this._transmitters.has(key)) {
-            const tx = this._transmitters.get(key);
-            this._notify(`Transmitter #${tx.number} — select a different block to remove`, '#CC5555', 120);
+            this._txConfigPopup = { col: hoverCol, row: hoverRow };   // §config modal (number info + hide + remove)
           } else if (this._isDustValidTarget(target)) {
             const num = this._txAssignNumber();
             if (num === null) {
@@ -6444,6 +6449,7 @@ class Game {
       if (this._dustPopup) this._drawDustPopup(ctx);
       if (this._gateConfigPopup)   this._drawGateConfigPopup(ctx);
       if (this._rxConfigPopup)     this._drawRxConfigPopup(ctx);
+      if (this._txConfigPopup)     this._drawTxConfigPopup(ctx);
       if (this._pistonConfigPopup) this._drawPistonConfigPopup(ctx);
       if (this._targetConfigPopup) this._drawTargetConfigPopup(ctx);
       if (this._classicPopup) this._drawClassicPopup(ctx);
@@ -7531,8 +7537,34 @@ class Game {
       comp._dustPowered = anyOn;
       if (rising) this.redstone.hitTarget(comp.col, comp.row, this.level, false);
     } else if (comp.type === 'lamp') {
-      comp.on = anyOn;   // §Phase R — Redstone Lamp lights while any adjacent dust is powered
+      // §Panel conduction — a lamp is lit if its connected LAMP GROUP touches any power source, so
+      // powering one lamp lights a whole adjoining panel. (Lamps conduct to each other like dust;
+      // gates/configurable devices are excluded, per Kevin.)
+      const on = this._lampGroupPowered(comp);
+      if (comp.on !== on) {
+        comp.on = on;
+        // re-evaluate neighbouring lamps so the whole panel updates together.
+        for (const [dr, dc] of DIRS) { const n = this.redstone.getAt(comp.col + dc, comp.row + dr); if (n && n.type === 'lamp') this._rsEnqueue({ type: 'device', comp: n, frame: this.frameCount + this._rsStepFrames() }); }
+      }
     }
+  }
+  // §Panel conduction — flood the connected group of lamps from `start`; the group is powered if ANY
+  // lamp in it has an adjacent dust-on or bare adjacent generator.
+  _lampGroupPowered(start) {
+    const DIRS = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+    const seen = new Set([start.col + ',' + start.row]);
+    const stack = [start];
+    let guard = 0;
+    while (stack.length && guard++ < 4096) {
+      const c = stack.pop();
+      const dustAdj = DIRS.some(([dr, dc]) => { const d = this._dustBlocks.get(`${c.col + dc},${c.row + dr}`); return d && d.on; });
+      if (dustAdj || this._adjacentGeneratorPower(c.col, c.row)) return true;
+      for (const [dr, dc] of DIRS) {
+        const n = this.redstone.getAt(c.col + dc, c.row + dr);
+        if (n && n.type === 'lamp' && !seen.has(n.col + ',' + n.row)) { seen.add(n.col + ',' + n.row); stack.push(n); }
+      }
+    }
+    return false;
   }
 
   // ── Piston knockback (applied each frame during extension animation) ──
@@ -7685,8 +7717,10 @@ class Game {
     const maxR = Math.ceil((this.camera.y + CANVAS_H) / BLOCK_SIZE) + 1;
     const inView = (c, r) => c >= minC && c <= maxC && r >= minR && r <= maxR;
 
+    const sandbox = this.gameMode === 'sandbox';
     for (const rx of this._receivers.values()) {
       if (!inView(rx.col, rx.row)) continue;
+      if (rx.hidden && !sandbox) continue;   // §Hide-in-play — show only the underlying block during play
       const sx = rx.col * BLOCK_SIZE - this.camera.x;
       const sy = rx.row * BLOCK_SIZE - this.camera.y;
       const nums = [...rx.listenTo].sort((a, b) => a - b);
@@ -7694,6 +7728,7 @@ class Game {
     }
     for (const tx of this._transmitters.values()) {
       if (!inView(tx.col, tx.row)) continue;
+      if (tx.hidden && !sandbox) continue;   // §Hide-in-play
       const sx = tx.col * BLOCK_SIZE - this.camera.x;
       const sy = tx.row * BLOCK_SIZE - this.camera.y;
       _drawTransmitter(ctx, sx, sy, BLOCK_SIZE, tx.number, tx.powered);
@@ -7718,7 +7753,7 @@ class Game {
     const rx = this._receivers.get(`${this._rxConfigPopup.col},${this._rxConfigPopup.row}`);
     if (!rx) { this._rxConfigPopup = null; return; }
 
-    const pw = 340, ph = 220;
+    const pw = 340, ph = 252;
     const px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     const mx = this.input.mouse.x, my = this.input.mouse.y;
 
@@ -7768,6 +7803,15 @@ class Game {
       }
     }
 
+    // Show-in-play toggle
+    const hideY=py+ph-76;
+    const hideHov=mx>=px+12&&mx<=px+pw-12&&my>=hideY&&my<=hideY+28;
+    ctx.fillStyle=hideHov?'rgba(80,140,220,0.3)':'rgba(0,0,0,0.4)';
+    _roundRect(ctx,px+12,hideY,pw-24,28,5); ctx.fill();
+    ctx.strokeStyle=hideHov?'#5aa0ff':'#334455'; ctx.lineWidth=1.5; _roundRect(ctx,px+12,hideY,pw-24,28,5); ctx.stroke();
+    ctx.fillStyle=hideHov?'#fff':'#88aacc'; ctx.font='11px Courier New'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(rx.hidden ? 'In play: HIDDEN (shows underlying block)' : 'In play: VISIBLE  — click to hide', CANVAS_W/2, hideY+14);
+
     // Remove button
     const remY=py+ph-44;
     const remHov=mx>=px+12&&mx<=px+pw-12&&my>=remY&&my<=remY+28;
@@ -7790,7 +7834,7 @@ class Game {
     if (!rx) { this._rxConfigPopup = null; return; }
     if (!this.input.mouse.clicked) return;
 
-    const pw=340, ph=220;
+    const pw=340, ph=252;
     const px=(CANVAS_W-pw)/2, py=(CANVAS_H-ph)/2;
     const mx=this.input.mouse.x, my=this.input.mouse.y;
 
@@ -7812,6 +7856,10 @@ class Game {
       }
     }
 
+    // Show-in-play toggle
+    const hideY=py+ph-76;
+    if (mx>=px+12&&mx<=px+pw-12&&my>=hideY&&my<=hideY+28) { rx.hidden = !rx.hidden; return; }
+
     // Remove button
     const remY=py+ph-44;
     if (mx>=px+12&&mx<=px+pw-12&&my>=remY&&my<=remY+28) {
@@ -7820,6 +7868,37 @@ class Game {
       this._receivers.delete(`${col},${row}`);   // §Overlay — remove the receiver, keep its support block
       this._dustConnDirty = true;
     }
+  }
+
+  // ── Transmitter config modal (number info + hide-in-play + remove) ──
+  _handleTxConfigPopupInput() {
+    if (!this._txConfigPopup) return;
+    const tx = this._transmitters.get(`${this._txConfigPopup.col},${this._txConfigPopup.row}`);
+    if (!tx) { this._txConfigPopup = null; return; }
+    if (!this.input.mouse.clicked) return;
+    const pw = 300, ph = 170, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
+    if (hit(px + pw - 30, py + 8, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._txConfigPopup = null; this.input.mouse.clicked = false; return; }
+    if (hit(px + 16, py + 60, pw - 32, 28)) { tx.hidden = !tx.hidden; }
+    else if (hit(px + 16, py + 100, pw - 32, 28)) { this._transmitters.delete(`${tx.col},${tx.row}`); this._txConfigPopup = null; this._dustConnDirty = true; this._notify('Transmitter removed', '#c66', 100); }
+    this.input.mouse.clicked = false;
+  }
+  _drawTxConfigPopup(ctx) {
+    if (!this._txConfigPopup) return;
+    const tx = this._transmitters.get(`${this._txConfigPopup.col},${this._txConfigPopup.row}`);
+    if (!tx) { this._txConfigPopup = null; return; }
+    const pw = 300, ph = 170, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.fillStyle = '#1a0e0e'; _roundRect(ctx, px, py, pw, ph, 8); ctx.fill(); ctx.strokeStyle = '#CC5555'; ctx.lineWidth = 2; _roundRect(ctx, px, py, pw, ph, 8); ctx.stroke();
+    ctx.fillStyle = '#FF8888'; ctx.font = 'bold 13px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('TRANSMITTER  #' + tx.number, px + pw / 2, py + 22);
+    ctx.fillStyle = '#aaa'; ctx.font = 'bold 12px Courier New'; ctx.fillText('✕', px + pw - 19, py + 19);
+    const btn = (y, label, danger) => { _roundRect(ctx, px + 16, y, pw - 32, 28, 5); ctx.fillStyle = danger ? '#3a1d1d' : '#33201f'; ctx.fill(); ctx.strokeStyle = danger ? '#a55' : '#CC5555'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = danger ? '#f0c0c0' : '#f0c8c8'; ctx.font = '11px Courier New'; ctx.fillText(label, px + pw / 2, y + 14); };
+    btn(py + 60, tx.hidden ? 'In play: HIDDEN (shows underlying block)' : 'In play: VISIBLE — click to hide');
+    btn(py + 100, 'Remove', true);
+    ctx.restore();
   }
 
   // ── Logic gate system (Phase 6F) ─────────────────────────────
@@ -15901,14 +15980,14 @@ class Game {
     if (Array.isArray(data.transmitters)) {
       for (const t of data.transmitters) {
         if (typeof t.col === 'number' && typeof t.number === 'number') {
-          this._transmitters.set(`${t.col},${t.row}`, { col: t.col, row: t.row, number: t.number, powered: false });
+          this._transmitters.set(`${t.col},${t.row}`, { col: t.col, row: t.row, number: t.number, powered: false, hidden: !!t.hidden });
         }
       }
     }
     if (Array.isArray(data.receivers)) {
       for (const r of data.receivers) {
         if (typeof r.col === 'number') {
-          this._receivers.set(`${r.col},${r.row}`, { col: r.col, row: r.row, listenTo: new Set(r.listenTo || []), powered: false });
+          this._receivers.set(`${r.col},${r.row}`, { col: r.col, row: r.row, listenTo: new Set(r.listenTo || []), powered: false, hidden: !!r.hidden });
         }
       }
     }
@@ -16191,14 +16270,14 @@ class Game {
     if (Array.isArray(data.transmitters)) {
       for (const t of data.transmitters) {
         if (typeof t.col === 'number' && typeof t.number === 'number') {
-          this._transmitters.set(`${t.col},${t.row}`, { col: t.col, row: t.row, number: t.number, powered: false });
+          this._transmitters.set(`${t.col},${t.row}`, { col: t.col, row: t.row, number: t.number, powered: false, hidden: !!t.hidden });
         }
       }
     }
     if (Array.isArray(data.receivers)) {
       for (const r of data.receivers) {
         if (typeof r.col === 'number') {
-          this._receivers.set(`${r.col},${r.row}`, { col: r.col, row: r.row, listenTo: new Set(r.listenTo||[]), powered: false });
+          this._receivers.set(`${r.col},${r.row}`, { col: r.col, row: r.row, listenTo: new Set(r.listenTo||[]), powered: false, hidden: !!r.hidden });
         }
       }
     }
@@ -16615,14 +16694,14 @@ class Game {
     if (Array.isArray(data.transmitters)) {
       for (const t of data.transmitters) {
         if (typeof t.col === 'number' && typeof t.number === 'number') {
-          this._transmitters.set(`${t.col},${t.row}`, { col: t.col, row: t.row, number: t.number, powered: false });
+          this._transmitters.set(`${t.col},${t.row}`, { col: t.col, row: t.row, number: t.number, powered: false, hidden: !!t.hidden });
         }
       }
     }
     if (Array.isArray(data.receivers)) {
       for (const r of data.receivers) {
         if (typeof r.col === 'number') {
-          this._receivers.set(`${r.col},${r.row}`, { col: r.col, row: r.row, listenTo: new Set(r.listenTo||[]), powered: false });
+          this._receivers.set(`${r.col},${r.row}`, { col: r.col, row: r.row, listenTo: new Set(r.listenTo||[]), powered: false, hidden: !!r.hidden });
         }
       }
     }

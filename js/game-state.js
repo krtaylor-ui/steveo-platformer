@@ -93,11 +93,11 @@ const GAME_STATE = {
 
     // Transmitters / receivers
     const transmitters = game._transmitters
-      ? [...game._transmitters.values()].map(t => ({ col: t.col, row: t.row, number: t.number }))
+      ? [...game._transmitters.values()].map(t => ({ col: t.col, row: t.row, number: t.number, hidden: !!t.hidden }))
       : [];
     const receivers = game._receivers
       ? [...game._receivers.values()].map(r => ({
-          col: r.col, row: r.row, listenTo: [...(r.listenTo || [])],
+          col: r.col, row: r.row, listenTo: [...(r.listenTo || [])], hidden: !!r.hidden,
         }))
       : [];
 

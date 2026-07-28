@@ -116,10 +116,10 @@ const SandboxSaves = {
       sandboxPistons,
       dustBlocks: dustBlocksArr,
       transmitters: transmitters ? [...transmitters.values()].map(t => ({
-        col: t.col, row: t.row, number: t.number,
+        col: t.col, row: t.row, number: t.number, hidden: !!t.hidden,
       })) : [],
       receivers: receivers ? [...receivers.values()].map(r => ({
-        col: r.col, row: r.row, listenTo: [...r.listenTo],
+        col: r.col, row: r.row, listenTo: [...r.listenTo], hidden: !!r.hidden,
       })) : [],
       gateBlocks: gateBlocks ? [...gateBlocks.values()].map(g => ({
         col: g.col, row: g.row, type: g.type,
