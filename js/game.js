@@ -18405,19 +18405,27 @@ class Game {
     const solid = (x, y) => { const r = Math.floor(y / BLOCK_SIZE), c = Math.floor(x / BLOCK_SIZE); if (r < 0 || c < 0 || c >= this.level.width || r >= this.level.height) return false; return this.level.isSolid(r, c); };
     for (const d of this._platformDebris) {
       d.age++;
+      if (d.resting) {                                   // fully settled — just fade in place
+        d.restT = (d.restT || 0) + 1;
+        if (d.restT > 36) d.alpha -= 0.03;               // brief pause, then fade over ~1s
+        continue;
+      }
       d.vy = Math.min(16, d.vy + 0.4); d.vx *= 0.99;
       d.x += d.vx; d.y += d.vy; d.rot += d.rotV;
       const half = d.size / 2;
-      // Ground bounce: solid directly below the piece while descending.
+      // Ground contact: solid directly below the piece while descending.
       if (d.vy > 0 && solid(d.x, d.y + half + d.vy)) {
-        d.y = Math.floor((d.y + half) / BLOCK_SIZE) * BLOCK_SIZE - half;
-        if (d.vy > 1.4) { d.vy *= -0.42; d.vx *= 0.6; d.rotV *= 0.6; }   // bounce
-        else { d.vy = 0; d.vx *= 0.75; d.rotV *= 0.8; d.settle++; }       // settling
-      } else { d.settle = 0; }
+        d.y = Math.floor((d.y + half) / BLOCK_SIZE) * BLOCK_SIZE - half;   // sit exactly on the surface
+        if (d.vy > 2.2) { d.vy *= -0.30; d.vx *= 0.55; d.rotV *= 0.5; }    // a real bounce (low restitution → few hops)
+        else {                                                            // too slow to bounce → settle
+          d.vy = 0; d.vx *= 0.5; d.rotV *= 0.5;
+          if (Math.abs(d.vx) < 0.35) { d.vx = 0; d.rotV = 0; d.resting = true; }   // come to a natural rest
+        }
+      }
       // Side nudge off walls (keeps pieces from tunnelling into a wall as they skitter).
       if (d.vx !== 0 && solid(d.x + Math.sign(d.vx) * (half + Math.abs(d.vx)), d.y)) { d.vx *= -0.4; }
-      // Fade after it's rested a beat (~1.5s) or a hard max life (~10s); or once it drops off-level.
-      if (d.settle > 90 || d.age > 600) d.alpha -= 0.02;
+      // Hard max life safety, and remove once it drops off the level.
+      if (d.age > 900) d.alpha -= 0.03;
       if (d.y > H + 120 || d.x < -120 || d.x > W + 120) d.alpha = 0;
     }
     this._platformDebris = this._platformDebris.filter(d => d.alpha > 0);
@@ -18495,6 +18503,16 @@ class Game {
     if (top === undefined) return null;
     return pl._ay - BLOCK_SIZE / 2 + top * BLOCK_SIZE;   // top edge of the topmost cell in that column
   }
+  // §edge-grab — the platform whose solid cell the player is gripping (near the ledge grip point), or null.
+  _platformForGrab(e) {
+    if (e._gripX == null) return null;
+    const gc = Math.floor(e._gripX / BLOCK_SIZE), gr = Math.floor(e._gripY / BLOCK_SIZE);
+    for (const pl of this._platforms || []) {
+      if (pl._destroyed || !pl._solidCells) continue;
+      for (const c of pl._solidCells) if (Math.abs(c.col - gc) <= 1 && Math.abs(c.row - gr) <= 1) return pl;
+    }
+    return null;
+  }
   // Is the entity's body directly beside a platform cell (an edge-grab / climb)? Used so grabbing the
   // back edge counts as riding — the platform starts + carries the player instead of leaving them behind.
   _entitySideGrabs(e, pl) {
@@ -18527,6 +18545,17 @@ class Game {
   _carryPlatformRiders() {
     const carry = (e) => {
       if (!e || e.hp <= 0) return;
+      // §edge-grab — a ledge-hang FULLY owns position (player._updateHang re-pins to fixed _hangX/_hangY
+      // each frame). If the grabbed ledge belongs to a platform, shift ALL the hang anchor coords (and
+      // x/y) by the platform delta so the grab — and the climb-up target — travel with the platform.
+      if (e._hangState) {
+        const pl = this._platformForGrab(e);
+        if (pl) {
+          const dx = pl._ax - pl._pax, dy = pl._ay - pl._pay;
+          if (dx || dy) { e.x += dx; e.y += dy; e._hangX += dx; e._hangY += dy; e._standX += dx; e._standY += dy; e._gripX += dx; e._gripY += dy; }
+        }
+        return;
+      }
       if (e._grappleOwn || e._grapple) { e._platRideId = null; return; }
       // If already attached, service that platform first.
       let pl = (e._platRideId != null) ? (this._platforms || []).find(p => p.id === e._platRideId && !p._destroyed) : null;

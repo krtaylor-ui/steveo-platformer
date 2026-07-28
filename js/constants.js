@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 build 259 (two fixes): (1) residual up/down JITTER while riding a platform — an attached rider is now exempt from the depenetration pass, so it can no longer fight the smooth-surface glue against the platform`s rounded collision cells; the ride tracks the platform`s vertical position exactly, and the attachment breaks on jump / walking off. (2) Destroy-Smaller ANIMATION now actually plays — _destroyPlatform was clearing the block list BEFORE the shatter read it (so zero debris spawned and the platform just vanished); it now snapshots the blocks first, so the loser bursts into tumbling pieces that bounce off the ground, settle, and fade. Prev 258 hotfix (CoG test-launch crash).';
+const GAME_VERSION = 'v3 build 260 (two polish fixes): (1) shatter debris now SETTLES naturally — lower bounce restitution (few hops), and once a piece is slow on the ground it kills its velocity + spin, rests flat for a beat, then fades (no more long jittery bouncing). (2) EDGE-GRAB now travels with the platform — a ledge-hang used to re-pin to fixed coords each frame; if the gripped ledge belongs to a platform, the hang anchors (and the climb-up target) now shift with the platform, so you ride it while hanging and climb up onto it instead of falling back. Prev 259 ride jitter + destroy animation.';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
