@@ -696,6 +696,8 @@ class Game {
     // Redstone
     this.redstone = new RedstoneSystem(data.redstoneComponents);
     this.redstone.soundCallback = (file, vol) => this._playSound(file, vol);
+    // §Phase R — a player projectile that strikes a Target Block fires it (pulse/toggle).
+    this.mobManager.onTargetHit = (col, row) => { if (this.level.get(row, col) === BLOCK.TARGET_BLOCK) this.redstone.hitTarget(col, row, this.level, false); };
 
     // Monkey-patch Level.isSolid for trapdoors + portal frame passthrough
     const _origIsSolid = this.level.isSolid.bind(this.level);
@@ -2812,7 +2814,6 @@ class Game {
     this.mobManager.explosionEvents = [];
     this.redstone.tickTnt(this.level, this.mobManager);
     this.redstone.tickTargets(this.level);   // §Phase R — count down Target-Block pulses
-    this._processArrowTargetHits();          // §Phase R — a player arrow that struck a Target Block fires it
     // Remove dust/gate overlays whose block was destroyed (e.g. by TNT).
     // Rate-limited: only scan every 30 frames — TNT has a 120-frame fuse so this is plenty.
     if (this.frameCount % 30 === 0) {
@@ -3057,6 +3058,11 @@ class Game {
                 this.redstone.addComponent({ type: 'target', col: hoverCol, row: hoverRow, on: false, mode: 'pulse', pulseDur: 30, links: [], sandboxPlaced: true });
               }
               this._targetConfigPopup = { col: hoverCol, row: hoverRow };   // configure mode/duration
+            } else if (sb === BLOCK.REDSTONE_LAMP) {
+              if (!this.redstone.getAt(hoverCol, hoverRow)) {
+                this.redstone.addComponent({ type: 'lamp', col: hoverCol, row: hoverRow, on: false, color: 0, links: [], sandboxPlaced: true });
+              }
+              this._notify('Redstone Lamp placed — click it (Lamp selected) to change colour', '#ffd166', 130);
             } else if (sb === BLOCK.MUSIC_PLAYER) {
               const mpk = `${hoverCol},${hoverRow}`;
               if (!this._musicPlayerBlocks.has(mpk)) {
@@ -3090,6 +3096,9 @@ class Game {
           this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'contents' };     // config only with the matching block SELECTED
         } else if (target === BLOCK.TARGET_BLOCK && this.sandbox.selectedBlock === BLOCK.TARGET_BLOCK) {
           this._targetConfigPopup = { col: hoverCol, row: hoverRow };                  // §Phase R — reconfigure a placed Target
+        } else if (target === BLOCK.REDSTONE_LAMP && this.sandbox.selectedBlock === BLOCK.REDSTONE_LAMP) {
+          const comp = this.redstone.getAt(hoverCol, hoverRow);                          // §Phase R — cycle lamp colour
+          if (comp) { comp.color = ((comp.color || 0) + 1) % 9; this._notify('Lamp colour changed', '#ffd166', 70); }
         } else if (this.sandbox.isDustSelected) {
           // Dust selected — click on existing solid block
           const dustKey = `${hoverCol},${hoverRow}`;
@@ -7211,7 +7220,7 @@ class Game {
         // Device at neighbor. §Phase R (R3): a Target Block / Pulse Converter touched by powered
         // dust activates too, even though nothing "hit" it.
         const devComp = this.redstone.getAt(nc, nr);
-        if (devComp && (devComp.type === 'trapdoor' || devComp.type === 'tnt' || devComp.type === 'piston' || devComp.type === 'target' || devComp.type === 'pulse_converter')) {
+        if (devComp && (devComp.type === 'trapdoor' || devComp.type === 'tnt' || devComp.type === 'piston' || devComp.type === 'target' || devComp.type === 'pulse_converter' || devComp.type === 'lamp')) {
           this._rsEnqueue({ type: 'device', comp: devComp, frame: entry.frame + 6 });
         }
         // Transmitter block at neighbor
@@ -7313,6 +7322,8 @@ class Game {
         if (comp.type === 'pulse_converter') this.redstone._toggleFlip(comp, this.level);
         else this.redstone.hitTarget(comp.col, comp.row, this.level, false);
       }
+    } else if (comp.type === 'lamp') {
+      comp.on = anyOn;   // §Phase R — Redstone Lamp lights while any adjacent dust is powered
     }
   }
 
@@ -7413,7 +7424,7 @@ class Game {
         this._rsEnqueue({ col: nc, row: nr, powered, frame: f });
       }
       const devComp = this.redstone.getAt(nc, nr);
-      if (devComp && (devComp.type === 'trapdoor' || devComp.type === 'tnt' || devComp.type === 'piston')) {
+      if (devComp && (devComp.type === 'trapdoor' || devComp.type === 'tnt' || devComp.type === 'piston' || devComp.type === 'target' || devComp.type === 'pulse_converter' || devComp.type === 'lamp')) {
         this._rsEnqueue({ type: 'device', comp: devComp, frame: f });
       }
     }
@@ -15536,6 +15547,12 @@ class Game {
           this.redstone.addComponent({type: 'pressure_plate', col: c, row: r, on: false, links: [], sandboxPlaced: true});
         } else if (b === BLOCK.TNT && !this.redstone.getAt(c, r)) {
           this.redstone.addComponent({type: 'tnt', col: c, row: r, fuse: 0, links: [], sandboxPlaced: true});
+        } else if (b === BLOCK.TARGET_BLOCK && !this.redstone.getAt(c, r)) {   // §Phase R
+          this.redstone.addComponent({type: 'target', col: c, row: r, on: false, mode: 'pulse', pulseDur: 30, links: [], sandboxPlaced: true});
+        } else if (b === BLOCK.PULSE_CONVERTER && !this.redstone.getAt(c, r)) {
+          this.redstone.addComponent({type: 'pulse_converter', col: c, row: r, on: false, links: [], sandboxPlaced: true});
+        } else if (b === BLOCK.REDSTONE_LAMP && !this.redstone.getAt(c, r)) {
+          this.redstone.addComponent({type: 'lamp', col: c, row: r, on: false, color: 0, links: [], sandboxPlaced: true});
         }
       }
     }
@@ -15571,6 +15588,14 @@ class Game {
         const comp = this.redstone.getAt(t.col, t.row);
         if (comp && comp.type === 'target') { comp.mode = t.mode || 'pulse'; comp.pulseDur = t.pulseDur || 30; }
         else if (!comp) this.redstone.addComponent({ type: 'target', col: t.col, row: t.row, on: false, mode: t.mode || 'pulse', pulseDur: t.pulseDur || 30, links: [], sandboxPlaced: true });
+      }
+    }
+    if (Array.isArray(data.sandboxLamps)) {   // §Phase R — restore Redstone Lamp colours
+      for (const l of data.sandboxLamps) {
+        if (typeof l.col !== 'number' || typeof l.row !== 'number') continue;
+        const comp = this.redstone.getAt(l.col, l.row);
+        if (comp && comp.type === 'lamp') comp.color = l.color || 0;
+        else if (!comp) this.redstone.addComponent({ type: 'lamp', col: l.col, row: l.row, on: false, color: l.color || 0, links: [], sandboxPlaced: true });
       }
     }
 
@@ -15832,6 +15857,12 @@ class Game {
           this.redstone.addComponent({type: 'pressure_plate', col: c, row: r, on: false, links: [], sandboxPlaced: true});
         } else if (b === BLOCK.TNT && !this.redstone.getAt(c, r)) {
           this.redstone.addComponent({type: 'tnt', col: c, row: r, fuse: 0, links: [], sandboxPlaced: true});
+        } else if (b === BLOCK.TARGET_BLOCK && !this.redstone.getAt(c, r)) {   // §Phase R
+          this.redstone.addComponent({type: 'target', col: c, row: r, on: false, mode: 'pulse', pulseDur: 30, links: [], sandboxPlaced: true});
+        } else if (b === BLOCK.PULSE_CONVERTER && !this.redstone.getAt(c, r)) {
+          this.redstone.addComponent({type: 'pulse_converter', col: c, row: r, on: false, links: [], sandboxPlaced: true});
+        } else if (b === BLOCK.REDSTONE_LAMP && !this.redstone.getAt(c, r)) {
+          this.redstone.addComponent({type: 'lamp', col: c, row: r, on: false, color: 0, links: [], sandboxPlaced: true});
         }
       }
     }
@@ -16227,6 +16258,12 @@ class Game {
           this.redstone.addComponent({type: 'pressure_plate', col: c, row: r, on: false, links: [], sandboxPlaced: true});
         } else if (b === BLOCK.TNT && !this.redstone.getAt(c, r)) {
           this.redstone.addComponent({type: 'tnt', col: c, row: r, fuse: 0, links: [], sandboxPlaced: true});
+        } else if (b === BLOCK.TARGET_BLOCK && !this.redstone.getAt(c, r)) {   // §Phase R
+          this.redstone.addComponent({type: 'target', col: c, row: r, on: false, mode: 'pulse', pulseDur: 30, links: [], sandboxPlaced: true});
+        } else if (b === BLOCK.PULSE_CONVERTER && !this.redstone.getAt(c, r)) {
+          this.redstone.addComponent({type: 'pulse_converter', col: c, row: r, on: false, links: [], sandboxPlaced: true});
+        } else if (b === BLOCK.REDSTONE_LAMP && !this.redstone.getAt(c, r)) {
+          this.redstone.addComponent({type: 'lamp', col: c, row: r, on: false, color: 0, links: [], sandboxPlaced: true});
         }
       }
     }

@@ -91,6 +91,7 @@ const OTHER_PALETTE_ITEMS = [
   { kind: 'block',    blockType: BLOCK.RECEIVER,           },
   { kind: 'block',    blockType: BLOCK.TARGET_BLOCK,       },
   { kind: 'block',    blockType: BLOCK.PULSE_CONVERTER,    },
+  { kind: 'block',    blockType: BLOCK.REDSTONE_LAMP,      },
   // ── Pistons ───────────────────────────────────────────────────
   { kind: 'block', blockType: BLOCK.PISTON_BODY },
   // ── Storage ───────────────────────────────────────────────────

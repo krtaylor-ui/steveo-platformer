@@ -2492,6 +2492,9 @@ class MobManager {
     if (pvpTargets) for (const [id, p] of pvpTargets) teamOf[id] = p ? p.teamId : null;
     for (const pa of this.playerArrows) {
       pa.update(player, level);
+      // §Phase R — fire a Target Block at the moment of collision (before dead/pierce arrows are
+      // filtered below, so a crossbow bolt that doesn't stick still triggers it).
+      if (pa._blockHit && !pa._blockHitDone) { pa._blockHitDone = true; if (this.onTargetHit) this.onTargetHit(pa._blockHit.col, pa._blockHit.row); }
       if (!pa.alive || pa.stuck) continue;   // stuck projectiles rest until picked up
       for (const mob of this.mobs) {
         if (!mob.alive) continue;

@@ -102,7 +102,17 @@ const BLOCK = Object.freeze({
   TUBE_WALL:              83,   // §Travel Tube — a placed transparent tube you fly through; footprint cells (solid glass)
   TARGET_BLOCK:           84,   // §Phase R — redstone SOURCE: arrow/attack hit → pulse OR toggle; powers its links + adjacent dust
   PULSE_CONVERTER:        85,   // §Phase R — converts an incoming redstone PULSE into a persistent toggle (on/off/on…)
+  REDSTONE_LAMP:          86,   // §Phase R — lights up when it gets a redstone signal; click (lamp selected) to recolour
 });
+
+// §Phase R — Redstone Lamp colours (click a placed lamp with the Lamp selected to cycle).
+const LAMP_COLORS = [
+  { name: 'Red',    off: '#5a1f1f', on: '#ff5a4a' }, { name: 'Orange', off: '#5a3a17', on: '#ffa23a' },
+  { name: 'Yellow', off: '#5a541a', on: '#ffe94a' }, { name: 'Green',  off: '#1f4a22', on: '#5cf06a' },
+  { name: 'Cyan',   off: '#164e52', on: '#4ff0e0' }, { name: 'Blue',   off: '#1c2f5a', on: '#5a9cff' },
+  { name: 'Purple', off: '#3a1c56', on: '#b06cff' }, { name: 'Pink',   off: '#561f44', on: '#ff6cc4' },
+  { name: 'White',  off: '#4a4a52', on: '#ffffff' },
+];
 
 // Colour palette for decorative foliage (§10). Index 0 = green (default).
 const FOLIAGE_COLORS = [
@@ -234,6 +244,7 @@ const BLOCK_DATA = {
   [BLOCK.TUBE_WALL]:         { name: 'Travel Tube',     hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
   [BLOCK.TARGET_BLOCK]:      { name: 'Target Block',    hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
   [BLOCK.PULSE_CONVERTER]:   { name: 'Pulse Converter', hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
+  [BLOCK.REDSTONE_LAMP]:     { name: 'Redstone Lamp',   hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
 };
 
 // ── Pixel-art block renderers ────────────────────────────────
@@ -333,6 +344,7 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.TUBE_WALL:              _drawTubeWall(ctx, px, py, s, state);            break;
     case BLOCK.TARGET_BLOCK:           _drawTargetBlock(ctx, px, py, s, state.on);      break;
     case BLOCK.PULSE_CONVERTER:        _drawPulseConverter(ctx, px, py, s, state.on);   break;
+    case BLOCK.REDSTONE_LAMP:          _drawRedstoneLamp(ctx, px, py, s, state.on, state.colorIdx); break;
   }
 
   // Mining crack overlay
@@ -1839,6 +1851,21 @@ function _drawPulseConverter(ctx, px, py, s, on) {
   ctx.beginPath(); ctx.arc(kx + 3, py + s / 2, 5, 0, Math.PI * 2); ctx.fill();     // latch knob
   ctx.fillStyle = '#cdd6e0'; ctx.font = `${Math.round(s * 0.28)}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   ctx.fillText(on ? 'ON' : 'OFF', px + s / 2, py + 2); ctx.textAlign = 'left';
+}
+// §Phase R — Redstone Lamp: a coloured glass lamp, dim when off, glowing when powered.
+function _drawRedstoneLamp(ctx, px, py, s, on, colorIdx) {
+  const col = LAMP_COLORS[(colorIdx || 0) % LAMP_COLORS.length] || LAMP_COLORS[0];
+  ctx.fillStyle = '#2b2b30'; ctx.fillRect(px, py, s, s);                        // dark frame
+  const m = 3;
+  ctx.fillStyle = on ? col.on : col.off; ctx.fillRect(px + m, py + m, s - 2 * m, s - 2 * m);
+  if (on) {                                                                     // glow + highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.fillRect(px + m + 1, py + m + 1, s - 2 * m - 2, 3);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.beginPath(); ctx.arc(px + s / 2, py + s / 2, s * 0.28, 0, Math.PI * 2); ctx.fill();
+  }
+  // filament cross
+  ctx.strokeStyle = on ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.15)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(px + m, py + s / 2); ctx.lineTo(px + s - m, py + s / 2); ctx.moveTo(px + s / 2, py + m); ctx.lineTo(px + s / 2, py + s - m); ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
 }
 function _drawWarpPipe(ctx, px, py, s, state = {}, stem = false) {
   const t = !!state.pipeT, b = !!state.pipeB, l = !!state.pipeL, r = !!state.pipeR;

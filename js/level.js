@@ -154,6 +154,9 @@ class Level {
         } else if (block === BLOCK.PISTON_BODY && redstone) {
           const comp = redstone.getAt(c, r);
           if (comp) state = { dir: comp.dir || 'right', inverted: !!comp.inverted };
+        } else if (block === BLOCK.REDSTONE_LAMP && redstone) {
+          const comp = redstone.getAt(c, r);
+          state = { on: comp ? !!comp.on : false, colorIdx: comp ? (comp.color || 0) : 0 };   // §Phase R
         } else if (block === BLOCK.COIN || block === BLOCK.QUESTION_BLOCK ||
                    block === BLOCK.CONVEYOR_LEFT || block === BLOCK.CONVEYOR_RIGHT) {
           state = { frame };                       // §Classic Blocks — animation tick

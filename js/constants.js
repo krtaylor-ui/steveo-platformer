@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 237 (Phase R redstone — Target Block is now fully wired: shoot it → it powers adjacent redstone dust exactly like a lever (Pulse: timed; Toggle: on/off per hit), and R3 — powered dust touching a Target/Converter drives it back. Config modal (place or click a Target with it selected: Pulse vs Toggle + pulse length), saved with the world. Pulse Converter turns a pulse into a held toggle. REMAINING Phase-R ergonomic: placing a TX/RX directly ON a block (target/anchor) — for now put dust between them; melee toggle-off.)';
+const GAME_VERSION = 'v3 · build 238 (Phase R FIX + Redstone Lamp: the Target/Converter weren’t becoming redstone components in play (the load-path scans skipped them) so dust never connected — fixed; and a crossbow bolt now fires a Target at the moment of impact (was lost when a non-sticking arrow died). NEW Redstone Lamp — lights with a signal; click a placed lamp (Lamp selected) to cycle 9 rainbow colours; colour saved. REMAINING: directional Pulse Converter (pulse-side/toggle-side), TX/RX on top of a block, melee toggle-off.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
