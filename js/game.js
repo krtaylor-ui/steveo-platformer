@@ -2887,6 +2887,7 @@ class Game {
     if (this.frameCount % 30 === 0) {
       let changed = false;
       for (const [key, dust] of this._dustBlocks) {
+        if (dust._platform) continue;   // §Moving Redstone — dust riding a platform sits on AIR cells; don't reap it
         if (this.level.get(dust.row, dust.col) === BLOCK.AIR) {
           this._dustBlocks.delete(key);
           const qi = this._rsQueue.findIndex(e => !e.type && e.col === dust.col && e.row === dust.row);
@@ -18131,13 +18132,39 @@ class Game {
       for (const c of set) {
         if (this.level.get(c.row, c.col) === BLOCK.DIRECTION_CONTROLLER) {
           const cfg = this._dirControllers.get(c.col + ',' + c.row) || { lCh: null, rCh: null };
-          pl._dirCtrls.push({ lCh: cfg.lCh, rCh: cfg.rCh, _prevL: false, _prevR: false });
+          pl._dirCtrls.push({ lCh: cfg.lCh, rCh: cfg.rCh, dcol: c.col - pl.anchorCol, drow: c.row - pl.anchorRow, _prevL: false, _prevR: false });
         }
       }
       pl._weight = null;   // recompute on demand (§6/§9/§13)
-      // §rider physics — topmost cell per column (offset), for the SMOOTH surface a rider rests on.
+      // §rider physics — topmost SOLID cell per column (offset) = the smooth surface a rider rests on.
+      // Pressure plates are excluded so a rider stands on the block BELOW the plate (feet IN the plate
+      // cell) — that's what lets an on-platform plate actually press.
       pl._topByCol = {};
-      for (const c of pl.cells) if (pl._topByCol[c.dcol] === undefined || c.drow < pl._topByCol[c.dcol]) pl._topByCol[c.dcol] = c.drow;
+      for (const c of pl.cells) { if (c.blockType === BLOCK.PRESSURE_PLATE) continue; if (pl._topByCol[c.dcol] === undefined || c.drow < pl._topByCol[c.dcol]) pl._topByCol[c.dcol] = c.drow; }
+      // §Moving Redstone — capture every redstone thing riding this platform so it MOVES + FUNCTIONS
+      // with it. Ensure a component exists first (the grid scan may run after this lift). Refs are
+      // repositioned each cell-crossing by _carryPlatformRedstone.
+      pl._carriedRs = { comps: [], dust: [], gates: [], tx: [], rx: [] };
+      if (play && !pl._disabled) {
+        for (const c of pl.cells) {
+          const oc = pl.anchorCol + c.dcol, or_ = pl.anchorRow + c.drow, b = c.blockType, key = oc + ',' + or_;
+          if (!this.redstone.getAt(oc, or_)) {
+            if      (b === BLOCK.LEVER)          this.redstone.addComponent({ type: 'lever', col: oc, row: or_, on: false, links: [], sandboxPlaced: true });
+            else if (b === BLOCK.TRAPDOOR)       this.redstone.addComponent({ type: 'trapdoor', col: oc, row: or_, open: false, links: [], sandboxPlaced: true });
+            else if (b === BLOCK.PRESSURE_PLATE) this.redstone.addComponent({ type: 'pressure_plate', col: oc, row: or_, on: false, links: [], sandboxPlaced: true });
+            else if (b === BLOCK.TNT)            this.redstone.addComponent({ type: 'tnt', col: oc, row: or_, fuse: 0, links: [], sandboxPlaced: true });
+            else if (b === BLOCK.TARGET_BLOCK)   this.redstone.addComponent({ type: 'target', col: oc, row: or_, on: false, mode: 'pulse', pulseDur: 30, links: [], sandboxPlaced: true });
+            else if (b === BLOCK.PULSE_CONVERTER)this.redstone.addComponent({ type: 'pulse_converter', col: oc, row: or_, on: false, links: [], sandboxPlaced: true });
+            else if (b === BLOCK.REDSTONE_LAMP)  this.redstone.addComponent({ type: 'lamp', col: oc, row: or_, on: false, color: 0, links: [], sandboxPlaced: true });
+          }
+          const comp = this.redstone.getAt(oc, or_); if (comp) pl._carriedRs.comps.push({ comp, dcol: c.dcol, drow: c.drow });
+          const d = this._dustBlocks.get(key);   if (d) { d._platform = true; pl._carriedRs.dust.push({ o: d, dcol: c.dcol, drow: c.drow }); }
+          const g = this._gateBlocks.get(key);    if (g) pl._carriedRs.gates.push({ o: g, dcol: c.dcol, drow: c.drow });
+          const t = this._transmitters.get(key);  if (t) pl._carriedRs.tx.push({ o: t, dcol: c.dcol, drow: c.drow });
+          const r = this._receivers.get(key);     if (r) pl._carriedRs.rx.push({ o: r, dcol: c.dcol, drow: c.drow });
+        }
+        pl._lastRsCol = pl.anchorCol; pl._lastRsRow = pl.anchorRow;
+      }
       // Rail span in px (its cell width) — used to separate colliding platforms cleanly.
       let mnx = Infinity, mxx = -Infinity;
       for (const c of pl.cells) { mnx = Math.min(mnx, c.dcol); mxx = Math.max(mxx, c.dcol); }
@@ -18172,6 +18199,7 @@ class Game {
       const cos = Math.cos(tilt), sin = Math.sin(tilt);
       pl._solidCells = [];
       for (const c of pl.cells) {
+        if (c.blockType === BLOCK.PRESSURE_PLATE) continue;   // §Moving Redstone — a plate is walk-INTO, not solid
         // cell centre relative to the anchor centre, rotated by tilt, back to a world cell.
         const lx = c.dcol * BLOCK_SIZE, ly = c.drow * BLOCK_SIZE;
         const wx = pl._ax + lx * cos - ly * sin, wy = pl._ay + lx * sin + ly * cos;
@@ -18182,6 +18210,26 @@ class Game {
       }
     }
     this._platformSolidCells = set;
+  }
+
+  // §Moving Redstone — reposition every carried redstone thing to the platform's CURRENT cell, but only
+  // when the platform crosses a cell boundary (redstone is cell-based, so sub-cell moves don't matter —
+  // this keeps re-keying + dust-connectivity rebuilds rare). Components move by mutating col/row; the
+  // Map-keyed things (dust/gates/tx/rx) are re-keyed. Propagation, clicks, and plate-press all then read
+  // the live positions.
+  _carryPlatformRedstone(pl) {
+    if (!pl._carriedRs || pl._disabled || pl._destroyed) return;
+    const acol = Math.round((pl._ax - BLOCK_SIZE / 2) / BLOCK_SIZE), arow = Math.round((pl._ay - BLOCK_SIZE / 2) / BLOCK_SIZE);
+    if (acol === pl._lastRsCol && arow === pl._lastRsRow) return;
+    pl._lastRsCol = acol; pl._lastRsRow = arow;
+    const cr = pl._carriedRs;
+    for (const e of cr.comps) { e.comp.col = acol + e.dcol; e.comp.row = arow + e.drow; }
+    const rekey = (map, list) => { for (const e of list) { const o = e.o; map.delete(o.col + ',' + o.row); o.col = acol + e.dcol; o.row = arow + e.drow; map.set(o.col + ',' + o.row, o); } };
+    rekey(this._dustBlocks, cr.dust);
+    rekey(this._gateBlocks, cr.gates);
+    rekey(this._transmitters, cr.tx);
+    rekey(this._receivers, cr.rx);
+    this._dustConnDirty = true;
   }
 
   // §13 — Center of Gravity: entities currently standing on this platform (for rider weight + carry).
@@ -18249,7 +18297,8 @@ class Game {
       pl._ax = at.x; pl._ay = at.y;
     }
     this._resolvePlatformCollisions();      // §6 — two platforms meeting on one rail
-    for (const pl of this._platforms) this._updateCoG(pl);   // §13 — tilt from centre of mass
+    for (const pl of this._platforms) this._updateCoG(pl);         // §13 — tilt from centre of mass
+    for (const pl of this._platforms) this._carryPlatformRedstone(pl);   // §Moving Redstone — ride + function
     this._rebuildPlatformSolidCells();
     this._carryPlatformRiders();
   }
@@ -18399,6 +18448,15 @@ class Game {
       });
     }
     if (this._platformDebris.length > 240) this._platformDebris.splice(0, this._platformDebris.length - 240);
+    // §Moving Redstone — the platform is gone; remove its carried redstone so nothing lingers in the world.
+    if (pl._carriedRs) {
+      for (const e of pl._carriedRs.comps) { try { this.redstone.removeAt(e.comp.col, e.comp.row); } catch (_) {} }
+      for (const e of pl._carriedRs.dust)  this._dustBlocks.delete(e.o.col + ',' + e.o.row);
+      for (const e of pl._carriedRs.gates) this._gateBlocks.delete(e.o.col + ',' + e.o.row);
+      for (const e of pl._carriedRs.tx)    this._transmitters.delete(e.o.col + ',' + e.o.row);
+      for (const e of pl._carriedRs.rx)    this._receivers.delete(e.o.col + ',' + e.o.row);
+      pl._carriedRs = null;
+    }
     pl._destroyed = true; pl.cells = []; pl._solidCells = []; pl._airborne = false;
   }
   // §Destruction animation — physics for shattered-platform blocks: gravity, ground bounce (with
@@ -18841,10 +18899,20 @@ class Game {
   }
   // Evaluate every platform's Direction Controllers (edge-triggered). Sets pl._dir.
   _updateDirControllers() {
+    const acolOf = (pl) => Math.round((pl._ax - BLOCK_SIZE / 2) / BLOCK_SIZE);
+    const arowOf = (pl) => Math.round((pl._ay - BLOCK_SIZE / 2) / BLOCK_SIZE);
     for (const pl of this._platforms || []) {
       if (pl._disabled || pl._destroyed || !pl._dirCtrls) continue;
+      const acol = acolOf(pl), arow = arowOf(pl);
       for (const dc of pl._dirCtrls) {
-        const L = this._channelPowered(dc.lCh), R = this._channelPowered(dc.rCh);
+        // Inputs = an assigned transmitter CHANNEL, OR (now that redstone rides the platform) a
+        // powered dust/lever/target physically to the controller's LEFT / RIGHT cell.
+        let L = this._channelPowered(dc.lCh), R = this._channelPowered(dc.rCh);
+        if (dc.dcol != null) {
+          const cc = acol + dc.dcol, rr = arow + dc.drow;
+          if (this._cellPowered(cc - 1, rr)) L = true;
+          if (this._cellPowered(cc + 1, rr)) R = true;
+        }
         if (L !== dc._prevL || R !== dc._prevR) {          // an input changed → evaluate (edge only)
           if (L && R) pl._dir = -pl._dir;                  // both triggered together → toggle
           else if (L) pl._dir = -1;                        // Left → Backward
@@ -18853,6 +18921,14 @@ class Game {
         dc._prevL = L; dc._prevR = R;
       }
     }
+  }
+  // A cell is "powered" if it holds ON dust, or a powered simple generator (lever/plate/target/RX).
+  _cellPowered(col, row) {
+    const d = this._dustBlocks.get(col + ',' + row); if (d && d.on) return true;
+    const comp = this.redstone.getAt(col, row);
+    if (comp && (comp.type === 'lever' || comp.type === 'pressure_plate' || comp.type === 'target') && comp.on) return true;
+    const rx = this._receivers.get(col + ',' + row); if (rx && rx.powered) return true;
+    return false;
   }
   _handleDirCtrlPopupInput() {
     if (!this._dirCtrlPopup) return;
