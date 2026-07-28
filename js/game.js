@@ -18026,9 +18026,49 @@ class Game {
       const at = TRAVEL_TUBE.pointAt(pts, pl._dist);
       pl._ax = at.x; pl._ay = at.y;
     }
+    this._resolvePlatformCollisions();      // §6 — two platforms meeting on one rail
     this._rebuildPlatformSolidCells();
     this._carryPlatformRiders();
   }
+
+  // §6 — per-block-type weight (default 1 for every type → equals block count today; a real weighted
+  // sum so individual block weights can be tuned later without a rework). Shared by §6/§9/§13.
+  _blockWeight(type) { return (this._blockWeights && this._blockWeights[type]) || 1; }
+  _platformWeight(pl) {
+    if (pl._weight == null) pl._weight = MOVING_PLATFORM.weight(pl.cells || [], (t) => this._blockWeight(t));
+    return pl._weight;
+  }
+  // §6 — resolve two platforms meeting on the SAME rail, per the rail's track-level collision setting.
+  _resolvePlatformCollisions() {
+    const plats = (this._platforms || []).filter(p => !p._disabled && !p._destroyed && p.cells && p.cells.length);
+    for (let i = 0; i < plats.length; i++) {
+      for (let j = i + 1; j < plats.length; j++) {
+        const a = plats[i], b = plats[j];
+        if (a.railId !== b.railId) continue;
+        const rail = this._platformRail(a); if (!rail) continue;
+        // Meeting = anchors within ~1.2 cells along the rail. (Approximate — platforms are small groups.)
+        if (Math.abs(a._dist - b._dist) > BLOCK_SIZE * 1.2) continue;
+        const mode = rail.collideMode || 'passthrough';
+        if (mode === 'passthrough') continue;
+        if (mode === 'destroy') {
+          const wa = this._platformWeight(a), wb = this._platformWeight(b);
+          if (wa > wb) { this._destroyPlatform(b); continue; }
+          if (wb > wa) { this._destroyPlatform(a); continue; }
+          // tie → behave like Redirect
+        }
+        // redirect (also the destroy-tie case): both reverse + separate so they don't re-collide instantly.
+        const mid = (a._dist + b._dist) / 2, gap = BLOCK_SIZE * 0.7;
+        if (a._dist <= b._dist) { a._dist = mid - gap; b._dist = mid + gap; } else { a._dist = mid + gap; b._dist = mid - gap; }
+        a._dir = -a._dir; b._dir = -b._dir;
+      }
+    }
+  }
+  _destroyPlatform(pl) {
+    pl._destroyed = true; pl.cells = []; pl._solidCells = [];
+    this._shatterPlatform(pl);      // §11 scatter (safe stub until then)
+    this._notify('Platform crushed by a heavier one', '#c66', 120);
+  }
+  _shatterPlatform(pl) { /* §11 — real ballistic scatter; safe no-op until then */ }
 
   // Decide whether a platform is currently moving, from its Movement Mode + (for redstone) signal.
   _resolvePlatformMoving(pl) {
@@ -18312,33 +18352,36 @@ class Game {
     if (!rail) { this._railPopup = null; return; }
     if (!this.input.mouse.clicked) return;
     const mx = this.input.mouse.x, my = this.input.mouse.y;
-    const pw = 300, ph = 210, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const pw = 300, ph = 254, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
     // close (X or outside)
     if (hit(px + pw - 30, py + 8, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._railPopup = null; this.input.mouse.clicked = false; return; }
-    if (hit(px + 20, py + 48, pw - 40, 30)) { this._cycleRailVis(rail); }
-    else if (hit(px + 20, py + 88, pw - 40, 30)) { rail.loop = !this._railIsLoop(rail); if (rail.loop && (rail.cells[0].col !== rail.cells[rail.cells.length-1].col || rail.cells[0].row !== rail.cells[rail.cells.length-1].row)) rail.cells.push({col:rail.cells[0].col,row:rail.cells[0].row}); this._invalidateRailGeom(rail); this._reapplyRailGrid(); this._notify(this._railIsLoop(rail)?'Rail: closed loop':'Rail: open path','#c9a54a',110); }
-    else if (hit(px + 20, py + 128, pw - 40, 30)) { this._railEditNodes = { id: rail.id, sel: -1 }; this._railPopup = null; this._notify('Editing rail nodes — drag waypoints; double-click an end to extend; Esc when done', '#c9a54a', 200); }
-    else if (hit(px + 20, py + 168, pw - 40, 30)) { this._deleteRail(rail); this._railPopup = null; this._notify('Rail deleted', '#c66', 100); }
+    if (hit(px + 20, py + 44, pw - 40, 28)) { this._cycleRailVis(rail); }
+    else if (hit(px + 20, py + 78, pw - 40, 28)) { rail.loop = !this._railIsLoop(rail); if (rail.loop && (rail.cells[0].col !== rail.cells[rail.cells.length-1].col || rail.cells[0].row !== rail.cells[rail.cells.length-1].row)) rail.cells.push({col:rail.cells[0].col,row:rail.cells[0].row}); this._invalidateRailGeom(rail); this._reapplyRailGrid(); this._notify(this._railIsLoop(rail)?'Rail: closed loop':'Rail: open path','#c9a54a',110); }
+    else if (hit(px + 20, py + 112, pw - 40, 28)) { const o = ['passthrough', 'redirect', 'destroy']; rail.collideMode = o[(o.indexOf(rail.collideMode || 'passthrough') + 1) % 3]; this._notify('Platform collision: ' + rail.collideMode, '#c9a54a', 110); }
+    else if (hit(px + 20, py + 146, pw - 40, 28)) { this._railEditNodes = { id: rail.id, sel: -1 }; this._railPopup = null; this._notify('Editing rail nodes — drag waypoints; right-click a waypoint for a Pause Node; double-click an end to extend; Esc when done', '#c9a54a', 240); }
+    else if (hit(px + 20, py + 180, pw - 40, 28)) { this._deleteRail(rail); this._railPopup = null; this._notify('Rail deleted', '#c66', 100); }
     this.input.mouse.clicked = false;
   }
   _drawRailPopup(ctx) {
     if (!this._railPopup) return;
     const rail = this._railById(this._railPopup.id);
     if (!rail) { this._railPopup = null; return; }
-    const pw = 300, ph = 210, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const pw = 300, ph = 254, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     this._roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#241d10'; ctx.fill(); ctx.strokeStyle = '#c9a54a'; ctx.lineWidth = 2; ctx.stroke();
     ctx.fillStyle = '#c9a54a'; ctx.font = 'bold 14px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('RAIL', px + pw / 2, py + 22);
+    ctx.fillText('RAIL', px + pw / 2, py + 20);
     ctx.fillStyle = '#aaa'; ctx.font = 'bold 12px Courier New'; ctx.fillText('✕', px + pw - 19, py + 19);
-    const btn = (y, label) => { this._roundRect(ctx, px + 20, y, pw - 40, 30, 5); ctx.fillStyle = '#3a2f18'; ctx.fill(); ctx.strokeStyle = '#c9a54a'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = '#f0e0b0'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 15); };
+    const btn = (y, label) => { this._roundRect(ctx, px + 20, y, pw - 40, 28, 5); ctx.fillStyle = '#3a2f18'; ctx.fill(); ctx.strokeStyle = '#c9a54a'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = '#f0e0b0'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 14); };
     const visLabel = rail.vis === 'solid' ? 'Visible + Solid' : rail.vis === 'invisible' ? 'Invisible' : 'Visible + Non-solid';
-    btn(py + 48, 'Visibility: ' + visLabel);
-    btn(py + 88, 'Loop: ' + (this._railIsLoop(rail) ? 'Closed' : 'Open'));
-    btn(py + 128, 'Edit Nodes');
-    btn(py + 168, 'Delete Rail');
+    const colLabel = { passthrough: 'Pass Through', redirect: 'Redirect', destroy: 'Destroy Smaller' }[rail.collideMode || 'passthrough'];
+    btn(py + 44, 'Visibility: ' + visLabel);
+    btn(py + 78, 'Loop: ' + (this._railIsLoop(rail) ? 'Closed' : 'Open'));
+    btn(py + 112, 'Platforms Meet: ' + colLabel);
+    btn(py + 146, 'Edit Nodes');
+    btn(py + 180, 'Delete Rail');
     ctx.restore();
   }
 
