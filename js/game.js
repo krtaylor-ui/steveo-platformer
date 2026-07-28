@@ -9005,6 +9005,9 @@ class Game {
           blockType === BLOCK.PISTON_BODY) {
         this.redstone.removeAt(col, row);
       }
+      // §Moving Platforms — removing an Anchor drops its platform binding + the Direction-Controller cfg.
+      if (blockType === BLOCK.ANCHOR_BLOCK) this._platforms = (this._platforms || []).filter(p => !(p.anchorCol === col && p.anchorRow === row));
+      if (blockType === BLOCK.DIRECTION_CONTROLLER) this._dirControllers.delete(`${col},${row}`);
       if (blockType === BLOCK.CHEST) {
         this._dropChestItems(col, row);
         this._chests.delete(`${col},${row}`);
@@ -18794,6 +18797,12 @@ class Game {
         for (const c of pl.cells) {
           const px = ox + c.dcol * BLOCK_SIZE - this.camera.x, py = oy + c.drow * BLOCK_SIZE - this.camera.y;
           try { drawBlock(ctx, c.blockType, px, py, 0, this._platformCellState(pl, c)); } catch (e) { ctx.fillStyle = '#888'; ctx.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE); }
+        }
+        // §Moving Redstone — draw the platform's dust ON TOP of its blocks (the global dust overlay draws
+        // BEFORE platforms, so a platform's blocks would otherwise paint over its own dust → invisible).
+        if (pl._carriedRs) for (const e of pl._carriedRs.dust) {
+          const px = ox + e.dcol * BLOCK_SIZE - this.camera.x, py = oy + e.drow * BLOCK_SIZE - this.camera.y;
+          try { this._drawDustPattern(ctx, px, py, !!e.o.on, e.o.on ? 1 : 0.6); } catch (_) {}
         }
         ctx.restore();
       }
