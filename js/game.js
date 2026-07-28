@@ -738,6 +738,10 @@ class Game {
       if (b === BLOCK.END_PORTAL) return false;
       // Extended piston head is solid at its computed position
       if (rs.isPistonHeadAt(col, row)) return true;
+      // §Moving Platforms — a moving platform's block currently occupies this cell (rounded from its
+      // smooth position). Rebuilt each frame in _updatePlatforms; lets all existing grid physics
+      // (standing, walls, mob nav-physics) treat platforms as solid without a separate collider.
+      if (this._platformSolidCells && this._platformSolidCells.has(col + ',' + row)) return true;
       return _origIsSolid(row, col);
     };
 
@@ -1968,6 +1972,11 @@ class Game {
         this._handleRailPopupInput();
         return;
       }
+      // §Moving Platforms — anchor config modal
+      if (this._anchorPopup) {
+        this._handleAnchorPopupInput();
+        return;
+      }
     }
 
     // Normal inventory open: handle clicks and freeze gameplay
@@ -2259,6 +2268,7 @@ class Game {
     if (this._comboTrainer) this._comboTrainer.update();   // §Combo Trainer — dummy upkeep + stats
     this._updateClassicBlocks();             // §Classic Blocks — trampoline/spikes/coin/conveyor/pipe/etc.
     this._updateTravelTubes();               // §Travel Tube — entry / fly-through / exit
+    this._updatePlatforms();                 // §Moving Platforms — advance rails, carry riders
     // §Moving-platform collision — if a platform/piston/pushed block carried a player INTO a solid
     // (tube wall, block, piston head), push them back out. Fixes "carried through the tube mouth"
     // and, generally, collision not running when the player is displaced by something else.
@@ -2964,6 +2974,10 @@ class Game {
         this._railDraftClick(hoverRow, hoverCol);                       // §Moving Platforms — lay down a rail path
       } else if (_railHit && !this._railDraft && !this.input.mouse.altClicked && (_railSel || target === BLOCK.RAIL)) {
         this._openRailPopup(_railHit);                                  // §Moving Platforms — edit a placed rail
+      } else if (this._anchorRepositionMode != null && !this.input.mouse.altClicked) {
+        this._repositionAnchor(hoverRow, hoverCol);                     // §Moving Platforms — move a placed anchor
+      } else if (this.sandbox.selectedBlock === BLOCK.ANCHOR_BLOCK && !this.input.mouse.altClicked) {
+        this._placeAnchor(hoverRow, hoverCol);                          // §Moving Platforms — bind a platform to a rail
       } else
       // Alt+Click → eyedropper: pick block under cursor
       if (this.input.mouse.altClicked) {
@@ -6394,6 +6408,7 @@ class Game {
       if (this._classicPopup) this._drawClassicPopup(ctx);
       if (this._tubePopup) this._drawTubePopup(ctx);
       if (this._railPopup) this._drawRailPopup(ctx);
+      if (this._anchorPopup) this._drawAnchorPopup(ctx);
     }
 
     this._drawBiomeLabel(ctx, biome);
@@ -17881,8 +17896,303 @@ class Game {
     ctx.restore();
   }
 
-  _drawPlatforms(ctx) { /* §Moving Platforms — filled in by the Platform Construction section */ }
-  _initPlatformsRuntime() { /* §Moving Platforms — filled in by the Platform Construction section */ }
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // §Moving Platforms §2/§3/§4 — ANCHOR + PLATFORM CONSTRUCTION + CARRYING.
+  // An Anchor Block placed ON a rail binds a PLATFORM = the connected block group flood-filled from
+  // the anchor (computed at play start). In PLAY the group is lifted out of the static grid and driven
+  // along the rail; its cells register as solid (rounded) so all existing physics treat it as ground,
+  // and riders (players/mobs/items) standing on it are carried by the per-frame delta + depenetrated.
+  // In SANDBOX the blocks stay in the grid (editable); only a direction arrow + anchor marker draw.
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  _platformRail(pl) { return this._railById(pl.railId); }
+  _platformAt(row, col) { return (this._platforms || []).find(p => p.anchorRow === row && p.anchorCol === col) || null; }
+
+  // Placement / config entry: click a rail with the Anchor selected → bind a platform there; click an
+  // existing anchor → open its config modal.
+  _placeAnchor(row, col) {
+    const existing = this._platformAt(row, col);
+    if (existing) { this._anchorPopup = { col, row }; return; }
+    const rail = this._railAtCell(row, col);
+    if (!rail) { this._notify('Anchor Block must be placed ON a rail', '#CC4444', 130); return; }
+    const wx = col * BLOCK_SIZE + BLOCK_SIZE / 2, wy = row * BLOCK_SIZE + BLOCK_SIZE / 2;
+    const dist = this._railNearestDist(rail, wx, wy);
+    this.level.set(row, col, BLOCK.ANCHOR_BLOCK);
+    this._nextPlatformId = (this._nextPlatformId || 0) + 1;
+    const pl = {
+      id: this._nextPlatformId, railId: rail.id, anchorCol: col, anchorRow: row, anchorDist: dist,
+      cells: [], initialDir: 1, mode: 'continuous', signalResponse: 'sustained',
+      returnMode: 'roundtrip', speed: 2, dirCtrl: null, cog: false,
+    };
+    this._platforms.push(pl);
+    this._anchorPopup = { col, row };
+    this._notify('Anchor placed on rail — configure movement', '#3a6ea5', 140);
+  }
+
+  // Flood-fill the connected block group bound to each anchor, from the STATIC grid. In play we then
+  // LIFT those cells out of the grid (→ AIR) and store offsets relative to the anchor so the group can
+  // move as one. Called on every load path; a no-op lift in sandbox (blocks stay editable in the grid).
+  _initPlatformsRuntime() {
+    if (!this._platforms || !this._platforms.length) return;
+    const play = this.gameMode !== 'sandbox';
+    const isPlatBlock = (c, r) => {
+      if (r < 0 || r >= this.level.height || c < 0 || c >= this.level.width) return false;
+      const b = this.level.get(r, c);
+      return b !== BLOCK.AIR && b !== BLOCK.RAIL;   // any solid-ish block, but not the rail itself
+    };
+    const CAP = 300;   // a platform this large has almost certainly absorbed terrain — refuse to lift it
+    for (const pl of this._platforms) {
+      const rail = this._platformRail(pl);
+      // Recompute the connected set from the grid (authoritative "compute once at load" per §3).
+      const set = MOVING_PLATFORM.floodFill(pl.anchorCol, pl.anchorRow, isPlatBlock, CAP + 1);
+      pl._disabled = set.length > CAP;   // detached-platform rule: a runaway fill means it touched the ground
+      if (pl._disabled) {
+        this._notify('A platform is touching terrain (' + set.length + '+ blocks) — build it DETACHED; skipped', '#e0a040', 260);
+        pl.cells = [];
+      } else {
+        pl.cells = set.map(c => ({ dcol: c.col - pl.anchorCol, drow: c.row - pl.anchorRow, blockType: this.level.get(c.row, c.col) }));
+      }
+      // Runtime state.
+      pl._dist = pl.anchorDist || 0;
+      pl._dir = pl.initialDir || 1;
+      pl._curSpeed = pl.speed || 2;
+      pl._moving = (pl.mode === 'continuous');   // rider/one-touch/redstone start stopped
+      pl._touched = false;
+      pl._toggleState = false;                   // redstone Toggle response latch
+      pl._prevSignal = false;
+      pl._pauseTimer = 0;
+      pl._reactivateArmed = false;
+      if (rail) { const at = TRAVEL_TUBE.pointAt(this._railPts(rail), pl._dist); pl._ax = at.x; pl._ay = at.y; pl._pax = at.x; pl._pay = at.y; }
+      if (play) {
+        // Lift the group out of the static grid so it can move freely.
+        for (const c of pl.cells) this.level.set(pl.anchorRow + c.drow, pl.anchorCol + c.dcol, BLOCK.AIR);
+      }
+    }
+    if (play) this._rebuildPlatformSolidCells();
+  }
+
+  // Rebuild the set of grid cells currently occupied by any moving platform (rounded from the smooth
+  // anchor position). Checked by the isSolid patch so physics treats platforms as ground.
+  _rebuildPlatformSolidCells() {
+    const set = new Set();
+    for (const pl of this._platforms || []) {
+      if (!pl.cells) continue;
+      const acol = Math.round((pl._ax - BLOCK_SIZE / 2) / BLOCK_SIZE);
+      const arow = Math.round((pl._ay - BLOCK_SIZE / 2) / BLOCK_SIZE);
+      pl._solidCells = [];
+      for (const c of pl.cells) {
+        const cc = acol + c.dcol, rr = arow + c.drow;
+        set.add(cc + ',' + rr);
+        pl._solidCells.push({ col: cc, row: rr });
+      }
+    }
+    this._platformSolidCells = set;
+  }
+
+  // Per-frame movement + rider carry. Runs in play modes only.
+  _updatePlatforms() {
+    if (this.gameMode === 'sandbox' || !this._platforms || !this._platforms.length) return;
+    for (const pl of this._platforms) {
+      if (pl._disabled) continue;
+      const rail = this._platformRail(pl);
+      if (!rail) continue;
+      const pts = this._railPts(rail);
+      const L = TRAVEL_TUBE.length(pts);
+      this._resolvePlatformMoving(pl);                 // set pl._moving from its mode + signal
+      // Pause-node countdown handled in §5 hook.
+      this._tickPlatformPause(pl);
+      pl._pax = pl._ax; pl._pay = pl._ay;              // remember previous anchor pos for the carry delta
+      if (pl._moving && !pl._paused && L > 0) {
+        const step = Math.max(0, pl._curSpeed || 0);
+        const res = MOVING_PLATFORM.advance(pl._dist, pl._dir, step, L, { loop: this._railIsLoop(rail), roundTrip: pl.returnMode !== 'oneway' });
+        pl._dist = res.dist; pl._dir = res.dir;
+        if (res.stopped && pl.returnMode === 'oneway') pl._moving = false;
+        this._checkPlatformPauseArrival(pl, rail);      // §5 — did we reach a pause node?
+      }
+      const at = TRAVEL_TUBE.pointAt(pts, pl._dist);
+      pl._ax = at.x; pl._ay = at.y;
+    }
+    this._rebuildPlatformSolidCells();
+    this._carryPlatformRiders();
+  }
+
+  // Decide whether a platform is currently moving, from its Movement Mode + (for redstone) signal.
+  _resolvePlatformMoving(pl) {
+    if (pl.mode === 'continuous') { pl._moving = true; return; }
+    if (pl.mode === 'rider')      { pl._moving = this._platformHasRider(pl); return; }
+    if (pl.mode === 'onetouch')   { if (this._platformHasRider(pl)) pl._touched = true; pl._moving = pl._touched; return; }
+    if (pl.mode === 'redstone') {
+      const sig = this._anchorSignal(pl);
+      if (pl.signalResponse === 'toggle') {
+        if (sig && !pl._prevSignal) pl._toggleState = !pl._toggleState;   // rising edge flips
+        pl._moving = pl._toggleState;
+      } else {
+        pl._moving = sig;                                                 // sustained
+      }
+      pl._prevSignal = sig;
+      return;
+    }
+    pl._moving = false;
+  }
+
+  // The anchor's built-in hidden receiver: is there an incoming redstone signal? Reads adjacent dust
+  // OR any powered generator next to the anchor cell (reuses the Phase R adjacency helper), PLUS any
+  // transmitter channel the anchor listens to.
+  _anchorSignal(pl) {
+    const col = pl.anchorCol, row = pl.anchorRow;
+    // adjacency (dust or bare generator) at the anchor's current rounded cell + its stored cell
+    const acol = Math.round((pl._ax - BLOCK_SIZE / 2) / BLOCK_SIZE), arow = Math.round((pl._ay - BLOCK_SIZE / 2) / BLOCK_SIZE);
+    for (const [c, r] of [[col, row], [acol, arow]]) {
+      const DIRS = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+      if (DIRS.some(([dr, dc]) => { const d = this._dustBlocks.get(`${c + dc},${r + dr}`); return d && d.on; })) return true;
+      if (this._adjacentGeneratorPower(c, r)) return true;
+    }
+    // channel listen (if wired via a transmitter number)
+    if (pl._listenTo && pl._listenTo.size) {
+      for (const tx of this._transmitters.values()) if (tx.powered && pl._listenTo.has(tx.number)) return true;
+    }
+    return false;
+  }
+
+  // Is a player / mob standing on this platform (feet just above one of its solid cells)?
+  _platformHasRider(pl) {
+    if (!pl._solidCells || !pl._solidCells.length) return false;
+    const top = new Set(pl._solidCells.map(c => c.col + ',' + c.row));
+    const onIt = (e) => {
+      if (!e || e.hp <= 0) return false;
+      const footRow = Math.floor((e.y + e.height + 2) / BLOCK_SIZE);
+      const c0 = Math.floor((e.x + 3) / BLOCK_SIZE), c1 = Math.floor((e.x + e.width - 3) / BLOCK_SIZE);
+      for (let c = c0; c <= c1; c++) if (top.has(c + ',' + footRow)) return true;
+      return false;
+    };
+    for (const p of this.activePlayers()) if (onIt(p)) return true;
+    if (this.mobManager && this.mobManager.mobs) for (const m of this.mobManager.mobs) if (onIt(m)) return true;
+    return false;
+  }
+
+  // Carry riders: move any entity standing on a platform by that platform's per-frame anchor delta,
+  // then let normal collision / depenetration settle it (§build-225 pattern).
+  _carryPlatformRiders() {
+    for (const pl of this._platforms || []) {
+      const dx = pl._ax - pl._pax, dy = pl._ay - pl._pay;
+      if (dx === 0 && dy === 0) continue;
+      if (!pl._solidCells || !pl._solidCells.length) continue;
+      const top = new Set(pl._solidCells.map(c => c.col + ',' + c.row));
+      const carry = (e) => {
+        if (!e || e.hp <= 0) return;
+        const footRow = Math.floor((e.y + e.height + 2) / BLOCK_SIZE);
+        const c0 = Math.floor((e.x + 3) / BLOCK_SIZE), c1 = Math.floor((e.x + e.width - 3) / BLOCK_SIZE);
+        let on = false;
+        for (let c = c0; c <= c1; c++) if (top.has(c + ',' + footRow)) { on = true; break; }
+        if (!on) return;
+        e.x += dx; e.y += dy;
+      };
+      for (const p of this.activePlayers()) carry(p);
+      if (this.mobManager && this.mobManager.mobs) for (const m of this.mobManager.mobs) carry(m);
+      // Dropped items ride too (they store world x/y).
+      const items = this._platformerItems || this._normalDrops || null;
+      if (Array.isArray(items)) for (const it of items) { if (it && it.wy != null) { const fr = Math.floor((it.wy + 8) / BLOCK_SIZE), ic = Math.floor(it.wx / BLOCK_SIZE); if (top.has(ic + ',' + fr)) { it.wx += dx; it.wy += dy; } } }
+    }
+  }
+
+  // §5 hooks (implemented in the Pause Nodes section) — safe no-ops until then.
+  _tickPlatformPause(pl) { if (pl._pauseTimer > 0) { pl._pauseTimer--; pl._paused = pl._pauseTimer > 0; } else if (pl._paused && pl._pauseUntilReact) { /* wait for reactivation */ } else { pl._paused = false; } }
+  _checkPlatformPauseArrival(pl, rail) { /* filled in §5 */ }
+
+  _drawPlatforms(ctx) {
+    if (!this._platforms || !this._platforms.length) return;
+    const isSandbox = this.gameMode === 'sandbox';
+    for (const pl of this._platforms) {
+      if (isSandbox) {
+        // Editor: blocks stay in the grid; draw an anchor ring + initial-direction arrow.
+        const rail = this._platformRail(pl); if (!rail) continue;
+        const pts = this._railPts(rail);
+        const at = TRAVEL_TUBE.pointAt(pts, pl.anchorDist || 0);
+        const x = at.x - this.camera.x, y = at.y - this.camera.y;
+        ctx.save();
+        ctx.strokeStyle = '#3a6ea5'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.stroke();
+        // direction arrow along the rail
+        const ahead = TRAVEL_TUBE.pointAt(pts, (pl.anchorDist || 0) + (pl.initialDir >= 0 ? 12 : -12));
+        const ang = Math.atan2(ahead.y - at.y, ahead.x - at.x);
+        ctx.translate(x, y); ctx.rotate(ang); ctx.fillStyle = '#7fb2e6';
+        ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(6, -5); ctx.lineTo(6, 5); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      } else {
+        // Play: draw the lifted block group at its smooth position.
+        if (!pl.cells) continue;
+        const ox = pl._ax - BLOCK_SIZE / 2, oy = pl._ay - BLOCK_SIZE / 2;
+        for (const c of pl.cells) {
+          const px = ox + c.dcol * BLOCK_SIZE - this.camera.x, py = oy + c.drow * BLOCK_SIZE - this.camera.y;
+          try { drawBlock(ctx, c.blockType, px, py, 0, {}); } catch (e) { ctx.fillStyle = '#888'; ctx.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE); }
+        }
+      }
+    }
+  }
+
+  // ── Anchor config modal ─────────────────────────────────────────────────────────────────────
+  _handleAnchorPopupInput() {
+    if (!this._anchorPopup) return;
+    const pl = this._platformAt(this._anchorPopup.row, this._anchorPopup.col);
+    if (!pl) { this._anchorPopup = null; return; }
+    if (!this.input.mouse.clicked) return;
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const pw = 340, ph = 300, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
+    if (hit(px + pw - 30, py + 8, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._anchorPopup = null; this.input.mouse.clicked = false; return; }
+    const rowY = (i) => py + 44 + i * 34;
+    if (hit(px + 16, rowY(0), pw - 32, 28)) { pl.initialDir = (pl.initialDir >= 0 ? -1 : 1); }
+    else if (hit(px + 16, rowY(1), pw - 32, 28)) { const o = ['continuous', 'rider', 'onetouch', 'redstone']; pl.mode = o[(o.indexOf(pl.mode) + 1) % 4]; }
+    else if (pl.mode === 'redstone' && hit(px + 16, rowY(2), pw - 32, 28)) { pl.signalResponse = pl.signalResponse === 'toggle' ? 'sustained' : 'toggle'; }
+    else if (hit(px + 16, rowY(3), pw - 32, 28)) { pl.returnMode = pl.returnMode === 'oneway' ? 'roundtrip' : 'oneway'; }
+    else if (hit(px + 16, rowY(4), pw - 32, 28)) { const speeds = [0.5, 1, 1.5, 2, 3, 4, 6]; const i = speeds.findIndex(s => s >= pl.speed); pl.speed = speeds[(i + 1) % speeds.length]; }
+    else if (hit(px + 16, rowY(5), (pw - 40) / 2, 28)) { this._anchorRepositionMode = pl.id; this._anchorPopup = null; this._notify('Reposition: click a new point on the rail', '#3a6ea5', 160); }
+    else if (hit(px + 24 + (pw - 40) / 2, rowY(5), (pw - 40) / 2, 28)) { this._removePlatform(pl); this._anchorPopup = null; this._notify('Platform removed', '#c66', 100); }
+    this.input.mouse.clicked = false;
+  }
+  _removePlatform(pl) {
+    if (this.level.get(pl.anchorRow, pl.anchorCol) === BLOCK.ANCHOR_BLOCK) this.level.set(pl.anchorRow, pl.anchorCol, BLOCK.AIR);
+    this._platforms = (this._platforms || []).filter(p => p !== pl);
+  }
+  _repositionAnchor(row, col) {
+    const pl = (this._platforms || []).find(p => p.id === this._anchorRepositionMode);
+    this._anchorRepositionMode = null;
+    if (!pl) return;
+    const rail = this._platformRail(pl);
+    if (!rail || !this._railAtCell(row, col) || this._railAtCell(row, col).id !== rail.id) { this._notify('Must click a point on the SAME rail', '#CC4444', 130); return; }
+    if (this.level.get(pl.anchorRow, pl.anchorCol) === BLOCK.ANCHOR_BLOCK) this.level.set(pl.anchorRow, pl.anchorCol, BLOCK.AIR);
+    const wx = col * BLOCK_SIZE + BLOCK_SIZE / 2, wy = row * BLOCK_SIZE + BLOCK_SIZE / 2;
+    pl.anchorDist = this._railNearestDist(rail, wx, wy);
+    pl.anchorCol = col; pl.anchorRow = row;
+    this.level.set(row, col, BLOCK.ANCHOR_BLOCK);
+    this._notify('Anchor repositioned', '#3a6ea5', 110);
+  }
+  _drawAnchorPopup(ctx) {
+    if (!this._anchorPopup) return;
+    const pl = this._platformAt(this._anchorPopup.row, this._anchorPopup.col);
+    if (!pl) { this._anchorPopup = null; return; }
+    const pw = 340, ph = 300, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    this._roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#12202e'; ctx.fill(); ctx.strokeStyle = '#3a6ea5'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#7fb2e6'; ctx.font = 'bold 14px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('ANCHOR — MOVEMENT', px + pw / 2, py + 22);
+    ctx.fillStyle = '#aaa'; ctx.font = 'bold 12px Courier New'; ctx.fillText('✕', px + pw - 19, py + 19);
+    const rowY = (i) => py + 44 + i * 34;
+    const btn = (i, label, on = true) => { this._roundRect(ctx, px + 16, rowY(i), pw - 32, 28, 5); ctx.fillStyle = on ? '#1d3346' : '#182028'; ctx.fill(); ctx.strokeStyle = on ? '#3a6ea5' : '#333'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = on ? '#d8ecff' : '#667'; ctx.font = '12px Courier New'; ctx.textAlign = 'center'; ctx.fillText(label, px + pw / 2, rowY(i) + 14); };
+    const modeLbl = { continuous: 'Continuous', rider: 'Rider-Powered', onetouch: 'One-Touch Start', redstone: 'Redstone-Controlled' }[pl.mode];
+    btn(0, 'Initial Dir: ' + (pl.initialDir >= 0 ? 'Forward ▶' : '◀ Backward'));
+    btn(1, 'Mode: ' + modeLbl);
+    btn(2, pl.mode === 'redstone' ? ('Signal: ' + (pl.signalResponse === 'toggle' ? 'Toggle' : 'Sustained')) : '(Signal — Redstone mode only)', pl.mode === 'redstone');
+    btn(3, 'Return: ' + (pl.returnMode === 'oneway' ? 'One-Way' : 'Round-Trip'));
+    btn(4, 'Speed: ' + pl.speed);
+    // reposition + remove on one row
+    this._roundRect(ctx, px + 16, rowY(5), (pw - 40) / 2, 28, 5); ctx.fillStyle = '#1d3346'; ctx.fill(); ctx.strokeStyle = '#3a6ea5'; ctx.stroke(); ctx.fillStyle = '#d8ecff'; ctx.fillText('Reposition', px + 16 + (pw - 40) / 4, rowY(5) + 14);
+    this._roundRect(ctx, px + 24 + (pw - 40) / 2, rowY(5), (pw - 40) / 2, 28, 5); ctx.fillStyle = '#3a1d1d'; ctx.fill(); ctx.strokeStyle = '#a55'; ctx.stroke(); ctx.fillStyle = '#f0c0c0'; ctx.fillText('Remove', px + 24 + (pw - 40) * 0.75, rowY(5) + 14);
+    if (pl.mode === 'redstone' && pl.signalResponse === 'sustained') { ctx.fillStyle = '#e0b050'; ctx.font = '9px Courier New'; ctx.fillText('Toggle needed for pause-until-reactivate nodes', px + pw / 2, py + ph - 12); }
+    ctx.restore();
+  }
+
+  _drawPlatforms_stubRemoved() {}
 
   // ── Rail config modal (visibility cycle, edit nodes, loop toggle, delete).
   _openRailPopup(rail) { this._railPopup = { id: rail.id }; }
