@@ -18851,7 +18851,7 @@ class Game {
     if (!pl) { this._anchorPopup = null; return; }
     if (!this.input.mouse.clicked) return;
     const mx = this.input.mouse.x, my = this.input.mouse.y;
-    const pw = 340, ph = 334, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const pw = 340, ph = 374, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
     if (hit(px + pw - 30, py + 8, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._anchorPopup = null; this.input.mouse.clicked = false; return; }
     const rowY = (i) => py + 44 + i * 34;
@@ -18862,12 +18862,44 @@ class Game {
     else if (hit(px + 16, rowY(4), pw - 32, 28)) { const speeds = [0.5, 1, 1.5, 2, 3, 4, 6]; const i = speeds.findIndex(s => s >= pl.speed); pl.speed = speeds[(i + 1) % speeds.length]; }
     else if (hit(px + 16, rowY(5), pw - 32, 28)) { pl.cog = !pl.cog; }                            // §13 — Center of Gravity toggle
     else if (hit(px + 16, rowY(6), (pw - 40) / 2, 28)) { this._anchorRepositionMode = pl.id; this._anchorPopup = null; this._notify('Reposition: click a new point on the rail', '#3a6ea5', 160); }
-    else if (hit(px + 24 + (pw - 40) / 2, rowY(6), (pw - 40) / 2, 28)) { this._removePlatform(pl); this._anchorPopup = null; this._notify('Platform removed', '#c66', 100); }
+    else if (hit(px + 24 + (pw - 40) / 2, rowY(6), (pw - 40) / 2, 28)) { this._removePlatform(pl); this._anchorPopup = null; this._notify('Platform removed (build kept)', '#c66', 100); }
+    else if (hit(px + 16, rowY(7), pw - 32, 28)) { const n = this._deleteWholePlatform(pl); this._anchorPopup = null; this._notify('Whole platform deleted — ' + n + ' block(s) + redstone cleared', '#c66', 150); }
     this.input.mouse.clicked = false;
   }
   _removePlatform(pl) {
     if (this.level.get(pl.anchorRow, pl.anchorCol) === BLOCK.ANCHOR_BLOCK) this.level.set(pl.anchorRow, pl.anchorCol, BLOCK.AIR);
     this._platforms = (this._platforms || []).filter(p => p !== pl);
+  }
+  // Full teardown — purge EVERY construction block, dust overlay, and redstone device that belongs to
+  // this platform, for a clean-slate rebuild. (Plain "Remove" only unbinds the anchor and leaves the
+  // build + its redstone in the maps, which is how stale/orphaned components accumulate across edits.)
+  _deleteWholePlatform(pl) {
+    const cells = new Set();
+    // From the live grid (sandbox: the build is in place) …
+    const isPlatBlock = (c, r) => { if (r < 0 || r >= this.level.height || c < 0 || c >= this.level.width) return false; const b = this.level.get(r, c); return b !== BLOCK.AIR && b !== BLOCK.RAIL; };
+    for (const gc of MOVING_PLATFORM.floodFill(pl.anchorCol, pl.anchorRow, isPlatBlock, 400)) cells.add(gc.col + ',' + gc.row);
+    // … and from the lifted set (play: blocks are AIR in the grid, offsets live on pl.cells).
+    for (const c of (pl.cells || [])) cells.add((pl.anchorCol + c.dcol) + ',' + (pl.anchorRow + c.drow));
+    cells.add(pl.anchorCol + ',' + pl.anchorRow);
+    for (const key of cells) {
+      const [c, r] = key.split(',').map(Number);
+      this.level.set(r, c, BLOCK.AIR);
+      this._dustBlocks.delete(key);
+      this._gateBlocks.delete(key);
+      this._transmitters.delete(key);
+      this._receivers.delete(key);
+      this._dirControllers.delete(key);
+      if (this.redstone.getAt(c, r)) this.redstone.removeAt(c, r);
+    }
+    this.redstone.reindex();
+    this._dustConnDirty = true;
+    // Drop any queued redstone signals pointing at the purged cells (stale-state guard).
+    this._rsQueue = (this._rsQueue || []).filter(e => {
+      const kc = e.comp ? (e.comp.col + ',' + e.comp.row) : (e.col + ',' + e.row);
+      return !cells.has(kc);
+    });
+    this._platforms = (this._platforms || []).filter(p => p !== pl);
+    return cells.size;
   }
   // Move the WHOLE platform (anchor + its connected block group) to a new point on the same rail —
   // shift every construction block by the same delta so the platform stays intact (a single unit).
@@ -18898,7 +18930,7 @@ class Game {
     if (!this._anchorPopup) return;
     const pl = this._platformAt(this._anchorPopup.row, this._anchorPopup.col);
     if (!pl) { this._anchorPopup = null; return; }
-    const pw = 340, ph = 334, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const pw = 340, ph = 374, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     _roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#12202e'; ctx.fill(); ctx.strokeStyle = '#3a6ea5'; ctx.lineWidth = 2; ctx.stroke();
@@ -18917,7 +18949,9 @@ class Game {
     // reposition + remove on one row
     _roundRect(ctx, px + 16, rowY(6), (pw - 40) / 2, 28, 5); ctx.fillStyle = '#1d3346'; ctx.fill(); ctx.strokeStyle = '#3a6ea5'; ctx.stroke(); ctx.fillStyle = '#d8ecff'; ctx.fillText('Reposition', px + 16 + (pw - 40) / 4, rowY(6) + 14);
     _roundRect(ctx, px + 24 + (pw - 40) / 2, rowY(6), (pw - 40) / 2, 28, 5); ctx.fillStyle = '#3a1d1d'; ctx.fill(); ctx.strokeStyle = '#a55'; ctx.stroke(); ctx.fillStyle = '#f0c0c0'; ctx.fillText('Remove', px + 24 + (pw - 40) * 0.75, rowY(6) + 14);
-    if (pl.mode === 'redstone' && pl.signalResponse === 'sustained') { ctx.fillStyle = '#e0b050'; ctx.font = '9px Courier New'; ctx.fillText('Toggle needed for pause-until-reactivate nodes', px + pw / 2, py + ph - 12); }
+    // Full teardown — clears blocks + all redstone for a clean rebuild.
+    _roundRect(ctx, px + 16, rowY(7), pw - 32, 28, 5); ctx.fillStyle = '#4a1414'; ctx.fill(); ctx.strokeStyle = '#c66'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = '#ffd0d0'; ctx.font = '12px Courier New'; ctx.fillText('⌫ Delete Whole Platform (blocks + redstone)', px + pw / 2, rowY(7) + 14);
+    if (pl.mode === 'redstone' && pl.signalResponse === 'sustained') { ctx.fillStyle = '#e0b050'; ctx.font = '9px Courier New'; ctx.fillText('Toggle needed for pause-until-reactivate nodes', px + pw / 2, py + ph - 10); }
     ctx.restore();
   }
 
