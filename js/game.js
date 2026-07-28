@@ -1545,7 +1545,7 @@ class Game {
 
     // Animate death body-part scatter (all modes; runs even on the death/end screen).
     this._updateDeathParts();
-    this._updatePlatformDebris();   // §Moving Platforms — shattered-platform block physics
+    try { this._updatePlatformDebris(); } catch (e) { /* ignore */ }   // §Moving Platforms — shattered-platform block physics
 
     // §Travel Tube — Esc ends tube editing / cancels a draft FIRST, and consumes the press so the
     // pause menu doesn't also open on the same tap (it only opens if we're NOT editing a tube).
@@ -2300,7 +2300,7 @@ class Game {
     if (this._comboTrainer) this._comboTrainer.update();   // §Combo Trainer — dummy upkeep + stats
     this._updateClassicBlocks();             // §Classic Blocks — trampoline/spikes/coin/conveyor/pipe/etc.
     this._updateTravelTubes();               // §Travel Tube — entry / fly-through / exit
-    this._updatePlatforms();                 // §Moving Platforms — advance rails, carry riders
+    try { this._updatePlatforms(); } catch (e) { if (typeof console !== 'undefined') console.error('platform update error (ignored):', e); }   // §Moving Platforms — never let a platform bug freeze the whole game
     // §Moving-platform collision — if a platform/piston/pushed block carried a player INTO a solid
     // (tube wall, block, piston head), push them back out. Fixes "carried through the tube mouth"
     // and, generally, collision not running when the player is displaced by something else.
@@ -6425,7 +6425,7 @@ class Game {
     }
     // Death body-part scatter (world-space, scales with zoom). SR draws its own.
     if (this.gameMode !== 'speedrunner' && this._deathParts.length) this._drawDeathParts(ctx);
-    if (this._platformDebris.length) this._drawPlatformDebris(ctx);   // §Moving Platforms — shatter debris
+    if (this._platformDebris.length) { try { this._drawPlatformDebris(ctx); } catch (e) { /* ignore */ } }   // §Moving Platforms — shatter debris
     ctx.restore(); // end world zoom (matches the unconditional save above)
     this._drawBlockFx(ctx);   // §Classic Blocks — shatter shards / coin pops / crumble cracks
     this._drawComboFx(ctx);   // §Phase 7 v2 — combo success ring at the player (world→screen)
@@ -18183,9 +18183,16 @@ class Game {
   // §13 — Center of Gravity: entities currently standing on this platform (for rider weight + carry).
   _platformRiders(pl) {
     const out = [];
-    if (!pl._solidCells || !pl._solidCells.length) return out;
-    for (const p of this.activePlayers()) if (this._entityRideKind(p, pl) === 'top') out.push(p);
-    if (this.mobManager && this.mobManager.mobs) for (const m of this.mobManager.mobs) if (this._entityRideKind(m, pl) === 'top') out.push(m);
+    if (!pl._topByCol) return out;
+    const on = (e) => {
+      if (!e || e.hp <= 0 || e._grappleOwn || e._grapple) return false;
+      const surf = this._platformSurfaceAt(pl, e.x + e.width / 2);
+      if (surf == null) return false;
+      const feet = e.y + e.height;
+      return feet >= surf - 8 && feet <= surf + 12;
+    };
+    for (const p of this.activePlayers()) if (on(p)) out.push(p);
+    if (this.mobManager && this.mobManager.mobs) for (const m of this.mobManager.mobs) if (on(m)) out.push(m);
     return out;
   }
 
