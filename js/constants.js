@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 build 264 (platform-lamp fixes): (1) platform lamps now stay lit WHILE MOVING — the render was reading the lamp at its authored cell, but redstone rides the platform so the component moved; it now reads the current cell. (2) Lamp conduction now respects COLOUR — adjacent lamps only light together if they are the SAME colour, so recolour a lamp (click it with the Lamp selected) to keep it independent; same-colour panels still light as one. Prev 263 platform dust renders + 1.0x launch accel.';
+const GAME_VERSION = 'v3 build 265 (redstone conduction + dust render + debris): (1) reverted the same-colour restriction — SINK CONDUCTION now spans lamps (all colours), trap doors, AND pistons: adjacent sinks form one network and activate together when the group touches a source. (2) Platform dust now renders with its FULL connected path + powered state (matching normal dust), drawn on top of the platform, so you can trace exactly where the signal flows. (3) Shatter debris damped harder — at most one small hop, then a dead thud + rest. Prev 264 platform lamps render while moving.';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

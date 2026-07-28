@@ -7529,34 +7529,30 @@ class Game {
       const d = this._dustBlocks.get(`${comp.col + dc},${comp.row + dr}`);
       return d && d.on;
     }) || this._adjacentGeneratorPower(comp.col, comp.row);   // §Adjacency power — dust OR a bare adjacent generator
-    if (comp.type === 'trapdoor') {
-      comp.open = anyOn;
-    } else if (comp.type === 'tnt' && anyOn && !comp.fuse) {
+    if (comp.type === 'tnt' && anyOn && !comp.fuse) {
       comp.fuse = 120;
-    } else if (comp.type === 'piston') {
-      this.redstone._activate(comp, anyOn, this.level);
     } else if (comp.type === 'target') {
       // §Phase R (R3) — powered adjacent dust drives a Target on its RISING edge, same as a real hit.
       const rising = anyOn && !comp._dustPowered;
       comp._dustPowered = anyOn;
       if (rising) this.redstone.hitTarget(comp.col, comp.row, this.level, false);
-    } else if (comp.type === 'lamp') {
-      // §Panel conduction — a lamp is lit if its connected LAMP GROUP touches any power source, so
-      // powering one lamp lights a whole adjoining panel. (Lamps conduct to each other like dust;
-      // gates/configurable devices are excluded, per Kevin.)
-      const on = this._lampGroupPowered(comp);
-      if (comp.on !== on) {
-        comp.on = on;
-        // re-evaluate same-colour neighbouring lamps so a panel updates together (other colours independent).
-        for (const [dr, dc] of DIRS) { const n = this.redstone.getAt(comp.col + dc, comp.row + dr); if (n && n.type === 'lamp' && (n.color || 0) === (comp.color || 0)) this._rsEnqueue({ type: 'device', comp: n, frame: this.frameCount + this._rsStepFrames() }); }
-      }
+    } else if (comp.type === 'trapdoor' || comp.type === 'piston' || comp.type === 'lamp') {
+      // §Sink conduction — lamps (all colours), trap doors, and pistons form a SINK NETWORK: they
+      // conduct power to each other, so powering any one activates the whole adjoining group. Powered
+      // iff the connected sink group touches a source (adjacent dust / bare generator).
+      const on = this._sinkGroupPowered(comp);
+      const was = (comp.type === 'trapdoor') ? comp.open : (comp.type === 'lamp') ? comp.on : comp.extended;
+      if (comp.type === 'trapdoor') comp.open = on;
+      else if (comp.type === 'lamp') comp.on = on;
+      else this.redstone._activate(comp, on, this.level);   // piston
+      if (was !== on) for (const [dr, dc] of DIRS) { const n = this.redstone.getAt(comp.col + dc, comp.row + dr); if (n && (n.type === 'lamp' || n.type === 'trapdoor' || n.type === 'piston')) this._rsEnqueue({ type: 'device', comp: n, frame: this.frameCount + this._rsStepFrames() }); }
     }
   }
   // §Panel conduction — flood the connected group of lamps from `start`; the group is powered if ANY
   // lamp in it has an adjacent dust-on or bare adjacent generator.
-  _lampGroupPowered(start) {
+  _sinkGroupPowered(start) {
     const DIRS = [[0, 1], [0, -1], [1, 0], [-1, 0]];
-    const col0 = start.color || 0;   // conduct ONLY through same-colour lamps → different colours stay independent
+    const isSink = (t) => t === 'lamp' || t === 'trapdoor' || t === 'piston';
     const seen = new Set([start.col + ',' + start.row]);
     const stack = [start];
     let guard = 0;
@@ -7566,7 +7562,7 @@ class Game {
       if (dustAdj || this._adjacentGeneratorPower(c.col, c.row)) return true;
       for (const [dr, dc] of DIRS) {
         const n = this.redstone.getAt(c.col + dc, c.row + dr);
-        if (n && n.type === 'lamp' && (n.color || 0) === col0 && !seen.has(n.col + ',' + n.row)) { seen.add(n.col + ',' + n.row); stack.push(n); }
+        if (n && isSink(n.type) && !seen.has(n.col + ',' + n.row)) { seen.add(n.col + ',' + n.row); stack.push(n); }
       }
     }
     return false;
@@ -13289,6 +13285,7 @@ class Game {
 
     const isSandbox = this.gameMode === 'sandbox';
     for (const dust of this._dustBlocks.values()) {
+      if (dust._platform) continue;   // §Moving Redstone — platform dust is drawn ON TOP in _drawPlatforms
       const sx = dust.col * BLOCK_SIZE - this.camera.x;
       const sy = dust.row * BLOCK_SIZE - this.camera.y;
       if (sx < -BLOCK_SIZE || sx > CANVAS_W + BLOCK_SIZE) continue;
@@ -18485,10 +18482,11 @@ class Game {
       // Ground contact: solid directly below the piece while descending.
       if (d.vy > 0 && solid(d.x, d.y + half + d.vy)) {
         d.y = Math.floor((d.y + half) / BLOCK_SIZE) * BLOCK_SIZE - half;   // sit exactly on the surface
-        if (d.vy > 4.5) { d.vy *= -0.16; d.vx *= 0.4; d.rotV *= 0.35; }    // one small inelastic hop only on a hard landing
-        else {                                                            // otherwise it just STOPS (dead thud)
-          d.vy = 0; d.vx *= 0.4; d.rotV *= 0.4;
-          if (Math.abs(d.vx) < 0.6) { d.vx = 0; d.rotV = 0; d.resting = true; }   // come to rest
+        // At most ONE small hop on a hard first landing; after that it thuds dead and settles.
+        if (d.vy > 5 && (d.bounces || 0) < 1) { d.bounces = (d.bounces || 0) + 1; d.vy *= -0.14; d.vx *= 0.35; d.rotV *= 0.3; }
+        else {
+          d.vy = 0; d.vx *= 0.35; d.rotV *= 0.35;
+          if (Math.abs(d.vx) < 0.8) { d.vx = 0; d.rotV = 0; d.resting = true; }   // come to rest
         }
       }
       // Side nudge off walls (keeps pieces from tunnelling into a wall as they skitter).
@@ -18802,11 +18800,17 @@ class Game {
           const px = ox + c.dcol * BLOCK_SIZE - this.camera.x, py = oy + c.drow * BLOCK_SIZE - this.camera.y;
           try { drawBlock(ctx, c.blockType, px, py, 0, this._platformCellState(pl, c)); } catch (e) { ctx.fillStyle = '#888'; ctx.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE); }
         }
-        // §Moving Redstone — draw the platform's dust ON TOP of its blocks (the global dust overlay draws
-        // BEFORE platforms, so a platform's blocks would otherwise paint over its own dust → invisible).
-        if (pl._carriedRs) for (const e of pl._carriedRs.dust) {
-          const px = ox + e.dcol * BLOCK_SIZE - this.camera.x, py = oy + e.drow * BLOCK_SIZE - this.camera.y;
-          try { this._drawDustPattern(ctx, px, py, !!e.o.on, e.o.on ? 1 : 0.6); } catch (_) {}
+        // §Moving Redstone — draw the platform's dust ON TOP of its blocks with the FULL connected
+        // renderer (path + powered), matching normal dust (the global overlay skips it — see above).
+        if (pl._carriedRs) {
+          if (this._dustConnDirty) this._rebuildDustConnCache();
+          for (const e of pl._carriedRs.dust) {
+            const o = e.o;
+            if (!this.gameMode || this.gameMode !== 'sandbox') { if (!o.everTriggered || o.setting === 'always_hide') continue; }
+            const px = ox + e.dcol * BLOCK_SIZE - this.camera.x, py = oy + e.drow * BLOCK_SIZE - this.camera.y;
+            const conn = this._dustConnCache.get(o.col * 10000 + o.row) || { left: false, right: false, up: false, down: false };
+            try { this._drawDustConnected(ctx, px, py, o.on, 1, conn); } catch (_) {}
+          }
         }
         ctx.restore();
       }
