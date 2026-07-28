@@ -279,6 +279,8 @@ const GAME_STATE = {
       // §Moving Platforms — rails (waypoint paths) + platforms (anchor-bound block groups). Frozen at author time.
       rails:          game._rails ? game._rails.map(r => ({ id: r.id, cells: r.cells, vis: r.vis || 'visible', loop: !!r.loop, pauseNodes: r.pauseNodes || [], collideMode: r.collideMode || 'passthrough', speedSegments: r.speedSegments || [], launchAt: r.launchAt ?? null })) : [],
       platforms:      game._platforms ? game._platforms.map(p => ({ id: p.id, railId: p.railId, anchorCol: p.anchorCol, anchorRow: p.anchorRow, anchorDist: p.anchorDist, cells: p.cells, initialDir: p.initialDir, mode: p.mode, signalResponse: p.signalResponse, returnMode: p.returnMode, speed: p.speed, dirCtrl: p.dirCtrl || null, cog: !!p.cog })) : [],
+      dirControllers: game._dirControllers ? [...game._dirControllers.values()].map(d => ({ col: d.col, row: d.row, lCh: d.lCh ?? null, rCh: d.rCh ?? null })) : [],
+      speedSegs:      game._speedSegs ? game._speedSegs.map(s => ({ id: s.id, railId: s.railId, cells: s.cells, targetSpeed: s.targetSpeed })) : [],
       worldAdvSettings: game._worldAdvSettings
         ? JSON.parse(JSON.stringify(game._worldAdvSettings))
         : null,

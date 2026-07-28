@@ -507,6 +507,8 @@ class Game {
     this._railPopup   = null;      // null | { id } — rail config modal
     this._platforms   = [];        // [{id, railId, anchorCol, anchorRow, cells:[{col,row,blockType}], mode, ...}]
     this._nextPlatformId = 0;
+    this._dirControllers = new Map(); // "col,row" → {col,row,lCh,rCh} — Direction Controller L/R transmitter channels
+    this._speedSegs    = [];       // §9 — [{id, railId, d0, d1, targetSpeed}] speed-ramp zones along a rail
     this._anchorPopup   = null;    // null | { col,row } — anchor config modal
     this._dirCtrlPopup  = null;    // null | { col,row } — direction controller modal
     this._speedSegPopup = null;    // null | { id } — speed segment modal
@@ -1982,6 +1984,11 @@ class Game {
         this._handlePauseNodePopupInput();
         return;
       }
+      // §Moving Platforms — direction-controller config modal
+      if (this._dirCtrlPopup) {
+        this._handleDirCtrlPopupInput();
+        return;
+      }
     }
 
     // Normal inventory open: handle clicks and freeze gameplay
@@ -2983,6 +2990,8 @@ class Game {
         this._repositionAnchor(hoverRow, hoverCol);                     // §Moving Platforms — move a placed anchor
       } else if (this.sandbox.selectedBlock === BLOCK.ANCHOR_BLOCK && !this.input.mouse.altClicked) {
         this._placeAnchor(hoverRow, hoverCol);                          // §Moving Platforms — bind a platform to a rail
+      } else if (this.sandbox.selectedBlock === BLOCK.DIRECTION_CONTROLLER && !this.input.mouse.altClicked) {
+        this._placeDirCtrl(hoverRow, hoverCol);                         // §Moving Platforms — place / config a Direction Controller
       } else
       // Alt+Click → eyedropper: pick block under cursor
       if (this.input.mouse.altClicked) {
@@ -6423,6 +6432,7 @@ class Game {
       if (this._railPopup) this._drawRailPopup(ctx);
       if (this._anchorPopup) this._drawAnchorPopup(ctx);
       if (this._pauseNodePopup) this._drawPauseNodePopup(ctx);
+      if (this._dirCtrlPopup) this._drawDirCtrlPopup(ctx);
     }
 
     this._drawBiomeLabel(ctx, biome);
@@ -7915,8 +7925,17 @@ class Game {
         signalResponse: p.signalResponse || 'sustained', returnMode: p.returnMode || 'roundtrip', speed: p.speed || 2,
         dirCtrl: p.dirCtrl || null, cog: !!p.cog }));
       this._nextPlatformId = this._platforms.reduce((m, p) => Math.max(m, p.id || 0), 0);
-      this._initPlatformsRuntime();
     }
+    if (data && Array.isArray(data.dirControllers)) {
+      this._dirControllers = new Map();
+      for (const d of data.dirControllers) this._dirControllers.set(d.col + ',' + d.row, { col: d.col, row: d.row, lCh: d.lCh ?? null, rCh: d.rCh ?? null });
+    }
+    if (data && Array.isArray(data.speedSegs)) {
+      this._speedSegs = data.speedSegs.map(s => ({ id: s.id, railId: s.railId, cells: s.cells || [], targetSpeed: s.targetSpeed }));
+      this._nextSpeedSegId = this._speedSegs.reduce((m, s) => Math.max(m, s.id || 0), 0);
+    }
+    // Platforms runtime must init AFTER controllers/speed-segs are restored (it attaches them).
+    if (data && Array.isArray(data.platforms)) this._initPlatformsRuntime();
   }
 
   // ── §Classic Blocks config popup (pipe destination / block contents) ─────────
@@ -8993,7 +9012,7 @@ class Game {
       this._dragon, this._endCrystals, this._dragonDefeated,
       this._mobDropSettings, this._worldAdvSettings,
       this._collectedDiscs, this._musicPlayerBlocks, this._witherAltars,
-      this._rails, this._platforms
+      this._rails, this._platforms, this._dirControllers, this._speedSegs
     );
     if (!result.ok) { this._notify('Export failed: ' + (result.error || '?'), '#FF4444', 240); return; }
     const raw = localStorage.getItem(SandboxSaves.key(pName, wName));
@@ -15508,7 +15527,7 @@ class Game {
     if (!pName || !wName) return;
     this._sbPlayerName = pName;
     this._sbWorldName  = wName;
-    const result = SandboxSaves.save(pName, wName, this.level, this.sandbox, this.player, this.redstone, this._dustBlocks, this._gateBlocks, this._transmitters, this._receivers, this._chests, this._ruinedPortals, this._endPortalAnchors, this._dragon, this._endCrystals, this._dragonDefeated, this._mobDropSettings, this._worldAdvSettings, this._collectedDiscs, this._musicPlayerBlocks, this._witherAltars, this._rails, this._platforms);
+    const result = SandboxSaves.save(pName, wName, this.level, this.sandbox, this.player, this.redstone, this._dustBlocks, this._gateBlocks, this._transmitters, this._receivers, this._chests, this._ruinedPortals, this._endPortalAnchors, this._dragon, this._endCrystals, this._dragonDefeated, this._mobDropSettings, this._worldAdvSettings, this._collectedDiscs, this._musicPlayerBlocks, this._witherAltars, this._rails, this._platforms, this._dirControllers, this._speedSegs);
     if (result.ok) {
       this._historyStack = []; this._historyPos = -1; // clear history on successful save
       this._notify(`Saved: ${pName} — ${wName}`, '#44FF88', 300);
@@ -17965,6 +17984,15 @@ class Game {
       } else {
         pl.cells = set.map(c => ({ dcol: c.col - pl.anchorCol, drow: c.row - pl.anchorRow, blockType: this.level.get(c.row, c.col) }));
       }
+      // §8 — any Direction Controller in the group drives this platform's direction.
+      pl._dirCtrls = [];
+      for (const c of set) {
+        if (this.level.get(c.row, c.col) === BLOCK.DIRECTION_CONTROLLER) {
+          const cfg = this._dirControllers.get(c.col + ',' + c.row) || { lCh: null, rCh: null };
+          pl._dirCtrls.push({ lCh: cfg.lCh, rCh: cfg.rCh, _prevL: false, _prevR: false });
+        }
+      }
+      pl._weight = null;   // recompute on demand (§6/§9/§13)
       // Runtime state.
       pl._dist = pl.anchorDist || 0;
       pl._dir = pl.initialDir || 1;
@@ -18005,6 +18033,7 @@ class Game {
   // Per-frame movement + rider carry. Runs in play modes only.
   _updatePlatforms() {
     if (this.gameMode === 'sandbox' || !this._platforms || !this._platforms.length) return;
+    this._updateDirControllers();            // §8 — set each platform's _dir from its controller inputs
     for (const pl of this._platforms) {
       if (pl._disabled) continue;
       const rail = this._platformRail(pl);
@@ -18342,7 +18371,77 @@ class Game {
     ctx.restore();
   }
 
-  _drawPlatforms_stubRemoved() {}
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // §Moving Platforms §8 — DIRECTION CONTROLLER. A block placed on a platform with two inputs, Left
+  // and Right, each fed by a redstone TRANSMITTER channel (any source → transmitter → this channel).
+  // Signal on Left → travel Backward; Right → Forward; BOTH at once (edge) → TOGGLE. The equality
+  // check is EDGE-triggered (only when an input changes) so an idle "both LOW" never counts as equal.
+  // (Wireless channels are used because a moving platform can't stay wired to static grid dust.)
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  _placeDirCtrl(row, col) {
+    const key = col + ',' + row;
+    if (this._dirControllers.has(key)) { this._dirCtrlPopup = { col, row }; return; }
+    this.level.set(row, col, BLOCK.DIRECTION_CONTROLLER);
+    this._dirControllers.set(key, { col, row, lCh: null, rCh: null });
+    this._dirCtrlPopup = { col, row };
+    this._notify('Direction Controller — assign Left/Right transmitter channels', '#7a4fa0', 150);
+  }
+  _channelPowered(ch) {
+    if (ch == null) return false;
+    for (const tx of this._transmitters.values()) if (tx.number === ch && tx.powered) return true;
+    return false;
+  }
+  // Evaluate every platform's Direction Controllers (edge-triggered). Sets pl._dir.
+  _updateDirControllers() {
+    for (const pl of this._platforms || []) {
+      if (pl._disabled || pl._destroyed || !pl._dirCtrls) continue;
+      for (const dc of pl._dirCtrls) {
+        const L = this._channelPowered(dc.lCh), R = this._channelPowered(dc.rCh);
+        if (L !== dc._prevL || R !== dc._prevR) {          // an input changed → evaluate (edge only)
+          if (L && R) pl._dir = -pl._dir;                  // both triggered together → toggle
+          else if (L) pl._dir = -1;                        // Left → Backward
+          else if (R) pl._dir = 1;                         // Right → Forward
+        }
+        dc._prevL = L; dc._prevR = R;
+      }
+    }
+  }
+  _handleDirCtrlPopupInput() {
+    if (!this._dirCtrlPopup) return;
+    const key = this._dirCtrlPopup.col + ',' + this._dirCtrlPopup.row;
+    const dc = this._dirControllers.get(key);
+    if (!dc) { this._dirCtrlPopup = null; return; }
+    if (!this.input.mouse.clicked) return;
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const pw = 320, ph = 210, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
+    if (hit(px + pw - 30, py + 8, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._dirCtrlPopup = null; this.input.mouse.clicked = false; return; }
+    const nums = [...new Set([...this._transmitters.values()].map(t => t.number))].sort((a, b) => a - b);
+    const cycle = (cur) => { const arr = [null, ...nums]; return arr[(arr.indexOf(cur) + 1) % arr.length]; };
+    if (hit(px + 20, py + 52, pw - 40, 30)) dc.lCh = cycle(dc.lCh);
+    else if (hit(px + 20, py + 92, pw - 40, 30)) dc.rCh = cycle(dc.rCh);
+    else if (hit(px + 20, py + 140, pw - 40, 30)) { this.level.set(this._dirCtrlPopup.row, this._dirCtrlPopup.col, BLOCK.AIR); this._dirControllers.delete(key); this._dirCtrlPopup = null; this._notify('Direction Controller removed', '#c66', 100); }
+    this.input.mouse.clicked = false;
+  }
+  _drawDirCtrlPopup(ctx) {
+    if (!this._dirCtrlPopup) return;
+    const dc = this._dirControllers.get(this._dirCtrlPopup.col + ',' + this._dirCtrlPopup.row);
+    if (!dc) { this._dirCtrlPopup = null; return; }
+    const pw = 320, ph = 210, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    this._roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#20162e'; ctx.fill(); ctx.strokeStyle = '#7a4fa0'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#c9a3ff'; ctx.font = 'bold 13px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('DIRECTION CONTROLLER', px + pw / 2, py + 20);
+    ctx.fillStyle = '#aaa'; ctx.font = 'bold 12px Courier New'; ctx.fillText('✕', px + pw - 19, py + 19);
+    const btn = (y, label, danger) => { this._roundRect(ctx, px + 20, y, pw - 40, 30, 5); ctx.fillStyle = danger ? '#3a1d2e' : '#2c1f42'; ctx.fill(); ctx.strokeStyle = danger ? '#a55' : '#7a4fa0'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = danger ? '#f0c0d0' : '#e6d0ff'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 15); };
+    btn(py + 52, 'Left input (→ Backward): ' + (dc.lCh == null ? 'None' : 'ch #' + dc.lCh));
+    btn(py + 92, 'Right input (→ Forward): ' + (dc.rCh == null ? 'None' : 'ch #' + dc.rCh));
+    btn(py + 140, 'Remove', true);
+    ctx.fillStyle = '#9a86b8'; ctx.font = '9px Courier New';
+    ctx.fillText('Same channel on both = one-source TOGGLE. Wire a source → transmitter → channel.', px + pw / 2, py + ph - 12);
+    ctx.restore();
+  }
 
   // ── Rail config modal (visibility cycle, edit nodes, loop toggle, delete).
   _openRailPopup(rail) { this._railPopup = { id: rail.id }; }
