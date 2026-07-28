@@ -3064,6 +3064,11 @@ class Game {
                 this.redstone.addComponent({ type: 'lamp', col: hoverCol, row: hoverRow, on: false, color: 0, links: [], sandboxPlaced: true });
               }
               this._notify('Redstone Lamp placed — click it (Lamp selected) to change colour', '#ffd166', 130);
+            } else if (sb === BLOCK.PULSE_CONVERTER) {
+              if (!this.redstone.getAt(hoverCol, hoverRow)) {
+                this.redstone.addComponent({ type: 'pulse_converter', col: hoverCol, row: hoverRow, on: false, dir: 'right', links: [], sandboxPlaced: true });
+              }
+              this._notify('Pulse Converter placed — click it (Converter selected) to rotate the Pulse side', '#8fd0e6', 140);
             } else if (sb === BLOCK.MUSIC_PLAYER) {
               const mpk = `${hoverCol},${hoverRow}`;
               if (!this._musicPlayerBlocks.has(mpk)) {

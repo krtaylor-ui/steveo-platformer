@@ -1860,7 +1860,7 @@ function _drawRedstoneLamp(ctx, px, py, s, on, colorIdx) {
   ctx.fillStyle = '#2b2b30'; ctx.fillRect(px, py, s, s);                        // dark frame
   const m = 3;
   ctx.save();
-  ctx.globalAlpha = on ? 1 : 0.5;                                               // dim (but hue-visible) when off
+  ctx.globalAlpha = on ? 1 : 0.28;                                              // much darker when off → strong on/off contrast
   ctx.fillStyle = col; ctx.fillRect(px + m, py + m, s - 2 * m, s - 2 * m);
   ctx.restore();
   if (on) {                                                                     // glow + highlight

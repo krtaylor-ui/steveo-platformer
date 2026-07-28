@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 241 (Redstone fixes: LAMP colour now actually shows — redstone.draw() was over-painting lamps (and converters) on top of level.draw with a default (no-colour) copy, so every lamp rendered red; those two are now skipped there. Pulse Converter no longer inverts its INPUT back to the source — it only releases a side it drove, never forces an input side off. Converter now supports all 4 DIRECTIONS (click to cycle the Pulse side right→down→left→up; T/P labels move with it), saved with the world.)';
+const GAME_VERSION = 'v3 · build 242 (Redstone fixes: Pulse Converter now gets a PLACEMENT handler — a freshly-placed converter creates its component immediately, so you can rotate it (click while Converter selected) right away instead of having to bounce through test mode first. That missing component was also why Toggle→Pulse failed: with no editor component the orientation defaulted to right in test mode, putting the lever on the wrong side; now that you can orient it, Toggle-side input emits a Pulse out the Pulse side as intended. Sandbox HOTBAR now survives a test-mode round-trip (GAME_STATE.serialize carries sbHotbar/sbHotbarSel, matching the saves.js path), so returning to the editor no longer empties it. Redstone LAMP off-state is now much darker (alpha 0.28) for stronger on/off contrast.)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

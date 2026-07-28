@@ -133,6 +133,14 @@ const GAME_STATE = {
           .filter(c => c.type === 'pulse_converter')
           .map(c => ({ col: c.col, row: c.row, dir: c.dir || (c.axis === 'v' ? 'down' : 'right') }))
       : [];
+    // Sandbox quick-access hotbar — must survive the test-mode round-trip (which
+    // serializes via GAME_STATE, not saves.js), else it empties on return to editor.
+    const sbHotbar = (game.sandbox && Array.isArray(game.sandbox.sbHotbar))
+      ? game.sandbox.sbHotbar.map(e => e ? { ...e } : null)
+      : undefined;
+    const sbHotbarSel = (game.sandbox && typeof game.sandbox.sbHotbarSel === 'number')
+      ? game.sandbox.sbHotbarSel
+      : undefined;
 
     // World items (single items placed on the ground). BUGFIX: in the SANDBOX
     // EDITOR these live in game.sandbox.placedItems; game._platformerItems is only
@@ -248,6 +256,8 @@ const GAME_STATE = {
       sandboxTargets,
       sandboxLamps,
       sandboxConverters,
+      sbHotbar,
+      sbHotbarSel,
       dustBlocks,
       transmitters,
       receivers,
