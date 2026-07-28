@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 build 265 (redstone conduction + dust render + debris): (1) reverted the same-colour restriction — SINK CONDUCTION now spans lamps (all colours), trap doors, AND pistons: adjacent sinks form one network and activate together when the group touches a source. (2) Platform dust now renders with its FULL connected path + powered state (matching normal dust), drawn on top of the platform, so you can trace exactly where the signal flows. (3) Shatter debris damped harder — at most one small hop, then a dead thud + rest. Prev 264 platform lamps render while moving.';
+const GAME_VERSION = 'v3 build 266 (redstone speed): NEW "Instant" option on Redstone Speed — signals propagate the same frame (the queue is drained in one tick, capped so a feedback loop cannot hang). The Redstone Speed setting MOVED from Movement to the WORLD tab (its own Redstone group). Prev 265 all-sink conduction + full platform-dust render + damped debris.';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

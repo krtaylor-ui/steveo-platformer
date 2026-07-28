@@ -820,7 +820,7 @@ class Game {
     // (Phase 3A.3) overrides the world default when present.
     const hpSrc = this.arenaConfig.playerHealthHp || this._worldAdvSettings.arenaPlayerMaxHealth || 20;
     const maxHp = Math.max(2, Math.min(40, hpSrc));
-    this.redstoneSpeed = Math.max(0.5, Math.min(2.0, this._worldAdvSettings.redstoneSpeed || 1.0));
+    { const rs = this._worldAdvSettings.redstoneSpeed; this.redstoneSpeed = (rs === 'instant') ? 2.0 : Math.max(0.5, Math.min(2.0, rs || 1.0)); }
 
     // Create players[1..nP-1] if not already present (P1 built by _buildLevel).
     for (let i = 1; i < nP; i++) {
@@ -1322,13 +1322,17 @@ class Game {
   // Per-world redstone rate multiplier, honored in ALL modes (0.25×–8×). At high
   // values pistons/trapdoors fire near-instantly — useful for fast Speed-Run
   // traps (a pressure plate hit early can trip a piston further along in time).
+  _rsInstant() { return (this._worldAdvSettings && this._worldAdvSettings.redstoneSpeed) === 'instant'; }
   _rsRate() {
-    return Math.max(0.25, Math.min(8.0, (this._worldAdvSettings && this._worldAdvSettings.redstoneSpeed) || 1.0));
+    const v = this._worldAdvSettings && this._worldAdvSettings.redstoneSpeed;
+    if (v === 'instant') return 8.0;
+    return Math.max(0.25, Math.min(8.0, v || 1.0));
   }
 
   // Redstone propagation step in frames (coarse per-world cadence; Phase 3A.2).
-  // Baseline 6 frames; higher rate → fewer frames (faster), min 1.
+  // Baseline 6 frames; higher rate → fewer frames (faster), min 1. 'instant' → 0 (drained same frame).
   _rsStepFrames() {
+    if (this._rsInstant()) return 0;
     return Math.max(1, Math.round(6 / this._rsRate()));
   }
 
@@ -2904,7 +2908,10 @@ class Game {
     }
 
     // ── Redstone dust propagation queue ────────────────────
-    this._rsProcessQueue();
+    // §Instant redstone — drain same-frame chains (stepFrames=0 enqueues at the current frame, but one
+    // pass won't revisit entries pushed mid-iteration), capped so a feedback loop can't hang the frame.
+    if (this._rsInstant()) { let guard = 64; do { this._rsProcessQueue(); } while (--guard > 0 && this._rsQueue.some(e => e.frame <= this.frameCount)); }
+    else this._rsProcessQueue();
     // Detect pressure plate state changes and start dust propagation.
     // Initialise _rsWasOn on first encounter to avoid a spurious trigger on frame 1.
     for (const comp of this.redstone.components) {
