@@ -76,7 +76,7 @@ const GEAR_PALETTE_ITEMS = [
 // Virtual block type for ruined portal tool — palette/hotbar only, never placed in grid
 const SB_RUINED_PORTAL = 37;
 const SB_END_PORTAL    = 43;  // virtual palette type for End Portal tool (types 40-42 are real blocks)
-const SB_WITHER_ALTAR  = 56;  // virtual palette type for Wither Altar 3×4 multi-block
+const SB_WITHER_ALTAR  = 200; // virtual palette type for Wither Altar 3×4 multi-block (was 56 — COLLIDED with the real SPEED_BOOSTER=56, swapping their icon + name)
 
 // "Other" palette tab: redstone, structural, spawn eggs
 const OTHER_PALETTE_ITEMS = [

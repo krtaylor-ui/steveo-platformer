@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 235 (Phase R foundation (WIP, local): NEW Target Block (arrow hit → redstone pulse, or Toggle mode) + Pulse Converter (one pulse→toggle mechanism, shared with Target toggle mode). Placeable in the Redstone palette; arrow-hit reaction + pulse timer wired. STILL TO DO before Phase R is done: config modal (pulse/toggle + duration), links, the DUST integration (target powers adjacent dust + the "activated dust adjacent to a trigger powers it" rule R3), config persistence.)';
+const GAME_VERSION = 'v3 · build 236 (Fixes: Travel Tube icon restored in the palette/hotbar (the block draws NOTHING only in-world, where the tube band renders it; the palette shows a glass icon again). Fixed a long-standing id collision — the virtual Wither Altar palette icon was id 56, the SAME as the real SPEED_BOOSTER, which swapped their icon + name; moved the virtual icon to 200. Phase R Target Block + Pulse Converter now visible in the Redstone palette (arrow-hit reaction works; dust integration + config modal still WIP).)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

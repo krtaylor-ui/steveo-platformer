@@ -165,6 +165,8 @@ class Level {
         } else if (block === BLOCK.TRAMPOLINE || block === BLOCK.SLIME_BLOCK) {
           const f = trampFx && trampFx.get(r + ',' + c);   // 0..10 compression frames
           state = { compress: f ? f / 10 : 0 };
+        } else if (block === BLOCK.TUBE_WALL) {
+          state = { world: true };   // §Travel Tube — in-world, the tube stroke passes render it (draw NOTHING per-cell); the palette (no world flag) shows an icon
         }
 
         drawBlock(ctx, block, screenX, screenY, bp, state);

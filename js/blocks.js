@@ -184,8 +184,9 @@ const BLOCK_DATA = {
   [BLOCK.EYE_OF_ENDER]:           { name: 'Eye of Ender',            hardness: 0,        mineable: false, solid: false, mineTier: 0, isItem: true, isEye: true },
   // Virtual type 43 — palette/hotbar icon for End Portal tool; never placed in level grid
   43:                             { name: 'End Portal',              hardness: Infinity, mineable: false, solid: false, mineTier: 0 },
-  // Virtual type 56 — palette/hotbar icon for Wither Altar; never placed in level grid
-  56:                             { name: 'Wither Altar',            hardness: Infinity, mineable: false, solid: false, mineTier: 0 },
+  // Virtual type 200 — palette/hotbar icon for Wither Altar; never placed in level grid (moved off
+  // 56, which is the real SPEED_BOOSTER block — the collision was swapping their icon + name).
+  200:                            { name: 'Wither Altar',            hardness: Infinity, mineable: false, solid: false, mineTier: 0 },
   [BLOCK.BLAZE_ROD]:              { name: 'Blaze Rod',               hardness: 0,        mineable: false, solid: false, mineTier: 0, isItem: true },
   [BLOCK.ENDER_PEARL]:            { name: 'Ender Pearl',             hardness: 0,        mineable: false, solid: false, mineTier: 0, isItem: true },
   [BLOCK.DRAGON_EGG]:             { name: 'Dragon Egg',              hardness: 0,        mineable: false, solid: false, mineTier: 0, isItem: true },
@@ -293,7 +294,7 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.END_PORTAL_FRAME_FULL:  _drawEndPortalFrame(ctx, px, py, s, true);     break;
     case BLOCK.EYE_OF_ENDER:           _drawEyeOfEnderItem(ctx, px, py, s);           break;
     case 43 /* END_PORTAL_ICON */:     _drawEndPortalIcon(ctx, px, py, s);            break;
-    case 56 /* WITHER_ALTAR_ICON */:   _drawWitherAltarIcon(ctx, px, py, s);          break;
+    case 200 /* WITHER_ALTAR_ICON (virtual; moved off 56 to stop colliding with SPEED_BOOSTER) */: _drawWitherAltarIcon(ctx, px, py, s); break;
     case BLOCK.BLAZE_ROD:              _drawBlazeRodItem(ctx, px, py, s);             break;
     case BLOCK.ENDER_PEARL:            _drawEnderPearlItem(ctx, px, py, s);           break;
     case BLOCK.DRAGON_EGG:             _drawDragonEggItem(ctx, px, py, s);            break;
@@ -329,7 +330,7 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.PIPE_STEM:              _drawWarpPipe(ctx, px, py, s, state, true);      break;
     case BLOCK.BAR:                    _drawBar(ctx, px, py, s, false);                 break;
     case BLOCK.BAR_PLATFORM:           _drawBar(ctx, px, py, s, true);                  break;
-    case BLOCK.TUBE_WALL:              _drawTubeWall(ctx, px, py, s);                   break;
+    case BLOCK.TUBE_WALL:              _drawTubeWall(ctx, px, py, s, state);            break;
     case BLOCK.TARGET_BLOCK:           _drawTargetBlock(ctx, px, py, s, state.on);      break;
     case BLOCK.PULSE_CONVERTER:        _drawPulseConverter(ctx, px, py, s, state.on);   break;
   }
@@ -1809,10 +1810,15 @@ function _drawBar(ctx, px, py, s, withPlatform) {
   ctx.fillStyle = '#c7ccd4'; ctx.fillRect(px, barY, s, 1);          // highlight
   ctx.fillStyle = '#5c6068'; ctx.fillRect(px, barY + 3, s, 1);      // shade
 }
-// §Travel Tube — a footprint cell of a fly-through tube. Draws NOTHING: the tube is rendered as a
-// continuous translucent band (with optional rounded bends + mouth caps) by the game's tube passes
-// (_drawTubeStroke), so per-cell squares would fight the rounded look. This block only COLLIDES.
-function _drawTubeWall(ctx, px, py, s) { /* rendered by the tube stroke passes, not per-cell */ }
+// §Travel Tube — a footprint cell of a fly-through tube. IN-WORLD (state.world) it draws NOTHING —
+// the tube is rendered as a continuous band by the game's tube passes, so per-cell squares would
+// fight the rounded look. Everywhere else (palette / hotbar, no world flag) it draws a glass ICON.
+function _drawTubeWall(ctx, px, py, s, state) {
+  if (state && state.world) return;
+  ctx.fillStyle = 'rgba(150,205,232,0.5)'; ctx.fillRect(px + 3, py + 3, s - 6, s - 6);
+  ctx.fillStyle = 'rgba(222,240,250,0.4)'; ctx.fillRect(px + 5, py + 5, s - 10, 3);
+  ctx.strokeStyle = 'rgba(150,190,215,0.95)'; ctx.lineWidth = 2; ctx.strokeRect(px + 3.5, py + 3.5, s - 7, s - 7);
+}
 // §Phase R — Target Block: a bullseye that lights up while ON/pulsing. Hit by an arrow or attack.
 function _drawTargetBlock(ctx, px, py, s, on) {
   ctx.fillStyle = '#c9c2b4'; ctx.fillRect(px, py, s, s);                 // stone-ish body
