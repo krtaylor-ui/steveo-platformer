@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 build 266 (redstone speed): NEW "Instant" option on Redstone Speed — signals propagate the same frame (the queue is drained in one tick, capped so a feedback loop cannot hang). The Redstone Speed setting MOVED from Movement to the WORLD tab (its own Redstone group). Prev 265 all-sink conduction + full platform-dust render + damped debris.';
+const GAME_VERSION = 'v3 build 267 (MOVING-REDSTONE ROOT-CAUSE FIX): the "unconnected lamps light" + "circuit dead while moving" bugs are fixed. Root cause found via a headless reproduction: RedstoneSystem.getAt uses a position index that was NOT updated when platform redstone moved (positions were mutated directly), so lookups hit STALE cells — lighting the wrong blocks and breaking propagation. Now the index is rebuilt (reindex) whenever carried components move. Also fixed: the platform cell coordinate was taken from the RAIL position (could be a cell off from the anchor block) — now anchored to the anchor block + movement delta; and the dust re-key is collision-safe (delete-all-then-set-all) so a moving platform can not lose/duplicate dust. Prev 266 Instant redstone speed.';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

@@ -51,6 +51,14 @@ class RedstoneSystem {
     return this._map.get(`${col},${row}`) || null;
   }
 
+  // Rebuild the "col,row" → component index from the components' CURRENT positions. Call after mutating
+  // component col/row directly (e.g. redstone riding a moving platform), else getAt looks them up at
+  // their old cells — which breaks propagation and lights the wrong blocks.
+  reindex() {
+    this._map.clear();
+    for (const c of this.components) this._map.set(`${c.col},${c.row}`, c);
+  }
+
   // Called once per frame — updates pressure plates based on player position.
   // extraOnFn(col, row) → bool: optional extra "is-on" source (e.g. online joiners).
   update(level, player, input, extraOnFn) {

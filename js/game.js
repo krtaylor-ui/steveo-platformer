@@ -18078,12 +18078,20 @@ class Game {
   // In SANDBOX the blocks stay in the grid (editable); only a direction arrow + anchor marker draw.
   // ══════════════════════════════════════════════════════════════════════════════════════════
   _platformRail(pl) { return this._railById(pl.railId); }
+  // The platform's CURRENT grid cell for its anchor, anchored to the anchor BLOCK cell plus how far it
+  // has moved (in cells) since start. This is critical: pl._ax/_ay is the RAIL position, which may not
+  // align with the anchor block's grid cell — using it raw offsets every redstone/render/collision
+  // lookup by a cell and lights the wrong blocks. Movement-delta from the start keeps them aligned.
+  _platCell(pl) {
+    const ax0 = pl._ax0 != null ? pl._ax0 : pl._ax, ay0 = pl._ay0 != null ? pl._ay0 : pl._ay;
+    return { acol: pl.anchorCol + Math.round((pl._ax - ax0) / BLOCK_SIZE), arow: pl.anchorRow + Math.round((pl._ay - ay0) / BLOCK_SIZE) };
+  }
   // Render state for a stateful block riding a platform — reads the redstone component/overlay at the
   // block's STATIC (anchor-relative) cell so a platform-mounted lamp/lever shows its real on/off.
   _platformCellState(pl, c) {
     // Use the CURRENT anchor cell (redstone rides the platform, so the component moved with it) — not
     // the authored anchorCol/Row, or the lookup misses once the platform moves and lamps render off.
-    const acol = Math.round((pl._ax - BLOCK_SIZE / 2) / BLOCK_SIZE), arow = Math.round((pl._ay - BLOCK_SIZE / 2) / BLOCK_SIZE);
+    const { acol, arow } = this._platCell(pl);
     const col = acol + c.dcol, row = arow + c.drow, b = c.blockType;
     if (b === BLOCK.REDSTONE_LAMP) { const cp = this.redstone.getAt(col, row); return { on: cp ? !!cp.on : false, colorIdx: cp ? (cp.color || 0) : 0 }; }
     if (b === BLOCK.LEVER)         { const cp = this.redstone.getAt(col, row); return { on: cp ? !!cp.on : false }; }
@@ -18190,7 +18198,7 @@ class Game {
       pl._prevSignal = false;
       pl._pauseTimer = 0;
       pl._reactivateArmed = false;
-      if (rail) { const at = TRAVEL_TUBE.pointAt(this._railPts(rail), pl._dist); pl._ax = at.x; pl._ay = at.y; pl._pax = at.x; pl._pay = at.y; }
+      if (rail) { const at = TRAVEL_TUBE.pointAt(this._railPts(rail), pl._dist); pl._ax = at.x; pl._ay = at.y; pl._pax = at.x; pl._pay = at.y; pl._ax0 = at.x; pl._ay0 = at.y; }
       if (play) {
         // Lift the group out of the static grid so it can move freely.
         for (const c of pl.cells) this.level.set(pl.anchorRow + c.drow, pl.anchorCol + c.dcol, BLOCK.AIR);
@@ -18230,12 +18238,18 @@ class Game {
   // the live positions.
   _carryPlatformRedstone(pl) {
     if (!pl._carriedRs || pl._disabled || pl._destroyed) return;
-    const acol = Math.round((pl._ax - BLOCK_SIZE / 2) / BLOCK_SIZE), arow = Math.round((pl._ay - BLOCK_SIZE / 2) / BLOCK_SIZE);
+    const { acol, arow } = this._platCell(pl);
     if (acol === pl._lastRsCol && arow === pl._lastRsRow) return;
     pl._lastRsCol = acol; pl._lastRsRow = arow;
     const cr = pl._carriedRs;
     for (const e of cr.comps) { e.comp.col = acol + e.dcol; e.comp.row = arow + e.drow; }
-    const rekey = (map, list) => { for (const e of list) { const o = e.o; map.delete(o.col + ',' + o.row); o.col = acol + e.dcol; o.row = arow + e.drow; map.set(o.col + ',' + o.row, o); } };
+    if (cr.comps.length) this.redstone.reindex();   // components moved → rebuild the getAt position index
+    // Collision-safe re-key: DELETE all old keys first, THEN set all new — otherwise moving a cell into
+    // a slot still held by a not-yet-moved sibling overwrites/loses it (corrupts the platform's dust).
+    const rekey = (map, list) => {
+      for (const e of list) map.delete(e.o.col + ',' + e.o.row);
+      for (const e of list) { e.o.col = acol + e.dcol; e.o.row = arow + e.drow; map.set(e.o.col + ',' + e.o.row, e.o); }
+    };
     rekey(this._dustBlocks, cr.dust);
     rekey(this._gateBlocks, cr.gates);
     rekey(this._transmitters, cr.tx);
@@ -18349,7 +18363,7 @@ class Game {
       this._shatterPlatform(pl); this._notify('Platform crashed off the level', '#c66', 120); return;
     }
     // Mid-air hit on SOLID TERRAIN (not a rail, not a platform) → crash + shatter.
-    const acol = Math.round((pl._ax - BLOCK_SIZE / 2) / BLOCK_SIZE), arow = Math.round((pl._ay - BLOCK_SIZE / 2) / BLOCK_SIZE);
+    const { acol, arow } = this._platCell(pl);
     for (const c of pl.cells) {
       const cc = acol + c.dcol, rr = arow + c.drow;
       if (rr < 0 || rr >= this.level.height || cc < 0 || cc >= this.level.width) continue;
@@ -18554,7 +18568,7 @@ class Game {
   _anchorSignal(pl) {
     const col = pl.anchorCol, row = pl.anchorRow;
     // adjacency (dust or bare generator) at the anchor's current rounded cell + its stored cell
-    const acol = Math.round((pl._ax - BLOCK_SIZE / 2) / BLOCK_SIZE), arow = Math.round((pl._ay - BLOCK_SIZE / 2) / BLOCK_SIZE);
+    const { acol, arow } = this._platCell(pl);
     for (const [c, r] of [[col, row], [acol, arow]]) {
       const DIRS = [[0, 1], [0, -1], [1, 0], [-1, 0]];
       if (DIRS.some(([dr, dc]) => { const d = this._dustBlocks.get(`${c + dc},${r + dr}`); return d && d.on; })) return true;
@@ -18923,11 +18937,9 @@ class Game {
   }
   // Evaluate every platform's Direction Controllers (edge-triggered). Sets pl._dir.
   _updateDirControllers() {
-    const acolOf = (pl) => Math.round((pl._ax - BLOCK_SIZE / 2) / BLOCK_SIZE);
-    const arowOf = (pl) => Math.round((pl._ay - BLOCK_SIZE / 2) / BLOCK_SIZE);
     for (const pl of this._platforms || []) {
       if (pl._disabled || pl._destroyed || !pl._dirCtrls) continue;
-      const acol = acolOf(pl), arow = arowOf(pl);
+      const { acol, arow } = this._platCell(pl);
       for (const dc of pl._dirCtrls) {
         // Inputs = an assigned transmitter CHANNEL, OR (now that redstone rides the platform) a
         // powered dust/lever/target physically to the controller's LEFT / RIGHT cell.
