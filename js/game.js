@@ -1977,6 +1977,11 @@ class Game {
         this._handleAnchorPopupInput();
         return;
       }
+      // §Moving Platforms — pause-node config modal
+      if (this._pauseNodePopup) {
+        this._handlePauseNodePopupInput();
+        return;
+      }
     }
 
     // Normal inventory open: handle clicks and freeze gameplay
@@ -3301,6 +3306,14 @@ class Game {
     }
 
     // ── Sandbox: right-click on placed egg → open World Settings for that mob ──
+    // §Moving Platforms §5 — while editing a rail's nodes, right-click a waypoint to set its Pause Node.
+    if (isSandbox && this.input.mouse.rightClicked && !_sbHotbarConsumed && this._railEditNodes) {
+      const rail = this._railById(this._railEditNodes.id);
+      if (rail) {
+        const idx = rail.cells.findIndex(c => c.col === hoverCol && c.row === hoverRow);
+        if (idx >= 0) { this._openPauseNodePopup(rail, idx); this.input.mouse.rightClicked = false; }
+      }
+    }
     if (isSandbox && this.input.mouse.rightClicked && !_sbHotbarConsumed) {
       const eggIdx = this.sandbox.hitTestEggs(world.x, world.y);
       if (eggIdx >= 0) {
@@ -6409,6 +6422,7 @@ class Game {
       if (this._tubePopup) this._drawTubePopup(ctx);
       if (this._railPopup) this._drawRailPopup(ctx);
       if (this._anchorPopup) this._drawAnchorPopup(ctx);
+      if (this._pauseNodePopup) this._drawPauseNodePopup(ctx);
     }
 
     this._drawBiomeLabel(ctx, biome);
@@ -18003,6 +18017,7 @@ class Game {
       pl._pax = pl._ax; pl._pay = pl._ay;              // remember previous anchor pos for the carry delta
       if (pl._moving && !pl._paused && L > 0) {
         const step = Math.max(0, pl._curSpeed || 0);
+        pl._prevDist = pl._dist;
         const res = MOVING_PLATFORM.advance(pl._dist, pl._dir, step, L, { loop: this._railIsLoop(rail), roundTrip: pl.returnMode !== 'oneway' });
         pl._dist = res.dist; pl._dir = res.dir;
         if (res.stopped && pl.returnMode === 'oneway') pl._moving = false;
@@ -18094,9 +18109,104 @@ class Game {
     }
   }
 
-  // §5 hooks (implemented in the Pause Nodes section) — safe no-ops until then.
-  _tickPlatformPause(pl) { if (pl._pauseTimer > 0) { pl._pauseTimer--; pl._paused = pl._pauseTimer > 0; } else if (pl._paused && pl._pauseUntilReact) { /* wait for reactivation */ } else { pl._paused = false; } }
-  _checkPlatformPauseArrival(pl, rail) { /* filled in §5 */ }
+  // §5 — Pause Nodes. Distance-along-rail for each pause node (waypoint idx → its polyline distance).
+  _railPauseDists(rail) {
+    if (rail._pauseDists && rail._pauseDistsN === (rail.pauseNodes || []).length) return rail._pauseDists;
+    const pts = this._railPts(rail);
+    rail._pauseDists = (rail.pauseNodes || []).map(pn => {
+      const c = rail.cells[pn.idx];
+      if (!c) return { ...pn, dist: -1 };
+      const n = TRAVEL_TUBE.nearest(pts, c.col * BLOCK_SIZE + BLOCK_SIZE / 2, c.row * BLOCK_SIZE + BLOCK_SIZE / 2, BLOCK_SIZE);
+      return { ...pn, dist: n ? n.d : -1 };
+    });
+    rail._pauseDistsN = (rail.pauseNodes || []).length;
+    return rail._pauseDists;
+  }
+  // Tick a paused platform: count down a duration pause, or wait for a fresh anchor signal (reactivate).
+  _tickPlatformPause(pl) {
+    if (!pl._paused) return;
+    if (pl._pauseUntilReact) {
+      const sig = this._anchorSignal(pl);
+      if (sig && !pl._reactPrevSig) { pl._paused = false; pl._pauseUntilReact = false; }   // rising edge = reactivate
+      pl._reactPrevSig = sig;
+      return;
+    }
+    if (pl._pauseTimer > 0) { pl._pauseTimer--; if (pl._pauseTimer <= 0) pl._paused = false; }
+    else pl._paused = false;
+  }
+  // After advancing, if the platform just crossed a pause node's distance, trigger its pause.
+  _checkPlatformPauseArrival(pl, rail) {
+    const dists = this._railPauseDists(rail);
+    if (!dists.length) return;
+    const a = Math.min(pl._prevDist ?? pl._dist, pl._dist), b = Math.max(pl._prevDist ?? pl._dist, pl._dist);
+    for (let i = 0; i < dists.length; i++) {
+      const pn = dists[i];
+      if (pn.dist < 0) continue;
+      if (pn.dist >= a - 0.001 && pn.dist <= b + 0.001) {
+        if (pl._pausedAtNode === i) continue;         // already handled this stop; don't re-fire while sitting on it
+        pl._pausedAtNode = i;
+        pl._dist = pn.dist;                            // park exactly on the node
+        if (pn.mode === 'reactivate') { pl._paused = true; pl._pauseUntilReact = true; pl._reactPrevSig = this._anchorSignal(pl); }
+        else { pl._paused = true; pl._pauseTimer = Math.max(1, Math.round((pn.seconds || 2) * 60)); }
+        return;
+      }
+    }
+    // Left the vicinity of the last node → clear the "handled" latch so the next lap can pause again.
+    if (pl._pausedAtNode != null) {
+      const last = dists[pl._pausedAtNode];
+      if (last && Math.abs(pl._dist - last.dist) > BLOCK_SIZE) pl._pausedAtNode = null;
+    }
+  }
+
+  // ── Pause-node editor: while editing a rail's nodes, right-click a waypoint to set its pause. ──
+  _openPauseNodePopup(rail, idx) { this._pauseNodePopup = { railId: rail.id, idx }; }
+  _pauseNodeOf(rail, idx) { return (rail.pauseNodes || []).find(p => p.idx === idx) || null; }
+  _handlePauseNodePopupInput() {
+    if (!this._pauseNodePopup) return;
+    const rail = this._railById(this._pauseNodePopup.railId);
+    if (!rail) { this._pauseNodePopup = null; return; }
+    if (!this.input.mouse.clicked) return;
+    const idx = this._pauseNodePopup.idx;
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const pw = 300, ph = 210, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
+    if (hit(px + pw - 30, py + 8, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._pauseNodePopup = null; this.input.mouse.clicked = false; return; }
+    rail.pauseNodes = rail.pauseNodes || [];
+    let pn = this._pauseNodeOf(rail, idx);
+    const setMode = (mode, seconds) => {
+      rail.pauseNodes = rail.pauseNodes.filter(p => p.idx !== idx);
+      if (mode) rail.pauseNodes.push({ idx, mode, seconds: seconds || 2 });
+      rail._pauseDists = null;
+    };
+    if (hit(px + 20, py + 48, pw - 40, 28)) { setMode(null); }                                  // None
+    else if (hit(px + 20, py + 84, pw - 40, 28)) {                                              // Duration (cycle secs)
+      const secs = [1, 2, 3, 5, 8], cur = (pn && pn.mode === 'duration') ? pn.seconds : 0;
+      const next = secs[(secs.indexOf(cur) + 1) % secs.length] || 1;
+      setMode('duration', next);
+    }
+    else if (hit(px + 20, py + 120, pw - 40, 28)) { setMode('reactivate'); }                     // Until reactivated
+    this.input.mouse.clicked = false;
+  }
+  _drawPauseNodePopup(ctx) {
+    if (!this._pauseNodePopup) return;
+    const rail = this._railById(this._pauseNodePopup.railId);
+    if (!rail) { this._pauseNodePopup = null; return; }
+    const pn = this._pauseNodeOf(rail, this._pauseNodePopup.idx);
+    const pw = 300, ph = 210, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    this._roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#0e1e2e'; ctx.fill(); ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#8ecbff'; ctx.font = 'bold 13px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('PAUSE NODE (waypoint ' + this._pauseNodePopup.idx + ')', px + pw / 2, py + 22);
+    ctx.fillStyle = '#aaa'; ctx.font = 'bold 12px Courier New'; ctx.fillText('✕', px + pw - 19, py + 19);
+    const cur = pn ? pn.mode : 'none';
+    const btn = (y, label, active) => { this._roundRect(ctx, px + 20, y, pw - 40, 28, 5); ctx.fillStyle = active ? '#1c4a72' : '#152430'; ctx.fill(); ctx.strokeStyle = active ? '#4aa3ff' : '#2a3a48'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = active ? '#dff0ff' : '#9ab'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 14); };
+    btn(py + 48, 'No Pause', cur === 'none');
+    btn(py + 84, 'Pause: ' + (pn && pn.mode === 'duration' ? pn.seconds + 's' : 'Duration…'), cur === 'duration');
+    btn(py + 120, 'Pause until Anchor reactivated', cur === 'reactivate');
+    if (cur === 'reactivate') { ctx.fillStyle = '#e0b050'; ctx.font = '9px Courier New'; ctx.fillText('Needs each platform Signal Response = Toggle', px + pw / 2, py + ph - 14); }
+    ctx.restore();
+  }
 
   _drawPlatforms(ctx) {
     if (!this._platforms || !this._platforms.length) return;
