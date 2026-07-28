@@ -1989,6 +1989,11 @@ class Game {
         this._handleDirCtrlPopupInput();
         return;
       }
+      // §Moving Platforms — speed-segment config modal
+      if (this._speedSegPopup) {
+        this._handleSpeedSegPopupInput();
+        return;
+      }
     }
 
     // Normal inventory open: handle clicks and freeze gameplay
@@ -2992,6 +2997,8 @@ class Game {
         this._placeAnchor(hoverRow, hoverCol);                          // §Moving Platforms — bind a platform to a rail
       } else if (this.sandbox.selectedBlock === BLOCK.DIRECTION_CONTROLLER && !this.input.mouse.altClicked) {
         this._placeDirCtrl(hoverRow, hoverCol);                         // §Moving Platforms — place / config a Direction Controller
+      } else if (this.sandbox.selectedBlock === BLOCK.SPEED_SEGMENT && !this.input.mouse.altClicked) {
+        this._placeSpeedSeg(hoverRow, hoverCol);                        // §Moving Platforms — paint a speed-ramp zone on a rail
       } else
       // Alt+Click → eyedropper: pick block under cursor
       if (this.input.mouse.altClicked) {
@@ -6392,7 +6399,7 @@ class Game {
     // Sandbox WORLD overlays (placed eggs/emeralds/power-ups/hill/spawn-lines/items
     // + portal labels) must scale with the zoom too — draw them inside the transform.
     try { this._drawTravelTubeItems(ctx); this._drawTravelTubesFront(ctx); this._drawFlyingTubeGlass(ctx); } catch (e) { /* ignore */ }   // §Travel Tube — items + pass-behind glass + flying-player-behind-glass overlay
-    try { this._drawRails(ctx); this._drawPlatforms(ctx); } catch (e) { /* ignore */ }   // §Moving Platforms — rail overlay + moving platform groups
+    try { this._drawRails(ctx); this._drawSpeedSegs(ctx); this._drawPlatforms(ctx); } catch (e) { /* ignore */ }   // §Moving Platforms — rail overlay + speed zones + moving platform groups
     if (this.gameMode === 'sandbox' && this.sandbox && this.sandbox.drawWorld) {
       this.sandbox.drawWorld(ctx, this.camera, this.frameCount);
       try { this._drawTravelTubesSandbox(ctx); if (this._tubeDraft) this._drawTubeDraft(ctx); if (this._tubeEditNodes) this._drawTubeNodeEdit(ctx); } catch (e) { /* ignore */ }  // §Travel Tube outlines + draft + node edit
@@ -6433,6 +6440,7 @@ class Game {
       if (this._anchorPopup) this._drawAnchorPopup(ctx);
       if (this._pauseNodePopup) this._drawPauseNodePopup(ctx);
       if (this._dirCtrlPopup) this._drawDirCtrlPopup(ctx);
+      if (this._speedSegPopup) this._drawSpeedSegPopup(ctx);
     }
 
     this._drawBiomeLabel(ctx, biome);
@@ -18043,6 +18051,7 @@ class Game {
       this._resolvePlatformMoving(pl);                 // set pl._moving from its mode + signal
       // Pause-node countdown handled in §5 hook.
       this._tickPlatformPause(pl);
+      this._applySpeedSegments(pl, rail);              // §9 — ramp/persist speed through zones
       pl._pax = pl._ax; pl._pay = pl._ay;              // remember previous anchor pos for the carry delta
       if (pl._moving && !pl._paused && L > 0) {
         const step = Math.max(0, pl._curSpeed || 0);
@@ -18423,6 +18432,111 @@ class Game {
     else if (hit(px + 20, py + 140, pw - 40, 30)) { this.level.set(this._dirCtrlPopup.row, this._dirCtrlPopup.col, BLOCK.AIR); this._dirControllers.delete(key); this._dirCtrlPopup = null; this._notify('Direction Controller removed', '#c66', 100); }
     this.input.mouse.clicked = false;
   }
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // §Moving Platforms §9 — SPEED CONTROL SEGMENT. A zone of rail cells (an overlay, not a grid block)
+  // that smoothly ramps a passing platform's speed toward a target across the zone's length (eased),
+  // then PERSISTS that speed (a genuine value on the platform) — so a Launch Ramp reads whatever speed
+  // the platform actually attained. Adjacent segment cells on the same rail auto-merge into one zone.
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  _speedSegAtCell(row, col) {
+    for (const s of this._speedSegs || []) if (s.cells.some(c => c.col === col && c.row === row)) return s;
+    return null;
+  }
+  _speedSegRange(seg) {
+    if (seg._d0 != null && seg._rangeN === seg.cells.length) return { d0: seg._d0, d1: seg._d1 };
+    const rail = this._railById(seg.railId);
+    if (!rail) return { d0: 0, d1: 0 };
+    const pts = this._railPts(rail);
+    let lo = Infinity, hi = -Infinity;
+    for (const c of seg.cells) {
+      const n = TRAVEL_TUBE.nearest(pts, c.col * BLOCK_SIZE + BLOCK_SIZE / 2, c.row * BLOCK_SIZE + BLOCK_SIZE / 2, BLOCK_SIZE);
+      if (n) { lo = Math.min(lo, n.d); hi = Math.max(hi, n.d); }
+    }
+    seg._d0 = lo - BLOCK_SIZE / 2; seg._d1 = hi + BLOCK_SIZE / 2; seg._rangeN = seg.cells.length;
+    return { d0: seg._d0, d1: seg._d1 };
+  }
+  _placeSpeedSeg(row, col) {
+    const existing = this._speedSegAtCell(row, col);
+    if (existing) { this._speedSegPopup = { id: existing.id }; return; }
+    const rail = this._railAtCell(row, col);
+    if (!rail) { this._notify('Speed Segment must be placed on a rail', '#CC4444', 130); return; }
+    // Merge into an adjacent segment on the same rail, else start a new one.
+    let seg = (this._speedSegs || []).find(s => s.railId === rail.id && s.cells.some(c => Math.abs(c.col - col) + Math.abs(c.row - row) === 1));
+    if (seg) { seg.cells.push({ col, row }); seg._d0 = null; }
+    else {
+      this._nextSpeedSegId = (this._nextSpeedSegId || 0) + 1;
+      seg = { id: this._nextSpeedSegId, railId: rail.id, cells: [{ col, row }], targetSpeed: 4 };
+      this._speedSegs.push(seg);
+      this._speedSegPopup = { id: seg.id };
+    }
+    this._notify('Speed Segment (target ' + seg.targetSpeed + ') — click it to set speed', '#46b46e', 140);
+  }
+  // Ease a platform's current speed toward a zone's target while it's inside the zone; persist after.
+  _applySpeedSegments(pl, rail) {
+    let inZone = null, progress = 0;
+    for (const seg of this._speedSegs || []) {
+      if (seg.railId !== rail.id || !seg.cells.length) continue;
+      const { d0, d1 } = this._speedSegRange(seg);
+      if (pl._dist >= d0 && pl._dist <= d1 && d1 > d0) {
+        inZone = seg;
+        // progress along the zone in the direction of travel (so entering from either end ramps up).
+        progress = pl._dir >= 0 ? (pl._dist - d0) / (d1 - d0) : (d1 - pl._dist) / (d1 - d0);
+        break;
+      }
+    }
+    if (inZone) {
+      if (pl._zoneId !== inZone.id) { pl._zoneId = inZone.id; pl._zoneStartSpeed = pl._curSpeed; }
+      const t = progress * progress * (3 - 2 * progress);   // smoothstep
+      pl._curSpeed = pl._zoneStartSpeed + (inZone.targetSpeed - pl._zoneStartSpeed) * t;
+    } else {
+      pl._zoneId = null;   // speed persists at its last value (per §9)
+    }
+  }
+  _handleSpeedSegPopupInput() {
+    if (!this._speedSegPopup) return;
+    const seg = (this._speedSegs || []).find(s => s.id === this._speedSegPopup.id);
+    if (!seg) { this._speedSegPopup = null; return; }
+    if (!this.input.mouse.clicked) return;
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const pw = 300, ph = 180, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
+    if (hit(px + pw - 30, py + 8, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._speedSegPopup = null; this.input.mouse.clicked = false; return; }
+    if (hit(px + 20, py + 52, pw - 40, 30)) { const sp = [0.5, 1, 2, 3, 4, 6, 8]; const i = sp.findIndex(s => s >= seg.targetSpeed); seg.targetSpeed = sp[(i + 1) % sp.length]; }
+    else if (hit(px + 20, py + 100, pw - 40, 30)) { this._speedSegs = this._speedSegs.filter(s => s !== seg); this._speedSegPopup = null; this._notify('Speed Segment removed', '#c66', 100); }
+    this.input.mouse.clicked = false;
+  }
+  _drawSpeedSegPopup(ctx) {
+    if (!this._speedSegPopup) return;
+    const seg = (this._speedSegs || []).find(s => s.id === this._speedSegPopup.id);
+    if (!seg) { this._speedSegPopup = null; return; }
+    const pw = 300, ph = 180, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    this._roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#0f2418'; ctx.fill(); ctx.strokeStyle = '#46b46e'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#8ff0b8'; ctx.font = 'bold 13px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('SPEED SEGMENT (' + seg.cells.length + ' cells)', px + pw / 2, py + 20);
+    ctx.fillStyle = '#aaa'; ctx.font = 'bold 12px Courier New'; ctx.fillText('✕', px + pw - 19, py + 19);
+    const btn = (y, label, danger) => { this._roundRect(ctx, px + 20, y, pw - 40, 30, 5); ctx.fillStyle = danger ? '#3a1d1d' : '#123a24'; ctx.fill(); ctx.strokeStyle = danger ? '#a55' : '#46b46e'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = danger ? '#f0c0c0' : '#c8f0d8'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 15); };
+    btn(py + 52, 'Target Speed: ' + seg.targetSpeed);
+    btn(py + 100, 'Remove', true);
+    ctx.restore();
+  }
+  _drawSpeedSegs(ctx) {
+    if (this.gameMode !== 'sandbox' || !this._speedSegs || !this._speedSegs.length) return;
+    ctx.save();
+    for (const seg of this._speedSegs) {
+      for (const c of seg.cells) {
+        const x = c.col * BLOCK_SIZE - this.camera.x, y = c.row * BLOCK_SIZE - this.camera.y;
+        ctx.fillStyle = 'rgba(70,180,110,0.30)'; ctx.fillRect(x, y, BLOCK_SIZE, BLOCK_SIZE);
+        ctx.strokeStyle = '#46b46e'; ctx.lineWidth = 1; ctx.strokeRect(x + 1, y + 1, BLOCK_SIZE - 2, BLOCK_SIZE - 2);
+      }
+      const c0 = seg.cells[0];
+      ctx.fillStyle = '#bff0d2'; ctx.font = 'bold 9px Courier New'; ctx.textAlign = 'center';
+      ctx.fillText('»' + seg.targetSpeed, c0.col * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.x, c0.row * BLOCK_SIZE - 4 - this.camera.y);
+    }
+    ctx.restore();
+  }
+
   _drawDirCtrlPopup(ctx) {
     if (!this._dirCtrlPopup) return;
     const dc = this._dirControllers.get(this._dirCtrlPopup.col + ',' + this._dirCtrlPopup.row);
