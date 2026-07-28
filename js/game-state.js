@@ -110,23 +110,29 @@ const GAME_STATE = {
     const sandboxTrapdoors = game.redstone
       ? game.redstone.components
           .filter(c => c.type === 'trapdoor' && c.sandboxPlaced)
-          .map(c => ({ col: c.col, row: c.row, open: !!c.open }))
+          .map(c => ({ col: c.col, row: c.row, open: !!c.open, conduct: c.conduct }))
       : [];
     const sandboxPistons = game.redstone
       ? game.redstone.components
           .filter(c => c.type === 'piston' && c.sandboxPlaced)
-          .map(c => ({ col: c.col, row: c.row, dir: c.dir || 'right', inverted: !!c.inverted, extended: !!c.extended }))
+          .map(c => ({ col: c.col, row: c.row, dir: c.dir || 'right', inverted: !!c.inverted, extended: !!c.extended, conduct: c.conduct }))
+      : [];
+    // §Conduct — pressure plates now carry per-block config (conduct network + skin)
+    const sandboxPlates = game.redstone
+      ? game.redstone.components
+          .filter(c => c.type === 'pressure_plate')
+          .map(c => ({ col: c.col, row: c.row, conduct: c.conduct, skin: c.skin || null }))
       : [];
     // §Phase R — Target Blocks carry their own config (pulse/toggle + pulse length)
     const sandboxTargets = game.redstone
       ? game.redstone.components
           .filter(c => c.type === 'target')
-          .map(c => ({ col: c.col, row: c.row, mode: c.mode || 'pulse', pulseDur: c.pulseDur || 30 }))
+          .map(c => ({ col: c.col, row: c.row, mode: c.mode || 'pulse', pulseDur: c.pulseDur || 30, conduct: c.conduct }))
       : [];
     const sandboxLamps = game.redstone
       ? game.redstone.components
           .filter(c => c.type === 'lamp')
-          .map(c => ({ col: c.col, row: c.row, color: c.color || 0 }))
+          .map(c => ({ col: c.col, row: c.row, color: c.color || 0, conduct: c.conduct }))
       : [];
     const sandboxConverters = game.redstone
       ? game.redstone.components
@@ -136,7 +142,7 @@ const GAME_STATE = {
     const sandboxWeightPlates = game.redstone
       ? game.redstone.components
           .filter(c => c.type === 'weight')
-          .map(c => ({ col: c.col, row: c.row, trigger: c.trigger || 'both' }))
+          .map(c => ({ col: c.col, row: c.row, trigger: c.trigger || 'both', conduct: c.conduct, skin: c.skin || null }))
       : [];
     // Sandbox quick-access hotbar — must survive the test-mode round-trip (which
     // serializes via GAME_STATE, not saves.js), else it empties on return to editor.
@@ -262,6 +268,7 @@ const GAME_STATE = {
       sandboxLamps,
       sandboxConverters,
       sandboxWeightPlates,
+      sandboxPlates,
       sbHotbar,
       sbHotbarSel,
       dustBlocks,

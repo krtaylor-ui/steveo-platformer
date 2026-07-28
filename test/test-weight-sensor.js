@@ -66,9 +66,9 @@ console.log('Weight Sensor — powers an adjacent redstone sink:');
   g.player = ent(col, row);
   g._updateWeightPlates();
   const lamp = g.redstone.getAt(col + 1, row);
-  ok(g._sinkGroupPowered(lamp) === true, 'adjacent lamp is powered while stood on');
+  ok(g._applyConductGroup(lamp) === true, 'adjacent lamp is powered while stood on');
   g.player = null; g._updateWeightPlates();
-  ok(g._sinkGroupPowered(lamp) === false, 'adjacent lamp unpowered when the sensor releases');
+  ok(g._applyConductGroup(lamp) === false, 'adjacent lamp unpowered when the sensor releases');
 }
 
 // 3 ── on a sub-cell-moving platform, detection tracks the SMOOTH surface (no flicker).

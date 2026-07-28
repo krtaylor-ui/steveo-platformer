@@ -160,6 +160,9 @@ class Level {
         } else if (block === BLOCK.PULSE_CONVERTER && redstone) {
           const _cmp = redstone.getAt(c, r);
           state = { on: _cmp ? !!_cmp.on : false, dir: _cmp ? (_cmp.dir || (_cmp.axis === 'v' ? 'down' : 'right')) : 'right' };   // §Phase R
+        } else if (block === BLOCK.WEIGHT_PLATE && redstone) {
+          const comp = redstone.getAt(c, r);
+          state = { on: comp ? !!(comp.on || comp._netOn) : false, trigger: comp ? (comp.trigger || 'both') : 'both' };   // §Weight Sensor (glow reflects network conduction too)
         } else if (block === BLOCK.COIN || block === BLOCK.QUESTION_BLOCK ||
                    block === BLOCK.CONVEYOR_LEFT || block === BLOCK.CONVEYOR_RIGHT) {
           state = { frame };                       // §Classic Blocks — animation tick
@@ -175,7 +178,14 @@ class Level {
           state = { world: true };   // §Travel Tube — in-world, the tube stroke passes render it (draw NOTHING per-cell); the palette (no world flag) shows an icon
         }
 
-        drawBlock(ctx, block, screenX, screenY, bp, state);
+        // §Skins — a Weight Sensor / Pressure Plate may render as another block while keeping its
+        // behavior. The skin is a block-type id stored on the component (null = default sprite).
+        let drawType = block;
+        if ((block === BLOCK.WEIGHT_PLATE || block === BLOCK.PRESSURE_PLATE) && redstone) {
+          const sc = redstone.getAt(c, r);
+          if (sc && sc.skin) drawType = sc.skin;
+        }
+        drawBlock(ctx, drawType, screenX, screenY, bp, state);
       }
     }
   }

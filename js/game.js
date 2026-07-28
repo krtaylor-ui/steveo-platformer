@@ -44,6 +44,18 @@ function _localMenuState(game) {
   return undefined;
 }
 
+// §Skins — a functional block can render as one of these sprites while keeping its behavior. `block`
+// is a BLOCK id (null = the block's own default look). Kept small + curated; PNG-upload skins will
+// extend the same `skin` field later without a data-model change.
+const SKIN_OPTIONS = [
+  { label: 'Default', block: null },
+  { label: 'Wood',    block: BLOCK.OAK_PLANKS },
+  { label: 'Stone',   block: BLOCK.STONE },
+  { label: 'Dirt',    block: BLOCK.DIRT },
+  { label: 'Log',     block: BLOCK.OAK_LOG },
+  { label: 'Grass',   block: BLOCK.GRASS },
+];
+
 class Game {
   constructor(mode = 'normal', options = {}, onReturnToMenu = null) {
     this.canvas          = document.getElementById('gameCanvas');
@@ -500,6 +512,9 @@ class Game {
     this._rxConfigPopup      = null;   // null | {col,row}
     this._txConfigPopup      = null;   // null | {col,row}
     this._weightPopup        = null;   // null | {col,row} — §Weight Sensor trigger config
+    this._platePopup         = null;   // null | {col,row} — §Pressure Plate conduct + skin config
+    this._lampPopup          = null;   // null | {col,row} — §Lamp colour + conduct config
+    this._trapdoorPopup      = null;   // null | {col,row} — §Trap Door conduct config
     this._pistonConfigPopup  = null;   // null | {col,row} — direction selection for sandbox pistons
     // §Moving Platforms — rails (waypoint paths) + platforms bound to anchors that ride them.
     this._rails       = [];        // [{id, cells:[{col,row}], vis:'solid'|'visible'|'invisible', loop, pauseNodes, ...}]
@@ -1979,6 +1994,10 @@ class Game {
         this._handleWeightPopupInput();
         return;
       }
+      // §Conduct/skin config popups (pressure plate, lamp, trap door)
+      if (this._platePopup)    { this._handlePlatePopupInput();    return; }
+      if (this._lampPopup)     { this._handleLampPopupInput();     return; }
+      if (this._trapdoorPopup) { this._handleTrapdoorPopupInput(); return; }
       // §Classic Blocks — pipe-destination / block-contents config popup
       if (this._classicPopup) {
         this._handleClassicPopupInput();
@@ -3218,11 +3237,12 @@ class Game {
           this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'contents' };     // config only with the matching block SELECTED
         } else if (target === BLOCK.WEIGHT_PLATE && this.sandbox.selectedBlock === BLOCK.WEIGHT_PLATE) {
           this._weightPopup = { col: hoverCol, row: hoverRow };                        // §Weight Sensor — set trigger (players/mobs/both)
+        } else if (target === BLOCK.PRESSURE_PLATE && this.sandbox.selectedBlock === BLOCK.PRESSURE_PLATE) {
+          this._platePopup = { col: hoverCol, row: hoverRow };                         // §Pressure Plate — conduct + skin config
         } else if (target === BLOCK.TARGET_BLOCK && this.sandbox.selectedBlock === BLOCK.TARGET_BLOCK) {
           this._targetConfigPopup = { col: hoverCol, row: hoverRow };                  // §Phase R — reconfigure a placed Target
         } else if (target === BLOCK.REDSTONE_LAMP && this.sandbox.selectedBlock === BLOCK.REDSTONE_LAMP) {
-          const comp = this.redstone.getAt(hoverCol, hoverRow);                          // §Phase R — cycle lamp colour
-          if (comp) { comp.color = ((comp.color || 0) + 1) % 9; this._notify('Lamp colour changed', '#ffd166', 70); }
+          this._lampPopup = { col: hoverCol, row: hoverRow };                            // §Lamp — colour + conduct config
         } else if (target === BLOCK.PULSE_CONVERTER && this.sandbox.selectedBlock === BLOCK.PULSE_CONVERTER) {
           const comp = this.redstone.getAt(hoverCol, hoverRow);                          // §Phase R — rotate: cycle the PULSE side through the 4 directions
           if (comp) {
@@ -3307,13 +3327,9 @@ class Game {
         } else if (target === BLOCK.TRAPDOOR &&
                    !this.sandbox.isEggSelected && !this.sandbox.isToolSelected &&
                    this.sandbox.selectedBlock === BLOCK.TRAPDOOR) {
-          // Trapdoor selected + click on placed trapdoor → toggle state
+          // Trapdoor selected + click on placed trapdoor → open config (conduct + test toggle)
           const comp = this.redstone.getAt(hoverCol, hoverRow);
-          if (comp && comp.type === 'trapdoor') {
-            comp.open = !comp.open;
-            this._notify(`Trap Door: ${comp.open ? 'OPEN' : 'CLOSED'}`, '#C8A558', 80);
-            this._playSound('sounds/trapdoor.mp3', 0.65);
-          }
+          if (comp && comp.type === 'trapdoor') this._trapdoorPopup = { col: hoverCol, row: hoverRow };
         } else if (target === BLOCK.PISTON_BODY) {
           // Click placed piston body → open direction config again
           const comp = this.redstone.getAt(hoverCol, hoverRow);
@@ -6476,6 +6492,9 @@ class Game {
       if (this._pistonConfigPopup) this._drawPistonConfigPopup(ctx);
       if (this._targetConfigPopup) this._drawTargetConfigPopup(ctx);
       if (this._weightPopup) this._drawWeightPopup(ctx);
+      if (this._platePopup) this._drawPlatePopup(ctx);
+      if (this._lampPopup) this._drawLampPopup(ctx);
+      if (this._trapdoorPopup) this._drawTrapdoorPopup(ctx);
       if (this._classicPopup) this._drawClassicPopup(ctx);
       if (this._tubePopup) this._drawTubePopup(ctx);
       if (this._railPopup) this._drawRailPopup(ctx);
@@ -7436,6 +7455,7 @@ class Game {
       const d = this._dustBlocks.get(`${c},${r}`);
       if (d) return d.on;
       const comp = this.redstone.getAt(c, r);
+      if (comp && comp._netOn && comp.conduct === true) return true;   // §Conduct — an energized conducting device feeds a gate input
       if (comp && (comp.type === 'lever' || comp.type === 'pressure_plate' || comp.type === 'target' || comp.type === 'weight')) return !!comp.on;   // §Adjacency — target is a generator too
       const rx = this._receivers.get(`${c},${r}`);   // §Adjacency — a powered receiver feeds a gate input directly
       if (rx) return !!rx.powered;
@@ -7490,13 +7510,18 @@ class Game {
   // §Adjacency power — true when a POWERED generator sits directly beside (col,row) and drives it,
   // with NO redstone dust in between. Simple generators (lever/plate/target/receiver) power all four
   // neighbours; gates and pulse converters only power the neighbour on their OUTPUT side.
-  _adjacentGeneratorPower(col, row) {
+  _adjacentGeneratorPower(col, row, noConductRelay) {
     const GD = Game.GATE_DIRS;
     const DIRS = [[0,1],[0,-1],[1,0],[-1,0]];   // [dr,dc]
     for (const [dr, dc] of DIRS) {
       const nc = col + dc, nr = row + dr;
       const comp = this.redstone.getAt(nc, nr);
       if (comp) {
+        // §Conduct — an energized device with conduct EXPLICITLY on powers its neighbors like a source.
+        // Gated on `conduct === true` (not the default) so untouched sinks keep their classic behavior
+        // (light together, but never arm adjacent TNT/gates). Skipped during a group's own energization
+        // test (noConductRelay) so it can't latch itself on.
+        if (!noConductRelay && comp._netOn && comp.conduct === true) return true;
         if ((comp.type === 'lever' || comp.type === 'pressure_plate' || comp.type === 'target' || comp.type === 'weight') && comp.on) return true;
         if (comp.type === 'pulse_converter') {
           const cdir = comp.dir || (comp.axis === 'v' ? 'down' : 'right');
@@ -7527,7 +7552,8 @@ class Game {
       const nc = col + dc, nr = row + dr;
       const comp = this.redstone.getAt(nc, nr);
       if (comp && (comp.type === 'trapdoor' || comp.type === 'tnt' || comp.type === 'piston' ||
-                   comp.type === 'target' || comp.type === 'pulse_converter' || comp.type === 'lamp')) {
+                   comp.type === 'target' || comp.type === 'pulse_converter' || comp.type === 'lamp' ||
+                   ((comp.type === 'weight' || comp.type === 'pressure_plate') && this._conducts(comp)))) {   // §Conduct — chain through conducting sources
         this._rsEnqueue({ type: 'device', comp, frame: f });
       }
       if (this._transmitters.has(`${nc},${nr}`)) {
@@ -7618,36 +7644,72 @@ class Game {
       const rising = anyOn && !comp._dustPowered;
       comp._dustPowered = anyOn;
       if (rising) this.redstone.hitTarget(comp.col, comp.row, this.level, false);
+      if (this._conducts(comp)) this._applyConductGroup(comp);   // §Conduct — a conducting target joins the network
     } else if (comp.type === 'trapdoor' || comp.type === 'piston' || comp.type === 'lamp') {
-      // §Sink conduction — lamps (all colours), trap doors, and pistons form a SINK NETWORK: they
-      // conduct power to each other, so powering any one activates the whole adjoining group. Powered
-      // iff the connected sink group touches a source (adjacent dust / bare generator).
-      const on = this._sinkGroupPowered(comp);
-      const was = (comp.type === 'trapdoor') ? comp.open : (comp.type === 'lamp') ? comp.on : comp.extended;
-      if (comp.type === 'trapdoor') comp.open = on;
-      else if (comp.type === 'lamp') comp.on = on;
-      else this.redstone._activate(comp, on, this.level);   // piston
-      if (was !== on) for (const [dr, dc] of DIRS) { const n = this.redstone.getAt(comp.col + dc, comp.row + dr); if (n && (n.type === 'lamp' || n.type === 'trapdoor' || n.type === 'piston')) this._rsEnqueue({ type: 'device', comp: n, frame: this.frameCount + this._rsStepFrames() }); }
+      // §Conduct network — sets this sink AND its connected conduct-enabled group in one instant flood.
+      this._applyConductGroup(comp);
+    } else if (comp.type === 'weight' || comp.type === 'pressure_plate') {
+      // §Conduct — a conducting source relays through the network (its own on/off is set elsewhere).
+      if (this._conducts(comp)) this._applyConductGroup(comp);
     }
   }
-  // §Panel conduction — flood the connected group of lamps from `start`; the group is powered if ANY
-  // lamp in it has an adjacent dust-on or bare adjacent generator.
-  _sinkGroupPowered(start) {
+  // §Conduct — a device participates in the conduction network. Sinks (lamp/trapdoor/piston) conduct by
+  // DEFAULT (preserves the classic all-sink behavior); sources (plate/weight/target) are opt-in. A saved
+  // component without the flag falls back to that default so old worlds are unchanged.
+  _conducts(c) {
+    if (!c) return false;
+    if (c.conduct !== undefined) return !!c.conduct;
+    return c.type === 'lamp' || c.type === 'trapdoor' || c.type === 'piston';
+  }
+  // A genuine PHYSICAL power source (lever thrown, plate/weight stood on, target hit) — ignores network
+  // relay so the energization test can't latch on the group's own previous state.
+  _deviceIntrinsicOn(c) {
+    return (c.type === 'lever' || c.type === 'pressure_plate' || c.type === 'weight' || c.type === 'target') && !!c.on;
+  }
+  // §Conduct network — flood the connected group of conduct-enabled devices from `start`, decide if the
+  // group is energized (any member is a physical source, or touches ON dust / an external generator),
+  // then set every member's visible state + _netOn to match. Instant (one flood, no per-hop delay). A
+  // non-conducting `start` forms a group of one, so this also covers the plain single-sink case. Returns
+  // the energized bool. Replaces the old sink-only _sinkGroupPowered.
+  _applyConductGroup(start) {
     const DIRS = [[0, 1], [0, -1], [1, 0], [-1, 0]];
-    const isSink = (t) => t === 'lamp' || t === 'trapdoor' || t === 'piston';
-    const seen = new Set([start.col + ',' + start.row]);
-    const stack = [start];
-    let guard = 0;
-    while (stack.length && guard++ < 4096) {
-      const c = stack.pop();
-      const dustAdj = DIRS.some(([dr, dc]) => { const d = this._dustBlocks.get(`${c.col + dc},${c.row + dr}`); return d && d.on; });
-      if (dustAdj || this._adjacentGeneratorPower(c.col, c.row)) return true;
-      for (const [dr, dc] of DIRS) {
-        const n = this.redstone.getAt(c.col + dc, c.row + dr);
-        if (n && isSink(n.type) && !seen.has(n.col + ',' + n.row)) { seen.add(n.col + ',' + n.row); stack.push(n); }
+    const key = (c) => c.col + ',' + c.row;
+    const group = [start];
+    if (this._conducts(start)) {
+      const seen = new Set([key(start)]);
+      const stack = [start];
+      let guard = 0;
+      while (stack.length && guard++ < 4096) {
+        const c = stack.pop();
+        for (const [dr, dc] of DIRS) {
+          const n = this.redstone.getAt(c.col + dc, c.row + dr);
+          if (n && this._conducts(n) && !seen.has(key(n))) { seen.add(key(n)); group.push(n); stack.push(n); }
+        }
       }
     }
-    return false;
+    // Energized?  noConductRelay=true → the external-generator check ignores the group's own _netOn,
+    // so a group can't latch itself on after its real source is removed.
+    let energized = false;
+    for (const c of group) {
+      if (this._deviceIntrinsicOn(c)) { energized = true; break; }
+      if (DIRS.some(([dr, dc]) => { const d = this._dustBlocks.get(`${c.col + dc},${c.row + dr}`); return d && d.on; })) { energized = true; break; }
+      if (this._adjacentGeneratorPower(c.col, c.row, true)) { energized = true; break; }
+    }
+    for (const c of group) {
+      let changed = (!!c._netOn) !== energized;
+      c._netOn = energized;
+      if (c.type === 'lamp')          { if (c.on !== energized)   { c.on = energized;   changed = true; } }
+      else if (c.type === 'trapdoor') { if (c.open !== energized) { c.open = energized; changed = true; } }
+      else if (c.type === 'piston')   { if (c.extended !== energized) { this.redstone._activate(c, energized, this.level); changed = true; } }
+      if (changed) {
+        for (const [dr, dc] of DIRS) {
+          const n = this.redstone.getAt(c.col + dc, c.row + dr);
+          if (n && (n.type === 'lamp' || n.type === 'trapdoor' || n.type === 'piston' || n.type === 'tnt' || n.type === 'target' || n.type === 'pulse_converter' || this._conducts(n)))
+            this._rsEnqueue({ type: 'device', comp: n, frame: this.frameCount + this._rsStepFrames() });
+        }
+      }
+    }
+    return energized;
   }
 
   // ── Piston knockback (applied each frame during extension animation) ──
@@ -8208,7 +8270,7 @@ class Game {
     const comp = this.redstone.getAt(tp.col, tp.row);
     if (!comp || comp.type !== 'target') { this._targetConfigPopup = null; return; }
     if (!this.input.mouse.clicked) return;
-    const pw = 260, ph = 200, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const pw = 260, ph = 240, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     const mx = this.input.mouse.x, my = this.input.mouse.y;
     const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
     this.input.mouse.clicked = false;
@@ -8218,7 +8280,8 @@ class Game {
       const opts = [10, 20, 30, 45, 60, 90]; const i = opts.indexOf(comp.pulseDur || 30);
       comp.pulseDur = opts[(i + 1) % opts.length]; return;
     }
-    if (hit(px + 14, py + ph - 44, pw - 28, 32)) {   // remove
+    if (hit(px + 14, py + 128, pw - 28, 30)) { comp.conduct = !this._conducts(comp); return; }   // §Conduct toggle
+    if (hit(px + 14, py + ph - 42, pw - 28, 32)) {   // remove
       this.level.set(tp.row, tp.col, BLOCK.AIR); this.redstone.removeAt(tp.col, tp.row);
       this._targetConfigPopup = null; this._notify('Target Block removed', '#c66', 90); return;
     }
@@ -8227,7 +8290,7 @@ class Game {
     const tp = this._targetConfigPopup; if (!tp) return;
     const comp = this.redstone.getAt(tp.col, tp.row);
     if (!comp || comp.type !== 'target') { this._targetConfigPopup = null; return; }
-    const pw = 260, ph = 200, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const pw = 260, ph = 240, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     ctx.save(); ctx.textBaseline = 'top';
     ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     ctx.fillStyle = '#1a1410'; _roundRect(ctx, px, py, pw, ph, 8); ctx.fill();
@@ -8243,11 +8306,14 @@ class Game {
     };
     row(py + 52, 'Mode', toggle ? 'Toggle (on / off on hit)' : 'Pulse (timed on hit)', false);
     row(py + 92, 'Pulse Length', toggle ? '— (toggle)' : ((comp.pulseDur || 30) + ' frames'), toggle);
+    const cond = this._conducts(comp);
+    this._cfgRow(ctx, px + 14, py + 128, pw - 28, 'Conduct signals', cond ? 'ON' : 'OFF', cond);
     ctx.fillStyle = '#9aa'; ctx.font = '11px system-ui, sans-serif';
-    ctx.fillText('Shoot it to fire. Powers redstone dust placed next to it.', px + 16, py + 132);
-    ctx.fillStyle = '#4a1f2a'; _roundRect(ctx, px + 14, py + ph - 44, pw - 28, 32, 6); ctx.fill();
+    ctx.fillText('Shoot it to fire. Powers dust / conducting', px + 16, py + 166);
+    ctx.fillText('devices placed next to it.', px + 16, py + 180);
+    ctx.fillStyle = '#4a1f2a'; _roundRect(ctx, px + 14, py + ph - 42, pw - 28, 32, 6); ctx.fill();
     ctx.fillStyle = '#ffb3c0'; ctx.font = 'bold 12px system-ui, sans-serif';
-    ctx.textAlign = 'center'; ctx.fillText('🗑  Remove', px + pw / 2, py + ph - 35); ctx.textAlign = 'left';
+    ctx.textAlign = 'center'; ctx.fillText('🗑  Remove', px + pw / 2, py + ph - 33); ctx.textAlign = 'left';
     ctx.restore();
   }
 
@@ -8257,47 +8323,195 @@ class Game {
     const comp = this.redstone.getAt(wp.col, wp.row);
     if (!comp || comp.type !== 'weight') { this._weightPopup = null; return; }
     if (!this.input.mouse.clicked) return;
-    const pw = 260, ph = 196, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const pw = 280, ph = 262, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     const mx = this.input.mouse.x, my = this.input.mouse.y;
     const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
     this.input.mouse.clicked = false;
     if (hit(px + pw - 28, py + 6, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._weightPopup = null; return; }
     const opts = ['players', 'mobs', 'both'];
     const bw = (pw - 28 - 12) / 3;
-    for (let i = 0; i < 3; i++) { if (hit(px + 14 + i * (bw + 6), py + 56, bw, 34)) { comp.trigger = opts[i]; return; } }
-    if (hit(px + 14, py + ph - 44, pw - 28, 32)) {   // remove
+    for (let i = 0; i < 3; i++) { if (hit(px + 14 + i * (bw + 6), py + 52, bw, 32)) { comp.trigger = opts[i]; return; } }
+    if (hit(px + 14, py + 92, pw - 28, 30)) { comp.conduct = !this._conducts(comp); return; }        // §Conduct toggle
+    if (hit(px + 14, py + 128, pw - 28, 30)) { this._cycleSkin(comp); return; }                        // §Skin cycle
+    if (hit(px + 14, py + ph - 40, pw - 28, 30)) {                                                     // remove
       this.level.set(wp.row, wp.col, BLOCK.AIR); this.redstone.removeAt(wp.col, wp.row);
       this._weightPopup = null; this._notify('Weight Sensor removed', '#c66', 90); return;
     }
   }
+  // §Skin — advance a component through the curated skin list (Default → Wood → …).
+  _cycleSkin(comp) {
+    const i = SKIN_OPTIONS.findIndex(s => s.block === (comp.skin || null));
+    comp.skin = SKIN_OPTIONS[(i + 1) % SKIN_OPTIONS.length].block;
+  }
+  // Shared renderer for a full-width toggle/cycle row inside a config modal.
+  _cfgRow(ctx, px, py, w, label, valTxt, accent) {
+    _roundRect(ctx, px, py, w, 30, 6); ctx.fillStyle = accent ? '#1c3a2a' : '#2a2820'; ctx.fill();
+    ctx.strokeStyle = accent ? '#5ad08a' : '#555'; ctx.lineWidth = 1; _roundRect(ctx, px, py, w, 30, 6); ctx.stroke();
+    ctx.fillStyle = '#cbb'; ctx.font = '12px system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.fillText(label, px + 10, py + 9);
+    ctx.fillStyle = accent ? '#7ff0aa' : '#ffe8b0'; ctx.font = 'bold 12px system-ui, sans-serif'; ctx.textAlign = 'right'; ctx.fillText(valTxt, px + w - 10, py + 9); ctx.textAlign = 'left';
+  }
+  _skinLabel(comp) { return (SKIN_OPTIONS.find(s => s.block === (comp.skin || null)) || SKIN_OPTIONS[0]).label; }
   _drawWeightPopup(ctx) {
     const wp = this._weightPopup; if (!wp) return;
     const comp = this.redstone.getAt(wp.col, wp.row);
     if (!comp || comp.type !== 'weight') { this._weightPopup = null; return; }
-    const pw = 260, ph = 196, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const pw = 280, ph = 262, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     ctx.save(); ctx.textBaseline = 'top';
     ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     ctx.fillStyle = '#151512'; _roundRect(ctx, px, py, pw, ph, 8); ctx.fill();
     ctx.strokeStyle = '#ffcf5a'; ctx.lineWidth = 2; _roundRect(ctx, px, py, pw, ph, 8); ctx.stroke();
     ctx.fillStyle = '#ffe8b0'; ctx.font = 'bold 14px system-ui, sans-serif'; ctx.fillText('Weight Sensor', px + 14, py + 12);
     ctx.fillStyle = '#c77'; ctx.font = 'bold 16px system-ui, sans-serif'; ctx.fillText('✕', px + pw - 24, py + 9);
-    ctx.fillStyle = '#bbaa88'; ctx.font = '11px system-ui, sans-serif'; ctx.fillText('Powers redstone while stood on. Triggered by:', px + 14, py + 36);
+    ctx.fillStyle = '#bbaa88'; ctx.font = '11px system-ui, sans-serif'; ctx.fillText('Triggered by:', px + 14, py + 36);
     const opts = [['players', 'Players'], ['mobs', 'Mobs'], ['both', 'Both']];
     const bw = (pw - 28 - 12) / 3;
     for (let i = 0; i < 3; i++) {
       const sel = (comp.trigger || 'both') === opts[i][0];
       const bx = px + 14 + i * (bw + 6);
-      ctx.fillStyle = sel ? '#5a4a1c' : '#2a2820'; _roundRect(ctx, bx, py + 56, bw, 34, 6); ctx.fill();
-      ctx.strokeStyle = sel ? '#ffcf5a' : '#444'; ctx.lineWidth = 1; _roundRect(ctx, bx, py + 56, bw, 34, 6); ctx.stroke();
+      ctx.fillStyle = sel ? '#5a4a1c' : '#2a2820'; _roundRect(ctx, bx, py + 52, bw, 32, 6); ctx.fill();
+      ctx.strokeStyle = sel ? '#ffcf5a' : '#444'; ctx.lineWidth = 1; _roundRect(ctx, bx, py + 52, bw, 32, 6); ctx.stroke();
       ctx.fillStyle = sel ? '#ffe8b0' : '#aa9'; ctx.font = 'bold 12px system-ui, sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText(opts[i][1], bx + bw / 2, py + 66); ctx.textAlign = 'left';
+      ctx.fillText(opts[i][1], bx + bw / 2, py + 61); ctx.textAlign = 'left';
     }
+    const cond = this._conducts(comp);
+    this._cfgRow(ctx, px + 14, py + 92, pw - 28, 'Conduct signals', cond ? 'ON' : 'OFF', cond);
+    this._cfgRow(ctx, px + 14, py + 128, pw - 28, 'Skin', this._skinLabel(comp) + '  ▸', false);
     ctx.fillStyle = '#9aa'; ctx.font = '11px system-ui, sans-serif';
-    ctx.fillText('A solid block — stand on TOP of it. Works on', px + 16, py + 104);
-    ctx.fillText('moving platforms without flickering.', px + 16, py + 120);
-    ctx.fillStyle = '#4a1f2a'; _roundRect(ctx, px + 14, py + ph - 44, pw - 28, 32, 6); ctx.fill();
+    ctx.fillText('Solid block — stand on TOP. Conduct links', px + 16, py + 168);
+    ctx.fillText('adjacent conducting devices into one network.', px + 16, py + 184);
+    ctx.fillStyle = '#4a1f2a'; _roundRect(ctx, px + 14, py + ph - 40, pw - 28, 30, 6); ctx.fill();
     ctx.fillStyle = '#ffb3c0'; ctx.font = 'bold 12px system-ui, sans-serif';
-    ctx.textAlign = 'center'; ctx.fillText('🗑  Remove', px + pw / 2, py + ph - 35); ctx.textAlign = 'left';
+    ctx.textAlign = 'center'; ctx.fillText('🗑  Remove', px + pw / 2, py + ph - 32); ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  // ── Pressure Plate config popup — conduct + skin ──
+  _handlePlatePopupInput() {
+    const wp = this._platePopup; if (!wp) return;
+    const comp = this.redstone.getAt(wp.col, wp.row);
+    if (!comp || comp.type !== 'pressure_plate') { this._platePopup = null; return; }
+    if (!this.input.mouse.clicked) return;
+    const pw = 280, ph = 208, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
+    this.input.mouse.clicked = false;
+    if (hit(px + pw - 28, py + 6, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._platePopup = null; return; }
+    if (hit(px + 14, py + 44, pw - 28, 30)) { comp.conduct = !this._conducts(comp); return; }
+    if (hit(px + 14, py + 80, pw - 28, 30)) { this._cycleSkin(comp); return; }
+    if (hit(px + 14, py + ph - 40, pw - 28, 30)) {
+      this.level.set(wp.row, wp.col, BLOCK.AIR); this.redstone.removeAt(wp.col, wp.row);
+      this._platePopup = null; this._notify('Pressure Plate removed', '#c66', 90); return;
+    }
+  }
+  _drawPlatePopup(ctx) {
+    const wp = this._platePopup; if (!wp) return;
+    const comp = this.redstone.getAt(wp.col, wp.row);
+    if (!comp || comp.type !== 'pressure_plate') { this._platePopup = null; return; }
+    const pw = 280, ph = 208, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    ctx.save(); ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.fillStyle = '#151512'; _roundRect(ctx, px, py, pw, ph, 8); ctx.fill();
+    ctx.strokeStyle = '#bcae8a'; ctx.lineWidth = 2; _roundRect(ctx, px, py, pw, ph, 8); ctx.stroke();
+    ctx.fillStyle = '#eee2c4'; ctx.font = 'bold 14px system-ui, sans-serif'; ctx.fillText('Pressure Plate', px + 14, py + 12);
+    ctx.fillStyle = '#c77'; ctx.font = 'bold 16px system-ui, sans-serif'; ctx.fillText('✕', px + pw - 24, py + 9);
+    const cond = this._conducts(comp);
+    this._cfgRow(ctx, px + 14, py + 44, pw - 28, 'Conduct signals', cond ? 'ON' : 'OFF', cond);
+    this._cfgRow(ctx, px + 14, py + 80, pw - 28, 'Skin', this._skinLabel(comp) + '  ▸', false);
+    ctx.fillStyle = '#9aa'; ctx.font = '11px system-ui, sans-serif';
+    ctx.fillText('Skin it as a plain block to disguise it.', px + 16, py + 120);
+    ctx.fillText('Conduct joins adjacent devices into a network.', px + 16, py + 136);
+    ctx.fillStyle = '#4a1f2a'; _roundRect(ctx, px + 14, py + ph - 40, pw - 28, 30, 6); ctx.fill();
+    ctx.fillStyle = '#ffb3c0'; ctx.font = 'bold 12px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.fillText('🗑  Remove', px + pw / 2, py + ph - 32); ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  // ── Redstone Lamp config popup — colour + conduct ──
+  _handleLampPopupInput() {
+    const wp = this._lampPopup; if (!wp) return;
+    const comp = this.redstone.getAt(wp.col, wp.row);
+    if (!comp || comp.type !== 'lamp') { this._lampPopup = null; return; }
+    if (!this.input.mouse.clicked) return;
+    const pw = 300, ph = 214, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
+    this.input.mouse.clicked = false;
+    if (hit(px + pw - 28, py + 6, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._lampPopup = null; return; }
+    const sw = 26, gap = 4, cols = 9, x0 = px + 14, y0 = py + 44;
+    for (let i = 0; i < cols; i++) { if (hit(x0 + i * (sw + gap), y0, sw, sw)) { comp.color = i; return; } }
+    if (hit(px + 14, py + 88, pw - 28, 30)) { comp.conduct = !this._conducts(comp); return; }
+    if (hit(px + 14, py + ph - 40, pw - 28, 30)) {
+      this.level.set(wp.row, wp.col, BLOCK.AIR); this.redstone.removeAt(wp.col, wp.row);
+      this._lampPopup = null; this._notify('Redstone Lamp removed', '#c66', 90); return;
+    }
+  }
+  _drawLampPopup(ctx) {
+    const wp = this._lampPopup; if (!wp) return;
+    const comp = this.redstone.getAt(wp.col, wp.row);
+    if (!comp || comp.type !== 'lamp') { this._lampPopup = null; return; }
+    const pw = 300, ph = 214, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    ctx.save(); ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.fillStyle = '#151512'; _roundRect(ctx, px, py, pw, ph, 8); ctx.fill();
+    ctx.strokeStyle = '#ff8a6a'; ctx.lineWidth = 2; _roundRect(ctx, px, py, pw, ph, 8); ctx.stroke();
+    ctx.fillStyle = '#ffd6c4'; ctx.font = 'bold 14px system-ui, sans-serif'; ctx.fillText('Redstone Lamp', px + 14, py + 12);
+    ctx.fillStyle = '#c77'; ctx.font = 'bold 16px system-ui, sans-serif'; ctx.fillText('✕', px + pw - 24, py + 9);
+    ctx.fillStyle = '#bbaa88'; ctx.font = '11px system-ui, sans-serif'; ctx.fillText('Colour:', px + 14, py + 30);
+    const cur = comp.color || 0, sw = 26, gap = 4, x0 = px + 14, y0 = py + 44;
+    for (let i = 0; i < LAMP_COLORS.length && i < 9; i++) {
+      const bx = x0 + i * (sw + gap);
+      ctx.fillStyle = LAMP_COLORS[i].c; _roundRect(ctx, bx, y0, sw, sw, 4); ctx.fill();
+      if (i === cur) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; _roundRect(ctx, bx, y0, sw, sw, 4); ctx.stroke(); }
+    }
+    const cond = this._conducts(comp);
+    this._cfgRow(ctx, px + 14, py + 88, pw - 28, 'Conduct signals', cond ? 'ON' : 'OFF', cond);
+    ctx.fillStyle = '#9aa'; ctx.font = '11px system-ui, sans-serif';
+    ctx.fillText('Conduct (default ON) shares power with adjacent', px + 16, py + 128);
+    ctx.fillText('conducting devices. Turn off to isolate this lamp.', px + 16, py + 144);
+    ctx.fillStyle = '#4a1f2a'; _roundRect(ctx, px + 14, py + ph - 40, pw - 28, 30, 6); ctx.fill();
+    ctx.fillStyle = '#ffb3c0'; ctx.font = 'bold 12px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.fillText('🗑  Remove', px + pw / 2, py + ph - 32); ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  // ── Trap Door config popup — conduct + test toggle ──
+  _handleTrapdoorPopupInput() {
+    const wp = this._trapdoorPopup; if (!wp) return;
+    const comp = this.redstone.getAt(wp.col, wp.row);
+    if (!comp || comp.type !== 'trapdoor') { this._trapdoorPopup = null; return; }
+    if (!this.input.mouse.clicked) return;
+    const pw = 280, ph = 196, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
+    this.input.mouse.clicked = false;
+    if (hit(px + pw - 28, py + 6, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._trapdoorPopup = null; return; }
+    if (hit(px + 14, py + 44, pw - 28, 30)) { comp.conduct = !this._conducts(comp); return; }
+    if (hit(px + 14, py + 80, pw - 28, 30)) { comp.open = !comp.open; this._playSound('sounds/trapdoor.mp3', 0.65); return; }
+    if (hit(px + 14, py + ph - 40, pw - 28, 30)) {
+      this.level.set(wp.row, wp.col, BLOCK.AIR); this.redstone.removeAt(wp.col, wp.row);
+      this._trapdoorPopup = null; this._notify('Trap Door removed', '#c66', 90); return;
+    }
+  }
+  _drawTrapdoorPopup(ctx) {
+    const wp = this._trapdoorPopup; if (!wp) return;
+    const comp = this.redstone.getAt(wp.col, wp.row);
+    if (!comp || comp.type !== 'trapdoor') { this._trapdoorPopup = null; return; }
+    const pw = 280, ph = 196, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    ctx.save(); ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.fillStyle = '#151512'; _roundRect(ctx, px, py, pw, ph, 8); ctx.fill();
+    ctx.strokeStyle = '#c8a558'; ctx.lineWidth = 2; _roundRect(ctx, px, py, pw, ph, 8); ctx.stroke();
+    ctx.fillStyle = '#eBd6a4'; ctx.font = 'bold 14px system-ui, sans-serif'; ctx.fillText('Trap Door', px + 14, py + 12);
+    ctx.fillStyle = '#c77'; ctx.font = 'bold 16px system-ui, sans-serif'; ctx.fillText('✕', px + pw - 24, py + 9);
+    const cond = this._conducts(comp);
+    this._cfgRow(ctx, px + 14, py + 44, pw - 28, 'Conduct signals', cond ? 'ON' : 'OFF', cond);
+    this._cfgRow(ctx, px + 14, py + 80, pw - 28, 'State (tap to test)', comp.open ? 'OPEN' : 'CLOSED', !!comp.open);
+    ctx.fillStyle = '#9aa'; ctx.font = '11px system-ui, sans-serif';
+    ctx.fillText('Conduct (default ON) shares power with', px + 16, py + 120);
+    ctx.fillText('adjacent conducting devices.', px + 16, py + 136);
+    ctx.fillStyle = '#4a1f2a'; _roundRect(ctx, px + 14, py + ph - 40, pw - 28, 30, 6); ctx.fill();
+    ctx.fillStyle = '#ffb3c0'; ctx.font = 'bold 12px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.fillText('🗑  Remove', px + pw / 2, py + ph - 32); ctx.textAlign = 'left';
     ctx.restore();
   }
 
@@ -8310,7 +8524,7 @@ class Game {
     if (!comp) { this._pistonConfigPopup = null; return; }
     if (!this.input.mouse.clicked) return;
 
-    const pw = 220, ph = 180;
+    const pw = 220, ph = 236;
     const px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     const mx = this.input.mouse.x, my = this.input.mouse.y;
 
@@ -8343,8 +8557,12 @@ class Game {
       }
     }
 
+    // Conduct toggle
+    if (mx >= px + 14 && mx <= px + pw - 14 && my >= py + 158 && my <= py + 186) {
+      comp.conduct = !this._conducts(comp); return;
+    }
     // Inverted toggle
-    const invY = py + ph - 44;
+    const invY = py + ph - 40;
     if (mx >= px + 14 && mx <= px + pw - 14 && my >= invY && my <= invY + 28) {
       comp.inverted = !comp.inverted;
     }
@@ -8356,7 +8574,7 @@ class Game {
     const comp = this.redstone.getAt(col, row);
     if (!comp) { this._pistonConfigPopup = null; return; }
 
-    const pw = 220, ph = 180;
+    const pw = 220, ph = 236;
     const px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     const mx = this.input.mouse.x, my = this.input.mouse.y;
 
@@ -8403,8 +8621,18 @@ class Game {
     ctx.font = '8px Courier New'; ctx.fillStyle = '#666';
     ctx.fillText('extends →', cx, cy);
 
+    // Conduct toggle
+    const condOn = this._conducts(comp), condY = py + 158;
+    const condHov = mx >= px+14 && mx <= px+pw-14 && my >= condY && my <= condY+28;
+    ctx.fillStyle = condOn ? 'rgba(90,208,138,0.22)' : condHov ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.4)';
+    _roundRect(ctx, px+14, condY, pw-28, 28, 5); ctx.fill();
+    ctx.strokeStyle = condOn ? '#5ad08a' : condHov ? '#888' : '#444'; ctx.lineWidth = 1;
+    _roundRect(ctx, px+14, condY, pw-28, 28, 5); ctx.stroke();
+    ctx.fillStyle = condOn ? '#7ff0aa' : '#888'; ctx.font = '10px Courier New';
+    ctx.fillText(condOn ? 'Conduct: ON  (networked)' : 'Conduct: OFF  (isolated)', cx, condY + 14);
+
     // Inverted toggle
-    const invY = py + ph - 44;
+    const invY = py + ph - 40;
     const invHov = mx >= px+14 && mx <= px+pw-14 && my >= invY && my <= invY+28;
     ctx.fillStyle = comp.inverted ? 'rgba(255,100,100,0.25)' : invHov ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.4)';
     _roundRect(ctx, px+14, invY, pw-28, 28, 5); ctx.fill();
@@ -12680,14 +12908,14 @@ class Game {
     for (const t of (Array.isArray(data.sandboxTargets) ? data.sandboxTargets : [])) {
       if (typeof t.col !== 'number' || typeof t.row !== 'number') continue;
       const comp = this.redstone.getAt(t.col, t.row);
-      if (comp && comp.type === 'target') { comp.mode = t.mode || 'pulse'; comp.pulseDur = t.pulseDur || 30; }
-      else if (!comp) this.redstone.addComponent({ type: 'target', col: t.col, row: t.row, on: false, mode: t.mode || 'pulse', pulseDur: t.pulseDur || 30, links: [], sandboxPlaced: true });
+      if (comp && comp.type === 'target') { comp.mode = t.mode || 'pulse'; comp.pulseDur = t.pulseDur || 30; if (t.conduct !== undefined) comp.conduct = t.conduct; }
+      else if (!comp) this.redstone.addComponent({ type: 'target', col: t.col, row: t.row, on: false, mode: t.mode || 'pulse', pulseDur: t.pulseDur || 30, conduct: t.conduct, links: [], sandboxPlaced: true });
     }
     for (const l of (Array.isArray(data.sandboxLamps) ? data.sandboxLamps : [])) {
       if (typeof l.col !== 'number' || typeof l.row !== 'number') continue;
       const comp = this.redstone.getAt(l.col, l.row);
-      if (comp && comp.type === 'lamp') comp.color = l.color || 0;
-      else if (!comp) this.redstone.addComponent({ type: 'lamp', col: l.col, row: l.row, on: false, color: l.color || 0, links: [], sandboxPlaced: true });
+      if (comp && comp.type === 'lamp') { comp.color = l.color || 0; if (l.conduct !== undefined) comp.conduct = l.conduct; }
+      else if (!comp) this.redstone.addComponent({ type: 'lamp', col: l.col, row: l.row, on: false, color: l.color || 0, conduct: l.conduct, links: [], sandboxPlaced: true });
     }
     for (const cv of (Array.isArray(data.sandboxConverters) ? data.sandboxConverters : [])) {
       if (typeof cv.col !== 'number' || typeof cv.row !== 'number') continue;
@@ -12699,8 +12927,21 @@ class Game {
     for (const w of (Array.isArray(data.sandboxWeightPlates) ? data.sandboxWeightPlates : [])) {
       if (typeof w.col !== 'number' || typeof w.row !== 'number') continue;
       const comp = this.redstone.getAt(w.col, w.row);
-      if (comp && comp.type === 'weight') comp.trigger = w.trigger || 'both';
-      else if (!comp) this.redstone.addComponent({ type: 'weight', col: w.col, row: w.row, on: false, trigger: w.trigger || 'both', links: [], sandboxPlaced: true });
+      if (comp && comp.type === 'weight') { comp.trigger = w.trigger || 'both'; if (w.conduct !== undefined) comp.conduct = w.conduct; if (w.skin) comp.skin = w.skin; }
+      else if (!comp) this.redstone.addComponent({ type: 'weight', col: w.col, row: w.row, on: false, trigger: w.trigger || 'both', conduct: w.conduct, skin: w.skin || null, links: [], sandboxPlaced: true });
+    }
+    // §Conduct/skin — trap doors, pistons, and pressure plates (recreated from the grid) get their flags back.
+    for (const td of (Array.isArray(data.sandboxTrapdoors) ? data.sandboxTrapdoors : [])) {
+      const comp = this.redstone.getAt(td.col, td.row);
+      if (comp && comp.type === 'trapdoor' && td.conduct !== undefined) comp.conduct = td.conduct;
+    }
+    for (const ps of (Array.isArray(data.sandboxPistons) ? data.sandboxPistons : [])) {
+      const comp = this.redstone.getAt(ps.col, ps.row);
+      if (comp && comp.type === 'piston' && ps.conduct !== undefined) comp.conduct = ps.conduct;
+    }
+    for (const pl of (Array.isArray(data.sandboxPlates) ? data.sandboxPlates : [])) {
+      const comp = this.redstone.getAt(pl.col, pl.row);
+      if (comp && comp.type === 'pressure_plate') { if (pl.conduct !== undefined) comp.conduct = pl.conduct; if (pl.skin) comp.skin = pl.skin; }
     }
   }
   _rebuildRedstoneFromGrid() {
@@ -18239,7 +18480,7 @@ class Game {
     if (b === BLOCK.TRAPDOOR)      { const cp = this.redstone.getAt(col, row); return { open: cp ? !!cp.open : false }; }
     if (b === BLOCK.PRESSURE_PLATE){ const cp = this.redstone.getAt(col, row); return { pressed: cp ? !!cp.on : false }; }
     if (b === BLOCK.PULSE_CONVERTER){ const cp = this.redstone.getAt(col, row); return { on: cp ? !!cp.on : false, dir: cp ? (cp.dir || 'right') : 'right' }; }
-    if (b === BLOCK.WEIGHT_PLATE)   { const cp = this.redstone.getAt(col, row); return { on: cp ? !!cp.on : false, trigger: cp ? (cp.trigger || 'both') : 'both' }; }
+    if (b === BLOCK.WEIGHT_PLATE)   { const cp = this.redstone.getAt(col, row); return { on: cp ? !!(cp.on || cp._netOn) : false, trigger: cp ? (cp.trigger || 'both') : 'both' }; }
     return {};
   }
   _platformAt(row, col) { return (this._platforms || []).find(p => p.anchorRow === row && p.anchorCol === col) || null; }
@@ -18973,7 +19214,13 @@ class Game {
         const ox = pl._ax - BLOCK_SIZE / 2, oy = pl._ay - BLOCK_SIZE / 2;
         for (const c of pl.cells) {
           const px = ox + c.dcol * BLOCK_SIZE - this.camera.x, py = oy + c.drow * BLOCK_SIZE - this.camera.y;
-          try { drawBlock(ctx, c.blockType, px, py, 0, this._platformCellState(pl, c)); } catch (e) { ctx.fillStyle = '#888'; ctx.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE); }
+          // §Skins — weight/plate can render as another block while keeping behavior.
+          let dt = c.blockType;
+          if (c.blockType === BLOCK.WEIGHT_PLATE || c.blockType === BLOCK.PRESSURE_PLATE) {
+            const { acol, arow } = this._platCell(pl); const sc = this.redstone.getAt(acol + c.dcol, arow + c.drow);
+            if (sc && sc.skin) dt = sc.skin;
+          }
+          try { drawBlock(ctx, dt, px, py, 0, this._platformCellState(pl, c)); } catch (e) { ctx.fillStyle = '#888'; ctx.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE); }
         }
         // §Moving Redstone — draw the platform's dust ON TOP of its blocks with the FULL connected
         // renderer (path + powered), matching normal dust (the global overlay skips it — see above).
@@ -19150,6 +19397,7 @@ class Game {
   _cellPowered(col, row) {
     const d = this._dustBlocks.get(col + ',' + row); if (d && d.on) return true;
     const comp = this.redstone.getAt(col, row);
+    if (comp && comp._netOn && comp.conduct === true) return true;   // §Conduct — an energized conducting device
     if (comp && (comp.type === 'lever' || comp.type === 'pressure_plate' || comp.type === 'target' || comp.type === 'weight') && comp.on) return true;
     const rx = this._receivers.get(col + ',' + row); if (rx && rx.powered) return true;
     return false;

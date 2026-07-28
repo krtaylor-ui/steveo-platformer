@@ -78,20 +78,35 @@ const SandboxSaves = {
     const sandboxTrapdoors = redstone
       ? redstone.components
           .filter(c => c.type === 'trapdoor' && c.sandboxPlaced)
-          .map(c => ({ col: c.col, row: c.row, open: !!c.open }))
+          .map(c => ({ col: c.col, row: c.row, open: !!c.open, conduct: c.conduct }))
       : [];
 
     const sandboxPistons = redstone
       ? redstone.components
           .filter(c => c.type === 'piston' && c.sandboxPlaced)
           .map(c => ({ col: c.col, row: c.row, dir: c.dir || 'right',
-                       inverted: !!c.inverted, extended: !!c.extended }))
+                       inverted: !!c.inverted, extended: !!c.extended, conduct: c.conduct }))
       : [];
 
     const sandboxWeightPlates = redstone
       ? redstone.components
           .filter(c => c.type === 'weight')
-          .map(c => ({ col: c.col, row: c.row, trigger: c.trigger || 'both' }))
+          .map(c => ({ col: c.col, row: c.row, trigger: c.trigger || 'both', conduct: c.conduct, skin: c.skin || null }))
+      : [];
+
+    // §Conduct/skin — pressure plates carry per-block config (conduct + skin), lamps/targets carry conduct.
+    const sandboxPlates = redstone
+      ? redstone.components
+          .filter(c => c.type === 'pressure_plate')
+          .map(c => ({ col: c.col, row: c.row, conduct: c.conduct, skin: c.skin || null }))
+      : [];
+    const sandboxLamps = redstone
+      ? redstone.components.filter(c => c.type === 'lamp')
+          .map(c => ({ col: c.col, row: c.row, color: c.color || 0, conduct: c.conduct }))
+      : [];
+    const sandboxTargets = redstone
+      ? redstone.components.filter(c => c.type === 'target')
+          .map(c => ({ col: c.col, row: c.row, mode: c.mode || 'pulse', pulseDur: c.pulseDur || 30, conduct: c.conduct }))
       : [];
 
     const dustBlocksArr = dustBlocks
@@ -121,6 +136,9 @@ const SandboxSaves = {
       sandboxTrapdoors,
       sandboxPistons,
       sandboxWeightPlates,
+      sandboxPlates,
+      sandboxLamps,
+      sandboxTargets,
       dustBlocks: dustBlocksArr,
       transmitters: transmitters ? [...transmitters.values()].map(t => ({
         col: t.col, row: t.row, number: t.number, hidden: !!t.hidden,
