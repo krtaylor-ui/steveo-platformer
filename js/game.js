@@ -2440,6 +2440,7 @@ class Game {
                    : (this.input.isAimUp() ? { x: this.player.cx, y: this.player.cy - 1000 } : world);
     const hoverCol = Math.floor(world.x / BLOCK_SIZE);
     const hoverRow = Math.floor(world.y / BLOCK_SIZE);
+    this._hoverCol = hoverCol; this._hoverRow = hoverRow;   // stashed for the rail draft rubber-band preview
     const target   = this.level.get(hoverRow, hoverCol);
     // Debug: expose where the cursor maps in world space (+ mouse px + zoom) so a
     // firing problem tied to zoom/position (Kevin: zoomed-out, bottom-right) can be read.
@@ -17877,8 +17878,11 @@ class Game {
   // ── Rail rendering. Solid rails paint RAIL grid cells (drawn by level.draw); here we draw the
   // centerline overlay for 'visible' rails (play + sandbox) and the editor dashed path/nodes.
   _drawRails(ctx) {
-    if (!this._rails || !this._rails.length) return;
     const isSandbox = this.gameMode === 'sandbox';
+    // Draw the in-progress DRAFT first, so it shows live even before any rail exists (was gated
+    // behind the _rails.length check below → the first rail's dots never appeared until it finished).
+    if (isSandbox && this._railDraft && this._railDraft.cells.length) this._drawRailDraft(ctx);
+    if (!this._rails || !this._rails.length) return;
     for (const rail of this._rails) {
       const pts = this._railPts(rail);
       if (pts.length < 2) continue;
@@ -17912,7 +17916,6 @@ class Game {
       // Pause-node markers + waypoint dots (sandbox only)
       if (isSandbox) this._drawRailEditorDecor(ctx, rail);
     }
-    if (isSandbox && this._railDraft && this._railDraft.cells.length) this._drawRailDraft(ctx);
   }
   _drawRailEditorDecor(ctx, rail) {
     const editing = this._railEditNodes && this._railEditNodes.id === rail.id;
@@ -17938,17 +17941,34 @@ class Game {
   }
   _drawRailDraft(ctx) {
     const cells = this._railDraft.cells;
+    const cx = (c) => c.col * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.x;
+    const cy = (c) => c.row * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.y;
     ctx.save();
-    ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 3; ctx.setLineDash([5, 4]);
-    ctx.beginPath();
+    // Path: a dark casing under a bright dashed line so it reads on any background.
+    const drawLine = (toCursor) => {
+      ctx.beginPath();
+      for (let i = 0; i < cells.length; i++) { const x = cx(cells[i]), y = cy(cells[i]); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+      if (toCursor && cells.length && Number.isInteger(this._hoverCol)) { ctx.lineTo(this._hoverCol * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.x, this._hoverRow * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.y); }
+      ctx.stroke();
+    };
+    ctx.setLineDash([]); ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 6; drawLine(true);   // casing (incl. rubber-band to cursor)
+    ctx.setLineDash([6, 4]); ctx.strokeStyle = '#ffe08a'; ctx.lineWidth = 2.5; drawLine(true);       // bright dashes
+    ctx.setLineDash([]);
+    // Waypoint markers: dark outer ring + bright fill (index-labelled). Start point ringed green.
     for (let i = 0; i < cells.length; i++) {
-      const x = cells[i].col * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.x, y = cells[i].row * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.y;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      const x = cx(cells[i]), y = cy(cells[i]);
+      ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = (i === 0) ? '#7CFF7C' : '#ffd166'; ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke();
     }
-    ctx.stroke(); ctx.setLineDash([]);
-    for (const c of cells) {
-      const x = c.col * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.x, y = c.row * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.y;
-      ctx.fillStyle = '#ffd166'; ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+    // Live hint bubble at the last point.
+    if (cells.length) {
+      const last = cells[cells.length - 1];
+      ctx.font = 'bold 9px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      const msg = cells.length < 2 ? 'click next corner' : 'click here again = finish · click start (green) = loop';
+      ctx.fillStyle = 'rgba(0,0,0,0.7)'; const w = ctx.measureText(msg).width + 8;
+      ctx.fillRect(cx(last) - w / 2, cy(last) - 26, w, 13);
+      ctx.fillStyle = '#ffe08a'; ctx.fillText(msg, cx(last), cy(last) - 15);
     }
     ctx.restore();
   }
@@ -18420,12 +18440,12 @@ class Game {
     const pw = 300, ph = 210, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-    this._roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#0e1e2e'; ctx.fill(); ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; ctx.stroke();
+    _roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#0e1e2e'; ctx.fill(); ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; ctx.stroke();
     ctx.fillStyle = '#8ecbff'; ctx.font = 'bold 13px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('PAUSE NODE (waypoint ' + this._pauseNodePopup.idx + ')', px + pw / 2, py + 22);
     ctx.fillStyle = '#aaa'; ctx.font = 'bold 12px Courier New'; ctx.fillText('✕', px + pw - 19, py + 19);
     const cur = pn ? pn.mode : 'none';
-    const btn = (y, label, active) => { this._roundRect(ctx, px + 20, y, pw - 40, 28, 5); ctx.fillStyle = active ? '#1c4a72' : '#152430'; ctx.fill(); ctx.strokeStyle = active ? '#4aa3ff' : '#2a3a48'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = active ? '#dff0ff' : '#9ab'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 14); };
+    const btn = (y, label, active) => { _roundRect(ctx, px + 20, y, pw - 40, 28, 5); ctx.fillStyle = active ? '#1c4a72' : '#152430'; ctx.fill(); ctx.strokeStyle = active ? '#4aa3ff' : '#2a3a48'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = active ? '#dff0ff' : '#9ab'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 14); };
     btn(py + 48, 'No Pause', cur === 'none');
     btn(py + 84, 'Pause: ' + (pn && pn.mode === 'duration' ? pn.seconds + 's' : 'Duration…'), cur === 'duration');
     btn(py + 120, 'Pause until Anchor reactivated', cur === 'reactivate');
@@ -18513,12 +18533,12 @@ class Game {
     const pw = 340, ph = 334, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-    this._roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#12202e'; ctx.fill(); ctx.strokeStyle = '#3a6ea5'; ctx.lineWidth = 2; ctx.stroke();
+    _roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#12202e'; ctx.fill(); ctx.strokeStyle = '#3a6ea5'; ctx.lineWidth = 2; ctx.stroke();
     ctx.fillStyle = '#7fb2e6'; ctx.font = 'bold 14px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('ANCHOR — MOVEMENT', px + pw / 2, py + 22);
     ctx.fillStyle = '#aaa'; ctx.font = 'bold 12px Courier New'; ctx.fillText('✕', px + pw - 19, py + 19);
     const rowY = (i) => py + 44 + i * 34;
-    const btn = (i, label, on = true) => { this._roundRect(ctx, px + 16, rowY(i), pw - 32, 28, 5); ctx.fillStyle = on ? '#1d3346' : '#182028'; ctx.fill(); ctx.strokeStyle = on ? '#3a6ea5' : '#333'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = on ? '#d8ecff' : '#667'; ctx.font = '12px Courier New'; ctx.textAlign = 'center'; ctx.fillText(label, px + pw / 2, rowY(i) + 14); };
+    const btn = (i, label, on = true) => { _roundRect(ctx, px + 16, rowY(i), pw - 32, 28, 5); ctx.fillStyle = on ? '#1d3346' : '#182028'; ctx.fill(); ctx.strokeStyle = on ? '#3a6ea5' : '#333'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = on ? '#d8ecff' : '#667'; ctx.font = '12px Courier New'; ctx.textAlign = 'center'; ctx.fillText(label, px + pw / 2, rowY(i) + 14); };
     const modeLbl = { continuous: 'Continuous', rider: 'Rider-Powered', onetouch: 'One-Touch Start', redstone: 'Redstone-Controlled' }[pl.mode];
     btn(0, 'Initial Dir: ' + (pl.initialDir >= 0 ? 'Forward ▶' : '◀ Backward'));
     btn(1, 'Mode: ' + modeLbl);
@@ -18527,8 +18547,8 @@ class Game {
     btn(4, 'Speed: ' + pl.speed);
     btn(5, 'Center of Gravity (tilt): ' + (pl.cog ? 'On' : 'Off'), pl.cog);
     // reposition + remove on one row
-    this._roundRect(ctx, px + 16, rowY(6), (pw - 40) / 2, 28, 5); ctx.fillStyle = '#1d3346'; ctx.fill(); ctx.strokeStyle = '#3a6ea5'; ctx.stroke(); ctx.fillStyle = '#d8ecff'; ctx.fillText('Reposition', px + 16 + (pw - 40) / 4, rowY(6) + 14);
-    this._roundRect(ctx, px + 24 + (pw - 40) / 2, rowY(6), (pw - 40) / 2, 28, 5); ctx.fillStyle = '#3a1d1d'; ctx.fill(); ctx.strokeStyle = '#a55'; ctx.stroke(); ctx.fillStyle = '#f0c0c0'; ctx.fillText('Remove', px + 24 + (pw - 40) * 0.75, rowY(6) + 14);
+    _roundRect(ctx, px + 16, rowY(6), (pw - 40) / 2, 28, 5); ctx.fillStyle = '#1d3346'; ctx.fill(); ctx.strokeStyle = '#3a6ea5'; ctx.stroke(); ctx.fillStyle = '#d8ecff'; ctx.fillText('Reposition', px + 16 + (pw - 40) / 4, rowY(6) + 14);
+    _roundRect(ctx, px + 24 + (pw - 40) / 2, rowY(6), (pw - 40) / 2, 28, 5); ctx.fillStyle = '#3a1d1d'; ctx.fill(); ctx.strokeStyle = '#a55'; ctx.stroke(); ctx.fillStyle = '#f0c0c0'; ctx.fillText('Remove', px + 24 + (pw - 40) * 0.75, rowY(6) + 14);
     if (pl.mode === 'redstone' && pl.signalResponse === 'sustained') { ctx.fillStyle = '#e0b050'; ctx.font = '9px Courier New'; ctx.fillText('Toggle needed for pause-until-reactivate nodes', px + pw / 2, py + ph - 12); }
     ctx.restore();
   }
@@ -18665,11 +18685,11 @@ class Game {
     const pw = 300, ph = 180, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-    this._roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#0f2418'; ctx.fill(); ctx.strokeStyle = '#46b46e'; ctx.lineWidth = 2; ctx.stroke();
+    _roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#0f2418'; ctx.fill(); ctx.strokeStyle = '#46b46e'; ctx.lineWidth = 2; ctx.stroke();
     ctx.fillStyle = '#8ff0b8'; ctx.font = 'bold 13px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('SPEED SEGMENT (' + seg.cells.length + ' cells)', px + pw / 2, py + 20);
     ctx.fillStyle = '#aaa'; ctx.font = 'bold 12px Courier New'; ctx.fillText('✕', px + pw - 19, py + 19);
-    const btn = (y, label, danger) => { this._roundRect(ctx, px + 20, y, pw - 40, 30, 5); ctx.fillStyle = danger ? '#3a1d1d' : '#123a24'; ctx.fill(); ctx.strokeStyle = danger ? '#a55' : '#46b46e'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = danger ? '#f0c0c0' : '#c8f0d8'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 15); };
+    const btn = (y, label, danger) => { _roundRect(ctx, px + 20, y, pw - 40, 30, 5); ctx.fillStyle = danger ? '#3a1d1d' : '#123a24'; ctx.fill(); ctx.strokeStyle = danger ? '#a55' : '#46b46e'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = danger ? '#f0c0c0' : '#c8f0d8'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 15); };
     btn(py + 52, 'Target Speed: ' + seg.targetSpeed);
     btn(py + 100, 'Remove', true);
     ctx.restore();
@@ -18748,11 +18768,11 @@ class Game {
     const pw = 320, ph = 230, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-    this._roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#2a1414'; ctx.fill(); ctx.strokeStyle = '#d05555'; ctx.lineWidth = 2; ctx.stroke();
+    _roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#2a1414'; ctx.fill(); ctx.strokeStyle = '#d05555'; ctx.lineWidth = 2; ctx.stroke();
     ctx.fillStyle = '#f0a0a0'; ctx.font = 'bold 13px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('RAIL GATE (' + g.cells.length + ' cells)', px + pw / 2, py + 20);
     ctx.fillStyle = '#aaa'; ctx.font = 'bold 12px Courier New'; ctx.fillText('✕', px + pw - 19, py + 19);
-    const btn = (y, label, danger) => { this._roundRect(ctx, px + 20, y, pw - 40, 28, 5); ctx.fillStyle = danger ? '#3a1d1d' : '#3a2020'; ctx.fill(); ctx.strokeStyle = danger ? '#a55' : '#d05555'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = danger ? '#f0c0c0' : '#f0d0d0'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 14); };
+    const btn = (y, label, danger) => { _roundRect(ctx, px + 20, y, pw - 40, 28, 5); ctx.fillStyle = danger ? '#3a1d1d' : '#3a2020'; ctx.fill(); ctx.strokeStyle = danger ? '#a55' : '#d05555'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = danger ? '#f0c0c0' : '#f0d0d0'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 14); };
     const condLbl = { redstone: 'Redstone signal', 'weight-above': 'Weight ≥ threshold', 'weight-below': 'Weight ≤ threshold' }[g.condition];
     btn(py + 48, 'Opens on: ' + condLbl);
     btn(py + 84, g.condition === 'redstone' ? ('Channel: ' + (g.channel == null ? 'None' : '#' + g.channel)) : ('Threshold: ' + g.threshold));
@@ -18819,11 +18839,11 @@ class Game {
     const pw = 320, ph = 210, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-    this._roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#20162e'; ctx.fill(); ctx.strokeStyle = '#7a4fa0'; ctx.lineWidth = 2; ctx.stroke();
+    _roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#20162e'; ctx.fill(); ctx.strokeStyle = '#7a4fa0'; ctx.lineWidth = 2; ctx.stroke();
     ctx.fillStyle = '#c9a3ff'; ctx.font = 'bold 13px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('DIRECTION CONTROLLER', px + pw / 2, py + 20);
     ctx.fillStyle = '#aaa'; ctx.font = 'bold 12px Courier New'; ctx.fillText('✕', px + pw - 19, py + 19);
-    const btn = (y, label, danger) => { this._roundRect(ctx, px + 20, y, pw - 40, 30, 5); ctx.fillStyle = danger ? '#3a1d2e' : '#2c1f42'; ctx.fill(); ctx.strokeStyle = danger ? '#a55' : '#7a4fa0'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = danger ? '#f0c0d0' : '#e6d0ff'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 15); };
+    const btn = (y, label, danger) => { _roundRect(ctx, px + 20, y, pw - 40, 30, 5); ctx.fillStyle = danger ? '#3a1d2e' : '#2c1f42'; ctx.fill(); ctx.strokeStyle = danger ? '#a55' : '#7a4fa0'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = danger ? '#f0c0d0' : '#e6d0ff'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 15); };
     btn(py + 52, 'Left input (→ Backward): ' + (dc.lCh == null ? 'None' : 'ch #' + dc.lCh));
     btn(py + 92, 'Right input (→ Forward): ' + (dc.rCh == null ? 'None' : 'ch #' + dc.rCh));
     btn(py + 140, 'Remove', true);
@@ -18858,11 +18878,11 @@ class Game {
     const pw = 300, ph = 254, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-    this._roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#241d10'; ctx.fill(); ctx.strokeStyle = '#c9a54a'; ctx.lineWidth = 2; ctx.stroke();
+    _roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#241d10'; ctx.fill(); ctx.strokeStyle = '#c9a54a'; ctx.lineWidth = 2; ctx.stroke();
     ctx.fillStyle = '#c9a54a'; ctx.font = 'bold 14px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('RAIL', px + pw / 2, py + 20);
     ctx.fillStyle = '#aaa'; ctx.font = 'bold 12px Courier New'; ctx.fillText('✕', px + pw - 19, py + 19);
-    const btn = (y, label) => { this._roundRect(ctx, px + 20, y, pw - 40, 28, 5); ctx.fillStyle = '#3a2f18'; ctx.fill(); ctx.strokeStyle = '#c9a54a'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = '#f0e0b0'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 14); };
+    const btn = (y, label) => { _roundRect(ctx, px + 20, y, pw - 40, 28, 5); ctx.fillStyle = '#3a2f18'; ctx.fill(); ctx.strokeStyle = '#c9a54a'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = '#f0e0b0'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 14); };
     const visLabel = rail.vis === 'solid' ? 'Visible + Solid' : rail.vis === 'invisible' ? 'Invisible' : 'Visible + Non-solid';
     const colLabel = { passthrough: 'Pass Through', redirect: 'Redirect', destroy: 'Destroy Smaller' }[rail.collideMode || 'passthrough'];
     btn(py + 44, 'Visibility: ' + visLabel);
