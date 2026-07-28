@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 build 255 (Moving Platforms feel/edit pass, browser-untested): LOOP is now automatic (connect the ends = loop; the broken manual toggle removed). ANGLED rails AND tubes via a Path toggle in each modal (direct diagonals instead of forced right angles). Smoother ride: riders glue to the platform SMOOTH surface (no more cell-by-cell jerk). Grabbing the back EDGE now counts as a rider (Rider-Powered/One-Touch start WITH you); a GRAPPLE link never counts. Platform-vs-platform collision triggers on ANY part touching. Reposition moves the WHOLE platform as one unit. Prev 254 fixed the config modals (this._roundRect crash) + live rail draft dots; 245-253 built the Moving Platforms system.';
+const GAME_VERSION = 'v3 build 256 (Moving Platforms redstone/config batch, browser-untested): LAMP PANELS now conduct — powering any lamp lights the whole connected group of lamps (gates/configurable devices excluded). TX and RX gained a HIDE-IN-PLAY toggle in their config modal (the Transmitter now opens a modal too): always shown in sandbox, hidden during play to reveal only the underlying block. Prev 255 feel/edit pass: auto-loop, angled rails+tubes, smooth ride, edge-grab riders, full-platform collision, whole-platform reposition. 245-254 built the Moving Platforms system + fixed the config modals.';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
