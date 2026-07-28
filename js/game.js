@@ -498,6 +498,19 @@ class Game {
     this._receivers    = new Map(); // "col,row" → {col,row,listenTo:Set,powered}
     this._rxConfigPopup      = null;   // null | {col,row}
     this._pistonConfigPopup  = null;   // null | {col,row} — direction selection for sandbox pistons
+    // §Moving Platforms — rails (waypoint paths) + platforms bound to anchors that ride them.
+    this._rails       = [];        // [{id, cells:[{col,row}], vis:'solid'|'visible'|'invisible', loop, pauseNodes, ...}]
+    this._nextRailId  = 0;
+    this._railDraft   = null;      // { cells:[] } while drawing a new rail
+    this._railEditNodes = null;    // { id, sel, extend, _lastIdx, _lastFrame } while dragging waypoints
+    this._railCells   = new Set(); // "col,row" cells currently painted SOLID by visible+solid rails
+    this._railPopup   = null;      // null | { id } — rail config modal
+    this._platforms   = [];        // [{id, railId, anchorCol, anchorRow, cells:[{col,row,blockType}], mode, ...}]
+    this._nextPlatformId = 0;
+    this._anchorPopup   = null;    // null | { col,row } — anchor config modal
+    this._dirCtrlPopup  = null;    // null | { col,row } — direction controller modal
+    this._speedSegPopup = null;    // null | { id } — speed segment modal
+    this._pauseNodePopup = null;   // null | { railId, idx } — pause-node config modal
     // Propagation queue: dust state changes and device responses scheduled by frame
     this._rsQueue    = [];         // [{col,row,powered,frame} | {type:'device',comp,frame} | {type:'gate',...}]
 
@@ -1530,6 +1543,12 @@ class Game {
       else { this._tubeDraft = null; this._notify('Tube cancelled', '#c66', 80); }
       this._escWas = true;   // consume this Esc edge → escEdge below stays false, menu stays closed
     }
+    // §Moving Platforms — Esc ends rail editing / cancels a rail draft (same pattern as tubes).
+    if (this.gameMode === 'sandbox' && this.input.isDown('Escape') && !this._escWas && (this._railEditNodes || this._railDraft)) {
+      if (this._railEditNodes) { this._railEditNodes = null; this._notify('Done editing rail', '#c9a54a', 90); }
+      else { this._railDraft = null; this._notify('Rail cancelled', '#c66', 80); }
+      this._escWas = true;
+    }
     // ── ESC: pause / unpause (not on win screen) ───────────────
     const escNow  = this.input.isDown('Escape');
     const escEdge = (escNow && !this._escWas) || this.input.p1JustDown('menu');
@@ -1942,6 +1961,11 @@ class Game {
       // §Travel Tube — edit / delete modal
       if (this._tubePopup) {
         this._handleTubePopupInput();
+        return;
+      }
+      // §Moving Platforms — rail config modal
+      if (this._railPopup) {
+        this._handleRailPopupInput();
         return;
       }
     }
@@ -2890,6 +2914,14 @@ class Game {
       const t = (this._travelTubes || []).find(x => x.id === this._tubeEditNodes.id);
       if (t) { this._deleteTubeNode(t, this._tubeEditNodes.sel); this._tubeEditNodes.sel = -1; }
     }
+    // §Moving Platforms — same keyboard helpers for the rail draft / node editor.
+    if (isSandbox && this._railDraft && this.input.isJustDown && this.input.isJustDown('Backspace')) {
+      this._railDraft.cells.pop(); if (!this._railDraft.cells.length) this._railDraft = null;
+    }
+    if (isSandbox && this._railEditNodes && this._railEditNodes.sel >= 0 && this.input.isJustDown && this.input.isJustDown('Delete')) {
+      const r = this._railById(this._railEditNodes.id);
+      if (r) { this._deleteRailNode(r, this._railEditNodes.sel); this._railEditNodes.sel = -1; }
+    }
     // ── Sandbox: click-to-place / click-to-remove / egg popup ──
     if (isSandbox && this.input.mouse.clicked && !_sbHotbarConsumed) {
       const _ctrlClick  = (this.input.isDown('ControlLeft') || this.input.isDown('ControlRight')) && !this.input.mouse.altClicked;
@@ -2916,6 +2948,8 @@ class Game {
       // visible tube intercepts any tool's click so you can't erase blocks and leave a phantom path).
       const _tubeSel = this.sandbox.selectedBlock === BLOCK.TUBE_WALL;
       const _tubeHit = (!this.input.mouse.altClicked) ? this._tubeAtCell(hoverRow, hoverCol) : null;
+      const _railSel = this.sandbox.selectedBlock === BLOCK.RAIL;
+      const _railHit = (!this.input.mouse.altClicked) ? this._railAtCell(hoverRow, hoverCol) : null;
       if (this._tubeEditNodes && !this.input.mouse.altClicked) {
         this._tubeNodeEditClick(hoverRow, hoverCol);
       } else if (_tubeHit && !this._tubeDraft && !this.input.mouse.altClicked && this._selectedTubeItemKind()) {
@@ -2924,6 +2958,12 @@ class Game {
         this._tubeDraftClick(hoverRow, hoverCol);
       } else if (_tubeHit && !this._tubeDraft && (_tubeSel || target === BLOCK.TUBE_WALL)) {
         this._openTubePopup(_tubeHit);
+      } else if (this._railEditNodes && !this.input.mouse.altClicked) {
+        this._railNodeEditClick(hoverRow, hoverCol);                    // §Moving Platforms — drag rail waypoints
+      } else if (_railSel && !this.input.mouse.altClicked && (this._railDraft || !_railHit)) {
+        this._railDraftClick(hoverRow, hoverCol);                       // §Moving Platforms — lay down a rail path
+      } else if (_railHit && !this._railDraft && !this.input.mouse.altClicked && (_railSel || target === BLOCK.RAIL)) {
+        this._openRailPopup(_railHit);                                  // §Moving Platforms — edit a placed rail
       } else
       // Alt+Click → eyedropper: pick block under cursor
       if (this.input.mouse.altClicked) {
@@ -6316,6 +6356,7 @@ class Game {
     // Sandbox WORLD overlays (placed eggs/emeralds/power-ups/hill/spawn-lines/items
     // + portal labels) must scale with the zoom too — draw them inside the transform.
     try { this._drawTravelTubeItems(ctx); this._drawTravelTubesFront(ctx); this._drawFlyingTubeGlass(ctx); } catch (e) { /* ignore */ }   // §Travel Tube — items + pass-behind glass + flying-player-behind-glass overlay
+    try { this._drawRails(ctx); this._drawPlatforms(ctx); } catch (e) { /* ignore */ }   // §Moving Platforms — rail overlay + moving platform groups
     if (this.gameMode === 'sandbox' && this.sandbox && this.sandbox.drawWorld) {
       this.sandbox.drawWorld(ctx, this.camera, this.frameCount);
       try { this._drawTravelTubesSandbox(ctx); if (this._tubeDraft) this._drawTubeDraft(ctx); if (this._tubeEditNodes) this._drawTubeNodeEdit(ctx); } catch (e) { /* ignore */ }  // §Travel Tube outlines + draft + node edit
@@ -6352,6 +6393,7 @@ class Game {
       if (this._targetConfigPopup) this._drawTargetConfigPopup(ctx);
       if (this._classicPopup) this._drawClassicPopup(ctx);
       if (this._tubePopup) this._drawTubePopup(ctx);
+      if (this._railPopup) this._drawRailPopup(ctx);
     }
 
     this._drawBiomeLabel(ctx, biome);
@@ -7831,6 +7873,21 @@ class Game {
       this._nextTubeId = this._travelTubes.reduce((m, t) => Math.max(m, t.id || 0), 0);
       this._tubeCells = null; this._reapplyTubeGrid();   // sync solid walls + init tracking
     }
+    // §Moving Platforms — restore rails + platforms (waypoint paths + anchor-bound block groups).
+    if (data && Array.isArray(data.rails)) {
+      this._rails = data.rails.map(r => ({ id: r.id, cells: r.cells || [], vis: r.vis || 'visible', loop: !!r.loop,
+        pauseNodes: r.pauseNodes || [], collideMode: r.collideMode || 'passthrough', speedSegments: r.speedSegments || [], launchAt: r.launchAt ?? null }));
+      this._nextRailId = this._rails.reduce((m, r) => Math.max(m, r.id || 0), 0);
+      this._railCells = null; this._reapplyRailGrid();
+    }
+    if (data && Array.isArray(data.platforms)) {
+      this._platforms = data.platforms.map(p => ({ id: p.id, railId: p.railId, anchorCol: p.anchorCol, anchorRow: p.anchorRow,
+        anchorDist: p.anchorDist || 0, cells: p.cells || [], initialDir: p.initialDir || 1, mode: p.mode || 'continuous',
+        signalResponse: p.signalResponse || 'sustained', returnMode: p.returnMode || 'roundtrip', speed: p.speed || 2,
+        dirCtrl: p.dirCtrl || null, cog: !!p.cog }));
+      this._nextPlatformId = this._platforms.reduce((m, p) => Math.max(m, p.id || 0), 0);
+      this._initPlatformsRuntime();
+    }
   }
 
   // ── §Classic Blocks config popup (pipe destination / block contents) ─────────
@@ -8906,7 +8963,8 @@ class Game {
       this._chests, this._ruinedPortals, this._endPortalAnchors,
       this._dragon, this._endCrystals, this._dragonDefeated,
       this._mobDropSettings, this._worldAdvSettings,
-      this._collectedDiscs, this._musicPlayerBlocks, this._witherAltars
+      this._collectedDiscs, this._musicPlayerBlocks, this._witherAltars,
+      this._rails, this._platforms
     );
     if (!result.ok) { this._notify('Export failed: ' + (result.error || '?'), '#FF4444', 240); return; }
     const raw = localStorage.getItem(SandboxSaves.key(pName, wName));
@@ -15421,7 +15479,7 @@ class Game {
     if (!pName || !wName) return;
     this._sbPlayerName = pName;
     this._sbWorldName  = wName;
-    const result = SandboxSaves.save(pName, wName, this.level, this.sandbox, this.player, this.redstone, this._dustBlocks, this._gateBlocks, this._transmitters, this._receivers, this._chests, this._ruinedPortals, this._endPortalAnchors, this._dragon, this._endCrystals, this._dragonDefeated, this._mobDropSettings, this._worldAdvSettings, this._collectedDiscs, this._musicPlayerBlocks, this._witherAltars);
+    const result = SandboxSaves.save(pName, wName, this.level, this.sandbox, this.player, this.redstone, this._dustBlocks, this._gateBlocks, this._transmitters, this._receivers, this._chests, this._ruinedPortals, this._endPortalAnchors, this._dragon, this._endCrystals, this._dragonDefeated, this._mobDropSettings, this._worldAdvSettings, this._collectedDiscs, this._musicPlayerBlocks, this._witherAltars, this._rails, this._platforms);
     if (result.ok) {
       this._historyStack = []; this._historyPos = -1; // clear history on successful save
       this._notify(`Saved: ${pName} — ${wName}`, '#44FF88', 300);
@@ -17016,6 +17074,9 @@ class Game {
     this._sr._redstoneInit = this.redstone.components.map(c => ({
       on: c.on, open: c.open, extended: c.extended, fuse: c.fuse,
     }));
+    // §Moving Platforms — the SR load path historically restored neither classic-block nor tube/rail
+    // data; wire it in so rails + moving platforms (and travel tubes) work in Speed-Runner mode too.
+    this._restoreClassicBlockData(data);
   }
 
   _srGetEffectiveMultiplier() {
@@ -17592,6 +17653,275 @@ class Game {
 
   // ── §Travel Tube (v1) — placeable transparent path you fly through head-first ────────────
   // Cached centerline polyline for a tube (rebuilt if the waypoints change).
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // §Moving Platforms §1 — THE RAIL. A waypoint path (reuses the Travel-Tube geometry: same
+  // click-to-place-corners UX, same TRAVEL_TUBE polyline/pointAt math) that platforms ride. Three
+  // visibility/solidity states: 'solid' (stand on the rail itself), 'visible' (drawn, non-solid,
+  // DEFAULT), 'invisible' (hidden, non-solid). Closed loops supported. Platform authoring is
+  // Sandbox-only; the path/config is frozen once a level is played.
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  _railPts(rail) {
+    if (!rail._pts) rail._pts = TRAVEL_TUBE.buildPolyline(rail.cells, BLOCK_SIZE);
+    return rail._pts;
+  }
+  _railFoot(rail) {
+    if (!rail._foot) rail._foot = TRAVEL_TUBE.footprint(this._railPts(rail), BLOCK_SIZE);
+    return rail._foot;
+  }
+  // Centerline cells only (1-wide) — what a 'solid' rail paints so you stand ON the track, and what
+  // hit-testing a click treats as "on the rail" (the anchor snaps here).
+  _railCenterCells(rail) {
+    if (rail._center) return rail._center;
+    const set = new Set();
+    const pts = this._railPts(rail);
+    if (!pts.length) { rail._center = set; return set; }
+    const L = TRAVEL_TUBE.length(pts), step = BLOCK_SIZE / 2;
+    for (let d = 0; d <= L + 1e-6; d += step) {
+      const p = TRAVEL_TUBE.pointAt(pts, Math.min(d, L));
+      set.add(Math.floor(p.x / BLOCK_SIZE) + ',' + Math.floor(p.y / BLOCK_SIZE));
+    }
+    rail._center = set;
+    return set;
+  }
+  _railTotalLen(rail) { return TRAVEL_TUBE.length(this._railPts(rail)); }
+  _railById(id) { return (this._rails || []).find(r => r.id === id) || null; }
+  _railAtCell(row, col) {
+    if (!this._rails) return null;
+    const key = col + ',' + row;
+    for (const r of this._rails) if (this._railCenterCells(r).has(key)) return r;
+    return null;
+  }
+  // Snap a world point to the nearest position ALONG a rail → distance d (px). Anchors bind here.
+  _railNearestDist(rail, wx, wy) {
+    const n = TRAVEL_TUBE.nearest(this._railPts(rail), wx, wy, BLOCK_SIZE);
+    return n ? n.d : 0;
+  }
+  // Is this rail a closed loop? (last waypoint coincides with the first.)
+  _railIsLoop(rail) {
+    if (rail.loop) return true;
+    const c = rail.cells;
+    return c.length > 2 && c[0].col === c[c.length - 1].col && c[0].row === c[c.length - 1].row;
+  }
+
+  // ── Placement: click waypoints; click the last point again (or the FIRST, to close a loop) to finish.
+  _railDraftClick(row, col) {
+    const d = (this._railDraft = this._railDraft || { cells: [] });
+    const last = d.cells[d.cells.length - 1];
+    const first = d.cells[0];
+    if (last && last.col === col && last.row === row) { this._finishRailDraft(false); return; }
+    if (first && d.cells.length >= 3 && first.col === col && first.row === row) { this._finishRailDraft(true); return; }
+    d.cells.push({ col, row });
+    if (d.cells.length === 1) this._notify('Rail start — click corners; click the last point again to finish (or the FIRST to close a loop)', '#c9a54a', 200);
+  }
+  _finishRailDraft(closeLoop) {
+    const d = this._railDraft;
+    if (!d || d.cells.length < 2) { this._railDraft = null; this._notify('A rail needs at least 2 points', '#c66', 100); return; }
+    this._railDraft = null;
+    this._nextRailId = (this._nextRailId || 0) + 1;
+    const cells = d.cells.slice();
+    if (closeLoop) cells.push({ col: cells[0].col, row: cells[0].row });   // close back to start
+    const rail = { id: this._nextRailId, cells, vis: 'visible', loop: !!closeLoop, pauseNodes: [] };
+    this._rails.push(rail);
+    this._reapplyRailGrid();
+    this._notify(closeLoop ? 'Rail loop placed ✓ — click it to edit / set visibility' : 'Rail placed ✓ — click it to edit / set visibility', '#c9a54a', 160);
+  }
+  // Repaint the SOLID-rail collision cells (centerline of every 'solid' rail). Mirrors _reapplyTubeGrid:
+  // a cell is solid iff ANY solid rail covers it; stale cells cleared; never overwrites real blocks.
+  _reapplyRailGrid() {
+    const solidCells = new Set();
+    for (const r of this._rails || []) {
+      if ((r.vis || 'visible') !== 'solid') continue;
+      for (const key of this._railCenterCells(r)) solidCells.add(key);
+    }
+    const prev = this._railCells || new Set();
+    for (const key of prev) if (!solidCells.has(key)) {
+      const i = key.indexOf(','), col = +key.slice(0, i), row = +key.slice(i + 1);
+      if (this.level.get(row, col) === BLOCK.RAIL) this.level.set(row, col, BLOCK.AIR);
+    }
+    const now = new Set();
+    for (const key of solidCells) {
+      const i = key.indexOf(','), col = +key.slice(0, i), row = +key.slice(i + 1);
+      const b = this.level.get(row, col);
+      if (b === BLOCK.AIR || b === BLOCK.RAIL) { this.level.set(row, col, BLOCK.RAIL); now.add(key); }
+    }
+    this._railCells = now;
+  }
+  _invalidateRailGeom(rail) { rail._pts = null; rail._foot = null; rail._center = null; }
+  _deleteRail(rail) {
+    // Orphan any platforms bound to this rail (drop them so they don't dangle).
+    this._platforms = (this._platforms || []).filter(pl => pl.railId !== rail.id);
+    this._rails = (this._rails || []).filter(r => r !== rail);
+    if (this._railEditNodes && this._railEditNodes.id === rail.id) this._railEditNodes = null;
+    this._reapplyRailGrid();
+  }
+  _cycleRailVis(rail) {
+    const order = ['visible', 'solid', 'invisible'];
+    rail.vis = order[(order.indexOf(rail.vis || 'visible') + 1) % 3];
+    this._reapplyRailGrid();
+    this._notify('Rail: ' + (rail.vis === 'solid' ? 'Visible + Solid (stand on it)' : rail.vis === 'visible' ? 'Visible + Non-solid' : 'Invisible + Non-solid'), '#c9a54a', 130);
+  }
+
+  // ── Node editing (drag waypoints) — mirrors the tube node editor.
+  _moveRailNode(rail, idx, col, row) {
+    rail.cells[idx] = { col, row };
+    if (this._railIsLoop(rail) && (idx === 0 || idx === rail.cells.length - 1)) {
+      // keep the loop closed: move BOTH the shared endpoints together
+      rail.cells[0] = { col, row }; rail.cells[rail.cells.length - 1] = { col, row };
+    }
+    this._invalidateRailGeom(rail);
+    this._reapplyRailGrid();
+  }
+  _deleteRailNode(rail, idx) {
+    if (rail.cells.length <= 2) { this._deleteRail(rail); return; }
+    rail.cells.splice(idx, 1);
+    this._invalidateRailGeom(rail);
+    this._reapplyRailGrid();
+  }
+  _railNodeEditClick(row, col) {
+    const ed = this._railEditNodes;
+    const rail = this._railById(ed.id);
+    if (!rail) { this._railEditNodes = null; return; }
+    if (ed.extend) {
+      if (ed.extend === 'end') rail.cells.push({ col, row });
+      else rail.cells.unshift({ col, row });
+      this._invalidateRailGeom(rail); this._reapplyRailGrid();
+      return;
+    }
+    const idx = rail.cells.findIndex(c => c.col === col && c.row === row);
+    if (idx >= 0) {
+      const isEnd = (idx === 0 || idx === rail.cells.length - 1);
+      if (isEnd && ed._lastIdx === idx && (this.frameCount - (ed._lastFrame || -99)) <= 24) {
+        ed.extend = (idx === 0) ? 'start' : 'end'; ed.sel = -1; ed._lastIdx = -1;
+        this._notify('Extend mode — click to add points off this end (Esc to stop)', '#c9a54a', 150);
+        return;
+      }
+      ed.sel = idx; ed._lastIdx = idx; ed._lastFrame = this.frameCount;
+    } else if (ed.sel >= 0) {
+      this._moveRailNode(rail, ed.sel, col, row);
+      ed._lastIdx = ed.sel; ed._lastFrame = this.frameCount; ed.sel = -1;
+    }
+  }
+
+  // ── Rail rendering. Solid rails paint RAIL grid cells (drawn by level.draw); here we draw the
+  // centerline overlay for 'visible' rails (play + sandbox) and the editor dashed path/nodes.
+  _drawRails(ctx) {
+    if (!this._rails || !this._rails.length) return;
+    const isSandbox = this.gameMode === 'sandbox';
+    for (const rail of this._rails) {
+      const pts = this._railPts(rail);
+      if (pts.length < 2) continue;
+      const vis = rail.vis || 'visible';
+      if (vis === 'invisible' && !isSandbox) continue;                 // hidden in play
+      ctx.save();
+      const dashed = (vis === 'invisible');                            // invisible rails show as dashed in editor only
+      ctx.strokeStyle = vis === 'solid' ? '#8a6a2a' : (vis === 'invisible' ? 'rgba(180,150,90,0.5)' : '#b8923a');
+      ctx.lineWidth = vis === 'solid' ? 5 : 3;
+      if (dashed) ctx.setLineDash([6, 6]);
+      ctx.beginPath();
+      for (let i = 0; i < pts.length; i++) {
+        const x = pts[i].x - this.camera.x, y = pts[i].y - this.camera.y;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      // cross-ties for a rail look (visible/solid only)
+      if (vis !== 'invisible') {
+        ctx.setLineDash([]); ctx.strokeStyle = 'rgba(90,60,20,0.55)'; ctx.lineWidth = 2;
+        const L = TRAVEL_TUBE.length(pts);
+        for (let d = 0; d <= L; d += BLOCK_SIZE * 0.6) {
+          const p = TRAVEL_TUBE.pointAt(pts, d);
+          const nx = -Math.sin(p.ang), ny = Math.cos(p.ang);
+          ctx.beginPath();
+          ctx.moveTo(p.x - this.camera.x - nx * 5, p.y - this.camera.y - ny * 5);
+          ctx.lineTo(p.x - this.camera.x + nx * 5, p.y - this.camera.y + ny * 5);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+      // Pause-node markers + waypoint dots (sandbox only)
+      if (isSandbox) this._drawRailEditorDecor(ctx, rail);
+    }
+    if (isSandbox && this._railDraft && this._railDraft.cells.length) this._drawRailDraft(ctx);
+  }
+  _drawRailEditorDecor(ctx, rail) {
+    const editing = this._railEditNodes && this._railEditNodes.id === rail.id;
+    ctx.save();
+    // pause-node markers (blue diamonds) on their waypoints
+    for (const pn of (rail.pauseNodes || [])) {
+      const c = rail.cells[pn.idx]; if (!c) continue;
+      const x = c.col * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.x, y = c.row * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.y;
+      ctx.fillStyle = '#4aa3ff';
+      ctx.beginPath(); ctx.moveTo(x, y - 6); ctx.lineTo(x + 6, y); ctx.lineTo(x, y + 6); ctx.lineTo(x - 6, y); ctx.closePath(); ctx.fill();
+    }
+    // waypoint dots when editing this rail
+    if (editing) {
+      for (let i = 0; i < rail.cells.length; i++) {
+        const c = rail.cells[i];
+        const x = c.col * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.x, y = c.row * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.y;
+        ctx.fillStyle = (this._railEditNodes.sel === i) ? '#fff' : '#c9a54a';
+        ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#5a3c14'; ctx.lineWidth = 1.5; ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+  _drawRailDraft(ctx) {
+    const cells = this._railDraft.cells;
+    ctx.save();
+    ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 3; ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    for (let i = 0; i < cells.length; i++) {
+      const x = cells[i].col * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.x, y = cells[i].row * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.y;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+    for (const c of cells) {
+      const x = c.col * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.x, y = c.row * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.y;
+      ctx.fillStyle = '#ffd166'; ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  _drawPlatforms(ctx) { /* §Moving Platforms — filled in by the Platform Construction section */ }
+  _initPlatformsRuntime() { /* §Moving Platforms — filled in by the Platform Construction section */ }
+
+  // ── Rail config modal (visibility cycle, edit nodes, loop toggle, delete).
+  _openRailPopup(rail) { this._railPopup = { id: rail.id }; }
+  _handleRailPopupInput() {
+    if (!this._railPopup) return;
+    const rail = this._railById(this._railPopup.id);
+    if (!rail) { this._railPopup = null; return; }
+    if (!this.input.mouse.clicked) return;
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const pw = 300, ph = 210, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
+    // close (X or outside)
+    if (hit(px + pw - 30, py + 8, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._railPopup = null; this.input.mouse.clicked = false; return; }
+    if (hit(px + 20, py + 48, pw - 40, 30)) { this._cycleRailVis(rail); }
+    else if (hit(px + 20, py + 88, pw - 40, 30)) { rail.loop = !this._railIsLoop(rail); if (rail.loop && (rail.cells[0].col !== rail.cells[rail.cells.length-1].col || rail.cells[0].row !== rail.cells[rail.cells.length-1].row)) rail.cells.push({col:rail.cells[0].col,row:rail.cells[0].row}); this._invalidateRailGeom(rail); this._reapplyRailGrid(); this._notify(this._railIsLoop(rail)?'Rail: closed loop':'Rail: open path','#c9a54a',110); }
+    else if (hit(px + 20, py + 128, pw - 40, 30)) { this._railEditNodes = { id: rail.id, sel: -1 }; this._railPopup = null; this._notify('Editing rail nodes — drag waypoints; double-click an end to extend; Esc when done', '#c9a54a', 200); }
+    else if (hit(px + 20, py + 168, pw - 40, 30)) { this._deleteRail(rail); this._railPopup = null; this._notify('Rail deleted', '#c66', 100); }
+    this.input.mouse.clicked = false;
+  }
+  _drawRailPopup(ctx) {
+    if (!this._railPopup) return;
+    const rail = this._railById(this._railPopup.id);
+    if (!rail) { this._railPopup = null; return; }
+    const pw = 300, ph = 210, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    this._roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#241d10'; ctx.fill(); ctx.strokeStyle = '#c9a54a'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#c9a54a'; ctx.font = 'bold 14px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('RAIL', px + pw / 2, py + 22);
+    ctx.fillStyle = '#aaa'; ctx.font = 'bold 12px Courier New'; ctx.fillText('✕', px + pw - 19, py + 19);
+    const btn = (y, label) => { this._roundRect(ctx, px + 20, y, pw - 40, 30, 5); ctx.fillStyle = '#3a2f18'; ctx.fill(); ctx.strokeStyle = '#c9a54a'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = '#f0e0b0'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 15); };
+    const visLabel = rail.vis === 'solid' ? 'Visible + Solid' : rail.vis === 'invisible' ? 'Invisible' : 'Visible + Non-solid';
+    btn(py + 48, 'Visibility: ' + visLabel);
+    btn(py + 88, 'Loop: ' + (this._railIsLoop(rail) ? 'Closed' : 'Open'));
+    btn(py + 128, 'Edit Nodes');
+    btn(py + 168, 'Delete Rail');
+    ctx.restore();
+  }
+
   _tubePts(tube) {
     if (!tube._pts) tube._pts = TRAVEL_TUBE.buildPolyline(tube.cells, BLOCK_SIZE);
     return tube._pts;

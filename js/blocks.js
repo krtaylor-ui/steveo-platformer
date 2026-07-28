@@ -103,6 +103,11 @@ const BLOCK = Object.freeze({
   TARGET_BLOCK:           84,   // §Phase R — redstone SOURCE: arrow/attack hit → pulse OR toggle; powers its links + adjacent dust
   PULSE_CONVERTER:        85,   // §Phase R — converts an incoming redstone PULSE into a persistent toggle (on/off/on…)
   REDSTONE_LAMP:          86,   // §Phase R — lights up when it gets a redstone signal; click (lamp selected) to recolour
+  RAIL:                   87,   // §Moving Platforms — waypoint path a platform rides; 3 visibility/solidity states
+  ANCHOR_BLOCK:           88,   // §Moving Platforms — snaps to a rail; binds + drives a connected platform (config modal)
+  DIRECTION_CONTROLLER:   89,   // §Moving Platforms — placed on a platform; L/R redstone inputs steer travel direction
+  SPEED_SEGMENT:          90,   // §Moving Platforms — rail zone that smoothly ramps platform speed as it passes through
+  LAUNCH_RAMP:            91,   // §Moving Platforms — rail end that flings the platform on a real ballistic arc
 });
 
 // §Phase R — Redstone Lamp colours (click a placed lamp with the Lamp selected to cycle). One hue
@@ -244,6 +249,13 @@ const BLOCK_DATA = {
   [BLOCK.TARGET_BLOCK]:      { name: 'Target Block',    hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
   [BLOCK.PULSE_CONVERTER]:   { name: 'Pulse Converter', hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
   [BLOCK.REDSTONE_LAMP]:     { name: 'Redstone Lamp',   hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
+  // §Moving Platforms — the rail's grid cells are only solid in the 'Visible + Solid' visibility state
+  // (game.js paints/clears them). Non-solid by default so a platform's anchor rides freely along it.
+  [BLOCK.RAIL]:              { name: 'Rail',            hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
+  [BLOCK.ANCHOR_BLOCK]:      { name: 'Anchor Block',    hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
+  [BLOCK.DIRECTION_CONTROLLER]: { name: 'Direction Controller', hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
+  [BLOCK.SPEED_SEGMENT]:     { name: 'Speed Segment',   hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
+  [BLOCK.LAUNCH_RAMP]:       { name: 'Launch Ramp',     hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
 };
 
 // ── Pixel-art block renderers ────────────────────────────────
@@ -344,6 +356,11 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.TARGET_BLOCK:           _drawTargetBlock(ctx, px, py, s, state.on);      break;
     case BLOCK.PULSE_CONVERTER:        _drawPulseConverter(ctx, px, py, s, state.on, state.dir); break;
     case BLOCK.REDSTONE_LAMP:          _drawRedstoneLamp(ctx, px, py, s, state.on, state.colorIdx); break;
+    case BLOCK.RAIL:                   _drawRailBlock(ctx, px, py, s);                  break;
+    case BLOCK.ANCHOR_BLOCK:           _drawAnchorBlock(ctx, px, py, s);               break;
+    case BLOCK.DIRECTION_CONTROLLER:   _drawDirectionController(ctx, px, py, s);       break;
+    case BLOCK.SPEED_SEGMENT:          _drawSpeedSegment(ctx, px, py, s);              break;
+    case BLOCK.LAUNCH_RAMP:            _drawLaunchRamp(ctx, px, py, s);                break;
   }
 
   // Mining crack overlay
@@ -1870,6 +1887,43 @@ function _drawRedstoneLamp(ctx, px, py, s, on, colorIdx) {
   ctx.strokeStyle = on ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1;  // filament cross
   ctx.beginPath(); ctx.moveTo(px + m, py + s / 2); ctx.lineTo(px + s - m, py + s / 2); ctx.moveTo(px + s / 2, py + m); ctx.lineTo(px + s / 2, py + s - m); ctx.stroke();
   ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
+}
+// §Moving Platforms — icon renderers. In-world the RAIL grid cell (solid mode) draws a rail-tie tile;
+// the anchor/controller/segment/ramp draw as small labelled markers (they're mostly overlay-driven).
+function _drawRailBlock(ctx, px, py, s) {
+  ctx.fillStyle = 'rgba(60,42,18,0.35)'; ctx.fillRect(px, py + s / 2 - 3, s, 6);       // ballast bar
+  ctx.strokeStyle = '#b8923a'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(px, py + s / 2 - 4); ctx.lineTo(px + s, py + s / 2 - 4);
+  ctx.moveTo(px, py + s / 2 + 4); ctx.lineTo(px + s, py + s / 2 + 4); ctx.stroke();     // two rails
+  ctx.strokeStyle = 'rgba(90,60,20,0.7)'; ctx.lineWidth = 2;
+  for (let i = 0; i < 3; i++) { const x = px + s * (0.2 + i * 0.3); ctx.beginPath(); ctx.moveTo(x, py + s / 2 - 6); ctx.lineTo(x, py + s / 2 + 6); ctx.stroke(); }   // ties
+}
+function _drawAnchorBlock(ctx, px, py, s) {
+  const m = s * 0.18;
+  ctx.fillStyle = '#3a6ea5'; ctx.fillRect(px + m, py + m, s - 2 * m, s - 2 * m);
+  ctx.strokeStyle = '#bcd8f5'; ctx.lineWidth = 1.5; ctx.strokeRect(px + m, py + m, s - 2 * m, s - 2 * m);
+  ctx.fillStyle = '#eaf3ff'; ctx.font = `bold ${Math.floor(s * 0.4)}px Courier New`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('⚓', px + s / 2, py + s / 2 + 1);
+}
+function _drawDirectionController(ctx, px, py, s) {
+  const m = s * 0.16;
+  ctx.fillStyle = '#7a4fa0'; ctx.fillRect(px + m, py + m, s - 2 * m, s - 2 * m);
+  ctx.strokeStyle = '#e6d0ff'; ctx.lineWidth = 1.5; ctx.strokeRect(px + m, py + m, s - 2 * m, s - 2 * m);
+  ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.floor(s * 0.42)}px Courier New`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('⇄', px + s / 2, py + s / 2 + 1);
+}
+function _drawSpeedSegment(ctx, px, py, s) {
+  ctx.fillStyle = 'rgba(70,180,110,0.28)'; ctx.fillRect(px, py, s, s);
+  ctx.strokeStyle = '#46b46e'; ctx.lineWidth = 1.5; ctx.strokeRect(px + 1, py + 1, s - 2, s - 2);
+  ctx.fillStyle = '#bff0d2'; ctx.font = `bold ${Math.floor(s * 0.42)}px Courier New`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('»', px + s / 2, py + s / 2 + 1);
+}
+function _drawLaunchRamp(ctx, px, py, s) {
+  ctx.fillStyle = '#a0542a';
+  ctx.beginPath(); ctx.moveTo(px, py + s); ctx.lineTo(px + s, py + s); ctx.lineTo(px + s, py); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#ffcf9a'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.floor(s * 0.34)}px Courier New`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('↗', px + s * 0.62, py + s * 0.5);
 }
 function _drawWarpPipe(ctx, px, py, s, state = {}, stem = false) {
   const t = !!state.pipeT, b = !!state.pipeB, l = !!state.pipeL, r = !!state.pipeR;

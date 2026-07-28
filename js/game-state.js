@@ -276,6 +276,9 @@ const GAME_STATE = {
       pipeEntry:      game._pipeEntry ? [...game._pipeEntry.entries()] : [],
       blockContents:  game._blockContents ? [...game._blockContents.entries()] : [],
       travelTubes:    game._travelTubes ? game._travelTubes.map(t => ({ id: t.id, cells: t.cells, speed: t.speed, mode: t.mode || 'solid', items: t.items || [] })) : [],
+      // §Moving Platforms — rails (waypoint paths) + platforms (anchor-bound block groups). Frozen at author time.
+      rails:          game._rails ? game._rails.map(r => ({ id: r.id, cells: r.cells, vis: r.vis || 'visible', loop: !!r.loop, pauseNodes: r.pauseNodes || [], collideMode: r.collideMode || 'passthrough', speedSegments: r.speedSegments || [], launchAt: r.launchAt ?? null })) : [],
+      platforms:      game._platforms ? game._platforms.map(p => ({ id: p.id, railId: p.railId, anchorCol: p.anchorCol, anchorRow: p.anchorRow, anchorDist: p.anchorDist, cells: p.cells, initialDir: p.initialDir, mode: p.mode, signalResponse: p.signalResponse, returnMode: p.returnMode, speed: p.speed, dirCtrl: p.dirCtrl || null, cog: !!p.cog })) : [],
       worldAdvSettings: game._worldAdvSettings
         ? JSON.parse(JSON.stringify(game._worldAdvSettings))
         : null,
