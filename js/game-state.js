@@ -128,6 +128,11 @@ const GAME_STATE = {
           .filter(c => c.type === 'lamp')
           .map(c => ({ col: c.col, row: c.row, color: c.color || 0 }))
       : [];
+    const sandboxConverters = game.redstone
+      ? game.redstone.components
+          .filter(c => c.type === 'pulse_converter')
+          .map(c => ({ col: c.col, row: c.row, axis: c.axis || 'h' }))
+      : [];
 
     // World items (single items placed on the ground). BUGFIX: in the SANDBOX
     // EDITOR these live in game.sandbox.placedItems; game._platformerItems is only
@@ -242,6 +247,7 @@ const GAME_STATE = {
       sandboxPistons,
       sandboxTargets,
       sandboxLamps,
+      sandboxConverters,
       dustBlocks,
       transmitters,
       receivers,

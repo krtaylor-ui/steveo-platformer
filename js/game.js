@@ -2814,6 +2814,7 @@ class Game {
     this.mobManager.explosionEvents = [];
     this.redstone.tickTnt(this.level, this.mobManager);
     this.redstone.tickTargets(this.level);   // §Phase R — count down Target-Block pulses
+    this._updatePulseConverters();           // §Phase R — directional pulse↔toggle devices
     // Remove dust/gate overlays whose block was destroyed (e.g. by TNT).
     // Rate-limited: only scan every 30 frames — TNT has a 120-frame fuse so this is plenty.
     if (this.frameCount % 30 === 0) {
@@ -2841,7 +2842,7 @@ class Game {
     for (const comp of this.redstone.components) {
       // §Phase R — Target Blocks + Pulse Converters are SOURCES too: whenever their state flips
       // (arrow hit, toggle, or pulse expiry), power adjacent dust exactly like a lever/plate.
-      if (comp.type === 'pressure_plate' || comp.type === 'target' || comp.type === 'pulse_converter') {
+      if (comp.type === 'pressure_plate' || comp.type === 'target') {   // pulse_converter drives dust directionally in _updatePulseConverters
         if (comp._rsWasOn === undefined) { comp._rsWasOn = comp.on; continue; }
         if (comp.on !== comp._rsWasOn) {
           comp._rsWasOn = comp.on;
@@ -3099,6 +3100,9 @@ class Game {
         } else if (target === BLOCK.REDSTONE_LAMP && this.sandbox.selectedBlock === BLOCK.REDSTONE_LAMP) {
           const comp = this.redstone.getAt(hoverCol, hoverRow);                          // §Phase R — cycle lamp colour
           if (comp) { comp.color = ((comp.color || 0) + 1) % 9; this._notify('Lamp colour changed', '#ffd166', 70); }
+        } else if (target === BLOCK.PULSE_CONVERTER && this.sandbox.selectedBlock === BLOCK.PULSE_CONVERTER) {
+          const comp = this.redstone.getAt(hoverCol, hoverRow);                          // §Phase R — rotate the Converter's Toggle/Pulse axis
+          if (comp) { comp.axis = comp.axis === 'v' ? 'h' : 'v'; this._notify(comp.axis === 'v' ? 'Converter: Toggle=up / Pulse=down' : 'Converter: Toggle=left / Pulse=right', '#8fd0e6', 120); }
         } else if (this.sandbox.isDustSelected) {
           // Dust selected — click on existing solid block
           const dustKey = `${hoverCol},${hoverRow}`;
@@ -7314,14 +7318,11 @@ class Game {
       comp.fuse = 120;
     } else if (comp.type === 'piston') {
       this.redstone._activate(comp, anyOn, this.level);
-    } else if (comp.type === 'target' || comp.type === 'pulse_converter') {
-      // §Phase R (R3) — powered adjacent dust drives these on its RISING edge, same as a real hit.
+    } else if (comp.type === 'target') {
+      // §Phase R (R3) — powered adjacent dust drives a Target on its RISING edge, same as a real hit.
       const rising = anyOn && !comp._dustPowered;
       comp._dustPowered = anyOn;
-      if (rising) {
-        if (comp.type === 'pulse_converter') this.redstone._toggleFlip(comp, this.level);
-        else this.redstone.hitTarget(comp.col, comp.row, this.level, false);
-      }
+      if (rising) this.redstone.hitTarget(comp.col, comp.row, this.level, false);
     } else if (comp.type === 'lamp') {
       comp.on = anyOn;   // §Phase R — Redstone Lamp lights while any adjacent dust is powered
     }
@@ -15598,6 +15599,14 @@ class Game {
         else if (!comp) this.redstone.addComponent({ type: 'lamp', col: l.col, row: l.row, on: false, color: l.color || 0, links: [], sandboxPlaced: true });
       }
     }
+    if (Array.isArray(data.sandboxConverters)) {   // §Phase R — restore Pulse Converter axis
+      for (const cv of data.sandboxConverters) {
+        if (typeof cv.col !== 'number' || typeof cv.row !== 'number') continue;
+        const comp = this.redstone.getAt(cv.col, cv.row);
+        if (comp && comp.type === 'pulse_converter') comp.axis = cv.axis || 'h';
+        else if (!comp) this.redstone.addComponent({ type: 'pulse_converter', col: cv.col, row: cv.row, on: false, axis: cv.axis || 'h', links: [], sandboxPlaced: true });
+      }
+    }
 
     // Restore redstone dust overlay blocks
     this._dustBlocks.clear();
@@ -17352,6 +17361,36 @@ class Game {
   }
   _crumbleTouch(row, col) {
     if (this._crumbleTouched) this._crumbleTouched.add(row + ',' + col);   // marked; timing in _updateClassicBlocks
+  }
+
+  // §Phase R — directional Pulse Converter. TWO named sides (axis 'h' = toggle←left / pulse→right,
+  // 'v' = toggle←up / pulse→down). Polled each frame from the adjacent dust on each side, with the
+  // device's OWN output masked out so it can't re-trigger itself:
+  //   • a RISING edge on the TOGGLE side → emit a timed pulse out the PULSE side;
+  //   • a RISING edge on the PULSE side → flip a HELD state, output on the TOGGLE side.
+  _updatePulseConverters() {
+    if (!this.redstone) return;
+    for (const comp of this.redstone.components) {
+      if (comp.type !== 'pulse_converter') continue;
+      const v = comp.axis === 'v';
+      const tdr = v ? -1 : 0, tdc = v ? 0 : -1;   // toggle side offset
+      const pdr = v ? 1 : 0, pdc = v ? 0 : 1;     // pulse side offset
+      const dustOn = (dr, dc) => { const d = this._dustBlocks.get(`${comp.col + dc},${comp.row + dr}`); return d ? !!d.on : false; };
+      const extToggle = dustOn(tdr, tdc) && !comp._held;              // ignore our own held output
+      const extPulse = dustOn(pdr, pdc) && !(comp._pulseTimer > 0);   // ignore our own pulse output
+      if (extToggle && !comp._lastExtToggle) comp._pulseTimer = comp.pulseDur || 20;   // toggle-side rising → pulse out
+      if (extPulse && !comp._lastExtPulse) comp._held = !comp._held;                   // pulse-side rising → flip held
+      comp._lastExtToggle = extToggle; comp._lastExtPulse = extPulse;
+      if (comp._pulseTimer > 0) comp._pulseTimer--;
+      const pulseOut = comp._pulseTimer > 0, toggleOut = !!comp._held;
+      comp.on = pulseOut || toggleOut;                       // for rendering
+      this._setDustSide(comp.col + pdc, comp.row + pdr, pulseOut);
+      this._setDustSide(comp.col + tdc, comp.row + tdr, toggleOut);
+    }
+  }
+  _setDustSide(col, row, powered) {
+    const d = this._dustBlocks.get(`${col},${row}`);
+    if (d && d.on !== powered) this._rsEnqueue({ col, row, powered, frame: this.frameCount + this._rsStepFrames() });
   }
 
   // §Phase R (R1) — a player arrow that struck a Target Block cell fires it (pulse or toggle). Guarded
