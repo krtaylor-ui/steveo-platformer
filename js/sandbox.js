@@ -86,6 +86,7 @@ const OTHER_PALETTE_ITEMS = [
   { kind: 'block',    blockType: BLOCK.LEVER },
   { kind: 'block',    blockType: BLOCK.TRAPDOOR },
   { kind: 'block',    blockType: BLOCK.PRESSURE_PLATE },
+  { kind: 'block',    blockType: BLOCK.WEIGHT_PLATE },
   { kind: 'dust',     name: 'Redstone Dust', color: '#CC2222' },
   { kind: 'gate',     gateType: 'not', name: 'NOT Gate',   color: '#00AAAA' },
   { kind: 'gate',     gateType: 'and', name: 'AND Gate',   color: '#CC7700' },

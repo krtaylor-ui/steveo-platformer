@@ -109,6 +109,7 @@ const BLOCK = Object.freeze({
   SPEED_SEGMENT:          90,   // §Moving Platforms — rail zone that smoothly ramps platform speed as it passes through
   LAUNCH_RAMP:            91,   // §Moving Platforms — rail end that flings the platform on a real ballistic arc
   RAIL_GATE:              92,   // §Moving Platforms — rail segment that blocks/allows passage by redstone or platform weight
+  WEIGHT_PLATE:           93,   // §Weight Sensor — a SOLID full block that emits redstone while a player/mob/both stands ON TOP (config modal)
 });
 
 // §Phase R — Redstone Lamp colours (click a placed lamp with the Lamp selected to cycle). One hue
@@ -250,6 +251,7 @@ const BLOCK_DATA = {
   [BLOCK.TARGET_BLOCK]:      { name: 'Target Block',    hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
   [BLOCK.PULSE_CONVERTER]:   { name: 'Pulse Converter', hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
   [BLOCK.REDSTONE_LAMP]:     { name: 'Redstone Lamp',   hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
+  [BLOCK.WEIGHT_PLATE]:      { name: 'Weight Sensor',   hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
   // §Moving Platforms — the rail's grid cells are only solid in the 'Visible + Solid' visibility state
   // (game.js paints/clears them). Non-solid by default so a platform's anchor rides freely along it.
   [BLOCK.RAIL]:              { name: 'Rail',            hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
@@ -358,6 +360,7 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.TARGET_BLOCK:           _drawTargetBlock(ctx, px, py, s, state.on);      break;
     case BLOCK.PULSE_CONVERTER:        _drawPulseConverter(ctx, px, py, s, state.on, state.dir); break;
     case BLOCK.REDSTONE_LAMP:          _drawRedstoneLamp(ctx, px, py, s, state.on, state.colorIdx); break;
+    case BLOCK.WEIGHT_PLATE:           _drawWeightPlate(ctx, px, py, s, state.on, state.trigger); break;
     case BLOCK.RAIL:                   _drawRailBlock(ctx, px, py, s);                  break;
     case BLOCK.ANCHOR_BLOCK:           _drawAnchorBlock(ctx, px, py, s);               break;
     case BLOCK.DIRECTION_CONTROLLER:   _drawDirectionController(ctx, px, py, s);       break;
@@ -877,6 +880,32 @@ function _drawPressurePlate(ctx, px, py, s, pressed) {
   ctx.fillRect(px + 4, py + s - 6 + oy, s - 8, 4);
   ctx.fillStyle = '#AAA8A0';
   ctx.fillRect(px + 4, py + s - 6 + oy, s - 8, 2);
+}
+
+// §Weight Sensor — a full solid block with a pressure-pad top plate that sinks + glows when triggered.
+// The corner dots hint at the trigger mode: yellow = players, red = mobs, both colours = both.
+function _drawWeightPlate(ctx, px, py, s, on, trigger) {
+  // Body — dark metal casing.
+  ctx.fillStyle = on ? '#4a4438' : '#3a3a3e';
+  ctx.fillRect(px, py, s, s);
+  ctx.strokeStyle = '#22222a'; ctx.lineWidth = 1; ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
+  // Rivets.
+  ctx.fillStyle = '#5a5a62';
+  for (const [rx, ry] of [[3, 3], [s - 5, 3], [3, s - 5], [s - 5, s - 5]]) ctx.fillRect(px + rx, py + ry, 2, 2);
+  // Top sensor pad — sinks 2px when triggered, and lights amber.
+  const oy = on ? 2 : 0, pad = s - 12;
+  ctx.fillStyle = on ? '#ffcf5a' : '#8f8f96';
+  ctx.fillRect(px + 6, py + 2 + oy, pad, 5);
+  ctx.fillStyle = on ? '#ffe89a' : '#a8a8b0';
+  ctx.fillRect(px + 6, py + 2 + oy, pad, 2);
+  if (on) { ctx.fillStyle = 'rgba(255,207,90,0.35)'; ctx.fillRect(px + 4, py + 1, s - 8, 9); }
+  // Trigger indicator (two lower dots): players=yellow, mobs=red, both=one of each.
+  const t = trigger || 'both';
+  const showP = t === 'players' || t === 'both', showM = t === 'mobs' || t === 'both';
+  ctx.fillStyle = showP ? '#ffe94a' : '#333';
+  ctx.fillRect(px + 6, py + s - 6, 3, 3);
+  ctx.fillStyle = showM ? '#ff5a4a' : '#333';
+  ctx.fillRect(px + s - 9, py + s - 6, 3, 3);
 }
 
 function _drawBed(ctx, px, py, s, active = false, bedHalf = null) {

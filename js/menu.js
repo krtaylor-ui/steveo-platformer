@@ -1131,6 +1131,7 @@ class MenuSystem {
       [BLOCK.TNT]:                 '#DD2222',
       [BLOCK.LEVER]:               '#998877',
       [BLOCK.PRESSURE_PLATE]:      '#BBBBAA',
+      [BLOCK.WEIGHT_PLATE]:        '#8f8f96',
       [BLOCK.TRAPDOOR]:            '#AA8855',
       [BLOCK.GOAL]:                '#FFD700',
     };

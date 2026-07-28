@@ -88,6 +88,12 @@ const SandboxSaves = {
                        inverted: !!c.inverted, extended: !!c.extended }))
       : [];
 
+    const sandboxWeightPlates = redstone
+      ? redstone.components
+          .filter(c => c.type === 'weight')
+          .map(c => ({ col: c.col, row: c.row, trigger: c.trigger || 'both' }))
+      : [];
+
     const dustBlocksArr = dustBlocks
       ? [...dustBlocks.values()].map(d => ({
           col: d.col, row: d.row, on: !!d.on,
@@ -114,6 +120,7 @@ const SandboxSaves = {
       sandboxLevers,
       sandboxTrapdoors,
       sandboxPistons,
+      sandboxWeightPlates,
       dustBlocks: dustBlocksArr,
       transmitters: transmitters ? [...transmitters.values()].map(t => ({
         col: t.col, row: t.row, number: t.number, hidden: !!t.hidden,

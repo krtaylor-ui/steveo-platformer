@@ -499,6 +499,7 @@ class Game {
     this._receivers    = new Map(); // "col,row" → {col,row,listenTo:Set,powered}
     this._rxConfigPopup      = null;   // null | {col,row}
     this._txConfigPopup      = null;   // null | {col,row}
+    this._weightPopup        = null;   // null | {col,row} — §Weight Sensor trigger config
     this._pistonConfigPopup  = null;   // null | {col,row} — direction selection for sandbox pistons
     // §Moving Platforms — rails (waypoint paths) + platforms bound to anchors that ride them.
     this._rails       = [];        // [{id, cells:[{col,row}], vis:'solid'|'visible'|'invisible', loop, pauseNodes, ...}]
@@ -1973,6 +1974,11 @@ class Game {
         this._handleTargetConfigPopupInput();
         return;
       }
+      // §Weight Sensor config popup (trigger: players/mobs/both)
+      if (this._weightPopup) {
+        this._handleWeightPopupInput();
+        return;
+      }
       // §Classic Blocks — pipe-destination / block-contents config popup
       if (this._classicPopup) {
         this._handleClassicPopupInput();
@@ -2842,9 +2848,10 @@ class Game {
         ? (col, row) => window.multiplayerManager.joinersOnPlates?.has(`${col},${row}`) ?? false
         : null;
       const _rt = (this._prof && typeof performance !== 'undefined') ? performance.now() : 0;
-      this.redstone.update(this.level, this.player, this.input, _rsExtraOn);
+      this.redstone.update(this.level, this.player, this.input, this._composePlateExtraOn(_rsExtraOn));
       if (this._prof && _rt) this._prof.redstone += performance.now() - _rt;
     }
+    this._updateWeightPlates();   // §Weight Sensor — detect players/mobs standing on top; sets comp.on
     this.redstone.updatePistonAnimations(this._rsRate());
     this._applyPistonKnockback();
     // Before TNT explodes, drop items from any chests in blast radius + play sound + visual
@@ -2917,7 +2924,7 @@ class Game {
     for (const comp of this.redstone.components) {
       // §Phase R — Target Blocks + Pulse Converters are SOURCES too: whenever their state flips
       // (arrow hit, toggle, or pulse expiry), power adjacent dust exactly like a lever/plate.
-      if (comp.type === 'pressure_plate' || comp.type === 'target') {   // pulse_converter drives dust directionally in _updatePulseConverters
+      if (comp.type === 'pressure_plate' || comp.type === 'target' || comp.type === 'weight') {   // pulse_converter drives dust directionally in _updatePulseConverters
         if (comp._rsWasOn === undefined) { comp._rsWasOn = comp.on; continue; }
         if (comp.on !== comp._rsWasOn) {
           comp._rsWasOn = comp.on;
@@ -3132,6 +3139,9 @@ class Game {
             } else if (sb === BLOCK.PRESSURE_PLATE && !this.redstone.getAt(hoverCol, hoverRow)) {
               this.redstone.addComponent({type: 'pressure_plate', col: hoverCol, row: hoverRow, on: false, links: [], sandboxPlaced: true});
               this._notify('Pressure Plate placed — activates when walked on', '#CCCCAA', 120);
+            } else if (sb === BLOCK.WEIGHT_PLATE && !this.redstone.getAt(hoverCol, hoverRow)) {
+              this.redstone.addComponent({type: 'weight', col: hoverCol, row: hoverRow, on: false, trigger: 'both', links: [], sandboxPlaced: true});
+              this._notify('Weight Sensor placed — click it to set trigger (players/mobs/both)', '#ffcf5a', 140);
             } else if (sb === BLOCK.TNT && !this.redstone.getAt(hoverCol, hoverRow)) {
               this.redstone.addComponent({type: 'tnt', col: hoverCol, row: hoverRow, fuse: 0, links: [], sandboxPlaced: true});
             } else if (sb === BLOCK.TRANSMITTER) {
@@ -3206,6 +3216,8 @@ class Game {
           this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'pipe' };        // config only with the pipe SELECTED
         } else if ((target === BLOCK.QUESTION_BLOCK || target === BLOCK.BREAKABLE_BLOCK || target === BLOCK.HIDDEN_BLOCK) && this.sandbox.selectedBlock === target) {
           this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'contents' };     // config only with the matching block SELECTED
+        } else if (target === BLOCK.WEIGHT_PLATE && this.sandbox.selectedBlock === BLOCK.WEIGHT_PLATE) {
+          this._weightPopup = { col: hoverCol, row: hoverRow };                        // §Weight Sensor — set trigger (players/mobs/both)
         } else if (target === BLOCK.TARGET_BLOCK && this.sandbox.selectedBlock === BLOCK.TARGET_BLOCK) {
           this._targetConfigPopup = { col: hoverCol, row: hoverRow };                  // §Phase R — reconfigure a placed Target
         } else if (target === BLOCK.REDSTONE_LAMP && this.sandbox.selectedBlock === BLOCK.REDSTONE_LAMP) {
@@ -6463,6 +6475,7 @@ class Game {
       if (this._txConfigPopup)     this._drawTxConfigPopup(ctx);
       if (this._pistonConfigPopup) this._drawPistonConfigPopup(ctx);
       if (this._targetConfigPopup) this._drawTargetConfigPopup(ctx);
+      if (this._weightPopup) this._drawWeightPopup(ctx);
       if (this._classicPopup) this._drawClassicPopup(ctx);
       if (this._tubePopup) this._drawTubePopup(ctx);
       if (this._railPopup) this._drawRailPopup(ctx);
@@ -7423,7 +7436,7 @@ class Game {
       const d = this._dustBlocks.get(`${c},${r}`);
       if (d) return d.on;
       const comp = this.redstone.getAt(c, r);
-      if (comp && (comp.type === 'lever' || comp.type === 'pressure_plate' || comp.type === 'target')) return !!comp.on;   // §Adjacency — target is a generator too
+      if (comp && (comp.type === 'lever' || comp.type === 'pressure_plate' || comp.type === 'target' || comp.type === 'weight')) return !!comp.on;   // §Adjacency — target is a generator too
       const rx = this._receivers.get(`${c},${r}`);   // §Adjacency — a powered receiver feeds a gate input directly
       if (rx) return !!rx.powered;
       const srcGate = this._gateBlocks.get(`${c},${r}`);
@@ -7484,7 +7497,7 @@ class Game {
       const nc = col + dc, nr = row + dr;
       const comp = this.redstone.getAt(nc, nr);
       if (comp) {
-        if ((comp.type === 'lever' || comp.type === 'pressure_plate' || comp.type === 'target') && comp.on) return true;
+        if ((comp.type === 'lever' || comp.type === 'pressure_plate' || comp.type === 'target' || comp.type === 'weight') && comp.on) return true;
         if (comp.type === 'pulse_converter') {
           const cdir = comp.dir || (comp.axis === 'v' ? 'down' : 'right');
           const [pdr, pdc] = GD[cdir] || GD.right;   // pulse side
@@ -7528,6 +7541,68 @@ class Game {
         }
       }
     }
+  }
+
+  // §Weight/Plate smooth surface — the top-edge Y of a cell. On a moving platform, uses the platform's
+  // pre-rounding smooth Y so a standing rider doesn't flicker against the quantized comp.row; otherwise
+  // the static grid top (row * BLOCK_SIZE).
+  _cellTopY(col, row) {
+    const t = this._platformCellTopY && this._platformCellTopY.get(col + ',' + row);
+    return (t !== undefined) ? t : row * BLOCK_SIZE;
+  }
+  // True if an entity {x,y,width|w,height|h,vy} is standing on TOP of the block cell (col,row).
+  _standingOnCell(e, col, row, topTol = 6) {
+    const w = e.width ?? e.w ?? BLOCK_SIZE, h = e.height ?? e.h ?? BLOCK_SIZE;
+    const bx = col * BLOCK_SIZE, topY = this._cellTopY(col, row);
+    const feetY = e.y + h;
+    return e.x + w > bx + 4 && e.x < bx + BLOCK_SIZE - 4 &&
+           feetY >= topY - topTol && feetY <= topY + topTol + 4 && (e.vy ?? 0) >= -0.5;
+  }
+
+  // §Weight Sensor — a SOLID block that powers redstone while a player/mob/both stands on top. Detection
+  // uses the smooth platform surface (so it works cleanly on moving platforms, unlike the classic plate's
+  // quantized pixel test). Trigger mode ('players'|'mobs'|'both') is per-block config.
+  _updateWeightPlates() {
+    if (!this.redstone) return;
+    let any = false;
+    for (const comp of this.redstone.components) if (comp.type === 'weight') { any = true; break; }
+    if (!any) return;
+    const mobs = (this.mobManager && this.mobManager.mobs) ? this.mobManager.mobs : [];
+    for (const comp of this.redstone.components) {
+      if (comp.type !== 'weight') continue;
+      const trig = comp.trigger || 'both';
+      let on = false;
+      if ((trig === 'players' || trig === 'both')) {
+        if (this.player && this._standingOnCell(this.player, comp.col, comp.row)) on = true;
+        if (!on && this.player2 && this._standingOnCell(this.player2, comp.col, comp.row)) on = true;
+      }
+      if (!on && (trig === 'mobs' || trig === 'both')) {
+        for (const m of mobs) { if ((m.hp === undefined || m.hp > 0) && this._standingOnCell(m, comp.col, comp.row)) { on = true; break; } }
+      }
+      if (comp.on !== on) {
+        comp.on = on;
+        if (this.redstone.soundCallback) this.redstone.soundCallback('sounds/pressure-plate.mp3', 0.5);
+      }
+    }
+  }
+
+  // §Pressure plate on a platform — compose an extra "is-pressed" source that uses the SMOOTH platform
+  // surface, so a plate riding a vertically-moving platform doesn't flicker off while the player stands
+  // on it (the built-in test in redstone.js keys off the quantized comp.row). Layers over any existing
+  // extra source (e.g. online joiners). Only affects plates that sit on a platform cell.
+  _composePlateExtraOn(baseFn) {
+    const cellY = this._platformCellTopY;
+    if (!cellY || cellY.size === 0) return baseFn;
+    const p = this.player, p2 = this.player2;
+    return (col, row) => {
+      if (baseFn && baseFn(col, row)) return true;
+      if (!cellY.has(col + ',' + row)) return false;   // not a platform plate — leave to the built-in test
+      // A plate is walk-INTO: the rider stands on the cell BELOW it, feet at the plate cell's BOTTOM.
+      const topY = this._cellTopY(col, row), bottomY = topY + BLOCK_SIZE, bx = col * BLOCK_SIZE;
+      const on = (e) => e && e.x + (e.width ?? BLOCK_SIZE) > bx + 4 && e.x < bx + BLOCK_SIZE - 4 &&
+                        Math.abs((e.y + (e.height ?? BLOCK_SIZE)) - bottomY) < 8;
+      return on(p) || on(p2);
+    };
   }
 
   _rsApplyDevice(comp) {
@@ -8170,6 +8245,56 @@ class Game {
     row(py + 92, 'Pulse Length', toggle ? '— (toggle)' : ((comp.pulseDur || 30) + ' frames'), toggle);
     ctx.fillStyle = '#9aa'; ctx.font = '11px system-ui, sans-serif';
     ctx.fillText('Shoot it to fire. Powers redstone dust placed next to it.', px + 16, py + 132);
+    ctx.fillStyle = '#4a1f2a'; _roundRect(ctx, px + 14, py + ph - 44, pw - 28, 32, 6); ctx.fill();
+    ctx.fillStyle = '#ffb3c0'; ctx.font = 'bold 12px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.fillText('🗑  Remove', px + pw / 2, py + ph - 35); ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  // ── Weight Sensor config popup — trigger by players / mobs / both ──
+  _handleWeightPopupInput() {
+    const wp = this._weightPopup; if (!wp) return;
+    const comp = this.redstone.getAt(wp.col, wp.row);
+    if (!comp || comp.type !== 'weight') { this._weightPopup = null; return; }
+    if (!this.input.mouse.clicked) return;
+    const pw = 260, ph = 196, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
+    this.input.mouse.clicked = false;
+    if (hit(px + pw - 28, py + 6, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._weightPopup = null; return; }
+    const opts = ['players', 'mobs', 'both'];
+    const bw = (pw - 28 - 12) / 3;
+    for (let i = 0; i < 3; i++) { if (hit(px + 14 + i * (bw + 6), py + 56, bw, 34)) { comp.trigger = opts[i]; return; } }
+    if (hit(px + 14, py + ph - 44, pw - 28, 32)) {   // remove
+      this.level.set(wp.row, wp.col, BLOCK.AIR); this.redstone.removeAt(wp.col, wp.row);
+      this._weightPopup = null; this._notify('Weight Sensor removed', '#c66', 90); return;
+    }
+  }
+  _drawWeightPopup(ctx) {
+    const wp = this._weightPopup; if (!wp) return;
+    const comp = this.redstone.getAt(wp.col, wp.row);
+    if (!comp || comp.type !== 'weight') { this._weightPopup = null; return; }
+    const pw = 260, ph = 196, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    ctx.save(); ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.fillStyle = '#151512'; _roundRect(ctx, px, py, pw, ph, 8); ctx.fill();
+    ctx.strokeStyle = '#ffcf5a'; ctx.lineWidth = 2; _roundRect(ctx, px, py, pw, ph, 8); ctx.stroke();
+    ctx.fillStyle = '#ffe8b0'; ctx.font = 'bold 14px system-ui, sans-serif'; ctx.fillText('Weight Sensor', px + 14, py + 12);
+    ctx.fillStyle = '#c77'; ctx.font = 'bold 16px system-ui, sans-serif'; ctx.fillText('✕', px + pw - 24, py + 9);
+    ctx.fillStyle = '#bbaa88'; ctx.font = '11px system-ui, sans-serif'; ctx.fillText('Powers redstone while stood on. Triggered by:', px + 14, py + 36);
+    const opts = [['players', 'Players'], ['mobs', 'Mobs'], ['both', 'Both']];
+    const bw = (pw - 28 - 12) / 3;
+    for (let i = 0; i < 3; i++) {
+      const sel = (comp.trigger || 'both') === opts[i][0];
+      const bx = px + 14 + i * (bw + 6);
+      ctx.fillStyle = sel ? '#5a4a1c' : '#2a2820'; _roundRect(ctx, bx, py + 56, bw, 34, 6); ctx.fill();
+      ctx.strokeStyle = sel ? '#ffcf5a' : '#444'; ctx.lineWidth = 1; _roundRect(ctx, bx, py + 56, bw, 34, 6); ctx.stroke();
+      ctx.fillStyle = sel ? '#ffe8b0' : '#aa9'; ctx.font = 'bold 12px system-ui, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(opts[i][1], bx + bw / 2, py + 66); ctx.textAlign = 'left';
+    }
+    ctx.fillStyle = '#9aa'; ctx.font = '11px system-ui, sans-serif';
+    ctx.fillText('A solid block — stand on TOP of it. Works on', px + 16, py + 104);
+    ctx.fillText('moving platforms without flickering.', px + 16, py + 120);
     ctx.fillStyle = '#4a1f2a'; _roundRect(ctx, px + 14, py + ph - 44, pw - 28, 32, 6); ctx.fill();
     ctx.fillStyle = '#ffb3c0'; ctx.font = 'bold 12px system-ui, sans-serif';
     ctx.textAlign = 'center'; ctx.fillText('🗑  Remove', px + pw / 2, py + ph - 35); ctx.textAlign = 'left';
@@ -9006,8 +9131,10 @@ class Game {
       if (isFoliageBlock(blockType)) this._setFoliageColor(row, col, 0);
       if (blockType === BLOCK.LEVER || blockType === BLOCK.TRAPDOOR ||
           blockType === BLOCK.PRESSURE_PLATE || blockType === BLOCK.TNT ||
-          blockType === BLOCK.PISTON_BODY) {
-        this.redstone.removeAt(col, row);
+          blockType === BLOCK.PISTON_BODY || blockType === BLOCK.TARGET_BLOCK ||
+          blockType === BLOCK.PULSE_CONVERTER || blockType === BLOCK.REDSTONE_LAMP ||
+          blockType === BLOCK.WEIGHT_PLATE) {
+        this.redstone.removeAt(col, row);   // §orphan guard — erasing any redstone block must drop its component
       }
       // §Moving Platforms — removing an Anchor drops its platform binding + the Direction-Controller cfg.
       if (blockType === BLOCK.ANCHOR_BLOCK) this._platforms = (this._platforms || []).filter(p => !(p.anchorCol === col && p.anchorRow === row));
@@ -12569,6 +12696,12 @@ class Game {
       if (comp && comp.type === 'pulse_converter') comp.dir = dir;
       else if (!comp) this.redstone.addComponent({ type: 'pulse_converter', col: cv.col, row: cv.row, on: false, dir, links: [], sandboxPlaced: true });
     }
+    for (const w of (Array.isArray(data.sandboxWeightPlates) ? data.sandboxWeightPlates : [])) {
+      if (typeof w.col !== 'number' || typeof w.row !== 'number') continue;
+      const comp = this.redstone.getAt(w.col, w.row);
+      if (comp && comp.type === 'weight') comp.trigger = w.trigger || 'both';
+      else if (!comp) this.redstone.addComponent({ type: 'weight', col: w.col, row: w.row, on: false, trigger: w.trigger || 'both', links: [], sandboxPlaced: true });
+    }
   }
   _rebuildRedstoneFromGrid() {
     if (!this.level || !this.redstone) return;
@@ -12582,6 +12715,8 @@ class Game {
           this.redstone.addComponent({type: 'trapdoor',       col: c, row: r, open: false,  links: [], sandboxPlaced: true});
         else if (b === BLOCK.PRESSURE_PLATE && !this.redstone.getAt(c, r))
           this.redstone.addComponent({type: 'pressure_plate', col: c, row: r, on: false,    links: [], sandboxPlaced: true});
+        else if (b === BLOCK.WEIGHT_PLATE   && !this.redstone.getAt(c, r))
+          this.redstone.addComponent({type: 'weight', col: c, row: r, on: false, trigger: 'both', links: [], sandboxPlaced: true});
         else if (b === BLOCK.TNT            && !this.redstone.getAt(c, r))
           this.redstone.addComponent({type: 'tnt',            col: c, row: r, fuse: 0,      links: [], sandboxPlaced: true});
         else if (b === BLOCK.PISTON_BODY    && !this.redstone.getAt(c, r))
@@ -15918,6 +16053,8 @@ class Game {
           this.redstone.addComponent({type: 'trapdoor', col: c, row: r, open: false, links: [], sandboxPlaced: true});
         } else if (b === BLOCK.PRESSURE_PLATE && !this.redstone.getAt(c, r)) {
           this.redstone.addComponent({type: 'pressure_plate', col: c, row: r, on: false, links: [], sandboxPlaced: true});
+        } else if (b === BLOCK.WEIGHT_PLATE && !this.redstone.getAt(c, r)) {
+          this.redstone.addComponent({type: 'weight', col: c, row: r, on: false, trigger: 'both', links: [], sandboxPlaced: true});
         } else if (b === BLOCK.TNT && !this.redstone.getAt(c, r)) {
           this.redstone.addComponent({type: 'tnt', col: c, row: r, fuse: 0, links: [], sandboxPlaced: true});
         } else if (b === BLOCK.TARGET_BLOCK && !this.redstone.getAt(c, r)) {   // §Phase R
@@ -16214,6 +16351,8 @@ class Game {
           this.redstone.addComponent({type: 'trapdoor', col: c, row: r, open: false, links: [], sandboxPlaced: true});
         } else if (b === BLOCK.PRESSURE_PLATE && !this.redstone.getAt(c, r)) {
           this.redstone.addComponent({type: 'pressure_plate', col: c, row: r, on: false, links: [], sandboxPlaced: true});
+        } else if (b === BLOCK.WEIGHT_PLATE && !this.redstone.getAt(c, r)) {
+          this.redstone.addComponent({type: 'weight', col: c, row: r, on: false, trigger: 'both', links: [], sandboxPlaced: true});
         } else if (b === BLOCK.TNT && !this.redstone.getAt(c, r)) {
           this.redstone.addComponent({type: 'tnt', col: c, row: r, fuse: 0, links: [], sandboxPlaced: true});
         } else if (b === BLOCK.TARGET_BLOCK && !this.redstone.getAt(c, r)) {   // §Phase R
@@ -16616,6 +16755,8 @@ class Game {
           this.redstone.addComponent({type: 'trapdoor', col: c, row: r, open: false, links: [], sandboxPlaced: true});
         } else if (b === BLOCK.PRESSURE_PLATE && !this.redstone.getAt(c, r)) {
           this.redstone.addComponent({type: 'pressure_plate', col: c, row: r, on: false, links: [], sandboxPlaced: true});
+        } else if (b === BLOCK.WEIGHT_PLATE && !this.redstone.getAt(c, r)) {
+          this.redstone.addComponent({type: 'weight', col: c, row: r, on: false, trigger: 'both', links: [], sandboxPlaced: true});
         } else if (b === BLOCK.TNT && !this.redstone.getAt(c, r)) {
           this.redstone.addComponent({type: 'tnt', col: c, row: r, fuse: 0, links: [], sandboxPlaced: true});
         } else if (b === BLOCK.TARGET_BLOCK && !this.redstone.getAt(c, r)) {   // §Phase R
@@ -17736,7 +17877,7 @@ class Game {
         const d = this._dustBlocks.get(`${comp.col + dc},${comp.row + dr}`);
         if (d) return !!d.on;
         const g = this.redstone.getAt(comp.col + dc, comp.row + dr);
-        if (g && (g.type === 'lever' || g.type === 'pressure_plate' || g.type === 'target') && g.on) return true;
+        if (g && (g.type === 'lever' || g.type === 'pressure_plate' || g.type === 'target' || g.type === 'weight') && g.on) return true;
         const rx = this._receivers.get(`${comp.col + dc},${comp.row + dr}`);
         return !!(rx && rx.powered);
       };
@@ -18098,6 +18239,7 @@ class Game {
     if (b === BLOCK.TRAPDOOR)      { const cp = this.redstone.getAt(col, row); return { open: cp ? !!cp.open : false }; }
     if (b === BLOCK.PRESSURE_PLATE){ const cp = this.redstone.getAt(col, row); return { pressed: cp ? !!cp.on : false }; }
     if (b === BLOCK.PULSE_CONVERTER){ const cp = this.redstone.getAt(col, row); return { on: cp ? !!cp.on : false, dir: cp ? (cp.dir || 'right') : 'right' }; }
+    if (b === BLOCK.WEIGHT_PLATE)   { const cp = this.redstone.getAt(col, row); return { on: cp ? !!cp.on : false, trigger: cp ? (cp.trigger || 'both') : 'both' }; }
     return {};
   }
   _platformAt(row, col) { return (this._platforms || []).find(p => p.anchorRow === row && p.anchorCol === col) || null; }
@@ -18175,6 +18317,7 @@ class Game {
             else if (b === BLOCK.TARGET_BLOCK)   this.redstone.addComponent({ type: 'target', col: oc, row: or_, on: false, mode: 'pulse', pulseDur: 30, links: [], sandboxPlaced: true });
             else if (b === BLOCK.PULSE_CONVERTER)this.redstone.addComponent({ type: 'pulse_converter', col: oc, row: or_, on: false, links: [], sandboxPlaced: true });
             else if (b === BLOCK.REDSTONE_LAMP)  this.redstone.addComponent({ type: 'lamp', col: oc, row: or_, on: false, color: 0, links: [], sandboxPlaced: true });
+            else if (b === BLOCK.WEIGHT_PLATE)   this.redstone.addComponent({ type: 'weight', col: oc, row: or_, on: false, trigger: 'both', links: [], sandboxPlaced: true });
           }
           const comp = this.redstone.getAt(oc, or_); if (comp) pl._carriedRs.comps.push({ comp, dcol: c.dcol, drow: c.drow });
           const d = this._dustBlocks.get(key);   if (d) { d._platform = true; pl._carriedRs.dust.push({ o: d, dcol: c.dcol, drow: c.drow }); }
@@ -18218,23 +18361,28 @@ class Game {
   // patch so physics treats platforms as ground.
   _rebuildPlatformSolidCells() {
     const set = new Set();
+    const topY = new Map();   // §Weight/Plate — smooth top-edge Y of EVERY platform cell (incl. plates), keyed "col,row"
     for (const pl of this._platforms || []) {
       if (!pl.cells || pl._destroyed) continue;
       const tilt = pl.cog ? (pl._tilt || 0) : 0;
       const cos = Math.cos(tilt), sin = Math.sin(tilt);
       pl._solidCells = [];
       for (const c of pl.cells) {
-        if (c.blockType === BLOCK.PRESSURE_PLATE) continue;   // §Moving Redstone — a plate is walk-INTO, not solid
         // cell centre relative to the anchor centre, rotated by tilt, back to a world cell.
         const lx = c.dcol * BLOCK_SIZE, ly = c.drow * BLOCK_SIZE;
         const wx = pl._ax + lx * cos - ly * sin, wy = pl._ay + lx * sin + ly * cos;
         const cc = Math.round((wx - BLOCK_SIZE / 2) / BLOCK_SIZE), rr = Math.round((wy - BLOCK_SIZE / 2) / BLOCK_SIZE);
+        // Every cell records its smooth top edge — used by weight/plate detection so a sub-cell moving
+        // platform doesn't make a standing rider flicker on/off against the quantized comp.row.
+        topY.set(cc + ',' + rr, wy - BLOCK_SIZE / 2);
+        if (c.blockType === BLOCK.PRESSURE_PLATE) continue;   // §Moving Redstone — a plate is walk-INTO, not solid
         set.add(cc + ',' + rr);
         // smoothTopY = the cell's smooth top edge (pre-rounding) so riders can rest on it smoothly.
         pl._solidCells.push({ col: cc, row: rr, dcol: c.dcol, drow: c.drow, smoothTopY: wy - BLOCK_SIZE / 2 });
       }
     }
     this._platformSolidCells = set;
+    this._platformCellTopY = topY;
   }
 
   // §Moving Redstone — reposition every carried redstone thing to the platform's CURRENT cell, but only
@@ -19002,7 +19150,7 @@ class Game {
   _cellPowered(col, row) {
     const d = this._dustBlocks.get(col + ',' + row); if (d && d.on) return true;
     const comp = this.redstone.getAt(col, row);
-    if (comp && (comp.type === 'lever' || comp.type === 'pressure_plate' || comp.type === 'target') && comp.on) return true;
+    if (comp && (comp.type === 'lever' || comp.type === 'pressure_plate' || comp.type === 'target' || comp.type === 'weight') && comp.on) return true;
     const rx = this._receivers.get(col + ',' + row); if (rx && rx.powered) return true;
     return false;
   }

@@ -133,6 +133,11 @@ const GAME_STATE = {
           .filter(c => c.type === 'pulse_converter')
           .map(c => ({ col: c.col, row: c.row, dir: c.dir || (c.axis === 'v' ? 'down' : 'right') }))
       : [];
+    const sandboxWeightPlates = game.redstone
+      ? game.redstone.components
+          .filter(c => c.type === 'weight')
+          .map(c => ({ col: c.col, row: c.row, trigger: c.trigger || 'both' }))
+      : [];
     // Sandbox quick-access hotbar — must survive the test-mode round-trip (which
     // serializes via GAME_STATE, not saves.js), else it empties on return to editor.
     const sbHotbar = (game.sandbox && Array.isArray(game.sandbox.sbHotbar))
@@ -256,6 +261,7 @@ const GAME_STATE = {
       sandboxTargets,
       sandboxLamps,
       sandboxConverters,
+      sandboxWeightPlates,
       sbHotbar,
       sbHotbarSel,
       dustBlocks,
