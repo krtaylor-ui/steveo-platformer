@@ -17784,6 +17784,10 @@ class Game {
   _resolveSolidOverlap(p) {
     if (!p || p.hp <= 0) return;
     if (p._tubeOwn || p._pipeOwn || p._warp || p._grappleOwn || p._barState || p._hangState) return;
+    // §Moving Platforms — while a rider is attached to a platform, the carry glues them to the smooth
+    // surface; skip depenetration so it can't fight that snap against the platform's rounded solid
+    // cells (the residual up/down jitter when a platform rises/falls).
+    if (p._platRideId != null) return;
     const BS = BLOCK_SIZE, L = this.level;
     const embedded = (x, y) => {
       const c0 = Math.floor((x + 4) / BS), c1 = Math.floor((x + p.width - 4) / BS);
@@ -18365,8 +18369,11 @@ class Game {
     }
   }
   _destroyPlatform(pl) {
-    pl._destroyed = true; pl.cells = []; pl._solidCells = [];
-    this._shatterPlatform(pl);      // §11 scatter (safe stub until then)
+    // Snapshot the blocks BEFORE shattering — _shatterPlatform reads _shatterCells to spawn the debris,
+    // and it clears pl.cells itself. (The old order cleared cells first → zero debris, so the platform
+    // just vanished with no animation.)
+    pl._shatterCells = (pl.cells || []).slice();
+    this._shatterPlatform(pl);
     this._notify('Platform crushed by a heavier one', '#c66', 120);
   }
   // §11 — a platform that crashes / misses every catch breaks apart: each block is flung outward like

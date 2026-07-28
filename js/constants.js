@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 build 258 (HOTFIX: Test World would not launch — build 257 removed the _entityRideKind helper but _platformRiders (used by Center-of-Gravity) still called it, so a CoG-enabled platform threw every frame and froze the play loop. Fixed _platformRiders to use the new smooth-surface detection, and wrapped the platform update + debris in try/catch so a platform bug can never freeze the whole game again. Everything from 257 stands: platform lamps render state, smooth diagonal ride, edge-grab follow, collision bounce, and the Destroy-Smaller shatter animation.';
+const GAME_VERSION = 'v3 build 259 (two fixes): (1) residual up/down JITTER while riding a platform — an attached rider is now exempt from the depenetration pass, so it can no longer fight the smooth-surface glue against the platform`s rounded collision cells; the ride tracks the platform`s vertical position exactly, and the attachment breaks on jump / walking off. (2) Destroy-Smaller ANIMATION now actually plays — _destroyPlatform was clearing the block list BEFORE the shatter read it (so zero debris spawned and the platform just vanished); it now snapshots the blocks first, so the loser bursts into tumbling pieces that bounce off the ground, settle, and fade. Prev 258 hotfix (CoG test-launch crash).';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;
