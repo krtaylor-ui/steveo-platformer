@@ -2999,6 +2999,8 @@ class Game {
         this._placeDirCtrl(hoverRow, hoverCol);                         // §Moving Platforms — place / config a Direction Controller
       } else if (this.sandbox.selectedBlock === BLOCK.SPEED_SEGMENT && !this.input.mouse.altClicked) {
         this._placeSpeedSeg(hoverRow, hoverCol);                        // §Moving Platforms — paint a speed-ramp zone on a rail
+      } else if (this.sandbox.selectedBlock === BLOCK.LAUNCH_RAMP && !this.input.mouse.altClicked) {
+        this._placeLaunchRamp(hoverRow, hoverCol);                      // §Moving Platforms — set a rail's ballistic launch point
       } else
       // Alt+Click → eyedropper: pick block under cursor
       if (this.input.mouse.altClicked) {
@@ -6399,7 +6401,7 @@ class Game {
     // Sandbox WORLD overlays (placed eggs/emeralds/power-ups/hill/spawn-lines/items
     // + portal labels) must scale with the zoom too — draw them inside the transform.
     try { this._drawTravelTubeItems(ctx); this._drawTravelTubesFront(ctx); this._drawFlyingTubeGlass(ctx); } catch (e) { /* ignore */ }   // §Travel Tube — items + pass-behind glass + flying-player-behind-glass overlay
-    try { this._drawRails(ctx); this._drawSpeedSegs(ctx); this._drawPlatforms(ctx); } catch (e) { /* ignore */ }   // §Moving Platforms — rail overlay + speed zones + moving platform groups
+    try { this._drawRails(ctx); this._drawSpeedSegs(ctx); this._drawLaunchRamps(ctx); this._drawPlatforms(ctx); } catch (e) { /* ignore */ }   // §Moving Platforms — rail overlay + speed zones + launch ramps + moving platform groups
     if (this.gameMode === 'sandbox' && this.sandbox && this.sandbox.drawWorld) {
       this.sandbox.drawWorld(ctx, this.camera, this.frameCount);
       try { this._drawTravelTubesSandbox(ctx); if (this._tubeDraft) this._drawTubeDraft(ctx); if (this._tubeEditNodes) this._drawTubeNodeEdit(ctx); } catch (e) { /* ignore */ }  // §Travel Tube outlines + draft + node edit
@@ -18043,16 +18045,16 @@ class Game {
     if (this.gameMode === 'sandbox' || !this._platforms || !this._platforms.length) return;
     this._updateDirControllers();            // §8 — set each platform's _dir from its controller inputs
     for (const pl of this._platforms) {
-      if (pl._disabled) continue;
+      if (pl._disabled || pl._destroyed) continue;
+      pl._pax = pl._ax; pl._pay = pl._ay;              // remember previous anchor pos for the carry delta (both modes)
+      if (pl._airborne) { this._advanceAirbornePlatform(pl); continue; }   // §11 — ballistic flight
       const rail = this._platformRail(pl);
       if (!rail) continue;
       const pts = this._railPts(rail);
       const L = TRAVEL_TUBE.length(pts);
       this._resolvePlatformMoving(pl);                 // set pl._moving from its mode + signal
-      // Pause-node countdown handled in §5 hook.
-      this._tickPlatformPause(pl);
+      this._tickPlatformPause(pl);                     // §5
       this._applySpeedSegments(pl, rail);              // §9 — ramp/persist speed through zones
-      pl._pax = pl._ax; pl._pay = pl._ay;              // remember previous anchor pos for the carry delta
       if (pl._moving && !pl._paused && L > 0) {
         const step = Math.max(0, pl._curSpeed || 0);
         pl._prevDist = pl._dist;
@@ -18060,6 +18062,7 @@ class Game {
         pl._dist = res.dist; pl._dir = res.dir;
         if (res.stopped && pl.returnMode === 'oneway') pl._moving = false;
         this._checkPlatformPauseArrival(pl, rail);      // §5 — did we reach a pause node?
+        if (this._checkLaunch(pl, rail)) continue;      // §11 — crossed the launch ramp → now airborne
       }
       const at = TRAVEL_TUBE.pointAt(pts, pl._dist);
       pl._ax = at.x; pl._ay = at.y;
@@ -18067,6 +18070,65 @@ class Game {
     this._resolvePlatformCollisions();      // §6 — two platforms meeting on one rail
     this._rebuildPlatformSolidCells();
     this._carryPlatformRiders();
+  }
+
+  // §11 — did the platform just cross its rail's launch point? If so, fling it: exit velocity = current
+  // speed along the travel heading, tilted up by the ramp, then it flies as a ballistic rigid body.
+  _checkLaunch(pl, rail) {
+    if (rail.launchAt == null || pl._airborne) return false;
+    const a = Math.min(pl._prevDist ?? pl._dist, pl._dist), b = Math.max(pl._prevDist ?? pl._dist, pl._dist);
+    if (rail.launchAt < a - 0.001 || rail.launchAt > b + 0.001) return false;
+    const pts = this._railPts(rail);
+    const at = TRAVEL_TUBE.pointAt(pts, rail.launchAt);
+    const travelAng = pl._dir >= 0 ? at.ang : at.ang + Math.PI;
+    const speed = Math.max(3, pl._curSpeed || 3) * 3.2;      // scale rail speed → launch punch
+    const RAMP_UP = 0.7;                                     // the ramp tips the launch upward
+    pl._vx = Math.cos(travelAng) * speed;
+    pl._vy = Math.sin(travelAng) * speed - Math.abs(speed) * RAMP_UP;
+    pl._ax = at.x; pl._ay = at.y;
+    pl._airborne = true; pl._airFrames = 0;
+    pl._shatterCells = pl.cells.slice();                    // snapshot for a possible shatter
+    this._notify('Platform launched!', '#ffb050', 90);
+    return true;
+  }
+
+  // §11 — one ballistic step + catch / crash / out-of-bounds resolution.
+  _advanceAirbornePlatform(pl) {
+    const G = 0.35;
+    pl._airFrames = (pl._airFrames || 0) + 1;
+    const s = MOVING_PLATFORM.ballisticStep(pl._ax, pl._ay, pl._vx, pl._vy, G);
+    pl._ax = s.x; pl._ay = s.y; pl._vx = s.vx; pl._vy = s.vy;
+    // Out of bounds → shatter.
+    if (pl._ay > this.level.pixelHeight + 160 || pl._ax < -160 || pl._ax > this.level.pixelWidth + 160) {
+      this._shatterPlatform(pl); this._notify('Platform crashed off the level', '#c66', 120); return;
+    }
+    // Mid-air hit on SOLID TERRAIN (not a rail, not a platform) → crash + shatter.
+    const acol = Math.round((pl._ax - BLOCK_SIZE / 2) / BLOCK_SIZE), arow = Math.round((pl._ay - BLOCK_SIZE / 2) / BLOCK_SIZE);
+    for (const c of pl.cells) {
+      const cc = acol + c.dcol, rr = arow + c.drow;
+      if (rr < 0 || rr >= this.level.height || cc < 0 || cc >= this.level.width) continue;
+      const b = this.level.get(rr, cc);
+      const bd = (typeof BLOCK_DATA !== 'undefined') ? BLOCK_DATA[b] : null;
+      if (b !== BLOCK.AIR && b !== BLOCK.RAIL && bd && bd.solid) { this._shatterPlatform(pl); this._notify('Platform smashed into a wall', '#c66', 120); return; }
+    }
+    // Catch: after clearing the launch vicinity, land on the FIRST rail the anchor touches.
+    if (pl._airFrames > 6) {
+      let best = null;
+      for (const rail of this._rails || []) {
+        const n = TRAVEL_TUBE.nearest(this._railPts(rail), pl._ax, pl._ay, BLOCK_SIZE);
+        if (n && Math.hypot(n.x - pl._ax, n.y - pl._ay) < BLOCK_SIZE * 0.7) {
+          const dist = Math.hypot(n.x - pl._ax, n.y - pl._ay);
+          if (!best || dist < best.dist) best = { rail, d: n.d, dist };
+        }
+      }
+      if (best) {
+        pl.railId = best.rail.id; pl._dist = best.d; pl._airborne = false;
+        pl._dir = pl._vx >= 0 ? 1 : -1;                     // keep heading roughly with the flight
+        const at = TRAVEL_TUBE.pointAt(this._railPts(best.rail), best.d);
+        pl._ax = at.x; pl._ay = at.y;
+        this._notify('Platform caught the rail ✓', '#8ff0b8', 90);
+      }
+    }
   }
 
   // §6 — per-block-type weight (default 1 for every type → equals block count today; a real weighted
@@ -18106,7 +18168,35 @@ class Game {
     this._shatterPlatform(pl);      // §11 scatter (safe stub until then)
     this._notify('Platform crushed by a heavier one', '#c66', 120);
   }
-  _shatterPlatform(pl) { /* §11 — real ballistic scatter; safe no-op until then */ }
+  // §11 — a platform that crashes / misses every catch breaks apart: each block is flung outward like
+  // the player death-scatter and falls off-screen (reuses the _deathParts particle system).
+  _shatterPlatform(pl) {
+    const now = (typeof Date !== 'undefined' && Date.now) ? Date.now() : this.frameCount * 16;
+    const ox = (pl._ax != null ? pl._ax : pl.anchorCol * BLOCK_SIZE) - BLOCK_SIZE / 2;
+    const oy = (pl._ay != null ? pl._ay : pl.anchorRow * BLOCK_SIZE) - BLOCK_SIZE / 2;
+    for (const c of (pl._shatterCells || pl.cells || [])) {
+      const bx = ox + c.dcol * BLOCK_SIZE, by = oy + c.drow * BLOCK_SIZE;
+      const angle = Math.random() * Math.PI * 2, speed = 2 + Math.random() * 5;
+      this._deathParts.push({
+        x: bx + BLOCK_SIZE / 2, y: by + BLOCK_SIZE / 2,
+        vx: Math.cos(angle) * speed + (pl._vx || 0) * 0.5, vy: Math.sin(angle) * speed - 4 + (pl._vy || 0) * 0.5,
+        rot: (Math.random() - 0.5) * 0.5, rotV: (Math.random() - 0.5) * 0.25,
+        w: BLOCK_SIZE - 6, h: BLOCK_SIZE - 6, color: this._blockScatterColor(c.blockType), alpha: 1.0, born: now,
+      });
+    }
+    if (this._deathParts.length > 160) this._deathParts.splice(0, this._deathParts.length - 160);
+    pl._destroyed = true; pl.cells = []; pl._solidCells = []; pl._airborne = false;
+  }
+  _blockScatterColor(type) {
+    const map = { }; // a few representative tints; fallback is a neutral stone-brown
+    const bd = (typeof BLOCK_DATA !== 'undefined') ? BLOCK_DATA[type] : null;
+    if (type === BLOCK.GRASS) return '#5a9e3a';
+    if (type === BLOCK.DIRT) return '#8a5a33';
+    if (type === BLOCK.STONE || type === BLOCK.COBBLESTONE) return '#8a8a8a';
+    if (type === BLOCK.WOOD || type === BLOCK.PLANKS) return '#a9763f';
+    if (type === BLOCK.ANCHOR_BLOCK) return '#3a6ea5';
+    return '#9a8258';
+  }
 
   // Decide whether a platform is currently moving, from its Movement Mode + (for redstone) signal.
   _resolvePlatformMoving(pl) {
@@ -18519,6 +18609,30 @@ class Game {
     const btn = (y, label, danger) => { this._roundRect(ctx, px + 20, y, pw - 40, 30, 5); ctx.fillStyle = danger ? '#3a1d1d' : '#123a24'; ctx.fill(); ctx.strokeStyle = danger ? '#a55' : '#46b46e'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = danger ? '#f0c0c0' : '#c8f0d8'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 15); };
     btn(py + 52, 'Target Speed: ' + seg.targetSpeed);
     btn(py + 100, 'Remove', true);
+    ctx.restore();
+  }
+  // §11 — mark a rail's launch point (a platform reaching it while moving toward it is flung).
+  _placeLaunchRamp(row, col) {
+    const rail = this._railAtCell(row, col);
+    if (!rail) { this._notify('Launch Ramp must be placed on a rail', '#CC4444', 130); return; }
+    const wx = col * BLOCK_SIZE + BLOCK_SIZE / 2, wy = row * BLOCK_SIZE + BLOCK_SIZE / 2;
+    const d = this._railNearestDist(rail, wx, wy);
+    if (rail.launchAt != null && Math.abs(rail.launchAt - d) < BLOCK_SIZE) { rail.launchAt = null; this._notify('Launch Ramp removed', '#c66', 100); return; }
+    rail.launchAt = d;
+    this._notify('Launch Ramp set — a platform reaching here is flung on a ballistic arc', '#ffb050', 220);
+  }
+  _drawLaunchRamps(ctx) {
+    if (this.gameMode !== 'sandbox' || !this._rails) return;
+    ctx.save();
+    for (const rail of this._rails) {
+      if (rail.launchAt == null) continue;
+      const at = TRAVEL_TUBE.pointAt(this._railPts(rail), rail.launchAt);
+      const x = at.x - this.camera.x, y = at.y - this.camera.y;
+      ctx.fillStyle = '#ffb050'; ctx.strokeStyle = '#a0542a'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x - 8, y + 7); ctx.lineTo(x + 8, y + 7); ctx.lineTo(x + 8, y - 7); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 10px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('↗', x + 3, y);
+    }
     ctx.restore();
   }
   _drawSpeedSegs(ctx) {
