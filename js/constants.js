@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 · build 239 (Redstone Lamp colour now visibly changes when off (was near-black for every colour; now the hue shows dimmed). Directional PULSE CONVERTER — a Toggle side (T) and a Pulse side (P): drive the Toggle side → a timed pulse comes out the Pulse side; drive the Pulse side → the Toggle side flips a held on/off state. Click it (Converter selected) to rotate the axis (left-right / up-down); axis saved. Self-output masking prevents it re-triggering itself. REMAINING Phase-R: TX/RX on top of a block; melee toggle-off.)';
+const GAME_VERSION = 'v3 · build 240 (Fixes: Redstone Lamp colour now actually persists into PLAY — the config restore (lamp colour, target mode, converter axis) only ran on the sandbox load path, so test/play reverted every lamp to red; now restored on all load paths. Pulse Converter no longer self-loops — after it fires it LOCKS new inputs long enough to outlast its own output + the dust-propagation lag (your "disable the other direction after triggering").)';
 const CANVAS_W    = 800;
 const CANVAS_H    = 500;
 const BLOCK_SIZE  = 32;

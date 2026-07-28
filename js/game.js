@@ -12199,6 +12199,30 @@ class Game {
   // Scan the live grid and register redstone-interactive blocks that joiners
   // don't have components for (lever, trapdoor, pressure_plate, tnt).
   // Called after _applyServerBlocks so online joiners can interact with them.
+  // §Phase R — restore Target mode/duration, Lamp colour, Converter axis from a saved world. Called
+  // from EVERY load path (sandbox/normal/platformer/SR) — config used to only restore in sandbox,
+  // so a Lamp/Target/Converter reverted to defaults in test/play (e.g. every lamp went red).
+  _restoreRsExtras(data) {
+    if (!data || !this.redstone) return;
+    for (const t of (Array.isArray(data.sandboxTargets) ? data.sandboxTargets : [])) {
+      if (typeof t.col !== 'number' || typeof t.row !== 'number') continue;
+      const comp = this.redstone.getAt(t.col, t.row);
+      if (comp && comp.type === 'target') { comp.mode = t.mode || 'pulse'; comp.pulseDur = t.pulseDur || 30; }
+      else if (!comp) this.redstone.addComponent({ type: 'target', col: t.col, row: t.row, on: false, mode: t.mode || 'pulse', pulseDur: t.pulseDur || 30, links: [], sandboxPlaced: true });
+    }
+    for (const l of (Array.isArray(data.sandboxLamps) ? data.sandboxLamps : [])) {
+      if (typeof l.col !== 'number' || typeof l.row !== 'number') continue;
+      const comp = this.redstone.getAt(l.col, l.row);
+      if (comp && comp.type === 'lamp') comp.color = l.color || 0;
+      else if (!comp) this.redstone.addComponent({ type: 'lamp', col: l.col, row: l.row, on: false, color: l.color || 0, links: [], sandboxPlaced: true });
+    }
+    for (const cv of (Array.isArray(data.sandboxConverters) ? data.sandboxConverters : [])) {
+      if (typeof cv.col !== 'number' || typeof cv.row !== 'number') continue;
+      const comp = this.redstone.getAt(cv.col, cv.row);
+      if (comp && comp.type === 'pulse_converter') comp.axis = cv.axis || 'h';
+      else if (!comp) this.redstone.addComponent({ type: 'pulse_converter', col: cv.col, row: cv.row, on: false, axis: cv.axis || 'h', links: [], sandboxPlaced: true });
+    }
+  }
   _rebuildRedstoneFromGrid() {
     if (!this.level || !this.redstone) return;
     const { width: W, height: H, grid } = this.level;
@@ -15582,31 +15606,9 @@ class Game {
         }
       }
     }
+    this._restoreRsExtras(data);   // §Phase R — target/lamp/converter config (all load paths)
     // §Phase R — restore Target Block config (update the ensure-scan component, or add it)
-    if (Array.isArray(data.sandboxTargets)) {
-      for (const t of data.sandboxTargets) {
-        if (typeof t.col !== 'number' || typeof t.row !== 'number') continue;
-        const comp = this.redstone.getAt(t.col, t.row);
-        if (comp && comp.type === 'target') { comp.mode = t.mode || 'pulse'; comp.pulseDur = t.pulseDur || 30; }
-        else if (!comp) this.redstone.addComponent({ type: 'target', col: t.col, row: t.row, on: false, mode: t.mode || 'pulse', pulseDur: t.pulseDur || 30, links: [], sandboxPlaced: true });
-      }
-    }
-    if (Array.isArray(data.sandboxLamps)) {   // §Phase R — restore Redstone Lamp colours
-      for (const l of data.sandboxLamps) {
-        if (typeof l.col !== 'number' || typeof l.row !== 'number') continue;
-        const comp = this.redstone.getAt(l.col, l.row);
-        if (comp && comp.type === 'lamp') comp.color = l.color || 0;
-        else if (!comp) this.redstone.addComponent({ type: 'lamp', col: l.col, row: l.row, on: false, color: l.color || 0, links: [], sandboxPlaced: true });
-      }
-    }
-    if (Array.isArray(data.sandboxConverters)) {   // §Phase R — restore Pulse Converter axis
-      for (const cv of data.sandboxConverters) {
-        if (typeof cv.col !== 'number' || typeof cv.row !== 'number') continue;
-        const comp = this.redstone.getAt(cv.col, cv.row);
-        if (comp && comp.type === 'pulse_converter') comp.axis = cv.axis || 'h';
-        else if (!comp) this.redstone.addComponent({ type: 'pulse_converter', col: cv.col, row: cv.row, on: false, axis: cv.axis || 'h', links: [], sandboxPlaced: true });
-      }
-    }
+    this._restoreRsExtras(data);   // §Phase R — target mode/duration + lamp colour + converter axis (all load paths)
 
     // Restore redstone dust overlay blocks
     this._dustBlocks.clear();
@@ -15899,6 +15901,7 @@ class Game {
         }
       }
     }
+    this._restoreRsExtras(data);   // §Phase R — target/lamp/converter config (all load paths)
 
     // Restore dust/gate overlay blocks — everTriggered reset to false so circuits
     // are invisible until the player first activates them in this mode.
@@ -16299,6 +16302,7 @@ class Game {
         }
       }
     }
+    this._restoreRsExtras(data);   // §Phase R — target/lamp/converter config (all load paths)
 
     // Restore chests from save data, then scan grid for any missed CHEST blocks
     this._chests.clear();
@@ -17378,9 +17382,15 @@ class Game {
       const dustOn = (dr, dc) => { const d = this._dustBlocks.get(`${comp.col + dc},${comp.row + dr}`); return d ? !!d.on : false; };
       const extToggle = dustOn(tdr, tdc) && !comp._held;              // ignore our own held output
       const extPulse = dustOn(pdr, pdc) && !(comp._pulseTimer > 0);   // ignore our own pulse output
-      if (extToggle && !comp._lastExtToggle) comp._pulseTimer = comp.pulseDur || 20;   // toggle-side rising → pulse out
-      if (extPulse && !comp._lastExtPulse) comp._held = !comp._held;                   // pulse-side rising → flip held
-      comp._lastExtToggle = extToggle; comp._lastExtPulse = extPulse;
+      // After ANY action, LOCK new inputs for a spell (longer than the pulse + the dust-propagation
+      // lag) so the device's OWN lagging output can't be read back as a fresh edge and self-loop.
+      if (comp._lock > 0) {
+        comp._lock--;
+      } else {
+        if (extToggle && !comp._lastExtToggle) { comp._pulseTimer = comp.pulseDur || 20; comp._lock = (comp.pulseDur || 20) + 12; }   // toggle rising → pulse out
+        if (extPulse && !comp._lastExtPulse) { comp._held = !comp._held; comp._lock = 24; }                                            // pulse rising → flip held
+      }
+      comp._lastExtToggle = extToggle; comp._lastExtPulse = extPulse;   // keep edge state current (incl. during the lock)
       if (comp._pulseTimer > 0) comp._pulseTimer--;
       const pulseOut = comp._pulseTimer > 0, toggleOut = !!comp._held;
       comp.on = pulseOut || toggleOut;                       // for rendering
