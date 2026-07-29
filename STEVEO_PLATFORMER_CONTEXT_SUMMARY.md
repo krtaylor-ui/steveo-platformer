@@ -1,4 +1,23 @@
-## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE crash fix + view filters (build 290) on branch `overhead-engine` — NOT merged
+## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE move-from-config / weapon switch / map-edge / somersault facing (build 291) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+
+Fifth playtest-feedback batch. Suite green (948 assertions); draw-probe clean.
+- **Move from config modals:** portal/pipe, Goal Star, Player Spawn modals gained a **✥ Move** button →
+  arms Hand-tool move with a "click to move" ring; next click relocates the object.
+- **Weapon switch:** collected `player.weapons[]` + **Q / Tab** to cycle + a compact bottom HOTBAR HUD.
+- **Somersault faces the aim direction** (was always down-right).
+- **Leaves = one floating level with real height** (gap below) at any elevation; still pass-under.
+- **Bolder map-edge:** hazard stripes PLUS a dashed magenta boundary line right on the world edge.
+- **Walking-climb:** confirmed collision blocks a 1-level walk-up when climb=None; legacy autoClimb fold
+  removed, `rules {}` on new worlds, `climbLevels` coerced. Residual "climb" feel = the 2.5D up-left
+  elevation OFFSET decoupling a block's drawn top from its collision cell (illusion) — lever is `elevOffset`.
+- **DEFERRED (Kevin OK):** block-built portals + block-built buildings → future **Skin Editor** tool (see
+  FUTURE_ROADMAP §31). Detail in `DECISIONS_LOG.md` (Move-from-config / Weapon Switch / Map-Edge / Somersault).
+
+**NEEDS BROWSER PLAYTEST** before merge. All 12 overhead builds (279–291) are stacked on this branch.
+
+---
+
+## PRIOR STATE (2026-07-29) — OVERHEAD ENGINE crash fix + view filters (build 290) on branch `overhead-engine` — NOT merged
 
 - **CRASH FIXED:** the build-289 portal draw used an undefined `cs` → any world with a portal (incl. the
   demo) threw mid-render, hiding mobs/buildings/items and breaking Test. Now uses the block width.

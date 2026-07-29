@@ -1082,6 +1082,14 @@ which already route through the `OH_SPRITE` colour palette) and save them per-ac
 placement. Scope when designed: a small pixel/shape editor + a skin store keyed by type; the render
 layer already dispatches on `skin`, so it's additive. **Effort:** MEDIUM–LARGE; undesigned beyond this.
 
+**Folded in here (Kevin, 2026-07-29, build 291):** **block-built portals + block-built buildings** —
+rather than the current single procedural `drawBuilding` model per type, let a designer ASSEMBLE a
+building/portal out of actual blocks (e.g. an obsidian frame around glowing-purple portal blocks) drawn
+from a **larger, hidden palette** (portal-glow, obsidian, decorative blocks not on the main terrain rail).
+This is really the same Skin Builder need at the "map-creator" scale — a mini-map editor with an expanded
+palette whose output becomes a building/portal skin. Deferred here so the base engine ships first; when
+built, the assembled block-grid becomes just another `skin` the render layer already dispatches on.
+
 ## 32. Redstone in the Overhead Engine  *(deferred 2026-07-29)*
 
 Kevin wants the existing redstone engine (levers, dust, target block, pulse converter, tx/rx,

@@ -1,6 +1,41 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD ENGINE — MOVE-FROM-CONFIG / WEAPON SWITCH / MAP-EDGE / SOMERSAULT FACING (2026-07-29, build 291, branch `overhead-engine`)
+# ═══════════════════════════════════════════════════════════════════════
+Fifth playtest-feedback batch. Suite green (948 assertions), draw-probe clean.
+
+- **Move from a config modal:** the portal/pipe, Goal Star, and Player Spawn modals now pass a `moveRef`
+  to `_cfgModal`, which renders a **✥ Move** button. Clicking it saves, closes the modal, and calls
+  `_startMove(ref)` → selects the object (`_selEnt = {kind:'obj', ref}`), switches to the **Hand** tool, and
+  the render loop shows a pulsing "click to move" ring; the next canvas click relocates the object (generic
+  over any ref with `col`/`row`, so it also works for buildings/goal/spawn).
+- **Weapon switch (compact hotbar):** the runtime keeps a collected `player.weapons[]` (seeded from the
+  starting weapon, appended by pickups); **Q / Tab** cycles the equipped weapon (`_cycleWeapon`, with a
+  pickaxe fallback). `_drawHUD` draws a compact bottom hotbar (30px boxes, current highlighted, "Q / Tab:
+  switch" label) — mirrors the platformer approach.
+- **Somersault faces the aim direction:** `drawOverheadPlayer` now rotates the flip by the player's facing
+  angle (`ctx.rotate(f); ctx.scale(cv,1); ctx.rotate(-f)`), and the runtime passes
+  `facing: OH_CONTROLS.angleOf(p.aim)`. Before, the head-over-heels flip always spun down-right regardless
+  of travel direction.
+- **Leaves = one floating level WITH height:** `drawTerrainCube` draws leaves as a single 1-level-tall cube
+  at their elevation (south + east faces of depth Q, then the top) — so a canopy at elevation 3 shows real
+  block-height with a visible gap below it, instead of a column to the ground. Collision keeps leaves
+  pass-under (walk beneath the canopy).
+- **Bolder map-edge indicator:** `_drawMapEdge` keeps the hazard-striped band just outside the world but now
+  ALSO strokes a dashed **magenta boundary line right on the world edge**, so the edge is unmistakable while
+  panning (the previous thin band was easy to miss on a small centred world).
+- **Walking-climb hardening (Kevin: "not jump related — I am not jumping"):** confirmed the collision model
+  already treats any raised non-leaves terrain as a wall when `climbLevels === 0`. Root cause of the old
+  1-gap walk-up was legacy `rules.autoClimb:'1'` folding into `climbLevels` — the fold is REMOVED from
+  `OH_SETTINGS.resolve`, `_buildBlank` now writes `rules: {}`, and `climbLevels` is coerced numerically in
+  the runtime. Any perceived residual "climb" is the 2.5D up-left elevation OFFSET decoupling the drawn top
+  of a block from its collision cell (a visual illusion, not a collision bug) — flagged to Kevin; lowering
+  `elevOffset` (currently `cs*0.22`) is the lever if it still reads wrong in the browser.
+- **DEFERRED (Kevin approved):** block-built portals + block-built buildings (obsidian frame / glowing-purple
+  blocks assembled from a larger hidden palette) wait for the future **SKIN EDITOR** tool — see FUTURE_ROADMAP.
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD ENGINE — CRASH FIX + VIEW FILTERS (2026-07-29, build 290, branch `overhead-engine`)
 # ═══════════════════════════════════════════════════════════════════════
 - **CRASH (root cause):** the build-289 vertical-portal `drawBuilding('portal')` referenced `cs`, a

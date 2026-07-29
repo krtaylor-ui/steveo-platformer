@@ -44,7 +44,7 @@
           elev: this._elev(m.col, m.row),   // FIX: mobs need an elevation or collision NaN-blocks them (they sat still)
           hp: m.hp || d.hp, speed: m.speed || d.speed, detect: (cfg.mobDetectBlocks != null ? cfg.mobDetectBlocks : 10) * this.unit, ranged: !!d.ranged, state: 'path', wp: 0, dead: false, cool: 0, _wc: 0 }; });
       this.mode = worldData.mode || 'platformer';
-      this.climbLevels = cfg.climbLevels != null ? cfg.climbLevels : 0;
+      this.climbLevels = Number.isFinite(+cfg.climbLevels) ? +cfg.climbLevels : 0;   // coerce (guards a stringy setting)
       this.playerH = cfg.playerHeight != null ? cfg.playerHeight : 1;
       this.attackBlock = cfg.attackBlockHeight != null ? cfg.attackBlockHeight : 2;
       this.showHidden = !!cfg.showHiddenIndicator;
@@ -78,7 +78,8 @@
         // (opts.playerWeapon); otherwise the world's start weapon, else unarmed
         // (displayed as a pickaxe). A real ranged weapon changes fire behaviour;
         // pickaxe/none = cone melee.
-        weapon: opts.playerWeapon || worldData.startWeapon || null, _fireCd: 0, _trident: null, _boom: null };
+        weapon: opts.playerWeapon || worldData.startWeapon || null, weapons: [], _fireCd: 0, _trident: null, _boom: null };
+      if (this.player.weapon) this.player.weapons.push(this.player.weapon);
       // A Player Spawn linked to a portal → emerge from that portal.
       if (sp.fromPortal && this._portalCenter.has(sp.fromPortal)) { const d = this._portalCenter.get(sp.fromPortal); this.player.x = d.x; this.player.y = d.y; const c = this._cellOf(d.x, d.y); this.player.elev = this._elev(c.col, c.row); this._portalCd = true; this.camera = OH_GRID.centerOn(this.grid, d.x, d.y, CANVAS_W, CANVAS_H); }
       this._spawn = { x: this.player.x, y: this.player.y };
@@ -119,6 +120,7 @@
 
       const p = this.player;
       if (p.iFrames > 0) p.iFrames--; if (p._fireCd > 0) p._fireCd--;
+      if (inp.isJustDown && (inp.isJustDown('KeyQ') || inp.isJustDown('Tab'))) this._cycleWeapon();   // switch weapon
       const K = (c) => inp.isDown(c);
       const gp = inp.gamepads && inp.gamepads[0];
       let mv = { x: 0, y: 0 };
@@ -208,7 +210,7 @@
         if (key === 'leaves') return ent.elev;               // canopy — always pass under (keep elev)
         const tE = this._elev(c.col, c.row), delta = tE - ent.elev;
         if (delta <= 0) return tE;                           // walk / step down
-        if (airborne) return null;                           // flying over raised terrain
+        if (airborne) return false;                          // can't jump ONTO raised terrain (no jump-mounting / climbing)
         if (delta <= C || this._ramp(c.col, c.row) || this._ramp(cur.col, cur.row)) return tE;   // climb within limit / ramp
         return false;                                        // raised SOLID terrain → wall (any height)
       };
@@ -268,7 +270,9 @@
     }
 
     _doAction(p) { let near = null, nd = 1e9; for (const b of this.buildings) { if (b.typeId === 'portal' || b.typeId === 'pipe') continue; const bx = (b.col + 0.5) * this.grid.cell, by = (b.row + 0.5) * this.grid.cell; const d = Math.hypot(bx - p.x, by - p.y); if (d < this.unit * 2 && d < nd) { near = b; nd = d; } } if (near) { const t = OH_BUILDINGS.get(near.typeId); this._notify((t ? t.category : 'Building') + ': ' + near.typeId, 90); } }
-    _pickups(p) { for (const it of this.items) { if (it.taken) continue; const ix = (it.col + 0.5) * this.grid.cell, iy = (it.row + 0.5) * this.grid.cell; if (Math.hypot(ix - p.x, iy - p.y) < p.r + this.unit * 0.4) { it.taken = true; if (it.kind === 'weapon') { p.weapon = it.weapon; this._notify('Equipped ' + it.weapon, 120); } else this._notify('Coin!', 60); } } }
+    _pickups(p) { for (const it of this.items) { if (it.taken) continue; const ix = (it.col + 0.5) * this.grid.cell, iy = (it.row + 0.5) * this.grid.cell; if (Math.hypot(ix - p.x, iy - p.y) < p.r + this.unit * 0.4) { it.taken = true; if (it.kind === 'weapon') { if (!p.weapons.includes(it.weapon)) p.weapons.push(it.weapon); p.weapon = it.weapon; this._notify('Equipped ' + it.weapon + ' (Q to switch)', 120); } else this._notify('Coin!', 60); } } }
+    // Cycle the equipped weapon through the collected list (+ pickaxe fallback).
+    _cycleWeapon() { const list = this.player.weapons.length ? this.player.weapons.slice() : []; if (!list.includes('pickaxe')) list.push('pickaxe'); if (list.length < 2) return; const i = Math.max(0, list.indexOf(this.player.weapon)); this.player.weapon = list[(i + 1) % list.length]; this._notify(this.player.weapon, 60); }
 
     _updateMobs() {
       const p = this.player;
@@ -379,7 +383,7 @@
 
     _drawEntity(e, S, z, cs) {
       const ctx = this.ctx, g = this.grid;
-      if (e.kind === 'b') { const b = e.ref, t = OH_BUILDINGS.get(b.typeId); const sp = S(b.col * g.cell, b.row * g.cell); const w = (t ? t.footprint.w : 1) * cs, h = (t ? t.footprint.h : 1) * cs; const Q = OVERHEAD.elevOffset(cs), lv = (b.level || 0); OVERHEAD.drawBuilding(ctx, b.typeId, sp.x - lv * Q, sp.y - h + cs - lv * Q, w, h, Math.min(1, cs / 28), b.skin || 'default'); }
+      if (e.kind === 'b') { const b = e.ref, t = OH_BUILDINGS.get(b.typeId); const sp = S(b.col * g.cell, b.row * g.cell); const w = (t ? t.footprint.w : 1) * cs, h = (t ? t.footprint.h : 1) * cs; const Q = OVERHEAD.elevOffset(cs), lv = (b.level || 0); OVERHEAD.drawBuilding(ctx, b.typeId, sp.x - lv * Q, sp.y - lv * Q, w, h, Math.min(1, cs / 28), b.skin || 'default'); }
       else if (e.kind === 'i') { const it = e.ref; const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); OVERHEAD.drawItemSprite(ctx, it.itemKey, sp.x, sp.y, this.unit * z * 0.8); }
       else if (e.kind === 'm') { this._drawMob(e.ref, S, z, cs); }
       else if (e.kind === 'p') { this._drawPlayer(S, z, cs); }
@@ -418,7 +422,7 @@
       let spin = 0, somersault = null;
       if (p.jump && p.jump.jumping && p.jump.doubleUsed) { const prog = Math.min(1, p.jump.t / p.jump.dur); if ((this.settings.doubleJumpStyle || 'somersault') === 'spin') spin = prog * Math.PI * 3; else somersault = prog; }
       OVERHEAD.drawOverheadPlayer(ctx, cx, cy, rr, p.dist, moving, OH_CONTROLS.angleOf(p.aim),
-        { rotate: true, weapon: inFlight ? null : (p.weapon || 'pickaxe'), moveAngle: (p.moveAngle != null ? p.moveAngle : OH_CONTROLS.angleOf(p.aim)), spin, somersault });
+        { rotate: true, weapon: inFlight ? null : (p.weapon || 'pickaxe'), moveAngle: (p.moveAngle != null ? p.moveAngle : OH_CONTROLS.angleOf(p.aim)), spin, somersault, facing: OH_CONTROLS.angleOf(p.aim) });
       ctx.globalAlpha = 1;
       if (p.iFrames > 0 && ((p.iFrames >> 2) & 1)) { ctx.globalAlpha = 0.4; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
       // Aim reticle.
@@ -436,6 +440,13 @@
       }
       const hearts = Math.ceil(this.player.hp / 2);
       ctx.font = '18px sans-serif'; ctx.fillStyle = '#ff5a5a'; for (let i = 0; i < hearts; i++) ctx.fillText('♥', 12 + i * 18, hy);
+      // Compact weapon hotbar (collected weapons; current highlighted; Q to switch).
+      { const list = this.player.weapons && this.player.weapons.length ? this.player.weapons.slice() : []; if (!list.includes('pickaxe')) list.push('pickaxe');
+        const box = 30, gap = 4, tot = list.length * (box + gap) - gap, bx0 = (CANVAS_W - tot) / 2, by = CANVAS_H - box - 30;
+        for (let i = 0; i < list.length; i++) { const bx = bx0 + i * (box + gap); const cur = list[i] === (this.player.weapon || 'pickaxe');
+          ctx.fillStyle = cur ? 'rgba(60,90,140,.95)' : 'rgba(20,26,38,.85)'; ctx.strokeStyle = cur ? '#7fb0ff' : '#3a4a6b'; ctx.lineWidth = cur ? 2 : 1; ctx.fillRect(bx, by, box, box); ctx.strokeRect(bx, by, box, box);
+          ctx.save(); ctx.translate(bx + box * 0.3, by + box / 2); OVERHEAD.drawWeapon(ctx, box * 0.42, list[i] === 'crossbow' ? 'bow' : list[i]); ctx.restore(); }
+        ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('Q / Tab: switch', CANVAS_W / 2, by - 4); ctx.textAlign = 'left'; }
       ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = '12px sans-serif';
       ctx.fillText(`Overhead · ${this.mode} · ${this.baseScheme}${this.player.weapon ? ' · ' + this.player.weapon : ''}  (WASD · mouse aim · click fire · F melee · Space jump · E action · RMB recall trident · wheel zoom)`, 12, CANVAS_H - 12);
       if (this._schemeOverlay > 0) { ctx.globalAlpha = Math.min(1, this._schemeOverlay / 30); ctx.fillStyle = '#ffcf4a'; ctx.textAlign = 'center'; ctx.font = 'bold 13px sans-serif'; ctx.fillText('⟳ Twin-Stick auto-fire', CANVAS_W / 2, 24); ctx.globalAlpha = 1; }

@@ -111,9 +111,16 @@
     drawTerrainCube(ctx, key, fx, fy, cs, elev, exposeS, exposeE) {
       const Q = this.elevOffset(cs), base = P().terrainColor(key);
       const tx = fx - elev * Q, ty = fy - elev * Q;   // shifted top
-      // LEAVES are a floating canopy — draw only the top (no tall side faces down to
-      // the ground, which looked like leaf-sides through the lower elevations).
-      if (key === 'leaves') { this.drawTerrainTile(ctx, key, tx, ty, cs, elev); return; }
+      // LEAVES are a FLOATING canopy: a 1-level-tall cube at their elevation (so
+      // they have height + a visible gap below), NOT a full column to the ground.
+      if (key === 'leaves') {
+        if (elev > 0) {
+          ctx.fillStyle = _shade(base, 0.4); ctx.beginPath(); ctx.moveTo(tx, ty + cs); ctx.lineTo(tx + cs, ty + cs); ctx.lineTo(tx + cs + Q, ty + cs + Q); ctx.lineTo(tx + Q, ty + cs + Q); ctx.closePath(); ctx.fill();   // south face (1 level)
+          ctx.fillStyle = _shade(base, 0.55); ctx.beginPath(); ctx.moveTo(tx + cs, ty); ctx.lineTo(tx + cs, ty + cs); ctx.lineTo(tx + cs + Q, ty + cs + Q); ctx.lineTo(tx + cs + Q, ty + Q); ctx.closePath(); ctx.fill();   // east face (1 level)
+        }
+        this.drawTerrainTile(ctx, key, tx, ty, cs, elev);
+        return;
+      }
       if (elev > 0) {
         if (exposeS) { ctx.fillStyle = _shade(base, 0.4); ctx.beginPath(); ctx.moveTo(tx, ty + cs); ctx.lineTo(tx + cs, ty + cs); ctx.lineTo(fx + cs, fy + cs); ctx.lineTo(fx, fy + cs); ctx.closePath(); ctx.fill();
           ctx.strokeStyle = 'rgba(0,0,0,.28)'; ctx.lineWidth = 1; for (let i = 1; i <= elev; i++) { const yy = ty + cs + (fy + cs - (ty + cs)) * (i / elev); const xx = tx + (fx - tx) * (i / elev); ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx + cs, yy); ctx.stroke(); } }
@@ -314,9 +321,9 @@
       const armAmp = r * 0.55, legAmp = r * 0.5, restFwd = r * 0.18;
       ctx.save(); ctx.translate(cx, cy);
       if (opts.spin) ctx.rotate(opts.spin);   // double-jump flat spin
-      // Somersault: foreshorten Y through cos() so the sprite flips head-over-heels
-      // (1 → edge-on → upside-down → back), read from above.
-      if (opts.somersault != null) { const cv = Math.cos(opts.somersault * Math.PI * 2); ctx.scale(1, Math.abs(cv) < 0.06 ? 0.06 : cv); }
+      // Somersault: foreshorten ALONG the facing direction (cos 1 → edge-on → flipped
+      // → back) so the sprite rolls head-over-heels the way it's FACING, not always down.
+      if (opts.somersault != null) { const f = opts.facing != null ? opts.facing : (aimAngle || 0); const cv = Math.cos(opts.somersault * Math.PI * 2); ctx.rotate(f); ctx.scale(Math.abs(cv) < 0.06 ? 0.06 : cv, 1); ctx.rotate(-f); }
 
       // ── LOWER BODY — faces movement ──
       ctx.save(); if (opts.rotate !== false && moveAngle != null) ctx.rotate(moveAngle);

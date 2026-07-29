@@ -50,7 +50,9 @@
     if (world) {
       if (world.controlScheme && !s.controlScheme) out.controlScheme = world.controlScheme;
       if (world.angleLockDeg != null && s.angleLockDeg == null) out.angleLockDeg = world.angleLockDeg;
-      if (world.rules && world.rules.autoClimb && s.climbLevels == null) { const m = { disabled: 0, none: 0, '1': 1, '2': 2, unlimited: 99 }; out.climbLevels = m[world.rules.autoClimb] != null ? m[world.rules.autoClimb] : 0; }
+      // (Legacy rules.autoClimb is intentionally NOT folded in — it caused old
+      //  worlds to allow 1-level walking climbs even with the setting at "None".
+      //  climbLevels comes purely from settings now, default 0.)
       if (world.showHiddenIndicator != null && s.showHiddenIndicator == null) out.showHiddenIndicator = world.showHiddenIndicator;
     }
     return out;

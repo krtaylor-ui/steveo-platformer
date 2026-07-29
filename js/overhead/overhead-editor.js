@@ -132,7 +132,7 @@
       for (let r = 0; r < H; r++) { ground.push(new Array(W).fill('grass')); elevation.push(new Array(W).fill(0)); }
       return {
         name, mode, viewMode: 'overhead', gameModeDefault: 'NRM',   // NRM keeps server validation happy
-        controlScheme: scheme, angleLockDeg: 0, rules: { autoClimb: '1' },
+        controlScheme: scheme, angleLockDeg: 0, rules: {},
         mapSnapshot: { gridW: W, gridH: H, density, baseW, baseH, cell, objectScaleMode: 'independent', ground, elevation, decorations: [] },
         buildings: [], mobs: [], items: [], spawns: [{ col: 1, row: H - 2 }], ramps: [],
         goal: null,
@@ -397,6 +397,9 @@
       if (item) { this._selEnt = { kind: 'item', ref: item }; return; }
       this._openConfigAt(col, row);
     },
+    // Called from a config modal's "Move" button — closes the modal and arms the
+    // click-to-move indicator on the object.
+    _startMove(ref) { this._selEnt = { kind: 'obj', ref }; this.tool = 'hand'; this._renderBar(); },
     _openConfigAt(col, row) {
       const b = this._buildingAt(col, row);
       if (b && (b.typeId === 'portal' || b.typeId === 'pipe')) return this._portalModal(b);
@@ -405,13 +408,15 @@
       if (sp) return this._spawnModal(sp);
       this._flash('Nothing to configure here — click a portal/pipe, goal, or spawn.');
     },
-    _cfgModal(title, inner, onSave) {
+    _cfgModal(title, inner, onSave, moveRef) {
       let ov = document.getElementById('oh-cfg-modal');
       if (!ov) { ov = document.createElement('div'); ov.id = 'oh-cfg-modal'; ov.style.cssText = 'position:fixed;inset:0;z-index:9550;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6)'; document.body.appendChild(ov); }
       ov.style.display = 'flex';
-      ov.innerHTML = `<div class="ohc-panel"><h2>${title}</h2>${inner}<div class="ohc-btns"><button id="cfg-cancel">Cancel</button><button class="primary" id="cfg-save">Save</button></div></div>`;
+      const moveBtn = moveRef ? `<button id="cfg-move">✥ Move</button>` : '';
+      ov.innerHTML = `<div class="ohc-panel"><h2>${title}</h2>${inner}<div class="ohc-btns">${moveBtn}<button id="cfg-cancel">Cancel</button><button class="primary" id="cfg-save">Save</button></div></div>`;
       document.getElementById('cfg-cancel').onclick = () => { ov.style.display = 'none'; };
       document.getElementById('cfg-save').onclick = () => { try { onSave(); } catch (e) {} ov.style.display = 'none'; };
+      if (moveRef) document.getElementById('cfg-move').onclick = () => { try { onSave(); } catch (e) {} ov.style.display = 'none'; this._startMove(moveRef); };
     },
     _portalModal(b) {
       b.config = b.config || {};
@@ -423,7 +428,7 @@
          <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="cfg-goal" ${b.config.isGoal ? 'checked' : ''}> Entering this ends the level (acts as a Goal Star)</label>
          <p style="color:#8fa0bd;font-size:12px">Use with the E button near the portal. Two-way links the other end back so it works in both directions. A Player Spawn can be linked to a portal so the player emerges from it (configure the spawn).</p>`,
         () => { const dest = document.getElementById('cfg-dest').value || null; b.config.dest = dest; b.config.isGoal = document.getElementById('cfg-goal').checked; b.config.twoWay = document.getElementById('cfg-two').checked;
-          if (b.config.twoWay && dest) { const other = (this.world.buildings || []).find((x) => (x.col + ',' + x.row) === dest); if (other) { other.config = other.config || {}; other.config.dest = b.col + ',' + b.row; } } });
+          if (b.config.twoWay && dest) { const other = (this.world.buildings || []).find((x) => (x.col + ',' + x.row) === dest); if (other) { other.config = other.config || {}; other.config.dest = b.col + ',' + b.row; } } }, b);
     },
     _goalModal() {
       const colors = (typeof GOAL_COLORS !== 'undefined') ? GOAL_COLORS : [{ name: 'Gold', hex: '#ffd700' }];
@@ -431,14 +436,14 @@
       const opts = colors.map((c, i) => `<option value="${i}" ${cur === i ? 'selected' : ''}>Goal Star ${i + 1} — ${c.name}</option>`).join('');
       this._cfgModal('Goal Star', `<label>Colour (campaign routing) <select id="cfg-color">${opts}</select></label>
         <p style="color:#8fa0bd;font-size:12px">Campaign mode routes each coloured Goal Star to a different next level.</p>`,
-        () => { this.world.goal.color = parseInt(document.getElementById('cfg-color').value, 10) || 0; });
+        () => { this.world.goal.color = parseInt(document.getElementById('cfg-color').value, 10) || 0; }, this.world.goal);
     },
     _spawnModal(sp) {
       const portals = this._portalList();
       const opts = `<option value="">(start on the ground)</option>` + portals.map((p) => `<option value="${p.key}" ${sp.fromPortal === p.key ? 'selected' : ''}>${p.label}</option>`).join('');
       this._cfgModal('Player Spawn', `<label>Emerge from a portal <select id="cfg-from">${opts}</select></label>
         <p style="color:#8fa0bd;font-size:12px">Link a portal/pipe and the player starts the level coming out of it.</p>`,
-        () => { sp.fromPortal = document.getElementById('cfg-from').value || null; });
+        () => { sp.fromPortal = document.getElementById('cfg-from').value || null; }, sp);
     },
 
     // ── Actions ───────────────────────────────────────────────────────────────
@@ -536,19 +541,22 @@
     },
     // Yellow/black hazard stripes in a band just OUTSIDE each world edge.
     _drawMapEdge(ctx, S, worldW, worldH) {
-      const tl = S(0, 0), brc = S(worldW, worldH); const W = 12;
-      const band = (x, y, w, h, horiz) => {
+      const tl = S(0, 0), brc = S(worldW, worldH); const W = 14;
+      const band = (x, y, w, h) => {
         if (w <= 0 || h <= 0) return;
         ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
-        ctx.fillStyle = '#111'; ctx.fillRect(x, y, w, h);
-        ctx.strokeStyle = '#ffd23a'; ctx.lineWidth = 5;
-        const len = Math.max(w, h) + h + w; for (let i = -h; i < len; i += 14) { ctx.beginPath(); ctx.moveTo(x + i, y); ctx.lineTo(x + i - h, y + h); ctx.stroke(); }
+        ctx.fillStyle = '#1a1a1a'; ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = '#ffd23a'; ctx.lineWidth = 6;
+        for (let i = -h - w; i < w + h; i += 16) { ctx.beginPath(); ctx.moveTo(x + i, y + h); ctx.lineTo(x + i + h, y); ctx.stroke(); }
         ctx.restore();
       };
       band(tl.x - W, tl.y - W, brc.x - tl.x + 2 * W, W);          // top
       band(tl.x - W, brc.y, brc.x - tl.x + 2 * W, W);            // bottom
       band(tl.x - W, tl.y, W, brc.y - tl.y);                     // left
-      band(brc.x, tl.y, W, brc.y - tl.y);                       // right
+      band(brc.x, tl.y, W, brc.y - tl.y);                        // right
+      // Bold dashed boundary line right on the world edge — unmistakable.
+      ctx.save(); ctx.strokeStyle = '#ff3ea8'; ctx.lineWidth = 3; ctx.setLineDash([10, 6]);
+      ctx.strokeRect(tl.x, tl.y, brc.x - tl.x, brc.y - tl.y); ctx.setLineDash([]); ctx.restore();
     },
     list() { try { return Object.keys(JSON.parse(localStorage.getItem('steveo_overhead_worlds') || '{}')); } catch (e) { return []; } },
   };
