@@ -47,7 +47,7 @@
   register(def('shop',        'Shop',     { footprint: { w: 4, h: 4 }, interactionType: 'enter', onInteract: 'shop', color: '#b0923f' }));
   register(def('savepoint',   'SavePoint',{ footprint: { w: 2, h: 2 }, blocksMovement: false, interactionType: 'interact-on-approach', onInteract: 'save', color: '#3f8cb0' }));
   register(def('spawner',     'SpawnerBuilding', { footprint: { w: 3, h: 3 }, onInteract: 'spawn', color: '#8a3f3f' }));
-  register(def('core',        'Core',     { footprint: { w: 5, h: 5 }, interactionType: 'passive-visual', onInteract: 'core', color: '#c0503f' }));
+  register(def('core',        'Core',     { footprint: { w: 6, h: 6 }, interactionType: 'passive-visual', onInteract: 'core', color: '#c0503f' }));
   register(def('nexus',       'Nexus',    { footprint: { w: 5, h: 5 }, interactionType: 'passive-visual', onInteract: 'core', color: '#3f6dc0' }));
   register(def('tower',       'Tower',    { footprint: { w: 2, h: 2 }, interactionType: 'interact-on-approach', onInteract: 'towerUpgrade', color: '#6a6a80' }));
   register(def('statue',      'Decoration',{ footprint: { w: 2, h: 2 }, interactionType: 'passive-visual', color: '#9a9a9a' }));

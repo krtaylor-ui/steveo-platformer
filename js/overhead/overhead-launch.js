@@ -169,22 +169,28 @@
           }
           break; }
         case 'pipe': {
-          ctx.fillStyle = '#2f8f52'; ctx.fillRect(x, y, w, h);
-          ctx.fillStyle = '#1e6b3a'; ctx.fillRect(x, y, w, h * 0.28);
-          ctx.fillStyle = '#0c2415'; ctx.beginPath(); ctx.ellipse(cx, cy + h * 0.05, w * 0.3, h * 0.3, 0, 0, 7); ctx.fill();
+          // Green pipe seen from above with visible cube edges (darker S+E faces).
+          const q = min * 0.16;
+          ctx.fillStyle = _shade('#2f8f52', 0.4); ctx.fillRect(x, y + h - q, w, q); ctx.fillRect(x + w - q, y, q, h);   // S + E edges
+          ctx.fillStyle = '#2f8f52'; ctx.fillRect(x, y, w - q, h - q);
+          ctx.fillStyle = '#57c07d'; ctx.fillRect(x, y, w - q, (h - q) * 0.3);                                          // rim highlight
+          ctx.fillStyle = '#0c2415'; ctx.beginPath(); ctx.arc(x + (w - q) / 2, y + (h - q) / 2, Math.min(w, h) * 0.24, 0, 7); ctx.fill();   // opening
+          ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
           break; }
         case 'healer': {
-          rr('#e9efe9'); ctx.fillStyle = '#3fb07b'; ctx.fillRect(x, y, w, h * 0.26);                 // roof band
-          ctx.fillStyle = '#c0392b'; const t = min * 0.13; ctx.fillRect(cx - t / 2, cy - t * 1.6, t, t * 3.2); ctx.fillRect(cx - t * 1.6, cy - t / 2, t * 3.2, t);   // red cross
-          if (detail > 0.4) { ctx.fillStyle = '#7a5a3a'; ctx.fillRect(cx - w * 0.09, y + h - h * 0.22, w * 0.18, h * 0.22); }   // door
-          break; }
+          // White hospital block: roof, red cross, entrance — reads as a hospital.
+          rr('#eef2f5'); ctx.fillStyle = '#d3dbe1'; ctx.fillRect(x, y, w, h * 0.16);                  // roof trim
+          ctx.strokeStyle = '#b9c4cc'; ctx.lineWidth = 1; ctx.strokeRect(x + w * 0.12, y + h * 0.12, w * 0.76, h * 0.76);   // inner ledge
+          ctx.fillStyle = '#c0392b'; const t = min * 0.14; ctx.fillRect(cx - t / 2, cy - t * 1.7, t, t * 3.4); ctx.fillRect(cx - t * 1.7, cy - t / 2, t * 3.4, t);   // red cross
+          ctx.fillStyle = '#9fb0bd'; ctx.fillRect(cx - w * 0.1, y + h - h * 0.16, w * 0.2, h * 0.16);  // entrance
+          outline(); break; }
         case 'shop': {
-          rr('#caa25a'); ctx.fillStyle = '#8a5a2a'; ctx.fillRect(x, y, w, h * 0.24);
-          // striped awning
-          const n = 5; for (let i = 0; i < n; i++) { ctx.fillStyle = i % 2 ? '#d9534f' : '#f5f0e6'; ctx.fillRect(x + (w / n) * i, y + h * 0.24, w / n, h * 0.14); }
-          ctx.fillStyle = '#5a3a1a'; ctx.fillRect(cx - w * 0.12, y + h - h * 0.3, w * 0.24, h * 0.3);
-          if (detail > 0.4) { ctx.fillStyle = 'rgba(120,200,255,.6)'; ctx.fillRect(x + w * 0.12, y + h * 0.5, w * 0.16, h * 0.18); ctx.fillRect(x + w - w * 0.28, y + h * 0.5, w * 0.16, h * 0.18); }   // windows
-          break; }
+          // Tan building + a sign board with a $ insignia + an awning.
+          rr('#c9a25a');
+          const n = 5; for (let i = 0; i < n; i++) { ctx.fillStyle = i % 2 ? '#d9534f' : '#f5f0e6'; ctx.fillRect(x + (w / n) * i, y + h * 0.72, w / n, h * 0.12); }   // awning (bottom)
+          ctx.fillStyle = '#5a3a1a'; ctx.fillRect(cx - w * 0.22, y + h * 0.2, w * 0.44, h * 0.28);     // sign board
+          ctx.fillStyle = '#ffd24a'; ctx.font = `bold ${(min * 0.3) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('$', cx, y + h * 0.34); ctx.textBaseline = 'alphabetic';
+          outline(); break; }
         case 'savepoint': {
           ctx.fillStyle = '#274a5a'; ctx.fillRect(cx - min * 0.06, y + h * 0.15, min * 0.12, h * 0.8);   // pole
           ctx.fillStyle = '#4fc3f7'; ctx.beginPath(); ctx.moveTo(cx + min * 0.06, y + h * 0.18); ctx.lineTo(cx + w * 0.42, y + h * 0.3); ctx.lineTo(cx + min * 0.06, y + h * 0.44); ctx.closePath(); ctx.fill();   // flag
@@ -200,19 +206,34 @@
           ctx.fillStyle = '#2a2a38'; ctx.beginPath(); ctx.arc(cx, cy, min * 0.16, 0, 7); ctx.fill();
           break; }
         case 'statue': {
-          ctx.fillStyle = '#8a8a92'; ctx.fillRect(x + w * 0.2, y + h * 0.7, w * 0.6, h * 0.3);   // pedestal
-          ctx.fillStyle = '#b5b5bd'; ctx.fillRect(cx - w * 0.1, y + h * 0.2, w * 0.2, h * 0.5);   // body
-          ctx.beginPath(); ctx.arc(cx, y + h * 0.22, min * 0.12, 0, 7); ctx.fill();               // head
+          // A grey, unmoving top-down version of the character sprite (action pose),
+          // scaled down, on a stone pedestal.
+          ctx.fillStyle = '#7d7d85'; ctx.beginPath(); ctx.ellipse(cx, cy + h * 0.02, w * 0.34, h * 0.3, 0, 0, 7); ctx.fill();   // pedestal
+          ctx.strokeStyle = '#5f5f66'; ctx.lineWidth = 1; ctx.stroke();
+          this.drawOverheadPlayer(ctx, cx, cy - h * 0.04, min * 0.3, 0, false, -Math.PI / 4,
+            { palette: { hair: '#9a9aa2', shirt: '#8f8f97', pants: '#7a7a82', skin: '#a6a6ae' }, weapon: 'sword', rotate: true });
           break; }
-        case 'core': case 'nexus': {
-          const teal = typeId === 'nexus'; rr(teal ? '#16233a' : '#2a1620');
-          const g = ctx.createRadialGradient(cx, cy, min * 0.1, cx, cy, min * 0.5); g.addColorStop(0, teal ? '#8fd0ff' : '#ffb08f'); g.addColorStop(1, teal ? '#3f6dc0' : '#c0503f');
-          ctx.fillStyle = g; ctx.beginPath(); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 - Math.PI / 2; const px = cx + Math.cos(a) * min * 0.42, py = cy + Math.sin(a) * min * 0.42; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.closePath(); ctx.fill();   // crystal hexagon
-          ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = Math.max(1, min * 0.03); ctx.stroke();
+        case 'core': {
+          // Tower-Defense CORE = a castle from above: stone wall + courtyard + 4
+          // corner turrets + a central keep with a banner.
+          rr('#8a8f99');
+          ctx.fillStyle = '#6f747d'; ctx.fillRect(x + w * 0.14, y + h * 0.14, w * 0.72, h * 0.72);      // courtyard
+          ctx.fillStyle = '#7a7f88'; ctx.fillRect(cx - w * 0.17, cy - h * 0.17, w * 0.34, h * 0.34);    // keep
+          const tr = min * 0.15; ctx.fillStyle = '#9aa0aa'; ctx.strokeStyle = '#565b63'; ctx.lineWidth = 2;
+          for (const [px, py] of [[x, y], [x + w, y], [x, y + h], [x + w, y + h]]) { ctx.beginPath(); ctx.arc(px, py, tr, 0, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#4a4e56'; ctx.beginPath(); ctx.arc(px, py, tr * 0.45, 0, 7); ctx.fill(); ctx.fillStyle = '#9aa0aa'; }   // turrets w/ tops
+          ctx.fillStyle = '#c0392b'; ctx.beginPath(); ctx.moveTo(cx, cy - h * 0.1); ctx.lineTo(cx + w * 0.08, cy - h * 0.04); ctx.lineTo(cx, cy + h * 0.02); ctx.closePath(); ctx.fill();   // banner
+          outline(); break; }
+        case 'nexus': {
+          // MOBA NEXUS = a floating crystal cluster.
+          rr('#16233a');
+          const g = ctx.createRadialGradient(cx, cy, min * 0.08, cx, cy, min * 0.46); g.addColorStop(0, '#bfe6ff'); g.addColorStop(1, '#3f6dc0');
+          ctx.fillStyle = g; ctx.beginPath(); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 - Math.PI / 2; const px = cx + Math.cos(a) * min * 0.4, py = cy + Math.sin(a) * min * 0.4; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.closePath(); ctx.fill();
+          ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = Math.max(1, min * 0.03); ctx.stroke();
+          ctx.fillStyle = '#8fd0ff'; for (let i = 0; i < 4; i++) { const a = i / 4 * Math.PI * 2 + Math.PI / 4; const px = cx + Math.cos(a) * min * 0.42, py = cy + Math.sin(a) * min * 0.42; ctx.beginPath(); ctx.moveTo(px, py - min * 0.1); ctx.lineTo(px + min * 0.07, py); ctx.lineTo(px, py + min * 0.1); ctx.lineTo(px - min * 0.07, py); ctx.closePath(); ctx.fill(); }   // orbiting shards
           break; }
         default: rr('#8a7fb0'); outline();
       }
-      if (typeId !== 'core' && typeId !== 'nexus' && typeId !== 'tower' && typeId !== 'portal' && typeId !== 'pipe') outline();
+      if (typeId !== 'core' && typeId !== 'nexus' && typeId !== 'tower' && typeId !== 'portal' && typeId !== 'pipe' && typeId !== 'statue') outline();
       ctx.restore();
     },
 
@@ -233,12 +254,15 @@
       else {
         // 3D ramp: a sloped top surface rising toward +x (the high side), lifted
         // up-left (matching the cube offset), with a dark high-end face + step lines.
-        const ramp = '#b98a4a', L = s * 0.55;
-        const lb = [-s * 0.45, -s * 0.4], lf = [-s * 0.45, s * 0.4], hf = [s * 0.45 - L, s * 0.4 - L], hb = [s * 0.45 - L, -s * 0.4 - L];
-        ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.fillRect(-s * 0.45, -s * 0.4, s * 0.9, s * 0.8);   // ground shadow
-        ctx.fillStyle = _shade(ramp, 0.5); ctx.beginPath(); ctx.moveTo(hb[0], hb[1]); ctx.lineTo(hf[0], hf[1]); ctx.lineTo(s * 0.45, s * 0.4); ctx.lineTo(s * 0.45, -s * 0.4); ctx.closePath(); ctx.fill();   // high-end face
-        ctx.fillStyle = ramp; ctx.beginPath(); ctx.moveTo(lb[0], lb[1]); ctx.lineTo(lf[0], lf[1]); ctx.lineTo(hf[0], hf[1]); ctx.lineTo(hb[0], hb[1]); ctx.closePath(); ctx.fill();   // sloped top
-        ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.stroke();
+        // Right-triangle ramp: the 90° corner (vertical face) sits at the HIGH edge
+        // (+x boundary), rising straight up by L; the hypotenuse slopes down to the
+        // low edge (−x, ground). Fills the whole cell edge-to-edge.
+        const ramp = '#b98a4a', L = s * 0.6, hc = s * 0.5;
+        const lb = [-hc, -hc], lf = [-hc, hc], hf = [hc, hc - L], hb = [hc, -hc - L];
+        ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.fillRect(-hc, -hc, s, s);                                 // ground shadow (footprint)
+        ctx.fillStyle = _shade(ramp, 0.5); ctx.beginPath(); ctx.moveTo(hb[0], hb[1]); ctx.lineTo(hf[0], hf[1]); ctx.lineTo(hc, hc); ctx.lineTo(hc, -hc); ctx.closePath(); ctx.fill();   // vertical high-end face (90° corner)
+        ctx.fillStyle = ramp; ctx.beginPath(); ctx.moveTo(lb[0], lb[1]); ctx.lineTo(lf[0], lf[1]); ctx.lineTo(hf[0], hf[1]); ctx.lineTo(hb[0], hb[1]); ctx.closePath(); ctx.fill();   // sloped top (hypotenuse)
+        ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.stroke();
         ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1; for (let i = 1; i <= 3; i++) { const t = i / 4; ctx.beginPath(); ctx.moveTo(lb[0] + (hb[0] - lb[0]) * t, lb[1] + (hb[1] - lb[1]) * t); ctx.lineTo(lf[0] + (hf[0] - lf[0]) * t, lf[1] + (hf[1] - lf[1]) * t); ctx.stroke(); }
       }
       ctx.restore();
