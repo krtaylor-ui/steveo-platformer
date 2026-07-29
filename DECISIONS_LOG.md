@@ -1,6 +1,41 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD ENGINE — MOBS MOVE / LOS ATTACKS / DIAGONAL SHADOWS (2026-07-29, build 286, branch `overhead-engine`)
+# ═══════════════════════════════════════════════════════════════════════
+Playtest feedback batch. Suite green. Two biggest asks deferred to roadmap (§33 climb animation, §34 day/night).
+
+- **Mobs weren't moving:** detection default was ~180px (< where the player stood). Now detection is in
+  BLOCKS (palette) × unit, default ~10 player-blocks; and mobs **wander randomly** when not chasing
+  (pick a heading for ~1–2.5s, amble at 40% speed, re-pick on a wall). Demo mobs use the palette defaults.
+- **Pipe + Goal → 2×2.** Pipe footprint 2×2; the goal is now a 2×2 win region, drawn larger in its
+  GOAL_COLORS hue.
+- **Pipe vs Portal activation:** a PIPE requires the **Action button (E)**; a PORTAL triggers on walk.
+  Both ends **glow purple** for ~0.7s on teleport (a light version — the full climb-in/out animation is
+  deferred, §33). `_doAction` now skips portals/pipes so they don't double-fire.
+- **Numbering:** each portal/pipe gets a stable **#N** (order of placement), drawn as a badge in the
+  editor + runtime, and the destination picker shows **"#N (c,r)"** (coords weren't intuitive alone).
+- **Attack wall-height / LOS (new setting `attackBlockHeight`, default 2):** a target or obstacle ≥ N
+  elevation levels ABOVE the attacker blocks the attack; attacking DOWN is always allowed. Implemented via
+  `_canAttack(fromElev,toElev)` (gates melee cone + trident + boomerang hits) and `_boltWalled` (crossbow +
+  mob bolts die when they cross terrain ≥ N above their origin; hits also gated). Delivers Kevin's
+  "high ground behind a 1-high wall shoots down but can't be shot back" scenario.
+- **Diagonal shadows:** `drawTerrainSide` now draws the cliff face as a **diagonal parallelogram** (slants
+  right as it drops) instead of a flat front, so elevation reads as a diagonal shadow — the pragmatic take
+  on Kevin's "offset vertically AND horizontally." (A full iso re-projection of the tile grid was NOT done;
+  this keeps grid/collision/sorting intact while giving the diagonal depth cue.)
+- **Walking-over-walls check:** confirmed the collision is correct — at climbLevels 0, an elevation-+1 cell
+  is a WALL (delta 1 > climb 0, ≤ height 1 → blocked). The likely cause on Kevin's end is an OLDER world
+  (created before build 284) whose legacy `autoClimb:'1'` resolves to climbLevels 1 → 1-high walls become
+  climbable; opening ⚙ Settings and setting climb to 0 fixes it. Also note the model nuance: a cell
+  elev+2 (with playerHeight 1) is an OVERHANG the player passes UNDER — a "wall" is specifically elev+1.
+- **DEFERRED (roadmap):** §33 the full pipe climb-in/drop / pop-out/climb-down + portal walk-through
+  animation (a transition state machine); §34 the day/night cycle with dynamic sun/moon elevation shadows,
+  night lamps, and entity shadows — a LARGE rendering feature captured in full. Entity blob-shadows already
+  exist (player + mobs).
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD ENGINE — PERF CACHE + SHAPES/PREFABS + BUILDING MODELS + CONFIG (2026-07-29, builds 284–285, branch `overhead-engine`)
 # ═══════════════════════════════════════════════════════════════════════
 Large feedback batch, built in 4 committed chunks. Suite green throughout.

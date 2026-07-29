@@ -1090,3 +1090,29 @@ side-view redstone (`js/redstone.js` + the `game.js` `_rs*` layer) is tightly co
 grid/collision. Deferred from the 2026-07-29 batch; the portal/pipe + goal-star config modals shipped,
 redstone did not. When tackled: expose a redstone overlay on the overhead grid + reuse the propagation
 engine + add per-device config modals (mirroring the side-view popups). **Effort:** LARGE.
+
+---
+
+## 33. Overhead pipe/portal travel ANIMATIONS  *(idea captured 2026-07-29; a light version shipped)*
+
+Shipped: portals/pipes teleport, both ends glow purple briefly, pipes are Action-triggered. Kevin's full
+vision: the player **climbs onto** the pipe, **drops in**, **pops out** the destination and **climbs down**
+(and the same sequence when a level starts/ends via a portal-linked spawn). Needs a short transition state
+machine that freezes input, plays a scripted climb-in → fade → climb-out animation, then hands control back.
+Portals: a walk-in → destination-glow → walk-out flourish. **Effort:** MEDIUM; deferred from the 2026-07-29
+batch (the teleport + glow + numbering shipped; the elaborate animation did not).
+
+## 34. Overhead day/night cycle + dynamic elevation shadows  *(idea captured 2026-07-29 — Kevin's "curveball", flagged as ambitious)*
+
+Kevin's vision: a **day/night cycle** in Overhead mode — a very faint, highly-transparent **sun** (and a
+bluish **moon** at night) tracking across the level (L→R / top→bottom / corner→corner). The hard part:
+**elevated terrain casts dynamic shadows based on the sun/moon position** (subtle, slightly stretched),
+with a smooth darken/transition between day and night. Mobs + players cast shadows too. At night, **lamps
+/ light sources** illuminate (and only the sun/moon cast shadows, never light sources). This is a large
+rendering feature — dynamic shadow projection from an elevation heightmap per frame (or cached per
+sun-step), a time-of-day tint pass, and a light/emission layer. **Approach when tackled:** project each
+elevated cell's shadow as a parallelogram offset by the sun vector (reuse the static-terrain cache idea —
+re-bake the shadow layer only when the sun moves a step, not every frame); tint the whole scene by
+time-of-day; add an additive light layer for lamps at night; give entities a simple offset blob shadow in
+the sun direction. **Effort:** LARGE (arguably its own session). Deferred; captured here in full so the
+vision isn't lost.

@@ -1,4 +1,20 @@
-## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE perf cache + shapes/prefabs + building models + config (builds 284–285) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE mobs-move / LOS attacks / diagonal shadows (build 286) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+
+Playtest feedback. Suite green.
+- **Mobs move now:** detection ~10 player-blocks + random **wander** when idle (was ~180px, too short).
+- **Pipe + Goal 2×2.** Pipes use the **Action (E)** button; portals trigger on walk; both ends **glow
+  purple** on teleport. Portals/pipes **numbered** (#N badge + "#N (c,r)" in the destination picker).
+- **Attack wall-height LOS** setting (default 2): obstacle/target 2+ levels above the attacker blocks the
+  shot; DOWN always works (high ground behind a 1-wall = safe). Applies to melee + all projectiles.
+- **Diagonal shadows:** cliff sides render as slanted parallelograms → elevation reads diagonally.
+- **Collision confirmed:** elev+1 blocks at climb 0. OLD worlds (pre-284) resolve legacy autoClimb=1 →
+  set climb to 0 in ⚙ Settings. (A "wall" = elev+1; elev+2 is an overhang you pass under, per the model.)
+- **Deferred (roadmap §33/§34):** full pipe climb-in/out animation; day/night + dynamic elevation shadows.
+Detail in `DECISIONS_LOG.md` (Overhead Engine — Mobs Move / LOS Attacks / Diagonal Shadows).
+
+---
+
+## PRIOR STATE (2026-07-29) — OVERHEAD ENGINE perf cache + shapes/prefabs + building models + config (builds 284–285) on branch `overhead-engine` — NOT merged, browser-UNTESTED
 
 Big feedback batch (4 chunks). Suite green.
 - **Perf (density answer):** static terrain is pre-rendered ONCE to an offscreen canvas and blitted per
