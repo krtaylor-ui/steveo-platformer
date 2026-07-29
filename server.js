@@ -219,6 +219,10 @@ setupFriendsRoutes(app);
 const setupGameSessionsRoutes = require('./server/game-sessions-routes');
 setupGameSessionsRoutes(app);
 
+// Campaign mode (MVP) — campaign definitions + per-player progress
+const setupCampaignRoutes = require('./server/campaign-routes');
+setupCampaignRoutes(app);
+
 // Phase 3: community browse (favorites/ratings/download) + Phase 4 stats/achievements
 const setupCommunityRoutes = require('./server/community-routes');
 setupCommunityRoutes(app);
