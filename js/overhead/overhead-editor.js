@@ -141,13 +141,13 @@
     },
 
     // ── History (undo/redo) ─────────────────────────────────────────────────
-    _snapshot() { return JSON.stringify({ map: this.world.mapSnapshot, b: this.world.buildings, m: this.world.mobs, i: this.world.items, s: this.world.spawns, g: this.world.goal }); },
+    _snapshot() { return JSON.stringify({ map: this.world.mapSnapshot, b: this.world.buildings, m: this.world.mobs, i: this.world.items, s: this.world.spawns, g: this.world.goal, r: this.world.ramps, set: this.world.settings }); },
     _pushHistory() {
       this._hist = this._hist.slice(0, this._histPos + 1);
       this._hist.push(this._snapshot()); this._histPos = this._hist.length - 1;
       if (this._hist.length > 60) { this._hist.shift(); this._histPos--; }
     },
-    _restore(snap) { const d = JSON.parse(snap); this.world.mapSnapshot = d.map; this.world.buildings = d.b; this.world.mobs = d.m; this.world.items = d.i; this.world.spawns = d.s; this.world.goal = d.g; this._setupWorld(); },
+    _restore(snap) { const d = JSON.parse(snap); this.world.mapSnapshot = d.map; this.world.buildings = d.b; this.world.mobs = d.m; this.world.items = d.i; this.world.spawns = d.s; this.world.goal = d.g; if (d.r !== undefined) this.world.ramps = d.r; if (d.set !== undefined) this.world.settings = d.set; this._setupWorld(); },
     undo() { if (this._histPos > 0) { this._histPos--; this._restore(this._hist[this._histPos]); } },
     redo() { if (this._histPos < this._hist.length - 1) { this._histPos++; this._restore(this._hist[this._histPos]); } },
 
@@ -294,7 +294,7 @@
     _cellFromEvent(e) {
       const cv = document.getElementById('gameCanvas'); const rect = cv.getBoundingClientRect();
       const sx = (e.clientX - rect.left) * (CANVAS_W / rect.width), sy = (e.clientY - rect.top) * (CANVAS_H / rect.height);
-      const w = OH_GRID.screenToWorld(this.grid, this.cam, sx, sy);
+      const w = OH_GRID.screenToWorld(this.grid, this.cam, sx, sy - (this._topInset || 0));   // account for the top-bar inset
       return OH_GRID.cellAt(this.grid, w.x, w.y);
     },
     _paintAt(e) { const { col, row } = this._cellFromEvent(e); this._paintCell(col, row); this._lastCell = { col, row }; },
@@ -490,10 +490,16 @@
     _render() {
       const cv = document.getElementById('gameCanvas'); const ctx = cv.getContext('2d');
       const g = this.grid, m = this.world.mapSnapshot, z = g.masterZoom, cs = g.cell * z;
-      this.cam = OH_GRID.clampCamera(g, this.cam, CANVAS_W, CANVAS_H);
+      // Reserve a top strip so the fixed 40px command bar never covers the map (incl.
+      // its top edge indicator). Bar is 40px SCREEN → convert to canvas-logical px via
+      // the current display scale so the map content starts just below it.
+      const rectH = cv.getBoundingClientRect().height || CANVAS_H;
+      const TOP = Math.max(0, Math.min(140, Math.round(46 * (CANVAS_H / rectH))));
+      this._topInset = TOP;
+      this.cam = OH_GRID.clampCamera(g, this.cam, CANVAS_W, CANVAS_H - TOP);
       ctx.fillStyle = '#0c0f16'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-      const S = (wx, wy) => OH_GRID.worldToScreen(g, this.cam, wx, wy);
-      const tl = OH_GRID.screenToWorld(g, this.cam, 0, 0), br = OH_GRID.screenToWorld(g, this.cam, CANVAS_W, CANVAS_H);
+      const S = (wx, wy) => { const p = OH_GRID.worldToScreen(g, this.cam, wx, wy); return { x: p.x, y: p.y + TOP }; };
+      const tl = OH_GRID.screenToWorld(g, this.cam, 0, -TOP), br = OH_GRID.screenToWorld(g, this.cam, CANVAS_W, CANVAS_H - TOP);
       const c0 = Math.max(0, (tl.x / g.cell | 0) - 1), c1 = Math.min(m.gridW - 1, (br.x / g.cell | 0) + 1);
       const r0 = Math.max(0, (tl.y / g.cell | 0) - 1), r1 = Math.min(m.gridH - 1, (br.y / g.cell | 0) + 1);
       const Q = OVERHEAD.elevOffset(cs);

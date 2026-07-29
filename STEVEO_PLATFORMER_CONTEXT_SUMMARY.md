@@ -1,4 +1,23 @@
-## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE move-from-config / weapon switch / map-edge / somersault facing (build 291) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE playtest fixes + DAY/NIGHT cycle (build 292) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+
+Sixth playtest-feedback batch + first slice of §34 (day/night). Suite green (969 assertions); draw-probe clean.
+- **Map not hidden by the top bar:** editor render reserves a scaled top inset (content offset + camera
+  clamp + mouse-pick offset), so the map + its top edge indicator are fully visible.
+- **Tree trunks / thin walls block reliably:** `_moveWithCollision` samples the leading edge at the centre
+  + two lateral points (block if any solid); ramps use centre-only so a wide player still climbs a narrow ramp.
+- **Ramps climb again:** undo/redo (`_snapshot`/`_restore`) now serialize `ramps` + `settings` (were dropped).
+- **Grey mob ring = map-creator only:** removed from the runtime `_drawMob`; live game shows just a shadow.
+- **Pipe beside a statue teleports on E:** portals/pipes resolve E before the decoration notice; unlinked pipe says so.
+- **NEW Day/Night cycle:** pure `OH_DAYNIGHT` (phase/sky/label/detectMultiplier, 21 tests) → ambient tint
+  (midnight-blue→warm dawn→clear noon→dusk), sun/moon clock, +up-to-40% night mob sight. Atmosphere world
+  settings (`dayNight` off by default, `dayLengthSec`, `dayStart`, `nightDarkness`). Editor stays in daylight.
+  Dynamic elevation shadows + night lamps still deferred (FUTURE_ROADMAP §34). Detail in `DECISIONS_LOG.md`.
+
+**NEEDS BROWSER PLAYTEST** before merge. 14 overhead builds (279–292) are stacked on this branch.
+
+---
+
+## PRIOR STATE (2026-07-29) — OVERHEAD ENGINE move-from-config / weapon switch / map-edge / somersault facing (build 291) on branch `overhead-engine` — NOT merged, browser-UNTESTED
 
 Fifth playtest-feedback batch. Suite green (948 assertions); draw-probe clean.
 - **Move from config modals:** portal/pipe, Goal Star, Player Spawn modals gained a **✥ Move** button →

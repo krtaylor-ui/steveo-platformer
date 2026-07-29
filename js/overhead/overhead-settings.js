@@ -38,6 +38,11 @@
       angleLockDeg:     0,          // 0 = smooth aim
       masterZoom:       1.0,
       showHiddenIndicator: false,   // show a ring when the player is under an overhang
+      // Atmosphere — day/night cycle (visual tint + a small night mob-sight boost).
+      dayNight:         false,      // off by default (worlds stay in daylight)
+      dayLengthSec:     120,        // seconds for one full day→night→day
+      dayStart:         0.25,       // phase to start at (0 midnight · .25 dawn · .5 noon · .75 dusk)
+      nightDarkness:    0.6,        // peak darkness of the night overlay (0..1)
     };
   }
 
@@ -130,6 +135,12 @@
               ${sel('angleLockDeg', 'Aim lock', [['0', 'Smooth'], ['45', '8-way (45°)'], ['90', '4-way (90°)']])}
               ${range('masterZoom', 'Default zoom', 0.4, 2, 0.1)}
               ${toggle('showHiddenIndicator', 'Show a ring when hidden under an overhang')}
+            </div>
+            <div class="ohws-grp"><h3>Atmosphere — Day / Night</h3>
+              ${toggle('dayNight', 'Enable day / night cycle')}
+              ${range('dayLengthSec', 'Full-cycle length (seconds)', 20, 600, 10)}
+              ${sel('dayStart', 'Start time of day', [['0', 'Midnight'], ['0.25', 'Dawn'], ['0.5', 'Noon'], ['0.75', 'Dusk']])}
+              ${range('nightDarkness', 'Night darkness', 0.2, 0.85, 0.05)}
             </div>
           </div>
           <div class="ohws-foot"><button id="ohws-reset">Reset to defaults</button><button class="primary" id="ohws-done">Done</button></div>

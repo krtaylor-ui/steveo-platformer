@@ -1110,9 +1110,15 @@ machine that freezes input, plays a scripted climb-in → fade → climb-out ani
 Portals: a walk-in → destination-glow → walk-out flourish. **Effort:** MEDIUM; deferred from the 2026-07-29
 batch (the teleport + glow + numbering shipped; the elaborate animation did not).
 
-## 34. Overhead day/night cycle + dynamic elevation shadows  *(idea captured 2026-07-29 — Kevin's "curveball", flagged as ambitious)*
+## 34. Overhead day/night cycle + dynamic elevation shadows  *(idea captured 2026-07-29 — Kevin's "curveball"; TINT PASS SHIPPED build 292, dynamic shadows still deferred)*
 
-Kevin's vision: a **day/night cycle** in Overhead mode — a very faint, highly-transparent **sun** (and a
+**Shipped in build 292 (the base cycle):** a per-world **Day / Night** setting (Atmosphere group) with a
+pure, headless-tested `OH_DAYNIGHT` model — a time-of-day phase over a configurable cycle length, an ambient
+tint pass (midnight-blue → warm dawn → clear noon → dusk), an on-screen sun/moon clock, and a gameplay hook
+(mobs see up to +40% farther at night). Off by default. **Still deferred (the ambitious remainder below):**
+dynamic sun/moon **elevation shadows**, entity blob shadows, and night **light sources / lamps**.
+
+Kevin's original vision: a **day/night cycle** in Overhead mode — a very faint, highly-transparent **sun** (and a
 bluish **moon** at night) tracking across the level (L→R / top→bottom / corner→corner). The hard part:
 **elevated terrain casts dynamic shadows based on the sun/moon position** (subtle, slightly stretched),
 with a smooth darken/transition between day and night. Mobs + players cast shadows too. At night, **lamps

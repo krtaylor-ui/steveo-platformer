@@ -1,6 +1,39 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD ENGINE — PLAYTEST FIXES + DAY/NIGHT CYCLE (2026-07-29, build 292, branch `overhead-engine`)
+# ═══════════════════════════════════════════════════════════════════════
+Sixth playtest-feedback batch + the first slice of §34. Suite green (969 assertions), draw-probe clean.
+
+- **Map no longer hides under the top command bar:** the editor render now reserves a top strip sized from
+  the live display scale (`46 * CANVAS_H / rectHeight`, capped) — `S` offsets content down by it, the camera
+  clamps against `CANVAS_H - TOP`, and `_cellFromEvent` subtracts it so mouse picking stays aligned. The
+  pink map-edge boundary at the world top is now fully visible.
+- **Tree trunks (and thin walls) block reliably:** `_moveWithCollision` was point-sampling only the leading
+  CENTRE, so a 1-cell trunk could be slipped past when the player was not aligned with it (worst walking
+  vertically). It now samples the leading edge at the centre **plus two lateral points across the player
+  width** (block if any is solid). Exception: when the centre cell (or current cell) is a RAMP it uses the
+  centre only, so a wide player can still climb a narrow ramp without the lateral points catching the
+  adjacent high terrain. Trees therefore behave like a hand-built 2-tall `log` trunk (solid) under a
+  pass-under leaves canopy — exactly the model Kevin described.
+- **Ramps climb again:** root cause was `_snapshot`/`_restore` (undo/redo) omitting `ramps` and `settings`
+  — any undo silently wiped the ramp array, so `this.ramps` was empty and no cell allowed a climb. Both
+  fields are now serialized + restored.
+- **Grey mob ring is MAP-CREATOR-only:** removed the ring from the runtime `_drawMob` (the editor already
+  draws its own indicator). The live game shows just the drop shadow + sprite, per Kevin.
+- **Pipe next to a statue teleports on E:** portals/pipes now resolve E **before** the generic decoration
+  notice and set an `actionUsed` flag; `_doAction` (the "Decoration: Statue" popup) only runs if no
+  portal/pipe consumed the press. An in-range pipe with no destination now says "not linked" instead of
+  silently doing nothing.
+- **NEW Day / Night cycle (§34 slice 1):** pure, headless-tested `js/overhead/overhead-daynight.js`
+  (`phase`/`darkness`/`sky`/`label`/`detectMultiplier`, 21 assertions). Runtime advances an elapsed clock,
+  tints the frame via a single full-canvas overlay (drawn before the HUD so the HUD stays crisp), draws a
+  sun/moon clock top-right, and scales mob detection by `detectMultiplier` (up to +40% at midnight). New
+  Atmosphere world settings: `dayNight` (off by default), `dayLengthSec`, `dayStart`, `nightDarkness`. The
+  MAP EDITOR intentionally stays in daylight (no overlay) so it is easy to edit. Dynamic elevation shadows +
+  night light sources remain deferred in FUTURE_ROADMAP §34.
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD ENGINE — MOVE-FROM-CONFIG / WEAPON SWITCH / MAP-EDGE / SOMERSAULT FACING (2026-07-29, build 291, branch `overhead-engine`)
 # ═══════════════════════════════════════════════════════════════════════
 Fifth playtest-feedback batch. Suite green (948 assertions), draw-probe clean.

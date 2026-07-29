@@ -48,6 +48,12 @@
       this.playerH = cfg.playerHeight != null ? cfg.playerHeight : 1;
       this.attackBlock = cfg.attackBlockHeight != null ? cfg.attackBlockHeight : 2;
       this.showHidden = !!cfg.showHiddenIndicator;
+      // Day / night cycle (visual tint + a small mob-detection boost at night).
+      this._dayNight = !!cfg.dayNight;
+      this._dayLen = cfg.dayLengthSec > 0 ? cfg.dayLengthSec : 120;
+      this._dayStart = (cfg.dayStart != null ? cfg.dayStart : 0.25);
+      this._nightMax = (cfg.nightDarkness != null ? cfg.nightDarkness : 0.6);
+      this._elapsed = 0; this._tod = this._dayNight ? this._dayStart : 0.5; this._detectMult = 1;
       this.goal = worldData.goal || null;
       // Ramps/ladders let a walk cross ANY elevation delta at that cell.
       this._rampList = worldData.ramps || [];
@@ -107,6 +113,8 @@
 
     _update() {
       const inp = this.input; this._frame = (this._frame || 0) + 1;
+      // Advance the day/night clock (~60fps). detectMultiplier feeds mob sight.
+      if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') { this._elapsed += 1 / 60; this._tod = OH_DAYNIGHT.phase(this._elapsed, this._dayLen, this._dayStart); this._detectMult = OH_DAYNIGHT.detectMultiplier(this._tod); }
       // In a Sandbox playtest, Esc returns straight to the designer (not a pause menu).
       if (inp.isJustDown && inp.isJustDown('Escape')) { if (this._testMode) { this._exit(); return; } if (this.state === 'playing') this.state = 'paused'; else if (this.state === 'paused') this.state = 'playing'; else { this._exit(); return; } }
       if (inp.scrollDelta) { OH_GRID.zoomBy(this.grid, inp.scrollDelta < 0 ? 1.08 : 0.92); inp.scrollDelta = 0; }
@@ -154,35 +162,42 @@
 
       // Weapons / melee.
       this._updateWeapons(intent, mouseWorld);
-      // Universal action.
-      if (intent.action) this._doAction(p);
       // Item pickup.
       this._pickups(p);
       // Mobs + projectiles.
       this._updateMobs(); this._updateProjectiles();
 
-      // Portals / pipes. PROXIMITY + the E button (both types now — no accidental
-      // walk-through). The nearest in-range one shows a glow prompt; press E to use.
+      // Portals / pipes take PRIORITY on the E button over the generic decoration
+      // notice (a pipe next to a statue must still teleport). PROXIMITY + E (both
+      // types — no accidental walk-through). The nearest in-range one glows; press E.
       if (this._portalGlow && --this._portalGlow.t <= 0) this._portalGlow = null;
+      let actionUsed = false;
       { const useR = this.unit * 1.6; let near = null, nk = null, nd = useR;
         // Proximity to the nearest FOOTPRINT CELL (so you can trigger a big portal
         // by standing adjacent — the buildings are solid, you can't stand on it).
         for (const [ck, b] of this._portalCells) { const [cc, rr] = ck.split(',').map(Number); const dx = (cc + 0.5) * this.grid.cell - p.x, dy = (rr + 0.5) * this.grid.cell - p.y; const dd = Math.hypot(dx, dy); if (dd < nd) { nd = dd; near = b; nk = b.col + ',' + b.row; } }
         this._portalPrompt = near ? nk : null;
         if (near && !this._portalCd && intent.action) {
-          const cfg = near.config || {};
-          if (cfg.isGoal) { this._wonExitColor = (this.goal && this.goal.color) || 0; this._win(); }
+          const cfg = near.config || {}; const label = near.typeId === 'pipe' ? 'pipe' : 'portal';
+          if (cfg.isGoal) { actionUsed = true; this._wonExitColor = (this.goal && this.goal.color) || 0; this._win(); }
           else if (cfg.dest && this._portalByKey.has(cfg.dest)) {
             // Land just IN FRONT of (below) the destination portal — it's solid, so
             // don't drop the player inside it. Guard against instant re-trigger.
+            actionUsed = true;
             const db = this._portalByKey.get(cfg.dest), dt = OH_BUILDINGS.get(db.typeId), dw = dt ? dt.footprint.w : 1, dh = dt ? dt.footprint.h : 1;
             const px = (db.col + dw / 2) * this.grid.cell, py = (db.row + dh + 0.5) * this.grid.cell;
             const c = this._cellOf(px, py); p.x = px; p.y = py; p.elev = this._elev(c.col, c.row); this._portalCd = true;
             this._portalGlow = { keys: [nk, cfg.dest], t: 42 };
+          } else {
+            // In range + pressed E, but this end has no destination — tell the player
+            // instead of silently doing nothing (and don't fall through to the statue).
+            actionUsed = true; this._notify('This ' + label + ' is not linked to a destination yet.', 100);
           }
         }
         if (!near || nd > useR * 0.6) this._portalCd = false;   // release the guard once clear of the destination
       }
+      // Universal action (decoration notice) — only if a portal/pipe didn't consume E.
+      if (intent.action && !actionUsed) this._doAction(p);
 
       if ((this.mode === 'platformer' || this.mode === 'campaign') && this.goal) {
         const c = this._cellOf(p.x, p.y); // goal is a 2×2 region from its anchor
@@ -202,7 +217,10 @@
     _moveWithCollision(ent, dx, dy, airborne) {
       const C = this.climbLevels;
       const cur = this._cellOf(ent.x, ent.y);
-      const tryAxis = (nx, ny) => {
+      const curRamp = this._ramp(cur.col, cur.row);
+      // Resolve ONE sample point → false (blocked) | null (airborne, pass over a
+      // gap) | elevation number (walkable, take this elevation).
+      const sample = (nx, ny) => {
         const c = this._cellOf(nx, ny);
         const key = this._key(c.col, c.row);
         if (key == null) return airborne ? null : false;     // gap
@@ -210,12 +228,26 @@
         if (key === 'leaves') return ent.elev;               // canopy — always pass under (keep elev)
         const tE = this._elev(c.col, c.row), delta = tE - ent.elev;
         if (delta <= 0) return tE;                           // walk / step down
-        if (airborne) return false;                          // can't jump ONTO raised terrain (no jump-mounting / climbing)
-        if (delta <= C || this._ramp(c.col, c.row) || this._ramp(cur.col, cur.row)) return tE;   // climb within limit / ramp
+        if (airborne) return false;                          // can't jump ONTO raised terrain (no jump-mounting)
+        if (delta <= C || curRamp || this._ramp(c.col, c.row)) return tE;   // climb within limit / via ramp
         return false;                                        // raised SOLID terrain → wall (any height)
       };
-      if (dx) { const res = tryAxis(ent.x + dx + Math.sign(dx) * ent.r, ent.y); if (res !== false) { ent.x += dx; if (res != null && !airborne) ent.elev = res; } }
-      if (dy) { const res = tryAxis(ent.x, ent.y + dy + Math.sign(dy) * ent.r); if (res !== false) { ent.y += dy; if (res != null && !airborne) ent.elev = res; } }
+      const r = ent.r, lat = r * 0.7;
+      // Sample the leading edge at the CENTRE + two lateral points (across the
+      // player's width) so a single-cell obstacle — a tree trunk, a 1-wide wall —
+      // can't be slipped past when the player isn't aligned with it. On/entering a
+      // RAMP, fall back to the centre only so a wide player can still climb a narrow
+      // ramp (lateral high terrain beside a ramp must not block the climb).
+      const step = (cx, cy, ox, oy) => {
+        const mid = sample(cx, cy);
+        if (mid === false) return false;
+        const cc = this._cellOf(cx, cy);
+        const onRamp = curRamp || this._ramp(cc.col, cc.row);
+        if (!onRamp && (sample(cx + ox, cy + oy) === false || sample(cx - ox, cy - oy) === false)) return false;
+        return mid;                                          // null (airborne gap) or elevation
+      };
+      if (dx) { const res = step(ent.x + dx + Math.sign(dx) * r, ent.y, 0, lat); if (res !== false) { ent.x += dx; if (res != null && !airborne) ent.elev = res; } }
+      if (dy) { const res = step(ent.x, ent.y + dy + Math.sign(dy) * r, lat, 0); if (res !== false) { ent.y += dy; if (res != null && !airborne) ent.elev = res; } }
     }
     _resolveLanding(p) {
       const c = this._cellOf(p.x, p.y);
@@ -278,14 +310,15 @@
       const p = this.player;
       for (const m of this.mobs) { if (m.dead) continue; if (m.cool > 0) m.cool--;
         const d = Math.hypot(p.x - m.x, p.y - m.y);
+        const det = m.detect * (this._detectMult || 1);   // mobs see farther at night
         // On first detecting the player, seed a random initial cooldown so mobs
         // don't all fire on the same frame / instantly at max range.
-        if (d < m.detect) { if (m.state !== 'chase') m.cool = 25 + (Math.random() * 75 | 0); m.state = 'chase'; }
+        if (d < det) { if (m.state !== 'chase') m.cool = 25 + (Math.random() * 75 | 0); m.state = 'chase'; }
         else if (m.state === 'chase') m.state = 'path';
-        if (m.ranged && m.state === 'chase' && d < m.detect && m.cool === 0) { const ang = Math.atan2(p.y - m.y, p.x - m.x); this._mobBolts.push(Object.assign(OH_WEAPONS.startBolt(m.x, m.y, ang, { crossbowSpeed: 6, crossbowRange: m.detect + 40 }), { owner: 'm', elev: m.elev || 0 })); m.cool = 90; }
+        if (m.ranged && m.state === 'chase' && d < det && m.cool === 0) { const ang = Math.atan2(p.y - m.y, p.x - m.x); this._mobBolts.push(Object.assign(OH_WEAPONS.startBolt(m.x, m.y, ang, { crossbowSpeed: 6, crossbowRange: det + 40 }), { owner: 'm', elev: m.elev || 0 })); m.cool = 90; }
         if (m.state === 'chase') {
           const ang = Math.atan2(p.y - m.y, p.x - m.x);
-          if (!(m.ranged && d < m.detect * 0.6)) { this._moveWithCollision(m, Math.cos(ang) * m.speed, Math.sin(ang) * m.speed, false); m._dist = (m._dist || 0) + m.speed; m._moveAngle = ang; }
+          if (!(m.ranged && d < det * 0.6)) { this._moveWithCollision(m, Math.cos(ang) * m.speed, Math.sin(ang) * m.speed, false); m._dist = (m._dist || 0) + m.speed; m._moveAngle = ang; }
         } else {
           // Idle WANDER — pick a random heading for a while, amble at ~40% speed.
           m._wc = (m._wc || 0) - 1;
@@ -378,6 +411,12 @@
         const Q = OVERHEAD.elevOffset(cs); const sp = S(c * g.cell, r * g.cell); ctx.globalAlpha = 0.96; OVERHEAD.drawTerrainTile(ctx, k, sp.x - elev * Q, sp.y - elev * Q, cs, elev); ctx.globalAlpha = 1; }
       // Hidden indicator (designer opt-in).
       if (this.player.hidden && this.showHidden) { const s = S(this.player.x, this.player.y); ctx.strokeStyle = 'rgba(120,200,255,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s.x, s.y, cs * 0.4, 0, 7); ctx.stroke(); }
+      // Day/night ambient overlay — tints the WORLD (drawn before the HUD so the HUD
+      // stays crisp). Clear at midday, deep blue at night, warm at dawn/dusk.
+      if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') {
+        const sk = OH_DAYNIGHT.sky(this._tod, this._nightMax);
+        if (sk.a > 0.004) { ctx.fillStyle = `rgba(${sk.r},${sk.g},${sk.b},${sk.a})`; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H); }
+      }
       this._drawHUD(ctx);
     }
 
@@ -393,7 +432,8 @@
       const ctx = this.ctx; const eo = -(m.elev || 0) * OVERHEAD.elevOffset(cs); const raw = S(m.x, m.y); const sp = { x: raw.x + eo, y: raw.y + eo }; const rr = m.r * z;
       const ang = Math.atan2(this.player.y - m.y, this.player.x - m.x);   // mobs face the player
       ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(sp.x, sp.y + rr * 0.55, rr * 0.9, rr * 0.5, 0, 0, 7); ctx.fill();
-      ctx.strokeStyle = 'rgba(150,150,160,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sp.x, sp.y, rr * 1.15, 0, 7); ctx.stroke();   // grey outline (mob indicator)
+      // NOTE: the grey ring is a MAP-CREATOR indicator only — the editor draws its
+      // own; the live game shows just the drop shadow + sprite (no ring).
       OVERHEAD.drawOverheadMob(ctx, sp.x, sp.y, rr, m._dist || 0, m.state === 'chase', ang, m.type, (m._moveAngle != null ? m._moveAngle : ang));
       if (m.state === 'chase') { ctx.fillStyle = '#ffd24a'; ctx.font = `bold ${(rr) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('!', sp.x, sp.y - rr * 1.6); }
       const maxHp = (P().OH_MOB_BY_KEY[m.type] || {}).hp || 8;
@@ -432,6 +472,13 @@
 
     _drawHUD(ctx) {
       ctx.textAlign = 'left';
+      // Day/night clock (top-right): a sun (day) or moon (night) disc + a label.
+      if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') {
+        const t = this._tod, lab = OH_DAYNIGHT.label(t), night = OH_DAYNIGHT.darkness(t) > 0.5, cx = CANVAS_W - 96;
+        ctx.fillStyle = 'rgba(10,14,24,.72)'; ctx.fillRect(cx - 10, 8, 90, 24);
+        ctx.beginPath(); ctx.arc(cx + 2, 20, 7, 0, 7); ctx.fillStyle = night ? '#cdd6ea' : '#ffd24a'; ctx.fill();
+        ctx.fillStyle = '#dbe4f3'; ctx.font = '12px sans-serif'; ctx.fillText(lab, cx + 15, 24);
+      }
       // Test-mode "return to designer" button (top-left); hearts drop below it.
       const hy = this._testMode ? 56 : 26;
       if (this._testMode) {
