@@ -50,6 +50,15 @@
       // Ramps/ladders let a walk cross ANY elevation delta at that cell.
       this._rampList = worldData.ramps || [];
       this.ramps = new Set(this._rampList.map((r) => r.col + ',' + r.row));
+      // Portals/pipes: map every footprint cell → the building, + each portal's
+      // world-centre, so stepping onto one teleports (config.dest) or ends the
+      // level (config.isGoal).
+      this._portalCells = new Map(); this._portalCenter = new Map(); this._portalCd = false;
+      for (const b of this.buildings) if (b.typeId === 'portal' || b.typeId === 'pipe') {
+        const t = OH_BUILDINGS.get(b.typeId), fw = t ? t.footprint.w : 1, fh = t ? t.footprint.h : 1;
+        this._portalCenter.set(b.col + ',' + b.row, { x: (b.col + fw / 2) * this.grid.cell, y: (b.row + fh / 2) * this.grid.cell });
+        for (let dr = 0; dr < fh; dr++) for (let dc = 0; dc < fw; dc++) this._portalCells.set((b.col + dc) + ',' + (b.row + dr), b);
+      }
 
       this.baseScheme = OH_CONTROLS.pickScheme(cfg.controlScheme, opts.playerScheme);
       this.angleLockDeg = cfg.angleLockDeg || 0;
@@ -65,6 +74,8 @@
         // (displayed as a pickaxe). A real ranged weapon changes fire behaviour;
         // pickaxe/none = cone melee.
         weapon: opts.playerWeapon || worldData.startWeapon || null, _fireCd: 0, _trident: null, _boom: null };
+      // A Player Spawn linked to a portal → emerge from that portal.
+      if (sp.fromPortal && this._portalCenter.has(sp.fromPortal)) { const d = this._portalCenter.get(sp.fromPortal); this.player.x = d.x; this.player.y = d.y; const c = this._cellOf(d.x, d.y); this.player.elev = this._elev(c.col, c.row); this._portalCd = true; this.camera = OH_GRID.centerOn(this.grid, d.x, d.y, CANVAS_W, CANVAS_H); }
       this._spawn = { x: this.player.x, y: this.player.y };
       this._bolts = []; this._mobBolts = [];
       this.camera = OH_GRID.centerOn(this.grid, this.player.x, this.player.y, CANVAS_W, CANVAS_H);
@@ -138,8 +149,16 @@
       // Mobs + projectiles.
       this._updateMobs(); this._updateProjectiles();
 
+      // Portals / pipes: teleport to the linked one, or end the level if flagged.
+      { const pc = this._cellOf(p.x, p.y); const port = this._portalCells.get(pc.col + ',' + pc.row);
+        if (port && !this._portalCd) {
+          const cfg = port.config || {};
+          if (cfg.isGoal) { this._wonExitColor = (this.goal && this.goal.color) || 0; this._win(); }
+          else if (cfg.dest && this._portalCenter.has(cfg.dest)) { const d = this._portalCenter.get(cfg.dest); p.x = d.x; p.y = d.y; const c = this._cellOf(d.x, d.y); p.elev = this._elev(c.col, c.row); this._portalCd = true; }
+        } else if (!port) this._portalCd = false; }
+
       if ((this.mode === 'platformer' || this.mode === 'campaign') && this.goal) {
-        const c = this._cellOf(p.x, p.y); if (c.col === this.goal.col && c.row === this.goal.row) this._win();
+        const c = this._cellOf(p.x, p.y); if (c.col === this.goal.col && c.row === this.goal.row) { this._wonExitColor = this.goal.color || 0; this._win(); }
       }
       this.camera = OH_GRID.centerOn(this.grid, p.x, p.y, CANVAS_W, CANVAS_H);
     }
@@ -227,7 +246,7 @@
 
     _hurt(amt, why) { const p = this.player; if (p.iFrames > 0) return; p.hp -= amt; p.iFrames = 45; if (p.hp <= 0) this._fall(why || 'Defeated'); }
     _fall(msg) { const p = this.player; if (p.hp <= 0) { this.state = 'dead'; this._notify(msg || 'You died', 240); return; } p.x = this._spawn.x; p.y = this._spawn.y; p.jump = null; p.iFrames = 60; const c = this._cellOf(p.x, p.y); p.elev = this._elev(c.col, c.row); }
-    _win() { if (this.state === 'won') return; this.state = 'won'; this._wonExitColor = 0; if (this._onWin) { try { this._onWin(this, 0); } catch (e) {} } }
+    _win() { if (this.state === 'won') return; this.state = 'won'; if (this._onWin) { try { this._onWin(this, this._wonExitColor || 0); } catch (e) {} } }
     _notify(text, frames) { this._notif = { text, t: frames || 120 }; }
     _exit() { this._running = false; if (document.body) document.body.classList.remove('in-game'); if (this._onExit) this._onExit(this.state); }
     destroy() { this._running = false; if (document.body) document.body.classList.remove('in-game'); }

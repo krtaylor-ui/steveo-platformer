@@ -220,6 +220,7 @@
         grp('Shape', this.shape === 'freehand' ? 'Freehand' : (this.shape + (this.shapeFill ? ' fill' : ' line')), shapeOpts) +
         grp('Elevation', 'Lvl ' + this.elevLevel, [0, 1, 2, 3, 4, 5].map((l) => `<div class="opt small ${l === this.elevLevel ? 'sel' : ''}" data-elev="${l}">Level ${l}</div>`).join('')) +
         `<div class="btn ${this.tool === 'erase' ? 'on' : ''}" id="oh-erase">Erase (or ⇧-click)</div>` +
+        `<div class="btn ${this.tool === 'configure' ? 'on' : ''}" id="oh-config">⚙ Configure (click a portal/goal/spawn)</div>` +
         grp('Terrain', this.tool === 'terrain' ? P().OH_TERRAIN_BY_KEY[this.terrainKey].name : '', terrOpts) +
         grp('Buildings', (this.tool === 'building' ? this.buildingType : this.tool === 'spawn' ? 'Spawn' : this.tool === 'goal' ? 'Goal' : ''), buildOpts) +
         grp('Mobs', this.tool === 'mob' ? P().OH_MOB_BY_KEY[this.mobKey].name : '', mobOpts) +
@@ -230,6 +231,7 @@
       g('oh-test').onclick = () => this._test(); g('oh-save').onclick = () => this._save(); g('oh-exit').onclick = () => this.close();
       g('oh-settings').onclick = () => { if (typeof OH_WORLD_SETTINGS !== 'undefined') OH_WORLD_SETTINGS.open(this.world, () => this._renderBar()); };
       g('oh-erase').onclick = () => { this.tool = 'erase'; this._renderBar(); };
+      g('oh-config').onclick = () => { this.tool = 'configure'; this._renderBar(); };
       rail.querySelectorAll('[data-brush]').forEach((el) => el.onclick = () => { this.brush = +el.dataset.brush; this._renderBar(); });
       rail.querySelectorAll('[data-shape]').forEach((el) => el.onclick = () => { this.shape = el.dataset.shape; this._renderBar(); });
       rail.querySelectorAll('[data-fill]').forEach((el) => el.onclick = () => { this.shapeFill = !this.shapeFill; this._renderBar(); });
@@ -315,6 +317,7 @@
       m.ground[r][c] = this.terrainKey; m.elevation[r][c] = this.elevLevel;
     },
     _paintCell(col, row) {
+      if (this.tool === 'configure') { this._openConfigAt(col, row); return; }
       const m = this.world.mapSnapshot, half = Math.floor(this.brush / 2);
       const erasing = this.tool === 'erase' || this._shift;
       const apply = (fn) => { for (let dr = -half; dr <= half; dr++) for (let dc = -half; dc <= half; dc++) fn(col + dc, row + dr); };
@@ -357,6 +360,51 @@
       const cells = this._shapeCells(this._shapeAnchor, this._shapeEnd);
       const half = (this.shape === 'line' || !this.shapeFill) ? Math.floor(this.brush / 2) : 0;   // brush = outline/line width
       for (const p of cells) { if (half > 0) { for (let dr = -half; dr <= half; dr++) for (let dc = -half; dc <= half; dc++) this._opCell(p.c + dc, p.r + dr); } else this._opCell(p.c, p.r); }
+    },
+
+    // ── Configuration modals (portal/pipe, goal star, spawn) ───────────────────
+    _portalList() { return (this.world.buildings || []).filter((b) => b.typeId === 'portal' || b.typeId === 'pipe').map((b) => ({ key: b.col + ',' + b.row, label: (b.typeId === 'pipe' ? 'Pipe' : 'Portal') + ' @' + b.col + ',' + b.row })); },
+    _buildingAt(col, row) { return (this.world.buildings || []).find((b) => { const t = OH_BUILDINGS.get(b.typeId); const w = t ? t.footprint.w : 1, h = t ? t.footprint.h : 1; return col >= b.col && col < b.col + w && row >= b.row && row < b.row + h; }); },
+    _openConfigAt(col, row) {
+      const b = this._buildingAt(col, row);
+      if (b && (b.typeId === 'portal' || b.typeId === 'pipe')) return this._portalModal(b);
+      if (this.world.goal && this.world.goal.col === col && this.world.goal.row === row) return this._goalModal();
+      const sp = (this.world.spawns || []).find((s) => s.col === col && s.row === row);
+      if (sp) return this._spawnModal(sp);
+      this._flash('Nothing to configure here — click a portal/pipe, goal, or spawn.');
+    },
+    _cfgModal(title, inner, onSave) {
+      let ov = document.getElementById('oh-cfg-modal');
+      if (!ov) { ov = document.createElement('div'); ov.id = 'oh-cfg-modal'; ov.style.cssText = 'position:fixed;inset:0;z-index:9550;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6)'; document.body.appendChild(ov); }
+      ov.style.display = 'flex';
+      ov.innerHTML = `<div class="ohc-panel"><h2>${title}</h2>${inner}<div class="ohc-btns"><button id="cfg-cancel">Cancel</button><button class="primary" id="cfg-save">Save</button></div></div>`;
+      document.getElementById('cfg-cancel').onclick = () => { ov.style.display = 'none'; };
+      document.getElementById('cfg-save').onclick = () => { try { onSave(); } catch (e) {} ov.style.display = 'none'; };
+    },
+    _portalModal(b) {
+      b.config = b.config || {};
+      const others = this._portalList().filter((p) => p.key !== b.col + ',' + b.row);
+      const opts = `<option value="">(none)</option>` + others.map((p) => `<option value="${p.key}" ${b.config.dest === p.key ? 'selected' : ''}>${p.label}</option>`).join('');
+      this._cfgModal((b.typeId === 'pipe' ? 'Pipe' : 'Portal') + ' @' + b.col + ',' + b.row,
+        `<label>Teleport destination <select id="cfg-dest">${opts}</select></label>
+         <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="cfg-goal" ${b.config.isGoal ? 'checked' : ''}> Entering this ends the level (acts as a Goal Star)</label>
+         <p style="color:#8fa0bd;font-size:12px">Pick another portal/pipe to teleport there, or tick “ends the level”. A Player Spawn can be linked to a portal so the player emerges from it (configure the spawn).</p>`,
+        () => { b.config.dest = document.getElementById('cfg-dest').value || null; b.config.isGoal = document.getElementById('cfg-goal').checked; });
+    },
+    _goalModal() {
+      const colors = (typeof GOAL_COLORS !== 'undefined') ? GOAL_COLORS : [{ name: 'Gold', hex: '#ffd700' }];
+      const cur = this.world.goal.color || 0;
+      const opts = colors.map((c, i) => `<option value="${i}" ${cur === i ? 'selected' : ''}>Goal Star ${i + 1} — ${c.name}</option>`).join('');
+      this._cfgModal('Goal Star', `<label>Colour (campaign routing) <select id="cfg-color">${opts}</select></label>
+        <p style="color:#8fa0bd;font-size:12px">Campaign mode routes each coloured Goal Star to a different next level.</p>`,
+        () => { this.world.goal.color = parseInt(document.getElementById('cfg-color').value, 10) || 0; });
+    },
+    _spawnModal(sp) {
+      const portals = this._portalList();
+      const opts = `<option value="">(start on the ground)</option>` + portals.map((p) => `<option value="${p.key}" ${sp.fromPortal === p.key ? 'selected' : ''}>${p.label}</option>`).join('');
+      this._cfgModal('Player Spawn', `<label>Emerge from a portal <select id="cfg-from">${opts}</select></label>
+        <p style="color:#8fa0bd;font-size:12px">Link a portal/pipe and the player starts the level coming out of it.</p>`,
+        () => { sp.fromPortal = document.getElementById('cfg-from').value || null; });
     },
 
     // ── Actions ───────────────────────────────────────────────────────────────
