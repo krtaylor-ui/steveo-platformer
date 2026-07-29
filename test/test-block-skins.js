@@ -76,5 +76,18 @@ console.log('Sticky config — next placed block inherits the last-configured se
   ok(gg.redstone.components.filter(c=>c.col===3&&c.row===4).length===1, 'no duplicate component on re-place');
 }
 
+// §Platform lamp colour stability — a moving platform's lamp keeps its authored colour even when
+// getAt at the MOVED cell resolves to a different (red) lamp. (Super Mario 1-1 "turns red" bug.)
+console.log('Platform lamp colour stability (Super Mario 1-1 turns-red bug):');
+{
+  const gp=Object.create(Game.prototype);
+  gp._platCell = () => ({ acol: 30, arow: 40 });   // platform has MOVED far from the lamp's origin
+  // At the moved cell (30+0, 40+0)=(30,40) sits a DIFFERENT lamp with colour 0 (red) + off.
+  gp.redstone = new RedstoneSystem([{ type:'lamp', col:30, row:40, color:0, on:false }]);
+  const cell = { dcol:0, drow:0, blockType: BLOCK.REDSTONE_LAMP, lampColor: 4 };   // authored Cyan
+  ok(gp._platformCellState({}, cell).colorIdx === 4, 'moving platform lamp keeps authored colour (cyan) despite getAt hitting a red lamp');
+  ok(gp._platformCellState({}, { dcol:0, drow:0, blockType: BLOCK.REDSTONE_LAMP }).colorIdx === 0, 'no captured colour → falls back to getAt');
+}
+
 if(fail){console.log(`\n${fail} FAILED, ${pass} passed`);process.exit(1);}
 console.log(`\nAll ${pass} block-skin assertions passed`);

@@ -18532,7 +18532,7 @@ class Game {
     // the authored anchorCol/Row, or the lookup misses once the platform moves and lamps render off.
     const { acol, arow } = this._platCell(pl);
     const col = acol + c.dcol, row = arow + c.drow, b = c.blockType;
-    if (b === BLOCK.REDSTONE_LAMP) { const cp = this.redstone.getAt(col, row); return { on: cp ? !!cp.on : false, colorIdx: cp ? (cp.color || 0) : 0 }; }
+    if (b === BLOCK.REDSTONE_LAMP) { const cp = this.redstone.getAt(col, row); return { on: cp ? !!cp.on : false, colorIdx: (c.lampColor != null ? c.lampColor : (cp ? (cp.color || 0) : 0)) }; }   // §colour from the captured cell (stable while moving)
     if (b === BLOCK.LEVER)         { const cp = this.redstone.getAt(col, row); return { on: cp ? !!cp.on : false }; }
     if (b === BLOCK.TRAPDOOR)      { const cp = this.redstone.getAt(col, row); return { open: cp ? !!cp.open : false }; }
     if (b === BLOCK.PRESSURE_PLATE){ const cp = this.redstone.getAt(col, row); return { pressed: cp ? !!cp.on : false }; }
@@ -18631,7 +18631,16 @@ class Game {
         this._notify('A platform is touching terrain (' + set.length + '+ blocks) — build it DETACHED; skipped', '#e0a040', 260);
         pl.cells = [];
       } else {
-        pl.cells = set.map(c => ({ dcol: c.col - pl.anchorCol, drow: c.row - pl.anchorRow, blockType: this.level.get(c.row, c.col) }));
+        // §Skins/lamps — snapshot each lamp cell's authored colour onto the platform cell so it renders
+        // from a stable source while the platform MOVES (re-looking it up via getAt at the moved cell can
+        // land on a different lamp → the "lamp turns red/off when it crosses a Y" bug). Redstone is
+        // restored before platform init, so the component carries its real colour here.
+        pl.cells = set.map(c => {
+          const b = this.level.get(c.row, c.col);
+          const cell = { dcol: c.col - pl.anchorCol, drow: c.row - pl.anchorRow, blockType: b };
+          if (b === BLOCK.REDSTONE_LAMP) { const cp = this.redstone.getAt(c.col, c.row); cell.lampColor = cp ? (cp.color || 0) : 0; }
+          return cell;
+        });
       }
       // §8 — any Direction Controller in the group drives this platform's direction.
       pl._dirCtrls = [];
