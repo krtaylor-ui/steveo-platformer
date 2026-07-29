@@ -1,6 +1,23 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD ENGINE — CRASH FIX + VIEW FILTERS (2026-07-29, build 290, branch `overhead-engine`)
+# ═══════════════════════════════════════════════════════════════════════
+- **CRASH (root cause):** the build-289 vertical-portal `drawBuilding('portal')` referenced `cs`, a
+  variable that doesn't exist inside `drawBuilding` (it has `w/h/min`). Any world containing a portal —
+  including the demo — threw mid-way through the entity draw pass, so terrain rendered but mobs/buildings/
+  items did NOT, and Test crashed on the same throw. Fixed by using the block width (`bw = w/4`). A stub-
+  canvas probe now confirms all building/mob/item/cube draws run clean (kept as a manual check).
+  **Lesson:** `drawBuilding` cases must only use its own locals (w/h/min/cx/cy) — a quick all-types probe
+  catches this instantly.
+- **View filters (editor top bar):** checkboxes to show/hide **Buildings / Mobs / Items** (`this.view`),
+  gating the editor entity draws — also handy for decluttering while editing.
+- **Elevation-map view:** a top-bar toggle that recolours the terrain as a flat top-down HEAT MAP —
+  purple (low) → pink (high) via `OVERHEAD.elevMapColor(level, maxLevel)` — with the active level outlined
+  + per-cell level numbers. A design aid for reading elevation at a glance.
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD ENGINE — SOLID BUILDINGS / VERTICAL PORTALS / SOMERSAULT / CASTLE (2026-07-29, build 289, branch `overhead-engine`)
 # ═══════════════════════════════════════════════════════════════════════
 Fourth playtest-feedback batch. Suite green.

@@ -1,4 +1,15 @@
-## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE solid buildings / vertical portals / somersault / castle (build 289) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE crash fix + view filters (build 290) on branch `overhead-engine` — NOT merged
+
+- **CRASH FIXED:** the build-289 portal draw used an undefined `cs` → any world with a portal (incl. the
+  demo) threw mid-render, hiding mobs/buildings/items and breaking Test. Now uses the block width.
+- **View filters** (editor top bar): show/hide Buildings / Mobs / Items.
+- **Elevation-map view:** recolours terrain purple(low)→pink(high) with level numbers — a design aid.
+Detail in `DECISIONS_LOG.md` (Overhead Engine — Crash Fix + View Filters). The full deferred list is in
+the prior entry (Solid Buildings / Vertical Portals / Somersault / Castle).
+
+---
+
+## PRIOR STATE (2026-07-29) — OVERHEAD ENGINE solid buildings / vertical portals / somersault / castle (build 289) on branch `overhead-engine` — NOT merged, browser-UNTESTED
 
 Fourth feedback batch. Suite green.
 - **All buildings SOLID** (portals used via proximity + E; teleport lands in front of the dest).

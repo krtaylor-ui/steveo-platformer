@@ -96,6 +96,12 @@
       ctx.strokeStyle = 'rgba(0,0,0,.16)'; ctx.strokeRect(x, y, cs, cs);
     },
 
+    // Elevation heat-map colour: dark purple (low) → light pink (high).
+    elevMapColor(level, maxLevel) {
+      const t = maxLevel > 0 ? Math.min(1, Math.max(0, level / maxLevel)) : 0;
+      const lo = [42, 20, 58], hi = [245, 196, 224];   // #2a143a → #f5c4e0
+      return `rgb(${(lo[0] + (hi[0] - lo[0]) * t) | 0},${(lo[1] + (hi[1] - lo[1]) * t) | 0},${(lo[2] + (hi[2] - lo[2]) * t) | 0})`;
+    },
     // Elevation offset per level, in px (up AND left) — the diagonal "stacked cube"
     // shift. Kept here so terrain + entities agree.
     elevOffset(cs) { return cs * 0.22; },
@@ -152,7 +158,7 @@
           // A STANDING 4-wide × 5-tall obsidian frame, rising UP from the footprint
           // base (footprint is 4×1) so it reads as a vertical portal covering ~5
           // elevation levels, purple glowing centre. Each block is a little cube.
-          const cols = 4, rows = 5, bw = w / cols, bh = Math.max(6, cs * 0.72), lean = cs * 0.14;
+          const cols = 4, rows = 5, bw = w / cols, bh = Math.max(6, bw * 0.72), lean = bw * 0.14;
           const baseY = y + h;   // bottom edge of the footprint
           const blk = (bx, by, top, glow) => {
             ctx.fillStyle = _shade(top, 0.5); ctx.fillRect(bx, by, bw + 1, bh + 1);                 // block body (slightly dark)
