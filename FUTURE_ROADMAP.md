@@ -944,7 +944,25 @@ speed segments, launch platform, center of gravity, rail gate) plus everything b
 
 ---
 
-## 24. Overhead Engine — free-roam top-down substrate  *(split from Campaign §12 during the 2026-07-27 MVP design; the single largest / least-reuse initiative in the project's history)*
+## 24. Overhead Engine — free-roam top-down substrate  *(split from Campaign §12 2026-07-27; **MVP FOUNDATION BUILT build 279, branch `overhead-engine`, 2026-07-28** — see status note)*
+
+> **STATUS 2026-07-28 — MVP FOUNDATION BUILT (depth-first), browser-UNTESTED, NOT merged.** Built per the
+> "Overhead Engine (FULL BUILD — MEGA SESSION)" brief on branch `overhead-engine`. **SHIPPED + headless-tested
+> (122 assertions):** the full pure substrate — `js/overhead/overhead-{grid,elevation,buildings,map,movement,
+> controls,combat,modes,campaign-map}.js` (grid/zoom, staircase elevation + autotile, building taxonomy,
+> Map/World version-linking + Test overlay + Extract-Map matrix, jump + limb anim, 3 control schemes, cone/
+> radius/line combat, mode rulesets + two-tier tower placement, top-down auto-path A*). **SHIPPED browser-
+> untested:** a playable `OverheadGame` runtime (Sandbox → "🗺 Overhead Demo") and a functional `OH_EDITOR`
+> authoring loop (Sandbox → "🗺 New Overhead World"), plus a Campaign Builder "Create World Map" entry.
+> **PARTIAL / next-session:** TD/MOBA gameplay loops (rulesets + constraints proven, not run), Arena-overhead
+> translation, redstone-in-overhead, the World-Placement mode + lane preview (auto-path proven; node-binding
+> UI partial), explicit stairs/ramps placeables, editor refinements (hover tabs / MRU / line-drag / path &
+> redstone placement / server publish), Test-Mode Relink + Extract-Map editor buttons. **NOT built (scope
+> §17):** full LOS/ranged-blocking (architected stub only), Sports/RTS, MOBA hero mechanics, touch controls,
+> live multiplayer. **KEY FINDING:** the side-view Wayfinding pathfinder was NOT directly reusable for
+> overhead node-connecting (side-view standable/gravity/jump-arc model) — a lean top-down A* was written
+> instead. Full detail + all assumptions in `DECISIONS_LOG.md` (Overhead Engine entry). The remaining vision
+> below stays the standing spec for the next passes.
 
 **This is its own major project, NOT part of the Campaign MVP.** Campaign's MVP progression UI is a simple
 non-interactive per-zone dot tracker; the Overhead Engine is the future free-roam, top-down, spatial world.
@@ -1040,3 +1058,15 @@ publishing opens up beyond that single account, players need a UI to **browse/se
 Campaigns** — likely modelled on the existing Community Browse / world-selection patterns. Lifting the
 restriction is a small server change (`ADMIN_EMAIL` gate + the single-published invariant in
 `server/campaign-routes.js`); the new selection/browse UI is the real work.
+
+---
+
+## 30. NPCs / Villagers  *(idea captured 2026-07-28)*
+
+Surfaced during Overhead Engine design discussion (the universal Action button was explicitly
+designed to eventually support "talk to NPCs" alongside opening chests / triggering levers / entering
+buildings). Likely scope when this gets designed for real: a dialogue system, possibly trading/quests
+eventually. Not designed further than that — deserves its own full discussion when the time comes,
+same treatment as Sports / RTS / MOBA Hero mechanics.
+
+**Effort:** LARGE, genuinely undesigned beyond this note.

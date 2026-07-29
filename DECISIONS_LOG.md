@@ -1,6 +1,88 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD ENGINE — MVP FOUNDATION (2026-07-28, build 279, branch `overhead-engine`)
+# ═══════════════════════════════════════════════════════════════════════
+The largest single session attempted. Built the Overhead Engine per Kevin's "Overhead Engine
+(FULL BUILD — MEGA SESSION)" brief. Branch `overhead-engine` off `campaign-mode-mvp` (so §9's
+Campaign World Map Creator can hook the Campaign Builder). **Depth-first** per Kevin's up-front
+answer — a rock-solid, fully-tested pure substrate + ONE mode playable end-to-end, before breadth.
+Everything additive — no existing mode changed. Suite green (+122 overhead assertions).
+
+## Up-front answers (Kevin, 2026-07-28) — the 4 that shaped the build
+- **Priority = DEPTH-FIRST foundation.** Nail the core (grid/zoom, elevation/autotile, map/version/
+  extract, movement/controls/combat) + a playable runtime, before breadth (TD/MOBA/full editor).
+- **Jump = hazard/gap ONLY** — never vaults solid structural objects. `maxElevationJump` default 0
+  (same-level), a CONFIGURABLE number (a future mode can raise it without a jump rewrite), per §5/§14.
+- **Twin-Stick weapon override = indicator + brief transition** (`_schemeOverlay` fade in the HUD).
+- **Overhead limb animation = simple best-effort** (procedural sines, build-then-eval), not polished.
+
+## §19 open-question resolutions
+- **Q0 — Map/World version-linking:** a World stores `mapId` + `mapVersion` + a frozen `mapSnapshot`.
+  Default play = the snapshot (never silently updated). `testOverlay(world, currentMap)` returns a
+  NON-committing merged view; `relink` permanently adopts; `validatePlacement` flags floating/OOB/
+  overlap-solid/elevation-shift. All pure + tested (`overhead-map.js`).
+- **Q1 — Extract-Map validity matrix:** terrain always carried; structures/items/redstone allowed for
+  all dest modes; MOBS = free for Normal/Platformer/Campaign/SpeedRunner, `'convert'` → spawn points
+  for Arena, DISALLOWED for Tower Defense/MOBA (they use path lanes + wave spawns). `EXTRACT_MATRIX`,
+  documented + tested. Not exhaustive but never silently nonsensical.
+- **Q2 — jump structural boundary:** hazard/gap only (Kevin confirmed). `_moveWithCollision` still
+  blocks solids while airborne; only gap/hazard GROUND is ignored mid-air.
+- **Q3 — Twin-Stick override UX:** indicator + brief transition (Kevin chose). `effectiveScheme` flags
+  `overridden`; the runtime fades a "⟳ Twin-Stick auto-fire" HUD badge.
+- **Q4 — limb-anim bar:** simple best-effort (Kevin confirmed). `OH_MOVE.limbPhase` = out-of-phase sines.
+- **Q5 — findings that changed the wiring:**
+  • **The side-view Wayfinding pathfinder is NOT directly reusable for §9's overhead node-connecting**
+    (the brief assumed it was). Its neighbour model is side-view-physics-specific (standable = solid
+    block below + gravity/jump-arc envelope). Overhead node-connecting is a planar top-down walk, so I
+    wrote a lean top-down 4-dir A* (`OH_CAMPAIGN_MAP.autoPathBetween`) in the same spirit. Flagged.
+  • **A separate `OverheadGame` runtime, not overhead rendering bolted into the 20k-line side-view
+    `Game`.** Overhead physics (planar, no side-view gravity) are fundamentally different; a parallel
+    runtime keeps the existing Game byte-identical and is the honest architecture.
+  • **Redstone/Arena-rules reuse is data-level, deferred in the runtime.** The Arena Rules-Engine shape
+    is mirrored (`OH_MODES.RULESETS` elements bag); actually running redstone/arena logic inside the
+    overhead runtime is scaffolded, not wired this session.
+
+## Architecture decisions
+- **Pure substrate, tested like the pathfinder/grapple (the brief's bar):** `overhead-grid` (grid/zoom/
+  camera math), `overhead-elevation` (staircase/autotile/draw-order/auto-climb; LOS is a STUB —
+  architected, not implemented, per §5/§17), `overhead-buildings` (data-driven taxonomy registry),
+  `overhead-map` (version/extract/validation), `overhead-movement` (jump/landing/anim), `overhead-controls`
+  (3 schemes), `overhead-combat` (cone/radius/line), `overhead-modes` (rulesets + two-tier tower
+  placement), `overhead-campaign-map` (top-down A*). 117 headless assertions across 4 test files.
+- **Playable runtime `OverheadGame`** — the depth-first "one mode playable end-to-end": renders elevation
+  (Y-offset + cliffs + autotile edge highlights, no art — 2D colour/shading tricks per the no-3D rule),
+  scrolling zoomable camera, 3-scheme movement + jump + limb anim, cone melee, mobs three-state, Goal-Star
+  win (Platformer/Campaign, exposes `_wonExitColor` + `onWin` to match the side-view Campaign hook).
+- **Functional Sandbox editor `OH_EDITOR`** — the §8 build→test→save loop (paint terrain/elevation, place
+  goal/spawn/buildings/mobs/items, brush, elevation selector, zoom/pan, Test, Save/Load localStorage).
+- **Mode rulesets are DATA** (`OH_MODES.RULESETS`) — TD/MOBA/Arena as configs on one engine; the
+  two-tier tower-placement constraint (global + per-type override, never per-instance) is proven pure.
+
+## What SHIPPED vs PARTIAL vs NOT-BUILT (honest, per §20.4)
+- **SHIPPED + headless-tested:** the entire pure substrate (grid/zoom, elevation/autotile, buildings,
+  map/version/extract/validation, jump/anim, control schemes, combat, mode rulesets, tower constraints,
+  top-down auto-path). 122 assertions.
+- **SHIPPED, browser-UNTESTED (inherently — canvas/DOM):** the `OverheadGame` runtime (play the demo via
+  Sandbox → "🗺 Overhead Demo"), the `OH_EDITOR` authoring loop (Sandbox → "🗺 New Overhead World"),
+  the Campaign Builder "Create World Map" entry.
+- **PARTIAL / scaffolded (data or hooks present, full loop next-session):** TD tower-firing + wave
+  runtime, MOBA lanes/cores/minion runtime (rulesets + constraints proven; gameplay loop not wired),
+  Arena-mode overhead translation (rules mapped, not run), redstone-in-overhead (reuse intended, not
+  wired), the Campaign World Map's World-PLACEMENT mode + lane preview (auto-path proven; node-binding
+  UI partial), stairs/ramps placeables (auto-climb covers transitions; explicit ramp placement stubbed),
+  editor refinements (hover-expand tabs, MRU hotlist, line-interpolated drag brush, path/redstone
+  placement, server publish), Test-Mode "relink" UI (the model exists; no editor button yet),
+  Extract-Map UI (the model + matrix exist; no editor button yet).
+- **NOT built (explicitly out of scope §17):** Sports/RTS, MOBA hero mechanics, full LOS/ranged-blocking
+  (architected only), NPCs/Villagers (roadmap), touch controls, multiplayer (architected via the same
+  players[] intent, solo-only runtime).
+- **Least-confident / test-here first (per §20.5):** elevation rendering + autotile look, jump
+  edge-detection landing feel, the overhead limb animation, the editor paint/zoom/pan feel, and the
+  three control schemes in real play (the maths under all of these are headless-proven; the FEEL is not).
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # CAMPAIGN MODE — MVP (2026-07-28, build 278, branch `campaign-mode-mvp`)
 # ═══════════════════════════════════════════════════════════════════════
 Built the Campaign MVP per Kevin's "Campaign Mode MVP" brief (2026-07-27). A lightweight

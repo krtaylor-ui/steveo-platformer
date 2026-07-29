@@ -1,4 +1,48 @@
-## CURRENT STATE (2026-07-28) — CAMPAIGN MODE MVP (build 278) BUILT on branch `campaign-mode-mvp` — NOT merged, awaiting Kevin's end-to-end playtest
+## CURRENT STATE (2026-07-28) — OVERHEAD ENGINE MVP FOUNDATION (build 279) BUILT on branch `overhead-engine` — NOT merged, largest session yet, browser-UNTESTED
+
+The **Overhead Engine** ("largest single session in the project's history", by Kevin's choice) is BUILT
+**depth-first** on branch `overhead-engine` (off `campaign-mode-mvp`, so §9 can hook the Campaign Builder).
+A shared top-down substrate — NOT a physics fork — for Campaign's overworld map, Tower Defense, MOBA, etc.
+as rulesets on one engine. Suite green (+122 overhead assertions across 4 new test files).
+
+**SHIPPED + headless-tested (the reusable foundation, built with pathfinder-level rigor):**
+`js/overhead/overhead-{grid,elevation,buildings,map,movement,controls,combat,modes,campaign-map}.js` —
+grid/zoom (fixed size+density, object-scale mode, live master zoom, smooth coords, scrolling clamped
+camera), elevation (2.5D staircase Y-offset + cliff + autotile edge bitmask + draw-order sort + tiered
+auto-climb + configurable `maxElevationJump` default 0; LOS is an architected STUB only), building taxonomy
+registry, Map-vs-World version-linking (snapshot default + non-committing Test overlay + Relink + placement
+validation) + Extract-Map tool (mode-aware validity matrix), jump (parabola lift, speed-carry, double-jump,
+hazard/gap-only landing edge-detection) + simple limb anim, three control schemes (Move-to-Aim / Twin-Stick /
+Free-Aim, world-force vs player-pref, weapon twin-stick override), cone/radius/line combat, mode rulesets +
+two-tier tower placement, top-down auto-path A*.
+
+**SHIPPED, browser-UNTESTED (canvas/DOM):** a **playable `OverheadGame` runtime** — Sandbox → **"🗺 Overhead
+Demo"** (rendered elevation/cliffs/autotile, scrolling zoomable camera, 3-scheme movement + jump + limb anim,
+cone melee, mobs three-state, Goal-Star win). A **functional `OH_EDITOR`** authoring loop — Sandbox → **"🗺 New
+Overhead World"** (paint terrain/elevation, place goal/spawn/buildings/mobs/items, brush, elevation selector,
+zoom/pan, Test, Save/Load localStorage). A Campaign Builder **"Create World Map"** entry (§9).
+
+**PARTIAL / next-session** (data or hooks present; full loop not wired): TD tower-firing + MOBA lanes/cores/
+minion runtime (rulesets + tower-placement constraints proven), Arena-overhead translation, redstone-in-
+overhead, the Campaign World-Placement mode + lane preview (auto-path proven; node-binding UI partial),
+explicit stairs/ramps placeables, editor refinements (hover tabs / MRU / line-drag brush / path & redstone
+placement / server publish), Test-Mode Relink + Extract-Map editor buttons.
+
+**Kevin's 4 up-front answers:** depth-first · jump hazard/gap-only (`maxElevationJump` 0, configurable) ·
+twin-stick override = indicator+transition · limb anim = simple best-effort. **Key finding:** the side-view
+Wayfinding pathfinder was NOT directly reusable for overhead node-connecting (side-view standable/gravity/
+jump-arc model) → a lean top-down A* was written instead. All detail + the 5 §19 resolutions + the honest
+shipped/partial/not-built breakdown are in `DECISIONS_LOG.md` (Overhead Engine entry); the standing spec +
+status in `FUTURE_ROADMAP.md` §24; the new NPC/Villager idea in §30.
+
+**Least-confident, test-here-first (per §20.5):** elevation rendering + autotile look, jump edge-detection
+landing feel, overhead limb animation, editor paint/zoom/pan feel, and the three control schemes in real play
+(the maths under all of these are headless-proven; the FEEL is browser-only). **Branch order:** `overhead-
+engine` sits on top of `campaign-mode-mvp` (also unmerged) — decide the merge order with Kevin.
+
+---
+
+## PRIOR STATE (2026-07-28) — CAMPAIGN MODE MVP (build 278) BUILT on branch `campaign-mode-mvp` — NOT merged, awaiting Kevin's end-to-end playtest
 
 Built the entire **Campaign MVP** per Kevin's "Campaign Mode MVP" brief, on a NEW branch `campaign-mode-mvp`
 (off `main` @ f816694) per his instruction to "build in a new branch and merge as we confirm working."
