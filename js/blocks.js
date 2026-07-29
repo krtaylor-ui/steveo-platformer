@@ -110,6 +110,7 @@ const BLOCK = Object.freeze({
   LAUNCH_RAMP:            91,   // §Moving Platforms — rail end that flings the platform on a real ballistic arc
   RAIL_GATE:              92,   // §Moving Platforms — rail segment that blocks/allows passage by redstone or platform weight
   WEIGHT_PLATE:           93,   // §Weight Sensor — a SOLID full block that emits redstone while a player/mob/both stands ON TOP (config modal)
+  RAIL_SWITCH:            94,   // §Moving Platforms — a railroad switch: pivot + two routes, flips by redstone; platforms hand off to touching rails
 });
 
 // §Phase R — Redstone Lamp colours (click a placed lamp with the Lamp selected to cycle). One hue
@@ -252,6 +253,7 @@ const BLOCK_DATA = {
   [BLOCK.PULSE_CONVERTER]:   { name: 'Pulse Converter', hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
   [BLOCK.REDSTONE_LAMP]:     { name: 'Redstone Lamp',   hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
   [BLOCK.WEIGHT_PLATE]:      { name: 'Weight Sensor',   hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
+  [BLOCK.RAIL_SWITCH]:       { name: 'Rail Switch',     hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   // §Moving Platforms — the rail's grid cells are only solid in the 'Visible + Solid' visibility state
   // (game.js paints/clears them). Non-solid by default so a platform's anchor rides freely along it.
   [BLOCK.RAIL]:              { name: 'Rail',            hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
@@ -361,6 +363,7 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.PULSE_CONVERTER:        _drawPulseConverter(ctx, px, py, s, state.on, state.dir); break;
     case BLOCK.REDSTONE_LAMP:          _drawRedstoneLamp(ctx, px, py, s, state.on, state.colorIdx); break;
     case BLOCK.WEIGHT_PLATE:           _drawWeightPlate(ctx, px, py, s, state.on, state.trigger); break;
+    case BLOCK.RAIL_SWITCH:            _drawRailSwitchIcon(ctx, px, py, s);                        break;
     case BLOCK.RAIL:                   _drawRailBlock(ctx, px, py, s);                  break;
     case BLOCK.ANCHOR_BLOCK:           _drawAnchorBlock(ctx, px, py, s);               break;
     case BLOCK.DIRECTION_CONTROLLER:   _drawDirectionController(ctx, px, py, s);       break;
@@ -880,6 +883,18 @@ function _drawPressurePlate(ctx, px, py, s, pressed) {
   ctx.fillRect(px + 4, py + s - 6 + oy, s - 8, 4);
   ctx.fillStyle = '#AAA8A0';
   ctx.fillRect(px + 4, py + s - 6 + oy, s - 8, 2);
+}
+
+// §Rail Switch — palette icon: a Y-shaped junction (one track forking into two).
+function _drawRailSwitchIcon(ctx, px, py, s) {
+  const cx = px + s / 2, cy = py + s / 2;
+  ctx.strokeStyle = '#e0a83a'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(px + 5, cy + 6); ctx.lineTo(cx, cy);            // trunk in from bottom-left
+  ctx.lineTo(px + s - 5, py + 5);                            // route A (up-right)
+  ctx.moveTo(cx, cy); ctx.lineTo(px + s - 5, cy + 7);        // route B (right)
+  ctx.stroke();
+  ctx.fillStyle = '#ffd166'; ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2); ctx.fill();   // pivot
 }
 
 // §Weight Sensor — a full solid block with a pressure-pad top plate that sinks + glows when triggered.

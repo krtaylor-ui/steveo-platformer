@@ -534,6 +534,8 @@ class Game {
     this._rails       = [];        // [{id, cells:[{col,row}], vis:'solid'|'visible'|'invisible', loop, pauseNodes, ...}]
     this._nextRailId  = 0;
     this._railDraft   = null;      // { cells:[] } while drawing a new rail
+    this._switchDraft = null;      // §Rail Switch — { pivot?, a?, b? } while placing (pivot→A→B)
+    this._switchPopup = null;      // §Rail Switch — { id } config modal
     this._railEditNodes = null;    // { id, sel, extend, _lastIdx, _lastFrame } while dragging waypoints
     this._railCells   = new Set(); // "col,row" cells currently painted SOLID by visible+solid rails
     this._railPopup   = null;      // null | { id } — rail config modal
@@ -1589,8 +1591,9 @@ class Game {
       this._escWas = true;   // consume this Esc edge → escEdge below stays false, menu stays closed
     }
     // §Moving Platforms — Esc ends rail editing / cancels a rail draft (same pattern as tubes).
-    if (this.gameMode === 'sandbox' && this.input.isDown('Escape') && !this._escWas && (this._railEditNodes || this._railDraft)) {
+    if (this.gameMode === 'sandbox' && this.input.isDown('Escape') && !this._escWas && (this._railEditNodes || this._railDraft || this._switchDraft)) {
       if (this._railEditNodes) { this._railEditNodes = null; this._notify('Done editing rail', '#c9a54a', 90); }
+      else if (this._switchDraft) { this._switchDraft = null; this._notify('Rail Switch cancelled', '#c66', 80); }
       else { this._railDraft = null; this._notify('Rail cancelled', '#c66', 80); }
       this._escWas = true;
     }
@@ -2016,6 +2019,7 @@ class Game {
       if (this._platePopup)    { this._handlePlatePopupInput();    return; }
       if (this._lampPopup)     { this._handleLampPopupInput();     return; }
       if (this._trapdoorPopup) { this._handleTrapdoorPopupInput(); return; }
+      if (this._switchPopup)   { this._handleSwitchPopupInput();   return; }   // §Rail Switch config
       // §Classic Blocks — pipe-destination / block-contents config popup
       if (this._classicPopup) {
         this._handleClassicPopupInput();
@@ -3071,6 +3075,8 @@ class Game {
         this._placeLaunchRamp(hoverRow, hoverCol);                      // §Moving Platforms — set a rail's ballistic launch point
       } else if (this.sandbox.selectedBlock === BLOCK.RAIL_GATE && !this.input.mouse.altClicked) {
         this._placeRailGate(hoverRow, hoverCol);                        // §Moving Platforms — passage gate (redstone / weight)
+      } else if (this.sandbox.selectedBlock === BLOCK.RAIL_SWITCH && !this.input.mouse.altClicked) {
+        this._switchClick(hoverRow, hoverCol);                          // §Rail Switch — draft (pivot→A→B) or open config
       } else
       // Alt+Click → eyedropper: pick block under cursor
       if (this.input.mouse.altClicked) {
@@ -6513,6 +6519,7 @@ class Game {
       if (this._platePopup) this._drawPlatePopup(ctx);
       if (this._lampPopup) this._drawLampPopup(ctx);
       if (this._trapdoorPopup) this._drawTrapdoorPopup(ctx);
+      if (this._switchPopup) this._drawSwitchPopup(ctx);
       if (this._classicPopup) this._drawClassicPopup(ctx);
       if (this._tubePopup) this._drawTubePopup(ctx);
       if (this._railPopup) this._drawRailPopup(ctx);
@@ -8177,8 +8184,11 @@ class Game {
     }
     // §Moving Platforms — restore rails + platforms (waypoint paths + anchor-bound block groups).
     if (data && Array.isArray(data.rails)) {
-      this._rails = data.rails.map(r => ({ id: r.id, cells: r.cells || [], vis: r.vis || 'visible', loop: !!r.loop, angled: !!r.angled,
-        pauseNodes: r.pauseNodes || [], collideMode: r.collideMode || 'passthrough', speedSegments: r.speedSegments || [], launchAt: r.launchAt ?? null, launchDir: r.launchDir ?? null }));
+      this._rails = data.rails.map(r => r.isSwitch
+        ? { id: r.id, isSwitch: true, pivot: r.pivot, a: r.a, b: r.b, cells: [r.pivot, r.a], vis: r.vis || 'visible',
+            switchChannel: r.switchChannel ?? null, switchDur: r.switchDur ?? 20, switchState: r.switchState ?? 0, _anim: r.switchState ?? 0 }
+        : { id: r.id, cells: r.cells || [], vis: r.vis || 'visible', loop: !!r.loop, angled: !!r.angled,
+            pauseNodes: r.pauseNodes || [], collideMode: r.collideMode || 'passthrough', speedSegments: r.speedSegments || [], launchAt: r.launchAt ?? null, launchDir: r.launchDir ?? null });
       this._nextRailId = this._rails.reduce((m, r) => Math.max(m, r.id || 0), 0);
       this._railCells = null; this._reapplyRailGrid();
     }
@@ -18268,9 +18278,20 @@ class Game {
   // Sandbox-only; the path/config is frozen once a level is played.
   // ══════════════════════════════════════════════════════════════════════════════════════════
   _railPts(rail) {
+    if (rail.isSwitch) {
+      // §Rail Switch — a 2-point rail from the pivot to the CURRENTLY-selected route end (lerped by the
+      // animation), recomputed each call so the segment visibly rotates A↔B while switching.
+      const ctr = (c) => ({ x: c.col * BLOCK_SIZE + BLOCK_SIZE / 2, y: c.row * BLOCK_SIZE + BLOCK_SIZE / 2 });
+      const p = ctr(rail.pivot), a = ctr(rail.a), b = ctr(rail.b);
+      const t = Math.max(0, Math.min(1, rail._anim != null ? rail._anim : (rail.switchState || 0)));
+      return [p, { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }];
+    }
     if (!rail._pts) rail._pts = TRAVEL_TUBE.buildPolyline(rail.cells, BLOCK_SIZE, !!rail.angled);
     return rail._pts;
   }
+  // §Rail Switch — terminal cells (used by rail-to-rail handoff). Start = pivot; End = the live route end.
+  _railStartCell(r) { return r.isSwitch ? r.pivot : r.cells[0]; }
+  _railEndCell(r)   { return r.isSwitch ? ((r._anim != null ? r._anim : (r.switchState || 0)) < 0.5 ? r.a : r.b) : r.cells[r.cells.length - 1]; }
   _railFoot(rail) {
     if (!rail._foot) rail._foot = TRAVEL_TUBE.footprint(this._railPts(rail), BLOCK_SIZE);
     return rail._foot;
@@ -18279,6 +18300,15 @@ class Game {
   // hit-testing a click treats as "on the rail" (the anchor snaps here).
   _railCenterCells(rail) {
     if (rail._center) return rail._center;
+    if (rail.isSwitch) {
+      // Both routes count as "on the switch" for click hit-testing (static — the route cells don't move).
+      const set = new Set();
+      const line = (x0, y0, x1, y1) => { const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) * 2 + 1; for (let i = 0; i <= steps; i++) { const t = i / steps; set.add(Math.round(x0 + (x1 - x0) * t) + ',' + Math.round(y0 + (y1 - y0) * t)); } };
+      set.add(rail.pivot.col + ',' + rail.pivot.row);
+      line(rail.pivot.col, rail.pivot.row, rail.a.col, rail.a.row);
+      line(rail.pivot.col, rail.pivot.row, rail.b.col, rail.b.row);
+      rail._center = set; return set;
+    }
     const set = new Set();
     const pts = this._railPts(rail);
     if (!pts.length) { rail._center = set; return set; }
@@ -18307,6 +18337,7 @@ class Game {
   // A rail is a closed loop iff its first and last waypoints COINCIDE — purely automatic (connect the
   // ends → loop; move an end apart → open). No manual flag (that made "switch back to Open" a no-op).
   _railIsLoop(rail) {
+    if (rail.isSwitch) return false;
     const c = rail.cells;
     return c.length > 2 && c[0].col === c[c.length - 1].col && c[0].row === c[c.length - 1].row;
   }
@@ -18332,6 +18363,59 @@ class Game {
     this._rails.push(rail);
     this._reapplyRailGrid();
     this._notify(closeLoop ? 'Rail loop placed ✓ — click it to edit / set visibility' : 'Rail placed ✓ — click it to edit / set visibility', '#c9a54a', 160);
+  }
+  // ── §Rail Switch authoring ────────────────────────────────────────────────────────────────────
+  _switchClick(row, col) {
+    if (this._switchDraft) { this._switchDraftClick(row, col); return; }
+    const sw = (this._rails || []).find(r => r.isSwitch && r.pivot.col === col && r.pivot.row === row);
+    if (sw) { this._switchPopup = { id: sw.id }; return; }   // click the pivot of an existing switch → config
+    this._switchDraftClick(row, col);
+  }
+  _switchDraftClick(row, col) {
+    const d = (this._switchDraft = this._switchDraft || {});
+    if (!d.pivot) { d.pivot = { col, row }; this._notify('Rail Switch: pivot set — click ROUTE A end', '#e0a83a', 200); return; }
+    if (!d.a)     { if (col === d.pivot.col && row === d.pivot.row) return; d.a = { col, row }; this._notify('Rail Switch: click ROUTE B end', '#e0a83a', 200); return; }
+    if (col === d.pivot.col && row === d.pivot.row) return;
+    d.b = { col, row };
+    this._nextRailId = (this._nextRailId || 0) + 1;
+    const sw = { id: this._nextRailId, isSwitch: true, pivot: d.pivot, a: d.a, b: d.b, cells: [d.pivot, d.a],
+      switchChannel: null, switchDur: 20, switchState: 0, _anim: 0, vis: 'visible' };
+    this._rails.push(sw); this._switchDraft = null; this._switchPopup = { id: sw.id };
+    this._notify('Rail Switch placed — set trigger channel + switch time', '#e0a83a', 180);
+  }
+  _railSwitchById(id) { return (this._rails || []).find(r => r.isSwitch && r.id === id) || null; }
+  _handleSwitchPopupInput() {
+    const sw = this._switchPopup && this._railSwitchById(this._switchPopup.id);
+    if (!sw) { this._switchPopup = null; return; }
+    if (!this.input.mouse.clicked) return;
+    const mx = this.input.mouse.x, my = this.input.mouse.y;
+    const pw = 320, ph = 244, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
+    if (hit(px + pw - 30, py + 8, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._switchPopup = null; this.input.mouse.clicked = false; return; }
+    const nums = [...new Set([...this._transmitters.values()].map(t => t.number))].sort((a, b) => a - b);
+    if (hit(px + 20, py + 52, pw - 40, 30)) { const arr = [null, ...nums]; sw.switchChannel = arr[(arr.indexOf(sw.switchChannel) + 1) % arr.length]; }
+    else if (hit(px + 20, py + 92, pw - 40, 30)) { const opts = [8, 12, 20, 30, 45, 60]; const i = opts.indexOf(sw.switchDur || 20); sw.switchDur = opts[(i + 1) % opts.length]; }
+    else if (hit(px + 20, py + 132, pw - 40, 30)) { sw.switchState = sw.switchState ? 0 : 1; sw._anim = sw.switchState; }   // default route + preview
+    else if (hit(px + 20, py + 176, pw - 40, 30)) { this._rails = this._rails.filter(r => r !== sw); this._reapplyRailGrid(); this._switchPopup = null; this._notify('Rail Switch removed', '#c66', 100); }
+    this.input.mouse.clicked = false;
+  }
+  _drawSwitchPopup(ctx) {
+    const sw = this._switchPopup && this._railSwitchById(this._switchPopup.id);
+    if (!sw) { this._switchPopup = null; return; }
+    const pw = 320, ph = 244, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    ctx.save(); ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    _roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#2a2210'; ctx.fill(); ctx.strokeStyle = '#e0a83a'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#ffd98a'; ctx.font = 'bold 13px Courier New'; ctx.textAlign = 'center'; ctx.fillText('RAIL SWITCH', px + pw / 2, py + 20);
+    ctx.fillStyle = '#aaa'; ctx.font = 'bold 12px Courier New'; ctx.fillText('✕', px + pw - 19, py + 19);
+    const btn = (y, label, danger) => { _roundRect(ctx, px + 20, y, pw - 40, 30, 5); ctx.fillStyle = danger ? '#3a1d1d' : '#3a2e14'; ctx.fill(); ctx.strokeStyle = danger ? '#a55' : '#e0a83a'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = danger ? '#f0c0c0' : '#ffe6b0'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 15); };
+    btn(py + 52, 'Trigger channel: ' + (sw.switchChannel == null ? 'None (adjacent only)' : 'ch #' + sw.switchChannel));
+    btn(py + 92, 'Switch time: ' + (((sw.switchDur || 20) / 60).toFixed(2)) + 's');
+    btn(py + 132, 'Default route: ' + (sw.switchState ? 'B' : 'A'));
+    btn(py + 176, 'Remove', true);
+    ctx.fillStyle = '#c8b88a'; ctx.font = '9px Courier New';
+    ctx.fillText('Powered (channel OR adjacent redstone) → route B, else the default. Ends touching a rail hand off.', px + pw / 2, py + ph - 12);
+    ctx.restore();
   }
   // Repaint the SOLID-rail collision cells (centerline of every 'solid' rail). Mirrors _reapplyTubeGrid:
   // a cell is solid iff ANY solid rail covers it; stale cells cleared; never overwrites real blocks.
@@ -18410,6 +18494,33 @@ class Game {
     }
   }
 
+  // §Rail Switch — draw both routes faint + the active (pivot→live end) segment bright + the pivot hub.
+  _drawRailSwitch(ctx, rail, isSandbox) {
+    const ctr = (c) => ({ x: c.col * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.x, y: c.row * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.y });
+    const p = ctr(rail.pivot), a = ctr(rail.a), b = ctr(rail.b);
+    const t = Math.max(0, Math.min(1, rail._anim != null ? rail._anim : (rail.switchState || 0)));
+    const end = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    ctx.save();
+    ctx.setLineDash([4, 5]); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(224,168,58,0.35)';
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(a.x, a.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#ffcf5a'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+    ctx.fillStyle = '#e0a83a'; ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#5a3e10'; ctx.lineWidth = 1.5; ctx.stroke();
+    if (isSandbox) { ctx.fillStyle = '#ffe6b0'; ctx.font = 'bold 9px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText('A', a.x, a.y - 6); ctx.fillText('B', b.x, b.y - 6); }
+    ctx.restore();
+  }
+  _drawSwitchDraft(ctx) {
+    const d = this._switchDraft; if (!d || !d.pivot) return;
+    const ctr = (c) => ({ x: c.col * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.x, y: c.row * BLOCK_SIZE + BLOCK_SIZE / 2 - this.camera.y });
+    const p = ctr(d.pivot);
+    ctx.save(); ctx.strokeStyle = '#ffcf5a'; ctx.lineWidth = 2; ctx.setLineDash([4, 4]);
+    if (d.a) { const a = ctr(d.a); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(a.x, a.y); ctx.stroke(); }
+    ctx.setLineDash([]); ctx.fillStyle = '#ffcf5a'; ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
   // ── Rail rendering. Solid rails paint RAIL grid cells (drawn by level.draw); here we draw the
   // centerline overlay for 'visible' rails (play + sandbox) and the editor dashed path/nodes.
   _drawRails(ctx) {
@@ -18417,8 +18528,10 @@ class Game {
     // Draw the in-progress DRAFT first, so it shows live even before any rail exists (was gated
     // behind the _rails.length check below → the first rail's dots never appeared until it finished).
     if (isSandbox && this._railDraft && this._railDraft.cells.length) this._drawRailDraft(ctx);
+    if (isSandbox && this._switchDraft) this._drawSwitchDraft(ctx);
     if (!this._rails || !this._rails.length) return;
     for (const rail of this._rails) {
+      if (rail.isSwitch) { this._drawRailSwitch(ctx, rail, isSandbox); continue; }
       const pts = this._railPts(rail);
       if (pts.length < 2) continue;
       const vis = rail.vis || 'visible';
@@ -18819,9 +18932,53 @@ class Game {
   }
 
   // Per-frame movement + rider carry. Runs in play modes only.
+  // §Rail Switch — each frame, drive the target route from redstone (listen channel OR an adjacent
+  // signal) and ease the rotation toward it. _anim: 0 = route A, 1 = route B.
+  _updateRailSwitches() {
+    for (const r of (this._rails || [])) {
+      if (!r.isSwitch) continue;
+      const powered = (r.switchChannel != null && this._channelPowered(r.switchChannel)) || this._switchAdjacentPowered(r);
+      const target = powered ? 1 : (r.switchState || 0);
+      if (r._anim == null) r._anim = target;
+      const dur = Math.max(1, r.switchDur || 20);
+      if (r._anim < target) r._anim = Math.min(target, r._anim + 1 / dur);
+      else if (r._anim > target) r._anim = Math.max(target, r._anim - 1 / dur);
+    }
+  }
+  _switchAdjacentPowered(r) {
+    const p = r.pivot; if (!p) return false;
+    return this._cellPowered(p.col - 1, p.row) || this._cellPowered(p.col + 1, p.row) ||
+           this._cellPowered(p.col, p.row - 1) || this._cellPowered(p.col, p.row + 1);
+  }
+  // §Rail Switch — hand a platform off to another rail whose terminal coincides with the one it just
+  // reached. Only fires when a SWITCH is on one side (so plain rails keep bouncing as before). Re-bases
+  // the anchor reference so redstone/render/solid lookups stay aligned across the jump.
+  _transferPlatform(pl, fromRail, hitStart) {
+    if (this.frameCount < (pl._noTransferUntil || 0)) return false;
+    const term = hitStart ? this._railStartCell(fromRail) : this._railEndCell(fromRail);
+    if (!term) return false;
+    for (const r of (this._rails || [])) {
+      if (r === fromRail || r._disabled) continue;
+      if (!(fromRail.isSwitch || r.isSwitch)) continue;   // switch-involved handoffs only
+      const s = this._railStartCell(r), e = this._railEndCell(r);
+      let dist = null, dir = null;
+      if (s && s.col === term.col && s.row === term.row) { dist = 0; dir = 1; }
+      else if (e && e.col === term.col && e.row === term.row) { dist = this._railTotalLen(r); dir = -1; }
+      if (dist == null) continue;
+      const at = TRAVEL_TUBE.pointAt(this._railPts(r), dist);
+      pl.railId = r.id; pl._dist = dist; pl._dir = dir; pl._ax = at.x; pl._ay = at.y;
+      pl.anchorCol = Math.round((at.x - BLOCK_SIZE / 2) / BLOCK_SIZE); pl.anchorRow = Math.round((at.y - BLOCK_SIZE / 2) / BLOCK_SIZE);
+      pl._ax0 = at.x; pl._ay0 = at.y; pl._lastRsCol = pl.anchorCol; pl._lastRsRow = pl.anchorRow;
+      pl._noTransferUntil = this.frameCount + 3; pl._moving = true;
+      return true;
+    }
+    return false;
+  }
+
   _updatePlatforms() {
     if (this.gameMode === 'sandbox' || !this._platforms || !this._platforms.length) return;
     this._updateDirControllers();            // §8 — set each platform's _dir from its controller inputs
+    this._updateRailSwitches();              // §Rail Switch — flip routes by redstone + animate the rotation
     for (const pl of this._platforms) {
       if (pl._disabled || pl._destroyed) continue;
       pl._pax = pl._ax; pl._pay = pl._ay;              // remember previous anchor pos for the carry delta (both modes)
@@ -18838,6 +18995,8 @@ class Game {
         pl._prevDist = pl._dist;
         const res = MOVING_PLATFORM.advance(pl._dist, pl._dir, step, L, { loop: this._railIsLoop(rail), roundTrip: pl.returnMode !== 'oneway' });
         pl._dist = res.dist; pl._dir = res.dir;
+        // §Rail Switch — hand off to a rail whose terminal touches this rail's terminal (before bounce/stop).
+        if (res.atEnd && this._transferPlatform(pl, rail, res.dist <= 0.001)) continue;
         if (res.stopped && pl.returnMode === 'oneway') pl._moving = false;
         this._checkPlatformPauseArrival(pl, rail);      // §5 — did we reach a pause node?
         this._applyRailGates(pl, rail);                 // §7/§10 — a closed gate blocks passage

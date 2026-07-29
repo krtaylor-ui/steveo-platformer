@@ -157,7 +157,9 @@ const SandboxSaves = {
         items: ch.items.map(it => it ? { ...it } : null),
       })) : [],
       // §Moving Platforms — rails (waypoint paths) + platforms (anchor-bound block groups).
-      rails: rails ? rails.map(r => ({ id: r.id, cells: r.cells, vis: r.vis || 'visible', loop: !!r.loop, angled: !!r.angled, pauseNodes: r.pauseNodes || [], collideMode: r.collideMode || 'passthrough', speedSegments: r.speedSegments || [], launchAt: r.launchAt ?? null, launchDir: r.launchDir ?? null })) : [],
+      rails: rails ? rails.map(r => r.isSwitch
+              ? { id: r.id, isSwitch: true, pivot: r.pivot, a: r.a, b: r.b, vis: r.vis || 'visible', switchChannel: r.switchChannel ?? null, switchDur: r.switchDur ?? 20, switchState: r.switchState ?? 0 }
+              : { id: r.id, cells: r.cells, vis: r.vis || 'visible', loop: !!r.loop, angled: !!r.angled, pauseNodes: r.pauseNodes || [], collideMode: r.collideMode || 'passthrough', speedSegments: r.speedSegments || [], launchAt: r.launchAt ?? null, launchDir: r.launchDir ?? null }) : [],
       platforms: platforms ? platforms.map(p => ({ id: p.id, railId: p.railId, anchorCol: p.anchorCol, anchorRow: p.anchorRow, anchorDist: p.anchorDist, cells: p.cells, initialDir: p.initialDir, mode: p.mode, signalResponse: p.signalResponse, returnMode: p.returnMode, speed: p.speed, dirCtrl: p.dirCtrl || null, cog: !!p.cog, skin: p.skin || null })) : [],
       dirControllers: dirControllers ? [...dirControllers.values()].map(d => ({ col: d.col, row: d.row, lCh: d.lCh ?? null, rCh: d.rCh ?? null, skin: d.skin || null })) : [],
       speedSegs: speedSegs ? speedSegs.map(s => ({ id: s.id, railId: s.railId, cells: s.cells, targetSpeed: s.targetSpeed })) : [],
