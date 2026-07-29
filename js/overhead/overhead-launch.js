@@ -96,6 +96,24 @@
       ctx.strokeStyle = 'rgba(0,0,0,.16)'; ctx.strokeRect(x, y, cs, cs);
     },
 
+    // Elevation offset per level, in px (up AND left) — the diagonal "stacked cube"
+    // shift. Kept here so terrain + entities agree.
+    elevOffset(cs) { return cs * 0.22; },
+    // A stacked-cube tile: top shifted up-left by elev×Q, with darker SOUTH + EAST
+    // faces exposed toward lower/absent neighbours (east darkest). fx,fy = the
+    // FOOTPRINT (elev-0) top-left. Draw cells back→front (by r+c then elev).
+    drawTerrainCube(ctx, key, fx, fy, cs, elev, exposeS, exposeE) {
+      const Q = this.elevOffset(cs), base = P().terrainColor(key);
+      const tx = fx - elev * Q, ty = fy - elev * Q;   // shifted top
+      if (elev > 0) {
+        if (exposeS) { ctx.fillStyle = _shade(base, 0.4); ctx.beginPath(); ctx.moveTo(tx, ty + cs); ctx.lineTo(tx + cs, ty + cs); ctx.lineTo(fx + cs, fy + cs); ctx.lineTo(fx, fy + cs); ctx.closePath(); ctx.fill();
+          ctx.strokeStyle = 'rgba(0,0,0,.28)'; ctx.lineWidth = 1; for (let i = 1; i <= elev; i++) { const yy = ty + cs + (fy + cs - (ty + cs)) * (i / elev); const xx = tx + (fx - tx) * (i / elev); ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx + cs, yy); ctx.stroke(); } }
+        if (exposeE) { ctx.fillStyle = _shade(base, 0.55); ctx.beginPath(); ctx.moveTo(tx + cs, ty); ctx.lineTo(tx + cs, ty + cs); ctx.lineTo(fx + cs, fy + cs); ctx.lineTo(fx + cs, fy); ctx.closePath(); ctx.fill();
+          ctx.strokeStyle = 'rgba(0,0,0,.3)'; for (let i = 1; i <= elev; i++) { const xx = tx + cs + (fx + cs - (tx + cs)) * (i / elev); const yy = ty + (fy - ty) * (i / elev); ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx, yy + cs); ctx.stroke(); } }
+      }
+      this.drawTerrainTile(ctx, key, tx, ty, cs, elev);
+    },
+
     // ── 3D-extruded SIDE (front) face — noticeably darker than the top (§).
     // Drawn BELOW the top; the block in FRONT (next row, drawn later) covers it,
     // so only front/edge blocks and the drop of a raised block show a side. Each
@@ -179,6 +197,14 @@
       }
       if (typeId !== 'core' && typeId !== 'nexus' && typeId !== 'tower' && typeId !== 'portal' && typeId !== 'pipe') outline();
       ctx.restore();
+    },
+
+    // Placed items rendered as the actual item (weapon shape / coin), sized to the
+    // player (pass a player-scaled size, not a map-cell size).
+    drawItemSprite(ctx, itemKey, cx, cy, size) {
+      if (itemKey === 'coin' || !itemKey) { ctx.fillStyle = '#ffd94a'; ctx.beginPath(); ctx.arc(cx, cy, size * 0.32, 0, 7); ctx.fill(); ctx.strokeStyle = '#b8860b'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.beginPath(); ctx.arc(cx - size * 0.1, cy - size * 0.1, size * 0.08, 0, 7); ctx.fill(); return; }
+      const wk = itemKey === 'crossbow' ? 'bow' : itemKey;   // reuse the held-weapon shapes
+      ctx.save(); ctx.translate(cx - size * 0.45, cy); ctx.rotate(-0.35); this.drawWeapon(ctx, size * 0.62, wk); ctx.restore();
     },
 
     // Shared ramp/ladder icon (editor + runtime).

@@ -466,22 +466,25 @@
       const tl = OH_GRID.screenToWorld(g, this.cam, 0, 0), br = OH_GRID.screenToWorld(g, this.cam, CANVAS_W, CANVAS_H);
       const c0 = Math.max(0, (tl.x / g.cell | 0) - 1), c1 = Math.min(m.gridW - 1, (br.x / g.cell | 0) + 1);
       const r0 = Math.max(0, (tl.y / g.cell | 0) - 1), r1 = Math.min(m.gridH - 1, (br.y / g.cell | 0) + 1);
-      const LIFT = cs * 0.25;
-      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
-        const key = m.ground[r][c] || 'grass', elev = m.elevation[r][c] | 0;
-        const sp = S(c * g.cell, r * g.cell); const y = sp.y - elev * LIFT;
-        const hasFront = (r + 1 <= m.gridH - 1);
-        const frontElev = hasFront ? (m.elevation[r + 1][c] | 0) : 0;
-        const drop = hasFront ? (elev - frontElev) : Math.max(1, elev + 1);
-        OVERHEAD.drawTerrainSide(ctx, key, sp.x, y + cs, cs, drop > 0 ? drop * LIFT : 0, drop);
-        OVERHEAD.drawTerrainTile(ctx, key, sp.x, y, cs, elev);
-        if (elev > 0 && cs > 12) { ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.font = `${Math.max(7, cs * 0.28) | 0}px sans-serif`; ctx.textAlign = 'left'; ctx.fillText(String(elev), sp.x + 2, y + Math.max(9, cs * 0.36)); }
+      const Q = OVERHEAD.elevOffset(cs);
+      // Stacked-cube terrain, back-to-front (r+c then elev), matching the runtime.
+      const cells = [];
+      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) cells.push({ c, r, key: m.ground[r][c] || 'grass', e: m.elevation[r][c] | 0 });
+      cells.sort((a, b) => (a.r + a.c) - (b.r + b.c) || a.e - b.e);
+      for (const cl of cells) {
+        const sp = S(cl.c * g.cell, cl.r * g.cell);
+        const sN = (cl.r + 1 <= m.gridH - 1) ? (m.elevation[cl.r + 1][cl.c] | 0) : -1, eN = (cl.c + 1 <= m.gridW - 1) ? (m.elevation[cl.r][cl.c + 1] | 0) : -1;
+        OVERHEAD.drawTerrainCube(ctx, cl.key, sp.x, sp.y, cs, cl.e, sN < cl.e, eN < cl.e);
+        const tx = sp.x - cl.e * Q, ty = sp.y - cl.e * Q;
+        if (cl.e === this.elevLevel && cl.e >= 0) { ctx.fillStyle = 'rgba(255,255,150,.22)'; ctx.fillRect(tx, ty, cs, cs); }   // highlight the active elevation
+        if (cl.e > 0 && cs > 12) { ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.font = `${Math.max(7, cs * 0.28) | 0}px sans-serif`; ctx.textAlign = 'left'; ctx.fillText(String(cl.e), tx + 2, ty + Math.max(9, cs * 0.36)); }
       }
       // Entities.
-      for (const b of this.world.buildings) { const t = OH_BUILDINGS.get(b.typeId); const w = (t ? t.footprint.w : 1) * cs, h = (t ? t.footprint.h : 1) * cs; const sp = S(b.col * g.cell, b.row * g.cell); OVERHEAD.drawBuilding(ctx, b.typeId, sp.x, sp.y, w, h, Math.min(1, cs / 28), b.skin || 'default');
-        if ((b.typeId === 'portal' || b.typeId === 'pipe') && cs > 8) { ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.beginPath(); ctx.arc(sp.x + w / 2, sp.y + cs * 0.4, cs * 0.32, 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = `bold ${(cs * 0.4) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('#' + this._portalNum(b), sp.x + w / 2, sp.y + cs * 0.4); ctx.textBaseline = 'alphabetic'; } }
-      for (const mo of this.world.mobs) { const d = P().OH_MOB_BY_KEY[mo.type] || P().OH_MOBS[0]; const sp = S((mo.col + 0.5) * g.cell, (mo.row + 0.5) * g.cell); ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(sp.x, sp.y, cs * 0.34, 0, 7); ctx.fill(); }
-      for (const it of this.world.items) { const d = P().OH_ITEM_BY_KEY[it.itemKey] || P().OH_ITEMS[0]; const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(sp.x, sp.y, cs * 0.24, 0, 7); ctx.fill(); }
+      const unitPx = g.cell * (g.density || 1) * g.masterZoom;   // player-scale in editor px
+      for (const b of this.world.buildings) { const t = OH_BUILDINGS.get(b.typeId); const w = (t ? t.footprint.w : 1) * cs, h = (t ? t.footprint.h : 1) * cs; const lv = (b.level || 0); const sp = S(b.col * g.cell, b.row * g.cell); const bx = sp.x - lv * Q, by = sp.y - lv * Q; OVERHEAD.drawBuilding(ctx, b.typeId, bx, by, w, h, Math.min(1, cs / 28), b.skin || 'default');
+        if (b.typeId === 'portal' || b.typeId === 'pipe') { const br = Math.max(11, cs * 0.5), cyN = by + cs * 0.4; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.beginPath(); ctx.arc(bx + w / 2, cyN, br, 0, 7); ctx.fill(); ctx.strokeStyle = '#b56bde'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(12, cs * 0.55) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('#' + this._portalNum(b), bx + w / 2, cyN); ctx.textBaseline = 'alphabetic'; } }
+      for (const mo of this.world.mobs) { const d = P().OH_MOB_BY_KEY[mo.type] || P().OH_MOBS[0]; const sp = S((mo.col + 0.5) * g.cell, (mo.row + 0.5) * g.cell); ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(sp.x, sp.y, unitPx * 0.34, 0, 7); ctx.fill(); }
+      for (const it of this.world.items) { const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); OVERHEAD.drawItemSprite(ctx, it.itemKey, sp.x, sp.y, unitPx * 0.8); }
       for (const spn of (this.world.spawns || [])) { const sp = S((spn.col + 0.5) * g.cell, (spn.row + 0.5) * g.cell); ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; ctx.strokeRect(sp.x - cs * 0.42, sp.y - cs * 0.42, cs * 0.84, cs * 0.84); if (cs > 14) { ctx.fillStyle = '#4aa3ff'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('P1', sp.x, sp.y + 3); } }
       for (const rp of (this.world.ramps || [])) { const sp = S((rp.col + 0.5) * g.cell, (rp.row + 0.5) * g.cell); this._drawRampIcon(ctx, rp.kind, sp.x, sp.y, cs); }
       if (this.world.goal) { const gc = (typeof GOAL_COLORS !== 'undefined' && GOAL_COLORS[this.world.goal.color || 0]) || { hex: '#ffd700' }; const sp = S((this.world.goal.col + 1) * g.cell, (this.world.goal.row + 1) * g.cell); ctx.fillStyle = gc.hex; ctx.font = `${(cs * 1.8) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.6); }

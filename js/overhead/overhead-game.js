@@ -288,21 +288,21 @@
     _buildTerrainCache() {
       const g = this.grid, cell = g.cell;
       const worldW = g.gridW * cell, worldH = g.gridH * cell;
-      const LIFT = cell * 0.25;
-      // Max elevation → top padding so the highest tiles fit above row 0.
+      const Q = OVERHEAD.elevOffset(cell);
       let maxE = 0; for (let r = 0; r < g.gridH; r++) { const row = this.elevation[r]; if (row) for (let c = 0; c < g.gridW; c++) if ((row[c] | 0) > maxE) maxE = row[c] | 0; }
-      const pad = Math.ceil(maxE * LIFT + cell);
+      const pad = Math.ceil(maxE * Q + cell);   // up-left offset needs pad on BOTH axes
       this._cachePad = pad;
-      const cv = document.createElement('canvas'); cv.width = Math.max(1, worldW); cv.height = Math.max(1, worldH + pad);
+      const cv = document.createElement('canvas'); cv.width = Math.max(1, worldW + pad); cv.height = Math.max(1, worldH + pad);
       const cx = cv.getContext('2d');
-      for (let r = 0; r < g.gridH; r++) for (let c = 0; c < g.gridW; c++) {
-        const k = this._key(c, r); if (k == null) continue; const elev = this._elev(c, r);
-        const x = c * cell, y = r * cell - elev * LIFT + pad;
-        const hasFront = (r + 1 <= g.gridH - 1) && this._key(c, r + 1) != null;
-        const frontElev = hasFront ? this._elev(c, r + 1) : 0;
-        const drop = hasFront ? (elev - frontElev) : Math.max(1, elev + 1);
-        OVERHEAD.drawTerrainSide(cx, k, x, y + cell, cell, drop > 0 ? drop * LIFT : 0, drop);
-        OVERHEAD.drawTerrainTile(cx, k, x, y, cell, elev);
+      // Back-to-front: up-left = farther (drawn first), bottom-right = closer. Sort
+      // by (r+c) then elevation so cubes overlap correctly.
+      const cells = [];
+      for (let r = 0; r < g.gridH; r++) for (let c = 0; c < g.gridW; c++) { const k = this._key(c, r); if (k == null) continue; cells.push({ c, r, k, e: this._elev(c, r) }); }
+      cells.sort((a, b) => (a.r + a.c) - (b.r + b.c) || a.e - b.e);
+      for (const cl of cells) {
+        const fx = cl.c * cell + pad, fy = cl.r * cell + pad;
+        const sN = (cl.r + 1 <= g.gridH - 1) ? this._elev(cl.c, cl.r + 1) : -1, eN = (cl.c + 1 <= g.gridW - 1) ? this._elev(cl.c + 1, cl.r) : -1;
+        OVERHEAD.drawTerrainCube(cx, cl.k, fx, fy, cell, cl.e, sN < cl.e, eN < cl.e);
       }
       this._terrainCache = cv;
     }
@@ -323,7 +323,7 @@
       if (!this._terrainCache) this._buildTerrainCache();
       const tc = this._terrainCache, pad = this._cachePad;
       // World region visible → source rect in the cache (which has a `pad` top margin).
-      const sx = this.camera.x, sy = this.camera.y + pad, sw = CANVAS_W / z, sh = CANVAS_H / z;
+      const sx = this.camera.x + pad, sy = this.camera.y + pad, sw = CANVAS_W / z, sh = CANVAS_H / z;
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(tc, sx, sy, sw, sh, 0, 0, CANVAS_W, CANVAS_H);
       for (const rp of this._rampList) { const sp = S((rp.col + 0.5) * g.cell, (rp.row + 0.5) * g.cell); OVERHEAD.drawRampIcon(ctx, rp.kind, sp.x, sp.y, cs); }
@@ -340,7 +340,7 @@
         const t = OH_BUILDINGS.get(b.typeId), fw = (t ? t.footprint.w : 1), fh = (t ? t.footprint.h : 1);
         const key = b.col + ',' + b.row, sp = S((b.col + fw / 2) * g.cell, (b.row + fh / 2) * g.cell);
         if (this._portalGlow && this._portalGlow.keys.indexOf(key) >= 0) { const a = 0.35 + 0.35 * Math.sin(this._portalGlow.t * 0.5); ctx.fillStyle = `rgba(180,90,230,${a})`; ctx.beginPath(); ctx.ellipse(sp.x, sp.y, fw * cs * 0.5, fh * cs * 0.5, 0, 0, 7); ctx.fill(); }
-        if (cs > 8) { const n = this._portalIndex.get(key); ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.beginPath(); ctx.arc(sp.x, sp.y - fh * cs * 0.4, cs * 0.34, 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = `bold ${(cs * 0.42) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('#' + n, sp.x, sp.y - fh * cs * 0.4); ctx.textBaseline = 'alphabetic'; }
+        { const n = this._portalIndex.get(key); const br = Math.max(11, cs * 0.55), by = sp.y - fh * cs * 0.45; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.beginPath(); ctx.arc(sp.x, by, br, 0, 7); ctx.fill(); ctx.strokeStyle = '#b56bde'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(12, cs * 0.6) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('#' + n, sp.x, by); ctx.textBaseline = 'alphabetic'; }
       }
       // Projectiles.
       ctx.fillStyle = '#eee'; for (const b of this._bolts) { const s = S(b.x, b.y); ctx.fillRect(s.x - 2, s.y - 2, 4, 4); }
@@ -352,7 +352,7 @@
       if (p._boom) { const b = p._boom; const s = S(b.x, b.y); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate((b.t || 0) * Math.PI * 8); OVERHEAD.drawWeapon(ctx, this.player.r * z, 'boomerang'); ctx.restore(); }
       // Overhang pass — redraw cells ≥ player.elev+2 so the player is hidden beneath.
       for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const k = this._key(c, r); if (k !== 'leaves') continue; const elev = this._elev(c, r); if (elev <= this.player.elev) continue;
-        const sp = S(c * g.cell, r * g.cell); const y = sp.y - elev * (cs * 0.25); ctx.globalAlpha = 0.96; OVERHEAD.drawTerrainTile(ctx, k, sp.x, y, cs, elev); ctx.globalAlpha = 1; }
+        const Q = OVERHEAD.elevOffset(cs); const sp = S(c * g.cell, r * g.cell); ctx.globalAlpha = 0.96; OVERHEAD.drawTerrainTile(ctx, k, sp.x - elev * Q, sp.y - elev * Q, cs, elev); ctx.globalAlpha = 1; }
       // Hidden indicator (designer opt-in).
       if (this.player.hidden && this.showHidden) { const s = S(this.player.x, this.player.y); ctx.strokeStyle = 'rgba(120,200,255,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s.x, s.y, cs * 0.4, 0, 7); ctx.stroke(); }
       this._drawHUD(ctx);
@@ -360,14 +360,14 @@
 
     _drawEntity(e, S, z, cs) {
       const ctx = this.ctx, g = this.grid;
-      if (e.kind === 'b') { const b = e.ref, t = OH_BUILDINGS.get(b.typeId); const sp = S(b.col * g.cell, b.row * g.cell); const w = (t ? t.footprint.w : 1) * cs, h = (t ? t.footprint.h : 1) * cs; const lift = -(b.level || 0) * cs * 0.25; OVERHEAD.drawBuilding(ctx, b.typeId, sp.x, sp.y - h + cs + lift, w, h, Math.min(1, cs / 28), b.skin || 'default'); }
-      else if (e.kind === 'i') { const it = e.ref, d = P().OH_ITEM_BY_KEY[it.itemKey] || P().OH_ITEMS[0]; const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(sp.x, sp.y, cs * 0.24, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.stroke(); }
+      if (e.kind === 'b') { const b = e.ref, t = OH_BUILDINGS.get(b.typeId); const sp = S(b.col * g.cell, b.row * g.cell); const w = (t ? t.footprint.w : 1) * cs, h = (t ? t.footprint.h : 1) * cs; const Q = OVERHEAD.elevOffset(cs), lv = (b.level || 0); OVERHEAD.drawBuilding(ctx, b.typeId, sp.x - lv * Q, sp.y - h + cs - lv * Q, w, h, Math.min(1, cs / 28), b.skin || 'default'); }
+      else if (e.kind === 'i') { const it = e.ref; const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); OVERHEAD.drawItemSprite(ctx, it.itemKey, sp.x, sp.y, this.unit * z * 0.8); }
       else if (e.kind === 'm') { this._drawMob(e.ref, S, z, cs); }
       else if (e.kind === 'p') { this._drawPlayer(S, z, cs); }
     }
 
     _drawMob(m, S, z, cs) {
-      const ctx = this.ctx; const sp = S(m.x, m.y); const rr = m.r * z;
+      const ctx = this.ctx; const eo = -(m.elev || 0) * OVERHEAD.elevOffset(cs); const raw = S(m.x, m.y); const sp = { x: raw.x + eo, y: raw.y + eo }; const rr = m.r * z;
       const ang = Math.atan2(this.player.y - m.y, this.player.x - m.x);   // mobs face the player
       ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(sp.x, sp.y + rr * 0.55, rr * 0.9, rr * 0.5, 0, 0, 7); ctx.fill();
       OVERHEAD.drawOverheadMob(ctx, sp.x, sp.y, rr, m._dist || 0, m.state === 'chase', ang, m.type, (m._moveAngle != null ? m._moveAngle : ang));
@@ -378,16 +378,16 @@
 
     _drawPlayer(S, z, cs) {
       const ctx = this.ctx, p = this.player;
-      const elevPx = -p.elev * cs * 0.25;                        // elevation, UP
+      const eo = -p.elev * OVERHEAD.elevOffset(cs);              // elevation offset (up AND left)
       // Jump = a small UP float + a slight SCALE-UP ("getting closer"), not a dip.
       const jp = OH_MOVE.jumpLift(p.jump), maxH = (p.jump && p.jump.height) || 1;
       const jf = maxH > 0 ? Math.min(1, jp / maxH) : 0;
       const floatUp = jp * (this.settings.jumpFloat != null ? this.settings.jumpFloat : 0.4) * z;
       const scaleF = 1 + jf * (this.settings.jumpScale != null ? this.settings.jumpScale : 0.22);
-      const sp = S(p.x, p.y); const cx = sp.x, cy = sp.y + elevPx - floatUp; const rr = p.r * z * scaleF;
+      const sp = S(p.x, p.y); const cx = sp.x + eo, cy = sp.y + eo - floatUp; const rr = p.r * z * scaleF;
       // Ground shadow stays at the surface and shrinks as the sprite "rises".
       const ss = 1 - jf * 0.35;
-      ctx.fillStyle = `rgba(0,0,0,${0.32 * ss})`; ctx.beginPath(); ctx.ellipse(sp.x, sp.y + elevPx, rr * 0.85 * ss, rr * 0.5 * ss, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = `rgba(0,0,0,${0.32 * ss})`; ctx.beginPath(); ctx.ellipse(sp.x + eo, sp.y + eo, rr * 0.85 * ss, rr * 0.5 * ss, 0, 0, 7); ctx.fill();
       const moving = (this.input.isDown('KeyW') || this.input.isDown('KeyA') || this.input.isDown('KeyS') || this.input.isDown('KeyD') || this.input.isDown('ArrowUp') || this.input.isDown('ArrowLeft') || this.input.isDown('ArrowRight') || this.input.isDown('ArrowDown'));
       const alpha = (p.hidden && !this.showHidden) ? 0.9 : 1;
       ctx.globalAlpha = alpha;
