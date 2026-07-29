@@ -94,10 +94,13 @@
     _hazard(c, r) { const k = this._key(c, r); return !!k && P().isHazardKey(k); }
     _gap(c, r) { return this._key(c, r) == null; }
     _cellOf(x, y) { return OH_GRID.cellAt(this.grid, x, y); }
-    // Buildings are all NON-solid for now (Kevin: block-based solid buildings come
-    // later). Portals/pipes use proximity + the E button, not step-on, so solidity
-    // isn't needed for them.
-    _buildingSolidAt() { return false; }
+    // All buildings are SOLID — you can't walk through any of them (portals
+    // included; you use those by standing NEXT to them + E).
+    _buildingSolidAt(col, row) {
+      for (const b of this.buildings) { const t = OH_BUILDINGS.get(b.typeId); if (!t) continue;
+        if (col >= b.col && col < b.col + t.footprint.w && row >= b.row && row < b.row + t.footprint.h) return true; }
+      return false;
+    }
 
     _loop() { if (!this._running) return; try { this._update(); this._render(); } catch (e) { console.error('OverheadGame', e); } this.input.flush(); requestAnimationFrame(this._loop); }
 
@@ -137,7 +140,7 @@
 
       // Jump.
       const airborneBefore = p.jump && p.jump.jumping;
-      if (raw.jumpBtn) { if (!airborneBefore) p.jump = OH_MOVE.startJump({ moveX: mv.x * p.speed, moveY: mv.y * p.speed, startElev: p.elev }); else if (this.settings.doubleJump !== false && OH_MOVE.canDoubleJump(p.jump)) OH_MOVE.doubleJump(p.jump); }
+      if (raw.jumpBtn) { if (!airborneBefore) { p.jump = OH_MOVE.startJump({ moveX: mv.x * p.speed, moveY: mv.y * p.speed, startElev: p.elev }); p._jumpFrom = { x: p.x, y: p.y }; } else if (this.settings.doubleJump !== false && OH_MOVE.canDoubleJump(p.jump)) OH_MOVE.doubleJump(p.jump); }
       const airborne = p.jump && p.jump.jumping;
       this._moveWithCollision(p, intent.move.x * p.speed, intent.move.y * p.speed, airborne);
       if (moving) { p.dist += Math.hypot(intent.move.x, intent.move.y) * p.speed; p.moveAngle = Math.atan2(intent.move.y, intent.move.x); }
@@ -159,17 +162,20 @@
       // Portals / pipes. PROXIMITY + the E button (both types now — no accidental
       // walk-through). The nearest in-range one shows a glow prompt; press E to use.
       if (this._portalGlow && --this._portalGlow.t <= 0) this._portalGlow = null;
-      { const useR = this.unit * 1.4; let near = null, nk = null, nd = useR;
-        for (const [key, ctr] of this._portalCenter) { const dd = Math.hypot(ctr.x - p.x, ctr.y - p.y); if (dd < nd) { nd = dd; nk = key; near = this._portalByKey.get(key); } }
+      { const useR = this.unit * 1.6; let near = null, nk = null, nd = useR;
+        // Proximity to the nearest FOOTPRINT CELL (so you can trigger a big portal
+        // by standing adjacent — the buildings are solid, you can't stand on it).
+        for (const [ck, b] of this._portalCells) { const [cc, rr] = ck.split(',').map(Number); const dx = (cc + 0.5) * this.grid.cell - p.x, dy = (rr + 0.5) * this.grid.cell - p.y; const dd = Math.hypot(dx, dy); if (dd < nd) { nd = dd; near = b; nk = b.col + ',' + b.row; } }
         this._portalPrompt = near ? nk : null;
         if (near && !this._portalCd && intent.action) {
           const cfg = near.config || {};
           if (cfg.isGoal) { this._wonExitColor = (this.goal && this.goal.color) || 0; this._win(); }
-          else if (cfg.dest && this._portalCenter.has(cfg.dest)) {
-            const d = this._portalCenter.get(cfg.dest); const c = this._cellOf(d.x, d.y);
-            // Land exactly on the destination centre + a valid elevation; guard so we
-            // don't immediately re-trigger the destination.
-            p.x = d.x; p.y = d.y; p.elev = this._elev(c.col, c.row); this._portalCd = true;
+          else if (cfg.dest && this._portalByKey.has(cfg.dest)) {
+            // Land just IN FRONT of (below) the destination portal — it's solid, so
+            // don't drop the player inside it. Guard against instant re-trigger.
+            const db = this._portalByKey.get(cfg.dest), dt = OH_BUILDINGS.get(db.typeId), dw = dt ? dt.footprint.w : 1, dh = dt ? dt.footprint.h : 1;
+            const px = (db.col + dw / 2) * this.grid.cell, py = (db.row + dh + 0.5) * this.grid.cell;
+            const c = this._cellOf(px, py); p.x = px; p.y = py; p.elev = this._elev(c.col, c.row); this._portalCd = true;
             this._portalGlow = { keys: [nk, cfg.dest], t: 42 };
           }
         }
@@ -213,8 +219,11 @@
       const c = this._cellOf(p.x, p.y);
       const res = OH_MOVE.landingValid(p.jump, { landingIsGap: this._gap(c.col, c.row), landingIsHazard: this._hazard(c.col, c.row),
         landingIsSolidGround: this._key(c.col, c.row) != null, elevDelta: this._elev(c.col, c.row) - p.jump.startElev });
-      if (!res.valid) { if (res.reason === 'hazard') this._hurt(4, 'Hazard'); else if (res.reason === 'gap') this._fall('Missed the jump'); }
-      else { const d = this._elev(c.col, c.row) - p.elev; if (d <= this.playerH) p.elev = this._elev(c.col, c.row); }
+      if (!res.valid) {
+        if (res.reason === 'hazard') this._hurt(4, 'Hazard');
+        else if (res.reason === 'gap') this._fall('Missed the jump');
+        else if (p._jumpFrom) { p.x = p._jumpFrom.x; p.y = p._jumpFrom.y; }   // tried to land on too-high ground → bounce back (no jump-mounting walls)
+      } else { const d = this._elev(c.col, c.row) - p.elev; if (d <= this.playerH) p.elev = this._elev(c.col, c.row); }
     }
 
     // ── Weapons ────────────────────────────────────────────────────────────
@@ -380,6 +389,7 @@
       const ctx = this.ctx; const eo = -(m.elev || 0) * OVERHEAD.elevOffset(cs); const raw = S(m.x, m.y); const sp = { x: raw.x + eo, y: raw.y + eo }; const rr = m.r * z;
       const ang = Math.atan2(this.player.y - m.y, this.player.x - m.x);   // mobs face the player
       ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(sp.x, sp.y + rr * 0.55, rr * 0.9, rr * 0.5, 0, 0, 7); ctx.fill();
+      ctx.strokeStyle = 'rgba(150,150,160,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sp.x, sp.y, rr * 1.15, 0, 7); ctx.stroke();   // grey outline (mob indicator)
       OVERHEAD.drawOverheadMob(ctx, sp.x, sp.y, rr, m._dist || 0, m.state === 'chase', ang, m.type, (m._moveAngle != null ? m._moveAngle : ang));
       if (m.state === 'chase') { ctx.fillStyle = '#ffd24a'; ctx.font = `bold ${(rr) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('!', sp.x, sp.y - rr * 1.6); }
       const maxHp = (P().OH_MOB_BY_KEY[m.type] || {}).hp || 8;

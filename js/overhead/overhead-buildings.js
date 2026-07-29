@@ -41,7 +41,7 @@
   const register = (d) => { REGISTRY[d.id] = d; return d; };
 
   // Footprints (w × h in grid cells) per Kevin's dimensions.
-  register(def('portal',      'Portal',   { footprint: { w: 4, h: 5 }, interactionType: 'enter', skinVariants: ['default', 'nether', 'end'], onInteract: 'teleport', color: '#7b3fb0' }));
+  register(def('portal',      'Portal',   { footprint: { w: 4, h: 1 }, interactionType: 'enter', skinVariants: ['default', 'nether', 'end'], onInteract: 'teleport', color: '#7b3fb0' }));
   register(def('pipe',        'Portal',   { footprint: { w: 2, h: 2 }, interactionType: 'enter', skinVariants: ['default'], onInteract: 'teleport', color: '#3fae66' }));
   register(def('healer',      'Healer',   { footprint: { w: 4, h: 4 }, interactionType: 'interact-on-approach', onInteract: 'heal', color: '#3fb07b' }));
   register(def('shop',        'Shop',     { footprint: { w: 4, h: 4 }, interactionType: 'enter', onInteract: 'shop', color: '#b0923f' }));

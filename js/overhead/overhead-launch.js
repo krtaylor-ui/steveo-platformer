@@ -105,6 +105,9 @@
     drawTerrainCube(ctx, key, fx, fy, cs, elev, exposeS, exposeE) {
       const Q = this.elevOffset(cs), base = P().terrainColor(key);
       const tx = fx - elev * Q, ty = fy - elev * Q;   // shifted top
+      // LEAVES are a floating canopy — draw only the top (no tall side faces down to
+      // the ground, which looked like leaf-sides through the lower elevations).
+      if (key === 'leaves') { this.drawTerrainTile(ctx, key, tx, ty, cs, elev); return; }
       if (elev > 0) {
         if (exposeS) { ctx.fillStyle = _shade(base, 0.4); ctx.beginPath(); ctx.moveTo(tx, ty + cs); ctx.lineTo(tx + cs, ty + cs); ctx.lineTo(fx + cs, fy + cs); ctx.lineTo(fx, fy + cs); ctx.closePath(); ctx.fill();
           ctx.strokeStyle = 'rgba(0,0,0,.28)'; ctx.lineWidth = 1; for (let i = 1; i <= elev; i++) { const yy = ty + cs + (fy + cs - (ty + cs)) * (i / elev); const xx = tx + (fx - tx) * (i / elev); ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx + cs, yy); ctx.stroke(); } }
@@ -146,20 +149,23 @@
       ctx.save();
       switch (typeId) {
         case 'portal': {
-          // A 4×5 obsidian frame (border) with a glowing-purple interior, each a
-          // little block-cube (up-left offset) so it reads 3D like the side view.
-          const cols = 4, rows = 5, mw = w / cols, mh = h / rows, mq = Math.min(mw, mh) * 0.22;
+          // A STANDING 4-wide × 5-tall obsidian frame, rising UP from the footprint
+          // base (footprint is 4×1) so it reads as a vertical portal covering ~5
+          // elevation levels, purple glowing centre. Each block is a little cube.
+          const cols = 4, rows = 5, bw = w / cols, bh = Math.max(6, cs * 0.72), lean = cs * 0.14;
+          const baseY = y + h;   // bottom edge of the footprint
           const blk = (bx, by, top, glow) => {
-            const tx = bx - mq, ty = by - mq;
-            ctx.fillStyle = _shade(top, 0.4); ctx.beginPath(); ctx.moveTo(tx, ty + mh); ctx.lineTo(tx + mw, ty + mh); ctx.lineTo(bx + mw, by + mh); ctx.lineTo(bx, by + mh); ctx.closePath(); ctx.fill();   // south face
-            ctx.fillStyle = _shade(top, 0.55); ctx.beginPath(); ctx.moveTo(tx + mw, ty); ctx.lineTo(tx + mw, ty + mh); ctx.lineTo(bx + mw, by + mh); ctx.lineTo(bx + mw, by); ctx.closePath(); ctx.fill();   // east face
-            ctx.fillStyle = top; ctx.fillRect(tx, ty, mw + 0.5, mh + 0.5);
-            if (glow) { ctx.fillStyle = 'rgba(200,140,255,.5)'; ctx.fillRect(tx + mw * 0.2, ty + mh * 0.2, mw * 0.6, mh * 0.6); }
-            ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.strokeRect(tx, ty, mw, mh);
+            ctx.fillStyle = _shade(top, 0.5); ctx.fillRect(bx, by, bw + 1, bh + 1);                 // block body (slightly dark)
+            ctx.fillStyle = top; ctx.fillRect(bx, by, bw + 1, bh * 0.66);                            // lit top portion
+            if (glow) { ctx.fillStyle = 'rgba(210,150,255,.55)'; ctx.fillRect(bx + bw * 0.15, by + bh * 0.1, bw * 0.7, bh * 0.8); }
+            ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.strokeRect(bx + 0.5, by + 0.5, bw, bh);
           };
-          for (let r = rows - 1; r >= 0; r--) for (let c = cols - 1; c >= 0; c--) {
-            const frame = (r === 0 || r === rows - 1 || c === 0 || c === cols - 1);
-            blk(x + c * mw, y + r * mh, frame ? '#2a2036' : '#9a5fe0', !frame);   // obsidian border / purple centre
+          for (let L = 0; L < rows; L++) {                 // L=0 bottom row, rises upward
+            const ry = baseY - (L + 1) * bh, lx = -L * lean;
+            for (let c = 0; c < cols; c++) {
+              const frame = (L === 0 || L === rows - 1 || c === 0 || c === cols - 1);
+              blk(x + c * bw + lx, ry, frame ? '#2a2036' : '#7b3fce', !frame);
+            }
           }
           break; }
         case 'pipe': {
