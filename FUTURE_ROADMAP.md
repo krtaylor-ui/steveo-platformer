@@ -1090,7 +1090,15 @@ This is really the same Skin Builder need at the "map-creator" scale — a mini-
 palette whose output becomes a building/portal skin. Deferred here so the base engine ships first; when
 built, the assembled block-grid becomes just another `skin` the render layer already dispatches on.
 
-## 32. Redstone in the Overhead Engine  *(deferred 2026-07-29 — NEXT BIG REBUILD, Kevin has queued it)*
+## 32. Redstone in the Overhead Engine  *(STEP 1 SHIPPED build 298 — grid-agnostic core + channels; more devices/config still to do)*
+
+**Done (build 298, branch `overhead-redstone-bridge`):** a NEW pure, grid-agnostic core `overhead-redstone.js`
+(`OH_REDSTONE`: levers/buttons, dust wire, lamps, tx/rx, a named-channel table, `evaluate()`), wired into the
+overhead runtime (evaluated per frame; levers flip on E) and editor (Lever/Dust/Lamp palette). The drawbridge
+consumes it via channels. **Still to do:** custom channel names + config modals; more devices (repeaters,
+comparators, logic gates, buttons with timers, pressure/weight plates); doors/other channel-driven outputs;
+and the original goal of **extracting the side-view `js/redstone.js` onto this same core** so both grids
+share one engine. The remaining plan (unchanged):
 
 Kevin wants the existing redstone engine (levers, dust, target block, pulse converter, tx/rx,
 adjacency) usable in Overhead worlds, with config modals — and has explicitly flagged it as the next major
@@ -1210,7 +1218,14 @@ affect the other? **Feasible — here's the shape + the limits.**
   inactive tick); LARGE if full concurrent simulation of both is required. Pairs naturally with §32 (redstone
   channels) and the Campaign multi-map container.
 
-## 36. Overhead BRIDGE item  *(spec captured 2026-07-29 — Kevin; deferred to a focused pass)*
+## 36. Overhead BRIDGE item  *(SHIPPED build 298 — walk-over-gap deck + guardrails + redstone drawbridge; 2-wide preset still to do)*
+
+**Done (build 298):** `world.bridges` cell layer; a closed deck spans pits/gaps (walkable, overrides terrain);
+Guardrails block/allow falling off the sides; a Drawbridge starts open and closes on its redstone channel
+(lever+drawbridge default to "gate"). Editor Bridge tool with Guardrails + Drawbridge toggles; ghosts/undo/erase.
+**Still to do:** the "2-wide preset" auto-stamp (bridges currently paint free-form, so you draw the width by
+hand); per-bridge channel selection in a config modal; and connecting-different-heights niceties (currently the
+creator sets each cell's elevation and the forgiving-ramp climb handles the transition). Original spec below.
 
 A placeable **bridge** that spans gaps/pits and connects cliff edges (possibly of different heights).
 Kevin's spec: a preset **2-block-wide** (character-sprite blocks) walkway, painted along a run, with a

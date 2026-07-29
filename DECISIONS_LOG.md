@@ -1,6 +1,38 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD ENGINE — BRIDGE ITEM + REDSTONE CORE (2026-07-29, build 298, branch `overhead-redstone-bridge` off `main`)
+# ═══════════════════════════════════════════════════════════════════════
+Builds 279–297 SHIPPED to `main` + deployed (fast-forward, commit 0d05667). Then a NEW work branch
+`overhead-redstone-bridge` for the two queued big pieces. Suite green (989 assertions); redstone/bridge
+headless harnesses + render smoke + probe clean. Browser-UNTESTED.
+
+- **Redstone core (§32 step 1 — the "gate"):** new PURE, grid-agnostic `js/overhead/overhead-redstone.js`
+  (`OH_REDSTONE`). Devices `{col,row,kind,on,channel}`: `lever`/`button` (sources; a channel makes them
+  wireless), `dust` (flood-propagating wire), `lamp`/`rx` (outputs), `tx` (re-broadcasts a channel while
+  powered). `evaluate()` returns `{powered, channels, conductive}`. KEY MODEL DECISION: only sources + dust
+  are *conductive* (carry power); outputs light up but never feed each other (fixed the first-cut bug where
+  adjacent outputs powered one another). **Named CHANNELS are the integration seam** reused by the drawbridge
+  (and later §35b cross-environment + the side-view engine). 12 headless assertions.
+- **Bridge item (§36):** `world.bridges = [{col,row,elev,rail,draw,channel}]` (a cell layer like ramps).
+  Collision: a CLOSED bridge deck overrides the underlying terrain (checked BEFORE the gap/pit logic so it
+  spans them) and is walkable at its elevation; GUARDRAILS (`rail`) block a sideways step off the deck onto a
+  gap/pit/lower cell (you leave only at the ends); no rails → you can fall off. A `_bridgeClosedAt` guard
+  keeps the post-move fall/pit/hazard checks from firing while you stand on a deck. Verified headless:
+  cross a railed bridge over a pit; guardrail blocks the side; no-rail lets you fall off.
+- **DRAWBRIDGE:** `draw:true` bridges start OPEN (the deck is absent → the underlying pit/gap applies) and
+  CLOSE (walkable) while `OH_REDSTONE.channelOn(channel)` is true. A Lever and a Drawbridge both default to
+  channel `"gate"`, so out of the box a lever flip closes the span. Verified end-to-end: open → blocked/died
+  in the pit; lever on → channel gate on → deck closes → cross.
+- **Runtime:** evaluates the network each frame (`this._rs`), a nearby LEVER toggles on **E** (before the
+  decoration notice), and `_drawBridges` / `_drawRedstone` render decks + devices via new shared
+  `OVERHEAD.drawBridgeCell` / `drawLever` / `drawDust` / `drawLamp` (reused by the editor).
+- **Editor:** a "Bridge & Redstone" palette group — Bridge (with Guardrails + Drawbridge toggles), Lever,
+  Dust, Lamp. Placement + erase + undo/redo (`bridges`/`redstone` added to the snapshot) + placement ghosts
+  all wired. Custom channel names, more devices (buttons/repeaters/gates), and config modals are the next
+  redstone follow-ups; the "2-wide preset" bridge stamp is also a follow-up (bridges paint free-form for now).
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD ENGINE — DODGE / MELEE / DEATH MICRO-FIXES (2026-07-29, build 297, branch `overhead-engine`)
 # ═══════════════════════════════════════════════════════════════════════
 Small pre-push polish (Kevin to browser-test, then push live). Suite green (977); harness + render smoke + probe clean.

@@ -23,6 +23,7 @@
     elevLevel: 1, brush: 1,
     shape: 'freehand',             // freehand | line | rect | circle
     shapeFill: false,              // false = outline (brush = width) | true = filled
+    _bridgeRail: true, _bridgeDraw: false,   // bridge tool options (guardrails / drawbridge)
     view: { mobs: true, items: true, buildings: true, elev: false },   // top-bar view filters
     _running: false, _dragging: false, _shift: false, _shapeAnchor: null, _shapeEnd: null,
     _hist: [], _histPos: -1,
@@ -134,14 +135,14 @@
         name, mode, viewMode: 'overhead', gameModeDefault: 'NRM',   // NRM keeps server validation happy
         controlScheme: scheme, angleLockDeg: 0, rules: {},
         mapSnapshot: { gridW: W, gridH: H, density, baseW, baseH, cell, objectScaleMode: 'independent', ground, elevation, decorations: [] },
-        buildings: [], mobs: [], items: [], spawns: [{ col: 1, row: H - 2 }], ramps: [],
+        buildings: [], mobs: [], items: [], spawns: [{ col: 1, row: H - 2 }], ramps: [], bridges: [], redstone: [],
         goal: null,
         settings: (typeof OH_SETTINGS !== 'undefined') ? OH_SETTINGS.defaults() : {},
       };
     },
 
     // ── History (undo/redo) ─────────────────────────────────────────────────
-    _snapshot() { return JSON.stringify({ map: this.world.mapSnapshot, b: this.world.buildings, m: this.world.mobs, i: this.world.items, s: this.world.spawns, g: this.world.goal, r: this.world.ramps, set: this.world.settings }); },
+    _snapshot() { return JSON.stringify({ map: this.world.mapSnapshot, b: this.world.buildings, m: this.world.mobs, i: this.world.items, s: this.world.spawns, g: this.world.goal, r: this.world.ramps, br: this.world.bridges, rs: this.world.redstone, set: this.world.settings }); },
     // History captures CONTENT + SETTINGS only (never zoom/scroll — those don't
     // snapshot). Each entry carries a description for the undo/redo notification.
     _pushHistory(desc) {
@@ -151,7 +152,7 @@
       this._hist.push({ s, d: desc || 'edit' }); this._histPos = this._hist.length - 1;
       if (this._hist.length > 60) { this._hist.shift(); this._histPos--; }
     },
-    _restore(snap) { const d = JSON.parse(snap); this.world.mapSnapshot = d.map; this.world.buildings = d.b; this.world.mobs = d.m; this.world.items = d.i; this.world.spawns = d.s; this.world.goal = d.g; if (d.r !== undefined) this.world.ramps = d.r; if (d.set !== undefined) this.world.settings = d.set; this._setupWorld(); },
+    _restore(snap) { const d = JSON.parse(snap); this.world.mapSnapshot = d.map; this.world.buildings = d.b; this.world.mobs = d.m; this.world.items = d.i; this.world.spawns = d.s; this.world.goal = d.g; if (d.r !== undefined) this.world.ramps = d.r; if (d.br !== undefined) this.world.bridges = d.br; if (d.rs !== undefined) this.world.redstone = d.rs; if (d.set !== undefined) this.world.settings = d.set; this._setupWorld(); },
     _paintDesc() { const t = this._shift ? 'erase' : this.tool;
       if (t === 'terrain') return 'paint ' + this.terrainKey; if (t === 'building') return 'place ' + this.buildingType;
       if (t === 'mob') return 'place ' + this.mobKey; if (t === 'item') return 'place ' + this.itemKey;
@@ -239,7 +240,15 @@
         grp('Terrain', this.tool === 'terrain' ? P().OH_TERRAIN_BY_KEY[this.terrainKey].name : '', terrOpts) +
         grp('Buildings', (this.tool === 'building' ? this.buildingType : this.tool === 'spawn' ? 'Spawn' : this.tool === 'goal' ? 'Goal' : ''), buildOpts) +
         grp('Mobs', this.tool === 'mob' ? P().OH_MOB_BY_KEY[this.mobKey].name : '', mobOpts) +
-        grp('Items', this.tool === 'item' ? P().OH_ITEM_BY_KEY[this.itemKey].name : '', itemOpts);
+        grp('Items', this.tool === 'item' ? P().OH_ITEM_BY_KEY[this.itemKey].name : '', itemOpts) +
+        grp('Bridge & Redstone', (this.tool === 'bridge' ? 'Bridge' : ['lever', 'dust', 'lamp'].includes(this.tool) ? this.tool : ''),
+          `<div class="opt ${this.tool === 'bridge' ? 'sel' : ''}" data-bridge="1">🌉 Bridge</div>`
+          + `<div class="opt small ${this._bridgeRail ? 'sel' : ''}" data-brail="1">${this._bridgeRail ? '☑' : '☐'} Guardrails</div>`
+          + `<div class="opt small ${this._bridgeDraw ? 'sel' : ''}" data-bdraw="1">${this._bridgeDraw ? '☑' : '☐'} Drawbridge (closes on redstone)</div>`
+          + `<div class="opt ${this.tool === 'lever' ? 'sel' : ''}" data-rs="lever">🔧 Lever (E to flip)</div>`
+          + `<div class="opt ${this.tool === 'dust' ? 'sel' : ''}" data-rs="dust">🟥 Redstone dust</div>`
+          + `<div class="opt ${this.tool === 'lamp' ? 'sel' : ''}" data-rs="lamp">💡 Lamp</div>`
+          + `<div class="opt small" style="color:#8fa0bd">Lever + Drawbridge share channel "gate" by default.</div>`);
       const g = (id) => document.getElementById(id);
       g('oh-undo').onclick = () => this.undo(); g('oh-redo').onclick = () => this.redo();
       g('oh-zin').onclick = () => OH_GRID.zoomBy(this.grid, 1.15); g('oh-zout').onclick = () => OH_GRID.zoomBy(this.grid, 0.87);
@@ -260,6 +269,10 @@
       rail.querySelectorAll('[data-tree]').forEach((el) => el.onclick = () => { this.tool = 'tree'; this._renderBar(); });
       rail.querySelectorAll('[data-mob]').forEach((el) => el.onclick = () => { this.tool = 'mob'; this.mobKey = el.dataset.mob; this._renderBar(); });
       rail.querySelectorAll('[data-item]').forEach((el) => el.onclick = () => { this.tool = 'item'; this.itemKey = el.dataset.item; this._renderBar(); });
+      rail.querySelectorAll('[data-bridge]').forEach((el) => el.onclick = () => { this.tool = 'bridge'; this._renderBar(); });
+      rail.querySelectorAll('[data-brail]').forEach((el) => el.onclick = () => { this._bridgeRail = !this._bridgeRail; this._renderBar(); });
+      rail.querySelectorAll('[data-bdraw]').forEach((el) => el.onclick = () => { this._bridgeDraw = !this._bridgeDraw; this._renderBar(); });
+      rail.querySelectorAll('[data-rs]').forEach((el) => el.onclick = () => { this.tool = el.dataset.rs; this._renderBar(); });
     },
     _esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); },
 
@@ -336,6 +349,8 @@
         this.world.mobs = this.world.mobs.filter((x) => !(x.col === c && x.row === r));
         this.world.items = this.world.items.filter((x) => !(x.col === c && x.row === r));
         this.world.ramps = (this.world.ramps || []).filter((x) => !(x.col === c && x.row === r));
+        this.world.bridges = (this.world.bridges || []).filter((x) => !(x.col === c && x.row === r));
+        this.world.redstone = (this.world.redstone || []).filter((x) => !(x.col === c && x.row === r));
         return;
       }
       m.ground[r][c] = this.terrainKey; m.elevation[r][c] = this.elevLevel;
@@ -350,6 +365,8 @@
       if (this.tool === 'goal') { this.world.goal = { col, row }; }
       else if (this.tool === 'spawn') { this.world.spawns = [{ col, row }]; }
       else if (this.tool === 'ramp' || this.tool === 'ladder') { this.world.ramps = this.world.ramps || []; if (!this.world.ramps.some((x) => x.col === col && x.row === row)) this.world.ramps.push({ col, row, kind: this.tool }); }
+      else if (this.tool === 'bridge') { this.world.bridges = this.world.bridges || []; if (!this.world.bridges.some((x) => x.col === col && x.row === row)) this.world.bridges.push({ col, row, elev: this.elevLevel, rail: !!this._bridgeRail, draw: !!this._bridgeDraw, channel: this._bridgeDraw ? 'gate' : null }); }
+      else if (this.tool === 'lever' || this.tool === 'dust' || this.tool === 'lamp') { this.world.redstone = this.world.redstone || []; if (!this.world.redstone.some((x) => x.col === col && x.row === row)) { const dev = { col, row, kind: this.tool }; if (this.tool === 'lever') { dev.on = false; dev.channel = 'gate'; } this.world.redstone.push(dev); } }
       else if (this.tool === 'building') { if (!this.world.buildings.some((b) => b.col === col && b.row === row)) this.world.buildings.push(OH_BUILDINGS.place(this.buildingType, col, row, { level: this.elevLevel })); }
       else if (this.tool === 'mob') { const d = P().OH_MOB_BY_KEY[this.mobKey]; this.world.mobs.push({ col, row, type: this.mobKey, hp: d.hp, speed: d.speed, detect: d.detect }); }
       else if (this.tool === 'item') { this.world.items.push({ col, row, kind: P().OH_ITEM_BY_KEY[this.itemKey].kind, weapon: P().OH_ITEM_BY_KEY[this.itemKey].weapon, itemKey: this.itemKey }); }
@@ -544,6 +561,17 @@
       if (this.view.items) for (const it of this.world.items) { const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); OVERHEAD.drawItemSprite(ctx, it.itemKey, sp.x, sp.y, unitPx * 0.8); }
       for (const spn of (this.world.spawns || [])) { const sp = S((spn.col + 0.5) * g.cell, (spn.row + 0.5) * g.cell); ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; ctx.strokeRect(sp.x - cs * 0.42, sp.y - cs * 0.42, cs * 0.84, cs * 0.84); if (cs > 14) { ctx.fillStyle = '#4aa3ff'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('P1', sp.x, sp.y + 3); } }
       for (const rp of (this.world.ramps || [])) { const sp = S((rp.col + 0.5) * g.cell, (rp.row + 0.5) * g.cell); const dir = OVERHEAD.rampDir((c, r) => (m.elevation[r] ? (m.elevation[r][c] | 0) : 0), rp.col, rp.row); OVERHEAD.drawRampIcon(ctx, rp.kind, sp.x, sp.y, cs, dir); }
+      // Bridges (always shown as the deck in the editor; drawbridges get a "gate" tag).
+      const bAt = new Set((this.world.bridges || []).map((b) => b.col + ',' + b.row));
+      for (const b of (this.world.bridges || [])) { const sp = S(b.col * g.cell, b.row * g.cell), lv = b.elev | 0, x = sp.x - lv * Q, y = sp.y - lv * Q;
+        const edges = { n: !bAt.has(b.col + ',' + (b.row - 1)), s: !bAt.has(b.col + ',' + (b.row + 1)), w: !bAt.has((b.col - 1) + ',' + b.row), e: !bAt.has((b.col + 1) + ',' + b.row) };
+        OVERHEAD.drawBridgeCell(ctx, x, y, cs, { rail: b.rail, closed: true, edges });
+        if (b.draw && cs > 12) { ctx.fillStyle = '#ffd23a'; ctx.font = `${Math.max(7, cs * 0.3) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('⚡', x + cs / 2, y + cs * 0.62); } }
+      // Redstone devices.
+      for (const d of (this.world.redstone || [])) { const sp = S((d.col + 0.5) * g.cell, (d.row + 0.5) * g.cell), tl = S(d.col * g.cell, d.row * g.cell);
+        if (d.kind === 'lever' || d.kind === 'button') OVERHEAD.drawLever(ctx, sp.x, sp.y, cs * 0.4, !!d.on);
+        else if (d.kind === 'dust') OVERHEAD.drawDust(ctx, tl.x, tl.y, cs, false);
+        else if (d.kind === 'lamp') OVERHEAD.drawLamp(ctx, sp.x, sp.y, cs * 0.5, false); }
       if (this.world.goal) { const gc = (typeof GOAL_COLORS !== 'undefined' && GOAL_COLORS[this.world.goal.color || 0]) || { hex: '#ffd700' }; const sp = S((this.world.goal.col + 1) * g.cell, (this.world.goal.row + 1) * g.cell); ctx.fillStyle = gc.hex; ctx.font = `${(cs * 1.8) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.6); }
       // Hand-selected mob/item highlight (moveable — click a new spot to move it).
       if (this._selEnt && this.tool === 'hand') { const s = this._selEnt.ref; const sp = S((s.col + 0.5) * g.cell, (s.row + 0.5) * g.cell); const pulse = 0.5 + 0.3 * Math.sin(Date.now() / 150); ctx.strokeStyle = `rgba(120,220,255,${pulse})`; ctx.lineWidth = 3; ctx.strokeRect(sp.x - cs * 0.5, sp.y - cs * 0.5, cs, cs); ctx.fillStyle = 'rgba(120,220,255,.85)'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('click to move', sp.x, sp.y - cs * 0.6); }
@@ -580,6 +608,10 @@
       } else if (tool === 'mob') { const d = P().OH_MOB_BY_KEY[this.mobKey] || P().OH_MOBS[0]; ctx.fillStyle = d.color; ctx.strokeStyle = 'rgba(150,150,160,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(ctr.x, ctr.y, unitPx * 0.34, 0, 7); ctx.fill(); ctx.stroke(); }
       else if (tool === 'item') { OVERHEAD.drawItemSprite(ctx, this.itemKey, ctr.x, ctr.y, unitPx * 0.8); }
       else if (tool === 'ramp' || tool === 'ladder') { OVERHEAD.drawRampIcon(ctx, tool, ctr.x, ctr.y, cs, 0); }
+      else if (tool === 'bridge') { OVERHEAD.drawBridgeCell(ctx, sp.x, sp.y, cs, { rail: this._bridgeRail, closed: true, edges: { n: true, e: true, s: true, w: true } }); }
+      else if (tool === 'lever') { OVERHEAD.drawLever(ctx, ctr.x, ctr.y, cs * 0.4, false); }
+      else if (tool === 'dust') { OVERHEAD.drawDust(ctx, sp.x, sp.y, cs, false); }
+      else if (tool === 'lamp') { OVERHEAD.drawLamp(ctx, ctr.x, ctr.y, cs * 0.5, false); }
       else if (tool === 'goal') { const gc = S((col + 1) * g.cell, (row + 1) * g.cell); ctx.fillStyle = '#ffd700'; ctx.font = `${(cs * 1.8) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', gc.x, gc.y + cs * 0.6); }
       else if (tool === 'spawn') { ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; ctx.strokeRect(ctr.x - cs * 0.42, ctr.y - cs * 0.42, cs * 0.84, cs * 0.84); }
       else if (tool === 'tree') { ctx.fillStyle = '#4f8a44'; ctx.beginPath(); ctx.arc(ctr.x, ctr.y - cs * 0.3, cs * 1.3, 0, 7); ctx.fill(); ctx.fillStyle = '#6e4f2a'; ctx.fillRect(ctr.x - cs * 0.15, ctr.y, cs * 0.3, cs * 0.7); }

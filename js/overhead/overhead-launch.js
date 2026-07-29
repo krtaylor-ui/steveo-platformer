@@ -280,6 +280,49 @@
       }
       ctx.restore();
     },
+    // ── Bridge deck (§ Kevin). x,y = cell top-left screen px; cs = cell px. `edges`
+    // = {n,e,s,w} true where there is NO adjacent bridge cell (draw a rail there when
+    // railed). closed=false (open drawbridge) → a retracted/gap look. ─────────────
+    drawBridgeCell(ctx, x, y, cs, opts) {
+      opts = opts || {}; const rail = opts.rail, closed = opts.closed !== false, e = opts.edges || {};
+      if (!closed) {   // open drawbridge: dashed void + retracted plank stubs
+        ctx.save(); ctx.strokeStyle = 'rgba(150,110,60,.7)'; ctx.setLineDash([4, 4]); ctx.lineWidth = 1.5;
+        ctx.strokeRect(x + 1, y + 1, cs - 2, cs - 2); ctx.setLineDash([]);
+        ctx.fillStyle = '#7a5a2e'; if (e.w) ctx.fillRect(x, y + 2, cs * 0.18, cs - 4); if (e.e) ctx.fillRect(x + cs - cs * 0.18, y + 2, cs * 0.18, cs - 4);
+        ctx.restore(); return;
+      }
+      // Plank deck.
+      ctx.fillStyle = '#8a5f30'; ctx.fillRect(x, y, cs, cs);
+      ctx.strokeStyle = 'rgba(0,0,0,.28)'; ctx.lineWidth = 1;
+      for (let i = 1; i < 4; i++) { const px = x + (cs * i) / 4; ctx.beginPath(); ctx.moveTo(px, y); ctx.lineTo(px, y + cs); ctx.stroke(); }
+      ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.strokeRect(x + 0.5, y + 0.5, cs - 1, cs - 1);
+      if (rail) {   // guardrails on the open (perimeter) edges
+        ctx.strokeStyle = '#c9a45a'; ctx.lineWidth = Math.max(2, cs * 0.12);
+        if (e.n) { ctx.beginPath(); ctx.moveTo(x, y + 1); ctx.lineTo(x + cs, y + 1); ctx.stroke(); }
+        if (e.s) { ctx.beginPath(); ctx.moveTo(x, y + cs - 1); ctx.lineTo(x + cs, y + cs - 1); ctx.stroke(); }
+        if (e.w) { ctx.beginPath(); ctx.moveTo(x + 1, y); ctx.lineTo(x + 1, y + cs); ctx.stroke(); }
+        if (e.e) { ctx.beginPath(); ctx.moveTo(x + cs - 1, y); ctx.lineTo(x + cs - 1, y + cs); ctx.stroke(); }
+      }
+    },
+    // Redstone bits (shared by runtime + editor).
+    drawLever(ctx, cx, cy, r, on) {
+      ctx.save(); ctx.translate(cx, cy);
+      ctx.fillStyle = '#5a4a3a'; ctx.fillRect(-r * 0.5, r * 0.2, r, r * 0.5);   // base
+      ctx.strokeStyle = on ? '#e8483a' : '#9aa0aa'; ctx.lineWidth = Math.max(2, r * 0.28); ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(0, r * 0.35); ctx.lineTo(on ? r * 0.5 : -r * 0.5, -r * 0.5); ctx.stroke();
+      ctx.restore();
+    },
+    drawDust(ctx, x, y, cs, powered) {
+      ctx.strokeStyle = powered ? '#ff5540' : '#7a2a22'; ctx.lineWidth = Math.max(2, cs * 0.16); ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(x + cs * 0.2, y + cs * 0.5); ctx.lineTo(x + cs * 0.8, y + cs * 0.5);
+      ctx.moveTo(x + cs * 0.5, y + cs * 0.2); ctx.lineTo(x + cs * 0.5, y + cs * 0.8); ctx.stroke();
+    },
+    drawLamp(ctx, cx, cy, r, on) {
+      ctx.fillStyle = on ? '#ffe27a' : '#4a4636'; ctx.strokeStyle = '#2a2620'; ctx.lineWidth = 1.5;
+      ctx.fillRect(cx - r * 0.6, cy - r * 0.6, r * 1.2, r * 1.2); ctx.strokeRect(cx - r * 0.6, cy - r * 0.6, r * 1.2, r * 1.2);
+      if (on) { ctx.fillStyle = 'rgba(255,226,122,.35)'; ctx.beginPath(); ctx.arc(cx, cy, r * 1.3, 0, 7); ctx.fill(); }
+    },
+
     // Direction toward the higher neighbour ('E'|'W'|'N'|'S'); horizontal default on
     // a tie/conflict (§). elevAt(c,r) → elevation.
     rampDir(elevAt, col, row) {

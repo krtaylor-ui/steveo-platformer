@@ -93,6 +93,13 @@
       // Ramps/ladders let a walk cross ANY elevation delta at that cell.
       this._rampList = worldData.ramps || [];
       this.ramps = new Set(this._rampList.map((r) => r.col + ',' + r.row));
+      // Bridges: a walk-over-gap deck at a set elevation. A DRAWBRIDGE (draw:true)
+      // starts OPEN (a gap) and CLOSES (walkable) while its redstone `channel` is on.
+      this._bridges = worldData.bridges || [];
+      this._bridgeAt = new Map(); for (const b of this._bridges) this._bridgeAt.set(b.col + ',' + b.row, b);
+      // Redstone network (levers/dust/lamps/tx/rx). Evaluated each frame → channels.
+      this._redstone = worldData.redstone || [];
+      this._rs = (typeof OH_REDSTONE !== 'undefined') ? OH_REDSTONE.evaluate(this._redstone) : { powered: new Set(), channels: {} };
       // Portals/pipes: map every footprint cell → the building, + each portal's
       // world-centre, so stepping onto one teleports (config.dest) or ends the
       // level (config.isGoal).
@@ -150,6 +157,8 @@
       const inp = this.input; this._frame = (this._frame || 0) + 1;
       // Advance the day/night clock (~60fps). detectMultiplier feeds mob sight.
       if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') { this._elapsed += 1 / 60; this._tod = OH_DAYNIGHT.phase(this._elapsed, this._dayLen, this._dayStart); this._detectMult = OH_DAYNIGHT.detectMultiplier(this._tod); }
+      // Re-evaluate the redstone network (drives drawbridge channels, lamps, doors).
+      if (this._redstone.length && typeof OH_REDSTONE !== 'undefined') this._rs = OH_REDSTONE.evaluate(this._redstone);
       // In a Sandbox playtest, Esc returns straight to the designer (not a pause menu).
       if (inp.isJustDown && inp.isJustDown('Escape')) { if (this._testMode) { this._exit(); return; } if (this.state === 'playing') this.state = 'paused'; else if (this.state === 'paused') this.state = 'playing'; else { this._exit(); return; } }
       if (inp.scrollDelta) { OH_GRID.zoomBy(this.grid, inp.scrollDelta < 0 ? 1.08 : 0.92); inp.scrollDelta = 0; }
@@ -198,7 +207,8 @@
       if (moving) { p.dist += Math.hypot(intent.move.x, intent.move.y) * p.speed; p.moveAngle = Math.atan2(intent.move.y, intent.move.x); }
       if (p.jump && p.jump.jumping && OH_MOVE.advanceJump(p.jump).landed) this._resolveLanding(p);
       if (!airborne) { const c = this._cellOf(p.x, p.y);
-        if (this._pitsDeadly && this._pit(c.col, c.row)) this._die('Fell into a pit', 'pit');
+        if (this._bridgeClosedAt(c.col, c.row)) { /* standing on a solid bridge deck — no fall/hazard */ }
+        else if (this._pitsDeadly && this._pit(c.col, c.row)) this._die('Fell into a pit', 'pit');
         else if (this._gap(c.col, c.row)) this._fall('Fell');
         else if (this._hazard(c.col, c.row)) { if (this._lavaDeadly) this._die('Fell in lava'); else if (p.iFrames === 0) this._hurt(4, 'Hazard'); } }
       // Hidden if standing under an overhang (a cell ≥ player.elev+2).
@@ -241,7 +251,9 @@
         }
         if (!near || nd > useR * 0.6) this._portalCd = false;   // release the guard once clear of the destination
       }
-      // Universal action (decoration notice) — only if a portal/pipe didn't consume E.
+      // A nearby LEVER toggles on E (before the decoration notice).
+      if (intent.action && !actionUsed && this._toggleNearbyLever(p)) actionUsed = true;
+      // Universal action (decoration notice) — only if nothing else consumed E.
       if (intent.action && !actionUsed) this._doAction(p);
 
       if ((this.mode === 'platformer' || this.mode === 'campaign') && this.goal) {
@@ -272,10 +284,21 @@
       const C = this.climbLevels;
       const cur = this._cellOf(ent.x, ent.y);
       const curRamp = this._ramp(cur.col, cur.row);
+      const curBridge = this._bridges.length ? this._bridgeAt.get(cur.col + ',' + cur.row) : null;
       // Resolve ONE sample point → false (blocked) | null (airborne, pass over a
       // gap) | elevation number (walkable, take this elevation).
       const sample = (nx, ny) => {
         const c = this._cellOf(nx, ny);
+        // A closed bridge deck spans gaps — it overrides the underlying terrain.
+        if (this._bridges.length) {
+          const tb = this._bridgeAt.get(c.col + ',' + c.row);
+          // Guardrail: while ON a railed bridge, block a sideways step OFF it onto a
+          // gap / pit / lower ground (can only leave at the ends — same-level ground
+          // or another bridge cell).
+          if (curBridge && curBridge.rail && !tb) { const tk = this._key(c.col, c.row); if (tk == null || tk === 'pit' || this._elev(c.col, c.row) < (curBridge.elev | 0)) return false; }
+          if (tb && this._bridgeClosedAt(c.col, c.row)) return tb.elev | 0;   // walkable deck
+          // an OPEN drawbridge falls through to normal terrain logic (a gap → fall)
+        }
         const key = this._key(c.col, c.row);
         if (key == null) return airborne ? null : false;     // gap
         if (this._buildingSolidAt(c.col, c.row)) return false;
@@ -365,6 +388,13 @@
       this._mobBolts = this._mobBolts.filter((b) => !b.dead);
     }
 
+    _toggleNearbyLever(p) {
+      if (!this._redstone.length || typeof OH_REDSTONE === 'undefined') return false;
+      let near = null, nd = this.unit * 1.6;
+      for (const d of this._redstone) if (d.kind === 'lever' || d.kind === 'button') { const dx = (d.col + 0.5) * this.grid.cell - p.x, dy = (d.row + 0.5) * this.grid.cell - p.y; const dd = Math.hypot(dx, dy); if (dd < nd) { nd = dd; near = d; } }
+      if (!near) return false;
+      near.on = !near.on; this._rs = OH_REDSTONE.evaluate(this._redstone); this._notify('Lever ' + (near.on ? 'ON' : 'OFF'), 40); return true;
+    }
     _doAction(p) { let near = null, nd = 1e9; for (const b of this.buildings) { if (b.typeId === 'portal' || b.typeId === 'pipe') continue; const bx = (b.col + 0.5) * this.grid.cell, by = (b.row + 0.5) * this.grid.cell; const d = Math.hypot(bx - p.x, by - p.y); if (d < this.unit * 2 && d < nd) { near = b; nd = d; } } if (near) { const t = OH_BUILDINGS.get(near.typeId); this._notify((t ? t.category : 'Building') + ': ' + near.typeId, 90); } }
     _pickups(p) { for (const it of this.items) { if (it.taken) continue; const ix = (it.col + 0.5) * this.grid.cell, iy = (it.row + 0.5) * this.grid.cell; if (Math.hypot(ix - p.x, iy - p.y) < p.r + this.unit * 0.4) { it.taken = true; if (it.kind === 'weapon') { if (!p.weapons.includes(it.weapon)) p.weapons.push(it.weapon); p.weapon = it.weapon; this._notify('Equipped ' + it.weapon + ' (Q to switch)', 120); } else this._notify('Coin!', 60); } } }
     // Cycle the equipped weapon through the collected list (+ pickaxe fallback).
@@ -394,6 +424,10 @@
     }
 
     _pit(c, r) { const k = this._key(c, r); return !!k && P().isPitKey(k); }
+    _bridge(c, r) { return this._bridgeAt.get(c + ',' + r) || null; }
+    // A bridge cell is CLOSED (a solid walkable deck) when it's a normal bridge, or a
+    // drawbridge whose channel is powered. Open drawbridges are gaps.
+    _bridgeClosedAt(c, r) { const b = this._bridgeAt.get(c + ',' + r); return !!b && (!b.draw || (typeof OH_REDSTONE !== 'undefined' && OH_REDSTONE.channelOn(this._rs, b.channel))); }
     _hurt(amt, why) { const p = this.player; if (this._god || p.iFrames > 0) return; p.hp -= amt; p.iFrames = 45; if (p.hp <= 0) this._die(why || 'Defeated'); }
     _fall(msg) { const p = this.player; if (p.hp <= 0) { this._die(msg || 'You died'); return; } p.x = this._spawn.x; p.y = this._spawn.y; p.jump = null; p.iFrames = 60; const c = this._cellOf(p.x, p.y); p.elev = this._elev(c.col, c.row); }
     // Family-friendly death (no blood/gore). Default: the player bursts into its
@@ -491,6 +525,8 @@
       // entities). Independent of whether the sun/moon disc itself is shown.
       if (this._dayNight && this._shadows && typeof OH_DAYNIGHT !== 'undefined') this._drawShadows(ctx, S, cs, c0, c1, r0, r1);
       for (const rp of this._rampList) { const sp = S((rp.col + 0.5) * g.cell, (rp.row + 0.5) * g.cell); const dir = OVERHEAD.rampDir((c, r) => this._elev(c, r), rp.col, rp.row); OVERHEAD.drawRampIcon(ctx, rp.kind, sp.x, sp.y, cs, dir); }
+      if (this._bridges.length) this._drawBridges(ctx, S, cs);
+      if (this._redstone.length) this._drawRedstone(ctx, S, cs);
       if (this.goal) { const gc = (typeof GOAL_COLORS !== 'undefined' && GOAL_COLORS[this.goal.color || 0]) || { hex: '#ffd700' }; const sp = S((this.goal.col + 1) * g.cell, (this.goal.row + 1) * g.cell); ctx.fillStyle = gc.hex; ctx.font = `${(cs * 1.8) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.62); }
       // Entities sorted by (row + elev).
       const ents = [];
@@ -676,6 +712,25 @@
       }
     }
 
+    _drawBridges(ctx, S, cs) {
+      const g = this.grid, Q = OVERHEAD.elevOffset(cs);
+      for (const b of this._bridges) {
+        const lv = b.elev | 0, sp = S(b.col * g.cell, b.row * g.cell), x = sp.x - lv * Q, y = sp.y - lv * Q;
+        const edges = { n: !this._bridgeAt.has(b.col + ',' + (b.row - 1)), s: !this._bridgeAt.has(b.col + ',' + (b.row + 1)), w: !this._bridgeAt.has((b.col - 1) + ',' + b.row), e: !this._bridgeAt.has((b.col + 1) + ',' + b.row) };
+        OVERHEAD.drawBridgeCell(ctx, x, y, cs, { rail: b.rail, closed: this._bridgeClosedAt(b.col, b.row), edges });
+      }
+    }
+    _drawRedstone(ctx, S, cs) {
+      const g = this.grid;
+      for (const d of this._redstone) {
+        const sp = S((d.col + 0.5) * g.cell, (d.row + 0.5) * g.cell), tl = S(d.col * g.cell, d.row * g.cell);
+        const on = OH_REDSTONE.cellPowered(this._rs, d.col, d.row);
+        if (d.kind === 'lever' || d.kind === 'button') OVERHEAD.drawLever(ctx, sp.x, sp.y, cs * 0.4, !!d.on);
+        else if (d.kind === 'dust') OVERHEAD.drawDust(ctx, tl.x, tl.y, cs, on);
+        else if (d.kind === 'lamp') OVERHEAD.drawLamp(ctx, sp.x, sp.y, cs * 0.5, on);
+        else if (d.kind === 'tx' || d.kind === 'rx') { OVERHEAD.drawLamp(ctx, sp.x, sp.y, cs * 0.42, on); ctx.fillStyle = '#fff'; ctx.font = `${Math.max(8, cs * 0.3) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(d.kind === 'tx' ? '↑' : '↓', sp.x, sp.y); ctx.textBaseline = 'alphabetic'; }
+      }
+    }
     _drawHUD(ctx) {
       ctx.textAlign = 'left';
       // Day/night clock (top-right): a sun (day) or moon (night) disc + a label.

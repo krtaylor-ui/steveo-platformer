@@ -1,4 +1,24 @@
-## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE dodge/melee/death micro-fixes (build 297) on branch `overhead-engine` — NOT merged; Kevin browser-testing then pushing live
+## CURRENT STATE (2026-07-29) — builds 279–297 SHIPPED to `main` ✅; NEW work on `overhead-redstone-bridge` (build 298) — Bridge item + Redstone core — NOT merged, browser-UNTESTED
+
+**SHIPPED:** the whole Overhead engine (builds 279–297) + Campaign MVP (278) fast-forwarded to `main` and
+pushed (0d05667) — live on Railway. (Campaign server features need `server/sql/campaigns.sql` in Supabase;
+the Overhead engine is client-side.)
+
+**IN PROGRESS on branch `overhead-redstone-bridge` (build 298):** Suite green (989); harnesses + probe clean.
+- **Redstone core** (`overhead-redstone.js`, `OH_REDSTONE`): grid-agnostic, pure, headless-tested (12) — levers/
+  buttons, dust wire, lamps, tx/rx, and a named-CHANNEL table (the §32 foundation; channels are the reuse seam).
+- **Bridge tool:** walk-over-gap deck spanning pits/chasms; Guardrails on/off (block/allow falling off the sides);
+  **Drawbridge** starts open, closes while its redstone channel is powered. Lever + Drawbridge default to channel
+  "gate" so a lever flip raises/lowers the span. Verified end-to-end headless.
+- Editor "Bridge & Redstone" palette (Bridge/Lever/Dust/Lamp) + place/erase/undo/ghosts. Levers flip on E.
+- **Next redstone follow-ups:** custom channels, more devices (repeaters/gates/buttons), config modals, the
+  "2-wide preset" bridge stamp, and extracting the side-view `js/redstone.js` onto this core. Detail in `DECISIONS_LOG.md`.
+
+**NEEDS BROWSER PLAYTEST** before merge to `main`.
+
+---
+
+## PRIOR STATE (2026-07-29) — OVERHEAD ENGINE dodge/melee/death micro-fixes (build 297) on branch `overhead-engine` — SHIPPED to `main`
 
 Small pre-push polish. Suite green (977); harness + render smoke + probe clean.
 - A **dodged ranged bolt flies on** past the player (flagged, not destroyed).
