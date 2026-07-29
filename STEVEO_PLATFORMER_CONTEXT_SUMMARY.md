@@ -1,4 +1,22 @@
-## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE mobs-move / LOS attacks / diagonal shadows (build 286) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE bug fixes + stacked-cube terrain + hand tool (build 287) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+
+Second feedback batch. Suite green. Fixed 3 blocking bugs + big render change + editor tools.
+- **Mobs move** now (they lacked an `elev` field → collision NaN-blocked them) + wander when idle.
+- **Portals/pipes usable:** enter-type buildings (portal/pipe/shop) walkable, all others solid.
+  **E** uses a pipe; portals trigger on walk; both glow purple.
+- **Walls block:** collision model changed — raised NON-leaves terrain is SOLID (climb only within the
+  climb setting / via a ramp); `leaves` canopy is pass-under (trees block shots at the trunk only).
+- **Stacked-cube terrain:** each elevation offsets the top ¼-block up AND left, with darker south+east
+  faces — the diagonal depth Kevin asked for. Entities lift to match.
+- **Editor:** items render as the real item at player scale; portal #s enlarged/always; active-elevation
+  highlight; elevation 0–8; NEW **Hand** tool (pan + click-to-configure, replaced Configure).
+- **Trees:** trunk levels 1–2, leaves 3–4 (never covering the trunk). **Ramps** orient to the gap.
+- **Deferred:** edge scrollbars (hand/arrows cover it); full prism-ramp geometry (directional wedge shipped).
+Detail in `DECISIONS_LOG.md` (Overhead Engine — Bug Fixes + Stacked-Cube Terrain + Hand Tool).
+
+---
+
+## PRIOR STATE (2026-07-29) — OVERHEAD ENGINE mobs-move / LOS attacks / diagonal shadows (build 286) on branch `overhead-engine` — NOT merged, browser-UNTESTED
 
 Playtest feedback. Suite green.
 - **Mobs move now:** detection ~10 player-blocks + random **wander** when idle (was ~180px, too short).

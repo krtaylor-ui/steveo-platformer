@@ -1,6 +1,47 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD ENGINE — BUG FIXES + STACKED-CUBE TERRAIN + HAND TOOL (2026-07-29, build 287, branch `overhead-engine`)
+# ═══════════════════════════════════════════════════════════════════════
+Second playtest-feedback batch. Suite green. The three blocking BUGS traced + fixed, plus a big render
+change (stacked cubes) and editor tools. Two items deferred (scrollbars, full prism-ramp geometry).
+
+- **BUG — mobs not moving (ROOT CAUSE):** the build-284 collision rewrite reads `ent.elev`, but mob
+  objects were created WITHOUT an `elev` field → `NaN` deltas → every axis returned "blocked". Fixed by
+  setting `elev: this._elev(m.col,m.row)` on each mob. (They also now WANDER when idle — that was added
+  build 286 but was invisible because of this bug.)
+- **BUG — portals/pipes unusable on E:** portal/pipe/shop default `blocksMovement:true`, so they were
+  SOLID and the player couldn't step onto the cell to trigger them. Fixed: `_buildingSolidAt` now treats
+  `interactionType==='enter'` (portal/pipe/shop) as WALKABLE; every other building is solid ("all
+  buildings solid" per Kevin, minus the ones you walk into). Action button confirmed = **E**.
+- **BUG — walking through walls / COLLISION MODEL CHANGE:** the old model let any cell ≥2 levels up be a
+  walk-under overhang, so raised "walls" were passable. Reconciled with Kevin's other asks ("trees block
+  trunk only, arrows pass under leaves", "all buildings solid") to a clearer model: **raised NON-leaves
+  terrain is SOLID at any height** unless within `climbLevels` or a ramp/ladder; **`leaves` cells are
+  always pass-under** (+ hide the player) and never block shots. So a tree = solid `log` trunk + pass-under
+  `leaves` canopy — trunk blocks movement + arrows, leaves don't. `_boltWalled` exempts leaves.
+- **Detection tuned:** defaults lowered to ~6–8 blocks (× unit); on first detect a random initial cooldown
+  is seeded so mobs don't all fire on frame 1 / instantly at max range.
+- **STACKED-CUBE terrain (Kevin's "offset vertically AND horizontally"):** each elevation level offsets the
+  tile top 1/4-block UP and LEFT (`OVERHEAD.elevOffset` = cell×0.22), exposing darker **south + east**
+  faces (east darkest) toward lower/absent neighbours, with per-level divider lines (`drawTerrainCube`).
+  Drawn back-to-front by (r+c) then elevation in BOTH the runtime cache (both-axis pad) and the editor.
+  Entities (player/mobs/buildings) lift by the same up-left offset so they sit on the cube tops. (Replaces
+  the single-side parallelogram.)
+- **Editor/UX:** placed items render as the real item (weapon shapes / coin) at PLAYER scale; portal/pipe
+  #N badges enlarged + always shown (purple ring); the active elevation is highlighted (yellow tint);
+  elevation picker 0→8. NEW **Hand** tool (drag to pan with a grip cursor, click an object to configure —
+  replaced the Configure button); arrow-key pan retained.
+- **Trees:** trunk = `log` at levels base+1/2; canopy = `leaves` on level 3 (Ø5 ring) + level 4 (inner top
+  ring), never covering the trunk; relative to placement elevation (no hard cap — higher just stacks up).
+- **Ramps:** orient toward the higher neighbour (`rampDir`; horizontal default on tie/conflict), drawn as a
+  directional wedge with step lines. **DEFERRED:** the full "rectangular prism, triangle on the exposed
+  1/4-block front face, angular back" geometry Kevin described — the directional wedge is the first step;
+  the full prism integrated with the new cube offset is a refinement (roadmap-noted).
+- **DEFERRED:** edge scrollbars (arrow-key pan + the Hand tool cover navigation for now).
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD ENGINE — MOBS MOVE / LOS ATTACKS / DIAGONAL SHADOWS (2026-07-29, build 286, branch `overhead-engine`)
 # ═══════════════════════════════════════════════════════════════════════
 Playtest feedback batch. Suite green. Two biggest asks deferred to roadmap (§33 climb animation, §34 day/night).
