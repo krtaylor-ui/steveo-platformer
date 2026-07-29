@@ -18532,7 +18532,13 @@ class Game {
     // the authored anchorCol/Row, or the lookup misses once the platform moves and lamps render off.
     const { acol, arow } = this._platCell(pl);
     const col = acol + c.dcol, row = arow + c.drow, b = c.blockType;
-    if (b === BLOCK.REDSTONE_LAMP) { const cp = this.redstone.getAt(col, row); return { on: cp ? !!cp.on : false, colorIdx: (c.lampColor != null ? c.lampColor : (cp ? (cp.color || 0) : 0)) }; }   // §colour from the captured cell (stable while moving)
+    if (b === BLOCK.REDSTONE_LAMP) {
+      // §stable render — prefer the captured lamp component (its on/colour are correct regardless of where
+      // the platform has moved); fall back to the colour snapshot, then a positional lookup.
+      const cp = c.lampComp || this.redstone.getAt(col, row);
+      const colorIdx = c.lampComp ? (c.lampComp.color || 0) : (c.lampColor != null ? c.lampColor : (cp ? (cp.color || 0) : 0));
+      return { on: cp ? !!cp.on : false, colorIdx };
+    }
     if (b === BLOCK.LEVER)         { const cp = this.redstone.getAt(col, row); return { on: cp ? !!cp.on : false }; }
     if (b === BLOCK.TRAPDOOR)      { const cp = this.redstone.getAt(col, row); return { open: cp ? !!cp.open : false }; }
     if (b === BLOCK.PRESSURE_PLATE){ const cp = this.redstone.getAt(col, row); return { pressed: cp ? !!cp.on : false }; }
@@ -18587,6 +18593,16 @@ class Game {
     ctx.fillStyle = '#ffcf5a'; ctx.beginPath(); ctx.arc(r - 4, 0, 2.5, 0, Math.PI * 2); ctx.fill();   // heading marker
     ctx.fillStyle = '#5a6270'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();          // hub
     ctx.restore();
+  }
+  // §Skins — draw a skin value (animated marker or block id) at a grid cell's screen position. Used by
+  // the editor overlay so anchor/direction skins are visible while building (a static frame, angle 0).
+  _drawSkinSprite(ctx, skin, col, row, angle = 0) {
+    if (!skin) return;
+    const px = col * BLOCK_SIZE - this.camera.x, py = row * BLOCK_SIZE - this.camera.y;
+    if      (skin === 'wheel')    this._drawWheel(ctx, px, py, BLOCK_SIZE, angle);
+    else if (skin === 'pointer')  this._drawPointerDial(ctx, px, py, BLOCK_SIZE, angle);
+    else if (skin === 'steering') this._drawSteering(ctx, px, py, BLOCK_SIZE, angle);
+    else if (typeof skin === 'number') { try { drawBlock(ctx, skin, px, py, 0, {}); } catch (e) { /* ignore */ } }
   }
 
   // Placement / config entry: click a rail with the Anchor selected → bind a platform there; click an
@@ -18674,6 +18690,7 @@ class Game {
             else if (b === BLOCK.WEIGHT_PLATE)   this.redstone.addComponent({ type: 'weight', col: oc, row: or_, on: false, trigger: 'both', links: [], sandboxPlaced: true });
           }
           const comp = this.redstone.getAt(oc, or_); if (comp) pl._carriedRs.comps.push({ comp, dcol: c.dcol, drow: c.drow });
+          if (comp && b === BLOCK.REDSTONE_LAMP) c.lampComp = comp;   // §stable render — read on/colour from the real lamp, not a positional getAt at the moved cell
           const d = this._dustBlocks.get(key);   if (d) { d._platform = true; pl._carriedRs.dust.push({ o: d, dcol: c.dcol, drow: c.drow }); }
           const g = this._gateBlocks.get(key);    if (g) pl._carriedRs.gates.push({ o: g, dcol: c.dcol, drow: c.drow });
           const t = this._transmitters.get(key);  if (t) pl._carriedRs.tx.push({ o: t, dcol: c.dcol, drow: c.drow });
@@ -19330,6 +19347,8 @@ class Game {
         ctx.translate(x, y); ctx.rotate(ang); ctx.fillStyle = '#7fb2e6';
         ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(6, -5); ctx.lineTo(6, 5); ctx.closePath(); ctx.fill();
         ctx.restore();
+        // §Skins — show the anchor skin (Wheel/etc.) in the editor too (static frame over the block).
+        this._drawSkinSprite(ctx, pl.skin, pl.anchorCol, pl.anchorRow);
       } else {
         // Play: draw the lifted block group at its smooth position (rotated by the CoG tilt if enabled).
         if (!pl.cells || pl._destroyed) continue;
@@ -19360,6 +19379,11 @@ class Game {
         }
         ctx.restore();
       }
+    }
+    // §Skins — in the editor, overlay each Direction Controller's skin at its cell (read live from the
+    // config map so it updates the moment you change it in the modal). Play draws these via _drawPlatforms above.
+    if (isSandbox && this._dirControllers) {
+      for (const dc of this._dirControllers.values()) if (dc.skin) this._drawSkinSprite(ctx, dc.skin, dc.col, dc.row);
     }
   }
 

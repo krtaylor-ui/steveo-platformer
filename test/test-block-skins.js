@@ -87,6 +87,10 @@ console.log('Platform lamp colour stability (Super Mario 1-1 turns-red bug):');
   const cell = { dcol:0, drow:0, blockType: BLOCK.REDSTONE_LAMP, lampColor: 4 };   // authored Cyan
   ok(gp._platformCellState({}, cell).colorIdx === 4, 'moving platform lamp keeps authored colour (cyan) despite getAt hitting a red lamp');
   ok(gp._platformCellState({}, { dcol:0, drow:0, blockType: BLOCK.REDSTONE_LAMP }).colorIdx === 0, 'no captured colour → falls back to getAt');
+  // Captured component reference wins for BOTH colour and on-state, regardless of the moved-cell lookup.
+  const cellC = { dcol:0, drow:0, blockType: BLOCK.REDSTONE_LAMP, lampComp: { type:'lamp', color:8, on:true } };  // White, lit
+  const stC = gp._platformCellState({}, cellC);
+  ok(stC.colorIdx === 8 && stC.on === true, 'captured lamp component drives colour(white)+on, not the red/off lamp at the moved cell');
 }
 
 if(fail){console.log(`\n${fail} FAILED, ${pass} passed`);process.exit(1);}
