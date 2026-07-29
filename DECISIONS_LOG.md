@@ -1,6 +1,46 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD ENGINE — ART REVISION 3 + EDITOR FIX (2026-07-29, build 282, branch `overhead-engine`)
+# ═══════════════════════════════════════════════════════════════════════
+Second visual-feedback round + a real editor bug. Suite green (11 weapon assertions unchanged).
+
+- **EDITOR BUG (menu "vanished") — ROOT CAUSE + FIX.** The build-280 editor rewrite renamed the
+  chrome setup to `_injectStyle` but it only injected the `<style>` — it NEVER created the
+  `#oh-editor-bar` div. `_renderBar` starts with `if (!bar) return`, so nothing rendered → all menu
+  options gone. Rebuilt the chrome as TWO created containers: **`#oh-top`** (a top command strip —
+  Undo/Redo/Zoom/Test/Save/Exit + status, "save/exit at top like before" per Kevin) and **`#oh-rail`**
+  (a left hover-rail — Brush/Elevation/Erase + Terrain/Buildings/Mobs/Items groups that open a flyout on
+  `:hover`). Both created in `_injectStyle`, shown via `_showChrome(true)`, z-index 9000. Lesson: when a
+  render guard is `if(!el) return`, make sure something actually creates `el`.
+- **Player/mob limbs CONNECTED (no floating hands/feet).** Arms (shirt) and legs (pants) are now drawn
+  as thick round-capped line segments from the body joint to a small hand (skin dot) / foot (forward
+  rect), so they always connect. Added a **waist block** (pants). Layer order feet→legs→arms→waist→
+  shoulders→head (arms cover legs; waist+shoulders cover the roots), per Kevin's stack.
+- **Feet point forward, in line with the hips** (rect longer in +x, at ±span/2).
+- **Decoupled lower/upper body:** LEGS + feet rotate to the MOVEMENT direction (`opts.moveAngle`);
+  arms + shoulders + head + weapon rotate to the AIM. Runtime tracks `player.moveAngle` (last move dir)
+  and `mob._moveAngle`; passes both to the shared renderer. A classic top-down "run one way, aim another".
+- **Spider redone:** 8 legs on the two SIDES only (4 on +y, 4 on −y), the FRONT edge (+x) is leg-free
+  and carries the two red eyes + a darker front band. (Was legs all around.)
+- **Blocks — sizing + colour per Kevin:** side depth = **1/4 block per elevation level** (`LIFT=cs*0.25`,
+  used for BOTH the top Y-offset and the side, so they stay coherent); side is **noticeably darker**
+  (shade 0.45) with a **divider line per level** so a 2-level cliff reads as two steps; **block TOPS are
+  now a single uniform colour** at every elevation (removed the elevation-lightening — depth reads from
+  the side only, as Kevin intended). Applied in runtime + editor.
+- **Jump feel:** was dropping the sprite DOWN (a sign bug — jumpLift added to screen-y). Now the sprite
+  floats UP slightly (`floatUp = jumpLift*0.4`) AND scales up (`1 + jumpFrac*0.22`) for a "getting
+  closer" read; the ground shadow stays put and shrinks. Vertical motion is small; the scale sells it.
+- **Thrown weapons leave the hand + render as the weapon:** while a trident/boomerang is in flight the
+  in-hand weapon is suppressed (`weapon:null`), and the projectile is drawn via `drawWeapon` (trident
+  points along travel, boomerang spins). **Boomerang return-tracking:** `stepBoomerang(s, playerPos)`
+  bends the (still circular) return half toward the player's LIVE position so it always comes home even
+  if they moved.
+- **Flag (unchanged):** the 2D side-view renderer should eventually share `OH_SPRITE` + these weapon
+  shapes. Art artifact updated to rev 3 (same URL).
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD ENGINE — ART REVISION 2 (2026-07-29, build 281, branch `overhead-engine`)
 # ═══════════════════════════════════════════════════════════════════════
 Kevin's visual feedback on the pass-1 art (with ASCII reference sketches). All in the shared

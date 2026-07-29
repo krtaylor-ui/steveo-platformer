@@ -106,7 +106,7 @@
       if (raw.jumpBtn) { if (!airborneBefore) p.jump = OH_MOVE.startJump({ moveX: mv.x * p.speed, moveY: mv.y * p.speed, startElev: p.elev }); else if (OH_MOVE.canDoubleJump(p.jump)) OH_MOVE.doubleJump(p.jump); }
       const airborne = p.jump && p.jump.jumping;
       this._moveWithCollision(p, intent.move.x * p.speed, intent.move.y * p.speed, airborne);
-      if (moving) p.dist += Math.hypot(intent.move.x, intent.move.y) * p.speed;
+      if (moving) { p.dist += Math.hypot(intent.move.x, intent.move.y) * p.speed; p.moveAngle = Math.atan2(intent.move.y, intent.move.x); }
       if (p.jump && p.jump.jumping && OH_MOVE.advanceJump(p.jump).landed) this._resolveLanding(p);
       if (!airborne) { const c = this._cellOf(p.x, p.y);
         if (this._gap(c.col, c.row)) this._fall('Fell'); else if (this._hazard(c.col, c.row) && p.iFrames === 0) this._hurt(4, 'Hazard'); }
@@ -179,7 +179,7 @@
       // Trident.
       if (p._trident) { OH_WEAPONS.stepTrident(p._trident, p); const t = p._trident; if (!t.caught) { for (const m of live) if (Math.hypot(m.x - t.x, m.y - t.y) < m.r + this.grid.cell * 0.3) { m.hp -= 6; if (m.hp <= 0) m.dead = true; if (t.state === 'out') t.state = 'return'; } } if (t.caught) p._trident = null; }
       // Boomerang (arcs, hits along the path, auto-returns).
-      if (p._boom) { OH_WEAPONS.stepBoomerang(p._boom); const b = p._boom; for (const m of live) { const id = m.col + ',' + m.row + ',' + (this.mobs.indexOf(m)); if (!b._hit[id] && Math.hypot(m.x - b.x, m.y - b.y) < m.r + this.grid.cell * 0.3) { m.hp -= 4; b._hit[id] = 1; if (m.hp <= 0) m.dead = true; } } if (b.dead) p._boom = null; }
+      if (p._boom) { OH_WEAPONS.stepBoomerang(p._boom, p); const b = p._boom; for (const m of live) { const id = m.col + ',' + m.row + ',' + (this.mobs.indexOf(m)); if (!b._hit[id] && Math.hypot(m.x - b.x, m.y - b.y) < m.r + this.grid.cell * 0.3) { m.hp -= 4; b._hit[id] = 1; if (m.hp <= 0) m.dead = true; } } if (b.dead) p._boom = null; }
       // Mob bolts (skeletons).
       for (const mb of this._mobBolts) { OH_WEAPONS.stepBolt(mb); if (Math.hypot(mb.x - p.x, mb.y - p.y) < p.r + this.grid.cell * 0.25 && p.iFrames === 0) { this._hurt(3, 'Shot'); mb.dead = true; } }
       this._mobBolts = this._mobBolts.filter((b) => !b.dead);
@@ -197,7 +197,7 @@
         let tx = m.x, ty = m.y;
         if (m.state === 'chase') { tx = p.x; ty = p.y; }
         const ang = Math.atan2(ty - m.y, tx - m.x);
-        if (m.state === 'chase' && !(m.ranged && d < m.detect * 0.6)) { this._moveWithCollision(m, Math.cos(ang) * m.speed, Math.sin(ang) * m.speed, false); m._dist = (m._dist || 0) + m.speed; }
+        if (m.state === 'chase' && !(m.ranged && d < m.detect * 0.6)) { this._moveWithCollision(m, Math.cos(ang) * m.speed, Math.sin(ang) * m.speed, false); m._dist = (m._dist || 0) + m.speed; m._moveAngle = ang; }
         if (d < m.r + p.r && p.iFrames === 0) this._hurt(3, 'Hit by a mob');
       }
     }
@@ -219,16 +219,18 @@
       const r0 = Math.max(0, (tl.y / g.cell | 0) - 1), r1 = Math.min(g.gridH - 1, (br.y / g.cell | 0) + 1);
       const liftScale = g.cell / 32;
       // Base terrain pass.
-      const STEP = OH_ELEV.STEP_PX * z * liftScale, LIP = cs * 0.16;
+      const LIFT = cs * 0.25;   // one elevation level = 1/4 of a block (§)
       for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
         const k = this._key(c, r); if (k == null) continue; const elev = this._elev(c, r);
-        const sp = S(c * g.cell, r * g.cell); const y = sp.y + OH_ELEV.yOffset(elev) * z * liftScale;
-        // 3D side: front neighbour (r+1). No block in front / edge → full side; a
-        // lower front → cliff; same/higher front → a small lip (covered by it).
-        const frontElev = (r + 1 <= this.grid.gridH - 1 && this._key(c, r + 1) != null) ? this._elev(c, r + 1) : -1;
-        const drop = elev - frontElev;
-        const sideDepth = drop > 0 ? drop * STEP + LIP : LIP;
-        OVERHEAD.drawTerrainSide(ctx, k, sp.x, y + cs, cs, sideDepth, elev);
+        const sp = S(c * g.cell, r * g.cell); const y = sp.y - elev * LIFT;   // raised = UP
+        // 3D side: the block in FRONT (r+1) covers most sides. A lower/absent
+        // front shows a cliff whose depth reaches that front block's top; each
+        // elevation level is one 1/4-block segment with a divider line.
+        const hasFront = (r + 1 <= this.grid.gridH - 1) && this._key(c, r + 1) != null;
+        const frontElev = hasFront ? this._elev(c, r + 1) : 0;
+        const drop = hasFront ? (elev - frontElev) : Math.max(1, elev + 1);   // edge shows a full side
+        const sideDepth = drop > 0 ? drop * LIFT : 0;
+        OVERHEAD.drawTerrainSide(ctx, k, sp.x, y + cs, cs, sideDepth, drop);
         OVERHEAD.drawTerrainTile(ctx, k, sp.x, y, cs, elev);
       }
       if (this.goal) { const sp = S((this.goal.col + 0.5) * g.cell, (this.goal.row + 0.5) * g.cell); ctx.fillStyle = '#fff6b0'; ctx.font = `${(cs * 0.9) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.32); }
@@ -243,11 +245,13 @@
       ctx.fillStyle = '#eee'; for (const b of this._bolts) { const s = S(b.x, b.y); ctx.fillRect(s.x - 2, s.y - 2, 4, 4); }
       ctx.fillStyle = '#f88'; for (const b of this._mobBolts) { const s = S(b.x, b.y); ctx.fillRect(s.x - 2, s.y - 2, 4, 4); }
       const p = this.player;
-      if (p._trident) { const s = S(p._trident.x, p._trident.y); ctx.fillStyle = '#4fb0c0'; ctx.fillRect(s.x - 3, s.y - 3, 6, 6); }
-      if (p._boom) { const s = S(p._boom.x, p._boom.y); ctx.fillStyle = '#c08a4a'; ctx.beginPath(); ctx.arc(s.x, s.y, 4, 0, 7); ctx.fill(); }
+      // Thrown weapons render AS the weapon (they left the hand). Trident points
+      // along travel; boomerang spins.
+      if (p._trident) { const t = p._trident; const s = S(t.x, t.y); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(Math.atan2(t.vy, t.vx) + (t.state === 'return' ? Math.PI : 0)); OVERHEAD.drawWeapon(ctx, this.player.r * z, 'trident'); ctx.restore(); }
+      if (p._boom) { const b = p._boom; const s = S(b.x, b.y); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate((b.t || 0) * Math.PI * 8); OVERHEAD.drawWeapon(ctx, this.player.r * z, 'boomerang'); ctx.restore(); }
       // Overhang pass — redraw cells ≥ player.elev+2 so the player is hidden beneath.
       for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const elev = this._elev(c, r); if (elev < this.player.elev + 2) continue; const k = this._key(c, r); if (k == null) continue;
-        const sp = S(c * g.cell, r * g.cell); const y = sp.y + OH_ELEV.yOffset(elev) * z * liftScale; ctx.globalAlpha = 0.96; OVERHEAD.drawTerrainTile(ctx, k, sp.x, y, cs, elev); ctx.globalAlpha = 1; }
+        const sp = S(c * g.cell, r * g.cell); const y = sp.y - elev * (cs * 0.25); ctx.globalAlpha = 0.96; OVERHEAD.drawTerrainTile(ctx, k, sp.x, y, cs, elev); ctx.globalAlpha = 1; }
       // Hidden indicator (designer opt-in).
       if (this.player.hidden && this.showHidden) { const s = S(this.player.x, this.player.y); ctx.strokeStyle = 'rgba(120,200,255,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s.x, s.y, cs * 0.4, 0, 7); ctx.stroke(); }
       this._drawHUD(ctx);
@@ -255,7 +259,7 @@
 
     _drawEntity(e, S, z, cs) {
       const ctx = this.ctx, g = this.grid;
-      if (e.kind === 'b') { const b = e.ref, t = OH_BUILDINGS.get(b.typeId); const sp = S(b.col * g.cell, b.row * g.cell); const w = (t ? t.footprint.w : 1) * cs, h = (t ? t.footprint.h : 1) * cs; const lift = OH_ELEV.yOffset(b.level || 0) * z * (g.cell / 32); ctx.fillStyle = (t && t.color) || '#8a7fb0'; ctx.fillRect(sp.x, sp.y - h + cs + lift, w, h); ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.strokeRect(sp.x, sp.y - h + cs + lift, w, h); if (cs > 18) { ctx.fillStyle = '#fff'; ctx.font = `${Math.round(cs * 0.3)}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText((t ? t.category : b.typeId), sp.x + w / 2, sp.y - h + cs + lift + h / 2); } }
+      if (e.kind === 'b') { const b = e.ref, t = OH_BUILDINGS.get(b.typeId); const sp = S(b.col * g.cell, b.row * g.cell); const w = (t ? t.footprint.w : 1) * cs, h = (t ? t.footprint.h : 1) * cs; const lift = -(b.level || 0) * cs * 0.25; ctx.fillStyle = (t && t.color) || '#8a7fb0'; ctx.fillRect(sp.x, sp.y - h + cs + lift, w, h); ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.strokeRect(sp.x, sp.y - h + cs + lift, w, h); if (cs > 18) { ctx.fillStyle = '#fff'; ctx.font = `${Math.round(cs * 0.3)}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText((t ? t.category : b.typeId), sp.x + w / 2, sp.y - h + cs + lift + h / 2); } }
       else if (e.kind === 'i') { const it = e.ref, d = P().OH_ITEM_BY_KEY[it.itemKey] || P().OH_ITEMS[0]; const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(sp.x, sp.y, cs * 0.24, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.stroke(); }
       else if (e.kind === 'm') { this._drawMob(e.ref, S, z, cs); }
       else if (e.kind === 'p') { this._drawPlayer(S, z, cs); }
@@ -265,7 +269,7 @@
       const ctx = this.ctx; const sp = S(m.x, m.y); const rr = m.r * z;
       const ang = Math.atan2(this.player.y - m.y, this.player.x - m.x);   // mobs face the player
       ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(sp.x, sp.y + rr * 0.55, rr * 0.9, rr * 0.5, 0, 0, 7); ctx.fill();
-      OVERHEAD.drawOverheadMob(ctx, sp.x, sp.y, rr, m._dist || 0, m.state === 'chase', ang, m.type);
+      OVERHEAD.drawOverheadMob(ctx, sp.x, sp.y, rr, m._dist || 0, m.state === 'chase', ang, m.type, (m._moveAngle != null ? m._moveAngle : ang));
       if (m.state === 'chase') { ctx.fillStyle = '#ffd24a'; ctx.font = `bold ${(rr) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('!', sp.x, sp.y - rr * 1.6); }
       const maxHp = (P().OH_MOB_BY_KEY[m.type] || {}).hp || 8;
       if (m.hp < maxHp) { ctx.fillStyle = '#000'; ctx.fillRect(sp.x - rr, sp.y - rr * 1.9, rr * 2, 3); ctx.fillStyle = '#4f4'; ctx.fillRect(sp.x - rr, sp.y - rr * 1.9, rr * 2 * Math.max(0, m.hp / maxHp), 3); }
@@ -273,14 +277,24 @@
 
     _drawPlayer(S, z, cs) {
       const ctx = this.ctx, p = this.player;
-      const lift = (OH_MOVE.jumpLift(p.jump) + OH_ELEV.yOffset(p.elev) * (this.grid.cell / 32)) * z;
-      const sp = S(p.x, p.y); const cx = sp.x, cy = sp.y + lift; const rr = p.r * z;
-      // Ground shadow (stays put during a jump).
-      ctx.fillStyle = 'rgba(0,0,0,.32)'; ctx.beginPath(); ctx.ellipse(sp.x, sp.y + OH_ELEV.yOffset(p.elev) * (this.grid.cell / 32) * z, rr * 0.85, rr * 0.5, 0, 0, 7); ctx.fill();
-      const moving = OH_MOVE.limbPhase && (this.input.isDown('KeyW') || this.input.isDown('KeyA') || this.input.isDown('KeyS') || this.input.isDown('KeyD') || this.input.isDown('ArrowUp') || this.input.isDown('ArrowLeft') || this.input.isDown('ArrowRight') || this.input.isDown('ArrowDown'));
-      const alpha = (p.hidden && !this.showHidden) ? 0.9 : 1;   // draw-order hides most; keep near-opaque
+      const elevPx = -p.elev * cs * 0.25;                        // elevation, UP
+      // Jump = a small UP float + a slight SCALE-UP ("getting closer"), not a dip.
+      const jp = OH_MOVE.jumpLift(p.jump), maxH = (p.jump && p.jump.height) || 1;
+      const jf = maxH > 0 ? Math.min(1, jp / maxH) : 0;
+      const floatUp = jp * 0.4 * z;
+      const scaleF = 1 + jf * 0.22;
+      const sp = S(p.x, p.y); const cx = sp.x, cy = sp.y + elevPx - floatUp; const rr = p.r * z * scaleF;
+      // Ground shadow stays at the surface and shrinks as the sprite "rises".
+      const ss = 1 - jf * 0.35;
+      ctx.fillStyle = `rgba(0,0,0,${0.32 * ss})`; ctx.beginPath(); ctx.ellipse(sp.x, sp.y + elevPx, rr * 0.85 * ss, rr * 0.5 * ss, 0, 0, 7); ctx.fill();
+      const moving = (this.input.isDown('KeyW') || this.input.isDown('KeyA') || this.input.isDown('KeyS') || this.input.isDown('KeyD') || this.input.isDown('ArrowUp') || this.input.isDown('ArrowLeft') || this.input.isDown('ArrowRight') || this.input.isDown('ArrowDown'));
+      const alpha = (p.hidden && !this.showHidden) ? 0.9 : 1;
       ctx.globalAlpha = alpha;
-      OVERHEAD.drawOverheadPlayer(ctx, cx, cy, rr, p.dist, moving, OH_CONTROLS.angleOf(p.aim), { rotate: true, weapon: p.weapon || 'pickaxe' });
+      // Legs face movement; upper body + weapon face aim. Weapon hidden while a
+      // trident/boomerang is in flight (it's the thing flying).
+      const inFlight = p._trident || p._boom;
+      OVERHEAD.drawOverheadPlayer(ctx, cx, cy, rr, p.dist, moving, OH_CONTROLS.angleOf(p.aim),
+        { rotate: true, weapon: inFlight ? null : (p.weapon || 'pickaxe'), moveAngle: (p.moveAngle != null ? p.moveAngle : OH_CONTROLS.angleOf(p.aim)) });
       ctx.globalAlpha = 1;
       if (p.iFrames > 0 && ((p.iFrames >> 2) & 1)) { ctx.globalAlpha = 0.4; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
       // Aim reticle.

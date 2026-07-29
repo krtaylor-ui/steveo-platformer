@@ -1,4 +1,22 @@
-## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE art rev 2 (build 281) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE art rev 3 + editor fix (build 282) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+
+Second visual pass + fixed the editor. Suite green.
+- **Editor menu FIX:** the build-280 rewrite never created the toolbar div (render guard `if(!bar)return`
+  ate it → "vanished"). Rebuilt as a TOP command bar (Undo/Redo/Zoom/Test/Save/Exit) + a LEFT hover-rail
+  (Brush/Elevation/Erase + Terrain/Buildings/Mobs/Items tabs opening on hover). Save/Exit at top as before.
+- **Limbs connected** (arms=shirt, legs=pants, small hands/feet — no floating parts) + a waist block;
+  feet point forward in line with the hips. **Legs follow movement; head/arms/weapon follow aim** (decoupled).
+- **Spider:** legs only on the two sides (4 each); leg-free front edge with the red eyes.
+- **Blocks:** side = ¼-block per elevation level, noticeably darker, divider line per level; **tops one
+  uniform colour** (no elevation lightening — depth reads from the side).
+- **Jump:** floats UP + scales up (was dipping down).
+- **Thrown trident/boomerang render as the weapon (leave the hand); boomerang bends its return to the
+  player's live position.**
+- Art artifact updated → rev 3 (same URL). Detail in `DECISIONS_LOG.md` (Overhead Engine — Art Revision 3).
+
+---
+
+## PRIOR STATE (2026-07-29) — OVERHEAD ENGINE art rev 2 (build 281) on branch `overhead-engine` — NOT merged, browser-UNTESTED
 
 Visual feedback pass on top of build 280 (below). All in the shared renderers so editor + runtime +
 the art artifact match. Suite green.

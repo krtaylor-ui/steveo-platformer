@@ -44,7 +44,7 @@
       }
       this._setupWorld();
       this._pushHistory();
-      const bar = document.getElementById('oh-editor-bar'); if (bar) bar.style.display = 'block';
+      this._showChrome(true);
       ['dashboard-screen', 'sandbox-screen', 'campaign-select-screen'].forEach((id) => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
       if (document.body) { document.body.classList.remove('pre-game'); document.body.classList.add('in-game'); window.dispatchEvent(new Event('resize')); }
       this._bindCanvas(); this._renderBar();
@@ -60,7 +60,7 @@
 
     close() {
       this._running = false;
-      const bar = document.getElementById('oh-editor-bar'); if (bar) bar.style.display = 'none';
+      this._showChrome(false);
       this._unbindCanvas();
       if (document.body) document.body.classList.remove('in-game');
       // Return to the Sandbox browser (Overhead view) and refresh.
@@ -147,80 +147,89 @@
     undo() { if (this._histPos > 0) { this._histPos--; this._restore(this._hist[this._histPos]); } },
     redo() { if (this._histPos < this._hist.length - 1) { this._histPos++; this._restore(this._hist[this._histPos]); } },
 
-    // ── Left tool rail (§ palette redesign) ─────────────────────────────────
+    // ── Editor chrome: a TOP command bar + a LEFT hover-rail (§ redesign). Both
+    // are created here (the earlier bug: the container div was never made, so the
+    // menu "vanished"). High z-index so they sit above the canvas.
     _injectStyle() {
-      if (document.getElementById('oh-editor-style')) return;
-      const s = document.createElement('style'); s.id = 'oh-editor-style'; s.textContent = `
-        #oh-editor-bar{position:fixed;top:0;left:0;bottom:0;width:150px;z-index:5500;display:none;overflow:visible;
-          background:#141a26;border-right:1px solid #2c3648;padding:8px 6px;font:12px sans-serif;color:#dbe4f3}
-        #oh-editor-bar h4{margin:8px 2px 3px;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#7f8fa8}
-        #oh-editor-bar button,#oh-editor-bar select{width:100%;background:#243049;border:1px solid #3a4a6b;color:#dbe4f3;border-radius:5px;padding:5px 6px;cursor:pointer;margin:2px 0;font-size:12px}
-        #oh-editor-bar button.on{background:#3a5a8c;border-color:#5573ad}
-        .oh-tab{position:relative}
-        .oh-tab>.oh-tabbtn{width:100%}
-        .oh-flyout{position:absolute;left:148px;top:0;min-width:150px;max-height:70vh;overflow:auto;background:#1a2233;border:1px solid #3a4a6b;border-radius:6px;padding:6px;display:none;z-index:5600;box-shadow:4px 4px 16px rgba(0,0,0,.5)}
-        .oh-tab:hover>.oh-flyout{display:block}
-        .oh-flyout .opt{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:4px;cursor:pointer}
-        .oh-flyout .opt:hover{background:#2a3852}
-        .oh-flyout .opt.sel{background:#3a5a8c}
-        .oh-sw{width:16px;height:16px;border-radius:3px;border:1px solid rgba(255,255,255,.3);flex:none}
-        #oh-editor-bar .row{display:flex;gap:4px}#oh-editor-bar .row button{margin:2px 0}
-        #oh-create-modal{position:fixed;inset:0;z-index:6000;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.65)}
-        .ohc-panel{background:#141a26;border:1px solid #2c3648;border-radius:12px;padding:20px 22px;min-width:320px;color:#e8eef7;font:14px sans-serif}
-        .ohc-panel h2{margin:0 0 12px}
-        .ohc-panel label{display:block;margin:8px 0;font-size:13px}
-        .ohc-panel select,.ohc-panel input{width:100%;background:#1c2230;border:1px solid #3a465c;color:#e8eef7;border-radius:6px;padding:6px;margin-top:3px}
-        .ohc-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
-        .ohc-btns button{width:auto;background:#2b3548;border:1px solid #46557a;color:#dfe7f5;border-radius:6px;padding:7px 16px;cursor:pointer}
-        .ohc-btns button.primary{background:#2e6f4e;border-color:#3f9a6c}`;
-      document.head.appendChild(s);
+      if (!document.getElementById('oh-editor-style')) {
+        const s = document.createElement('style'); s.id = 'oh-editor-style'; s.textContent = `
+          #oh-top{position:fixed;top:0;left:0;right:0;height:40px;z-index:9000;display:none;align-items:center;gap:6px;
+            background:#141a26;border-bottom:1px solid #2c3648;padding:0 10px;font:13px sans-serif;color:#dbe4f3}
+          #oh-top button{background:#243049;border:1px solid #3a4a6b;color:#dbe4f3;border-radius:6px;padding:5px 11px;cursor:pointer;font-size:13px}
+          #oh-top button:hover{background:#31415f} #oh-top button.primary{background:#2e6f4e;border-color:#3f9a6c}
+          #oh-top .oh-status{margin-left:auto;color:#8fa0bd;font-size:12px;font-family:ui-monospace,monospace}
+          #oh-top .oh-flash{color:#8fe0a0;font-size:12px;margin-left:10px}
+          #oh-rail{position:fixed;top:48px;left:8px;z-index:9000;display:none;flex-direction:column;gap:6px;width:120px;font:12px sans-serif;color:#dbe4f3}
+          #oh-rail .grp{position:relative}
+          #oh-rail .hd{background:#1c2536;border:1px solid #34425e;border-radius:7px;padding:7px 9px;cursor:default;display:flex;justify-content:space-between;align-items:center}
+          #oh-rail .hd b{font-weight:600} #oh-rail .hd .cur{color:#9fb0cc;font-size:11px;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+          #oh-rail .btn{background:#243049;border:1px solid #3a4a6b;border-radius:7px;padding:7px 9px;cursor:pointer;text-align:left}
+          #oh-rail .btn.on{background:#3a5a8c;border-color:#5573ad}
+          .oh-fly{position:absolute;left:124px;top:0;min-width:168px;max-height:74vh;overflow:auto;background:#1a2233;border:1px solid #3a4a6b;border-radius:8px;padding:6px;display:none;z-index:9100;box-shadow:5px 6px 20px rgba(0,0,0,.55)}
+          #oh-rail .grp:hover>.oh-fly{display:block}
+          .oh-fly .opt{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:5px;cursor:pointer}
+          .oh-fly .opt:hover{background:#2a3852} .oh-fly .opt.sel{background:#3a5a8c}
+          .oh-fly .opt.small{padding:4px 7px} .oh-sw{width:16px;height:16px;border-radius:3px;border:1px solid rgba(255,255,255,.3);flex:none}
+          #oh-create-modal{position:fixed;inset:0;z-index:9500;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.65)}
+          .ohc-panel{background:#141a26;border:1px solid #2c3648;border-radius:12px;padding:20px 22px;min-width:320px;color:#e8eef7;font:14px sans-serif}
+          .ohc-panel h2{margin:0 0 12px} .ohc-panel label{display:block;margin:8px 0;font-size:13px}
+          .ohc-panel select,.ohc-panel input{width:100%;background:#1c2230;border:1px solid #3a465c;color:#e8eef7;border-radius:6px;padding:6px;margin-top:3px}
+          .ohc-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+          .ohc-btns button{background:#2b3548;border:1px solid #46557a;color:#dfe7f5;border-radius:6px;padding:7px 16px;cursor:pointer} .ohc-btns button.primary{background:#2e6f4e;border-color:#3f9a6c}`;
+        document.head.appendChild(s);
+      }
+      if (!document.getElementById('oh-top')) { const t = document.createElement('div'); t.id = 'oh-top'; document.body.appendChild(t); }
+      if (!document.getElementById('oh-rail')) { const r = document.createElement('div'); r.id = 'oh-rail'; document.body.appendChild(r); }
     },
+    _showChrome(on) { ['oh-top', 'oh-rail'].forEach((id, i) => { const el = document.getElementById(id); if (el) el.style.display = on ? (i ? 'flex' : 'flex') : 'none'; }); },
 
     _renderBar() {
-      const bar = document.getElementById('oh-editor-bar'); if (!bar) return;
+      const top = document.getElementById('oh-top'), rail = document.getElementById('oh-rail');
+      if (!top || !rail) return;
+      const m = this.world.mapSnapshot;
+      // TOP: commands (save/exit kept at the top, as before).
+      top.innerHTML = `
+        <button id="oh-undo" title="Undo (Ctrl+Z)">↶ Undo</button>
+        <button id="oh-redo" title="Redo (Ctrl+Y)">↷ Redo</button>
+        <button id="oh-zout" title="Zoom out (−)">－</button>
+        <button id="oh-zin" title="Zoom in (=)">＋</button>
+        <button id="oh-test">▶ Test</button>
+        <button id="oh-save" class="primary">💾 Save</button>
+        <button id="oh-exit">✕ Exit</button>
+        <span class="oh-status">${this._esc(this.world.name)} · ${m.baseW || m.gridW}×${m.baseH || m.gridH} @ d${m.density} · ${this._shift ? 'erase' : this.tool} @ elev ${this.elevLevel}</span>
+        <span class="oh-flash" id="oh-flash"></span>`;
+      // LEFT RAIL: Brush / Elevation / Erase, then the four palette tabs (hover to open).
       const swatch = (c) => `<span class="oh-sw" style="background:${c}"></span>`;
       const terrOpts = P().OH_TERRAIN.map((t) => `<div class="opt ${this.tool === 'terrain' && this.terrainKey === t.key ? 'sel' : ''}" data-terr="${t.key}">${swatch(t.color)}${t.name}</div>`).join('');
       const bTypes = (typeof OH_BUILDINGS !== 'undefined') ? OH_BUILDINGS.all().map((d) => d.id) : ['healer'];
       const buildOpts = bTypes.map((b) => `<div class="opt ${this.tool === 'building' && this.buildingType === b ? 'sel' : ''}" data-build="${b}">🏛 ${b}</div>`).join('')
-        + `<div class="opt ${this.tool === 'spawn' ? 'sel' : ''}" data-spawn="1">🚩 Player Spawn</div>`
-        + `<div class="opt ${this.tool === 'goal' ? 'sel' : ''}" data-goal="1">★ Goal Star</div>`;
-      const mobOpts = P().OH_MOBS.map((m) => `<div class="opt ${this.tool === 'mob' && this.mobKey === m.key ? 'sel' : ''}" data-mob="${m.key}">${swatch(m.color)}${m.name}</div>`).join('');
+        + `<div class="opt ${this.tool === 'spawn' ? 'sel' : ''}" data-spawn="1">🚩 Player Spawn</div><div class="opt ${this.tool === 'goal' ? 'sel' : ''}" data-goal="1">★ Goal Star</div>`;
+      const mobOpts = P().OH_MOBS.map((mm) => `<div class="opt ${this.tool === 'mob' && this.mobKey === mm.key ? 'sel' : ''}" data-mob="${mm.key}">${swatch(mm.color)}${mm.name}</div>`).join('');
       const itemOpts = P().OH_ITEMS.map((i) => `<div class="opt ${this.tool === 'item' && this.itemKey === i.key ? 'sel' : ''}" data-item="${i.key}">${swatch(i.color)}${i.name}</div>`).join('');
-      const active = this.tool === 'terrain' ? P().OH_TERRAIN_BY_KEY[this.terrainKey].name
-        : this.tool === 'building' ? this.buildingType : this.tool === 'mob' ? P().OH_MOB_BY_KEY[this.mobKey].name
-        : this.tool === 'item' ? P().OH_ITEM_BY_KEY[this.itemKey].name : this.tool;
-      bar.innerHTML = `
-        <div class="row"><button id="oh-undo" title="Undo (Z)">↶</button><button id="oh-redo" title="Redo (Y)">↷</button></div>
-        <h4>Brush</h4>
-        <select id="oh-brush">${[1, 2, 3, 5, 8].map((b) => `<option value="${b}" ${b === this.brush ? 'selected' : ''}>${b}×${b}</option>`).join('')}</select>
-        <h4>Elevation ([ ])</h4>
-        <select id="oh-elev">${[0, 1, 2, 3, 4, 5].map((l) => `<option value="${l}" ${l === this.elevLevel ? 'selected' : ''}>Level ${l}</option>`).join('')}</select>
-        <button id="oh-erase" class="${this.tool === 'erase' ? 'on' : ''}" title="Erase (or hold Shift)">Erase</button>
-        <h4>Palette</h4>
-        <div class="oh-tab"><button class="oh-tabbtn ${this.tab === 'terrain' ? 'on' : ''}" data-tab="terrain">Terrain ▸</button><div class="oh-flyout">${terrOpts}</div></div>
-        <div class="oh-tab"><button class="oh-tabbtn ${this.tab === 'buildings' ? 'on' : ''}" data-tab="buildings">Buildings ▸</button><div class="oh-flyout">${buildOpts}</div></div>
-        <div class="oh-tab"><button class="oh-tabbtn ${this.tab === 'mobs' ? 'on' : ''}" data-tab="mobs">Mobs ▸</button><div class="oh-flyout">${mobOpts}</div></div>
-        <div class="oh-tab"><button class="oh-tabbtn ${this.tab === 'items' ? 'on' : ''}" data-tab="items">Items ▸</button><div class="oh-flyout">${itemOpts}</div></div>
-        <div style="font-size:11px;color:#8fa0bd;margin:6px 2px">Active: <b>${active}</b></div>
-        <h4>Zoom (− =)</h4>
-        <div class="row"><button id="oh-zout">−</button><button id="oh-zin">+</button></div>
-        <div style="position:absolute;bottom:8px;left:6px;right:6px">
-          <button id="oh-test">▶ Test</button><button id="oh-save">💾 Save</button><button id="oh-exit">✕ Exit</button></div>`;
+      const grp = (label, cur, opts) => `<div class="grp"><div class="hd"><b>${label} ▸</b><span class="cur">${cur}</span></div><div class="oh-fly">${opts}</div></div>`;
+      rail.innerHTML =
+        grp('Brush', this.brush + '×' + this.brush, [1, 2, 3, 5, 8].map((b) => `<div class="opt small" data-brush="${b}">${b}×${b}</div>`).join('')) +
+        grp('Elevation', 'Lvl ' + this.elevLevel, [0, 1, 2, 3, 4, 5].map((l) => `<div class="opt small ${l === this.elevLevel ? 'sel' : ''}" data-elev="${l}">Level ${l}</div>`).join('')) +
+        `<div class="btn ${this.tool === 'erase' ? 'on' : ''}" id="oh-erase">Erase (or ⇧-click)</div>` +
+        grp('Terrain', this.tool === 'terrain' ? P().OH_TERRAIN_BY_KEY[this.terrainKey].name : '', terrOpts) +
+        grp('Buildings', (this.tool === 'building' ? this.buildingType : this.tool === 'spawn' ? 'Spawn' : this.tool === 'goal' ? 'Goal' : ''), buildOpts) +
+        grp('Mobs', this.tool === 'mob' ? P().OH_MOB_BY_KEY[this.mobKey].name : '', mobOpts) +
+        grp('Items', this.tool === 'item' ? P().OH_ITEM_BY_KEY[this.itemKey].name : '', itemOpts);
       const g = (id) => document.getElementById(id);
       g('oh-undo').onclick = () => this.undo(); g('oh-redo').onclick = () => this.redo();
-      g('oh-brush').onchange = (e) => this.brush = +e.target.value;
-      g('oh-elev').onchange = (e) => this.elevLevel = +e.target.value;
-      g('oh-erase').onclick = () => { this.tool = 'erase'; this._renderBar(); };
       g('oh-zin').onclick = () => OH_GRID.zoomBy(this.grid, 1.15); g('oh-zout').onclick = () => OH_GRID.zoomBy(this.grid, 0.87);
       g('oh-test').onclick = () => this._test(); g('oh-save').onclick = () => this._save(); g('oh-exit').onclick = () => this.close();
-      bar.querySelectorAll('[data-terr]').forEach((el) => el.onclick = () => { this.tab = 'terrain'; this.tool = 'terrain'; this.terrainKey = el.dataset.terr; this._renderBar(); });
-      bar.querySelectorAll('[data-build]').forEach((el) => el.onclick = () => { this.tab = 'buildings'; this.tool = 'building'; this.buildingType = el.dataset.build; this._renderBar(); });
-      bar.querySelectorAll('[data-spawn]').forEach((el) => el.onclick = () => { this.tab = 'buildings'; this.tool = 'spawn'; this._renderBar(); });
-      bar.querySelectorAll('[data-goal]').forEach((el) => el.onclick = () => { this.tab = 'buildings'; this.tool = 'goal'; this._renderBar(); });
-      bar.querySelectorAll('[data-mob]').forEach((el) => el.onclick = () => { this.tab = 'mobs'; this.tool = 'mob'; this.mobKey = el.dataset.mob; this._renderBar(); });
-      bar.querySelectorAll('[data-item]').forEach((el) => el.onclick = () => { this.tab = 'items'; this.tool = 'item'; this.itemKey = el.dataset.item; this._renderBar(); });
-      bar.querySelectorAll('[data-tab]').forEach((el) => el.onclick = () => { this.tab = el.dataset.tab; this._renderBar(); });
+      g('oh-erase').onclick = () => { this.tool = 'erase'; this._renderBar(); };
+      rail.querySelectorAll('[data-brush]').forEach((el) => el.onclick = () => { this.brush = +el.dataset.brush; this._renderBar(); });
+      rail.querySelectorAll('[data-elev]').forEach((el) => el.onclick = () => { this.elevLevel = +el.dataset.elev; this._renderBar(); });
+      rail.querySelectorAll('[data-terr]').forEach((el) => el.onclick = () => { this.tool = 'terrain'; this.terrainKey = el.dataset.terr; this._renderBar(); });
+      rail.querySelectorAll('[data-build]').forEach((el) => el.onclick = () => { this.tool = 'building'; this.buildingType = el.dataset.build; this._renderBar(); });
+      rail.querySelectorAll('[data-spawn]').forEach((el) => el.onclick = () => { this.tool = 'spawn'; this._renderBar(); });
+      rail.querySelectorAll('[data-goal]').forEach((el) => el.onclick = () => { this.tool = 'goal'; this._renderBar(); });
+      rail.querySelectorAll('[data-mob]').forEach((el) => el.onclick = () => { this.tool = 'mob'; this.mobKey = el.dataset.mob; this._renderBar(); });
+      rail.querySelectorAll('[data-item]').forEach((el) => el.onclick = () => { this.tool = 'item'; this.itemKey = el.dataset.item; this._renderBar(); });
     },
+    _esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); },
 
     // ── Canvas interaction ──────────────────────────────────────────────────
     _bindCanvas() {
@@ -285,13 +294,12 @@
 
     // ── Actions ───────────────────────────────────────────────────────────────
     _test() {
-      this._running = false; this._unbindCanvas();
-      const bar = document.getElementById('oh-editor-bar'); if (bar) bar.style.display = 'none';
+      this._running = false; this._unbindCanvas(); this._showChrome(false);
       const draft = JSON.parse(JSON.stringify(this.world));
       OVERHEAD.launchWorld(draft, {}, () => { if (window.game && window.game.destroy) window.game.destroy(); window.game = null; this._reopen(); });
     },
     _reopen() {
-      const bar = document.getElementById('oh-editor-bar'); if (bar) bar.style.display = 'block';
+      this._showChrome(true);
       if (document.body) { document.body.classList.add('in-game'); window.dispatchEvent(new Event('resize')); }
       this._bindCanvas(); this._renderBar(); this._running = true; requestAnimationFrame(this._loop);
     },
@@ -321,7 +329,7 @@
         this._flash('Saved ✓');
       } catch (e) { this._flash('Save failed: ' + e.message); }
     },
-    _flash(msg) { const bar = document.getElementById('oh-editor-bar'); if (!bar) return; let f = document.getElementById('oh-flash'); if (!f) { f = document.createElement('div'); f.id = 'oh-flash'; f.style.cssText = 'position:absolute;bottom:96px;left:6px;right:6px;color:#8fe0a0;font-size:12px'; bar.appendChild(f); } f.textContent = msg; setTimeout(() => { if (f) f.textContent = ''; }, 2600); },
+    _flash(msg) { const f = document.getElementById('oh-flash'); if (f) { f.textContent = msg; setTimeout(() => { if (f) f.textContent = ''; }, 2600); } },
 
     // ── Render loop ─────────────────────────────────────────────────────────
     _loop() { if (!this._running) return; try { this._render(); } catch (e) { console.error('OH editor', e); } requestAnimationFrame(this._loop); },
@@ -334,11 +342,16 @@
       const tl = OH_GRID.screenToWorld(g, this.cam, 0, 0), br = OH_GRID.screenToWorld(g, this.cam, CANVAS_W, CANVAS_H);
       const c0 = Math.max(0, (tl.x / g.cell | 0) - 1), c1 = Math.min(m.gridW - 1, (br.x / g.cell | 0) + 1);
       const r0 = Math.max(0, (tl.y / g.cell | 0) - 1), r1 = Math.min(m.gridH - 1, (br.y / g.cell | 0) + 1);
+      const LIFT = cs * 0.25;
       for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
         const key = m.ground[r][c] || 'grass', elev = m.elevation[r][c] | 0;
-        const sp = S(c * g.cell, r * g.cell); const y = sp.y + OH_ELEV.yOffset(elev) * z * (g.cell / 32);
+        const sp = S(c * g.cell, r * g.cell); const y = sp.y - elev * LIFT;
+        const hasFront = (r + 1 <= m.gridH - 1);
+        const frontElev = hasFront ? (m.elevation[r + 1][c] | 0) : 0;
+        const drop = hasFront ? (elev - frontElev) : Math.max(1, elev + 1);
+        OVERHEAD.drawTerrainSide(ctx, key, sp.x, y + cs, cs, drop > 0 ? drop * LIFT : 0, drop);
         OVERHEAD.drawTerrainTile(ctx, key, sp.x, y, cs, elev);
-        if (elev > 0 && cs > 12) { ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.font = `${Math.max(7, cs * 0.28) | 0}px sans-serif`; ctx.textAlign = 'left'; ctx.fillText(String(elev), sp.x + 2, y + Math.max(9, cs * 0.36)); }
+        if (elev > 0 && cs > 12) { ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.font = `${Math.max(7, cs * 0.28) | 0}px sans-serif`; ctx.textAlign = 'left'; ctx.fillText(String(elev), sp.x + 2, y + Math.max(9, cs * 0.36)); }
       }
       // Entities.
       for (const b of this.world.buildings) { const sp = S((b.col + 0.5) * g.cell, (b.row + 0.5) * g.cell); const t = OH_BUILDINGS.get(b.typeId); ctx.fillStyle = (t && t.color) || '#8a7fb0'; ctx.fillRect(sp.x - cs * 0.42, sp.y - cs * 0.42, cs * 0.84, cs * 0.84); if (cs > 16) { ctx.fillStyle = '#fff'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(String(b.typeId).slice(0, 4), sp.x, sp.y + cs * 0.55); } }

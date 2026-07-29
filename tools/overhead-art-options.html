@@ -78,27 +78,38 @@ function drawWeapon(ctx,r,kind){ctx.save();
   ctx.restore();}
 
 function drawPlayer(ctx,cx,cy,r,dist,moving,ang,opts){opts=opts||{};const S=opts.palette||OH_SPRITE;const weapon=opts.weapon===undefined?'pickaxe':opts.weapon;
+  const moveAngle=opts.moveAngle!=null?opts.moveAngle:ang;
   const ph=(dist/(r*1.15))%(Math.PI*2),swing=moving?Math.sin(ph):0;
-  ctx.save();ctx.translate(cx,cy);ctx.rotate(ang);
-  const headR=r*0.5,span=r*1.5,shW=r*0.34,armAmp=r*0.6,legAmp=r*0.5,limbW=opts.bony?r*0.14:r*0.22;
-  for(const sy of[-1,1]){const armX=moving?swing*sy*armAmp:r*0.15;const legX=moving?-swing*sy*legAmp:-r*0.15;const yB=sy*(span/2);
-    ctx.fillStyle=S.pants;ctx.fillRect(legX-limbW/2,sy>0?yB-limbW:yB,limbW,limbW*(opts.bony?1.4:1.2)+Math.abs(legX)*0.2);
-    ctx.fillStyle=shade(S.pants,0.25);ctx.fillRect(legX-limbW/2,yB-(sy<0?limbW*0.5:0),limbW,limbW*0.5);
-    ctx.fillStyle=S.shirt;ctx.fillRect(armX-limbW/2,yB-limbW*0.5,limbW,limbW+Math.abs(armX)*0.2);
-    ctx.fillStyle=S.skin;ctx.fillRect(armX-limbW/2,yB+(sy>0?limbW*0.5:-limbW),limbW,limbW*0.7);}
-  if(opts.bony){ctx.fillStyle=S.shirt;ctx.fillRect(-r*0.08,-span/2,r*0.16,span);ctx.fillRect(-r*0.28,-r*0.06,r*0.5,r*0.12);}
-  else{ctx.fillStyle=S.shirt;ctx.fillRect(-shW/2,-span/2,shW,span);}
-  ctx.fillStyle=S.hair;ctx.fillRect(-headR,-headR,headR*2,headR*2);
+  const span=r*1.4,limbW=opts.bony?r*0.16:r*0.26,armAmp=r*0.55,legAmp=r*0.5,restFwd=r*0.18;
+  ctx.save();ctx.translate(cx,cy);
+  // lower body — movement
+  ctx.save();ctx.rotate(moveAngle);ctx.lineCap='round';
+  for(const sy of[-1,1]){const yB=sy*(span/2)*0.7;const footX=restFwd+(moving?-swing*sy*legAmp:-r*0.05);
+    ctx.strokeStyle=S.pants;ctx.lineWidth=limbW;ctx.beginPath();ctx.moveTo(0,yB);ctx.lineTo(footX,yB);ctx.stroke();
+    ctx.fillStyle=shade(S.pants,0.2);ctx.fillRect(footX-limbW*0.2,yB-limbW*0.5,limbW*1.1,limbW);}
+  ctx.restore();
+  // upper body — aim
+  ctx.save();ctx.rotate(ang);ctx.lineCap='round';
+  for(const sy of[-1,1]){const yB=sy*(span/2);const handX=restFwd+(moving?swing*sy*armAmp:r*0.1);
+    ctx.strokeStyle=S.shirt;ctx.lineWidth=limbW;ctx.beginPath();ctx.moveTo(0,yB);ctx.lineTo(handX,yB);ctx.stroke();
+    ctx.fillStyle=S.skin;ctx.beginPath();ctx.arc(handX,yB,limbW*0.42,0,7);ctx.fill();}
+  ctx.fillStyle=S.pants;ctx.fillRect(-r*0.28,-span*0.42,r*0.56,span*0.84);
+  if(opts.bony){ctx.fillStyle=S.shirt;ctx.fillRect(-r*0.09,-span/2,r*0.18,span);ctx.fillRect(-r*0.28,-r*0.06,r*0.5,r*0.12);}
+  else{ctx.fillStyle=S.shirt;ctx.fillRect(-r*0.36,-span/2,r*0.72,span);}
+  const headR=r*0.5;ctx.fillStyle=S.hair;ctx.fillRect(-headR,-headR,headR*2,headR*2);
   if(opts.eyeSockets){ctx.fillStyle='#222';ctx.fillRect(headR-headR*0.5,-headR*0.55,headR*0.34,headR*0.34);ctx.fillRect(headR-headR*0.5,headR*0.2,headR*0.34,headR*0.34);}
   else{ctx.fillStyle='rgba(255,255,255,.10)';ctx.fillRect(-headR,-headR,headR*2,headR*0.4);}
-  if(weapon){ctx.save();ctx.translate(headR*0.6,r*0.5);drawWeapon(ctx,r,weapon);ctx.restore();}
-  ctx.restore();}
+  if(weapon){ctx.save();ctx.translate(headR*0.5,span/2);drawWeapon(ctx,r,weapon);ctx.restore();}
+  ctx.restore();ctx.restore();}
 
 function drawSpider(ctx,cx,cy,r,ang){ctx.save();ctx.translate(cx,cy);ctx.rotate(ang);
-  const body=r*0.9,legLen=r*0.85,legW=Math.max(1.5,r*0.12);ctx.strokeStyle='#241f2a';ctx.lineWidth=legW;
-  for(let i=0;i<4;i++){const ly=(-1.1+i*0.7)*body*0.5;ctx.beginPath();ctx.moveTo(0,ly);ctx.lineTo(legLen,ly-body*0.15);ctx.stroke();ctx.beginPath();ctx.moveTo(0,ly);ctx.lineTo(-legLen,ly-body*0.15);ctx.stroke();}
-  ctx.fillStyle='#3a3340';ctx.fillRect(-body/2,-body/2,body,body);ctx.fillStyle=shade('#3a3340',-0.2);ctx.fillRect(-body/2,-body/2,body,body*0.3);
-  ctx.fillStyle='#e33';const d=body*0.16;ctx.fillRect(body/2-d*1.4,-body*0.28,d,d);ctx.fillRect(body/2-d*1.4,body*0.12,d,d);ctx.restore();}
+  const body=r*0.95,legLen=r*0.7,legW=Math.max(1.5,r*0.11);ctx.strokeStyle='#241f2a';ctx.lineWidth=legW;ctx.lineCap='round';
+  for(let i=0;i<4;i++){const lx=(-1.05+i*0.7)*body*0.5;const kick=Math.sin(i)*body*0.18;
+    ctx.beginPath();ctx.moveTo(lx,-body/2);ctx.lineTo(lx+kick,-body/2-legLen);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(lx,body/2);ctx.lineTo(lx+kick,body/2+legLen);ctx.stroke();}
+  ctx.fillStyle='#3a3340';ctx.fillRect(-body/2,-body/2,body,body);
+  ctx.fillStyle=shade('#3a3340',-0.25);ctx.fillRect(body/2-body*0.22,-body/2,body*0.22,body);
+  ctx.fillStyle='#e33';const d=body*0.17;ctx.fillRect(body/2-d*1.5,-body*0.28,d,d);ctx.fillRect(body/2-d*1.5,body*0.12,d,d);ctx.restore();}
 
 function drawMob(ctx,cx,cy,r,dist,moving,ang,type){
   ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(cx,cy+r*0.55,r*0.9,r*0.5,0,0,7);ctx.fill();
@@ -106,7 +117,7 @@ function drawMob(ctx,cx,cy,r,dist,moving,ang,type){
   if(type==='skeleton')return drawPlayer(ctx,cx,cy,r,dist,moving,ang,{palette:{hair:'#e8e6dc',shirt:'#d8d4c6',pants:'#cfcabc',skin:'#efeee6'},weapon:'bow',bony:true,eyeSockets:true});
   return drawPlayer(ctx,cx,cy,r,dist,moving,ang,{palette:{hair:'#4a7a34',shirt:'#3f5a34',pants:'#33472a',skin:'#5c9a44'},weapon:null});}
 
-function blockTop(ctx,x,y,cs,key,elev){const base=TERRAIN[key]||'#888';const col=elev>0?lighten(base,Math.min(.34,elev*.11)):base;
+function blockTop(ctx,x,y,cs,key,elev){const col=TERRAIN[key]||'#888';   // uniform top colour at every elevation
   ctx.fillStyle=col;ctx.fillRect(x,y,cs+1,cs+1);ctx.save();ctx.beginPath();ctx.rect(x,y,cs,cs);ctx.clip();
   if(['grass','bush'].includes(key)){ctx.fillStyle='rgba(0,0,0,.10)';for(let i=0;i<3;i++)ctx.fillRect(x+(i*11%cs),y+(i*7%cs),cs*.12,cs*.12);}
   else if(key==='lava'){ctx.fillStyle='rgba(255,220,80,.5)';ctx.fillRect(x+cs*.2,y+cs*.3,cs*.25,cs*.18);}
@@ -115,7 +126,7 @@ function blockTop(ctx,x,y,cs,key,elev){const base=TERRAIN[key]||'#888';const col
   else if(key==='planks'){ctx.strokeStyle='rgba(0,0,0,.2)';ctx.beginPath();ctx.moveTo(x,y+cs*.5);ctx.lineTo(x+cs,y+cs*.5);ctx.stroke();}
   const g=ctx.createLinearGradient(x,y,x,y+cs);g.addColorStop(0,'rgba(255,255,255,.14)');g.addColorStop(.5,'rgba(255,255,255,0)');g.addColorStop(1,'rgba(0,0,0,.16)');ctx.fillStyle=g;ctx.fillRect(x,y,cs,cs);ctx.restore();
   ctx.strokeStyle='rgba(0,0,0,.16)';ctx.strokeRect(x,y,cs,cs);}
-function blockSide(ctx,x,yb,cs,key,depth,elev){if(depth<=0)return;const base=TERRAIN[key]||'#888';const top=elev>0?lighten(base,Math.min(.34,elev*.11)):base;ctx.fillStyle=shade(top,.34);ctx.fillRect(x,yb,cs+1,depth+1);ctx.strokeStyle='rgba(0,0,0,.22)';ctx.strokeRect(x,yb,cs,depth);}
+function blockSide(ctx,x,yb,cs,key,depth,levels){if(depth<=0)return;ctx.fillStyle=shade(TERRAIN[key]||'#888',.45);ctx.fillRect(x,yb,cs+1,depth+1);ctx.strokeStyle='rgba(0,0,0,.35)';ctx.strokeRect(x+.5,yb+.5,cs,depth);const n=Math.max(1,levels|0);if(n>1){const seg=depth/n;for(let i=1;i<n;i++){const ly=yb+seg*i;ctx.beginPath();ctx.moveTo(x,ly);ctx.lineTo(x+cs,ly);ctx.stroke();}}}
 
 // ── cards ──
 const canvases=[];
@@ -123,21 +134,21 @@ function mkCard(grid,W,H,draw,name,desc){const card=document.createElement('div'
 
 const WEAPONS=[['pickaxe','Pickaxe (default)'],['sword','Sword'],['bow','Bow'],['trident','Trident'],['boomerang','Boomerang']];
 const pg=document.getElementById('player-grid');
-WEAPONS.forEach(([w,label])=>mkCard(pg,120,120,(ctx,s,t,dist)=>drawPlayer(ctx,60,62,17*s,dist,running,walkAngle,{weapon:w}),label,'Held weapon points where the player aims.'));
+WEAPONS.forEach(([w,label])=>mkCard(pg,120,120,(ctx,s,t,dist)=>drawPlayer(ctx,60,62,17*s,dist,running,walkAngle,{weapon:w,moveAngle:walkAngle+0.7}),label,'Weapon + upper body face the aim; legs follow movement.'));
 
 const mg=document.getElementById('mob-grid');
 [['zombie','Zombie','Player body, green skin, bare-handed.'],['skeleton','Skeleton','Bony: front eye sockets, parallel shoulder-bone, thin limbs, holds a bow.'],['spider','Spider','Square body, 8 legs, red eyes on the front edge.']]
   .forEach(([type,label,desc])=>mkCard(mg,120,120,(ctx,s,t,dist)=>drawMob(ctx,60,60,16*s,dist,running,walkAngle,type),label,desc));
 
 const bg=document.getElementById('block-grid');
-mkCard(bg,200,140,(ctx,s)=>{const cs=30*s*0.72;
-  // a 3-wide, 3-deep patch with a raised back row to show sides
-  const rows=[[0,0,0],[1,1,1],[0,0,0]];const keys=[['grass','grass','grass'],['stone','gold','stone'],['grass','planks','grass']];
-  const STEP=12*s*0.72,LIP=cs*0.16,ox=20,oy=24;
-  for(let r=0;r<3;r++)for(let c=0;c<3;c++){const elev=rows[r][c];const x=ox+c*cs;const y=oy+r*cs-elev*STEP;
-    const front=(r+1<3)?rows[r+1][c]:-1;const drop=elev-front;const depth=drop>0?drop*STEP+LIP:LIP;
-    blockSide(ctx,x,y+cs,cs,keys[r][c],depth,elev);blockTop(ctx,x,y,cs,keys[r][c],elev);}},
-  '3D extruded terrain','Raised middle row (elev 1) shows its side dropping to the front row; interior sides are covered.');
+mkCard(bg,200,150,(ctx,s)=>{const cs=30*s*0.72;
+  // 3-wide × 3-deep: back row raised to elev 2, middle elev 1, front elev 0.
+  const rows=[[2,2,2],[1,1,1],[0,0,0]];const keys=[['stone','gold','stone'],['grass','grass','grass'],['grass','planks','grass']];
+  const LIFT=cs*0.25,ox=20,oy=30;
+  for(let r=0;r<3;r++)for(let c=0;c<3;c++){const elev=rows[r][c];const x=ox+c*cs;const y=oy+r*cs-elev*LIFT;
+    const hasFront=r+1<3;const front=hasFront?rows[r+1][c]:0;const drop=hasFront?elev-front:Math.max(1,elev+1);
+    blockSide(ctx,x,y+cs,cs,keys[r][c],drop>0?drop*LIFT:0,drop);blockTop(ctx,x,y,cs,keys[r][c],elev);}},
+  '3D extruded terrain','Side = 1/4 block per elevation level, noticeably darker, with a divider line per level. Tops stay one colour; the front row covers interior sides.');
 
 const pal=document.getElementById('pal');Object.entries(OH_SPRITE).forEach(([k,v])=>{const s=document.createElement('span');s.className='sw';s.innerHTML=`<i style="background:${v}"></i>${k} <span style="color:var(--muted)">${v}</span>`;pal.appendChild(s);});
 

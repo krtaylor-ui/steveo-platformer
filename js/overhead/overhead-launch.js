@@ -70,11 +70,11 @@
     },
     buildDemoWorld,
 
-    // ── Shared top-down tile TOP face (shading + bevel + per-family texture) ────
+    // ── Shared top-down tile TOP face (bevel + per-family texture) ──────────────
+    // Tops are the SAME colour at every elevation (§ Kevin) — depth reads only from
+    // the darker extruded SIDE. `elev` kept in the signature for callers.
     drawTerrainTile(ctx, key, x, y, cs, elev) {
-      const base = P().terrainColor(key);
-      let col = base;
-      if (elev > 0) col = _lighten(base, Math.min(0.34, elev * 0.11));   // higher = lighter (reads as "up")
+      const col = P().terrainColor(key);
       ctx.fillStyle = col; ctx.fillRect(x, y, cs + 1, cs + 1);
       ctx.save(); ctx.beginPath(); ctx.rect(x, y, cs, cs); ctx.clip();
       if (key === 'grass' || key === 'leaves' || key === 'bush') { ctx.fillStyle = 'rgba(0,0,0,.10)'; for (let i = 0; i < 3; i++) ctx.fillRect(x + (i * 11 % cs), y + (i * 7 % cs), cs * 0.12, cs * 0.12); }
@@ -91,17 +91,20 @@
       ctx.strokeStyle = 'rgba(0,0,0,.16)'; ctx.strokeRect(x, y, cs, cs);
     },
 
-    // ── 3D-extruded SIDE (front) face — a darker shade of the top colour (§).
-    // Drawn BELOW the top; whatever block sits in FRONT (next row, drawn later)
-    // covers it, so only front/edge blocks — and the exposed drop of a raised
-    // block down to the block in front — show a side. `depth` px tall.
-    drawTerrainSide(ctx, key, x, topBottomY, cs, depth, elev) {
+    // ── 3D-extruded SIDE (front) face — noticeably darker than the top (§).
+    // Drawn BELOW the top; the block in FRONT (next row, drawn later) covers it,
+    // so only front/edge blocks and the drop of a raised block show a side. Each
+    // elevation LEVEL is one `levels` segment tall; a divider line separates them
+    // so a 2-level cliff reads as two steps.
+    drawTerrainSide(ctx, key, x, topBottomY, cs, depth, levels) {
       if (depth <= 0) return;
-      const base = P().terrainColor(key);
-      const top = elev > 0 ? _lighten(base, Math.min(0.34, elev * 0.11)) : base;
-      ctx.fillStyle = _shade(top, 0.34);
+      ctx.fillStyle = _shade(P().terrainColor(key), 0.45);   // noticeably darker
       ctx.fillRect(x, topBottomY, cs + 1, depth + 1);
-      ctx.strokeStyle = 'rgba(0,0,0,.22)'; ctx.strokeRect(x, topBottomY, cs, depth);
+      ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, topBottomY + 0.5, cs, depth);
+      // Divider lines between stacked elevation levels.
+      const n = Math.max(1, levels | 0);
+      if (n > 1) { const seg = depth / n; for (let i = 1; i < n; i++) { const ly = topBottomY + seg * i; ctx.beginPath(); ctx.moveTo(x, ly); ctx.lineTo(x + cs, ly); ctx.stroke(); } }
     },
 
     // ── A small held weapon, drawn in LOCAL space pointing +x (forward). ────────
@@ -120,69 +123,88 @@
     // (±x) in opposite phase (natural gait); a weapon is always held, pointing +x
     // (default pickaxe). Colours from a palette (default OH_SPRITE) so they stay
     // user-configurable — the 2D renderer should eventually share OH_SPRITE too.
+    // Local +x = forward. LOWER body (feet+legs+waist) faces MOVEMENT; UPPER body
+    // (arms+shoulders+head+weapon) faces AIM (opts.moveAngle vs aimAngle). Limbs
+    // are CONNECTED segments (arms = shirt, legs = pants) from the body to a small
+    // hand/foot — no floating parts. Feet point forward, in line with the hips.
+    // Layer order: feet → legs → arms → waist → shoulders → head (arms cover legs;
+    // waist+shoulders cover the limb roots). Colours from a palette (default OH_SPRITE).
     drawOverheadPlayer(ctx, cx, cy, r, dist, moving, aimAngle, opts) {
       opts = opts || {};
       const S = opts.palette || window.OH_SPRITE;
       const weapon = opts.weapon === undefined ? 'pickaxe' : opts.weapon;
-      const ph = (dist / (r * 1.15)) % (Math.PI * 2);
-      const swing = moving ? Math.sin(ph) : 0;              // +1 = this side forward
+      const moveAngle = opts.moveAngle != null ? opts.moveAngle : aimAngle;
+      const ph = (dist / (r * 1.15)) % (Math.PI * 2), swing = moving ? Math.sin(ph) : 0;
+      const span = r * 1.4, limbW = opts.bony ? r * 0.16 : r * 0.26;
+      const armAmp = r * 0.55, legAmp = r * 0.5, restFwd = r * 0.18;
       ctx.save(); ctx.translate(cx, cy);
-      if (opts.rotate !== false && aimAngle != null) ctx.rotate(aimAngle);   // local +x = forward
-      const headR = r * 0.5;                                 // SMALLER head (was 0.7)
-      const shoulderSpan = r * 1.5, shoulderW = r * 0.34;    // shoulders flank ±y
-      const armAmp = r * 0.6, legAmp = r * 0.5, limbW = opts.bony ? r * 0.14 : r * 0.22;
-      // For each side (±y): arm swings +/- along x, leg swings OPPOSITE.
+
+      // ── LOWER BODY — faces movement ──
+      ctx.save(); if (opts.rotate !== false && moveAngle != null) ctx.rotate(moveAngle);
+      ctx.lineCap = 'round';
       for (const sy of [-1, 1]) {
-        const armX = moving ? swing * sy * armAmp : r * 0.15;
-        const legX = moving ? -swing * sy * legAmp : -r * 0.15;
-        const yBase = sy * (shoulderSpan / 2);
-        // LEG (pants) behind the torso.
-        ctx.fillStyle = S.pants; ctx.fillRect(legX - limbW / 2, sy > 0 ? yBase - limbW : yBase, limbW, limbW * (opts.bony ? 1.4 : 1.2) + Math.abs(legX) * 0.2);
-        ctx.fillStyle = _shade(S.pants, 0.25); ctx.fillRect(legX - limbW / 2, yBase - (sy < 0 ? limbW * 0.5 : 0), limbW, limbW * 0.5);   // foot
-        // ARM (shirt) + hand.
-        ctx.fillStyle = S.shirt; ctx.fillRect(armX - limbW / 2, yBase - limbW * 0.5, limbW, limbW + Math.abs(armX) * 0.2);
-        ctx.fillStyle = S.skin; ctx.fillRect(armX - limbW / 2, yBase + (sy > 0 ? limbW * 0.5 : -limbW), limbW, limbW * 0.7);   // hand
+        const yB = sy * (span / 2) * 0.7;                      // hip
+        const footX = restFwd + (moving ? -swing * sy * legAmp : -r * 0.05);   // legs drive the walk
+        ctx.strokeStyle = S.pants; ctx.lineWidth = limbW;
+        ctx.beginPath(); ctx.moveTo(0, yB); ctx.lineTo(footX, yB); ctx.stroke();   // leg (connected)
+        ctx.fillStyle = _shade(S.pants, 0.2);                   // foot — forward-pointing, in line with hip
+        ctx.fillRect(footX - limbW * 0.2, yB - limbW * 0.5, limbW * 1.1, limbW);
       }
-      // SHOULDERS (shirt) — a bar across ±y flanking the head. Bony = a thin neck
-      // to a parallel bone (skeleton).
-      if (opts.bony) {
-        ctx.fillStyle = S.shirt; ctx.fillRect(-r * 0.08, -shoulderSpan / 2, r * 0.16, shoulderSpan);           // parallel bone
-        ctx.fillRect(-r * 0.28, -r * 0.06, r * 0.5, r * 0.12);                                                 // spine/neck connector
-      } else {
-        ctx.fillStyle = S.shirt; ctx.fillRect(-shoulderW / 2, -shoulderSpan / 2, shoulderW, shoulderSpan);
+      ctx.restore();
+
+      // ── UPPER BODY — faces aim ──
+      ctx.save(); if (opts.rotate !== false && aimAngle != null) ctx.rotate(aimAngle);
+      ctx.lineCap = 'round';
+      // Arms (drawn first in the upper group so they cover the legs/feet below).
+      for (const sy of [-1, 1]) {
+        const yB = sy * (span / 2);
+        const handX = restFwd + (moving ? swing * sy * armAmp : r * 0.1);
+        ctx.strokeStyle = S.shirt; ctx.lineWidth = limbW;
+        ctx.beginPath(); ctx.moveTo(0, yB); ctx.lineTo(handX, yB); ctx.stroke();   // arm (connected, shirt)
+        ctx.fillStyle = S.skin; ctx.beginPath(); ctx.arc(handX, yB, limbW * 0.42, 0, 7); ctx.fill();   // hand
       }
-      // HEAD — square, smaller, on top.
+      // Waist (pants) then shoulders (shirt) — cover the limb roots.
+      ctx.fillStyle = S.pants; ctx.fillRect(-r * 0.28, -span * 0.42, r * 0.56, span * 0.84);
+      if (opts.bony) { ctx.fillStyle = S.shirt; ctx.fillRect(-r * 0.09, -span / 2, r * 0.18, span);   // parallel shoulder-bone
+        ctx.fillRect(-r * 0.28, -r * 0.06, r * 0.5, r * 0.12); }                                       // thin neck
+      else { ctx.fillStyle = S.shirt; ctx.fillRect(-r * 0.36, -span / 2, r * 0.72, span); }
+      // Head (smaller, on top).
+      const headR = r * 0.5;
       ctx.fillStyle = S.hair; ctx.fillRect(-headR, -headR, headR * 2, headR * 2);
       if (opts.eyeSockets) { ctx.fillStyle = '#222'; ctx.fillRect(headR - headR * 0.5, -headR * 0.55, headR * 0.34, headR * 0.34); ctx.fillRect(headR - headR * 0.5, headR * 0.2, headR * 0.34, headR * 0.34); }
       else { ctx.fillStyle = 'rgba(255,255,255,.10)'; ctx.fillRect(-headR, -headR, headR * 2, headR * 0.4); }
-      // WEAPON — held forward (skip for e.g. bare-handed zombies via weapon:null).
-      if (weapon) { ctx.save(); ctx.translate(headR * 0.6, r * 0.5); this.drawWeapon(ctx, r, weapon); ctx.restore(); }
+      // Weapon in the forward hand (suppressed when thrown via weapon:null).
+      if (weapon) { ctx.save(); ctx.translate(headR * 0.5, span / 2); this.drawWeapon(ctx, r, weapon); ctx.restore(); }
+      ctx.restore();
       ctx.restore();
     },
 
     // ── Mob dispatch (zombie = green humanoid; skeleton = bony; spider = custom).
-    drawOverheadMob(ctx, cx, cy, r, dist, moving, aimAngle, type) {
+    drawOverheadMob(ctx, cx, cy, r, dist, moving, aimAngle, type, moveAngle) {
       if (type === 'spider') return this._drawSpider(ctx, cx, cy, r, aimAngle);
-      if (type === 'skeleton') {
-        return this.drawOverheadPlayer(ctx, cx, cy, r, dist, moving, aimAngle,
-          { palette: { hair: '#e8e6dc', shirt: '#d8d4c6', pants: '#cfcabc', skin: '#efeee6' }, weapon: 'bow', bony: true, eyeSockets: true });
-      }
-      // zombie — the player body, green skin (§ "same as player but green skin").
+      if (type === 'skeleton') return this.drawOverheadPlayer(ctx, cx, cy, r, dist, moving, aimAngle,
+        { palette: { hair: '#e8e6dc', shirt: '#d8d4c6', pants: '#cfcabc', skin: '#efeee6' }, weapon: 'bow', bony: true, eyeSockets: true, moveAngle });
+      // zombie — the player body, green skin.
       return this.drawOverheadPlayer(ctx, cx, cy, r, dist, moving, aimAngle,
-        { palette: { hair: '#4a7a34', shirt: '#3f5a34', pants: '#33472a', skin: '#5c9a44' }, weapon: null });
+        { palette: { hair: '#4a7a34', shirt: '#3f5a34', pants: '#33472a', skin: '#5c9a44' }, weapon: null, moveAngle });
     },
+    // Square body, 8 legs on the two SIDES (±y, 4 each), red eyes on the FRONT edge
+    // (+x) which has NO legs. Faces the player (aimAngle).
     _drawSpider(ctx, cx, cy, r, aimAngle) {
       ctx.save(); ctx.translate(cx, cy); if (aimAngle != null) ctx.rotate(aimAngle);
-      const body = r * 0.9, legLen = r * 0.85, legW = Math.max(1.5, r * 0.12);
-      ctx.strokeStyle = '#241f2a'; ctx.lineWidth = legW;
-      for (let i = 0; i < 4; i++) { const ly = (-1.1 + i * 0.7) * body * 0.5;   // 4 legs per side
-        ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(legLen, ly - body * 0.15); ctx.stroke();     // right
-        ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(-legLen, ly - body * 0.15); ctx.stroke(); }  // left
+      const body = r * 0.95, legLen = r * 0.7, legW = Math.max(1.5, r * 0.11);
+      ctx.strokeStyle = '#241f2a'; ctx.lineWidth = legW; ctx.lineCap = 'round';
+      for (let i = 0; i < 4; i++) {
+        const lx = (-1.05 + i * 0.7) * body * 0.5;             // 4 legs spread along the body's x
+        const kick = Math.sin(i) * body * 0.18;
+        ctx.beginPath(); ctx.moveTo(lx, -body / 2); ctx.lineTo(lx + kick, -body / 2 - legLen); ctx.stroke();  // top side (−y)
+        ctx.beginPath(); ctx.moveTo(lx, body / 2); ctx.lineTo(lx + kick, body / 2 + legLen); ctx.stroke();    // bottom side (+y)
+      }
       ctx.fillStyle = window.OH_PALETTE ? window.OH_PALETTE.OH_MOB_BY_KEY.spider.color : '#3a3340';
-      ctx.fillRect(-body / 2, -body / 2, body, body);                        // square body
-      ctx.fillStyle = _shade('#3a3340', -0.2); ctx.fillRect(-body / 2, -body / 2, body, body * 0.3);
-      ctx.fillStyle = '#e33'; const d = body * 0.16;                         // red dots on the FRONT edge (+x)
-      ctx.fillRect(body / 2 - d * 1.4, -body * 0.28, d, d); ctx.fillRect(body / 2 - d * 1.4, body * 0.12, d, d);
+      ctx.fillRect(-body / 2, -body / 2, body, body);          // square body
+      ctx.fillStyle = _shade('#3a3340', -0.25); ctx.fillRect(body / 2 - body * 0.22, -body / 2, body * 0.22, body);  // front band
+      ctx.fillStyle = '#e33'; const d = body * 0.17;           // two red eyes on the FRONT edge (+x)
+      ctx.fillRect(body / 2 - d * 1.5, -body * 0.28, d, d); ctx.fillRect(body / 2 - d * 1.5, body * 0.12, d, d);
       ctx.restore();
     },
   };

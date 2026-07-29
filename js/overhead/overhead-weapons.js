@@ -83,11 +83,22 @@
     const ax = Math.cos(phi) * s.a, off = Math.sin(phi) * s.b * s.side;
     return { x: s.cx + s.dx * ax + s.px2 * off, y: s.cy + s.dy * ax + s.py2 * off };
   }
-  function stepBoomerang(s) {
+  // playerPos (optional): on the RETURN half (t>0.5) the path bends toward the
+  // player's CURRENT position so the boomerang always comes home even if the
+  // player moved — still circular early, correcting to home by t=1.
+  function stepBoomerang(s, playerPos) {
     if (s.dead) return s;
     s.t += s.dt;
     if (s.t >= 1) { s.t = 1; s.dead = true; }   // returned to player
-    const p = boomerangPos(s, s.t); s.x = p.x; s.y = p.y;
+    const p = boomerangPos(s, s.t);
+    let x = p.x, y = p.y;
+    if (playerPos) {
+      // The bare ellipse ends at the ORIGIN; blend that endpoint toward the live
+      // player over the return half so it lands on them.
+      const k = Math.max(0, Math.min(1, (s.t - 0.5) / 0.5));
+      x += (playerPos.x - s.ox) * k; y += (playerPos.y - s.oy) * k;
+    }
+    s.x = x; s.y = y;
     return s;
   }
 
