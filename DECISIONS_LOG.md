@@ -1,6 +1,39 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD ENGINE — JUMP-CLEAR / SPRINT / MELEE SWING / PIT-LAVA DEATH + EDITOR GHOST+UNDO (2026-07-29, build 295, branch `overhead-engine`)
+# ═══════════════════════════════════════════════════════════════════════
+Ninth playtest-feedback batch. Suite green (977 assertions); headless gameplay + render harnesses + probe clean.
+
+- **Jump CLEARANCE (Kevin reversed the earlier no-vault rule):** `jumpClear` (default 1) + `doubleJumpClear`
+  (default +1), ADDITIVE. `startJump` passes `maxElevationJump = jumpClear`; the double jump adds
+  `doubleJumpClear` to it. Airborne collision now allows entering cells with `delta ≤ jump.maxElevationJump`
+  (clear/mount), and `_resolveLanding` sets `p.elev` to the landing cell (cap already enforced). A WALK still
+  can't climb (climbLevels stays separate). Verified headless (jump clears a 1-wall; walking into it blocks).
+- **Sprint:** `sprint` (Shift, default on) + `sprintMultiplier` (1.6). Speed multiplier applied to movement
+  AND carried into the jump's air velocity. Verified faster. (Overhead has no key-rebind UI yet — Shift is
+  fixed; multiplier + on/off are the configurables.)
+- **Melee SWING animation:** `_melee` sets a short swing timer; `_render` sweeps a weapon bar + a faint wedge
+  through the attack cone (unarmed/pickaxe melee) over the swing window.
+- **Pit MODE (replaces the deadly bool):** `pitMode` = `deadly` (walk in → death) | `block` (impassable —
+  returns false in collision so it blocks EVEN in god mode, since collision never consults god). Verified
+  block-pit blocks with god on. Back-compat: old `pitsDeadly:false` → `block`.
+- **Pit-specific death:** `_die(msg, 'pit')` runs a SINK phase first — `_drawDyingSprite` draws a
+  front-facing figure with flailing limbs shrinking over ~60 frames — THEN the burst. Non-pit deaths burst
+  immediately. `_burstParts` factored out. Verified sink→burst transition.
+- **Lava insta-death:** `lavaDeadly` (default off) routes lava contact (walk + jump-landing) through `_die`
+  instead of `_hurt`. **maxStepDown** gains a `0` (never walk down) option.
+- **Editor placement GHOST:** `_drawGhost` renders a translucent preview of the selected
+  block/mob/item/building/ramp/tree/goal/spawn at the hovered cell (hover tracked in `_mm`, cleared on
+  `mouseleave`); a building that won't fit (off-map or overlapping another building) shows a red X. The ghost
+  is a single placement — it does NOT reflect the brush size, per Kevin.
+- **Undo/redo = content + settings only, with notifications:** history was already immune to zoom/scroll
+  (those never snapshot). `_pushHistory(desc)` now stores a description + DEDUPES (skips no-op pushes);
+  undo/redo `_flash('↶ Undid: …')` / `'↷ Redid: …'`. Settings-menu close pushes a `settings change` entry
+  (deduped if unchanged), making settings edits undoable. Confirmed the **erase** tool already honours the
+  brush size (no change).
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD ENGINE — PITS / DEATH FX / CLIFF SAFETY + LIGHT POLISH (2026-07-29, build 294, branch `overhead-engine`)
 # ═══════════════════════════════════════════════════════════════════════
 Eighth playtest-feedback batch. Suite green (977 assertions); draw-probe + headless safety/render harnesses clean.

@@ -18,6 +18,12 @@
       jumpScale:        0.22,
       doubleJump:       true,       // allow a mid-air second jump
       doubleJumpStyle:  'somersault',// 'somersault' (head-over-heels) | 'spin' (flat rotate)
+      // Jump CLEARANCE — blocks a jump can clear/mount (additive with the double jump).
+      jumpClear:        1,          // e.g. 1 = clear a 1-high wall with a single jump
+      doubleJumpClear:  1,          // extra blocks the double jump adds on top of jumpClear
+      // Sprint (Shift by default) — a speed multiplier while held.
+      sprint:           true,
+      sprintMultiplier: 1.6,
       // Combat / weapons — px/frame (absolute, density-independent).
       crossbowSpeed:    13,
       tridentSpeed:     12,
@@ -51,8 +57,9 @@
       glowstoneBrightness: 0.95,    // per-object light strength (0..1)
       // Safety controls (falling / pits).
       blockCliffFall:   true,       // stop accidental walks off high platforms
-      maxStepDown:      1,          // levels a walk may drop (further needs a ramp/bridge)
-      pitsDeadly:       true,       // pit blocks kill on entry (else they are hard obstacles)
+      maxStepDown:      1,          // levels a walk may drop (0 = none; further needs a ramp/bridge)
+      pitMode:          'deadly',   // 'deadly' (fall in → insta-death) | 'block' (impassable, even in GOD)
+      lavaDeadly:       false,      // lava is insta-death instead of dealing damage
     };
   }
 
@@ -124,6 +131,10 @@
               ${sel('playerHeight', 'Player height (levels)', [['1', '1 (walk under 2+ high)'], ['2', '2'], ['3', '3']])}
               ${range('jumpFloat', 'Jump float (up)', 0, 1, 0.05)}
               ${range('jumpScale', 'Jump scale (grow)', 0, 0.5, 0.02)}
+              ${sel('jumpClear', 'Blocks a jump can clear', [['0', '0 (no vault)'], ['1', '1 block'], ['2', '2 blocks'], ['3', '3 blocks']])}
+              ${sel('doubleJumpClear', 'Extra blocks the double jump adds', [['0', '0'], ['1', '+1 block'], ['2', '+2 blocks']])}
+              ${toggle('sprint', 'Sprint (hold Shift)')}
+              ${range('sprintMultiplier', 'Sprint speed ×', 1.1, 2.5, 0.1)}
               ${toggle('doubleJump', 'Double jump')}
               ${sel('doubleJumpStyle', 'Double-jump style', [['somersault', 'Somersault (flip)'], ['spin', 'Spin']])}
             </div>
@@ -160,8 +171,9 @@
             </div>
             <div class="ohws-grp"><h3>Safety — Falling &amp; Pits</h3>
               ${toggle('blockCliffFall', 'Stop players walking off cliffs')}
-              ${sel('maxStepDown', 'Max walk-down without a ramp/bridge', [['1', '1 level'], ['2', '2 levels'], ['99', 'Any (no guard)']])}
-              ${toggle('pitsDeadly', 'Pit blocks are deadly (else hard obstacles)')}
+              ${sel('maxStepDown', 'Max walk-down without a ramp/bridge', [['0', '0 (none)'], ['1', '1 level'], ['2', '2 levels'], ['99', 'Any (no guard)']])}
+              ${sel('pitMode', 'Pit blocks', [['deadly', 'Deadly (fall in → death)'], ['block', 'Solid obstacle (impassable)']])}
+              ${toggle('lavaDeadly', 'Lava is insta-death (else it hurts)')}
             </div>
           </div>
           <div class="ohws-foot"><button id="ohws-reset">Reset to defaults</button><button class="primary" id="ohws-done">Done</button></div>

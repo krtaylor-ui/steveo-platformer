@@ -63,10 +63,20 @@
       this._elapsed = 0; this._tod = this._dayNight ? this._dayStart : 0.5; this._detectMult = 1;
       // Death FX particles (family-friendly: coloured sprite blocks, no gore).
       this._deathFx = null;
-      // Cliff-fall guard + pit deadliness (creator safety controls).
+      // Cliff-fall guard + pit / lava behaviour (creator safety controls).
       this._blockCliffFall = cfg.blockCliffFall !== false;   // default ON: no accidental walk-offs
-      this._maxStepDown = (cfg.maxStepDown != null ? cfg.maxStepDown : 1);
-      this._pitsDeadly = cfg.pitsDeadly !== false;           // default ON: pits kill
+      this._maxStepDown = (cfg.maxStepDown != null ? cfg.maxStepDown : 1);   // 0 = can't walk down at all
+      // Pits: 'deadly' (fall in → insta-death) | 'block' (impassable, even in GOD mode).
+      this._pitMode = cfg.pitMode || (cfg.pitsDeadly === false ? 'block' : 'deadly');
+      this._pitsDeadly = this._pitMode !== 'block';
+      this._lavaDeadly = !!cfg.lavaDeadly;                   // lava is insta-death instead of damage
+      // Jump CLEARANCE: blocks a jump can clear/mount. Additive with double jump —
+      // e.g. jump 1 + double 1 = clear 2; jump 0 + double 1 = a double jump clears 1.
+      this._jumpClear = (cfg.jumpClear != null ? cfg.jumpClear : 1);
+      this._doubleJumpClear = (cfg.doubleJumpClear != null ? cfg.doubleJumpClear : 1);
+      // Sprint (Shift by default) — a speed multiplier while held.
+      this._sprint = cfg.sprint !== false;
+      this._sprintMult = (cfg.sprintMultiplier != null ? cfg.sprintMultiplier : 1.6);
       // Precompute light-emitting cells (glowstone / lava) once, with each one's
       // brightness (per-object) and colour. Reach is brightness × the universal range.
       this._lightCells = [];
@@ -169,21 +179,29 @@
       const intent = OH_CONTROLS.resolve(eff.scheme, raw, { angleLockDeg: this.angleLockDeg });
       if (OH_CONTROLS.norm(intent.aim).x || OH_CONTROLS.norm(intent.aim).y) { p.aim = intent.aim; p.lastAim = intent.aim; }
 
-      // Jump.
+      // Sprint (Shift by default) — a speed multiplier, also carried into a jump.
+      const sprinting = this._sprint && inp.isDown && (inp.isDown('ShiftLeft') || inp.isDown('ShiftRight'));
+      const spd = p.speed * (sprinting ? this._sprintMult : 1);
+      // Jump. maxElevationJump = the jump's clearance (additive with the double jump).
       const airborneBefore = p.jump && p.jump.jumping;
-      if (raw.jumpBtn) { if (!airborneBefore) { p.jump = OH_MOVE.startJump({ moveX: mv.x * p.speed, moveY: mv.y * p.speed, startElev: p.elev }); p._jumpFrom = { x: p.x, y: p.y }; } else if (this.settings.doubleJump !== false && OH_MOVE.canDoubleJump(p.jump)) OH_MOVE.doubleJump(p.jump); }
+      if (raw.jumpBtn) {
+        if (!airborneBefore) { p.jump = OH_MOVE.startJump({ moveX: mv.x * spd, moveY: mv.y * spd, startElev: p.elev, maxElevationJump: this._jumpClear }); p._jumpFrom = { x: p.x, y: p.y }; }
+        else if (this.settings.doubleJump !== false && OH_MOVE.canDoubleJump(p.jump)) { OH_MOVE.doubleJump(p.jump); p.jump.maxElevationJump = (p.jump.maxElevationJump | 0) + this._doubleJumpClear; }
+      }
       const airborne = p.jump && p.jump.jumping;
-      this._moveWithCollision(p, intent.move.x * p.speed, intent.move.y * p.speed, airborne);
+      this._moveWithCollision(p, intent.move.x * spd, intent.move.y * spd, airborne);
       if (moving) { p.dist += Math.hypot(intent.move.x, intent.move.y) * p.speed; p.moveAngle = Math.atan2(intent.move.y, intent.move.x); }
       if (p.jump && p.jump.jumping && OH_MOVE.advanceJump(p.jump).landed) this._resolveLanding(p);
       if (!airborne) { const c = this._cellOf(p.x, p.y);
-        if (this._pitsDeadly && this._pit(c.col, c.row)) this._die('Fell into a pit');
-        else if (this._gap(c.col, c.row)) this._fall('Fell'); else if (this._hazard(c.col, c.row) && p.iFrames === 0) this._hurt(4, 'Hazard'); }
+        if (this._pitsDeadly && this._pit(c.col, c.row)) this._die('Fell into a pit', 'pit');
+        else if (this._gap(c.col, c.row)) this._fall('Fell');
+        else if (this._hazard(c.col, c.row)) { if (this._lavaDeadly) this._die('Fell in lava'); else if (p.iFrames === 0) this._hurt(4, 'Hazard'); } }
       // Hidden if standing under an overhang (a cell ≥ player.elev+2).
       { const c = this._cellOf(p.x, p.y); p.hidden = (this._key(c.col, c.row) === 'leaves' && this._elev(c.col, c.row) > p.elev); }
 
       // Weapons / melee.
       this._updateWeapons(intent, mouseWorld);
+      if (p._swingT > 0) p._swingT--;   // advance the melee swing animation
       // Item pickup.
       this._pickups(p);
       // Mobs + projectiles.
@@ -262,7 +280,7 @@
           if (ent === this.player && this._blockCliffFall && delta < -this._maxStepDown && !this._rampNear(cur.col, cur.row) && !this._rampNear(c.col, c.row)) return false;
           return tE;
         }
-        if (airborne) return false;                          // can't jump ONTO raised terrain (no jump-mounting)
+        if (airborne) { const clear = (ent.jump && ent.jump.maxElevationJump) | 0; return delta <= clear ? tE : false; }   // a jump clears/mounts up to its clearance
         if (delta <= C || this._rampNear(cur.col, cur.row) || this._rampNear(c.col, c.row)) return tE;   // climb within limit / via (nearby) ramp
         return false;                                        // raised SOLID terrain → wall (any height)
       };
@@ -285,13 +303,14 @@
     }
     _resolveLanding(p) {
       const c = this._cellOf(p.x, p.y);
+      if (this._pitsDeadly && this._pit(c.col, c.row)) { this._die('Fell into a pit'); return; }
       const res = OH_MOVE.landingValid(p.jump, { landingIsGap: this._gap(c.col, c.row), landingIsHazard: this._hazard(c.col, c.row),
         landingIsSolidGround: this._key(c.col, c.row) != null, elevDelta: this._elev(c.col, c.row) - p.jump.startElev });
       if (!res.valid) {
-        if (res.reason === 'hazard') this._hurt(4, 'Hazard');
+        if (res.reason === 'hazard') { if (this._lavaDeadly) this._die('Fell in lava'); else this._hurt(4, 'Hazard'); }
         else if (res.reason === 'gap') this._fall('Missed the jump');
-        else if (p._jumpFrom) { p.x = p._jumpFrom.x; p.y = p._jumpFrom.y; }   // tried to land on too-high ground → bounce back (no jump-mounting walls)
-      } else { const d = this._elev(c.col, c.row) - p.elev; if (d <= this.playerH) p.elev = this._elev(c.col, c.row); }
+        else if (p._jumpFrom) { p.x = p._jumpFrom.x; p.y = p._jumpFrom.y; }   // couldn't clear the wall → bounce back
+      } else { p.elev = this._elev(c.col, c.row); }   // landed within the jump's clearance
     }
 
     // ── Weapons ────────────────────────────────────────────────────────────
@@ -311,7 +330,7 @@
     }
     _weaponCfg() { const s = this.settings || {}; return { crossbowSpeed: s.crossbowSpeed, tridentSpeed: s.tridentSpeed, tridentReturnSpeed: s.tridentReturnSpeed, boomerangSpeed: s.boomerangSpeed, boomerangMaxRange: s.boomerangRange, boomerangWidth: s.boomerangWidth }; }
     _melee(p, ang) {
-      if (p._fireCd > 0) return; p._fireCd = 18;
+      if (p._fireCd > 0) return; p._fireCd = 18; p._swingT = 14; p._swingDur = 14; p._swingAng = ang;   // trigger the swing anim
       const hits = OH_COMBAT.coneHit({ x: p.x, y: p.y }, ang, this.mobs.filter((m) => !m.dead && this._canAttack(p.elev, m.elev || 0)), { reach: this.unit * (this.settings.meleeReach || 2.4), halfAngle: Math.PI / 4, maxHits: 3 });
       for (const m of hits) { m.hp -= 4; if (m.hp <= 0) m.dead = true; }
     }
@@ -366,22 +385,45 @@
     _pit(c, r) { const k = this._key(c, r); return !!k && P().isPitKey(k); }
     _hurt(amt, why) { const p = this.player; if (this._god || p.iFrames > 0) return; p.hp -= amt; p.iFrames = 45; if (p.hp <= 0) this._die(why || 'Defeated'); }
     _fall(msg) { const p = this.player; if (p.hp <= 0) { this._die(msg || 'You died'); return; } p.x = this._spawn.x; p.y = this._spawn.y; p.jump = null; p.iFrames = 60; const c = this._cellOf(p.x, p.y); p.elev = this._elev(c.col, c.row); }
-    // Family-friendly death: the player bursts into its own coloured sprite blocks
-    // (no blood/gore) that fly out, fall, spin, and fade — then the Game Over screen.
-    _die(msg) {
+    // Family-friendly death (no blood/gore). Default: the player bursts into its
+    // own coloured sprite blocks. PIT deaths first show a front-facing figure with
+    // flailing limbs SHRINKING for ~1s (falling in), THEN the burst.
+    _die(msg, cause) {
       if (this._god || this.state === 'dying' || this.state === 'dead') return;
       const p = this.player; p.hp = 0; this.state = 'dying'; this._deathMsg = msg || 'You died';
-      const sp = P().OH_SPRITE, cols = [sp.hair, sp.shirt, sp.shirt, sp.pants, sp.pants, sp.skin];
-      const parts = []; const n = 16;
+      if (cause === 'pit') this._deathFx = { phase: 'sink', t: 0, sinkDur: 60, x: p.x, y: p.y, parts: null };
+      else this._deathFx = { phase: 'burst', t: 0, x: p.x, y: p.y, parts: this._burstParts(p.x, p.y) };
+    }
+    _burstParts(x, y) {
+      const sp = P().OH_SPRITE, cols = [sp.hair, sp.shirt, sp.shirt, sp.pants, sp.pants, sp.skin], parts = [], n = 16;
       for (let i = 0; i < n; i++) { const ang = (i / n) * Math.PI * 2 + (i % 3) * 0.4, spd = this.unit * (0.06 + (i % 5) * 0.02);
-        parts.push({ x: p.x, y: p.y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - this.unit * 0.05, sz: this.unit * (0.16 + (i % 4) * 0.05), rot: ang, vr: (i % 2 ? 1 : -1) * 0.2, color: cols[i % cols.length], life: 46 + (i % 10) }); }
-      this._deathFx = { parts, t: 0 };
+        parts.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - this.unit * 0.05, sz: this.unit * (0.16 + (i % 4) * 0.05), rot: ang, vr: (i % 2 ? 1 : -1) * 0.2, color: cols[i % cols.length], life: 46 + (i % 10) }); }
+      return parts;
     }
     _advanceDeath() {
       const fx = this._deathFx; if (!fx) { this.state = 'dead'; return; }
-      fx.t++; let alive = 0;
+      fx.t++;
+      if (fx.phase === 'sink') { if (fx.t >= fx.sinkDur) { fx.phase = 'burst'; fx.t = 0; fx.parts = this._burstParts(fx.x, fx.y); } return; }
+      let alive = 0;
       for (const q of fx.parts) { if (q.life <= 0) continue; alive++; q.x += q.vx; q.y += q.vy; q.vy += this.unit * 0.012; q.vx *= 0.98; q.rot += q.vr; q.life--; }
       if (alive === 0 || fx.t > 90) { this.state = 'dead'; this._notify(this._deathMsg, 240); }
+    }
+    // Front-facing figure with flailing limbs, used for the pit-death shrink phase.
+    _drawDyingSprite(ctx, sx, sy, cs, scale, t) {
+      const sp = P().OH_SPRITE, u = cs * 0.95 * Math.max(0.06, scale);
+      const f1 = Math.sin(t * 0.6) * 0.6, f2 = Math.cos(t * 0.7) * 0.6;
+      ctx.save(); ctx.translate(sx, sy + cs * 0.25 * (1 - scale)); ctx.lineCap = 'round';
+      ctx.strokeStyle = sp.pants; ctx.lineWidth = Math.max(2, u * 0.16);
+      ctx.beginPath(); ctx.moveTo(-u * 0.15, u * 0.2); ctx.lineTo(-u * 0.15 + f1 * u * 0.4, u * 0.6); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(u * 0.15, u * 0.2); ctx.lineTo(u * 0.15 - f2 * u * 0.4, u * 0.6); ctx.stroke();
+      ctx.strokeStyle = sp.skin;
+      ctx.beginPath(); ctx.moveTo(-u * 0.2, -u * 0.1); ctx.lineTo(-u * 0.5, -u * 0.35 + f2 * u * 0.35); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(u * 0.2, -u * 0.1); ctx.lineTo(u * 0.5, -u * 0.35 - f1 * u * 0.35); ctx.stroke();
+      ctx.fillStyle = sp.shirt; ctx.fillRect(-u * 0.22, -u * 0.2, u * 0.44, u * 0.45);
+      ctx.fillStyle = sp.skin; ctx.fillRect(-u * 0.2, -u * 0.56, u * 0.4, u * 0.4);
+      ctx.fillStyle = sp.hair; ctx.fillRect(-u * 0.22, -u * 0.6, u * 0.44, u * 0.16);
+      ctx.fillStyle = '#222'; ctx.fillRect(-u * 0.12, -u * 0.42, u * 0.08, u * 0.08); ctx.fillRect(u * 0.04, -u * 0.42, u * 0.08, u * 0.08);
+      ctx.restore();
     }
     _win() { if (this.state === 'won') return; this.state = 'won'; if (this._onWin) { try { this._onWin(this, this._wonExitColor || 0); } catch (e) {} } }
     _notify(text, frames) { this._notif = { text, t: frames || 120 }; }
@@ -444,6 +486,17 @@
       for (const m of this.mobs) if (!m.dead) ents.push({ kind: 'm', row: (m.y / g.cell) | 0, level: m.elev || 0, ref: m });
       ents.push({ kind: 'p', row: (this.player.y / g.cell) | 0, level: this.player.elev, ref: this.player });
       OH_ELEV.sortForDraw(ents).forEach((e) => this._drawEntity(e, S, z, cs));
+      // Melee swing — a weapon sweeps through the attack cone over the swing window.
+      { const pl = this.player; if (pl._swingT > 0 && !pl.weapon) {
+          const prog = 1 - pl._swingT / (pl._swingDur || 14), half = Math.PI / 4, a0 = pl._swingAng - half;
+          const s = S(pl.x, pl.y), reach = this.unit * (this.settings.meleeReach || 2.4) * z, sweep = a0 + prog * half * 2;
+          ctx.save();
+          ctx.fillStyle = 'rgba(255,255,255,.10)'; ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.arc(s.x, s.y, reach, a0, a0 + prog * half * 2); ctx.closePath(); ctx.fill();
+          ctx.strokeStyle = '#d8d2c4'; ctx.lineWidth = Math.max(2, cs * 0.14); ctx.lineCap = 'round';
+          ctx.beginPath(); ctx.moveTo(s.x + Math.cos(sweep) * reach * 0.3, s.y + Math.sin(sweep) * reach * 0.3); ctx.lineTo(s.x + Math.cos(sweep) * reach, s.y + Math.sin(sweep) * reach); ctx.stroke();
+          ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(s.x + Math.cos(sweep) * reach, s.y + Math.sin(sweep) * reach, Math.max(2, cs * 0.1), 0, 7); ctx.fill();
+          ctx.restore();
+        } }
       // Portal/pipe # badges + a purple glow on the ends of an active teleport.
       for (const b of this.buildings) if (b.typeId === 'portal' || b.typeId === 'pipe') {
         const t = OH_BUILDINGS.get(b.typeId), fw = (t ? t.footprint.w : 1), fh = (t ? t.footprint.h : 1);
@@ -466,12 +519,17 @@
         const Q = OVERHEAD.elevOffset(cs); const sp = S(c * g.cell, r * g.cell); ctx.globalAlpha = 0.96; OVERHEAD.drawTerrainTile(ctx, k, sp.x - elev * Q, sp.y - elev * Q, cs, elev); ctx.globalAlpha = 1; }
       // Hidden indicator (designer opt-in).
       if (this.player.hidden && this.showHidden) { const s = S(this.player.x, this.player.y); ctx.strokeStyle = 'rgba(120,200,255,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s.x, s.y, cs * 0.4, 0, 7); ctx.stroke(); }
-      // Death burst — coloured sprite blocks flying out + fading (family-friendly).
+      // Death FX (family-friendly). Pit deaths shrink+flail first, then everyone bursts
+      // into their own coloured sprite blocks that fly out, spin, fall and fade.
       if (this._deathFx && (this.state === 'dying' || this.state === 'dead')) {
-        for (const q of this._deathFx.parts) { if (q.life <= 0) continue; const s = S(q.x, q.y);
-          ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(q.rot); ctx.globalAlpha = Math.max(0, Math.min(1, q.life / 22));
-          ctx.fillStyle = q.color; ctx.fillRect(-q.sz * z / 2, -q.sz * z / 2, q.sz * z, q.sz * z); ctx.restore(); }
-        ctx.globalAlpha = 1;
+        const fx = this._deathFx;
+        if (fx.phase === 'sink') { const s = S(fx.x, fx.y); this._drawDyingSprite(ctx, s.x, s.y, cs, 1 - (fx.t / fx.sinkDur) * 0.85, fx.t); }
+        else if (fx.parts) {
+          for (const q of fx.parts) { if (q.life <= 0) continue; const s = S(q.x, q.y);
+            ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(q.rot); ctx.globalAlpha = Math.max(0, Math.min(1, q.life / 22));
+            ctx.fillStyle = q.color; ctx.fillRect(-q.sz * z / 2, -q.sz * z / 2, q.sz * z, q.sz * z); ctx.restore(); }
+          ctx.globalAlpha = 1;
+        }
       }
       // Day/night ambient overlay + light sources + sun/moon disc — drawn before the
       // HUD so the HUD stays crisp.

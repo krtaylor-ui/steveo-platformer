@@ -142,14 +142,22 @@
 
     // ── History (undo/redo) ─────────────────────────────────────────────────
     _snapshot() { return JSON.stringify({ map: this.world.mapSnapshot, b: this.world.buildings, m: this.world.mobs, i: this.world.items, s: this.world.spawns, g: this.world.goal, r: this.world.ramps, set: this.world.settings }); },
-    _pushHistory() {
+    // History captures CONTENT + SETTINGS only (never zoom/scroll — those don't
+    // snapshot). Each entry carries a description for the undo/redo notification.
+    _pushHistory(desc) {
+      const s = this._snapshot();
+      if (this._hist[this._histPos] && this._hist[this._histPos].s === s) return;   // no real change → no entry
       this._hist = this._hist.slice(0, this._histPos + 1);
-      this._hist.push(this._snapshot()); this._histPos = this._hist.length - 1;
+      this._hist.push({ s, d: desc || 'edit' }); this._histPos = this._hist.length - 1;
       if (this._hist.length > 60) { this._hist.shift(); this._histPos--; }
     },
     _restore(snap) { const d = JSON.parse(snap); this.world.mapSnapshot = d.map; this.world.buildings = d.b; this.world.mobs = d.m; this.world.items = d.i; this.world.spawns = d.s; this.world.goal = d.g; if (d.r !== undefined) this.world.ramps = d.r; if (d.set !== undefined) this.world.settings = d.set; this._setupWorld(); },
-    undo() { if (this._histPos > 0) { this._histPos--; this._restore(this._hist[this._histPos]); } },
-    redo() { if (this._histPos < this._hist.length - 1) { this._histPos++; this._restore(this._hist[this._histPos]); } },
+    _paintDesc() { const t = this._shift ? 'erase' : this.tool;
+      if (t === 'terrain') return 'paint ' + this.terrainKey; if (t === 'building') return 'place ' + this.buildingType;
+      if (t === 'mob') return 'place ' + this.mobKey; if (t === 'item') return 'place ' + this.itemKey;
+      if (t === 'erase') return 'erase'; return t; },
+    undo() { if (this._histPos > 0) { const leaving = this._hist[this._histPos]; this._histPos--; this._restore(this._hist[this._histPos].s); this._flash('↶ Undid: ' + (leaving.d || 'edit')); } else this._flash('Nothing to undo'); },
+    redo() { if (this._histPos < this._hist.length - 1) { this._histPos++; const e = this._hist[this._histPos]; this._restore(e.s); this._flash('↷ Redid: ' + (e.d || 'edit')); } else this._flash('Nothing to redo'); },
 
     // ── Editor chrome: a TOP command bar + a LEFT hover-rail (§ redesign). Both
     // are created here (the earlier bug: the container div was never made, so the
@@ -236,7 +244,7 @@
       g('oh-undo').onclick = () => this.undo(); g('oh-redo').onclick = () => this.redo();
       g('oh-zin').onclick = () => OH_GRID.zoomBy(this.grid, 1.15); g('oh-zout').onclick = () => OH_GRID.zoomBy(this.grid, 0.87);
       g('oh-test').onclick = () => this._test(); g('oh-save').onclick = () => this._save(); g('oh-exit').onclick = () => this.close();
-      g('oh-settings').onclick = () => { if (typeof OH_WORLD_SETTINGS !== 'undefined') OH_WORLD_SETTINGS.open(this.world, () => this._renderBar()); };
+      g('oh-settings').onclick = () => { if (typeof OH_WORLD_SETTINGS !== 'undefined') OH_WORLD_SETTINGS.open(this.world, () => { this._renderBar(); this._pushHistory('settings change'); }); };
       ['buildings', 'mobs', 'items', 'elev'].forEach((k) => { const el = g('oh-v-' + k); if (el) el.onchange = () => { this.view[k] = el.checked; }; });
       g('oh-erase').onclick = () => { this.tool = 'erase'; this._renderBar(); };
       g('oh-hand').onclick = () => { this.tool = 'hand'; this._renderBar(); };
@@ -263,11 +271,13 @@
         this._dragging = true; this._shift = e.shiftKey; this._lastCell = null;
         if (this._isShapeMode()) { const cel = this._cellFromEvent(e); this._shapeAnchor = cel; this._shapeEnd = cel; } else this._paintAt(e); };
       this._mm = (e) => {
+        this._hover = this._cellFromEvent(e);   // for the placement ghost
         if (this._pan) { const dx = (e.clientX - this._pan.cx) * this._pan.sx / this.grid.masterZoom, dy = (e.clientY - this._pan.cy) * this._pan.sy / this.grid.masterZoom; if (Math.abs(e.clientX - this._pan.cx) + Math.abs(e.clientY - this._pan.cy) > 3) this._pan.moved = true; this.cam.x = this._pan.camx - dx; this.cam.y = this._pan.camy - dy; return; }
         if (!this._dragging) return; this._shift = e.shiftKey; if (this._isShapeMode()) this._shapeEnd = this._cellFromEvent(e); else this._paintLine(e); };
+      this._ml = () => { this._hover = null; };
       this._mu = (e) => {
         if (this._pan) { const cv2 = document.getElementById('gameCanvas'); if (cv2) cv2.style.cursor = 'grab'; if (!this._pan.moved) { const cel = this._cellFromEvent(this._pan.e); this._handClick(cel.col, cel.row); } this._pan = null; return; }
-        if (!this._dragging) return; this._dragging = false; this._lastCell = null; if (this._shapeAnchor) { this._commitShape(); this._shapeAnchor = this._shapeEnd = null; } this._pushHistory(); };
+        if (!this._dragging) return; this._dragging = false; this._lastCell = null; if (this._shapeAnchor) { this._commitShape(); this._shapeAnchor = this._shapeEnd = null; } this._pushHistory(this._paintDesc()); };
       this._wheel = (e) => { OH_GRID.zoomBy(this.grid, e.deltaY < 0 ? 1.1 : 0.9); e.preventDefault(); };
       this._kd = (e) => {
         const K = this.KEYS, pan = 48 / this.grid.masterZoom;
@@ -282,12 +292,13 @@
         else if (e.code === 'Escape') this.close();
       };
       cv.addEventListener('mousedown', this._md); cv.addEventListener('mousemove', this._mm);
+      cv.addEventListener('mouseleave', this._ml);
       cv.addEventListener('wheel', this._wheel, { passive: false });
       window.addEventListener('mouseup', this._mu); window.addEventListener('keydown', this._kd);
     },
     _unbindCanvas() {
       const cv = document.getElementById('gameCanvas');
-      if (cv) { cv.removeEventListener('mousedown', this._md); cv.removeEventListener('mousemove', this._mm); cv.removeEventListener('wheel', this._wheel); }
+      if (cv) { cv.removeEventListener('mousedown', this._md); cv.removeEventListener('mousemove', this._mm); cv.removeEventListener('mouseleave', this._ml); cv.removeEventListener('wheel', this._wheel); }
       window.removeEventListener('mouseup', this._mu); window.removeEventListener('keydown', this._kd);
     },
 
@@ -541,9 +552,39 @@
       this._drawMapEdge(ctx, S, m.gridW * g.cell, m.gridH * g.cell);
       // Live shape preview while dragging.
       if (this._shapeAnchor && this._shapeEnd) { ctx.fillStyle = 'rgba(120,180,255,.4)'; for (const p of this._shapeCells(this._shapeAnchor, this._shapeEnd)) { const sp = S(p.c * g.cell, p.r * g.cell); ctx.fillRect(sp.x, sp.y, cs, cs); } }
+      // Placement GHOST of the selected tool at the hovered cell (red-X if a building
+      // won't fit). Not shown in hand mode or while dragging/shaping.
+      this._drawGhost(ctx, S, cs, Q);
       // Info line.
       ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.textAlign = 'left'; ctx.font = '12px sans-serif';
       ctx.fillText(`${this.world.name} · ${m.baseW || m.gridW}×${m.baseH || m.gridH} @ density ${m.density} (${m.gridW}×${m.gridH} cells) · ${this.world.mode} · tool: ${this._shift ? 'erase' : this.tool} @ elev ${this.elevLevel}`, 158, CANVAS_H - 10);
+    },
+    // Translucent preview of the selected tool at the hovered cell. Buildings show
+    // a red X when they can't fit (off the map / overlapping another building). The
+    // ghost is a single placement — it does NOT reflect the brush size.
+    _drawGhost(ctx, S, cs, Q) {
+      if (this.tool === 'hand' || this._dragging || this._shapeAnchor || !this._hover) return;
+      const g = this.grid, m = this.world.mapSnapshot, col = this._hover.col, row = this._hover.row;
+      if (col < 0 || row < 0 || col >= m.gridW || row >= m.gridH) return;
+      const tool = this._shift ? 'erase' : this.tool;
+      const sp = S(col * g.cell, row * g.cell), ctr = S((col + 0.5) * g.cell, (row + 0.5) * g.cell);
+      const unitPx = g.cell * (g.density || 1) * g.masterZoom;
+      ctx.save(); ctx.globalAlpha = 0.5;
+      if (tool === 'building') {
+        const t = OH_BUILDINGS.get(this.buildingType), fw = t ? t.footprint.w : 1, fh = t ? t.footprint.h : 1;
+        let fits = (col + fw <= m.gridW && row + fh <= m.gridH);
+        if (fits) for (const b of this.world.buildings) { const bt = OH_BUILDINGS.get(b.typeId), bw = bt ? bt.footprint.w : 1, bh = bt ? bt.footprint.h : 1; if (col < b.col + bw && col + fw > b.col && row < b.row + bh && row + fh > b.row) { fits = false; break; } }
+        if (fits) { OVERHEAD.drawBuilding(ctx, this.buildingType, sp.x, sp.y, fw * cs, fh * cs, Math.min(1, cs / 28), 'default'); }
+        else { ctx.fillStyle = 'rgba(200,48,58,.55)'; ctx.fillRect(sp.x, sp.y, fw * cs, fh * cs); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(sp.x + fw * cs, sp.y + fh * cs); ctx.moveTo(sp.x + fw * cs, sp.y); ctx.lineTo(sp.x, sp.y + fh * cs); ctx.stroke(); }
+      } else if (tool === 'mob') { const d = P().OH_MOB_BY_KEY[this.mobKey] || P().OH_MOBS[0]; ctx.fillStyle = d.color; ctx.strokeStyle = 'rgba(150,150,160,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(ctr.x, ctr.y, unitPx * 0.34, 0, 7); ctx.fill(); ctx.stroke(); }
+      else if (tool === 'item') { OVERHEAD.drawItemSprite(ctx, this.itemKey, ctr.x, ctr.y, unitPx * 0.8); }
+      else if (tool === 'ramp' || tool === 'ladder') { OVERHEAD.drawRampIcon(ctx, tool, ctr.x, ctr.y, cs, 0); }
+      else if (tool === 'goal') { const gc = S((col + 1) * g.cell, (row + 1) * g.cell); ctx.fillStyle = '#ffd700'; ctx.font = `${(cs * 1.8) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', gc.x, gc.y + cs * 0.6); }
+      else if (tool === 'spawn') { ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; ctx.strokeRect(ctr.x - cs * 0.42, ctr.y - cs * 0.42, cs * 0.84, cs * 0.84); }
+      else if (tool === 'tree') { ctx.fillStyle = '#4f8a44'; ctx.beginPath(); ctx.arc(ctr.x, ctr.y - cs * 0.3, cs * 1.3, 0, 7); ctx.fill(); ctx.fillStyle = '#6e4f2a'; ctx.fillRect(ctr.x - cs * 0.15, ctr.y, cs * 0.3, cs * 0.7); }
+      else if (tool === 'erase') { ctx.strokeStyle = '#e05555'; ctx.lineWidth = 2; ctx.strokeRect(sp.x + 1, sp.y + 1, cs - 2, cs - 2); ctx.beginPath(); ctx.moveTo(sp.x + 2, sp.y + 2); ctx.lineTo(sp.x + cs - 2, sp.y + cs - 2); ctx.stroke(); }
+      else { OVERHEAD.drawTerrainCube(ctx, this.terrainKey, sp.x, sp.y, cs, this.elevLevel, true, true); }
+      ctx.restore();
     },
     // Yellow/black hazard stripes in a band just OUTSIDE each world edge.
     _drawMapEdge(ctx, S, worldW, worldH) {

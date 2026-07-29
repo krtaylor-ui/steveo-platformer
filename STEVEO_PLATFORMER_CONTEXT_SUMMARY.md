@@ -1,4 +1,22 @@
-## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE pits / death FX / cliff safety + light polish (build 294) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE jump-clear / sprint / melee swing / pit-lava death + editor ghost+undo (build 295) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+
+Ninth playtest batch. Suite green (977 assertions); headless gameplay + render harnesses + probe clean.
+- **Jump clearance:** `jumpClear` (default 1) + `doubleJumpClear` (+1), additive — a jump can vault/mount
+  walls up to N blocks; a walk still can't climb (separate). **Sprint** on Shift (× multiplier). **Melee
+  swing** sweeps a weapon through the cone.
+- **Pit mode** `deadly` | `block` (block is impassable even in GOD). Pit death: front-facing flailing figure
+  SHRINKS ~1s then bursts (family-friendly). **Lava insta-death** option. maxStepDown gains `0`.
+- **Editor:** placement GHOST of the selected tool follows the cursor (red-X when a building won't fit);
+  undo/redo track only content + settings (never zoom/scroll) and show a notification of what changed.
+  Erase already honours the brush size. Detail in `DECISIONS_LOG.md`.
+- **Still deferred:** bridge item (§36), redstone-in-overhead (§32, next big rebuild), seamless
+  cave↔surface cross-effects (§35/§35b).
+
+**NEEDS BROWSER PLAYTEST** before merge. 17 overhead builds (279–295) are stacked on this branch.
+
+---
+
+## PRIOR STATE (2026-07-29) — OVERHEAD ENGINE pits / death FX / cliff safety + light polish (build 294) on branch `overhead-engine` — NOT merged, browser-UNTESTED
 
 Eighth playtest batch. Suite green (977 assertions); draw-probe + headless safety/render harnesses clean.
 - **Deadly PIT block** (`pit` terrain): fall in → die; a world toggle (`pitsDeadly`) makes pits harmless
