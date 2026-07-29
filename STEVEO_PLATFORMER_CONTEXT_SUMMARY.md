@@ -1,4 +1,38 @@
-## CURRENT STATE (2026-07-28) — OVERHEAD ENGINE MVP FOUNDATION (build 279) BUILT on branch `overhead-engine` — NOT merged, largest session yet, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE playtest pass 1 (build 280) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+
+Kevin playtested the MVP foundation (below) and gave a batch of refinements; all built on the same
+`overhead-engine` branch. Suite green (133 overhead assertions; +11 for weapons). **Browser-untested.**
+
+**This pass (build 280) — his 3 answers: server-backed storage · top-down shaded tiles · build the art artifact.**
+- **Persistence + browser toggle:** overhead worlds now save to the **server** `worlds` table
+  (`viewMode:'overhead'`, zero server change — create row then PUT verbatim). The Sandbox browser has a
+  **Side-scroll / Overhead** toggle; Edit routes overhead worlds to `OH_EDITOR`; rename/copy/delete work.
+- **Density FIXED:** baked into a finer grid at creation (`cell = 32/density`) → denser = more/smaller
+  blocks in the same map area. **No map-size limits.** (The blue square Kevin saw was the editor's P1
+  spawn marker, not the player.)
+- **Friendlier creation modal** (dropdowns; Custom → W×H inputs) replacing the prompt() chain.
+- **Left tool-rail palette:** Undo/Redo, Brush, Elevation, Erase on top; hover-slide **Terrain / Buildings
+  / Mobs / Items** tabs; selecting sets tool+item. Spawn + Goal moved into Buildings.
+- **Full terrain SET** (Grass…Leaves, 20 blocks) as top-down shaded tiles (`OH_PALETTE` + shared
+  `drawTerrainTile`). **Elevation-relative collision** (+1 = wall, +2 = overhang you pass under & are
+  hidden beneath; lava = hazard; replaces separate decorations) + optional `showHiddenIndicator`.
+- **Mobs** (zombie/skeleton-ranged/spider) + **weapon items**: `overhead-weapons.js` (pure, 11 tests) —
+  crossbow straight bolt, trident throw+recall (RMB, returns to current pos), **boomerang oval arc**
+  out-to-aim-and-back.
+- **Undo/redo, Shift+click elevation-scoped erase, keyboard shortcuts** (`[ ]` elevation, `− =` zoom,
+  Ctrl+Z/Y) in `OH_EDITOR.KEYS` (bindable-ready).
+- **New player sprite** per Kevin's spec (square hair head, shirt shoulders, offset arm-swing, legs
+  grounded to distance) via the **`OH_SPRITE` colour palette** (future user-config; **2D should share it**).
+- **Art-options Artifact** published (live-rendered player A/B/C, mob blocky/detailed, block
+  flat/shaded/bevel) — WYSIWYG, using the same render code, for Kevin to pick a direction per row.
+
+**Browser-test priorities:** density (make a 4× world), the Side/Overhead toggle + save/edit/delete
+round-trip, elevation collision + hide-under, boomerang/trident feel, and the new player walk (vs the
+Artifact options). Full detail in `DECISIONS_LOG.md` (Overhead Engine — Playtest Pass 1).
+
+---
+
+## PRIOR STATE (2026-07-28) — OVERHEAD ENGINE MVP FOUNDATION (build 279) BUILT on branch `overhead-engine` — NOT merged, largest session yet, browser-UNTESTED
 
 The **Overhead Engine** ("largest single session in the project's history", by Kevin's choice) is BUILT
 **depth-first** on branch `overhead-engine` (off `campaign-mode-mvp`, so §9 can hook the Campaign Builder).

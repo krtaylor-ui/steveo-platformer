@@ -1,6 +1,70 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD ENGINE — PLAYTEST PASS 1 (2026-07-29, build 280, branch `overhead-engine`)
+# ═══════════════════════════════════════════════════════════════════════
+Kevin's first playtest of the MVP foundation → a batch of UX + gameplay refinements. All on the
+same branch. Suite green (+11 weapon assertions; 133 overhead total). Browser-untested (canvas/DOM).
+
+## Kevin's 3 up-front answers
+- **Storage = server-backed + browser toggle.** Overhead worlds save to the SAME `worlds` table with
+  `world_data.viewMode:'overhead'`. Implemented with ZERO server change: OH_EDITOR mints a row via the
+  normal create endpoint (dummy 25×15 NRM, immediately overwritten) then PUTs the overhead world_data
+  verbatim (PUT does no size validation). The Sandbox browser gets a **Side-scroll / Overhead** view
+  toggle (client-side filter on viewMode); Edit routes overhead worlds → `OH_EDITOR`; delete/rename reuse
+  the existing per-card actions. Overhead cards hide the side-view mode dropdown + show a 🗺 mode badge.
+- **Terrain art = top-down shaded tiles.** Full side-scroller SET (Grass…Leaves, 20 blocks) with
+  representative colours in the shared `OH_PALETTE`; `OVERHEAD.drawTerrainTile` adds a light per-family
+  texture pass. (Not `drawBlock` reuse — that reads as side-view-from-above.)
+- **Graphics artifact = build it.** Published a live-rendered art-options Artifact (player A/B/C, mob
+  blocky/detailed, block flat/shaded/bevel) using the SAME render code so it's WYSIWYG.
+
+## Key decisions
+- **Density FIX — the real bug.** Density did nothing visible because terrain was painted per full 32px
+  cell. Now density is baked into a FINER grid AT CREATION: fine dims = base × density, `cell = 32/density`
+  — so a denser world shows MORE, SMALLER blocks in the SAME map area (Kevin's expectation). The pure
+  substrate stays density-agnostic (default cell 32); only the editor's creation passes the smaller cell,
+  so the 39 core tests are unaffected. **No map-size limits** (per Kevin) — the creation modal accepts any
+  Custom WxH.
+- **The blue square Kevin saw = the editor's P1 SPAWN marker, not the player** (no player in the editor).
+  Noted; the runtime player now renders per the detailed spec.
+- **ELEVATION-RELATIVE collision (Kevin's model, replaces separate decorations).** A cell's TYPE is
+  visual; collision comes from the elevation delta to the player: **+1 = wall** (unless auto-climb/ramp),
+  **+2 or more = overhang** the player passes UNDER and is HIDDEN beneath (a render "overhang pass"
+  redraws those cells over the player), **≤0 = walk** (step down/same). Only `lava` (hazard) damages
+  regardless. Optional per-world `showHiddenIndicator` draws a ring on the hidden player/mobs (default
+  off = obscured). This is why bushes/leaves at higher elevation now double as walls/cover with no
+  separate decoration layer.
+- **Left tool-rail palette (§ redesign).** Vertical rail: Undo/Redo, Brush size, Elevation, Erase on top;
+  then hover-slide **Terrain / Buildings / Mobs / Items** tabs (CSS `:hover` flyout). Selecting an item
+  sets BOTH the active tool and the item, keyed off which tab it came from. Spawn + Goal moved INTO the
+  Buildings tab (Kevin's suggestion). The editor UI is DOM chrome, not bound to 800×500.
+- **Shift+click erase, elevation-scoped.** Erase (button OR held Shift) only resets a cell whose elevation
+  == the selected level, and removes entities there — so you can erase an overhang layer without wiping
+  the floor. Undo/redo = a 60-deep snapshot stack (push on stroke-end).
+- **Keyboard shortcuts (bindable-ready):** elevation `[` / `]`, zoom `−` / `=` (+ wheel), Ctrl+Z / Ctrl+Y,
+  arrows pan, Esc exits. Stored in `OH_EDITOR.KEYS` so a future pass can route them through Controls-Config.
+- **Overhead weapons (`overhead-weapons.js`, pure + 11 tests):** crossbow = straight capped bolt; trident =
+  throw straight, RECALL (RMB) or auto-return at max range, always returns to the player's CURRENT position;
+  boomerang = an **oval/elliptical arc** — leaves the player, passes the aim point at the far vertex
+  (clamped to maxRange), curves back along the other side (Kevin's exact spec). Mobs: zombie/skeleton
+  (ranged bolts)/spider. Item pickup equips the weapon; melee is a cone when unarmed.
+- **Player sprite (Kevin's detailed spec) via `OH_SPRITE` palette VARIABLES** (hair/shirt/pants/skin) so
+  they're ready for user customization; **flagged that the 2D side-view renderer should eventually consume
+  the same OH_SPRITE** for cross-view consistency. Square hair-colour head; shirt shoulders flanking the
+  head; feet poking out; offset angled-rectangle arms (right forward / left back); legs front & behind;
+  **stride grounded to distance travelled** (no moonwalk); shaded hands/feet. Whole-body rotates to aim.
+
+## Still partial / next (unchanged from the MVP list, minus what this pass closed)
+- TD/MOBA gameplay loops, Arena-overhead translation, redstone-in-overhead, Campaign World-placement mode
+  (auto-path proven), explicit stairs/ramps placeables, hover-tab MRU hotlist, line-interpolated drag brush,
+  Test-Mode Relink + Extract-Map editor buttons, touch controls, live multiplayer.
+- **Browser-test priorities:** density (create a 4× world → confirm more/smaller blocks), the Side/Overhead
+  browser toggle + save/edit/delete round-trip, elevation collision + hide-under feel, the boomerang oval
+  arc + trident recall feel, and the new player sprite walk (compare against the Artifact options).
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD ENGINE — MVP FOUNDATION (2026-07-28, build 279, branch `overhead-engine`)
 # ═══════════════════════════════════════════════════════════════════════
 The largest single session attempted. Built the Overhead Engine per Kevin's "Overhead Engine

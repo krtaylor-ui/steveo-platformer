@@ -1,0 +1,300 @@
+<title>Overhead Engine — Sprite & Block Art Options</title>
+<style>
+  :root {
+    --bg: #eef1f6; --panel: #ffffff; --panel-2: #f5f7fb; --ink: #1a2233; --muted: #5f6b82;
+    --line: #d7deea; --accent: #2f66c0; --warm: #b9791f; --good: #2e8b57;
+    --canvas-bg: #cdd6e6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1219; --panel: #181f2c; --panel-2: #131926; --ink: #e6edf7; --muted: #8593ac;
+      --line: #26303f; --accent: #4f86d8; --warm: #c9924a; --good: #4fbd7f;
+      --canvas-bg: #0b0f16;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #eef1f6; --panel: #ffffff; --panel-2: #f5f7fb; --ink: #1a2233; --muted: #5f6b82;
+    --line: #d7deea; --accent: #2f66c0; --warm: #b9791f; --good: #2e8b57; --canvas-bg: #cdd6e6;
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1219; --panel: #181f2c; --panel-2: #131926; --ink: #e6edf7; --muted: #8593ac;
+    --line: #26303f; --accent: #4f86d8; --warm: #c9924a; --good: #4fbd7f; --canvas-bg: #0b0f16;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.5; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 32px 24px 72px; }
+  header h1 { font-size: clamp(24px, 3.4vw, 34px); margin: 0 0 6px; letter-spacing: -0.02em; text-wrap: balance; }
+  header p { color: var(--muted); margin: 0; max-width: 62ch; }
+  .mono { font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace; }
+  .bar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 16px 22px; align-items: center;
+    background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(8px);
+    border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; margin: 22px 0 30px; }
+  .bar label { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px;
+    font-family: ui-monospace, monospace; text-transform: uppercase; letter-spacing: 0.04em; }
+  .bar input[type=range] { accent-color: var(--accent); }
+  button.tgl { font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 8px; cursor: pointer;
+    background: var(--accent); color: #fff; border: 1px solid transparent; }
+  button.tgl.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  section { margin: 40px 0; }
+  section > h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--accent);
+    font-family: ui-monospace, monospace; margin: 0 0 4px; }
+  section > .sub { color: var(--muted); margin: 0 0 18px; font-size: 14px; max-width: 68ch; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 18px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+    display: flex; flex-direction: column; }
+  .card .stage { background: var(--canvas-bg); display: grid; place-items: center; padding: 14px;
+    border-bottom: 1px solid var(--line); }
+  canvas { image-rendering: pixelated; display: block; }
+  .card .meta { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 4px; }
+  .card .meta h3 { margin: 0; font-size: 15px; letter-spacing: -0.01em; }
+  .card .meta p { margin: 0; color: var(--muted); font-size: 12.5px; }
+  .tag { align-self: flex-start; font-family: ui-monospace, monospace; font-size: 10.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 999px; margin-top: 4px; }
+  .tag.ship { background: color-mix(in srgb, var(--good) 20%, transparent); color: var(--good);
+    border: 1px solid color-mix(in srgb, var(--good) 40%, transparent); }
+  .tag.alt { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent); }
+  .tag.idea { background: color-mix(in srgb, var(--warm) 18%, transparent); color: var(--warm);
+    border: 1px solid color-mix(in srgb, var(--warm) 36%, transparent); }
+  .palette { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+  .sw { display: flex; align-items: center; gap: 7px; font-family: ui-monospace, monospace; font-size: 12px;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; }
+  .sw i { width: 15px; height: 15px; border-radius: 4px; display: inline-block; border: 1px solid rgba(0,0,0,.25); }
+  .note { background: var(--panel-2); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    border-radius: 0 10px 10px 0; padding: 12px 16px; color: var(--muted); font-size: 13.5px; margin-top: 14px; }
+  footer { color: var(--muted); font-size: 12.5px; margin-top: 48px; border-top: 1px solid var(--line); padding-top: 16px;
+    font-family: ui-monospace, monospace; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Overhead Engine — Art Direction Options</h1>
+    <p>Live-rendered candidates for the top-down <strong>player</strong>, <strong>mobs</strong>, and <strong>blocks</strong>. Every sprite is drawn the same way the engine draws it, so what you see here is what ships. Pick a direction per row; the <span class="tag ship" style="margin:0">Shipped</span> tag marks what's in build 280 today.</p>
+  </header>
+
+  <div class="bar">
+    <label>Motion <button id="play" class="tgl">Pause</button></label>
+    <label>Speed <input id="speed" type="range" min="0.3" max="2.4" step="0.1" value="1.1"></label>
+    <label>Size <input id="scale" type="range" min="1.4" max="4" step="0.2" value="2.6"></label>
+    <label>Theme <button id="theme" class="tgl ghost">Toggle</button></label>
+  </div>
+
+  <section id="players">
+    <h2>Player</h2>
+    <p class="sub">All keep the square, hair-coloured head and read directionally from the aim. The difference is how much limb detail sells the "alive" walk vs. how clean it stays at small sizes. Colours come from the shared <span class="mono">OH_SPRITE</span> palette — future user-configurable, and the 2D sprite should eventually share it.</p>
+    <div class="grid" id="player-grid"></div>
+    <div class="palette" id="sprite-pal"></div>
+    <div class="note">Legs are <strong>grounded to distance travelled</strong> in every option (stride advances with real movement, no moonwalk). Option A is what build 280 ships.</div>
+  </section>
+
+  <section id="mobs">
+    <h2>Mobs</h2>
+    <p class="sub">Two treatments each for Zombie, Skeleton, and Spider: a flat <em>blocky</em> read and a <em>detailed</em> read with facial marks, limbs, and a chase "!". A yellow "!" appears when the mob has detected the player.</p>
+    <div class="grid" id="mob-grid"></div>
+  </section>
+
+  <section id="blocks">
+    <h2>Blocks</h2>
+    <p class="sub">The full side-scroller terrain set as top-down tiles, at three detail levels. Higher elevation renders lighter (reads as "up"); the shipped level adds a light per-family texture pass.</p>
+    <div class="grid" id="block-grid"></div>
+    <div class="note">Elevation shading + family texture (option B) is what build 280 ships. Option C adds a soft inner bevel — richer, slightly heavier to draw across a big map.</div>
+  </section>
+
+  <footer id="foot">Steveo Platformer · Overhead Engine · art exploration</footer>
+</div>
+
+<script>
+"use strict";
+// ── Shared sprite palette (mirrors OH_SPRITE in the engine) ──────────────────
+const OH_SPRITE = { hair:'#5a3d22', shirt:'#3f74c4', pants:'#39406b', skin:'#e0b083' };
+const TERRAIN = [
+  ['grass','Grass','#4a8a45'],['dirt','Dirt','#7a5334'],['stone','Stone','#8a8a90'],
+  ['log','Wood Log','#6e4f2a'],['planks','Plank','#b0894f'],['gravel','Gravel','#9a9690'],
+  ['coal','Coal','#39393f'],['iron','Iron','#c9b39a'],['gold','Gold','#e6c14a'],
+  ['diamond','Diamond','#5fd6d0'],['obsidian','Obsidian','#2a2438'],['deepslate','Deepslate','#4a4a52'],
+  ['bedrock','Bedrock','#2f2f33'],['netherrack','Netherrack','#7a3535'],['soulsand','Soul Sand','#4a3a2c'],
+  ['ice','Ice','#a9d6ea'],['lava','Lava','#e0662a'],['glowstone','Glowstone','#e6c96a'],
+  ['bush','Bush','#3f7a3a'],['leaves','Leaves','#4f8a44'],
+];
+const MOBS = { zombie:'#4a8a3a', skeleton:'#d8d8cf', spider:'#3a3340' };
+
+function lighten(hex, amt){ const h=hex.replace('#',''); const n=parseInt(h,16);
+  const r=Math.min(255,((n>>16)&255)+amt*255), g=Math.min(255,((n>>8)&255)+amt*255), b=Math.min(255,(n&255)+amt*255);
+  return `rgb(${r|0},${g|0},${b|0})`; }
+function shade(hex, amt){ const h=hex.replace('#',''); const n=parseInt(h,16); const f=1-amt;
+  return `rgb(${(((n>>16)&255)*f)|0},${(((n>>8)&255)*f)|0},${((n&255)*f)|0})`; }
+
+// ── Player renderers (A = shipped spec, B = chunky, C = directional) ─────────
+function playerA(ctx, cx, cy, r, dist, moving, ang){
+  const ph=(dist/(r*1.15))%(Math.PI*2), swing=moving?Math.sin(ph):0;
+  const legF=moving?Math.sin(ph)*r*0.55:0, legB=moving?Math.sin(ph+Math.PI)*r*0.55:0;
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(ang+Math.PI/2);
+  const headR=r*0.7, shoulderW=r*1.15, shoulderH=r*0.5, armLen=r*0.7, armW=r*0.22;
+  ctx.fillStyle=OH_SPRITE.pants;
+  ctx.fillRect(-r*0.28,-r*0.1+legB,r*0.24,r*0.5); ctx.fillRect(r*0.04,-r*0.1+legF,r*0.24,r*0.5);
+  ctx.fillStyle=shade(OH_SPRITE.pants,0.25);
+  ctx.fillRect(-r*0.28,-r*0.1+legB+r*0.5,r*0.24,r*0.14); ctx.fillRect(r*0.04,-r*0.1+legF+r*0.5,r*0.24,r*0.14);
+  const arm=(sx,fwd)=>{ ctx.save(); ctx.translate(sx,0); ctx.rotate(fwd*0.5);
+    ctx.fillStyle=OH_SPRITE.shirt; ctx.fillRect(-armW/2,-armLen*0.15,armW,armLen);
+    ctx.fillStyle=OH_SPRITE.skin; ctx.fillRect(-armW/2,armLen*0.72,armW,armW); ctx.restore(); };
+  arm(-shoulderW/2, moving?-swing:0.2); arm(shoulderW/2, moving?swing:0.2);
+  ctx.fillStyle=OH_SPRITE.shirt; ctx.fillRect(-shoulderW/2,-shoulderH/2,shoulderW,shoulderH);
+  ctx.fillStyle=OH_SPRITE.hair; ctx.fillRect(-headR,-headR,headR*2,headR*2);
+  ctx.fillStyle='rgba(255,255,255,.10)'; ctx.fillRect(-headR,-headR,headR*2,headR*0.4);
+  ctx.restore();
+}
+function playerB(ctx, cx, cy, r, dist, moving, ang){ // chunky: bigger head, no feet, thick shoulders
+  const ph=(dist/(r*1.2))%(Math.PI*2), swing=moving?Math.sin(ph):0;
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(ang+Math.PI/2);
+  const headR=r*0.82, shoulderW=r*1.3, shoulderH=r*0.62, armW=r*0.26, armLen=r*0.6;
+  ctx.fillStyle=OH_SPRITE.pants;
+  ctx.fillRect(-r*0.3,-r*0.05+ (moving?Math.sin(ph+Math.PI)*r*0.4:0), r*0.28, r*0.5);
+  ctx.fillRect(r*0.02,-r*0.05+ (moving?Math.sin(ph)*r*0.4:0), r*0.28, r*0.5);
+  const arm=(sx,fwd)=>{ ctx.save(); ctx.translate(sx,0); ctx.rotate(fwd*0.4);
+    ctx.fillStyle=shade(OH_SPRITE.shirt,0.1); ctx.fillRect(-armW/2,-armLen*0.1,armW,armLen); ctx.restore(); };
+  arm(-shoulderW/2, moving?-swing:0.1); arm(shoulderW/2, moving?swing:0.1);
+  ctx.fillStyle=OH_SPRITE.shirt; ctx.beginPath(); ctx.roundRect(-shoulderW/2,-shoulderH/2,shoulderW,shoulderH,3); ctx.fill();
+  ctx.fillStyle=OH_SPRITE.hair; ctx.fillRect(-headR,-headR,headR*2,headR*2);
+  ctx.fillStyle='rgba(0,0,0,.18)'; ctx.fillRect(-headR,headR*0.4,headR*2,headR*0.6);
+  ctx.restore();
+}
+function playerC(ctx, cx, cy, r, dist, moving, ang){ // directional: spec + a facing nose + shadow lean
+  playerA(ctx, cx, cy, r, dist, moving, ang);
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(ang+Math.PI/2);
+  ctx.fillStyle=shade(OH_SPRITE.hair,0.3); ctx.beginPath();
+  ctx.moveTo(-r*0.18,-r*0.7); ctx.lineTo(r*0.18,-r*0.7); ctx.lineTo(0,-r*1.02); ctx.closePath(); ctx.fill(); // facing nub
+  ctx.restore();
+}
+const PLAYERS = [
+  {fn:playerA, name:'A · Spec', tag:'ship', desc:'Square head, shirt shoulders, offset angled arms, feet poking out. Your written spec, exactly.'},
+  {fn:playerB, name:'B · Chunky', tag:'alt', desc:'Bigger head, rounded torso, no visible feet — cleanest read at tiny sizes / dense maps.'},
+  {fn:playerC, name:'C · Directional', tag:'idea', desc:'Spec + a small facing nub on the head so heading is unmistakable when standing still.'},
+];
+
+// ── Mob renderers ────────────────────────────────────────────────────────────
+function mobBlocky(ctx, cx, cy, rr, type, chase){
+  const col=MOBS[type];
+  ctx.fillStyle='rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(cx,cy+rr*0.5,rr*0.9,rr*0.5,0,0,7); ctx.fill();
+  ctx.fillStyle=col; ctx.fillRect(cx-rr,cy-rr,rr*2,rr*2);
+  ctx.fillStyle=shade(col,0.4); ctx.fillRect(cx-rr*0.6,cy-rr*0.6,rr*1.2,rr*0.5);
+  ctx.fillStyle= type==='skeleton'?'#333':'#000';
+  ctx.fillRect(cx-rr*0.5,cy-rr*0.25,rr*0.3,rr*0.28); ctx.fillRect(cx+rr*0.2,cy-rr*0.25,rr*0.3,rr*0.28);
+  if(chase){ ctx.fillStyle='#ffd24a'; ctx.font=`${rr|0}px sans-serif`; ctx.textAlign='center'; ctx.fillText('!',cx,cy-rr*1.2); }
+}
+function mobDetailed(ctx, cx, cy, rr, type, chase, t){
+  const col=MOBS[type];
+  ctx.fillStyle='rgba(0,0,0,.32)'; ctx.beginPath(); ctx.ellipse(cx,cy+rr*0.55,rr*0.95,rr*0.5,0,0,7); ctx.fill();
+  if(type==='spider'){
+    ctx.strokeStyle=shade(col,0.45); ctx.lineWidth=2.2;
+    for(let i=0;i<4;i++){ const a=0.5+i*0.42+Math.sin(t*4+i)*0.08;
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(a)*rr*1.7,cy+Math.sin(a)*rr*1.1);
+      ctx.moveTo(cx,cy); ctx.lineTo(cx-Math.cos(a)*rr*1.7,cy+Math.sin(a)*rr*1.1); ctx.stroke(); }
+    ctx.fillStyle=col; ctx.beginPath(); ctx.ellipse(cx,cy+rr*0.2,rr*0.85,rr,0,0,7); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx,cy-rr*0.55,rr*0.55,0,7); ctx.fill();
+    ctx.fillStyle='#e33'; ctx.fillRect(cx-rr*0.34,cy-rr*0.7,rr*0.22,rr*0.22); ctx.fillRect(cx+rr*0.12,cy-rr*0.7,rr*0.22,rr*0.22);
+  } else {
+    ctx.fillStyle=col; ctx.beginPath(); ctx.roundRect(cx-rr,cy-rr*0.9,rr*2,rr*1.9,4); ctx.fill();
+    ctx.fillStyle=shade(col,0.35); ctx.fillRect(cx-rr,cy-rr*0.9,rr*2,rr*0.55); // head band
+    // arms
+    ctx.fillStyle=shade(col,0.15); ctx.fillRect(cx-rr*1.25,cy-rr*0.3,rr*0.3,rr*0.9); ctx.fillRect(cx+rr*0.95,cy-rr*0.3,rr*0.3,rr*0.9);
+    if(type==='skeleton'){ ctx.fillStyle='#2a2a2a'; ctx.fillRect(cx-rr*0.5,cy-rr*0.6,rr*0.3,rr*0.3); ctx.fillRect(cx+rr*0.2,cy-rr*0.6,rr*0.3,rr*0.3);
+      ctx.strokeStyle='#9a9a90'; ctx.lineWidth=1.4; for(let i=-1;i<2;i++){ ctx.beginPath(); ctx.moveTo(cx+i*rr*0.4,cy+rr*0.1); ctx.lineTo(cx+i*rr*0.4,cy+rr*0.8); ctx.stroke(); } }
+    else { ctx.fillStyle='#000'; ctx.fillRect(cx-rr*0.5,cy-rr*0.5,rr*0.3,rr*0.22); ctx.fillRect(cx+rr*0.2,cy-rr*0.5,rr*0.3,rr*0.22);
+      ctx.fillStyle=shade(col,0.55); ctx.fillRect(cx-rr*0.3,cy-rr*0.05,rr*0.6,rr*0.12); }
+  }
+  if(chase){ ctx.fillStyle='#ffd24a'; ctx.font=`bold ${rr*1.1|0}px sans-serif`; ctx.textAlign='center'; ctx.fillText('!',cx,cy-rr*1.35); }
+}
+const MOB_STYLES = [
+  {fn:mobBlocky, name:'Blocky', tag:'ship', desc:'Flat cube body + head band + eyes. Fast to draw, reads clearly when zoomed out.'},
+  {fn:mobDetailed, name:'Detailed', tag:'alt', desc:'Rounded body, arms, per-type marks (spider legs animate, skeleton ribs). More character up close.'},
+];
+
+// ── Block renderers ───────────────────────────────────────────────────────────
+function blockFlat(ctx,x,y,cs,key,color,elev){ ctx.fillStyle= elev>0?lighten(color,Math.min(0.34,elev*0.11)):color; ctx.fillRect(x,y,cs,cs);
+  ctx.strokeStyle='rgba(0,0,0,.16)'; ctx.strokeRect(x+.5,y+.5,cs-1,cs-1); }
+function blockShaded(ctx,x,y,cs,key,color,elev){
+  ctx.fillStyle= elev>0?lighten(color,Math.min(0.34,elev*0.11)):color; ctx.fillRect(x,y,cs,cs);
+  ctx.save(); ctx.beginPath(); ctx.rect(x,y,cs,cs); ctx.clip();
+  if(['grass','leaves','bush'].includes(key)){ ctx.fillStyle='rgba(0,0,0,.10)'; for(let i=0;i<3;i++) ctx.fillRect(x+(i*11%cs),y+(i*7%cs),cs*0.12,cs*0.12); }
+  else if(key==='lava'){ ctx.fillStyle='rgba(255,220,80,.5)'; ctx.fillRect(x+cs*0.2,y+cs*0.3,cs*0.25,cs*0.18); ctx.fillRect(x+cs*0.55,y+cs*0.6,cs*0.2,cs*0.14); }
+  else if(['stone','deepslate','gravel','bedrock'].includes(key)){ ctx.strokeStyle='rgba(0,0,0,.18)'; ctx.strokeRect(x+cs*0.15,y+cs*0.15,cs*0.5,cs*0.5); }
+  else if(key==='ice'){ ctx.strokeStyle='rgba(255,255,255,.5)'; ctx.beginPath(); ctx.moveTo(x,y+cs*0.3); ctx.lineTo(x+cs*0.4,y); ctx.stroke(); }
+  else if(['coal','iron','gold','diamond'].includes(key)){ ctx.fillStyle='rgba(255,255,255,.22)'; ctx.beginPath(); ctx.arc(x+cs*0.5,y+cs*0.5,cs*0.16,0,7); ctx.fill(); }
+  else if(['log','planks'].includes(key)){ ctx.strokeStyle='rgba(0,0,0,.2)'; ctx.beginPath(); ctx.moveTo(x,y+cs*0.5); ctx.lineTo(x+cs,y+cs*0.5); ctx.stroke(); }
+  ctx.restore(); ctx.strokeStyle='rgba(0,0,0,.16)'; ctx.strokeRect(x+.5,y+.5,cs-1,cs-1);
+}
+function blockBevel(ctx,x,y,cs,key,color,elev){
+  blockShaded(ctx,x,y,cs,key,color,elev);
+  const g=ctx.createLinearGradient(x,y,x,y+cs); g.addColorStop(0,'rgba(255,255,255,.16)'); g.addColorStop(0.5,'rgba(255,255,255,0)'); g.addColorStop(1,'rgba(0,0,0,.20)');
+  ctx.fillStyle=g; ctx.fillRect(x,y,cs,cs);
+}
+const BLOCK_STYLES = [
+  {fn:blockFlat, name:'A · Flat colour', tag:'idea', desc:'Solid tint + elevation lightening only. Fastest, least texture.'},
+  {fn:blockShaded, name:'B · Shaded + texture', tag:'ship', desc:'Per-family texture pass (grass tufts, ore flecks, lava pools, plank seams).'},
+  {fn:blockBevel, name:'C · + Inner bevel', tag:'alt', desc:'Adds a top-light / bottom-shadow bevel for depth. Richest, heaviest.'},
+];
+
+// ── Animation harness ─────────────────────────────────────────────────────────
+const canvases = [];
+function mkCard(grid, W, H, draw, name, tag, desc){
+  const card=document.createElement('div'); card.className='card';
+  const stage=document.createElement('div'); stage.className='stage';
+  const cv=document.createElement('canvas'); stage.appendChild(cv); card.appendChild(stage);
+  const meta=document.createElement('div'); meta.className='meta';
+  const tagName = tag==='ship'?'Shipped':tag==='alt'?'Alternate':'Idea';
+  meta.innerHTML=`<h3>${name}</h3><span class="tag ${tag}">${tagName}</span><p>${desc}</p>`;
+  card.appendChild(meta); grid.appendChild(card);
+  canvases.push({cv, W, H, draw});
+}
+
+const playerGrid=document.getElementById('player-grid');
+PLAYERS.forEach(p=> mkCard(playerGrid,120,120,(ctx,s,t,dist)=>{
+  const r=16*s; p.fn(ctx, 60, 62, r, dist, running, walkAngle); }, p.name, p.tag, p.desc));
+
+const mobGrid=document.getElementById('mob-grid');
+['zombie','skeleton','spider'].forEach(type=> MOB_STYLES.forEach(st=>
+  mkCard(mobGrid,120,120,(ctx,s,t)=>{ const rr=15*s; st.fn(ctx,60,60,rr,type,true,t); },
+    st.name+' · '+type[0].toUpperCase()+type.slice(1), st.tag, st.desc)));
+
+const blockGrid=document.getElementById('block-grid');
+BLOCK_STYLES.forEach(st=> mkCard(blockGrid,200,120,(ctx,s)=>{
+  // sample tiles at elevations 0/1/2
+  const cs=26*s*0.7; const keys=['grass','stone','lava','gold','planks','ice','bush','diamond'];
+  let i=0; for(let ry=0;ry<2;ry++) for(let cxi=0;cxi<4;cxi++){ const k=keys[i++]; const def=TERRAIN.find(t=>t[0]===k);
+    st.fn(ctx, 12+cxi*(cs+4), 20+ry*(cs+4), cs, k, def[2], (cxi+ry)%3); }
+}, st.name, st.tag, st.desc));
+
+// full terrain strip card
+mkCard(blockGrid,410,120,(ctx,s)=>{ const cs=18*s*0.72; let i=0;
+  for(let ry=0;ry<2;ry++) for(let cxi=0;cxi<10;cxi++){ if(i>=TERRAIN.length) break; const def=TERRAIN[i++];
+    blockShaded(ctx, 6+cxi*(cs+2), 14+ry*(cs+2), cs, def[0], def[2], 0); } },
+  'Full terrain set (shipped style)', 'ship', 'All 20 blocks: Grass · Dirt · Stone · Log · Plank · Gravel · Coal · Iron · Gold · Diamond · Obsidian · Deepslate · Bedrock · Netherrack · Soul Sand · Ice · Lava · Glowstone · Bush · Leaves.');
+
+// sprite palette swatches
+const pal=document.getElementById('sprite-pal');
+Object.entries(OH_SPRITE).forEach(([k,v])=>{ const s=document.createElement('span'); s.className='sw';
+  s.innerHTML=`<i style="background:${v}"></i>${k} <span style="color:var(--muted)">${v}</span>`; pal.appendChild(s); });
+
+let running=true, speed=1.1, scale=2.6, walkAngle=Math.PI/2, dist=0, tPrev=0;
+function resizeAll(){ const dpr=Math.min(2,window.devicePixelRatio||1);
+  canvases.forEach(o=>{ o.cv.width=o.W*scale*dpr/2.6*1; o.cv.height=o.H*scale*dpr/2.6*1;
+    o.cv.style.width=(o.W*scale/2.6)+'px'; o.cv.style.height=(o.H*scale/2.6)+'px';
+    const ctx=o.cv.getContext('2d'); ctx.setTransform(o.cv.width/(o.W),0,0,o.cv.height/(o.H),0,0); }); }
+function frame(ts){ const dt=Math.min(0.05,(ts-tPrev)/1000||0); tPrev=ts;
+  if(running){ dist+= 60*speed*dt; walkAngle += 0.0; }
+  const t=ts/1000*speed;
+  // gently pan the aim so directionality is visible
+  walkAngle = Math.PI/2 + Math.sin(ts/2600)*0.9;
+  canvases.forEach(o=>{ const ctx=o.cv.getContext('2d'); ctx.clearRect(0,0,o.W,o.H); o.draw(ctx, scale/2.6*1.0, t, dist); });
+  requestAnimationFrame(frame);
+}
+document.getElementById('play').onclick=(e)=>{ running=!running; e.target.textContent=running?'Pause':'Play'; };
+document.getElementById('speed').oninput=(e)=>{ speed=+e.target.value; };
+document.getElementById('scale').oninput=(e)=>{ scale=+e.target.value; resizeAll(); };
+document.getElementById('theme').onclick=()=>{ const cur=document.documentElement.getAttribute('data-theme');
+  const next = cur==='dark'?'light': cur==='light'?'dark' : (matchMedia('(prefers-color-scheme: dark)').matches?'light':'dark');
+  document.documentElement.setAttribute('data-theme', next); };
+resizeAll(); requestAnimationFrame(frame);
+</script>
