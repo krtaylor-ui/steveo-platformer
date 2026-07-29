@@ -9349,8 +9349,26 @@ class Game {
         if (r < 0 || r >= this.level.height || c < 0 || c >= this.level.width) continue;
         if (this.level.get(r, c) !== BLOCK.AIR) continue;
         this.level.set(r, c, blockType);
+        this._ensureRsComponent(r, c, blockType);   // §Sticky config — brush/stroke placement gets the component + inherited settings too
       }
     }
+  }
+  // Create the redstone component for a freshly-placed grid block (if it's a redstone type and none
+  // exists yet), applying the per-type sticky defaults — so brush + shift-drag placement matches the
+  // single-click path. No-op for non-redstone blocks.
+  _ensureRsComponent(r, c, b) {
+    if (!this.redstone || this.redstone.getAt(c, r)) return;
+    let comp = null;
+    if      (b === BLOCK.LEVER)          comp = { type: 'lever', col: c, row: r, on: false, links: [], sandboxPlaced: true };
+    else if (b === BLOCK.TRAPDOOR)       comp = { type: 'trapdoor', col: c, row: r, open: false, links: [], sandboxPlaced: true };
+    else if (b === BLOCK.PRESSURE_PLATE) comp = { type: 'pressure_plate', col: c, row: r, on: false, links: [], sandboxPlaced: true };
+    else if (b === BLOCK.WEIGHT_PLATE)   comp = { type: 'weight', col: c, row: r, on: false, trigger: 'both', links: [], sandboxPlaced: true };
+    else if (b === BLOCK.TNT)            comp = { type: 'tnt', col: c, row: r, fuse: 0, links: [], sandboxPlaced: true };
+    else if (b === BLOCK.TARGET_BLOCK)   comp = { type: 'target', col: c, row: r, on: false, mode: 'pulse', pulseDur: 30, links: [], sandboxPlaced: true };
+    else if (b === BLOCK.REDSTONE_LAMP)  comp = { type: 'lamp', col: c, row: r, on: false, color: 0, links: [], sandboxPlaced: true };
+    else if (b === BLOCK.PISTON_BODY)    comp = { type: 'piston', col: c, row: r, dir: 'right', inverted: false, extended: false, links: [], sandboxPlaced: true };
+    else if (b === BLOCK.PULSE_CONVERTER)comp = { type: 'pulse_converter', col: c, row: r, on: false, dir: 'right', links: [], sandboxPlaced: true };
+    if (comp) this._applyBlockDefaults(this.redstone.addComponent(comp));
   }
 
   // ── Brush removal: remove all non-AIR blocks in NxN area ─────

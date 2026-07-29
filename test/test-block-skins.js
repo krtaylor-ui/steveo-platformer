@@ -66,6 +66,14 @@ console.log('Sticky config — next placed block inherits the last-configured se
   // Non-configurable type is ignored by remember.
   gg._rememberBlockConfig({type:'lever', on:true});
   ok(!gg._blockDefaults.lever, 'levers are not tracked (no configurable fields)');
+  // Brush/stroke placement path (_ensureRsComponent) creates the component WITH the sticky defaults.
+  gg.redstone=new RedstoneSystem([]);
+  gg._ensureRsComponent(4, 3, BLOCK.WEIGHT_PLATE);   // (row=4,col=3)
+  const placed=gg.redstone.getAt(3,4);
+  ok(placed && placed.type==='weight' && placed.trigger==='mobs' && placed.conduct===true && placed.skin===BLOCK.OAK_PLANKS,
+     'brush-placed weight sensor is created with the remembered defaults');
+  gg._ensureRsComponent(4, 3, BLOCK.WEIGHT_PLATE);   // already occupied → no duplicate
+  ok(gg.redstone.components.filter(c=>c.col===3&&c.row===4).length===1, 'no duplicate component on re-place');
 }
 
 if(fail){console.log(`\n${fail} FAILED, ${pass} passed`);process.exit(1);}
