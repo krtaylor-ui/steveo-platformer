@@ -45,6 +45,7 @@
       this.mode = worldData.mode || 'platformer';
       this.climbLevels = cfg.climbLevels != null ? cfg.climbLevels : 0;
       this.playerH = cfg.playerHeight != null ? cfg.playerHeight : 1;
+      this.attackBlock = cfg.attackBlockHeight != null ? cfg.attackBlockHeight : 2;
       this.showHidden = !!cfg.showHiddenIndicator;
       this.goal = worldData.goal || null;
       // Ramps/ladders let a walk cross ANY elevation delta at that cell.
@@ -176,6 +177,9 @@
     }
 
     _ramp(c, r) { return this.ramps.has(c + ',' + r); }
+    // Attacks reach a target only if it's < attackBlock levels above the attacker
+    // (down is always fine). Also used to kill a projectile at a too-high wall.
+    _canAttack(fromElev, toElev) { return (toElev - fromElev) < this.attackBlock; }
     // Elevation-relative movement (climbLevels C, playerHeight H):
     //   delta<=0 walk · delta<=C climb-up · delta<=H WALL · delta>H overhang (pass
     //   under, hidden). A ramp/ladder cell lets a walk cross ANY delta. Gaps/solids
@@ -211,7 +215,7 @@
       const ang = OH_CONTROLS.angleOf(p.aim);
       if (!p.weapon) { if (intent.melee) this._melee(p, ang); return; }
       const wc = this._weaponCfg();
-      if (p.weapon === 'crossbow') { if (fire && p._fireCd === 0) { this._bolts.push(Object.assign(OH_WEAPONS.startBolt(p.x, p.y, ang, wc), { owner: 'p' })); p._fireCd = 14; } }
+      if (p.weapon === 'crossbow') { if (fire && p._fireCd === 0) { this._bolts.push(Object.assign(OH_WEAPONS.startBolt(p.x, p.y, ang, wc), { owner: 'p', elev: p.elev })); p._fireCd = 14; } }
       else if (p.weapon === 'trident') {
         if (intent.recallBtn && p._trident) OH_WEAPONS.recallTrident(p._trident);
         else if (fire && !p._trident) { p._trident = OH_WEAPONS.startTrident(p.x, p.y, ang, wc); p._fireCd = 10; }
@@ -222,20 +226,22 @@
     _weaponCfg() { const s = this.settings || {}; return { crossbowSpeed: s.crossbowSpeed, tridentSpeed: s.tridentSpeed, tridentReturnSpeed: s.tridentReturnSpeed, boomerangSpeed: s.boomerangSpeed, boomerangMaxRange: s.boomerangRange, boomerangWidth: s.boomerangWidth }; }
     _melee(p, ang) {
       if (p._fireCd > 0) return; p._fireCd = 18;
-      const hits = OH_COMBAT.coneHit({ x: p.x, y: p.y }, ang, this.mobs.filter((m) => !m.dead), { reach: this.unit * (this.settings.meleeReach || 2.4), halfAngle: Math.PI / 4, maxHits: 3 });
+      const hits = OH_COMBAT.coneHit({ x: p.x, y: p.y }, ang, this.mobs.filter((m) => !m.dead && this._canAttack(p.elev, m.elev || 0)), { reach: this.unit * (this.settings.meleeReach || 2.4), halfAngle: Math.PI / 4, maxHits: 3 });
       for (const m of hits) { m.hp -= 4; if (m.hp <= 0) m.dead = true; }
     }
+    // A projectile dies if it crosses terrain ≥ attackBlock levels above its origin.
+    _boltWalled(b) { const c = this._cellOf(b.x, b.y); return (this._elev(c.col, c.row) - (b.elev || 0)) >= this.attackBlock; }
     _updateProjectiles() {
       const p = this.player, live = this.mobs.filter((m) => !m.dead);
       // Crossbow bolts.
-      for (const b of this._bolts) { OH_WEAPONS.stepBolt(b); const hit = OH_COMBAT.lineHit({ x: b.x - b.vx, y: b.y - b.vy }, { x: b.x, y: b.y }, live, this.unit * 0.3); if (hit) { hit.hp -= 5; if (hit.hp <= 0) hit.dead = true; b.dead = true; } }
+      for (const b of this._bolts) { OH_WEAPONS.stepBolt(b); if (this._boltWalled(b)) { b.dead = true; continue; } const hit = OH_COMBAT.lineHit({ x: b.x - b.vx, y: b.y - b.vy }, { x: b.x, y: b.y }, live, this.unit * 0.3); if (hit && this._canAttack(b.elev || 0, hit.elev || 0)) { hit.hp -= 5; if (hit.hp <= 0) hit.dead = true; b.dead = true; } }
       this._bolts = this._bolts.filter((b) => !b.dead);
       // Trident.
-      if (p._trident) { OH_WEAPONS.stepTrident(p._trident, p); const t = p._trident; if (!t.caught) { for (const m of live) if (Math.hypot(m.x - t.x, m.y - t.y) < m.r + this.unit * 0.3) { m.hp -= 6; if (m.hp <= 0) m.dead = true; if (t.state === 'out') t.state = 'return'; } } if (t.caught) p._trident = null; }
+      if (p._trident) { OH_WEAPONS.stepTrident(p._trident, p); const t = p._trident; if (!t.caught) { for (const m of live) if (this._canAttack(p.elev, m.elev || 0) && Math.hypot(m.x - t.x, m.y - t.y) < m.r + this.unit * 0.3) { m.hp -= 6; if (m.hp <= 0) m.dead = true; if (t.state === 'out') t.state = 'return'; } } if (t.caught) p._trident = null; }
       // Boomerang (arcs, hits along the path, auto-returns).
-      if (p._boom) { OH_WEAPONS.stepBoomerang(p._boom, p); const b = p._boom; for (const m of live) { const id = m.col + ',' + m.row + ',' + (this.mobs.indexOf(m)); if (!b._hit[id] && Math.hypot(m.x - b.x, m.y - b.y) < m.r + this.unit * 0.3) { m.hp -= 4; b._hit[id] = 1; if (m.hp <= 0) m.dead = true; } } if (b.dead) p._boom = null; }
+      if (p._boom) { OH_WEAPONS.stepBoomerang(p._boom, p); const b = p._boom; for (const m of live) { const id = m.col + ',' + m.row + ',' + (this.mobs.indexOf(m)); if (!b._hit[id] && this._canAttack(p.elev, m.elev || 0) && Math.hypot(m.x - b.x, m.y - b.y) < m.r + this.unit * 0.3) { m.hp -= 4; b._hit[id] = 1; if (m.hp <= 0) m.dead = true; } } if (b.dead) p._boom = null; }
       // Mob bolts (skeletons).
-      for (const mb of this._mobBolts) { OH_WEAPONS.stepBolt(mb); if (Math.hypot(mb.x - p.x, mb.y - p.y) < p.r + this.unit * 0.25 && p.iFrames === 0) { this._hurt(3, 'Shot'); mb.dead = true; } }
+      for (const mb of this._mobBolts) { OH_WEAPONS.stepBolt(mb); if (this._boltWalled(mb)) { mb.dead = true; continue; } if (this._canAttack(mb.elev || 0, p.elev) && Math.hypot(mb.x - p.x, mb.y - p.y) < p.r + this.unit * 0.25 && p.iFrames === 0) { this._hurt(3, 'Shot'); mb.dead = true; } }
       this._mobBolts = this._mobBolts.filter((b) => !b.dead);
     }
 
@@ -247,7 +253,7 @@
       for (const m of this.mobs) { if (m.dead) continue; if (m.cool > 0) m.cool--;
         const d = Math.hypot(p.x - m.x, p.y - m.y);
         if (d < m.detect) m.state = 'chase'; else if (m.state === 'chase') m.state = 'path';
-        if (m.ranged && m.state === 'chase' && d < m.detect && m.cool === 0) { const ang = Math.atan2(p.y - m.y, p.x - m.x); this._mobBolts.push(Object.assign(OH_WEAPONS.startBolt(m.x, m.y, ang, { crossbowSpeed: 6, crossbowRange: m.detect + 40 }), { owner: 'm' })); m.cool = 90; }
+        if (m.ranged && m.state === 'chase' && d < m.detect && m.cool === 0) { const ang = Math.atan2(p.y - m.y, p.x - m.x); this._mobBolts.push(Object.assign(OH_WEAPONS.startBolt(m.x, m.y, ang, { crossbowSpeed: 6, crossbowRange: m.detect + 40 }), { owner: 'm', elev: m.elev || 0 })); m.cool = 90; }
         if (m.state === 'chase') {
           const ang = Math.atan2(p.y - m.y, p.x - m.x);
           if (!(m.ranged && d < m.detect * 0.6)) { this._moveWithCollision(m, Math.cos(ang) * m.speed, Math.sin(ang) * m.speed, false); m._dist = (m._dist || 0) + m.speed; m._moveAngle = ang; }

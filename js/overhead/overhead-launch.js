@@ -103,13 +103,18 @@
     // so a 2-level cliff reads as two steps.
     drawTerrainSide(ctx, key, x, topBottomY, cs, depth, levels) {
       if (depth <= 0) return;
+      // The side is a DIAGONAL parallelogram (slants right as it drops), so cliffs
+      // read as diagonal shadows — an easier elevation cue than a flat front (§).
+      const skew = depth * 0.5;
       ctx.fillStyle = _shade(P().terrainColor(key), 0.45);   // noticeably darker
-      ctx.fillRect(x, topBottomY, cs + 1, depth + 1);
-      ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 1;
-      ctx.strokeRect(x + 0.5, topBottomY + 0.5, cs, depth);
-      // Divider lines between stacked elevation levels.
+      ctx.beginPath();
+      ctx.moveTo(x, topBottomY); ctx.lineTo(x + cs, topBottomY);
+      ctx.lineTo(x + cs + skew, topBottomY + depth); ctx.lineTo(x + skew, topBottomY + depth);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 1; ctx.stroke();
+      // Divider lines between stacked elevation levels (also slanted).
       const n = Math.max(1, levels | 0);
-      if (n > 1) { const seg = depth / n; for (let i = 1; i < n; i++) { const ly = topBottomY + seg * i; ctx.beginPath(); ctx.moveTo(x, ly); ctx.lineTo(x + cs, ly); ctx.stroke(); } }
+      if (n > 1) { const seg = depth / n, sseg = skew / n; for (let i = 1; i < n; i++) { const ly = topBottomY + seg * i, lx = x + sseg * i; ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + cs, ly); ctx.stroke(); } }
     },
 
     // ── Shared building models (default skins). x,y = top-left screen px of the

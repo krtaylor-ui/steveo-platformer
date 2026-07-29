@@ -24,6 +24,11 @@
       boomerangRange:   340,
       boomerangWidth:   0.42,
       meleeReach:       2.4,        // × unit
+      // A target/obstacle this-many elevation levels ABOVE the attacker blocks the
+      // attack (default 2 → you can attack up 1 level, not 2; attacking DOWN is
+      // always allowed). Lets a player on high ground behind a 1-high wall shoot
+      // down while being safe from below.
+      attackBlockHeight: 2,
       // Mobs.
       mobDetectMult:    1.0,
       // View / controls.
@@ -109,6 +114,7 @@
               ${range('boomerangRange', 'Boomerang range (px)', 120, 600, 20)}
               ${range('boomerangWidth', 'Boomerang arc width', 0.15, 0.7, 0.03)}
               ${range('meleeReach', 'Melee reach (× cell)', 1, 4, 0.2)}
+              ${sel('attackBlockHeight', 'Wall height that blocks attacks', [['1', '1 level'], ['2', '2 levels'], ['3', '3 levels'], ['99', 'Never blocked']])}
             </div>
             <div class="ohws-grp"><h3>Mobs</h3>
               ${range('mobDetectMult', 'Detection range ×', 0.4, 2, 0.1)}
