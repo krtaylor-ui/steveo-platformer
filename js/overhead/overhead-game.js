@@ -53,7 +53,16 @@
       this._dayLen = cfg.dayLengthSec > 0 ? cfg.dayLengthSec : 120;
       this._dayStart = (cfg.dayStart != null ? cfg.dayStart : 0.25);
       this._nightMax = (cfg.nightDarkness != null ? cfg.nightDarkness : 0.6);
+      this._showSunMoon = cfg.showSunMoon !== false;   // faint tracking disc (toggle)
+      this._shadows = cfg.shadows !== false;           // dynamic elevation shadows (toggle)
+      this._lightRadius = (cfg.lightRadius != null ? cfg.lightRadius : 4);        // blocks
+      this._lightBrightness = (cfg.lightBrightness != null ? cfg.lightBrightness : 0.9);  // 0..1
       this._elapsed = 0; this._tod = this._dayNight ? this._dayStart : 0.5; this._detectMult = 1;
+      // Precompute light-emitting cells (glowstone / lava) once — a static list.
+      this._lightCells = [];
+      for (let r = 0; r < (map.gridH || 0); r++) for (let c = 0; c < (map.gridW || 0); c++) {
+        const col = P().lightColor(this._key(c, r)); if (col) this._lightCells.push({ c, r, color: col });
+      }
       this.goal = worldData.goal || null;
       // Ramps/ladders let a walk cross ANY elevation delta at that cell.
       this._rampList = worldData.ramps || [];
@@ -207,6 +216,11 @@
     }
 
     _ramp(c, r) { return this.ramps.has(c + ',' + r); }
+    // A ramp makes climbing forgiving: it counts if it's ON this cell OR an
+    // orthogonal neighbour, so a ramp placed a cell off from the true collision
+    // edge (easy to do — the 2.5D stacked-cube offset draws raised terrain up/left
+    // of its grid cell) still lets the player walk up.
+    _rampNear(c, r) { return this._ramp(c, r) || this._ramp(c - 1, r) || this._ramp(c + 1, r) || this._ramp(c, r - 1) || this._ramp(c, r + 1); }
     // Attacks reach a target only if it's < attackBlock levels above the attacker
     // (down is always fine). Also used to kill a projectile at a too-high wall.
     _canAttack(fromElev, toElev) { return (toElev - fromElev) < this.attackBlock; }
@@ -229,7 +243,7 @@
         const tE = this._elev(c.col, c.row), delta = tE - ent.elev;
         if (delta <= 0) return tE;                           // walk / step down
         if (airborne) return false;                          // can't jump ONTO raised terrain (no jump-mounting)
-        if (delta <= C || curRamp || this._ramp(c.col, c.row)) return tE;   // climb within limit / via ramp
+        if (delta <= C || this._rampNear(cur.col, cur.row) || this._rampNear(c.col, c.row)) return tE;   // climb within limit / via (nearby) ramp
         return false;                                        // raised SOLID terrain → wall (any height)
       };
       const r = ent.r, lat = r * 0.7;
@@ -380,6 +394,9 @@
       const sx = this.camera.x + pad, sy = this.camera.y + pad, sw = CANVAS_W / z, sh = CANVAS_H / z;
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(tc, sx, sy, sw, sh, 0, 0, CANVAS_W, CANVAS_H);
+      // Dynamic elevation shadows (cast by the sun/moon; drawn on the ground under
+      // entities). Independent of whether the sun/moon disc itself is shown.
+      if (this._dayNight && this._shadows && typeof OH_DAYNIGHT !== 'undefined') this._drawShadows(ctx, S, cs, c0, c1, r0, r1);
       for (const rp of this._rampList) { const sp = S((rp.col + 0.5) * g.cell, (rp.row + 0.5) * g.cell); const dir = OVERHEAD.rampDir((c, r) => this._elev(c, r), rp.col, rp.row); OVERHEAD.drawRampIcon(ctx, rp.kind, sp.x, sp.y, cs, dir); }
       if (this.goal) { const gc = (typeof GOAL_COLORS !== 'undefined' && GOAL_COLORS[this.goal.color || 0]) || { hex: '#ffd700' }; const sp = S((this.goal.col + 1) * g.cell, (this.goal.row + 1) * g.cell); ctx.fillStyle = gc.hex; ctx.font = `${(cs * 1.8) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.62); }
       // Entities sorted by (row + elev).
@@ -411,12 +428,9 @@
         const Q = OVERHEAD.elevOffset(cs); const sp = S(c * g.cell, r * g.cell); ctx.globalAlpha = 0.96; OVERHEAD.drawTerrainTile(ctx, k, sp.x - elev * Q, sp.y - elev * Q, cs, elev); ctx.globalAlpha = 1; }
       // Hidden indicator (designer opt-in).
       if (this.player.hidden && this.showHidden) { const s = S(this.player.x, this.player.y); ctx.strokeStyle = 'rgba(120,200,255,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s.x, s.y, cs * 0.4, 0, 7); ctx.stroke(); }
-      // Day/night ambient overlay — tints the WORLD (drawn before the HUD so the HUD
-      // stays crisp). Clear at midday, deep blue at night, warm at dawn/dusk.
-      if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') {
-        const sk = OH_DAYNIGHT.sky(this._tod, this._nightMax);
-        if (sk.a > 0.004) { ctx.fillStyle = `rgba(${sk.r},${sk.g},${sk.b},${sk.a})`; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H); }
-      }
+      // Day/night ambient overlay + light sources + sun/moon disc — drawn before the
+      // HUD so the HUD stays crisp.
+      if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') this._drawNight(ctx, S, cs);
       this._drawHUD(ctx);
     }
 
@@ -468,6 +482,68 @@
       // Aim reticle.
       const rt = S(p.x + p.aim.x * this.unit * 1.8, p.y + p.aim.y * this.unit * 1.8);
       ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(rt.x, rt.y, 5, 0, 7); ctx.stroke();
+    }
+
+    _rgba(hex, a) { const h = String(hex).replace('#', ''); const n = parseInt(h.length === 3 ? h.replace(/(.)/g, '$1$1') : h, 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; }
+
+    // Dynamic elevation shadows: cast from cliff edges facing away from the sun/moon,
+    // onto an offscreen canvas (so overlapping casts don't stack darker), then blit
+    // at the shadow alpha. Length scales with elevation and low-body angle.
+    _drawShadows(ctx, S, cs, c0, c1, r0, r1) {
+      const sh = OH_DAYNIGHT.shadow(this._tod); if (sh.alpha <= 0.01) return;
+      const sc = this._shadowCanvas || (this._shadowCanvas = document.createElement('canvas'));
+      if (sc.width !== CANVAS_W || sc.height !== CANVAS_H) { sc.width = CANVAS_W; sc.height = CANVAS_H; }
+      const sx = sc.getContext('2d'); sx.clearRect(0, 0, CANVAS_W, CANVAS_H); sx.fillStyle = '#000';
+      const sgnx = Math.sign(sh.x) || 1, sgny = Math.sign(sh.y) || 1, cell = this.grid.cell;
+      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+        const e = this._elev(c, r); if (e <= 0) continue; if (this._key(c, r) === 'leaves') continue;
+        // Only an edge facing away from the light casts (a lower neighbour that way).
+        if (this._elev(c + sgnx, r) >= e && this._elev(c, r + sgny) >= e && this._elev(c + sgnx, r + sgny) >= e) continue;
+        const base = S(c * cell, r * cell); const ox = sh.x * e * cs, oy = sh.y * e * cs;
+        sx.beginPath(); sx.moveTo(base.x, base.y); sx.lineTo(base.x + cs, base.y);
+        sx.lineTo(base.x + cs + ox, base.y + cs + oy); sx.lineTo(base.x + ox, base.y + cs + oy);
+        sx.closePath(); sx.fill();
+      }
+      ctx.globalAlpha = sh.alpha; ctx.drawImage(sc, 0, 0); ctx.globalAlpha = 1;
+    }
+
+    // Night darkening with light-source cut-outs (glowstone / lava) + a faint sun/moon
+    // disc. The darkening is composited offscreen so lamps can "punch through" it.
+    _drawNight(ctx, S, cs) {
+      const sk = OH_DAYNIGHT.sky(this._tod, this._nightMax), cell = this.grid.cell;
+      const rad = Math.max(cs * 1.2, this._lightRadius * cs);
+      // Gather visible light cells (cap for perf on big lava fields).
+      const lit = [];
+      for (const lc of this._lightCells) { const sp = S((lc.c + 0.5) * cell, (lc.r + 0.5) * cell);
+        if (sp.x < -rad || sp.x > CANVAS_W + rad || sp.y < -rad || sp.y > CANVAS_H + rad) continue; lit.push({ sp, color: lc.color }); if (lit.length >= 80) break; }
+      if (sk.a > 0.004) {
+        const nc = this._nightCanvas || (this._nightCanvas = document.createElement('canvas'));
+        if (nc.width !== CANVAS_W || nc.height !== CANVAS_H) { nc.width = CANVAS_W; nc.height = CANVAS_H; }
+        const nx = nc.getContext('2d'); nx.globalCompositeOperation = 'source-over'; nx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+        nx.fillStyle = `rgba(${sk.r},${sk.g},${sk.b},1)`; nx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+        nx.globalCompositeOperation = 'destination-out';
+        for (const l of lit) { const grd = nx.createRadialGradient(l.sp.x, l.sp.y, 0, l.sp.x, l.sp.y, rad);
+          grd.addColorStop(0, `rgba(0,0,0,${this._lightBrightness})`); grd.addColorStop(1, 'rgba(0,0,0,0)');
+          nx.fillStyle = grd; nx.beginPath(); nx.arc(l.sp.x, l.sp.y, rad, 0, 7); nx.fill(); }
+        nx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = sk.a; ctx.drawImage(nc, 0, 0); ctx.globalAlpha = 1;
+        // Warm additive glow at each lamp so it reads as emitted light.
+        ctx.globalCompositeOperation = 'lighter';
+        for (const l of lit) { const a = 0.3 * this._lightBrightness * (sk.a / (this._nightMax || 1));
+          const grd = ctx.createRadialGradient(l.sp.x, l.sp.y, 0, l.sp.x, l.sp.y, rad);
+          grd.addColorStop(0, this._rgba(l.color, a)); grd.addColorStop(1, this._rgba(l.color, 0));
+          ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(l.sp.x, l.sp.y, rad, 0, 7); ctx.fill(); }
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      // Faint sun/moon disc (toggle), tracking across the top of the sky.
+      if (this._showSunMoon) {
+        const b = OH_DAYNIGHT.body(this._tod), dx = b.fx * CANVAS_W, dy = b.fy * CANVAS_H, R = 26;
+        const col = b.isDay ? '255,236,150' : '210,220,240';
+        const grd = ctx.createRadialGradient(dx, dy, 0, dx, dy, R);
+        grd.addColorStop(0, `rgba(${col},0.30)`); grd.addColorStop(0.6, `rgba(${col},0.14)`); grd.addColorStop(1, `rgba(${col},0)`);
+        ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(dx, dy, R, 0, 7); ctx.fill();
+        ctx.fillStyle = `rgba(${col},0.22)`; ctx.beginPath(); ctx.arc(dx, dy, R * 0.5, 0, 7); ctx.fill();
+      }
     }
 
     _drawHUD(ctx) {

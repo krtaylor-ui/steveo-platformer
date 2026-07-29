@@ -1,4 +1,23 @@
-## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE playtest fixes + DAY/NIGHT cycle (build 292) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE ramps-forgiving + DAY/NIGHT depth (build 293) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+
+Seventh playtest batch. Suite green (975 assertions); draw-probe + a render smoke-test clean.
+- **Ramps fixed (for real):** a headless collision harness proved the climb logic was already correct in
+  every config — the failure was PLACEMENT landing a cell off from the collision edge (the 2.5D up-left
+  offset). Ramps are now **forgiving**: `_rampNear` counts a ramp on the cell OR any orthogonal neighbour,
+  used for both current + target cells. Adjacent + one-cell-off both climb; no-ramp control still blocks.
+- **Day/Night reworked:** warm dusk/dawn tint REMOVED (clean cool fade); nights up to near-black
+  (`nightDarkness` 0.95); faint **toggleable sun/moon disc** tracks the sky; **dynamic elevation shadows**
+  from cliff edges away from the body (offscreen-composited, edge-only, toggleable) draw regardless of the
+  disc; **glowstone + lava are light sources** punching through the dark (configurable `lightRadius` +
+  `lightBrightness`). New pure `OH_DAYNIGHT.body`/`shadow` (27 tests total).
+- **Underground/negative elevations:** design-answered — recommend a SEPARATE cave map (day/night off +
+  player-centred light) over negative elevations; both written up in FUTURE_ROADMAP §35. Detail in `DECISIONS_LOG.md`.
+
+**NEEDS BROWSER PLAYTEST** before merge. 15 overhead builds (279–293) are stacked on this branch.
+
+---
+
+## PRIOR STATE (2026-07-29) — OVERHEAD ENGINE playtest fixes + DAY/NIGHT cycle (build 292) on branch `overhead-engine` — NOT merged, browser-UNTESTED
 
 Sixth playtest-feedback batch + first slice of §34 (day/night). Suite green (969 assertions); draw-probe clean.
 - **Map not hidden by the top bar:** editor render reserves a scaled top inset (content offset + camera

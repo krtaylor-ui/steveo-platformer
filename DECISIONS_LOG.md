@@ -1,6 +1,45 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD ENGINE — RAMPS FORGIVING + DAY/NIGHT DEPTH (2026-07-29, build 293, branch `overhead-engine`)
+# ═══════════════════════════════════════════════════════════════════════
+Seventh playtest-feedback batch. Suite green (975 assertions), draw-probe + a render smoke-test clean.
+
+- **Ramps still "not working" — root cause + fix.** Built a headless collision harness that constructs the
+  REAL `OverheadGame` (canvas/InputManager stubbed) and drives `_moveWithCollision`. Result: the collision
+  logic ALREADY climbs correctly via ramps in every config — adjacent ramp, ramp on the plateau edge,
+  vertical (−y) approach, densities 1 and 2 — and the no-ramp control correctly blocks. So the logic was
+  never the bug; the failure is **placement**: the 2.5D up-left elevation offset draws raised terrain up/left
+  of its grid cell, so a designer aligns the ramp to the DRAWN edge and lands a cell off from the collision
+  transition. Fix = make ramps **forgiving**: new `_rampNear(c,r)` treats a ramp as present if it is on the
+  cell OR any orthogonal neighbour, and the climb check uses `_rampNear` for both the current and target
+  cells. Harness confirms a ramp placed one cell off now climbs; adjacent still climbs; no-ramp still blocks.
+  (Also kept the build-292 undo/redo ramps+settings serialization.)
+- **Day/Night reworked (Kevin's feedback "dusk/dawn yellow not needed; smooth transition; darker; add
+  sun/moon + shadows + lights").** `OH_DAYNIGHT.sky` is now a single COOL blue whose alpha tracks darkness —
+  no warm tint, a clean night↔day fade. `nightDarkness` range extended to **0.95** (near-black). New pure
+  model additions (headless-tested, 27 assertions): `body(t)` (sun/moon, altitude, screen arc position) and
+  `shadow(t)` (ground shadow vector: long at low altitude, flips horizontal across the arc, short at peak).
+- **Sun/moon disc:** faint, highly-transparent radial, tracks across the top of the sky, TOGGLEABLE
+  (`showSunMoon`). **Shadows:** `_drawShadows` casts from cliff EDGES facing away from the body (a lower
+  neighbour in the shadow direction), length ∝ elevation × low-angle, composited on an offscreen canvas so
+  overlapping casts don't stack darker, then blitted at the shadow alpha; edge-only + a visible-region loop
+  keep it cheap; toggleable (`shadows`) and drawn regardless of whether the disc is shown.
+- **Light sources:** `glowstone` + `lava` carry a `light` colour in the palette (`OH_PALETTE.lightColor`).
+  `_drawNight` composites the darkening offscreen and uses `destination-out` radial gradients to PUNCH
+  light holes at each visible emitter (revealing terrain), plus a `lighter` warm glow so lamps read as
+  emitting. Configurable `lightRadius` (blocks) + `lightBrightness` (0..1). Visible-light cap of 80/frame
+  guards big lava fields. A render smoke-test (dark night 0.9 + lava + glowstone + a plateau + entities)
+  runs clean for 5 frames.
+- **Negative elevations / underground — DESIGN ANSWER (deferred, see FUTURE_ROADMAP §35):** doable but not
+  free. `_elev` returns `row[c] | 0` and the elevation heightmap, draw-order sort, and shadow/overhang passes
+  assume elev ≥ 0 in several places (offsets, cache padding, `| 0` coercion is fine for negatives but the
+  render offset `-elev*Q` would push sub-zero cells DOWN/right and the terrain cache `pad` is one-sided).
+  Recommended path is Kevin's own fallback: model a cave as a SEPARATE world (its own map) with day/night
+  OFF and a small ambient-light radius around the player, reached via a portal/pipe — no negative elevations,
+  reuses everything shipped here, and avoids reworking the elevation math. Captured in full in §35.
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD ENGINE — PLAYTEST FIXES + DAY/NIGHT CYCLE (2026-07-29, build 292, branch `overhead-engine`)
 # ═══════════════════════════════════════════════════════════════════════
 Sixth playtest-feedback batch + the first slice of §34. Suite green (969 assertions), draw-probe clean.

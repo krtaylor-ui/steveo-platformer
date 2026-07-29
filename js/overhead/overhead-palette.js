@@ -42,8 +42,8 @@
     { key: 'netherrack', name: 'Netherrack',   blockId: 21, color: '#7a3535' },
     { key: 'soulsand',   name: 'Soul Sand',    blockId: 17, color: '#4a3a2c' },
     { key: 'ice',        name: 'Ice',          blockId: 69, color: '#a9d6ea' },
-    { key: 'lava',       name: 'Lava',         blockId: 22, color: '#e0662a', hazard: true },
-    { key: 'glowstone',  name: 'Glowstone',    blockId: 48, color: '#e6c96a' },
+    { key: 'lava',       name: 'Lava',         blockId: 22, color: '#e0662a', hazard: true, light: '#ff8a3a' },
+    { key: 'glowstone',  name: 'Glowstone',    blockId: 48, color: '#e6c96a', light: '#ffe59a' },
     { key: 'bush',       name: 'Bush',         blockId: 60, color: '#3f7a3a' },
     { key: 'leaves',     name: 'Leaves',       blockId: 5,  color: '#4f8a44' },
   ];
@@ -52,6 +52,8 @@
   const GROUND = 'grass';   // default paint / floor
   const isHazardKey = (key) => !!(OH_TERRAIN_BY_KEY[key] && OH_TERRAIN_BY_KEY[key].hazard);
   const terrainColor = (key) => (OH_TERRAIN_BY_KEY[key] || OH_TERRAIN_BY_KEY[GROUND]).color;
+  // Light-emitting terrain (glowstone / lava): returns the glow colour or null.
+  const lightColor = (key) => (OH_TERRAIN_BY_KEY[key] && OH_TERRAIN_BY_KEY[key].light) || null;
 
   // ── Mobs (overhead set for now) ─────────────────────────────────────────────
   // detect is in BLOCKS (× unit at runtime) — default ~10 player-blocks (§).
@@ -73,7 +75,7 @@
 
   const OH_PALETTE = {
     OH_SPRITE,
-    OH_TERRAIN, OH_TERRAIN_BY_KEY, GROUND, isHazardKey, terrainColor,
+    OH_TERRAIN, OH_TERRAIN_BY_KEY, GROUND, isHazardKey, terrainColor, lightColor,
     OH_MOBS, OH_MOB_BY_KEY, OH_ITEMS, OH_ITEM_BY_KEY,
   };
 

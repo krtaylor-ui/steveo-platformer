@@ -1110,13 +1110,17 @@ machine that freezes input, plays a scripted climb-in → fade → climb-out ani
 Portals: a walk-in → destination-glow → walk-out flourish. **Effort:** MEDIUM; deferred from the 2026-07-29
 batch (the teleport + glow + numbering shipped; the elaborate animation did not).
 
-## 34. Overhead day/night cycle + dynamic elevation shadows  *(idea captured 2026-07-29 — Kevin's "curveball"; TINT PASS SHIPPED build 292, dynamic shadows still deferred)*
+## 34. Overhead day/night cycle + dynamic elevation shadows  *(idea captured 2026-07-29 — Kevin's "curveball"; MOST OF IT SHIPPED builds 292–293)*
 
-**Shipped in build 292 (the base cycle):** a per-world **Day / Night** setting (Atmosphere group) with a
-pure, headless-tested `OH_DAYNIGHT` model — a time-of-day phase over a configurable cycle length, an ambient
-tint pass (midnight-blue → warm dawn → clear noon → dusk), an on-screen sun/moon clock, and a gameplay hook
-(mobs see up to +40% farther at night). Off by default. **Still deferred (the ambitious remainder below):**
-dynamic sun/moon **elevation shadows**, entity blob shadows, and night **light sources / lamps**.
+**Shipped in build 292 (base cycle):** per-world **Day / Night** setting + pure `OH_DAYNIGHT` model (phase,
+cycle length, ambient tint, on-screen clock, +up-to-40% night mob sight). **Shipped in build 293 (depth):**
+the warm dusk/dawn tint was REMOVED for a clean cool fade; nights go up to near-black (`nightDarkness` 0.95);
+a faint **toggleable sun/moon disc** tracks the sky; **dynamic elevation shadows** cast from cliff edges away
+from the sun/moon (offscreen-composited, edge-only, toggleable) render regardless of the disc; and
+**glowstone + lava are light sources** that punch through the dark with configurable reach + brightness.
+**Still deferred (the ambitious remainder):** shadows cast by MOBS/PLAYER (entity blob shadows in the sun
+direction), a true per-frame heightmap shadow-projection re-bake tied to the static-terrain cache (the
+current pass is edge-quads, not a full projected silhouette), and placeable non-terrain lamp objects.
 
 Kevin's original vision: a **day/night cycle** in Overhead mode — a very faint, highly-transparent **sun** (and a
 bluish **moon** at night) tracking across the level (L→R / top→bottom / corner→corner). The hard part:
@@ -1141,3 +1145,29 @@ like the side-view End portal) and **portal powering** (the portal activates onl
 eyes placed), then it teleports (or ends the level) as configured. Reuse the existing eye-of-ender item +
 the side-view End-portal completion logic where possible. **Effort:** MEDIUM. Depends on the overhead
 inventory/items pass being fleshed out (currently items are pickups only).
+
+## 35. Overhead UNDERGROUND / cave mode (negative elevations vs. a separate cave map)  *(design captured 2026-07-29)*
+
+Kevin's idea: let players descend **below level 0** in Overhead view and have it become a **cave** with
+limited light (reusing the build-293 day/night darkening + light sources), able to **disable day/night**
+down there. Two ways to build it:
+
+**Option A — negative elevations (one map, seamless).** Allow `elevation` cells to go below 0. *What it
+touches:* `_elev` returns `row[c] | 0` (fine for negatives), but several render assumptions bake in
+elev ≥ 0 — the stacked-cube offset `-elev*Q` would push sub-zero cells DOWN-right (they'd need to render
+UNDER neighbours with the opposite face exposed), the static-terrain cache `pad` is a one-sided top margin
+sized for positive lift, the draw-order sort keys on `row+elev`, and the overhang/hide pass keys on
+`elev > player.elev`. None are unfixable, but it's a real render-model change (two-sided offset + cache pad,
+a "depth" shading ramp, and a rule for when going negative flips to "indoors/cave" lighting). *Effort:*
+LARGE. *Upside:* seamless surface↔cave in one level.
+
+**Option B — separate cave map (recommended first).** Model the cave as its OWN overhead world with
+`dayNight` OFF and a small **ambient light radius around the player** (a new "cave lighting" setting: a
+darkness overlay with a player-centred light hole, reusing the exact `_drawNight` punch-through), reached by
+a **portal/pipe** from the surface. *Upside:* zero elevation-math changes, reuses everything shipped in
+builds 292–293, and each map keeps its own atmosphere — no fighting to balance surface + cave in one scene.
+*Downside:* a load/teleport seam between surface and cave (acceptable — pipes already do this).
+
+**Recommendation:** ship Option B when caves are wanted (it's mostly a "player-centred light" setting + a
+mode flag), and only pursue Option A if seamless vertical descent becomes a hard requirement. The
+player-centred cave light is a small, self-contained addition to the existing night compositor.
