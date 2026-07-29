@@ -16,7 +16,8 @@
       // Jump (impression-of-height): small float + a scale-up.
       jumpFloat:        0.4,
       jumpScale:        0.22,
-      doubleJump:       true,       // allow a mid-air second jump (with a spin)
+      doubleJump:       true,       // allow a mid-air second jump
+      doubleJumpStyle:  'somersault',// 'somersault' (head-over-heels) | 'spin' (flat rotate)
       // Combat / weapons — px/frame (absolute, density-independent).
       crossbowSpeed:    13,
       tridentSpeed:     12,
@@ -106,7 +107,8 @@
               ${sel('playerHeight', 'Player height (levels)', [['1', '1 (walk under 2+ high)'], ['2', '2'], ['3', '3']])}
               ${range('jumpFloat', 'Jump float (up)', 0, 1, 0.05)}
               ${range('jumpScale', 'Jump scale (grow)', 0, 0.5, 0.02)}
-              ${toggle('doubleJump', 'Double jump (with a spin)')}
+              ${toggle('doubleJump', 'Double jump')}
+              ${sel('doubleJumpStyle', 'Double-jump style', [['somersault', 'Somersault (flip)'], ['spin', 'Spin']])}
             </div>
             <div class="ohws-grp"><h3>Weapons</h3>
               ${range('crossbowSpeed', 'Crossbow bolt speed', 4, 24, 1)}

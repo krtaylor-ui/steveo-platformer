@@ -414,10 +414,11 @@
       // Legs face movement; upper body + weapon face aim. Weapon hidden while a
       // trident/boomerang is in flight (it's the thing flying).
       const inFlight = p._trident || p._boom;
-      // Double-jump SPIN: spins ~1.5× over the airtime after the flip triggers.
-      let spin = 0; if (p.jump && p.jump.jumping && p.jump.doubleUsed) spin = Math.min(1, p.jump.t / p.jump.dur) * Math.PI * 3;
+      // Double-jump flourish: 'somersault' (head-over-heels y-foreshorten) or 'spin'.
+      let spin = 0, somersault = null;
+      if (p.jump && p.jump.jumping && p.jump.doubleUsed) { const prog = Math.min(1, p.jump.t / p.jump.dur); if ((this.settings.doubleJumpStyle || 'somersault') === 'spin') spin = prog * Math.PI * 3; else somersault = prog; }
       OVERHEAD.drawOverheadPlayer(ctx, cx, cy, rr, p.dist, moving, OH_CONTROLS.angleOf(p.aim),
-        { rotate: true, weapon: inFlight ? null : (p.weapon || 'pickaxe'), moveAngle: (p.moveAngle != null ? p.moveAngle : OH_CONTROLS.angleOf(p.aim)), spin });
+        { rotate: true, weapon: inFlight ? null : (p.weapon || 'pickaxe'), moveAngle: (p.moveAngle != null ? p.moveAngle : OH_CONTROLS.angleOf(p.aim)), spin, somersault });
       ctx.globalAlpha = 1;
       if (p.iFrames > 0 && ((p.iFrames >> 2) & 1)) { ctx.globalAlpha = 0.4; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
       // Aim reticle.

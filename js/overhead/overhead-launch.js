@@ -283,7 +283,10 @@
       const span = r * 1.4, limbW = opts.bony ? r * 0.16 : r * 0.26;
       const armAmp = r * 0.55, legAmp = r * 0.5, restFwd = r * 0.18;
       ctx.save(); ctx.translate(cx, cy);
-      if (opts.spin) ctx.rotate(opts.spin);   // double-jump flip (whole-body spin)
+      if (opts.spin) ctx.rotate(opts.spin);   // double-jump flat spin
+      // Somersault: foreshorten Y through cos() so the sprite flips head-over-heels
+      // (1 → edge-on → upside-down → back), read from above.
+      if (opts.somersault != null) { const cv = Math.cos(opts.somersault * Math.PI * 2); ctx.scale(1, Math.abs(cv) < 0.06 ? 0.06 : cv); }
 
       // ── LOWER BODY — faces movement ──
       ctx.save(); if (opts.rotate !== false && moveAngle != null) ctx.rotate(moveAngle);
