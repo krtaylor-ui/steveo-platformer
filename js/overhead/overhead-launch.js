@@ -207,12 +207,23 @@
       ctx.save(); ctx.translate(cx - size * 0.45, cy); ctx.rotate(-0.35); this.drawWeapon(ctx, size * 0.62, wk); ctx.restore();
     },
 
-    // Shared ramp/ladder icon (editor + runtime).
-    drawRampIcon(ctx, kind, cx, cy, s) {
-      ctx.save(); ctx.translate(cx, cy);
-      if (kind === 'ladder') { ctx.strokeStyle = '#c8a05a'; ctx.lineWidth = Math.max(1.5, s * 0.09); ctx.beginPath(); ctx.moveTo(-s * 0.22, -s * 0.4); ctx.lineTo(-s * 0.22, s * 0.4); ctx.moveTo(s * 0.22, -s * 0.4); ctx.lineTo(s * 0.22, s * 0.4); for (let i = -1; i <= 1; i++) { ctx.moveTo(-s * 0.22, i * s * 0.28); ctx.lineTo(s * 0.22, i * s * 0.28); } ctx.stroke(); }
-      else { ctx.fillStyle = 'rgba(200,170,110,.85)'; ctx.beginPath(); ctx.moveTo(-s * 0.4, s * 0.35); ctx.lineTo(s * 0.4, -s * 0.35); ctx.lineTo(s * 0.4, s * 0.35); ctx.closePath(); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.stroke(); }
+    // Shared ramp/ladder icon, oriented up-slope toward `dir` ('E' default). A
+    // directional wedge (peak = high side) with step lines so the slope reads.
+    drawRampIcon(ctx, kind, cx, cy, s, dir) {
+      const ang = { E: 0, S: Math.PI / 2, W: Math.PI, N: -Math.PI / 2 }[dir || 'E'];
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(ang);
+      if (kind === 'ladder') { ctx.strokeStyle = '#c8a05a'; ctx.lineWidth = Math.max(1.5, s * 0.09); ctx.beginPath(); ctx.moveTo(-s * 0.4, -s * 0.22); ctx.lineTo(s * 0.4, -s * 0.22); ctx.moveTo(-s * 0.4, s * 0.22); ctx.lineTo(s * 0.4, s * 0.22); for (let i = -1; i <= 1; i++) { ctx.moveTo(i * s * 0.28, -s * 0.22); ctx.lineTo(i * s * 0.28, s * 0.22); } ctx.stroke(); }
+      else { ctx.fillStyle = 'rgba(200,170,110,.9)'; ctx.beginPath(); ctx.moveTo(-s * 0.42, s * 0.32); ctx.lineTo(s * 0.42, -s * 0.32); ctx.lineTo(s * 0.42, s * 0.32); ctx.closePath(); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1; for (let i = 1; i <= 3; i++) { const t = i / 4; const px = -s * 0.42 + s * 0.84 * t; ctx.beginPath(); ctx.moveTo(px, s * 0.32); ctx.lineTo(px, s * 0.32 - s * 0.64 * t); ctx.stroke(); } }
       ctx.restore();
+    },
+    // Direction toward the higher neighbour ('E'|'W'|'N'|'S'); horizontal default on
+    // a tie/conflict (§). elevAt(c,r) → elevation.
+    rampDir(elevAt, col, row) {
+      const e = elevAt(col, row);
+      const nb = { E: elevAt(col + 1, row) - e, W: elevAt(col - 1, row) - e, N: elevAt(col, row - 1) - e, S: elevAt(col, row + 1) - e };
+      let best = 'E', bd = 0; for (const d of ['E', 'W', 'N', 'S']) if (nb[d] > bd) { bd = nb[d]; best = d; }
+      return bd > 0 ? best : 'E';
     },
 
     // ── A small held weapon, drawn in LOCAL space pointing +x (forward). ────────
