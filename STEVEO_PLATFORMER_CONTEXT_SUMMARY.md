@@ -1,4 +1,23 @@
-## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE settings + perf + test-exit (build 283) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE perf cache + shapes/prefabs + building models + config (builds 284–285) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+
+Big feedback batch (4 chunks). Suite green.
+- **Perf (density answer):** static terrain is pre-rendered ONCE to an offscreen canvas and blitted per
+  frame → dense grids now cost the same as density-1 at runtime. (Not the world-map creator; it was the
+  per-cell redraw.)
+- **Elevation settings:** `climbLevels` (default 0) + `playerHeight` (default 1); blocks within
+  [climb+1..height] above = wall, taller = overhang. **Ramp + Ladder** placeables climb any delta.
+- **Shape tools:** line / rectangle / circle-oval + fill/outline (brush = outline width), live preview.
+- **Tree prefab** (trunk + 5-Ø leaf canopy overhang). **Pipe** building (acts like a portal).
+- **Building models:** distinct pre-built default models at real footprints (Portal 1×4, Healer/Shop 4×4,
+  Save 2×2, Spawner 3×3, Statue/Tower 2×2, Nexus/Core 5×5) + a `skin` field (default; skin builder → roadmap §31).
+- **Config modals** (⚙ Configure tool): portal/pipe destination or ends-level(goal); goal-star colour;
+  spawn↔portal link. Runtime teleports / wins / emerges accordingly.
+- **Deferred:** redstone-in-overhead (roadmap §32, LARGE).
+Detail in `DECISIONS_LOG.md` (Overhead Engine — Perf Cache + Shapes/Prefabs + Building Models + Config).
+
+---
+
+## PRIOR STATE (2026-07-29) — OVERHEAD ENGINE settings + perf + test-exit (build 283) on branch `overhead-engine` — NOT merged, browser-UNTESTED
 
 Playtest-feedback pass. Suite green.
 - **Separate Overhead World Settings menu** (⚙ in the editor, `js/overhead/overhead-settings.js` →

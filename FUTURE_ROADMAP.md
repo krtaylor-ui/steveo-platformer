@@ -1070,3 +1070,23 @@ eventually. Not designed further than that — deserves its own full discussion 
 same treatment as Sports / RTS / MOBA Hero mechanics.
 
 **Effort:** LARGE, genuinely undesigned beyond this note.
+
+---
+
+## 31. Overhead building/sprite SKIN BUILDER  *(idea captured 2026-07-29)*
+
+The Overhead Engine draws each building type from a data-driven `drawBuilding(type, …, skin)`
+with a `skin` field on every placed instance (only the `'default'` skin ships today). Eventually:
+an in-game **Skin Builder** where players design custom skins for buildings (and player/mob sprites,
+which already route through the `OH_SPRITE` colour palette) and save them per-account, selectable per
+placement. Scope when designed: a small pixel/shape editor + a skin store keyed by type; the render
+layer already dispatches on `skin`, so it's additive. **Effort:** MEDIUM–LARGE; undesigned beyond this.
+
+## 32. Redstone in the Overhead Engine  *(deferred 2026-07-29)*
+
+Kevin wants the existing redstone engine (levers, dust, target block, pulse converter, tx/rx,
+adjacency) usable in Overhead worlds, with config modals. This is a substantial integration — the
+side-view redstone (`js/redstone.js` + the `game.js` `_rs*` layer) is tightly coupled to the side-view
+grid/collision. Deferred from the 2026-07-29 batch; the portal/pipe + goal-star config modals shipped,
+redstone did not. When tackled: expose a redstone overlay on the overhead grid + reuse the propagation
+engine + add per-device config modals (mirroring the side-view popups). **Effort:** LARGE.

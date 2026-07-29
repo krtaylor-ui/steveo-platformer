@@ -1,6 +1,42 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD ENGINE — PERF CACHE + SHAPES/PREFABS + BUILDING MODELS + CONFIG (2026-07-29, builds 284–285, branch `overhead-engine`)
+# ═══════════════════════════════════════════════════════════════════════
+Large feedback batch, built in 4 committed chunks. Suite green throughout.
+
+- **Perf — the density-4 answer (build 284):** it is NOT unavoidable. Terrain is STATIC during play, so
+  it's now pre-rendered ONCE to an offscreen canvas (`_buildTerrainCache`, elevation baked in + a top pad
+  so raised tiles aren't clipped) and BLITTED each frame — runtime terrain cost is one drawImage
+  regardless of density. (The editor stays live since it edits, but has the cs<13 flat-fill fast path.)
+  The earlier "player slow" was a separate bug (fixed build 283: speed/size in density-independent UNITS).
+- **Climb + height settings (build 284):** `climbLevels` (default 0 — walks can't step up; use ramps) +
+  `playerHeight` (default 1). Collision: delta<=0 walk · <=climb climb · <=height WALL · >height overhang
+  (pass under + hidden). **Ramp + Ladder** placeables (Buildings tab, stored in `world.ramps`) let a walk
+  cross ANY delta at that cell.
+- **Shape tools (build 285):** editor Shape group — freehand / line / rectangle / circle-oval, with a
+  Fill toggle (outline uses the brush as width). Live drag-preview; commits on release. `_opCell` factored
+  out so brush + shapes share the terrain/erase op.
+- **Tree prefab:** a 2-high log trunk + a 5-diameter leaf canopy at elev 3 (an overhang the player walks
+  under). Placed in the Buildings flyout (that's where prefabs live).
+- **Building models + footprints (build 285):** registry footprints set to Kevin's dims (Portal 1×4,
+  Pipe 1×1 [new], Healer/Shop 4×4, SavePoint 2×2, Spawner 3×3, Statue/Tower 2×2, Nexus/Core 5×5).
+  `OVERHEAD.drawBuilding(type,x,y,w,h,detail,skin)` draws a DISTINCT default model per type (portal oval,
+  pipe mouth, healer cross, shop striped awning, savepoint flag, spawner cage, tower turret, statue,
+  core/nexus crystal), adding trim as `detail` (density/zoom) rises. **Skin architected now:** every
+  instance has a `skin` field (default only); the render layer dispatches on it → a future Skin Builder
+  is additive (roadmap §31).
+- **Config modals (build 285):** a "⚙ Configure" editor tool. Portals/pipes → teleport destination (any
+  OTHER portal/pipe, pipe-style selection) OR "ends the level" (acts as a Goal Star); Goal Star → colour
+  (campaign routing); Player Spawn → emerge-from-a-portal link. Runtime: stepping on a portal teleports
+  (leave-cell cooldown so it doesn't bounce) or wins; a portal-linked spawn starts the player emerging
+  from it; the goal colour flows to `_wonExitColor` for Campaign.
+- **DEFERRED — Redstone in Overhead (roadmap §32):** the side-view redstone engine is tightly coupled to
+  the side-view grid; integrating it + config modals is a LARGE task, out of scope for this batch.
+- **Roadmap:** added §31 Skin Builder, §32 Redstone-in-Overhead.
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD ENGINE — SETTINGS MENU + PERF + TEST-EXIT (2026-07-29, build 283, branch `overhead-engine`)
 # ═══════════════════════════════════════════════════════════════════════
 Playtest feedback: faster weapons, a separate settings menu, density perf/feel bugs, and test-exit UX.
