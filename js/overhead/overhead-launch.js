@@ -257,6 +257,7 @@
       const span = r * 1.4, limbW = opts.bony ? r * 0.16 : r * 0.26;
       const armAmp = r * 0.55, legAmp = r * 0.5, restFwd = r * 0.18;
       ctx.save(); ctx.translate(cx, cy);
+      if (opts.spin) ctx.rotate(opts.spin);   // double-jump flip (whole-body spin)
 
       // ── LOWER BODY — faces movement ──
       ctx.save(); if (opts.rotate !== false && moveAngle != null) ctx.rotate(moveAngle);

@@ -16,6 +16,7 @@
       // Jump (impression-of-height): small float + a scale-up.
       jumpFloat:        0.4,
       jumpScale:        0.22,
+      doubleJump:       true,       // allow a mid-air second jump (with a spin)
       // Combat / weapons — px/frame (absolute, density-independent).
       crossbowSpeed:    13,
       tridentSpeed:     12,
@@ -29,8 +30,8 @@
       // always allowed). Lets a player on high ground behind a 1-high wall shoot
       // down while being safe from below.
       attackBlockHeight: 2,
-      // Mobs.
-      mobDetectMult:    1.0,
+      // Mobs — detection range in BLOCKS (absolute, player-sprite blocks), default 10.
+      mobDetectBlocks:  10,
       // View / controls.
       controlScheme:    'free-aim', // free-aim | move-to-aim | twin-stick
       angleLockDeg:     0,          // 0 = smooth aim
@@ -105,6 +106,7 @@
               ${sel('playerHeight', 'Player height (levels)', [['1', '1 (walk under 2+ high)'], ['2', '2'], ['3', '3']])}
               ${range('jumpFloat', 'Jump float (up)', 0, 1, 0.05)}
               ${range('jumpScale', 'Jump scale (grow)', 0, 0.5, 0.02)}
+              ${toggle('doubleJump', 'Double jump (with a spin)')}
             </div>
             <div class="ohws-grp"><h3>Weapons</h3>
               ${range('crossbowSpeed', 'Crossbow bolt speed', 4, 24, 1)}
@@ -117,7 +119,7 @@
               ${sel('attackBlockHeight', 'Wall height that blocks attacks', [['1', '1 level'], ['2', '2 levels'], ['3', '3 levels'], ['99', 'Never blocked']])}
             </div>
             <div class="ohws-grp"><h3>Mobs</h3>
-              ${range('mobDetectMult', 'Detection range ×', 0.4, 2, 0.1)}
+              ${range('mobDetectBlocks', 'Detection range (blocks)', 1, 30, 1)}
             </div>
             <div class="ohws-grp"><h3>View & Controls</h3>
               ${sel('controlScheme', 'Control scheme', [['free-aim', 'Free-Aim (mouse)'], ['move-to-aim', 'Move-to-Aim'], ['twin-stick', 'Twin-Stick']])}

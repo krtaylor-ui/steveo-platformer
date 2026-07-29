@@ -42,7 +42,7 @@
       this.mobs = (worldData.mobs || []).map((m) => { const d = P().OH_MOB_BY_KEY[m.type] || P().OH_MOBS[0];
         return { ...m, x: (m.col + 0.5) * this.grid.cell, y: (m.row + 0.5) * this.grid.cell, r: this.unit * 0.34,
           elev: this._elev(m.col, m.row),   // FIX: mobs need an elevation or collision NaN-blocks them (they sat still)
-          hp: m.hp || d.hp, speed: m.speed || d.speed, detect: (m.detect || d.detect || 8) * this.unit * (cfg.mobDetectMult || 1), ranged: !!d.ranged, state: 'path', wp: 0, dead: false, cool: 0, _wc: 0 }; });
+          hp: m.hp || d.hp, speed: m.speed || d.speed, detect: (cfg.mobDetectBlocks != null ? cfg.mobDetectBlocks : 10) * this.unit, ranged: !!d.ranged, state: 'path', wp: 0, dead: false, cool: 0, _wc: 0 }; });
       this.mode = worldData.mode || 'platformer';
       this.climbLevels = cfg.climbLevels != null ? cfg.climbLevels : 0;
       this.playerH = cfg.playerHeight != null ? cfg.playerHeight : 1;
@@ -55,12 +55,13 @@
       // Portals/pipes: map every footprint cell → the building, + each portal's
       // world-centre, so stepping onto one teleports (config.dest) or ends the
       // level (config.isGoal).
-      this._portalCells = new Map(); this._portalCenter = new Map(); this._portalIndex = new Map(); this._portalCd = false; this._portalGlow = null;
+      this._portalCells = new Map(); this._portalCenter = new Map(); this._portalIndex = new Map(); this._portalByKey = new Map(); this._portalCd = false; this._portalGlow = null; this._portalPrompt = null;
       let pIdx = 0;
       for (const b of this.buildings) if (b.typeId === 'portal' || b.typeId === 'pipe') {
         const t = OH_BUILDINGS.get(b.typeId), fw = t ? t.footprint.w : 1, fh = t ? t.footprint.h : 1;
-        this._portalCenter.set(b.col + ',' + b.row, { x: (b.col + fw / 2) * this.grid.cell, y: (b.row + fh / 2) * this.grid.cell });
-        this._portalIndex.set(b.col + ',' + b.row, ++pIdx);
+        const key = b.col + ',' + b.row;
+        this._portalCenter.set(key, { x: (b.col + fw / 2) * this.grid.cell, y: (b.row + fh / 2) * this.grid.cell });
+        this._portalIndex.set(key, ++pIdx); this._portalByKey.set(key, b);
         for (let dr = 0; dr < fh; dr++) for (let dc = 0; dc < fw; dc++) this._portalCells.set((b.col + dc) + ',' + (b.row + dr), b);
       }
 
@@ -93,23 +94,23 @@
     _hazard(c, r) { const k = this._key(c, r); return !!k && P().isHazardKey(k); }
     _gap(c, r) { return this._key(c, r) == null; }
     _cellOf(x, y) { return OH_GRID.cellAt(this.grid, x, y); }
-    // All buildings are SOLID except 'enter'-type ones (portal/pipe/shop) which you
-    // walk into — otherwise you couldn't step onto a portal to use it.
-    _buildingSolidAt(col, row) {
-      for (const b of this.buildings) { const t = OH_BUILDINGS.get(b.typeId); if (!t || t.interactionType === 'enter') continue;
-        for (const cl of OH_BUILDINGS.footprintCells(b)) if (cl.col === col && cl.row === row) return true; }
-      return false;
-    }
+    // Buildings are all NON-solid for now (Kevin: block-based solid buildings come
+    // later). Portals/pipes use proximity + the E button, not step-on, so solidity
+    // isn't needed for them.
+    _buildingSolidAt() { return false; }
 
     _loop() { if (!this._running) return; try { this._update(); this._render(); } catch (e) { console.error('OverheadGame', e); } this.input.flush(); requestAnimationFrame(this._loop); }
 
     _update() {
-      const inp = this.input;
+      const inp = this.input; this._frame = (this._frame || 0) + 1;
       // In a Sandbox playtest, Esc returns straight to the designer (not a pause menu).
       if (inp.isJustDown && inp.isJustDown('Escape')) { if (this._testMode) { this._exit(); return; } if (this.state === 'playing') this.state = 'paused'; else if (this.state === 'paused') this.state = 'playing'; else { this._exit(); return; } }
       if (inp.scrollDelta) { OH_GRID.zoomBy(this.grid, inp.scrollDelta < 0 ? 1.08 : 0.92); inp.scrollDelta = 0; }
-      // Test-mode "◀ Designer" button (top-left) — click to return to the editor.
-      if (this._testMode && inp.mouse.clicked && inp.mouse.x <= 150 && inp.mouse.y <= 30) { this._exit(); return; }
+      // Test-mode buttons (top-left): "◀ Designer" (return) + "God" (invincible) toggle.
+      if (this._testMode && inp.mouse.clicked) {
+        if (inp.mouse.x <= 150 && inp.mouse.y <= 30) { this._exit(); return; }
+        if (inp.mouse.x >= 156 && inp.mouse.x <= 236 && inp.mouse.y <= 30) { this._god = !this._god; }
+      }
       if (this.state === 'won' || this.state === 'dead') { if (inp.mouse.clicked || (inp.isJustDown && inp.isJustDown('Enter'))) this._exit(); return; }
       if (this.state === 'paused') return;
 
@@ -136,7 +137,7 @@
 
       // Jump.
       const airborneBefore = p.jump && p.jump.jumping;
-      if (raw.jumpBtn) { if (!airborneBefore) p.jump = OH_MOVE.startJump({ moveX: mv.x * p.speed, moveY: mv.y * p.speed, startElev: p.elev }); else if (OH_MOVE.canDoubleJump(p.jump)) OH_MOVE.doubleJump(p.jump); }
+      if (raw.jumpBtn) { if (!airborneBefore) p.jump = OH_MOVE.startJump({ moveX: mv.x * p.speed, moveY: mv.y * p.speed, startElev: p.elev }); else if (this.settings.doubleJump !== false && OH_MOVE.canDoubleJump(p.jump)) OH_MOVE.doubleJump(p.jump); }
       const airborne = p.jump && p.jump.jumping;
       this._moveWithCollision(p, intent.move.x * p.speed, intent.move.y * p.speed, airborne);
       if (moving) { p.dist += Math.hypot(intent.move.x, intent.move.y) * p.speed; p.moveAngle = Math.atan2(intent.move.y, intent.move.x); }
@@ -155,22 +156,25 @@
       // Mobs + projectiles.
       this._updateMobs(); this._updateProjectiles();
 
-      // Portals / pipes. A PIPE needs the Action button (E); a PORTAL triggers on
-      // walk. Teleporting glows both ends purple briefly.
-      { const pc = this._cellOf(p.x, p.y); const port = this._portalCells.get(pc.col + ',' + pc.row);
-        if (this._portalGlow && --this._portalGlow.t <= 0) this._portalGlow = null;
-        if (port && !this._portalCd) {
-          const cfg = port.config || {}, isPipe = port.typeId === 'pipe';
-          const trigger = isPipe ? !!intent.action : true;
-          if (trigger) {
-            if (cfg.isGoal) { this._wonExitColor = (this.goal && this.goal.color) || 0; this._win(); }
-            else if (cfg.dest && this._portalCenter.has(cfg.dest)) {
-              const d = this._portalCenter.get(cfg.dest); const srcKey = port.col + ',' + port.row;
-              p.x = d.x; p.y = d.y; const c = this._cellOf(d.x, d.y); p.elev = this._elev(c.col, c.row); this._portalCd = true;
-              this._portalGlow = { keys: [srcKey, cfg.dest], t: 42 };
-            }
+      // Portals / pipes. PROXIMITY + the E button (both types now — no accidental
+      // walk-through). The nearest in-range one shows a glow prompt; press E to use.
+      if (this._portalGlow && --this._portalGlow.t <= 0) this._portalGlow = null;
+      { const useR = this.unit * 1.4; let near = null, nk = null, nd = useR;
+        for (const [key, ctr] of this._portalCenter) { const dd = Math.hypot(ctr.x - p.x, ctr.y - p.y); if (dd < nd) { nd = dd; nk = key; near = this._portalByKey.get(key); } }
+        this._portalPrompt = near ? nk : null;
+        if (near && !this._portalCd && intent.action) {
+          const cfg = near.config || {};
+          if (cfg.isGoal) { this._wonExitColor = (this.goal && this.goal.color) || 0; this._win(); }
+          else if (cfg.dest && this._portalCenter.has(cfg.dest)) {
+            const d = this._portalCenter.get(cfg.dest); const c = this._cellOf(d.x, d.y);
+            // Land exactly on the destination centre + a valid elevation; guard so we
+            // don't immediately re-trigger the destination.
+            p.x = d.x; p.y = d.y; p.elev = this._elev(c.col, c.row); this._portalCd = true;
+            this._portalGlow = { keys: [nk, cfg.dest], t: 42 };
           }
-        } else if (!port) this._portalCd = false; }
+        }
+        if (!near || nd > useR * 0.6) this._portalCd = false;   // release the guard once clear of the destination
+      }
 
       if ((this.mode === 'platformer' || this.mode === 'campaign') && this.goal) {
         const c = this._cellOf(p.x, p.y); // goal is a 2×2 region from its anchor
@@ -223,9 +227,9 @@
       if (p.weapon === 'crossbow') { if (fire && p._fireCd === 0) { this._bolts.push(Object.assign(OH_WEAPONS.startBolt(p.x, p.y, ang, wc), { owner: 'p', elev: p.elev })); p._fireCd = 14; } }
       else if (p.weapon === 'trident') {
         if (intent.recallBtn && p._trident) OH_WEAPONS.recallTrident(p._trident);
-        else if (fire && !p._trident) { p._trident = OH_WEAPONS.startTrident(p.x, p.y, ang, wc); p._fireCd = 10; }
+        else if (fire && !p._trident) { p._trident = OH_WEAPONS.startTrident(p.x, p.y, ang, wc); p._trident.elev = p.elev; p._fireCd = 10; }
       } else if (p.weapon === 'boomerang') {
-        if (fire && !p._boom) { const dist = Math.hypot(mouseWorld.x - p.x, mouseWorld.y - p.y); p._boom = OH_WEAPONS.startBoomerang(p.x, p.y, ang, dist, wc); p._boom._hit = {}; p._fireCd = 10; }
+        if (fire && !p._boom) { const dist = Math.hypot(mouseWorld.x - p.x, mouseWorld.y - p.y); p._boom = OH_WEAPONS.startBoomerang(p.x, p.y, ang, dist, wc); p._boom._hit = {}; p._boom.elev = p.elev; p._fireCd = 10; }
       }
     }
     _weaponCfg() { const s = this.settings || {}; return { crossbowSpeed: s.crossbowSpeed, tridentSpeed: s.tridentSpeed, tridentReturnSpeed: s.tridentReturnSpeed, boomerangSpeed: s.boomerangSpeed, boomerangMaxRange: s.boomerangRange, boomerangWidth: s.boomerangWidth }; }
@@ -242,9 +246,13 @@
       for (const b of this._bolts) { OH_WEAPONS.stepBolt(b); if (this._boltWalled(b)) { b.dead = true; continue; } const hit = OH_COMBAT.lineHit({ x: b.x - b.vx, y: b.y - b.vy }, { x: b.x, y: b.y }, live, this.unit * 0.3); if (hit && this._canAttack(b.elev || 0, hit.elev || 0)) { hit.hp -= 5; if (hit.hp <= 0) hit.dead = true; b.dead = true; } }
       this._bolts = this._bolts.filter((b) => !b.dead);
       // Trident.
-      if (p._trident) { OH_WEAPONS.stepTrident(p._trident, p); const t = p._trident; if (!t.caught) { for (const m of live) if (this._canAttack(p.elev, m.elev || 0) && Math.hypot(m.x - t.x, m.y - t.y) < m.r + this.unit * 0.3) { m.hp -= 6; if (m.hp <= 0) m.dead = true; if (t.state === 'out') t.state = 'return'; } } if (t.caught) p._trident = null; }
-      // Boomerang (arcs, hits along the path, auto-returns).
-      if (p._boom) { OH_WEAPONS.stepBoomerang(p._boom, p); const b = p._boom; for (const m of live) { const id = m.col + ',' + m.row + ',' + (this.mobs.indexOf(m)); if (!b._hit[id] && this._canAttack(p.elev, m.elev || 0) && Math.hypot(m.x - b.x, m.y - b.y) < m.r + this.unit * 0.3) { m.hp -= 4; b._hit[id] = 1; if (m.hp <= 0) m.dead = true; } } if (b.dead) p._boom = null; }
+      if (p._trident) { OH_WEAPONS.stepTrident(p._trident, p); const t = p._trident;
+        if (t.state === 'out' && this._boltWalled(t)) OH_WEAPONS.recallTrident(t);   // hit a too-high wall → return
+        if (!t.caught) { for (const m of live) if (this._canAttack(p.elev, m.elev || 0) && Math.hypot(m.x - t.x, m.y - t.y) < m.r + this.unit * 0.3) { m.hp -= 6; if (m.hp <= 0) m.dead = true; if (t.state === 'out') t.state = 'return'; } } if (t.caught) p._trident = null; }
+      // Boomerang (arcs, hits along the path, auto-returns; a wall cuts it to the return leg).
+      if (p._boom) { OH_WEAPONS.stepBoomerang(p._boom, p); const b = p._boom;
+        if (b.t < 0.5 && this._boltWalled(b)) b.t = 1 - b.t;   // wall on the way out → start coming back
+        for (const m of live) { const id = m.col + ',' + m.row + ',' + (this.mobs.indexOf(m)); if (!b._hit[id] && this._canAttack(p.elev, m.elev || 0) && Math.hypot(m.x - b.x, m.y - b.y) < m.r + this.unit * 0.3) { m.hp -= 4; b._hit[id] = 1; if (m.hp <= 0) m.dead = true; } } if (b.dead) p._boom = null; }
       // Mob bolts (skeletons).
       for (const mb of this._mobBolts) { OH_WEAPONS.stepBolt(mb); if (this._boltWalled(mb)) { mb.dead = true; continue; } if (this._canAttack(mb.elev || 0, p.elev) && Math.hypot(mb.x - p.x, mb.y - p.y) < p.r + this.unit * 0.25 && p.iFrames === 0) { this._hurt(3, 'Shot'); mb.dead = true; } }
       this._mobBolts = this._mobBolts.filter((b) => !b.dead);
@@ -275,7 +283,7 @@
       }
     }
 
-    _hurt(amt, why) { const p = this.player; if (p.iFrames > 0) return; p.hp -= amt; p.iFrames = 45; if (p.hp <= 0) this._fall(why || 'Defeated'); }
+    _hurt(amt, why) { const p = this.player; if (this._god || p.iFrames > 0) return; p.hp -= amt; p.iFrames = 45; if (p.hp <= 0) this._fall(why || 'Defeated'); }
     _fall(msg) { const p = this.player; if (p.hp <= 0) { this.state = 'dead'; this._notify(msg || 'You died', 240); return; } p.x = this._spawn.x; p.y = this._spawn.y; p.jump = null; p.iFrames = 60; const c = this._cellOf(p.x, p.y); p.elev = this._elev(c.col, c.row); }
     _win() { if (this.state === 'won') return; this.state = 'won'; if (this._onWin) { try { this._onWin(this, this._wonExitColor || 0); } catch (e) {} } }
     _notify(text, frames) { this._notif = { text, t: frames || 120 }; }
@@ -340,6 +348,8 @@
         const t = OH_BUILDINGS.get(b.typeId), fw = (t ? t.footprint.w : 1), fh = (t ? t.footprint.h : 1);
         const key = b.col + ',' + b.row, sp = S((b.col + fw / 2) * g.cell, (b.row + fh / 2) * g.cell);
         if (this._portalGlow && this._portalGlow.keys.indexOf(key) >= 0) { const a = 0.35 + 0.35 * Math.sin(this._portalGlow.t * 0.5); ctx.fillStyle = `rgba(180,90,230,${a})`; ctx.beginPath(); ctx.ellipse(sp.x, sp.y, fw * cs * 0.5, fh * cs * 0.5, 0, 0, 7); ctx.fill(); }
+        // "Press E" prompt + glow when the player is in range of this one.
+        if (key === this._portalPrompt) { const a = 0.4 + 0.3 * Math.sin((this._frame || 0) * 0.15); ctx.fillStyle = `rgba(180,90,230,${a})`; ctx.beginPath(); ctx.ellipse(sp.x, sp.y, fw * cs * 0.55, fh * cs * 0.55, 0, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(0,0,0,.75)'; const py = sp.y - fh * cs * 0.62; ctx.fillRect(sp.x - cs * 0.9, py - cs * 0.5, cs * 1.8, cs * 0.7); ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(11, cs * 0.5) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('Press E', sp.x, py - cs * 0.15); ctx.textBaseline = 'alphabetic'; }
         { const n = this._portalIndex.get(key); const br = Math.max(11, cs * 0.55), by = sp.y - fh * cs * 0.45; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.beginPath(); ctx.arc(sp.x, by, br, 0, 7); ctx.fill(); ctx.strokeStyle = '#b56bde'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(12, cs * 0.6) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('#' + n, sp.x, by); ctx.textBaseline = 'alphabetic'; }
       }
       // Projectiles.
@@ -394,8 +404,10 @@
       // Legs face movement; upper body + weapon face aim. Weapon hidden while a
       // trident/boomerang is in flight (it's the thing flying).
       const inFlight = p._trident || p._boom;
+      // Double-jump SPIN: spins ~1.5× over the airtime after the flip triggers.
+      let spin = 0; if (p.jump && p.jump.jumping && p.jump.doubleUsed) spin = Math.min(1, p.jump.t / p.jump.dur) * Math.PI * 3;
       OVERHEAD.drawOverheadPlayer(ctx, cx, cy, rr, p.dist, moving, OH_CONTROLS.angleOf(p.aim),
-        { rotate: true, weapon: inFlight ? null : (p.weapon || 'pickaxe'), moveAngle: (p.moveAngle != null ? p.moveAngle : OH_CONTROLS.angleOf(p.aim)) });
+        { rotate: true, weapon: inFlight ? null : (p.weapon || 'pickaxe'), moveAngle: (p.moveAngle != null ? p.moveAngle : OH_CONTROLS.angleOf(p.aim)), spin });
       ctx.globalAlpha = 1;
       if (p.iFrames > 0 && ((p.iFrames >> 2) & 1)) { ctx.globalAlpha = 0.4; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
       // Aim reticle.
@@ -407,7 +419,10 @@
       ctx.textAlign = 'left';
       // Test-mode "return to designer" button (top-left); hearts drop below it.
       const hy = this._testMode ? 56 : 26;
-      if (this._testMode) { ctx.fillStyle = 'rgba(20,26,38,.9)'; ctx.strokeStyle = '#4f86d8'; ctx.lineWidth = 1; ctx.fillRect(8, 6, 142, 24); ctx.strokeRect(8, 6, 142, 24); ctx.fillStyle = '#dbe4f3'; ctx.font = '12px sans-serif'; ctx.fillText('◀ Designer  (Esc)', 18, 22); }
+      if (this._testMode) {
+        ctx.fillStyle = 'rgba(20,26,38,.9)'; ctx.strokeStyle = '#4f86d8'; ctx.lineWidth = 1; ctx.fillRect(8, 6, 142, 24); ctx.strokeRect(8, 6, 142, 24); ctx.fillStyle = '#dbe4f3'; ctx.font = '12px sans-serif'; ctx.textAlign = 'left'; ctx.fillText('◀ Designer  (Esc)', 18, 22);
+        ctx.fillStyle = this._god ? 'rgba(60,140,80,.95)' : 'rgba(20,26,38,.9)'; ctx.strokeStyle = this._god ? '#6fdf9a' : '#4f86d8'; ctx.fillRect(156, 6, 80, 24); ctx.strokeRect(156, 6, 80, 24); ctx.fillStyle = '#fff'; ctx.fillText(this._god ? '★ God ON' : 'God: off', 164, 22);
+      }
       const hearts = Math.ceil(this.player.hp / 2);
       ctx.font = '18px sans-serif'; ctx.fillStyle = '#ff5a5a'; for (let i = 0; i < hearts; i++) ctx.fillText('♥', 12 + i * 18, hy);
       ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = '12px sans-serif';
