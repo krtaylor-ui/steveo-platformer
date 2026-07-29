@@ -27,7 +27,12 @@
     const density = Math.min(4, Math.max(1, opts.density | 0 || 1));
     return {
       gridW, gridH, density,
-      cell:            CELL_PX,
+      // Cell px, default the base 32. Density subdivides a base cell into finer
+      // cells at world CREATION (the editor bakes density into gridW/gridH and
+      // passes the matching smaller `cell` here) — so a denser world shows MORE,
+      // SMALLER blocks in the same map area, not the same count. The substrate
+      // itself stays density-agnostic; only an explicit `cell` override changes it.
+      cell:            opts.cell != null ? opts.cell : CELL_PX,
       objectScaleMode: opts.objectScaleMode === 'track' ? 'track' : 'independent',
       masterZoom:      clampZoom(opts.masterZoom != null ? opts.masterZoom : 1.0),
     };

@@ -2331,3 +2331,7 @@ html[data-theme="retro"] .origin-badge { background: rgba(126,200,227,0.18); col
 #copy-world-modal .copy-dest-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; cursor: pointer; }
 #copy-world-modal #copy-world-name { width: 100%; }
 html[data-theme="retro"] #copy-world-modal .copy-dest { color: #cfe8f2; border-color: #2f6f8f; }
+
+/* Overhead Engine — Sandbox browser view toggle (Side-scroll / Overhead) */
+.view-toggle-btn { padding: 4px 12px; opacity: 0.6; }
+.view-toggle-btn.active { opacity: 1; background: #3a5a8c; border-color: #5573ad; color: #fff; }

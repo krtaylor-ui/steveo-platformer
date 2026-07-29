@@ -7,6 +7,7 @@ const SANDBOX = {
   currentPage: 0,
   currentFilter: 'all',
   currentSort: 'newest',
+  viewFilter: 'side',   // 'side' | 'overhead' — Sandbox browser view toggle
   selectedWorldId: null,
   currentWorldData: null,
   worlds: [],
@@ -51,6 +52,9 @@ const SANDBOX = {
     document.getElementById('campaign-builder-btn')?.addEventListener('click', () => { if (typeof CAMPAIGN_BUILDER !== 'undefined') CAMPAIGN_BUILDER.open(); });
     document.getElementById('overhead-demo-btn')?.addEventListener('click', () => { if (typeof OVERHEAD !== 'undefined') OVERHEAD.launchDemo(); });
     document.getElementById('overhead-new-btn')?.addEventListener('click', () => { if (typeof OH_EDITOR !== 'undefined') OH_EDITOR.open(); });
+    // Side-scroll / Overhead view toggle — filters the world list by viewMode.
+    document.getElementById('view-side-btn')?.addEventListener('click', () => { this.viewFilter = 'side'; this._syncViewToggle(); this.renderWorlds(this.worlds); });
+    document.getElementById('view-overhead-btn')?.addEventListener('click', () => { this.viewFilter = 'overhead'; this._syncViewToggle(); this.renderWorlds(this.worlds); });
     document.getElementById('import-games-btn')?.addEventListener('click', () => this.showImportGamesModal());
     document.getElementById('import-file-btn')?.addEventListener('click', () => this.showImportFileModal());
 
@@ -210,22 +214,38 @@ const SANDBOX = {
     }
   },
 
+  // Is a world an Overhead-Engine world? (viewMode stored in world_data.)
+  _isOverhead(w) { return !!(w && w.world_data && w.world_data.viewMode === 'overhead'); },
+  _syncViewToggle() {
+    const s = document.getElementById('view-side-btn'), o = document.getElementById('view-overhead-btn');
+    const overhead = this.viewFilter === 'overhead';
+    if (s) s.classList.toggle('active', !overhead);
+    if (o) o.classList.toggle('active', overhead);
+  },
+
   renderWorlds(worlds) {
     const list = document.getElementById('world-list');
     if (!list) return;
     const online = (typeof APP_MODE !== 'undefined' && APP_MODE.isOnline());
-    let html = (worlds || []).map(w => this._worldCard(w)).join('');
+    // View toggle: show only side-scroll OR only overhead worlds.
+    const wantOverhead = this.viewFilter === 'overhead';
+    const filtered = (worlds || []).filter(w => this._isOverhead(w) === wantOverhead);
+    let html = filtered.map(w => this._worldCard(w)).join('');
     // Online only: also show your LOCAL worlds as full cards under a divider, so
     // you can Edit/Copy/Delete them and (via Copy) promote them to your account —
     // all in one place. (Offline shows only local worlds.)
-    if (online && typeof LOCAL_WORLDS !== 'undefined') {
+    // Local worlds are side-scroll only; skip them under the Overhead view.
+    if (online && !wantOverhead && typeof LOCAL_WORLDS !== 'undefined') {
       const locals = LOCAL_WORLDS.listAll();
       if (locals.length) {
         html += '<div class="cross-space-title">💾 Your Offline Worlds</div>';
         html += locals.map(w => this._worldCard(w)).join('');
       }
     }
-    list.innerHTML = html || '<p class="world-list-empty">No worlds yet. Create one to get started!</p>';
+    const emptyMsg = wantOverhead
+      ? 'No Overhead worlds yet. Click “🗺 New Overhead World” to build one.'
+      : 'No worlds yet. Create one to get started!';
+    list.innerHTML = html || `<p class="world-list-empty">${emptyMsg}</p>`;
     this._wireCards();
   },
 
@@ -237,26 +257,34 @@ const SANDBOX = {
   _worldCard(w) {
     const mode = (w.world_data && w.world_data.gameModeDefault) || 'NRM';
     const isLocal = this._isLocalWorld(w.id);
+    const overhead = this._isOverhead(w);
     const origin = isLocal
       ? '<span class="origin-badge">💾 Local</span>'
       : '<span class="origin-badge origin-cloud">☁ Cloud</span>';
+    // Overhead worlds show their overhead mode + a 🗺 badge, and NO side-view
+    // mode dropdown (their mode is fixed to the overhead ruleset).
+    const badge = overhead
+      ? `<span class="mode-badge">🗺 ${this._esc((w.world_data && w.world_data.mode) || 'overhead')}</span>`
+      : `<span class="mode-badge mode-${mode}">${this.getModeLabel(mode)}</span>`;
+    const modeSelect = overhead ? '' : `
+          <label class="mode-select-label">Mode:
+            <select class="mode-select" data-world-id="${this._esc(w.id)}">
+              ${['NRM', 'PLT', 'RUN', 'ARN'].map(m =>
+                `<option value="${m}"${m === mode ? ' selected' : ''}>${this.getModeLabel(m)}</option>`).join('')}
+            </select>
+          </label>`;
     return `
       <div class="world-card">
         <div class="world-card-header">
           <h3>${this._esc(w.world_name)}</h3>
-          <span class="mode-badge mode-${mode}">${this.getModeLabel(mode)}</span>
+          ${badge}
           ${w.is_published ? '<span class="published-badge" title="Published">★</span>' : ''}
           ${origin}
         </div>
         <p>${this._esc(w.description) || '(No description)'}</p>
         <p class="world-card-meta">Created: ${w.created_at ? new Date(w.created_at).toLocaleDateString() : '—'}</p>
         <div class="world-card-actions">
-          <label class="mode-select-label">Mode:
-            <select class="mode-select" data-world-id="${this._esc(w.id)}">
-              ${['NRM', 'PLT', 'RUN', 'ARN'].map(m =>
-                `<option value="${m}"${m === mode ? ' selected' : ''}>${this.getModeLabel(m)}</option>`).join('')}
-            </select>
-          </label>
+          ${modeSelect}
           <button class="btn btn-primary edit-world-btn" data-world-id="${this._esc(w.id)}">Edit</button>
           <button class="btn btn-secondary rename-world-btn" data-world-id="${this._esc(w.id)}">Rename</button>
           <button class="btn btn-secondary copy-world-btn" data-world-id="${this._esc(w.id)}">Copy</button>
@@ -779,6 +807,12 @@ const SANDBOX = {
         const res = await AUTH.authedFetch(`/api/worlds/sandbox/${worldId}`);
         if (!res.ok) { alert('Failed to load world'); return; }
         world = await res.json();
+      }
+
+      // Overhead-Engine worlds open in the overhead editor, not the side-view one.
+      if (this._isOverhead(world) && typeof OH_EDITOR !== 'undefined') {
+        OH_EDITOR.open(world);
+        return;
       }
 
       this.selectedWorldId = worldId;
