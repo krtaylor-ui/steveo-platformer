@@ -21,7 +21,9 @@
     tool: 'terrain',               // terrain | building | mob | item | spawn
     terrainKey: 'grass', buildingType: 'healer', mobKey: 'zombie', itemKey: 'coin',
     elevLevel: 1, brush: 1,
-    _running: false, _dragging: false, _shift: false,
+    shape: 'freehand',             // freehand | line | rect | circle
+    shapeFill: false,              // false = outline (brush = width) | true = filled
+    _running: false, _dragging: false, _shift: false, _shapeAnchor: null, _shapeEnd: null,
     _hist: [], _histPos: -1,
 
     // Keyboard shortcut defaults (bindable-ready — a future pass can route these
@@ -206,12 +208,16 @@
       const bTypes = (typeof OH_BUILDINGS !== 'undefined') ? OH_BUILDINGS.all().map((d) => d.id) : ['healer'];
       const buildOpts = bTypes.map((b) => `<div class="opt ${this.tool === 'building' && this.buildingType === b ? 'sel' : ''}" data-build="${b}">🏛 ${b}</div>`).join('')
         + `<div class="opt ${this.tool === 'spawn' ? 'sel' : ''}" data-spawn="1">🚩 Player Spawn</div><div class="opt ${this.tool === 'goal' ? 'sel' : ''}" data-goal="1">★ Goal Star</div>`
-        + `<div class="opt ${this.tool === 'ramp' ? 'sel' : ''}" data-ramp="ramp">⟋ Ramp</div><div class="opt ${this.tool === 'ladder' ? 'sel' : ''}" data-ramp="ladder">🪜 Ladder</div>`;
+        + `<div class="opt ${this.tool === 'ramp' ? 'sel' : ''}" data-ramp="ramp">⟋ Ramp</div><div class="opt ${this.tool === 'ladder' ? 'sel' : ''}" data-ramp="ladder">🪜 Ladder</div>`
+        + `<div class="opt ${this.tool === 'tree' ? 'sel' : ''}" data-tree="1">🌳 Tree (prefab)</div>`;
       const mobOpts = P().OH_MOBS.map((mm) => `<div class="opt ${this.tool === 'mob' && this.mobKey === mm.key ? 'sel' : ''}" data-mob="${mm.key}">${swatch(mm.color)}${mm.name}</div>`).join('');
       const itemOpts = P().OH_ITEMS.map((i) => `<div class="opt ${this.tool === 'item' && this.itemKey === i.key ? 'sel' : ''}" data-item="${i.key}">${swatch(i.color)}${i.name}</div>`).join('');
       const grp = (label, cur, opts) => `<div class="grp"><div class="hd"><b>${label} ▸</b><span class="cur">${cur}</span></div><div class="oh-fly">${opts}</div></div>`;
+      const shapeOpts = [['freehand', 'Freehand'], ['line', 'Line'], ['rect', 'Rectangle'], ['circle', 'Circle / Oval']].map(([k, n]) => `<div class="opt small ${this.shape === k ? 'sel' : ''}" data-shape="${k}">${n}</div>`).join('')
+        + `<div class="opt small ${this.shapeFill ? 'sel' : ''}" data-fill="1">${this.shapeFill ? '☑' : '☐'} Fill (else outline = brush width)</div>`;
       rail.innerHTML =
-        grp('Brush', this.brush + '×' + this.brush, [1, 2, 3, 5, 8].map((b) => `<div class="opt small" data-brush="${b}">${b}×${b}</div>`).join('')) +
+        grp('Brush', this.brush + '×' + this.brush, [1, 2, 3, 5, 8].map((b) => `<div class="opt small ${b === this.brush ? 'sel' : ''}" data-brush="${b}">${b}×${b}</div>`).join('')) +
+        grp('Shape', this.shape === 'freehand' ? 'Freehand' : (this.shape + (this.shapeFill ? ' fill' : ' line')), shapeOpts) +
         grp('Elevation', 'Lvl ' + this.elevLevel, [0, 1, 2, 3, 4, 5].map((l) => `<div class="opt small ${l === this.elevLevel ? 'sel' : ''}" data-elev="${l}">Level ${l}</div>`).join('')) +
         `<div class="btn ${this.tool === 'erase' ? 'on' : ''}" id="oh-erase">Erase (or ⇧-click)</div>` +
         grp('Terrain', this.tool === 'terrain' ? P().OH_TERRAIN_BY_KEY[this.terrainKey].name : '', terrOpts) +
@@ -225,12 +231,15 @@
       g('oh-settings').onclick = () => { if (typeof OH_WORLD_SETTINGS !== 'undefined') OH_WORLD_SETTINGS.open(this.world, () => this._renderBar()); };
       g('oh-erase').onclick = () => { this.tool = 'erase'; this._renderBar(); };
       rail.querySelectorAll('[data-brush]').forEach((el) => el.onclick = () => { this.brush = +el.dataset.brush; this._renderBar(); });
+      rail.querySelectorAll('[data-shape]').forEach((el) => el.onclick = () => { this.shape = el.dataset.shape; this._renderBar(); });
+      rail.querySelectorAll('[data-fill]').forEach((el) => el.onclick = () => { this.shapeFill = !this.shapeFill; this._renderBar(); });
       rail.querySelectorAll('[data-elev]').forEach((el) => el.onclick = () => { this.elevLevel = +el.dataset.elev; this._renderBar(); });
       rail.querySelectorAll('[data-terr]').forEach((el) => el.onclick = () => { this.tool = 'terrain'; this.terrainKey = el.dataset.terr; this._renderBar(); });
       rail.querySelectorAll('[data-build]').forEach((el) => el.onclick = () => { this.tool = 'building'; this.buildingType = el.dataset.build; this._renderBar(); });
       rail.querySelectorAll('[data-spawn]').forEach((el) => el.onclick = () => { this.tool = 'spawn'; this._renderBar(); });
       rail.querySelectorAll('[data-goal]').forEach((el) => el.onclick = () => { this.tool = 'goal'; this._renderBar(); });
       rail.querySelectorAll('[data-ramp]').forEach((el) => el.onclick = () => { this.tool = el.dataset.ramp; this._renderBar(); });
+      rail.querySelectorAll('[data-tree]').forEach((el) => el.onclick = () => { this.tool = 'tree'; this._renderBar(); });
       rail.querySelectorAll('[data-mob]').forEach((el) => el.onclick = () => { this.tool = 'mob'; this.mobKey = el.dataset.mob; this._renderBar(); });
       rail.querySelectorAll('[data-item]').forEach((el) => el.onclick = () => { this.tool = 'item'; this.itemKey = el.dataset.item; this._renderBar(); });
     },
@@ -239,11 +248,12 @@
     // ── Canvas interaction ──────────────────────────────────────────────────
     _bindCanvas() {
       const cv = document.getElementById('gameCanvas');
-      this._md = (e) => { this._dragging = true; this._shift = e.shiftKey; this._lastCell = null; this._paintAt(e); };
-      // Interpolate a LINE between the last painted cell and the current one so a
-      // fast drag paints a continuous path (fixes the "spotty" brush).
-      this._mm = (e) => { if (this._dragging) { this._shift = e.shiftKey; this._paintLine(e); } };
-      this._mu = () => { if (this._dragging) { this._dragging = false; this._lastCell = null; this._pushHistory(); } };
+      this._md = (e) => { this._dragging = true; this._shift = e.shiftKey; this._lastCell = null;
+        if (this._isShapeMode()) { const cel = this._cellFromEvent(e); this._shapeAnchor = cel; this._shapeEnd = cel; } else this._paintAt(e); };
+      // Freehand interpolates a LINE between samples (no gaps); shape mode tracks
+      // the drag rectangle and commits on release.
+      this._mm = (e) => { if (!this._dragging) return; this._shift = e.shiftKey; if (this._isShapeMode()) this._shapeEnd = this._cellFromEvent(e); else this._paintLine(e); };
+      this._mu = () => { if (!this._dragging) return; this._dragging = false; this._lastCell = null; if (this._shapeAnchor) { this._commitShape(); this._shapeAnchor = this._shapeEnd = null; } this._pushHistory(); };
       this._wheel = (e) => { OH_GRID.zoomBy(this.grid, e.deltaY < 0 ? 1.1 : 0.9); e.preventDefault(); };
       this._kd = (e) => {
         const K = this.KEYS, pan = 48 / this.grid.masterZoom;
@@ -288,26 +298,29 @@
       while (guard++ < 4000) { this._paintCell(x0, y0); if (x0 === x1 && y0 === y1) break; const e2 = 2 * err; if (e2 > -dy) { err -= dy; x0 += sx; } if (e2 < dx) { err += dx; y0 += sy; } }
       this._lastCell = { col, row };
     },
+    _isShapeMode() { return this.shape !== 'freehand' && (this.tool === 'terrain' || this.tool === 'erase' || this._shift); },
+    // Single-cell terrain-or-erase op (shared by brush + shapes). Erase only
+    // affects the selected elevation + clears entities/ramps at the cell.
+    _opCell(c, r) {
+      const m = this.world.mapSnapshot;
+      if (c < 0 || r < 0 || c >= m.gridW || r >= m.gridH) return;
+      if (this.tool === 'erase' || this._shift) {
+        if ((m.elevation[r][c] | 0) === this.elevLevel) { m.ground[r][c] = 'grass'; m.elevation[r][c] = 0; }
+        this.world.buildings = this.world.buildings.filter((b) => !(b.col === c && b.row === r));
+        this.world.mobs = this.world.mobs.filter((x) => !(x.col === c && x.row === r));
+        this.world.items = this.world.items.filter((x) => !(x.col === c && x.row === r));
+        this.world.ramps = (this.world.ramps || []).filter((x) => !(x.col === c && x.row === r));
+        return;
+      }
+      m.ground[r][c] = this.terrainKey; m.elevation[r][c] = this.elevLevel;
+    },
     _paintCell(col, row) {
       const m = this.world.mapSnapshot, half = Math.floor(this.brush / 2);
       const erasing = this.tool === 'erase' || this._shift;
-      const apply = (fn) => { for (let dr = -half; dr <= half; dr++) for (let dc = -half; dc <= half; dc++) {
-        const c = col + dc, r = row + dr; if (c < 0 || r < 0 || c >= m.gridW || r >= m.gridH) continue; fn(c, r);
-      } };
-      if (erasing) {
-        // Erase ONLY affects the currently-selected elevation level (§ requirement):
-        // clears entities at that cell and resets a cell whose elevation == selected.
-        apply((c, r) => {
-          if ((m.elevation[r][c] | 0) === this.elevLevel) { m.ground[r][c] = 'grass'; m.elevation[r][c] = 0; }
-          this.world.buildings = this.world.buildings.filter((b) => !(b.col === c && b.row === r));
-          this.world.mobs = this.world.mobs.filter((x) => !(x.col === c && x.row === r));
-          this.world.items = this.world.items.filter((x) => !(x.col === c && x.row === r));
-          this.world.ramps = (this.world.ramps || []).filter((x) => !(x.col === c && x.row === r));
-        });
-        return;
-      }
-      if (this.tool === 'terrain') apply((c, r) => { m.ground[r][c] = this.terrainKey; m.elevation[r][c] = this.elevLevel; });
-      else if (this.tool === 'goal') { this.world.goal = { col, row }; }
+      const apply = (fn) => { for (let dr = -half; dr <= half; dr++) for (let dc = -half; dc <= half; dc++) fn(col + dc, row + dr); };
+      if (erasing || this.tool === 'terrain') { apply((c, r) => this._opCell(c, r)); return; }
+      if (this.tool === 'tree') { this._stampTree(col, row); return; }
+      if (this.tool === 'goal') { this.world.goal = { col, row }; }
       else if (this.tool === 'spawn') { this.world.spawns = [{ col, row }]; }
       else if (this.tool === 'ramp' || this.tool === 'ladder') { this.world.ramps = this.world.ramps || []; if (!this.world.ramps.some((x) => x.col === col && x.row === row)) this.world.ramps.push({ col, row, kind: this.tool }); }
       else if (this.tool === 'building') { if (!this.world.buildings.some((b) => b.col === col && b.row === row)) this.world.buildings.push(OH_BUILDINGS.place(this.buildingType, col, row, { level: this.elevLevel })); }
@@ -315,6 +328,36 @@
       else if (this.tool === 'item') { this.world.items.push({ col, row, kind: P().OH_ITEM_BY_KEY[this.itemKey].kind, weapon: P().OH_ITEM_BY_KEY[this.itemKey].weapon, itemKey: this.itemKey }); }
     },
     _drawRampIcon(ctx, kind, cx, cy, s) { OVERHEAD.drawRampIcon(ctx, kind, cx, cy, s); },
+
+    // Tree prefab: a 2-high log trunk + a 5-diameter leaf canopy at elev 3 (an
+    // overhang the player walks under). Colours use the terrain palette (log/leaves).
+    _stampTree(col, row) {
+      const m = this.world.mapSnapshot, set = (c, r, key, e) => { if (c >= 0 && r >= 0 && c < m.gridW && r < m.gridH) { m.ground[r][c] = key; m.elevation[r][c] = e; } };
+      for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) if (dc * dc + dr * dr <= 5) set(col + dc, row + dr, 'leaves', 3);   // canopy Ø5 @ elev3
+      set(col, row, 'log', 2);   // trunk (2 high)
+    },
+
+    // ── Shapes (line / rect / circle-oval; fill or brush-width outline) ─────────
+    _shapeCells(a, b) {
+      const out = [];
+      const c0 = Math.min(a.col, b.col), c1 = Math.max(a.col, b.col), r0 = Math.min(a.row, b.row), r1 = Math.max(a.row, b.row);
+      if (this.shape === 'line') {
+        let x = a.col, y = a.row; const dx = Math.abs(b.col - a.col), dy = Math.abs(b.row - a.row), sx = a.col < b.col ? 1 : -1, sy = a.row < b.row ? 1 : -1;
+        let err = dx - dy, g = 0; while (g++ < 8000) { out.push({ c: x, r: y }); if (x === b.col && y === b.row) break; const e2 = 2 * err; if (e2 > -dy) { err -= dy; x += sx; } if (e2 < dx) { err += dx; y += sy; } }
+      } else if (this.shape === 'rect') {
+        for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const border = (c === c0 || c === c1 || r === r0 || r === r1); if (this.shapeFill || border) out.push({ c, r }); }
+      } else { // circle / oval — ellipse inscribed in the drag box
+        const cx = (c0 + c1) / 2, cy = (r0 + r1) / 2, rx = Math.max(0.5, (c1 - c0) / 2), ry = Math.max(0.5, (r1 - r0) / 2);
+        for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const v = ((c - cx) / rx) ** 2 + ((r - cy) / ry) ** 2; if (v <= 1) { if (this.shapeFill) out.push({ c, r }); else { const inner = ((c - cx) / (rx - 1)) ** 2 + ((r - cy) / (ry - 1)) ** 2; if (!(rx > 1.5 && ry > 1.5 && inner <= 1)) out.push({ c, r }); } } }
+      }
+      return out;
+    },
+    _commitShape() {
+      if (!this._shapeAnchor || !this._shapeEnd) return;
+      const cells = this._shapeCells(this._shapeAnchor, this._shapeEnd);
+      const half = (this.shape === 'line' || !this.shapeFill) ? Math.floor(this.brush / 2) : 0;   // brush = outline/line width
+      for (const p of cells) { if (half > 0) { for (let dr = -half; dr <= half; dr++) for (let dc = -half; dc <= half; dc++) this._opCell(p.c + dc, p.r + dr); } else this._opCell(p.c, p.r); }
+    },
 
     // ── Actions ───────────────────────────────────────────────────────────────
     _test() {
@@ -384,6 +427,8 @@
       for (const spn of (this.world.spawns || [])) { const sp = S((spn.col + 0.5) * g.cell, (spn.row + 0.5) * g.cell); ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; ctx.strokeRect(sp.x - cs * 0.42, sp.y - cs * 0.42, cs * 0.84, cs * 0.84); if (cs > 14) { ctx.fillStyle = '#4aa3ff'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('P1', sp.x, sp.y + 3); } }
       for (const rp of (this.world.ramps || [])) { const sp = S((rp.col + 0.5) * g.cell, (rp.row + 0.5) * g.cell); this._drawRampIcon(ctx, rp.kind, sp.x, sp.y, cs); }
       if (this.world.goal) { const sp = S((this.world.goal.col + 0.5) * g.cell, (this.world.goal.row + 0.5) * g.cell); ctx.fillStyle = '#ffd700'; ctx.font = `${cs | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.35); }
+      // Live shape preview while dragging.
+      if (this._shapeAnchor && this._shapeEnd) { ctx.fillStyle = 'rgba(120,180,255,.4)'; for (const p of this._shapeCells(this._shapeAnchor, this._shapeEnd)) { const sp = S(p.c * g.cell, p.r * g.cell); ctx.fillRect(sp.x, sp.y, cs, cs); } }
       // Info line.
       ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.textAlign = 'left'; ctx.font = '12px sans-serif';
       ctx.fillText(`${this.world.name} · ${m.baseW || m.gridW}×${m.baseH || m.gridH} @ density ${m.density} (${m.gridW}×${m.gridH} cells) · ${this.world.mode} · tool: ${this._shift ? 'erase' : this.tool} @ elev ${this.elevLevel}`, 158, CANVAS_H - 10);
