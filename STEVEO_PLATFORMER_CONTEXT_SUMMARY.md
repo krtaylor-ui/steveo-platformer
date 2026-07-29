@@ -1,4 +1,20 @@
-## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE jump-clear / sprint / melee swing / pit-lava death + editor ghost+undo (build 295) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE number-key elev / jump-dodge / weapon-accurate melee arc + pit-death polish (build 296) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+
+Tenth playtest batch. Suite green (977 assertions); headless combat harness + render smoke + probe clean.
+- **Editor:** number keys 0-8 set the paint elevation directly.
+- **Jump-to-dodge:** `dodgeAttacks` + `dodgeMobs`, each none | single (any jump) | double (double-jump only).
+- **Melee:** swing draws the ACTUAL held weapon; F melee-swings a held weapon (click still fires); damage cone
+  is a configurable `meleeArc` (default tighter 50°) shared by hit + visual; weapon scales to fill wider arcs.
+- **Pit death:** flailing figure starts at overhead size and sinks fully into the pit before bursting.
+  Detail in `DECISIONS_LOG.md`.
+- **Still deferred:** bridge item (§36), redstone-in-overhead (§32, next big rebuild), seamless
+  cave↔surface (§35/§35b).
+
+**NEEDS BROWSER PLAYTEST** before merge. 18 overhead builds (279–296) are stacked on this branch.
+
+---
+
+## PRIOR STATE (2026-07-29) — OVERHEAD ENGINE jump-clear / sprint / melee swing / pit-lava death + editor ghost+undo (build 295) on branch `overhead-engine` — NOT merged, browser-UNTESTED
 
 Ninth playtest batch. Suite green (977 assertions); headless gameplay + render harnesses + probe clean.
 - **Jump clearance:** `jumpClear` (default 1) + `doubleJumpClear` (+1), additive — a jump can vault/mount

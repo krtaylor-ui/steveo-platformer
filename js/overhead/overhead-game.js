@@ -77,6 +77,11 @@
       // Sprint (Shift by default) — a speed multiplier while held.
       this._sprint = cfg.sprint !== false;
       this._sprintMult = (cfg.sprintMultiplier != null ? cfg.sprintMultiplier : 1.6);
+      // Jump-to-dodge: 'none' | 'single' (any jump) | 'double' (only while double-jumping).
+      this._dodgeAttacks = cfg.dodgeAttacks || 'none';   // dodge ranged shots
+      this._dodgeMobs = cfg.dodgeMobs || 'none';         // dodge mob body-contact
+      // Melee arc (total degrees the swing/cone covers).
+      this._meleeArcDeg = (cfg.meleeArc != null ? cfg.meleeArc : 50);
       // Precompute light-emitting cells (glowstone / lava) once, with each one's
       // brightness (per-object) and colour. Reach is brightness × the universal range.
       this._lightCells = [];
@@ -246,6 +251,10 @@
       this.camera = OH_GRID.centerOn(this.grid, p.x, p.y, CANVAS_W, CANVAS_H);
     }
 
+    // Dodging: airborne cancels a hit when the dodge mode allows it. 'single' = any
+    // jump; 'double' = only while double-jumping (harder).
+    _dodging(mode) { const j = this.player.jump; if (!j || !j.jumping) return false; if (mode === 'single') return true; if (mode === 'double') return !!j.doubleUsed; return false; }
+    _meleeHalfAngle() { return Math.max(6, this._meleeArcDeg || 50) * Math.PI / 180 / 2; }
     _ramp(c, r) { return this.ramps.has(c + ',' + r); }
     // A ramp makes climbing forgiving: it counts if it's ON this cell OR an
     // orthogonal neighbour, so a ramp placed a cell off from the true collision
@@ -318,7 +327,9 @@
       const p = this.player;
       const fire = intent.fire || (this.input.mouse.down && p._fireCd === 0);
       const ang = OH_CONTROLS.angleOf(p.aim);
-      if (!p.weapon) { if (intent.melee) this._melee(p, ang); return; }
+      if (!p.weapon) { if (intent.melee) this._melee(p, ang, 'pickaxe'); return; }
+      // With a weapon held, F does a MELEE SWING using that weapon (click still fires).
+      if (this.input.isDown && this.input.isDown('KeyF')) this._melee(p, ang, p.weapon);
       const wc = this._weaponCfg();
       if (p.weapon === 'crossbow') { if (fire && p._fireCd === 0) { this._bolts.push(Object.assign(OH_WEAPONS.startBolt(p.x, p.y, ang, wc), { owner: 'p', elev: p.elev })); p._fireCd = 14; } }
       else if (p.weapon === 'trident') {
@@ -329,9 +340,9 @@
       }
     }
     _weaponCfg() { const s = this.settings || {}; return { crossbowSpeed: s.crossbowSpeed, tridentSpeed: s.tridentSpeed, tridentReturnSpeed: s.tridentReturnSpeed, boomerangSpeed: s.boomerangSpeed, boomerangMaxRange: s.boomerangRange, boomerangWidth: s.boomerangWidth }; }
-    _melee(p, ang) {
-      if (p._fireCd > 0) return; p._fireCd = 18; p._swingT = 14; p._swingDur = 14; p._swingAng = ang;   // trigger the swing anim
-      const hits = OH_COMBAT.coneHit({ x: p.x, y: p.y }, ang, this.mobs.filter((m) => !m.dead && this._canAttack(p.elev, m.elev || 0)), { reach: this.unit * (this.settings.meleeReach || 2.4), halfAngle: Math.PI / 4, maxHits: 3 });
+    _melee(p, ang, weapon) {
+      if (p._fireCd > 0) return; p._fireCd = 18; p._swingT = 14; p._swingDur = 14; p._swingAng = ang; p._swingWeapon = weapon || 'pickaxe';   // trigger the swing anim
+      const hits = OH_COMBAT.coneHit({ x: p.x, y: p.y }, ang, this.mobs.filter((m) => !m.dead && this._canAttack(p.elev, m.elev || 0)), { reach: this.unit * (this.settings.meleeReach || 2.4), halfAngle: this._meleeHalfAngle(), maxHits: 3 });
       for (const m of hits) { m.hp -= 4; if (m.hp <= 0) m.dead = true; }
     }
     // A projectile dies if it crosses terrain ≥ attackBlock levels above its origin.
@@ -350,7 +361,7 @@
         if (b.t < 0.5 && this._boltWalled(b)) b.t = 1 - b.t;   // wall on the way out → start coming back
         for (const m of live) { const id = m.col + ',' + m.row + ',' + (this.mobs.indexOf(m)); if (!b._hit[id] && this._canAttack(p.elev, m.elev || 0) && Math.hypot(m.x - b.x, m.y - b.y) < m.r + this.unit * 0.3) { m.hp -= 4; b._hit[id] = 1; if (m.hp <= 0) m.dead = true; } } if (b.dead) p._boom = null; }
       // Mob bolts (skeletons).
-      for (const mb of this._mobBolts) { OH_WEAPONS.stepBolt(mb); if (this._boltWalled(mb)) { mb.dead = true; continue; } if (this._canAttack(mb.elev || 0, p.elev) && Math.hypot(mb.x - p.x, mb.y - p.y) < p.r + this.unit * 0.25 && p.iFrames === 0) { this._hurt(3, 'Shot'); mb.dead = true; } }
+      for (const mb of this._mobBolts) { OH_WEAPONS.stepBolt(mb); if (this._boltWalled(mb)) { mb.dead = true; continue; } if (this._canAttack(mb.elev || 0, p.elev) && Math.hypot(mb.x - p.x, mb.y - p.y) < p.r + this.unit * 0.25 && p.iFrames === 0) { if (this._dodging(this._dodgeAttacks)) { mb.dead = true; this._notify('Dodged!', 30); } else { this._hurt(3, 'Shot'); mb.dead = true; } } }
       this._mobBolts = this._mobBolts.filter((b) => !b.dead);
     }
 
@@ -378,7 +389,7 @@
           if (m._wc <= 0) { m._wanderAngle = Math.random() * Math.PI * 2; m._wc = 50 + (Math.random() * 90 | 0); if (Math.random() < 0.3) m._wc = 30, m._wanderAngle = null; }
           if (m._wanderAngle != null) { const ws = (m.speed || 1) * 0.4; const bx = m.x, by = m.y; this._moveWithCollision(m, Math.cos(m._wanderAngle) * ws, Math.sin(m._wanderAngle) * ws, false); if (m.x === bx && m.y === by) m._wc = 0; else { m._dist = (m._dist || 0) + ws; m._moveAngle = m._wanderAngle; } }
         }
-        if (d < m.r + p.r && p.iFrames === 0) this._hurt(3, 'Hit by a mob');
+        if (d < m.r + p.r && p.iFrames === 0 && !this._dodging(this._dodgeMobs)) this._hurt(3, 'Hit by a mob');
       }
     }
 
@@ -409,10 +420,11 @@
       if (alive === 0 || fx.t > 90) { this.state = 'dead'; this._notify(this._deathMsg, 240); }
     }
     // Front-facing figure with flailing limbs, used for the pit-death shrink phase.
-    _drawDyingSprite(ctx, sx, sy, cs, scale, t) {
-      const sp = P().OH_SPRITE, u = cs * 0.95 * Math.max(0.06, scale);
+    _drawDyingSprite(ctx, sx, sy, size, scale, t) {
+      const sp = P().OH_SPRITE, u = size * 1.3 * Math.max(0.06, scale);
       const f1 = Math.sin(t * 0.6) * 0.6, f2 = Math.cos(t * 0.7) * 0.6;
-      ctx.save(); ctx.translate(sx, sy + cs * 0.25 * (1 - scale)); ctx.lineCap = 'round';
+      // Sit the figure INSIDE the pit cell and sink it further as it shrinks.
+      ctx.save(); ctx.translate(sx, sy + size * 0.2 + size * 0.55 * (1 - scale)); ctx.lineCap = 'round';
       ctx.strokeStyle = sp.pants; ctx.lineWidth = Math.max(2, u * 0.16);
       ctx.beginPath(); ctx.moveTo(-u * 0.15, u * 0.2); ctx.lineTo(-u * 0.15 + f1 * u * 0.4, u * 0.6); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(u * 0.15, u * 0.2); ctx.lineTo(u * 0.15 - f2 * u * 0.4, u * 0.6); ctx.stroke();
@@ -486,15 +498,17 @@
       for (const m of this.mobs) if (!m.dead) ents.push({ kind: 'm', row: (m.y / g.cell) | 0, level: m.elev || 0, ref: m });
       ents.push({ kind: 'p', row: (this.player.y / g.cell) | 0, level: this.player.elev, ref: this.player });
       OH_ELEV.sortForDraw(ents).forEach((e) => this._drawEntity(e, S, z, cs));
-      // Melee swing — a weapon sweeps through the attack cone over the swing window.
-      { const pl = this.player; if (pl._swingT > 0 && !pl.weapon) {
-          const prog = 1 - pl._swingT / (pl._swingDur || 14), half = Math.PI / 4, a0 = pl._swingAng - half;
+      // Melee swing — the ACTUAL held weapon sweeps through the attack cone. The
+      // weapon is scaled to fill the arc (a wider arc → a bigger sweep).
+      { const pl = this.player; if (pl._swingT > 0) {
+          const prog = 1 - pl._swingT / (pl._swingDur || 14), half = this._meleeHalfAngle(), a0 = pl._swingAng - half;
           const s = S(pl.x, pl.y), reach = this.unit * (this.settings.meleeReach || 2.4) * z, sweep = a0 + prog * half * 2;
+          const wk = pl._swingWeapon === 'crossbow' ? 'bow' : (pl._swingWeapon || 'pickaxe');
+          const arcScale = Math.max(0.7, (half * 2) / (Math.PI / 4));   // fill wider arcs with a bigger weapon
           ctx.save();
-          ctx.fillStyle = 'rgba(255,255,255,.10)'; ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.arc(s.x, s.y, reach, a0, a0 + prog * half * 2); ctx.closePath(); ctx.fill();
-          ctx.strokeStyle = '#d8d2c4'; ctx.lineWidth = Math.max(2, cs * 0.14); ctx.lineCap = 'round';
-          ctx.beginPath(); ctx.moveTo(s.x + Math.cos(sweep) * reach * 0.3, s.y + Math.sin(sweep) * reach * 0.3); ctx.lineTo(s.x + Math.cos(sweep) * reach, s.y + Math.sin(sweep) * reach); ctx.stroke();
-          ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(s.x + Math.cos(sweep) * reach, s.y + Math.sin(sweep) * reach, Math.max(2, cs * 0.1), 0, 7); ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,.09)'; ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.arc(s.x, s.y, reach, a0, a0 + prog * half * 2); ctx.closePath(); ctx.fill();
+          ctx.translate(s.x, s.y); ctx.rotate(sweep);
+          OVERHEAD.drawWeapon(ctx, reach * 0.62 * arcScale, wk);
           ctx.restore();
         } }
       // Portal/pipe # badges + a purple glow on the ends of an active teleport.
@@ -523,7 +537,7 @@
       // into their own coloured sprite blocks that fly out, spin, fall and fade.
       if (this._deathFx && (this.state === 'dying' || this.state === 'dead')) {
         const fx = this._deathFx;
-        if (fx.phase === 'sink') { const s = S(fx.x, fx.y); this._drawDyingSprite(ctx, s.x, s.y, cs, 1 - (fx.t / fx.sinkDur) * 0.85, fx.t); }
+        if (fx.phase === 'sink') { const s = S(fx.x, fx.y); this._drawDyingSprite(ctx, s.x, s.y, this.unit * z, 1 - (fx.t / fx.sinkDur) * 0.85, fx.t); }
         else if (fx.parts) {
           for (const q of fx.parts) { if (q.life <= 0) continue; const s = S(q.x, q.y);
             ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(q.rot); ctx.globalAlpha = Math.max(0, Math.min(1, q.life / 22));

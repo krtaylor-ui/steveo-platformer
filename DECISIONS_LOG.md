@@ -1,6 +1,27 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD ENGINE — NUMBER-KEY ELEV / JUMP-DODGE / WEAPON-ACCURATE MELEE ARC + PIT-DEATH POLISH (2026-07-29, build 296, branch `overhead-engine`)
+# ═══════════════════════════════════════════════════════════════════════
+Tenth playtest-feedback batch. Suite green (977 assertions); headless combat harness + render smoke + probe clean.
+
+- **Number-key elevation (editor):** `Digit0-8` / `Numpad0-8` in `_kd` set `this.elevLevel` directly (in
+  addition to `[` / `]`). Guards Ctrl/Meta so Ctrl+digit isn't hijacked.
+- **Jump-to-dodge world settings:** `dodgeAttacks` + `dodgeMobs`, each `none` | `single` (any jump) |
+  `double` (only while double-jumping — `jump.doubleUsed`). `_dodging(mode)` gates the mob-bolt hit (shows
+  "Dodged!") and the mob body-contact hit. Verified headless: airborne single dodges, grounded takes damage,
+  double-mode ignores a single jump but dodges on the double jump.
+- **Weapon-accurate melee + configurable arc:** `_melee(p, ang, weapon)` records `p._swingWeapon`; the swing
+  render draws the ACTUAL weapon via `OVERHEAD.drawWeapon` (pickaxe/sword/trident/boomerang/bow), swept
+  through the arc and scaled up for wider arcs. F now melee-swings with a HELD weapon (click still fires it);
+  unarmed melee unchanged. New `meleeArc` setting (degrees, default a tighter **50°**, was a fixed 90°) →
+  `_meleeHalfAngle()` feeds BOTH `coneHit` and the visual. Verified: a 30° arc misses a mob 60° off-aim; a
+  140° arc hits it.
+- **Pit-death sizing:** the shrink/flail figure now starts at the overhead sprite size (`_drawDyingSprite`
+  sized off `this.unit * z`, not `cs`) and sinks fully into the pit (larger downward offset that grows as it
+  shrinks) before the burst — fixing the "starts tiny" look.
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD ENGINE — JUMP-CLEAR / SPRINT / MELEE SWING / PIT-LAVA DEATH + EDITOR GHOST+UNDO (2026-07-29, build 295, branch `overhead-engine`)
 # ═══════════════════════════════════════════════════════════════════════
 Ninth playtest-feedback batch. Suite green (977 assertions); headless gameplay + render harnesses + probe clean.

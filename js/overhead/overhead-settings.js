@@ -24,6 +24,9 @@
       // Sprint (Shift by default) — a speed multiplier while held.
       sprint:           true,
       sprintMultiplier: 1.6,
+      // Jump-to-dodge: 'none' | 'single' (any jump) | 'double' (only while double-jumping).
+      dodgeAttacks:     'none',     // dodge ranged shots while airborne
+      dodgeMobs:        'none',     // dodge mob body-contact while airborne
       // Combat / weapons — px/frame (absolute, density-independent).
       crossbowSpeed:    13,
       tridentSpeed:     12,
@@ -32,6 +35,7 @@
       boomerangRange:   340,
       boomerangWidth:   0.42,
       meleeReach:       2.4,        // × unit
+      meleeArc:         50,         // total degrees the melee swing/cone covers
       // A target/obstacle this-many elevation levels ABOVE the attacker blocks the
       // attack (default 2 → you can attack up 1 level, not 2; attacking DOWN is
       // always allowed). Lets a player on high ground behind a 1-high wall shoot
@@ -135,6 +139,8 @@
               ${sel('doubleJumpClear', 'Extra blocks the double jump adds', [['0', '0'], ['1', '+1 block'], ['2', '+2 blocks']])}
               ${toggle('sprint', 'Sprint (hold Shift)')}
               ${range('sprintMultiplier', 'Sprint speed ×', 1.1, 2.5, 0.1)}
+              ${sel('dodgeAttacks', 'Jump to dodge attacks', [['none', 'No'], ['single', 'Single jump'], ['double', 'Double jump only']])}
+              ${sel('dodgeMobs', 'Jump to dodge mobs', [['none', 'No'], ['single', 'Single jump'], ['double', 'Double jump only']])}
               ${toggle('doubleJump', 'Double jump')}
               ${sel('doubleJumpStyle', 'Double-jump style', [['somersault', 'Somersault (flip)'], ['spin', 'Spin']])}
             </div>
@@ -146,6 +152,7 @@
               ${range('boomerangRange', 'Boomerang range (px)', 120, 600, 20)}
               ${range('boomerangWidth', 'Boomerang arc width', 0.15, 0.7, 0.03)}
               ${range('meleeReach', 'Melee reach (× cell)', 1, 4, 0.2)}
+              ${range('meleeArc', 'Melee arc (degrees)', 20, 160, 5)}
               ${sel('attackBlockHeight', 'Wall height that blocks attacks', [['1', '1 level'], ['2', '2 levels'], ['3', '3 levels'], ['99', 'Never blocked']])}
             </div>
             <div class="ohws-grp"><h3>Mobs</h3>

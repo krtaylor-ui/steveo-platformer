@@ -285,6 +285,7 @@
         else if (e.code === 'ArrowUp') this.cam.y -= pan; else if (e.code === 'ArrowDown') this.cam.y += pan;
         else if (e.code === K.elevUp) { this.elevLevel = Math.min(8, this.elevLevel + 1); this._renderBar(); }
         else if (e.code === K.elevDown) { this.elevLevel = Math.max(0, this.elevLevel - 1); this._renderBar(); }
+        else if (/^(Digit|Numpad)[0-8]$/.test(e.code) && !e.ctrlKey && !e.metaKey) { this.elevLevel = +e.code.slice(-1); this._renderBar(); }   // number keys set the elevation directly
         else if (e.code === K.zoomIn) OH_GRID.zoomBy(this.grid, 1.12);
         else if (e.code === K.zoomOut) OH_GRID.zoomBy(this.grid, 0.9);
         else if (e.code === K.undo && (e.ctrlKey || e.metaKey)) { this.undo(); }
