@@ -1,4 +1,16 @@
-## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE number-key elev / jump-dodge / weapon-accurate melee arc + pit-death polish (build 296) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE dodge/melee/death micro-fixes (build 297) on branch `overhead-engine` — NOT merged; Kevin browser-testing then pushing live
+
+Small pre-push polish. Suite green (977); harness + render smoke + probe clean.
+- A **dodged ranged bolt flies on** past the player (flagged, not destroyed).
+- The **held weapon disappears during a melee swing** (the enlarged swinging weapon stands in).
+- **Death-burst pieces scatter outward and settle in place** (no downward gravity — top-down correct) then fade.
+- Detail in `DECISIONS_LOG.md`. Prior builds 279–296 unchanged below.
+
+**Kevin is browser-testing this, then pushing `overhead-engine` live.** 19 overhead builds (279–297) stacked. Still deferred: bridge (§36), redstone (§32), seamless caves (§35b).
+
+---
+
+## PRIOR STATE (2026-07-29) — OVERHEAD ENGINE number-key elev / jump-dodge / weapon-accurate melee arc + pit-death polish (build 296) on branch `overhead-engine` — NOT merged, browser-UNTESTED
 
 Tenth playtest batch. Suite green (977 assertions); headless combat harness + render smoke + probe clean.
 - **Editor:** number keys 0-8 set the paint elevation directly.

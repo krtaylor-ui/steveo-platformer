@@ -1,6 +1,19 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD ENGINE — DODGE / MELEE / DEATH MICRO-FIXES (2026-07-29, build 297, branch `overhead-engine`)
+# ═══════════════════════════════════════════════════════════════════════
+Small pre-push polish (Kevin to browser-test, then push live). Suite green (977); harness + render smoke + probe clean.
+
+- **Dodged bolt flies on:** a dodged mob bolt is now FLAGGED (`mb._dodged`) instead of killed, so it continues
+  along its path (the hit-test skips already-dodged bolts to avoid re-notifying). Verified headless: post-dodge
+  the bolt is alive, hp unchanged, and keeps advancing.
+- **Weapon hidden during a melee swing:** `_drawPlayer` folds `p._swingT > 0` into the `inFlight` guard, so the
+  held weapon disappears from the hand while the enlarged swinging weapon stands in for it.
+- **Death pieces scatter in place:** removed the downward gravity + upward launch bias from the death burst;
+  pieces now fly OUTWARD and settle (vx/vy damped 0.9) before fading — correct for the top-down view.
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD ENGINE — NUMBER-KEY ELEV / JUMP-DODGE / WEAPON-ACCURATE MELEE ARC + PIT-DEATH POLISH (2026-07-29, build 296, branch `overhead-engine`)
 # ═══════════════════════════════════════════════════════════════════════
 Tenth playtest-feedback batch. Suite green (977 assertions); headless combat harness + render smoke + probe clean.

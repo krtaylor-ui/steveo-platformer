@@ -361,7 +361,7 @@
         if (b.t < 0.5 && this._boltWalled(b)) b.t = 1 - b.t;   // wall on the way out → start coming back
         for (const m of live) { const id = m.col + ',' + m.row + ',' + (this.mobs.indexOf(m)); if (!b._hit[id] && this._canAttack(p.elev, m.elev || 0) && Math.hypot(m.x - b.x, m.y - b.y) < m.r + this.unit * 0.3) { m.hp -= 4; b._hit[id] = 1; if (m.hp <= 0) m.dead = true; } } if (b.dead) p._boom = null; }
       // Mob bolts (skeletons).
-      for (const mb of this._mobBolts) { OH_WEAPONS.stepBolt(mb); if (this._boltWalled(mb)) { mb.dead = true; continue; } if (this._canAttack(mb.elev || 0, p.elev) && Math.hypot(mb.x - p.x, mb.y - p.y) < p.r + this.unit * 0.25 && p.iFrames === 0) { if (this._dodging(this._dodgeAttacks)) { mb.dead = true; this._notify('Dodged!', 30); } else { this._hurt(3, 'Shot'); mb.dead = true; } } }
+      for (const mb of this._mobBolts) { OH_WEAPONS.stepBolt(mb); if (this._boltWalled(mb)) { mb.dead = true; continue; } if (!mb._dodged && this._canAttack(mb.elev || 0, p.elev) && Math.hypot(mb.x - p.x, mb.y - p.y) < p.r + this.unit * 0.25 && p.iFrames === 0) { if (this._dodging(this._dodgeAttacks)) { mb._dodged = true; this._notify('Dodged!', 30); } else { this._hurt(3, 'Shot'); mb.dead = true; } } }   // a dodged bolt is flagged (not killed) so it flies on past
       this._mobBolts = this._mobBolts.filter((b) => !b.dead);
     }
 
@@ -408,7 +408,7 @@
     _burstParts(x, y) {
       const sp = P().OH_SPRITE, cols = [sp.hair, sp.shirt, sp.shirt, sp.pants, sp.pants, sp.skin], parts = [], n = 16;
       for (let i = 0; i < n; i++) { const ang = (i / n) * Math.PI * 2 + (i % 3) * 0.4, spd = this.unit * (0.06 + (i % 5) * 0.02);
-        parts.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - this.unit * 0.05, sz: this.unit * (0.16 + (i % 4) * 0.05), rot: ang, vr: (i % 2 ? 1 : -1) * 0.2, color: cols[i % cols.length], life: 46 + (i % 10) }); }
+        parts.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, sz: this.unit * (0.16 + (i % 4) * 0.05), rot: ang, vr: (i % 2 ? 1 : -1) * 0.2, color: cols[i % cols.length], life: 46 + (i % 10) }); }
       return parts;
     }
     _advanceDeath() {
@@ -416,7 +416,8 @@
       fx.t++;
       if (fx.phase === 'sink') { if (fx.t >= fx.sinkDur) { fx.phase = 'burst'; fx.t = 0; fx.parts = this._burstParts(fx.x, fx.y); } return; }
       let alive = 0;
-      for (const q of fx.parts) { if (q.life <= 0) continue; alive++; q.x += q.vx; q.y += q.vy; q.vy += this.unit * 0.012; q.vx *= 0.98; q.rot += q.vr; q.life--; }
+      // Top-down: pieces scatter OUTWARD and settle in place (no gravity), then fade.
+      for (const q of fx.parts) { if (q.life <= 0) continue; alive++; q.x += q.vx; q.y += q.vy; q.vx *= 0.9; q.vy *= 0.9; q.rot += q.vr; q.life--; }
       if (alive === 0 || fx.t > 90) { this.state = 'dead'; this._notify(this._deathMsg, 240); }
     }
     // Front-facing figure with flailing limbs, used for the pit-death shrink phase.
@@ -588,7 +589,7 @@
       ctx.globalAlpha = alpha;
       // Legs face movement; upper body + weapon face aim. Weapon hidden while a
       // trident/boomerang is in flight (it's the thing flying).
-      const inFlight = p._trident || p._boom;
+      const inFlight = p._trident || p._boom || p._swingT > 0;   // also hide the held weapon during a melee swing (the enlarged swinging weapon stands in)
       // Double-jump flourish: 'somersault' (head-over-heels y-foreshorten) or 'spin'.
       let spin = 0, somersault = null;
       if (p.jump && p.jump.jumping && p.jump.doubleUsed) { const prog = Math.min(1, p.jump.t / p.jump.dur); if ((this.settings.doubleJumpStyle || 'somersault') === 'spin') spin = prog * Math.PI * 3; else somersault = prog; }
