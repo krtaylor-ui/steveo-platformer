@@ -1,4 +1,20 @@
-## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE playtest pass 1 (build 280) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE art rev 2 (build 281) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+
+Visual feedback pass on top of build 280 (below). All in the shared renderers so editor + runtime +
+the art artifact match. Suite green.
+- **Player:** smaller head (~half the sprite); arms AND legs swing fore/aft in opposite phase (natural
+  gait); **always holds a weapon** pointing where it aims (sword/bow/trident/boomerang/pickaxe; **default
+  pickaxe**; Campaign pulls the level-finish weapon via `opts.playerWeapon`, wired now).
+- **Mobs:** zombie = player body + green skin (bare-handed); skeleton = bony (front eye sockets, thin
+  neck→parallel shoulder-bone, narrow limbs, bow); spider = square + 8 legs + red front eyes.
+- **Blocks:** 3D extrusion — bevelled top + darker extruded side, covered by the block in front (only
+  front/edge blocks + raised drops show a side; side height meets the block in front). Runtime + editor.
+- **Art artifact updated (same URL):** player × each weapon, the 3 new mobs, a 3D block scene.
+Detail in `DECISIONS_LOG.md` (Overhead Engine — Art Revision 2). Browser-test the sprite/mob/block look.
+
+---
+
+## PRIOR STATE (2026-07-29) — OVERHEAD ENGINE playtest pass 1 (build 280) on branch `overhead-engine` — NOT merged, browser-UNTESTED
 
 Kevin playtested the MVP foundation (below) and gave a batch of refinements; all built on the same
 `overhead-engine` branch. Suite green (133 overhead assertions; +11 for weapons). **Browser-untested.**

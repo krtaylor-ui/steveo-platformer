@@ -1,6 +1,38 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD ENGINE — ART REVISION 2 (2026-07-29, build 281, branch `overhead-engine`)
+# ═══════════════════════════════════════════════════════════════════════
+Kevin's visual feedback on the pass-1 art (with ASCII reference sketches). All in the shared
+renderers (`overhead-launch.js`) so editor + runtime + artifact stay in lockstep. Suite green.
+
+- **Player** (`drawOverheadPlayer` reworked): head shrunk to ~half the sprite (headR r*0.7→r*0.5);
+  local +x = forward (was rotate+90°); **arms AND legs swing fore/aft (±x) in opposite phase per
+  side** = a natural gait (matches Kevin's Walking-1/2 sketches), replacing the old left/right arm
+  bars. Shoulders flank the head along ±y. Legs still grounded to distance.
+- **Always-held weapon replaces the facing nub** (Kevin's call). `drawWeapon(ctx,r,kind)` draws
+  sword/bow/trident/boomerang/pickaxe in local +x (toward aim). Runtime passes `player.weapon ||
+  'pickaxe'`. **Default = pickaxe when unarmed** (Kevin: "will that work?" — yes). **Campaign** pulls
+  the finishing weapon via `opts.playerWeapon` (wired into the OverheadGame constructor now; the
+  campaign→overhead handoff that supplies it is still future).
+- **Mobs rebuilt off the humanoid** (`drawOverheadMob` dispatch): **zombie** = the player body with a
+  green palette, bare-handed (`weapon:null`); **skeleton** = `bony:true` + `eyeSockets:true` — a thin
+  neck to a parallel shoulder-bone, narrow limbs (limbW r*0.14 vs 0.22), eye sockets at the FRONT edge
+  of the head, holds a bow; **spider** = `_drawSpider` — a square body, 8 short rectangular legs
+  (4/side), two red eyes on the leading (+x) edge. (Replaces the old blocky/detailed side-view-ish art.)
+- **Blocks — 3D extrusion.** Top keeps the bevel Kevin liked; new `drawTerrainSide` draws a darker
+  (shade 0.34) front face BELOW the top. In the terrain pass, side depth = a small LIP for same/higher
+  front neighbours (so the block in front covers it — only front/edge blocks show a side) and a full
+  cliff (`drop*STEP+LIP`) where the front neighbour is lower or absent — so a raised block's side drops
+  to meet the block in front, matching the elevation staircase (Kevin's exact description). Applied in
+  BOTH the runtime and editor terrain passes.
+- Art-options **artifact updated to rev 2** (same URL): player × each weapon, the 3 new mobs, a 3D
+  block scene with a raised row. Mirrors the engine renderers exactly.
+- **Flag for a future pass:** the 2D side-view renderer should eventually consume `OH_SPRITE` +
+  reuse these weapon shapes so a player's colours/loadout read consistently across both views.
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD ENGINE — PLAYTEST PASS 1 (2026-07-29, build 280, branch `overhead-engine`)
 # ═══════════════════════════════════════════════════════════════════════
 Kevin's first playtest of the MVP foundation → a batch of UX + gameplay refinements. All on the

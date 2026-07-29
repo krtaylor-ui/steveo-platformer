@@ -46,7 +46,12 @@
       const cell = this.grid.cell;
       this.player = { x: (sp.col + 0.5) * cell, y: (sp.row + 0.5) * cell, r: Math.max(9, cell * 0.4),
         hp: 20, maxHp: 20, speed: cell * 0.11, elev: this._elev(sp.col, sp.row), aim: { x: 1, y: 0 }, lastAim: { x: 1, y: 0 },
-        dist: 0, jump: null, iFrames: 0, hidden: false, weapon: null, _fireCd: 0, _trident: null, _boom: null };
+        dist: 0, jump: null, iFrames: 0, hidden: false,
+        // §Campaign pulls the weapon the player finished the prior level with
+        // (opts.playerWeapon); otherwise the world's start weapon, else unarmed
+        // (displayed as a pickaxe). A real ranged weapon changes fire behaviour;
+        // pickaxe/none = cone melee.
+        weapon: opts.playerWeapon || worldData.startWeapon || null, _fireCd: 0, _trident: null, _boom: null };
       this._spawn = { x: this.player.x, y: this.player.y };
       this._bolts = []; this._mobBolts = [];
       this.camera = OH_GRID.centerOn(this.grid, this.player.x, this.player.y, CANVAS_W, CANVAS_H);
@@ -192,7 +197,7 @@
         let tx = m.x, ty = m.y;
         if (m.state === 'chase') { tx = p.x; ty = p.y; }
         const ang = Math.atan2(ty - m.y, tx - m.x);
-        if (m.state === 'chase' && !(m.ranged && d < m.detect * 0.6)) this._moveWithCollision(m, Math.cos(ang) * m.speed, Math.sin(ang) * m.speed, false);
+        if (m.state === 'chase' && !(m.ranged && d < m.detect * 0.6)) { this._moveWithCollision(m, Math.cos(ang) * m.speed, Math.sin(ang) * m.speed, false); m._dist = (m._dist || 0) + m.speed; }
         if (d < m.r + p.r && p.iFrames === 0) this._hurt(3, 'Hit by a mob');
       }
     }
@@ -214,11 +219,16 @@
       const r0 = Math.max(0, (tl.y / g.cell | 0) - 1), r1 = Math.min(g.gridH - 1, (br.y / g.cell | 0) + 1);
       const liftScale = g.cell / 32;
       // Base terrain pass.
+      const STEP = OH_ELEV.STEP_PX * z * liftScale, LIP = cs * 0.16;
       for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
         const k = this._key(c, r); if (k == null) continue; const elev = this._elev(c, r);
         const sp = S(c * g.cell, r * g.cell); const y = sp.y + OH_ELEV.yOffset(elev) * z * liftScale;
-        const drop = OH_ELEV.cliffHeight(elev, this._elev(c, r + 1)) * z * liftScale;
-        if (drop > 0) { ctx.fillStyle = '#161a22'; ctx.fillRect(sp.x, y + cs, cs + 1, drop + 1); }
+        // 3D side: front neighbour (r+1). No block in front / edge → full side; a
+        // lower front → cliff; same/higher front → a small lip (covered by it).
+        const frontElev = (r + 1 <= this.grid.gridH - 1 && this._key(c, r + 1) != null) ? this._elev(c, r + 1) : -1;
+        const drop = elev - frontElev;
+        const sideDepth = drop > 0 ? drop * STEP + LIP : LIP;
+        OVERHEAD.drawTerrainSide(ctx, k, sp.x, y + cs, cs, sideDepth, elev);
         OVERHEAD.drawTerrainTile(ctx, k, sp.x, y, cs, elev);
       }
       if (this.goal) { const sp = S((this.goal.col + 0.5) * g.cell, (this.goal.row + 0.5) * g.cell); ctx.fillStyle = '#fff6b0'; ctx.font = `${(cs * 0.9) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.32); }
@@ -252,17 +262,13 @@
     }
 
     _drawMob(m, S, z, cs) {
-      const ctx = this.ctx, d = P().OH_MOB_BY_KEY[m.type] || P().OH_MOBS[0];
-      const sp = S(m.x, m.y); const rr = m.r * z;
-      ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(sp.x, sp.y + rr * 0.5, rr * 0.9, rr * 0.5, 0, 0, 7); ctx.fill();
-      if (m.type === 'spider') { ctx.strokeStyle = _dark(d.color); ctx.lineWidth = 2; for (let i = 0; i < 4; i++) { const a = 0.5 + i * 0.4; ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(sp.x + Math.cos(a) * rr * 1.5, sp.y + Math.sin(a) * rr); ctx.moveTo(sp.x, sp.y); ctx.lineTo(sp.x - Math.cos(a) * rr * 1.5, sp.y + Math.sin(a) * rr); ctx.stroke(); } ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(sp.x, sp.y, rr, 0, 7); ctx.fill(); ctx.fillStyle = '#e33'; ctx.fillRect(sp.x - rr * 0.4, sp.y - rr * 0.2, rr * 0.25, rr * 0.25); ctx.fillRect(sp.x + rr * 0.15, sp.y - rr * 0.2, rr * 0.25, rr * 0.25); }
-      else { ctx.fillStyle = d.color; ctx.fillRect(sp.x - rr, sp.y - rr, rr * 2, rr * 2); // body block
-        ctx.fillStyle = _dark(d.color); ctx.fillRect(sp.x - rr * 0.6, sp.y - rr * 0.6, rr * 1.2, rr * 0.5); // head band
-        if (m.type === 'skeleton') { ctx.fillStyle = '#333'; ctx.fillRect(sp.x - rr * 0.5, sp.y - rr * 0.3, rr * 0.3, rr * 0.3); ctx.fillRect(sp.x + rr * 0.2, sp.y - rr * 0.3, rr * 0.3, rr * 0.3); }
-        else { ctx.fillStyle = '#000'; ctx.fillRect(sp.x - rr * 0.5, sp.y - rr * 0.2, rr * 0.3, rr * 0.2); ctx.fillRect(sp.x + rr * 0.2, sp.y - rr * 0.2, rr * 0.3, rr * 0.2); } }
-      if (m.state === 'chase') { ctx.fillStyle = '#ffd24a'; ctx.font = `${(rr) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('!', sp.x, sp.y - rr * 1.2); }
-      // HP pip.
-      if (m.hp < (P().OH_MOB_BY_KEY[m.type] || {}).hp) { ctx.fillStyle = '#000'; ctx.fillRect(sp.x - rr, sp.y - rr * 1.6, rr * 2, 3); ctx.fillStyle = '#4f4'; ctx.fillRect(sp.x - rr, sp.y - rr * 1.6, rr * 2 * Math.max(0, m.hp / ((P().OH_MOB_BY_KEY[m.type] || {}).hp || 8)), 3); }
+      const ctx = this.ctx; const sp = S(m.x, m.y); const rr = m.r * z;
+      const ang = Math.atan2(this.player.y - m.y, this.player.x - m.x);   // mobs face the player
+      ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(sp.x, sp.y + rr * 0.55, rr * 0.9, rr * 0.5, 0, 0, 7); ctx.fill();
+      OVERHEAD.drawOverheadMob(ctx, sp.x, sp.y, rr, m._dist || 0, m.state === 'chase', ang, m.type);
+      if (m.state === 'chase') { ctx.fillStyle = '#ffd24a'; ctx.font = `bold ${(rr) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('!', sp.x, sp.y - rr * 1.6); }
+      const maxHp = (P().OH_MOB_BY_KEY[m.type] || {}).hp || 8;
+      if (m.hp < maxHp) { ctx.fillStyle = '#000'; ctx.fillRect(sp.x - rr, sp.y - rr * 1.9, rr * 2, 3); ctx.fillStyle = '#4f4'; ctx.fillRect(sp.x - rr, sp.y - rr * 1.9, rr * 2 * Math.max(0, m.hp / maxHp), 3); }
     }
 
     _drawPlayer(S, z, cs) {
@@ -274,7 +280,7 @@
       const moving = OH_MOVE.limbPhase && (this.input.isDown('KeyW') || this.input.isDown('KeyA') || this.input.isDown('KeyS') || this.input.isDown('KeyD') || this.input.isDown('ArrowUp') || this.input.isDown('ArrowLeft') || this.input.isDown('ArrowRight') || this.input.isDown('ArrowDown'));
       const alpha = (p.hidden && !this.showHidden) ? 0.9 : 1;   // draw-order hides most; keep near-opaque
       ctx.globalAlpha = alpha;
-      OVERHEAD.drawOverheadPlayer(ctx, cx, cy, rr, p.dist, moving, OH_CONTROLS.angleOf(p.aim), { rotate: true });
+      OVERHEAD.drawOverheadPlayer(ctx, cx, cy, rr, p.dist, moving, OH_CONTROLS.angleOf(p.aim), { rotate: true, weapon: p.weapon || 'pickaxe' });
       ctx.globalAlpha = 1;
       if (p.iFrames > 0 && ((p.iFrames >> 2) & 1)) { ctx.globalAlpha = 0.4; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
       // Aim reticle.
@@ -292,8 +298,6 @@
       if (this.state === 'won' || this.state === 'dead' || this.state === 'paused') { ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H); ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 30px sans-serif'; ctx.fillText(this.state === 'won' ? '★ Level Complete!' : this.state === 'dead' ? 'Game Over' : 'Paused', CANVAS_W / 2, CANVAS_H / 2 - 8); ctx.font = '15px sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText(this.state === 'paused' ? 'Esc to resume · click to exit' : 'Click / Enter to exit', CANVAS_W / 2, CANVAS_H / 2 + 24); }
     }
   }
-
-  function _dark(hex) { const h = String(hex).replace('#', ''); if (h.length !== 6) return hex; const n = parseInt(h, 16); return `rgb(${(((n >> 16) & 255) * 0.6) | 0},${(((n >> 8) & 255) * 0.6) | 0},${((n & 255) * 0.6) | 0})`; }
 
   if (typeof window !== 'undefined') window.OverheadGame = OverheadGame;
 })();
