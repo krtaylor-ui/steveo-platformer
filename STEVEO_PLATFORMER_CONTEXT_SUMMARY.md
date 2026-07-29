@@ -1,4 +1,53 @@
-## CURRENT STATE (2026-07-28) — MOVING PLATFORMS playtested + wrapped up (builds 254–277) SHIPPED to `main` + deployed ✅
+## CURRENT STATE (2026-07-28) — CAMPAIGN MODE MVP (build 278) BUILT on branch `campaign-mode-mvp` — NOT merged, awaiting Kevin's end-to-end playtest
+
+Built the entire **Campaign MVP** per Kevin's "Campaign Mode MVP" brief, on a NEW branch `campaign-mode-mvp`
+(off `main` @ f816694) per his instruction to "build in a new branch and merge as we confirm working."
+Headless suite green (added `test/test-campaign.js`, 28 assertions). Everything is **additive/opt-in** — no
+existing mode changed; the game.js hooks are all guarded by `game._campaign`.
+
+**What it is:** a lightweight **Campaign container** (NOT a new physics mode) that sequences existing
+**Platformer** worlds into **Zones** (each ending in a computed **Boss World** = last in `worldOrder`), routes
+their coloured **Goal-Star exits**, and tracks progression. Goal Star 1 (Gold) = next in sequence (or, on a
+Boss World, → next Zone / campaign-complete); Goal Stars 2–10 = creator-routed **Bonus** (new out-of-sequence
+world) or **Connect** (link to any world in the campaign) exits, with optional **hidden/secret** routes and
+per-destination entry points. Reuses the Phase-1 `GOAL_COLORS` / `game._wonExitColor` (builds 67–72) as the
+routing key and the Arena spawn-point placeable as entry points.
+
+**New files:** `js/campaign-model.js` (pure model + routing + publish validation), `js/campaign-api.js`
+(authedFetch client), `js/campaign-builder.js` (Sandbox-accessible DOM overlay — zone tabs, guided [+] flows,
+validation gate, publish), `js/campaign-tracker.js` (per-zone dots/lines progression view — completion screen
++ pause menu; hidden-until-discovered secrets; optional bg image), `js/campaign-play.js` (runtime — boots each
+world as a Platformer Game, routes exits, carry-over, lives, progress save), `js/campaign-select.js`
+(dashboard → Campaign screen). Server: `server/campaign-routes.js` + `server/sql/campaigns.sql` (`campaigns`
++ `campaign_progress` tables). Integration: additive game.js hooks (`options.campaign`/`campaignCarry`/
+`campaignEntry`; win + `_doRespawn` hooks; `campaignSnapshot`/`_applyCampaignCarry`/`_applyCampaignEntry`),
+a "🗺 Campaign Progress" pause-menu button, dashboard Campaign card, and a "🎬 Campaign Builder" button on the
+Sandbox browser.
+
+**Kevin's 3 up-front answers (2026-07-28):** publish account = **`krtaylor@gmail.com`** (hard-coded
+`ADMIN_EMAIL`, server-enforced, one campaign live at a time); storage = **server-backed Supabase**; tracker =
+**both** completion-transition + pause-menu. All §14 interpretations resolved + logged in `DECISIONS_LOG.md`.
+
+**Carry-over (§7):** inventory/weapons = true carry (restored onto the fresh player); score = best-ever per
+world (total = sum); emeralds/points/lives = running accumulators; health resets each world; `resetInventoryAt`
+(never/per-world/per-zone) clears carry + running totals at boundaries. **Flagged MVP simplification:** running
+emeralds/points are tracked in progress + shown on the tracker but NOT re-injected into a level's own emerald
+counter. Lives default 3 → game-over (Restart offered) when a death occurs at 0.
+
+**BEFORE it works: run `server/sql/campaigns.sql` in the Supabase SQL editor** (creates the two tables), and
+the server needs a Railway deploy for the new routes.
+
+**Ship path:** `node test/run.js` (green) → **Kevin playtests end-to-end** (create Campaign → Zone → sequence
+worlds → bonus/connect routing → validation gate → publish → play through with carry-over + tracker + lives) →
+`git checkout main && git merge campaign-mode-mvp` → push → Railway deploys. **Browser-UNTESTED** (all the
+canvas/DOM/round-trip pieces are inherently browser-only; the model/routing/validation logic is what's proven
+headlessly). Full detail + assumptions in `DECISIONS_LOG.md` (Campaign MVP entry); roadmap updates
+(Overhead Engine §24, Designer Wizard §25, screen capture §26, image-to-block §27, manual save §28, multi-user
+publishing §29) in `FUTURE_ROADMAP.md`.
+
+---
+
+## PRIOR STATE (2026-07-28) — MOVING PLATFORMS playtested + wrapped up (builds 254–277) SHIPPED to `main` + deployed ✅
 
 Everything through **build 277** is live on Railway (`origin/main` @ f816694; GAME_VERSION "v3 build 277";
 sw cache v277; all 62 `?v=b277` tags). Full headless suite green throughout. This run took the moving-platform

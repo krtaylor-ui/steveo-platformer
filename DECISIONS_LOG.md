@@ -1,6 +1,91 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# CAMPAIGN MODE — MVP (2026-07-28, build 278, branch `campaign-mode-mvp`)
+# ═══════════════════════════════════════════════════════════════════════
+Built the Campaign MVP per Kevin's "Campaign Mode MVP" brief (2026-07-27). A lightweight
+**Campaign container** (NOT a new physics mode): sequences existing Platformer worlds into
+Zones, routes their coloured Goal-Star exits, tracks progression. On a NEW branch per Kevin's
+note ("build in a new branch and we'll merge as we confirm working"). Headless suite green
+(test-campaign 28). Everything additive/opt-in — no existing mode touched.
+
+## Up-front questions (Kevin answered, 2026-07-28) — the 3 that changed the build
+- **Publish account = `krtaylor@gmail.com`** (not the session login Kevin.taylor@svx.ca). Hard-coded
+  as `ADMIN_EMAIL` in `server/campaign-routes.js`; only this account may publish, enforced server-side.
+- **Storage = server-backed Supabase** (`campaigns` + `campaign_progress` tables; `server/sql/campaigns.sql`).
+  Chosen over localStorage because "one published campaign system-wide, visible to all accounts" genuinely
+  needs the server (localStorage is per-device). Requires running the SQL migration in Supabase before use.
+- **Progression tracker = BOTH** a completion transition screen AND an on-demand pause-menu view (§9).
+
+## The §14 open-question interpretations (resolved by best judgment + documented, per the brief)
+- **Q0 — Goal Star 1's guided default vs "every exit explicitly resolved":** CONFIRMED interpretation —
+  nothing routes anywhere without a creator action *at some point*. Goal Star 1's guided "+" flow (pick the
+  next world) IS that explicit action; it's streamlined, not silent. Only Goal Star 1 of an IN-SEQUENCE
+  world auto-means "next in worldOrder"; a bonus (out-of-sequence) world's Goal Star 1 must be routed like
+  2–10 (see the outOfSequence decision below).
+- **Q1 — publish account:** answered above.
+- **Q2 — Boss World distinct flow:** BUILT as a genuinely separate guided flow (`_flowBossTransition` /
+  the `boss` flow kind), not a conditional bolted onto the normal "+" — the Boss World's Goal Star 1
+  transitions to the next Zone (or completes the Campaign), computed from `zoneOrder`.
+- **Q3 — default entry point for next-in-sequence:** CONFIRMED — the destination world's first entry point
+  (or the one flagged `isDefault`); `CAMPAIGN_MODEL.defaultEntryPointId`.
+- **Q4 — tracker triggers:** BOTH (Kevin confirmed).
+
+## Key design decisions found while wiring (flagged for playtest)
+- **Boss World is COMPUTED (last in `worldOrder`), never a manual flag (§4).** Adding a world shifts the
+  Boss designation automatically. Verified by test.
+- **Goal Star numbering reuses `GOAL_COLORS` 1:1** — "Goal Star N" == colour index (N−1); star 1 == Gold ==
+  index 0. `game._wonExitColor` (already recorded by the Phase-1 win code, builds 67–72) is the routing key.
+  `starIndexesFromWorldData` reads a world's placed stars from BOTH the grid (gold GOAL blocks) and the
+  `goalStars` array (non-gold colours), since `game-state` only serializes non-gold colours.
+- **Bonus levels are `outOfSequence` (NOT in `worldOrder`).** Otherwise adding a bonus world would shift the
+  computed Boss / extend the sequence. An out-of-sequence world belongs to a Zone for display grouping only,
+  is reachable solely via a route, and its Goal Star 1 must be explicitly routed (no auto next-in-seq).
+- **Play-time cross-owner world access:** a player running the PUBLISHED campaign doesn't own its worlds, so
+  the owner-gated `/api/worlds/sandbox/:id` can't serve them. Added `GET /api/campaigns/:id/world/:uid` which
+  serves a world's data ONLY if it's referenced by a campaign the requester can access (own or published).
+- **Carry-over (§7):** inventory + owned weapons are a TRUE carry (snapshot restored onto the fresh player,
+  overriding the level's starting loadout). Score = best-ever per world (`completedWorlds[id].bestScore`;
+  campaign total = sum). Emeralds/points/lives = running accumulators in `CampaignProgress`. Health resets
+  every world (a fresh Game). `resetInventoryAt` (never/per-world/per-zone) clears carry + running totals at
+  the boundary. **MVP simplification (flagged):** running emeralds/points are tracked in progress + shown on
+  the tracker, but NOT re-injected into a level's own emerald counter (that stays level-local) — avoids
+  double-counting against `EMERALD_SYSTEM.total`. Revisit if Kevin wants in-level running emeralds.
+- **Lives:** start = `startingLives` (default 3). Each death decrements; game-over (return to Campaign
+  select, offer Restart) when a death occurs at 0 lives → i.e. 3 respawns then out. In-world respawn is
+  otherwise unchanged (health resets).
+- **Game.js hooks are minimal + guarded (`this._campaign`):** constructor reads `options.campaign` (context
+  with onWin/onDeath), `options.campaignCarry` (snapshot), `options.campaignEntry` (spawn point). Win fires
+  `campaign.onWin` once (replaces the generic single-level win screen); `_doRespawn` calls `campaign.onDeath`
+  (returns false = out of lives, campaign takes over). `_applyCampaignEntry`/`_applyCampaignCarry`/
+  `campaignSnapshot` do the work. All no-ops outside a campaign — human/other-mode play is byte-identical.
+- **Progress persistence = the campaign-mode equivalent of the in-level autosave** (§7A): saved via
+  `CAMPAIGN_API.saveProgress` at each world transition, each death, and on exit — the natural trigger points
+  (the existing AUTO_SAVE game-slot path is for authed Normal/Platformer saves, not campaign runs). A manual
+  save/checkpoint system is deferred (roadmap).
+- **Publish policy enforcement is server-side:** `ADMIN_EMAIL` gate + a single-published invariant
+  (publishing one unpublishes all others). Deep goal-star validation runs client-side in the Builder before
+  the publish call (it has the world data); the server trusts that + owns the admin/single-published policy.
+- **Builder is reachable two ways** (§8 "Sandbox-accessible" + §10 menu): a "🎬 Campaign Builder" button on
+  the Sandbox browser header AND on the Campaign select screen. Any logged-in account can create/save/build
+  drafts; only the admin can publish.
+
+## What shipped / partial / needs playtest
+- **Shipped (headless-verified logic):** the full data model + routing + validation (28 tests); server tier
+  (routes load clean; needs the SQL migration applied in Supabase); the Builder, tracker, runtime, select
+  screen, dashboard entry, pause-menu button, and all game.js hooks (syntax-clean, additive).
+- **Browser-UNTESTED (inherently — canvas/DOM/round-trip):** the whole end-to-end Builder flow (create →
+  zone → sequence → bonus/connect routing → validation gate → publish), the play-through (world→exit→route→
+  next world, carry-over feel, entry-point spawn, lives/game-over), and the tracker rendering. Kevin will
+  playtest this end to end before merge to `main` (per his branch note).
+- **Deferred to roadmap (explicitly out of scope, §12/§13):** the Overhead Engine (its own major initiative),
+  unified whole-campaign graph view, whole-campaign multi-zone tracker, multi-user publishing + selection UI,
+  manual save/checkpoint, tracker image manual-dot-placement (the auto layout is the baseline; bg image is
+  drawn but manual dot placement isn't), native screen capture, image-to-block converter.
+- **SQL migration REQUIRED before use:** run `server/sql/campaigns.sql` in the Supabase SQL editor.
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # MOVING PLATFORMS — playtest + wrap-up (2026-07-28, builds 254–277, on `main`)
 # ═══════════════════════════════════════════════════════════════════════
 Playtest-driven iteration on the platform mega-session, then the remaining features. All shipped + deployed.

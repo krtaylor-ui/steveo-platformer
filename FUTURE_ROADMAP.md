@@ -611,11 +611,21 @@ Movement config keys to fold in: `airJumpEnabled`, `autoStepUp`, `wallSlideEnabl
 
 ---
 
-## 12. Campaign mode — sequenced levels with branching exits  *(vision agreed 2026‑07‑07; Phase 1 SHIPPED, builds 67–72; **Phase 2+ = NEXT — awaiting Kevin's detailed prompt, 2026‑07‑26**)*
+## 12. Campaign mode — sequenced levels with branching exits  *(vision agreed 2026‑07‑07; Phase 1 SHIPPED builds 67–72; **MVP SHIPPED build 278, 2026‑07‑28 — see below**)*
 
-> **STATUS 2026-07-26:** This is the next thing we build. Kevin is writing a large, detailed prompt for the
-> **Campaign Builder + campaign playthrough + main-landing-page changes**. Everything below is the standing
-> vision; treat Kevin's incoming prompt as authoritative where it differs. Don't start until it lands.
+> **STATUS 2026-07-28 — FINALIZED / SUPERSEDED.** The Campaign **MVP shipped** per Kevin's "Campaign Mode
+> MVP" brief (2026-07-27), on branch `campaign-mode-mvp` (build 278), awaiting his end-to-end playtest before
+> merge to `main`. What shipped: the Campaign container (Zones of sequenced Platformer worlds ending in a
+> computed Boss World), coloured Goal-Star exit routing (star 1 = next / boss→next-zone; 2–10 = bonus/connect,
+> incl. hidden secret routes), the **Campaign Builder** (Sandbox tool + Campaign screen: zone tabs, guided [+]
+> flows, publish validation gate), server-backed storage (`campaigns`/`campaign_progress`; only
+> `krtaylor@gmail.com` publishes, one live at a time), carry-over + best-ever-score + lives, and a per-zone
+> progression tracker (completion screen + pause menu). New files `js/campaign-{model,api,builder,tracker,
+> play,select}.js`, `server/campaign-routes.js`, `server/sql/campaigns.sql`; minimal additive game.js hooks.
+> Full rationale + every assumption in `DECISIONS_LOG.md` (Campaign MVP entry). **The Overhead Engine** (the
+> free-roam top-down world map / elevation / buildings / towers that Phase 4 below implied) was deliberately
+> **split off as its own major initiative — now §24 below.** The remaining Phase-1 vision text is kept for
+> provenance.
 
 Kevin's vision: a playable **sequence of levels** (Mario-Bros-style) where each level leads to the next,
 with **secret levels** and **skip paths** — the different coloured Goal Stars are the branch exits. This is
@@ -931,3 +941,102 @@ speed segments, launch platform, center of gravity, rail gate) plus everything b
 - **Platform physics feel** — max-rotation / slip angle / ice surfaces (Kevin deferred).
 - **Per-block-type weights** — `_blockWeight` exists but every type is 1; needs only a lookup table.
 - **Redstone dust placed ON TOP of devices** — the general form of the conduct toggle (Kevin floated it).
+
+---
+
+## 24. Overhead Engine — free-roam top-down substrate  *(split from Campaign §12 during the 2026-07-27 MVP design; the single largest / least-reuse initiative in the project's history)*
+
+**This is its own major project, NOT part of the Campaign MVP.** Campaign's MVP progression UI is a simple
+non-interactive per-zone dot tracker; the Overhead Engine is the future free-roam, top-down, spatial world.
+Kevin's explicit direction: build it as **one shared "Overhead Engine" substrate** (mirroring how Arena's
+Rules Engine made modes data-driven) with **Campaign's overworld map, Tower Defense, MOBA, Sports, and RTS**
+as different rulesets/configs ON TOP of one engine — not five separate top-down engines. **Honest scope
+note:** this is likely the least-code-reuse, highest-novel-complexity system we've attempted; the rendering
+foundation alone (grid / elevation / zoom-layers / autotile) probably deserves its own dedicated session
+BEFORE any placement/gameplay features are attempted.
+
+**Rendering foundation (do this first, on its own):**
+- **4-concept zoom model:** (1) **grid size** — fixed at world creation, sprite-unit based; (2) **grid
+  density** — 1×1 to 4×4 sub-block resolution per cell; (3) an **object-layer scale** that can be independent
+  of, or configurably track, the background layer's scale; (4) a separate **live master zoom** applied to
+  everything together.
+- **Elevation (2.5D "staircase" trick):** Y-offset per level + a cliff-face texture + draw-order sort by
+  (row + elevation); an **autotile system** for directional walls (bitmask tile selection from neighbouring
+  cells); per-world settings for how many elevation levels block line-of-sight / ranged attacks and how many
+  hide a character; explicit **Stairs / Ramp** placeables; a tiered **Auto-Climb** setting
+  (disabled / 1-level / 2-level / unlimited).
+
+**Content schema (designed so new types are DATA, not bespoke code — unlike the historical ad-hoc
+Nether/End/Wither portals):**
+- **Building taxonomy:** `category`, `footprint`, `blocksMovement`, `interactionType`
+  (`enter | interact-on-approach | passive-visual`), `skinVariants[]` (reusing the click-to-cycle pattern
+  from decorations), `elevationOffset`, `onInteract`. Future building types = new schema entries.
+- **Teleportation:** each zone/portal independently configures its OWN destination (NOT automatic
+  reading-order pairing — a deliberate departure from the Warp Pipe's simpler pairing, following the Nether
+  Portal precedent).
+
+**Gameplay layers (on top of the substrate):**
+- **Mob movement — a three-state cycle:** fixed-path (Tower Defense) → free-roam-on-detection (MOBA-style,
+  reusing the `roams: true` escape hatch already sketched in §4b) → **automatically resume fixed-path once no
+  enemies remain in detection range.** Roll out fixed-path first, then the reactive switch, then full
+  Smart-Mobs-style free-roam.
+- **Tower placement — a two-tier constraint model:** global per-world defaults (spacing, distance-from-path,
+  elevation restrictions), overridable **per tower TYPE** (e.g. a "floating tower" type ignoring normal
+  placement rules) — never per individual tower instance.
+- **Weapons:** a genuinely separate weapon system for the Overhead Engine (guns, magic, etc.) — not required
+  to mechanically match side-view combat; cross-view consistency (if a designer builds in both) is the
+  designer's responsibility, not the engine's.
+- **Multiplayer:** architect for it (the same way Arena's `players[]` model works), but solo-only is fine for
+  the initial build.
+- **Authoring tools:** brushes, templates, and similar productivity tooling for designers building these
+  larger/denser worlds.
+
+---
+
+## 25. Game Designer Wizard / disaster-check tool  *(first two checks now exist — Campaign MVP build 278)*
+
+A designer-facing "sanity wizard" that catches level/campaign mistakes before publish, growing incrementally
+as real mistakes surface. **Its first two concrete checks now exist**, in the Campaign publish validation
+gate (`CAMPAIGN_MODEL.validateForPublish`, §6 of the Campaign MVP brief): (1) every included World has at
+least one placed Goal Star; (2) every placed Goal Star has a resolved route. Future checks fold in here as
+patterns emerge (unreachable worlds, orphaned zones, a Goal-Star colour placed but no matching route type,
+soft-locks, etc.). **Tips/hints library seed:** the concrete sample tip already shipped in the Builder —
+*"place an early secret exit in a later World that loops back to an earlier completed one, since players can't
+otherwise revisit a completed World"* — is the first entry for a future contextual-tips library.
+
+---
+
+## 26. Native screen capture  *(idea captured 2026-07-27; V2+ polish, low–moderate effort)*
+
+Client-side gameplay recording with **no server involvement**: `canvas.captureStream()` + `MediaRecorder`,
+optionally routing game audio in via a `MediaStreamAudioDestinationNode`. A "Record" toggle + "Save Clip"
+button is a reasonable scope. Not critical.
+
+---
+
+## 27. Image-to-block converter  *(idea captured 2026-07-27)*
+
+A **decorative/mosaic** tool: downsample an uploaded image to a target grid resolution and match each cell to
+the nearest available block colour (colour quantization). **Explicitly a mosaic tool, NOT a level-structure
+generator** — inferring walls/spawns/gameplay from an arbitrary photo is a much harder, unreliable problem and
+is out of scope. Useful for both the existing side-view Sandbox and the future Overhead Engine (§24).
+
+---
+
+## 28. Manual save / checkpoint system for Campaign mode  *(deferred from the Campaign MVP, 2026-07-28)*
+
+Instead of (or alongside) the MVP's real-time autosave, let players choose explicit save points / checkpoints
+for more deliberate control over where a Campaign run resumes. The MVP uses autosave-at-transition (Kevin is
+fine with that for now); revisit once Campaign is live and there's real player feedback on whether autosave
+feels sufficient.
+
+---
+
+## 29. Multi-user Campaign publishing + selection UI  *(deferred from the Campaign MVP, 2026-07-28)*
+
+The Campaign MVP supports exactly ONE published campaign system-wide, publishable only by `krtaylor@gmail.com`
+(the data model + server routes already support many campaigns; only the publish policy is restricted). When
+publishing opens up beyond that single account, players need a UI to **browse/select among multiple published
+Campaigns** — likely modelled on the existing Community Browse / world-selection patterns. Lifting the
+restriction is a small server change (`ADMIN_EMAIL` gate + the single-published invariant in
+`server/campaign-routes.js`); the new selection/browse UI is the real work.
