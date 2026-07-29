@@ -363,7 +363,8 @@
     },
 
     // ── Configuration modals (portal/pipe, goal star, spawn) ───────────────────
-    _portalList() { return (this.world.buildings || []).filter((b) => b.typeId === 'portal' || b.typeId === 'pipe').map((b) => ({ key: b.col + ',' + b.row, label: (b.typeId === 'pipe' ? 'Pipe' : 'Portal') + ' @' + b.col + ',' + b.row })); },
+    _portalList() { let n = 0; return (this.world.buildings || []).filter((b) => b.typeId === 'portal' || b.typeId === 'pipe').map((b) => ({ key: b.col + ',' + b.row, n: ++n, label: '#' + n + ' ' + (b.typeId === 'pipe' ? 'Pipe' : 'Portal') + ' (' + b.col + ',' + b.row + ')' })); },
+    _portalNum(b) { const p = this._portalList().find((x) => x.key === b.col + ',' + b.row); return p ? p.n : '?'; },
     _buildingAt(col, row) { return (this.world.buildings || []).find((b) => { const t = OH_BUILDINGS.get(b.typeId); const w = t ? t.footprint.w : 1, h = t ? t.footprint.h : 1; return col >= b.col && col < b.col + w && row >= b.row && row < b.row + h; }); },
     _openConfigAt(col, row) {
       const b = this._buildingAt(col, row);
@@ -469,12 +470,13 @@
         if (elev > 0 && cs > 12) { ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.font = `${Math.max(7, cs * 0.28) | 0}px sans-serif`; ctx.textAlign = 'left'; ctx.fillText(String(elev), sp.x + 2, y + Math.max(9, cs * 0.36)); }
       }
       // Entities.
-      for (const b of this.world.buildings) { const t = OH_BUILDINGS.get(b.typeId); const w = (t ? t.footprint.w : 1) * cs, h = (t ? t.footprint.h : 1) * cs; const sp = S(b.col * g.cell, b.row * g.cell); OVERHEAD.drawBuilding(ctx, b.typeId, sp.x, sp.y, w, h, Math.min(1, cs / 28), b.skin || 'default'); }
+      for (const b of this.world.buildings) { const t = OH_BUILDINGS.get(b.typeId); const w = (t ? t.footprint.w : 1) * cs, h = (t ? t.footprint.h : 1) * cs; const sp = S(b.col * g.cell, b.row * g.cell); OVERHEAD.drawBuilding(ctx, b.typeId, sp.x, sp.y, w, h, Math.min(1, cs / 28), b.skin || 'default');
+        if ((b.typeId === 'portal' || b.typeId === 'pipe') && cs > 8) { ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.beginPath(); ctx.arc(sp.x + w / 2, sp.y + cs * 0.4, cs * 0.32, 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = `bold ${(cs * 0.4) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('#' + this._portalNum(b), sp.x + w / 2, sp.y + cs * 0.4); ctx.textBaseline = 'alphabetic'; } }
       for (const mo of this.world.mobs) { const d = P().OH_MOB_BY_KEY[mo.type] || P().OH_MOBS[0]; const sp = S((mo.col + 0.5) * g.cell, (mo.row + 0.5) * g.cell); ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(sp.x, sp.y, cs * 0.34, 0, 7); ctx.fill(); }
       for (const it of this.world.items) { const d = P().OH_ITEM_BY_KEY[it.itemKey] || P().OH_ITEMS[0]; const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(sp.x, sp.y, cs * 0.24, 0, 7); ctx.fill(); }
       for (const spn of (this.world.spawns || [])) { const sp = S((spn.col + 0.5) * g.cell, (spn.row + 0.5) * g.cell); ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; ctx.strokeRect(sp.x - cs * 0.42, sp.y - cs * 0.42, cs * 0.84, cs * 0.84); if (cs > 14) { ctx.fillStyle = '#4aa3ff'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('P1', sp.x, sp.y + 3); } }
       for (const rp of (this.world.ramps || [])) { const sp = S((rp.col + 0.5) * g.cell, (rp.row + 0.5) * g.cell); this._drawRampIcon(ctx, rp.kind, sp.x, sp.y, cs); }
-      if (this.world.goal) { const sp = S((this.world.goal.col + 0.5) * g.cell, (this.world.goal.row + 0.5) * g.cell); ctx.fillStyle = '#ffd700'; ctx.font = `${cs | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.35); }
+      if (this.world.goal) { const gc = (typeof GOAL_COLORS !== 'undefined' && GOAL_COLORS[this.world.goal.color || 0]) || { hex: '#ffd700' }; const sp = S((this.world.goal.col + 1) * g.cell, (this.world.goal.row + 1) * g.cell); ctx.fillStyle = gc.hex; ctx.font = `${(cs * 1.8) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.6); }
       // Live shape preview while dragging.
       if (this._shapeAnchor && this._shapeEnd) { ctx.fillStyle = 'rgba(120,180,255,.4)'; for (const p of this._shapeCells(this._shapeAnchor, this._shapeEnd)) { const sp = S(p.c * g.cell, p.r * g.cell); ctx.fillRect(sp.x, sp.y, cs, cs); } }
       // Info line.

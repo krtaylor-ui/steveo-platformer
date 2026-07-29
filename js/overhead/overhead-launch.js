@@ -32,9 +32,9 @@
       OH_BUILDINGS.place('portal', 34, 20),
     ].filter(Boolean);
     const mobs = [
-      { col: 20, row: 18, type: 'zombie', hp: 8, speed: 1.4, detect: 180 },
-      { col: 26, row: 8, type: 'spider', hp: 6, speed: 2.0, detect: 220 },
-      { col: 32, row: 6, type: 'skeleton', hp: 6, speed: 1.6, detect: 210, ranged: true },
+      { col: 20, row: 18, type: 'zombie' },
+      { col: 26, row: 8, type: 'spider' },
+      { col: 32, row: 6, type: 'skeleton' },
     ];
     const items = [
       { col: 9, row: 21, kind: 'coin', itemKey: 'coin' },

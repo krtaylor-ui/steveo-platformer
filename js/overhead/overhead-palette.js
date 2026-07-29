@@ -54,10 +54,11 @@
   const terrainColor = (key) => (OH_TERRAIN_BY_KEY[key] || OH_TERRAIN_BY_KEY[GROUND]).color;
 
   // ── Mobs (overhead set for now) ─────────────────────────────────────────────
+  // detect is in BLOCKS (× unit at runtime) — default ~10 player-blocks (§).
   const OH_MOBS = [
-    { key: 'zombie',   name: 'Zombie',   color: '#4a8a3a', hp: 8,  speed: 1.4, detect: 180 },
-    { key: 'skeleton', name: 'Skeleton', color: '#d8d8cf', hp: 6,  speed: 1.6, detect: 210, ranged: true },
-    { key: 'spider',   name: 'Spider',   color: '#3a3340', hp: 6,  speed: 2.0, detect: 230 },
+    { key: 'zombie',   name: 'Zombie',   color: '#4a8a3a', hp: 8,  speed: 1.4, detect: 10 },
+    { key: 'skeleton', name: 'Skeleton', color: '#d8d8cf', hp: 6,  speed: 1.6, detect: 12, ranged: true },
+    { key: 'spider',   name: 'Spider',   color: '#3a3340', hp: 6,  speed: 2.0, detect: 11 },
   ];
   const OH_MOB_BY_KEY = {}; OH_MOBS.forEach((m) => { OH_MOB_BY_KEY[m.key] = m; });
 

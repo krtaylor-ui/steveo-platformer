@@ -41,7 +41,7 @@
       this.items = (worldData.items || []).map((it) => ({ ...it, taken: false }));
       this.mobs = (worldData.mobs || []).map((m) => { const d = P().OH_MOB_BY_KEY[m.type] || P().OH_MOBS[0];
         return { ...m, x: (m.col + 0.5) * this.grid.cell, y: (m.row + 0.5) * this.grid.cell, r: this.unit * 0.34,
-          hp: m.hp || d.hp, speed: m.speed || d.speed, detect: (m.detect || d.detect) * (cfg.mobDetectMult || 1), ranged: !!d.ranged, state: 'path', wp: 0, dead: false, cool: 0 }; });
+          hp: m.hp || d.hp, speed: m.speed || d.speed, detect: (m.detect || d.detect || 10) * this.unit * (cfg.mobDetectMult || 1), ranged: !!d.ranged, state: 'path', wp: 0, dead: false, cool: 0, _wc: 0 }; });
       this.mode = worldData.mode || 'platformer';
       this.climbLevels = cfg.climbLevels != null ? cfg.climbLevels : 0;
       this.playerH = cfg.playerHeight != null ? cfg.playerHeight : 1;
@@ -53,10 +53,12 @@
       // Portals/pipes: map every footprint cell → the building, + each portal's
       // world-centre, so stepping onto one teleports (config.dest) or ends the
       // level (config.isGoal).
-      this._portalCells = new Map(); this._portalCenter = new Map(); this._portalCd = false;
+      this._portalCells = new Map(); this._portalCenter = new Map(); this._portalIndex = new Map(); this._portalCd = false; this._portalGlow = null;
+      let pIdx = 0;
       for (const b of this.buildings) if (b.typeId === 'portal' || b.typeId === 'pipe') {
         const t = OH_BUILDINGS.get(b.typeId), fw = t ? t.footprint.w : 1, fh = t ? t.footprint.h : 1;
         this._portalCenter.set(b.col + ',' + b.row, { x: (b.col + fw / 2) * this.grid.cell, y: (b.row + fh / 2) * this.grid.cell });
+        this._portalIndex.set(b.col + ',' + b.row, ++pIdx);
         for (let dr = 0; dr < fh; dr++) for (let dc = 0; dc < fw; dc++) this._portalCells.set((b.col + dc) + ',' + (b.row + dr), b);
       }
 
@@ -149,16 +151,26 @@
       // Mobs + projectiles.
       this._updateMobs(); this._updateProjectiles();
 
-      // Portals / pipes: teleport to the linked one, or end the level if flagged.
+      // Portals / pipes. A PIPE needs the Action button (E); a PORTAL triggers on
+      // walk. Teleporting glows both ends purple briefly.
       { const pc = this._cellOf(p.x, p.y); const port = this._portalCells.get(pc.col + ',' + pc.row);
+        if (this._portalGlow && --this._portalGlow.t <= 0) this._portalGlow = null;
         if (port && !this._portalCd) {
-          const cfg = port.config || {};
-          if (cfg.isGoal) { this._wonExitColor = (this.goal && this.goal.color) || 0; this._win(); }
-          else if (cfg.dest && this._portalCenter.has(cfg.dest)) { const d = this._portalCenter.get(cfg.dest); p.x = d.x; p.y = d.y; const c = this._cellOf(d.x, d.y); p.elev = this._elev(c.col, c.row); this._portalCd = true; }
+          const cfg = port.config || {}, isPipe = port.typeId === 'pipe';
+          const trigger = isPipe ? !!intent.action : true;
+          if (trigger) {
+            if (cfg.isGoal) { this._wonExitColor = (this.goal && this.goal.color) || 0; this._win(); }
+            else if (cfg.dest && this._portalCenter.has(cfg.dest)) {
+              const d = this._portalCenter.get(cfg.dest); const srcKey = port.col + ',' + port.row;
+              p.x = d.x; p.y = d.y; const c = this._cellOf(d.x, d.y); p.elev = this._elev(c.col, c.row); this._portalCd = true;
+              this._portalGlow = { keys: [srcKey, cfg.dest], t: 42 };
+            }
+          }
         } else if (!port) this._portalCd = false; }
 
       if ((this.mode === 'platformer' || this.mode === 'campaign') && this.goal) {
-        const c = this._cellOf(p.x, p.y); if (c.col === this.goal.col && c.row === this.goal.row) { this._wonExitColor = this.goal.color || 0; this._win(); }
+        const c = this._cellOf(p.x, p.y); // goal is a 2×2 region from its anchor
+        if (c.col >= this.goal.col && c.col < this.goal.col + 2 && c.row >= this.goal.row && c.row < this.goal.row + 2) { this._wonExitColor = this.goal.color || 0; this._win(); }
       }
       this.camera = OH_GRID.centerOn(this.grid, p.x, p.y, CANVAS_W, CANVAS_H);
     }
@@ -227,7 +239,7 @@
       this._mobBolts = this._mobBolts.filter((b) => !b.dead);
     }
 
-    _doAction(p) { let near = null, nd = 1e9; for (const b of this.buildings) { const bx = (b.col + 0.5) * this.grid.cell, by = (b.row + 0.5) * this.grid.cell; const d = Math.hypot(bx - p.x, by - p.y); if (d < this.unit * 2 && d < nd) { near = b; nd = d; } } if (near) { const t = OH_BUILDINGS.get(near.typeId); this._notify((t ? t.category : 'Building') + ': ' + near.typeId, 90); } }
+    _doAction(p) { let near = null, nd = 1e9; for (const b of this.buildings) { if (b.typeId === 'portal' || b.typeId === 'pipe') continue; const bx = (b.col + 0.5) * this.grid.cell, by = (b.row + 0.5) * this.grid.cell; const d = Math.hypot(bx - p.x, by - p.y); if (d < this.unit * 2 && d < nd) { near = b; nd = d; } } if (near) { const t = OH_BUILDINGS.get(near.typeId); this._notify((t ? t.category : 'Building') + ': ' + near.typeId, 90); } }
     _pickups(p) { for (const it of this.items) { if (it.taken) continue; const ix = (it.col + 0.5) * this.grid.cell, iy = (it.row + 0.5) * this.grid.cell; if (Math.hypot(ix - p.x, iy - p.y) < p.r + this.unit * 0.4) { it.taken = true; if (it.kind === 'weapon') { p.weapon = it.weapon; this._notify('Equipped ' + it.weapon, 120); } else this._notify('Coin!', 60); } } }
 
     _updateMobs() {
@@ -236,10 +248,15 @@
         const d = Math.hypot(p.x - m.x, p.y - m.y);
         if (d < m.detect) m.state = 'chase'; else if (m.state === 'chase') m.state = 'path';
         if (m.ranged && m.state === 'chase' && d < m.detect && m.cool === 0) { const ang = Math.atan2(p.y - m.y, p.x - m.x); this._mobBolts.push(Object.assign(OH_WEAPONS.startBolt(m.x, m.y, ang, { crossbowSpeed: 6, crossbowRange: m.detect + 40 }), { owner: 'm' })); m.cool = 90; }
-        let tx = m.x, ty = m.y;
-        if (m.state === 'chase') { tx = p.x; ty = p.y; }
-        const ang = Math.atan2(ty - m.y, tx - m.x);
-        if (m.state === 'chase' && !(m.ranged && d < m.detect * 0.6)) { this._moveWithCollision(m, Math.cos(ang) * m.speed, Math.sin(ang) * m.speed, false); m._dist = (m._dist || 0) + m.speed; m._moveAngle = ang; }
+        if (m.state === 'chase') {
+          const ang = Math.atan2(p.y - m.y, p.x - m.x);
+          if (!(m.ranged && d < m.detect * 0.6)) { this._moveWithCollision(m, Math.cos(ang) * m.speed, Math.sin(ang) * m.speed, false); m._dist = (m._dist || 0) + m.speed; m._moveAngle = ang; }
+        } else {
+          // Idle WANDER — pick a random heading for a while, amble at ~40% speed.
+          m._wc = (m._wc || 0) - 1;
+          if (m._wc <= 0) { m._wanderAngle = Math.random() * Math.PI * 2; m._wc = 50 + (Math.random() * 90 | 0); if (Math.random() < 0.3) m._wc = 30, m._wanderAngle = null; }
+          if (m._wanderAngle != null) { const ws = (m.speed || 1) * 0.4; const bx = m.x, by = m.y; this._moveWithCollision(m, Math.cos(m._wanderAngle) * ws, Math.sin(m._wanderAngle) * ws, false); if (m.x === bx && m.y === by) m._wc = 0; else { m._dist = (m._dist || 0) + ws; m._moveAngle = m._wanderAngle; } }
+        }
         if (d < m.r + p.r && p.iFrames === 0) this._hurt(3, 'Hit by a mob');
       }
     }
@@ -296,7 +313,7 @@
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(tc, sx, sy, sw, sh, 0, 0, CANVAS_W, CANVAS_H);
       for (const rp of this._rampList) { const sp = S((rp.col + 0.5) * g.cell, (rp.row + 0.5) * g.cell); OVERHEAD.drawRampIcon(ctx, rp.kind, sp.x, sp.y, cs); }
-      if (this.goal) { const sp = S((this.goal.col + 0.5) * g.cell, (this.goal.row + 0.5) * g.cell); ctx.fillStyle = '#fff6b0'; ctx.font = `${(cs * 0.9) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.32); }
+      if (this.goal) { const gc = (typeof GOAL_COLORS !== 'undefined' && GOAL_COLORS[this.goal.color || 0]) || { hex: '#ffd700' }; const sp = S((this.goal.col + 1) * g.cell, (this.goal.row + 1) * g.cell); ctx.fillStyle = gc.hex; ctx.font = `${(cs * 1.8) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.62); }
       // Entities sorted by (row + elev).
       const ents = [];
       for (const b of this.buildings) ents.push({ kind: 'b', row: b.row, level: b.level || 0, ref: b });
@@ -304,6 +321,13 @@
       for (const m of this.mobs) if (!m.dead) ents.push({ kind: 'm', row: (m.y / g.cell) | 0, level: m.elev || 0, ref: m });
       ents.push({ kind: 'p', row: (this.player.y / g.cell) | 0, level: this.player.elev, ref: this.player });
       OH_ELEV.sortForDraw(ents).forEach((e) => this._drawEntity(e, S, z, cs));
+      // Portal/pipe # badges + a purple glow on the ends of an active teleport.
+      for (const b of this.buildings) if (b.typeId === 'portal' || b.typeId === 'pipe') {
+        const t = OH_BUILDINGS.get(b.typeId), fw = (t ? t.footprint.w : 1), fh = (t ? t.footprint.h : 1);
+        const key = b.col + ',' + b.row, sp = S((b.col + fw / 2) * g.cell, (b.row + fh / 2) * g.cell);
+        if (this._portalGlow && this._portalGlow.keys.indexOf(key) >= 0) { const a = 0.35 + 0.35 * Math.sin(this._portalGlow.t * 0.5); ctx.fillStyle = `rgba(180,90,230,${a})`; ctx.beginPath(); ctx.ellipse(sp.x, sp.y, fw * cs * 0.5, fh * cs * 0.5, 0, 0, 7); ctx.fill(); }
+        if (cs > 8) { const n = this._portalIndex.get(key); ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.beginPath(); ctx.arc(sp.x, sp.y - fh * cs * 0.4, cs * 0.34, 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = `bold ${(cs * 0.42) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('#' + n, sp.x, sp.y - fh * cs * 0.4); ctx.textBaseline = 'alphabetic'; }
+      }
       // Projectiles.
       ctx.fillStyle = '#eee'; for (const b of this._bolts) { const s = S(b.x, b.y); ctx.fillRect(s.x - 2, s.y - 2, 4, 4); }
       ctx.fillStyle = '#f88'; for (const b of this._mobBolts) { const s = S(b.x, b.y); ctx.fillRect(s.x - 2, s.y - 2, 4, 4); }
