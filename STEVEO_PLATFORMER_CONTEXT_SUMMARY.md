@@ -1,4 +1,19 @@
-## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE bug fixes + stacked-cube terrain + hand tool (build 287) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE portals/detection/jump polish (build 288) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+
+Third feedback batch. Suite green.
+- **Test-mode God toggle** (invincible). **Mob detection** = absolute blocks setting (default 10),
+  replacing the scale factor.
+- **Portals/pipes** = proximity + **E** button (both), with a "Press E" glow prompt — fixes the trigger
+  offset + accidental walk-through. Portal drawn as a **4×5 obsidian frame** w/ purple centre + **Two-way** link.
+- **Trident/boomerang** rebound off too-high walls. **Double jump** is a setting (default on) + spin.
+- **Trees** relative to ground elev (leaves only 3 & 4). **3D ramp wedge.** Hazard-striped **map-edge**
+  indicator. Buildings non-solid for now.
+Detail in `DECISIONS_LOG.md` (Overhead Engine — Portals / Detection / Jump Polish). Deferred: prism ramp,
+day/night+shadows (§34), block-based solid buildings, scrollbars.
+
+---
+
+## PRIOR STATE (2026-07-29) — OVERHEAD ENGINE bug fixes + stacked-cube terrain + hand tool (build 287) on branch `overhead-engine` — NOT merged, browser-UNTESTED
 
 Second feedback batch. Suite green. Fixed 3 blocking bugs + big render change + editor tools.
 - **Mobs move** now (they lacked an `elev` field → collision NaN-blocked them) + wander when idle.

@@ -1,6 +1,41 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD ENGINE — PORTALS / DETECTION / JUMP POLISH (2026-07-29, build 288, branch `overhead-engine`)
+# ═══════════════════════════════════════════════════════════════════════
+Third playtest-feedback batch. Suite green. Notable model/UX changes below.
+
+- **Test-mode GOD toggle:** a top-left "God" button in test mode → `_god` makes `_hurt` a no-op.
+- **Mob detection = absolute BLOCKS setting** (`mobDetectBlocks`, default 10), replacing the
+  `mobDetectMult` scale factor that felt unresponsive ("dropped below 1, no change"). detect =
+  blocks × unit, applied uniformly (per-mob palette detect no longer used at runtime).
+- **Portals/pipes → PROXIMITY + E (both types).** Replaced step-on-cell triggering (which caused the
+  "few blocks below" offset — the cube render shifts the visual up-left while the trigger cell was the
+  grid cell — and let the player run through while fleeing). Now: the nearest portal within ~1.4 units
+  shows a pulsing purple glow + a "Press E" prompt; E teleports (or ends the level). A leave-range guard
+  stops instant re-triggering at the destination. Fixes the offset + the accidental walk-through.
+- **Buildings all NON-solid again** (Kevin's current expectation; block-based solid buildings are a later
+  roll-out). `_buildingSolidAt` → false. Terrain walls still block (that's the terrain-collision fix).
+- **Trident + boomerang honor the wall-height** (`_boltWalled`, leaves-exempt): a trident that hits a
+  too-high wall recalls; a boomerang cut short on the way out flips to its return leg. Both come home.
+- **Double jump = world setting** (`doubleJump`, default on) + a whole-body SPIN animation (`opts.spin`
+  rotates the sprite ~1.5 turns over the post-flip airtime).
+- **Portal = 4×5 OBSIDIAN FRAME** (border obsidian + glowing-purple 2×3 interior), each drawn as a small
+  3D block-cube (up-left offset) to echo the side-view portal. footprint 4×5. **Two-way** config option
+  links the destination back so it teleports both directions.
+- **Trees** place relative to the CLICK CELL's ground elevation (not the paint-elevation selector), so
+  leaves land only on levels 3 (Ø5 ring) & 4 (the 8 cells around the trunk); trunk = log, base+2.
+- **3D ramp wedge:** sloped top rising toward the high side + a dark high-end face + step lines
+  (oriented by `rampDir`). Closer to Kevin's prism; the fully cube-integrated prism is still a refinement.
+- **Map-edge indicator:** a hazard-striped (yellow/black) band just outside the world bounds in the
+  editor — deliberately not a block look — so the creator sees the real edge (chosen over scrollbars).
+- **Pipe landing:** teleport lands exactly on the destination centre + re-derives elevation; with the
+  fixed terrain collision + the leave-range guard, the "land outside / cross a wall" issue should be gone.
+- **DEFERRED still:** full cube-integrated prism ramp; day/night + dynamic shadows (§34); block-based
+  solid buildings; scrollbars.
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD ENGINE — BUG FIXES + STACKED-CUBE TERRAIN + HAND TOOL (2026-07-29, build 287, branch `overhead-engine`)
 # ═══════════════════════════════════════════════════════════════════════
 Second playtest-feedback batch. Suite green. The three blocking BUGS traced + fixed, plus a big render
