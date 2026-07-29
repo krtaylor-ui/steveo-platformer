@@ -1,6 +1,45 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# MOVING PLATFORMS — playtest + wrap-up (2026-07-28, builds 254–277, on `main`)
+# ═══════════════════════════════════════════════════════════════════════
+Playtest-driven iteration on the platform mega-session, then the remaining features. All shipped + deployed.
+
+- **Moving-redstone "cross-lighting" saga (root causes, 262–268).** Lamps that weren't wired lit up when a
+  platform crossed a Y. NOT propagation logic — it was stale/positional lookup: `getAt`'s `_map` went stale
+  after carried components' col/row were mutated (→ added `redstone.reindex()`); the platform cell used the raw
+  rail position not the anchor block cell (→ `_platCell`); the carry re-key wasn't collision-safe (delete-all-
+  then-set-all); and the dust chain used a hardcoded +6 frame delay (→ `_rsStepFrames()` + INSTANT propagation
+  while a platform carries redstone). The FINAL residual case (Super Mario 1-1, build 275) was different again:
+  the lamps were a moving platform's own blocks, and `_platformCellState` re-resolved lamp COLOUR via `getAt`
+  at the moved cell → snapshot `cell.lampColor` at load instead (colour is immutable at runtime). 276 extended
+  this to on-state via a captured `cell.lampComp` reference. **Lesson:** for anything rendered at a moving
+  position, read from a stable captured reference, never a positional lookup.
+- **Delete Whole Platform (269), not just data-hygiene.** Plain "Remove" only unbound the anchor and left the
+  build + redstone in the maps — the accumulation source of the cross-lighting. Chose an explicit full-teardown
+  button over silent auto-cleanup so it's a deliberate designer action.
+- **Conduct = instant flood, relay gated to EXPLICIT conduct (271).** `_applyConductGroup` floods conduct-
+  enabled devices and sets the whole group in one pass (no per-hop delay — Kevin dislikes propagation lag).
+  Sinks default conduct=true (preserves build-265 all-sink behavior); sources opt-in. CRITICAL: the relay-to-
+  neighbors (`comp._netOn` in `_adjacentGeneratorPower`/gates/`_cellPowered`) is gated on `conduct === true`
+  (explicit, not defaulted) so an untouched lit lamp never arms adjacent TNT — no 265 regression. Network reads
+  dust but never writes it (no feedback); energization test passes `noConductRelay` (no self-latch).
+- **Skins = incremental `skin` field, PNG-ready — NOT a full engine (Kevin's call).** A `skin` value = null /
+  a BLOCK id / an animated string marker (`wheel`/`pointer`/`steering`). Stored on components (weight/plate),
+  the platform record (anchor), and dir-controller config. The endgame (creator PNG uploads) reuses the same
+  field with no data-model change. Animated anchor/direction skins drive off real movement (`_updateBlockAnim`).
+- **Sticky config (273/274).** Remember a block's config while its modal is open, apply at placement
+  (`_rememberBlockConfig`/`_applyBlockDefaults`); extended to brush + Shift-drag via `_ensureRsComponent`
+  (that path never created the component before). "Last-touched wins" per type.
+- **Rail Switch = a rail with `isSwitch` (277), not a parallel system.** Reuses the rail/platform core:
+  `_railPts` recomputes pivot→lerp(A,B,anim) each frame. Rail-to-rail hand-off (`_transferPlatform`) is GATED
+  to only fire when a switch is on one side → plain rail↔rail behavior is unchanged. Flips on listen channel OR
+  adjacent redstone (Kevin wanted both).
+- **Palette reorg (273):** "Overworld"→"World" (now includes nether blocks with a nether-tinted icon bg, palette-
+  only); new "Red Stone" tab (dust→sources→Tx/Rx→sinks→logic). Tab count stayed 6 so geometry was untouched.
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # COMBAT/CONTROLS FOLLOW-UP (2026-07-20, build 180+, branch `combat-controls-mega`)
 # ═══════════════════════════════════════════════════════════════════════
 Bug-fix + polish follow-up to the mega-session, from Kevin's first playtest. Phases A→G.

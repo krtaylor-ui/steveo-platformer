@@ -1,4 +1,48 @@
-## CURRENT STATE (2026-07-28) — MOVING PLATFORMS system SHIPPED (builds 245–253) to `main` + deployed ⚠️ browser-UNTESTED
+## CURRENT STATE (2026-07-28) — MOVING PLATFORMS playtested + wrapped up (builds 254–277) SHIPPED to `main` + deployed ✅
+
+Everything through **build 277** is live on Railway (`origin/main` @ f816694; GAME_VERSION "v3 build 277";
+sw cache v277; all 62 `?v=b277` tags). Full headless suite green throughout. This run took the moving-platform
+core (245–253) through playtest-driven fixes and then added the remaining features — the platform system is now
+considered **feature-complete**.
+
+**Playtest fixes + moving-redstone (254–268):** config MODALS/popups for every new block (replaced multi-click),
+rail draft dots now show live, Open/Closed loop is automatic (endpoints coincide), angled rails + travel tubes,
+smoother vertical/diagonal ride with persistent rider attachment + edge-grab that travels with the platform,
+animated platform DESTRUCTION (shatter debris) with damped bounce, Launch Ramp made directional + power-tunable
+(1.0×+), and the big **moving-redstone** effort: redstone rides + functions on a moving platform. Root causes
+fixed for the "lamp cross-lighting" saga = stale `getAt` index (`redstone.reindex()`), rail-vs-anchor cell offset
+(`_platCell`), collision-safe re-key, and hardcoded chain delay → `_rsStepFrames()` + INSTANT propagation while a
+platform carries redstone. **All-sink conduction** (lamps/trapdoors/pistons conduct); **"instant"** redstone speed
+option, moved to the World tab.
+
+**Feature builds (269–277):**
+- **269 Delete Whole Platform** — Anchor modal button that purges the whole build + all its redstone (fixed the
+  orphaned-component class behind the cross-lighting; plain "Remove" only unbinds).
+- **270 Weight Sensor** (`BLOCK.WEIGHT_PLATE`) — solid stand-on-top block, players/mobs/both trigger; smooth
+  platform-surface detection (no flicker); also fixed pressure-plate-on-platform flicker.
+- **271 Conduct toggle on every device + block SKINS** — conduct network (`_applyConductGroup`, instant flood,
+  relay gated to explicit conduct so untouched sinks keep 265 behavior); per-block `skin` field (weight/plate)
+  rendered in editor+play; PNG-upload-ready.
+- **272 Animated skins** — Anchor→Wheel (spins with travel), Direction→Pointer/Steering (faces movement).
+- **273 Sticky config + palette reorg** — next placed block inherits last config; "Overworld"→"World" tab now
+  holds nether blocks (nether-tinted icons, palette-only); new "Red Stone" tab (dust→sources→Tx/Rx→sinks→logic).
+- **274** sticky config extended to brush + Shift-drag placement (`_ensureRsComponent`).
+- **275** fix: platform lamps turning red/off while moving (colour snapshot `cell.lampColor`).
+- **276** Tier-1 polish — anchor/direction skins render in the editor; lamp on+colour read from captured component.
+- **277 BRANCHING RAILS / Rail Switch** (`BLOCK.RAIL_SWITCH`) — pivot + 2 routes, rotates A↔B (flips on listen
+  channel OR adjacent redstone), with rail-to-rail hand-off at coincident terminals (guarded to switch-involved).
+
+**Test files added this arc:** `test-moving-platform` (24), `test-weight-sensor` (11), `test-conduct` (16),
+`test-block-skins` (20), `test-rail-switch` (13).
+
+**Deferred Tier-2 (not built — pull in when a level needs them):** platform physics feel (max-rotation / slip
+angle / ice surfaces); TNT-launcher / player-buildable platforms; the general "redstone dust ON TOP of devices".
+**Natural next step:** a showcase world + a short in-game help page for the platform system. See `DECISIONS_LOG.md`
++ the `skins-and-conduct` auto-memory for design rationale.
+
+---
+
+## PRIOR STATE (2026-07-28) — MOVING PLATFORMS core (builds 245–253) — now playtested; superseded by 254–277 above
 
 Overnight mega-session (P1+P2+P3) built the entire remaining moving-platform system, on `main`,
 live on Railway. **All builds 245–253 are browser-UNTESTED** — the headless suite is green

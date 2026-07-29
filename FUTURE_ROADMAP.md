@@ -904,29 +904,30 @@ each other; multiplayer (do all riders move; who "owns" a rider‑powered platfo
 
 ---
 
-## Moving Platforms — deferred follow-ups (from the P1+P2+P3 mega session, builds 245–253)
+## Moving Platforms — status (mega session builds 245–253 → playtest + wrap-up 254–277)
 
-The core moving-platform system shipped (rail, anchor, platform, carrying, pause nodes,
-multi-platform weight collision, direction controller, speed segments, launch platform,
-center of gravity, rail gate). These pieces were deliberately deferred:
+**The moving-platform system is now FEATURE-COMPLETE and shipped/deployed (through build 277).** Core
+(rail, anchor, platform, carrying, pause nodes, multi-platform weight collision, direction controller,
+speed segments, launch platform, center of gravity, rail gate) plus everything below.
 
-- **§7 Switchable Rail Segment — SWITCH (fork/branching) mode.** Needs the rail data model to
-  support a junction with two downstream continuations. Rails are currently a single linear
-  `cells` polyline. Shipped: the Gate (block/allow) mechanic. To do: a real branch node +
-  per-branch geometry + a signal selecting the active branch.
+**✅ SHIPPED since the mega session:**
+- **§7 Switchable Rail Segment — SWITCH / branching (build 277).** `BLOCK.RAIL_SWITCH`: a pivoting
+  2-point rail (pivot → live route end) that rotates A↔B (flips on listen channel OR adjacent redstone),
+  with rail-to-rail hand-off at coincident terminals. Integrated via `isSwitch` on the `_rails` model.
+- **On-platform physical redstone (builds 262–268).** Redstone now rides + FUNCTIONS on a moving
+  platform (captured into `_carriedRs`, re-keyed each cell-crossing, INSTANT propagation while carried).
+  The Direction Controller can now also read adjacent on-platform inputs, not only wireless channels.
+- **Weight Sensor (270), conduct toggle on all devices (271), animated + block skins (271/272),
+  sticky config (273/274), platform-lamp render fixes (275/276), Delete Whole Platform (269).**
+
+**Still deferred (pull in when a level needs them):**
 - **§7 — the 4 ANIMATED visual styles** (Drawbridge / Rise-from-Below / Extend-Retract /
-  Dissolve-Materialize) and the transition-duration "arrived too early → platform falls" race.
-  Shipped: Instant (zero-duration) only. To do: per-style tween + the fall-through when a
-  platform reaches a segment mid-transition.
-- **§12 TNT Launcher** — a placeable that launches TNT at incoming mobs/platforms. This is also
-  the feature that motivates LIVE/dynamic platform-connectivity recompute (platform blocks can be
-  destroyed mid-game), which the current "flood-fill once at load" model does not do.
-- **§12 In-game / player-buildable platforms** (e.g. Normal mode) — this session is Sandbox-only
-  authoring; platforms are frozen once a level is played. A player-side build mode is a future idea.
-- **§12 One-Way Gate segments** and **Platform Coupling** (two platforms temporarily linking on
-  collision) — discussed, deliberately out of scope; captured here only.
-- **On-platform physical redstone** (pressure plates / dust that MOVE with the platform). The
-  Direction Controller uses wireless transmitter channels instead, because redstone is grid-
-  anchored and can't ride a moving group. Tied to the same live-recompute work as the TNT Launcher.
-- **Per-block-type weights** — the weight system is built (`_blockWeight`) but every type is 1
-  today. Tuning individual block weights needs only a lookup table, no rework.
+  Dissolve-Materialize) + the "arrived mid-transition → platform falls" race. (The Rail Switch covers
+  branching; these are the *decorative* appear/rotate styles.)
+- **§12 TNT Launcher** — motivates LIVE/dynamic platform-connectivity recompute (destroyable platform
+  blocks mid-game), which the "flood-fill once at load" model does not do.
+- **§12 In-game / player-buildable platforms** (authoring is Sandbox-only today).
+- **§12 One-Way Gate segments** and **Platform Coupling** — out of scope, captured only.
+- **Platform physics feel** — max-rotation / slip angle / ice surfaces (Kevin deferred).
+- **Per-block-type weights** — `_blockWeight` exists but every type is 1; needs only a lookup table.
+- **Redstone dust placed ON TOP of devices** — the general form of the conduct toggle (Kevin floated it).
