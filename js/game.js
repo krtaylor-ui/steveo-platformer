@@ -55,6 +55,20 @@ const SKIN_OPTIONS = [
   { label: 'Log',     block: BLOCK.OAK_LOG },
   { label: 'Grass',   block: BLOCK.GRASS },
 ];
+// §Animated skins — a `skin` value can be null (default sprite), a BLOCK id (render as that block), or
+// one of these string markers (a custom animated renderer). Anchor + Direction blocks offer them.
+const ANCHOR_SKINS = [
+  { label: 'Default', block: null },
+  { label: 'Wheel',   block: 'wheel' },   // spins as the platform moves
+  { label: 'Wood',    block: BLOCK.OAK_PLANKS },
+  { label: 'Stone',   block: BLOCK.STONE },
+];
+const DIR_SKINS = [
+  { label: 'Default',  block: null },
+  { label: 'Pointer',  block: 'pointer' },   // dial + needle pointing along travel
+  { label: 'Steering', block: 'steering' },  // steering wheel rotated toward travel
+  { label: 'Wood',     block: BLOCK.OAK_PLANKS },
+];
 
 class Game {
   constructor(mode = 'normal', options = {}, onReturnToMenu = null) {
@@ -8168,12 +8182,12 @@ class Game {
       this._platforms = data.platforms.map(p => ({ id: p.id, railId: p.railId, anchorCol: p.anchorCol, anchorRow: p.anchorRow,
         anchorDist: p.anchorDist || 0, cells: p.cells || [], initialDir: p.initialDir || 1, mode: p.mode || 'continuous',
         signalResponse: p.signalResponse || 'sustained', returnMode: p.returnMode || 'roundtrip', speed: p.speed || 2,
-        dirCtrl: p.dirCtrl || null, cog: !!p.cog }));
+        dirCtrl: p.dirCtrl || null, cog: !!p.cog, skin: p.skin || null }));
       this._nextPlatformId = this._platforms.reduce((m, p) => Math.max(m, p.id || 0), 0);
     }
     if (data && Array.isArray(data.dirControllers)) {
       this._dirControllers = new Map();
-      for (const d of data.dirControllers) this._dirControllers.set(d.col + ',' + d.row, { col: d.col, row: d.row, lCh: d.lCh ?? null, rCh: d.rCh ?? null });
+      for (const d of data.dirControllers) this._dirControllers.set(d.col + ',' + d.row, { col: d.col, row: d.row, lCh: d.lCh ?? null, rCh: d.rCh ?? null, skin: d.skin || null });
     }
     if (data && Array.isArray(data.speedSegs)) {
       this._speedSegs = data.speedSegs.map(s => ({ id: s.id, railId: s.railId, cells: s.cells || [], targetSpeed: s.targetSpeed }));
@@ -18485,6 +18499,53 @@ class Game {
   }
   _platformAt(row, col) { return (this._platforms || []).find(p => p.anchorRow === row && p.anchorCol === col) || null; }
 
+  // §Skins — resolve a platform cell's skin: null (default sprite), a BLOCK id (render as that block),
+  // or a string marker ('wheel'/'pointer'/'steering') for an animated custom renderer.
+  _cellSkin(pl, c) {
+    const b = c.blockType;
+    if (b === BLOCK.ANCHOR_BLOCK) return pl.skin || null;
+    if (b === BLOCK.DIRECTION_CONTROLLER) { const dc = (pl._dirCtrls || []).find(d => d.dcol === c.dcol && d.drow === c.drow); return (dc && dc.skin) || null; }
+    if (b === BLOCK.WEIGHT_PLATE || b === BLOCK.PRESSURE_PLATE) { const { acol, arow } = this._platCell(pl); const sc = this.redstone.getAt(acol + c.dcol, arow + c.drow); return (sc && sc.skin) || null; }
+    return null;
+  }
+  // A cart wheel that rolls: tyre + hub + spokes rotated by `angle`.
+  _drawWheel(ctx, px, py, s, angle) {
+    const cx = px + s / 2, cy = py + s / 2, r = s / 2 - 2;
+    ctx.save();
+    ctx.fillStyle = '#2a2a30'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();      // tyre
+    ctx.fillStyle = '#6b5030'; ctx.beginPath(); ctx.arc(cx, cy, r - 4, 0, Math.PI * 2); ctx.fill();  // rim (wood)
+    ctx.translate(cx, cy); ctx.rotate(angle);
+    ctx.strokeStyle = '#3a2c18'; ctx.lineWidth = 2;
+    for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * (r - 5), Math.sin(a) * (r - 5)); ctx.stroke(); }
+    ctx.fillStyle = '#c9c9d0'; ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();          // hub
+    ctx.restore();
+  }
+  // A dial with a needle pointing along `angle` (radians, screen space — +x right, +y down).
+  _drawPointerDial(ctx, px, py, s, angle) {
+    const cx = px + s / 2, cy = py + s / 2, r = s / 2 - 2;
+    ctx.save();
+    ctx.fillStyle = '#20242e'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#4a5568'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, r - 1, 0, Math.PI * 2); ctx.stroke();
+    for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; ctx.strokeStyle = '#3a4252'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * (r - 2), cy + Math.sin(a) * (r - 2)); ctx.lineTo(cx + Math.cos(a) * (r - 4), cy + Math.sin(a) * (r - 4)); ctx.stroke(); }
+    ctx.translate(cx, cy); ctx.rotate(angle);
+    ctx.fillStyle = '#ff5a4a'; ctx.beginPath(); ctx.moveTo(r - 3, 0); ctx.lineTo(-3, -4); ctx.lineTo(-3, 4); ctx.closePath(); ctx.fill();   // needle
+    ctx.fillStyle = '#e6e6ee'; ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  // A steering wheel rotated toward `angle` — rim + hub + three spokes.
+  _drawSteering(ctx, px, py, s, angle) {
+    const cx = px + s / 2, cy = py + s / 2, r = s / 2 - 2;
+    ctx.save();
+    ctx.translate(cx, cy); ctx.rotate(angle);
+    ctx.strokeStyle = '#1c1c22'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(0, 0, r - 2, 0, Math.PI * 2); ctx.stroke();  // rim
+    ctx.strokeStyle = '#3a6ea5'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, r - 2, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineWidth = 3; ctx.strokeStyle = '#2b527a';
+    for (const a of [0, 2.6, -2.6]) { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * (r - 3), Math.sin(a) * (r - 3)); ctx.stroke(); }
+    ctx.fillStyle = '#ffcf5a'; ctx.beginPath(); ctx.arc(r - 4, 0, 2.5, 0, Math.PI * 2); ctx.fill();   // heading marker
+    ctx.fillStyle = '#5a6270'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();          // hub
+    ctx.restore();
+  }
+
   // Placement / config entry: click a rail with the Anchor selected → bind a platform there; click an
   // existing anchor → open its config modal.
   _placeAnchor(row, col) {
@@ -18534,7 +18595,7 @@ class Game {
       for (const c of set) {
         if (this.level.get(c.row, c.col) === BLOCK.DIRECTION_CONTROLLER) {
           const cfg = this._dirControllers.get(c.col + ',' + c.row) || { lCh: null, rCh: null };
-          pl._dirCtrls.push({ lCh: cfg.lCh, rCh: cfg.rCh, dcol: c.col - pl.anchorCol, drow: c.row - pl.anchorRow, _prevL: false, _prevR: false });
+          pl._dirCtrls.push({ lCh: cfg.lCh, rCh: cfg.rCh, skin: cfg.skin || null, dcol: c.col - pl.anchorCol, drow: c.row - pl.anchorRow, _prevL: false, _prevR: false });
         }
       }
       pl._weight = null;   // recompute on demand (§6/§9/§13)
@@ -18719,8 +18780,20 @@ class Game {
     this._resolvePlatformCollisions();      // §6 — two platforms meeting on one rail
     for (const pl of this._platforms) this._updateCoG(pl);         // §13 — tilt from centre of mass
     for (const pl of this._platforms) this._carryPlatformRedstone(pl);   // §Moving Redstone — ride + function
+    for (const pl of this._platforms) this._updateBlockAnim(pl);   // §Animated skins — wheel spin + pointer facing
     this._rebuildPlatformSolidCells();
     this._carryPlatformRiders();
+  }
+  // §Animated skins — accumulate per-platform animation state from this frame's movement. Wheel angle
+  // grows with distance travelled (signed by travel direction) so it rolls at the real speed and stops
+  // when the platform stops; the pointer faces the actual movement vector, holding its last heading idle.
+  _updateBlockAnim(pl) {
+    if (pl._disabled || pl._destroyed) return;
+    const dx = pl._ax - (pl._pax ?? pl._ax), dy = pl._ay - (pl._pay ?? pl._ay);
+    const moved = Math.hypot(dx, dy);
+    pl._wheelAngle = (pl._wheelAngle || 0) + (moved / (BLOCK_SIZE * 0.5)) * (pl._dir >= 0 ? 1 : -1);
+    if (moved > 0.05) pl._moveAngle = Math.atan2(dy, dx);
+    else if (pl._moveAngle === undefined) pl._moveAngle = (pl._dir >= 0) ? 0 : Math.PI;
   }
 
   // §11 — did the platform just cross its rail's launch point? If so, fling it: exit velocity = current
@@ -19214,13 +19287,12 @@ class Game {
         const ox = pl._ax - BLOCK_SIZE / 2, oy = pl._ay - BLOCK_SIZE / 2;
         for (const c of pl.cells) {
           const px = ox + c.dcol * BLOCK_SIZE - this.camera.x, py = oy + c.drow * BLOCK_SIZE - this.camera.y;
-          // §Skins — weight/plate can render as another block while keeping behavior.
-          let dt = c.blockType;
-          if (c.blockType === BLOCK.WEIGHT_PLATE || c.blockType === BLOCK.PRESSURE_PLATE) {
-            const { acol, arow } = this._platCell(pl); const sc = this.redstone.getAt(acol + c.dcol, arow + c.drow);
-            if (sc && sc.skin) dt = sc.skin;
-          }
-          try { drawBlock(ctx, dt, px, py, 0, this._platformCellState(pl, c)); } catch (e) { ctx.fillStyle = '#888'; ctx.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE); }
+          // §Skins — a cell may render as another block (static) or an animated custom sprite.
+          const skin = this._cellSkin(pl, c);
+          if (skin === 'wheel')         { this._drawWheel(ctx, px, py, BLOCK_SIZE, pl._wheelAngle || 0); }
+          else if (skin === 'pointer')  { this._drawPointerDial(ctx, px, py, BLOCK_SIZE, pl._moveAngle || 0); }
+          else if (skin === 'steering') { this._drawSteering(ctx, px, py, BLOCK_SIZE, pl._moveAngle || 0); }
+          else { try { drawBlock(ctx, (typeof skin === 'number' ? skin : c.blockType), px, py, 0, this._platformCellState(pl, c)); } catch (e) { ctx.fillStyle = '#888'; ctx.fillRect(px, py, BLOCK_SIZE, BLOCK_SIZE); } }
         }
         // §Moving Redstone — draw the platform's dust ON TOP of its blocks with the FULL connected
         // renderer (path + powered), matching normal dust (the global overlay skips it — see above).
@@ -19246,7 +19318,7 @@ class Game {
     if (!pl) { this._anchorPopup = null; return; }
     if (!this.input.mouse.clicked) return;
     const mx = this.input.mouse.x, my = this.input.mouse.y;
-    const pw = 340, ph = 374, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const pw = 340, ph = 408, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
     if (hit(px + pw - 30, py + 8, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._anchorPopup = null; this.input.mouse.clicked = false; return; }
     const rowY = (i) => py + 44 + i * 34;
@@ -19256,9 +19328,10 @@ class Game {
     else if (hit(px + 16, rowY(3), pw - 32, 28)) { pl.returnMode = pl.returnMode === 'oneway' ? 'roundtrip' : 'oneway'; }
     else if (hit(px + 16, rowY(4), pw - 32, 28)) { const speeds = [0.5, 1, 1.5, 2, 3, 4, 6]; const i = speeds.findIndex(s => s >= pl.speed); pl.speed = speeds[(i + 1) % speeds.length]; }
     else if (hit(px + 16, rowY(5), pw - 32, 28)) { pl.cog = !pl.cog; }                            // §13 — Center of Gravity toggle
-    else if (hit(px + 16, rowY(6), (pw - 40) / 2, 28)) { this._anchorRepositionMode = pl.id; this._anchorPopup = null; this._notify('Reposition: click a new point on the rail', '#3a6ea5', 160); }
-    else if (hit(px + 24 + (pw - 40) / 2, rowY(6), (pw - 40) / 2, 28)) { this._removePlatform(pl); this._anchorPopup = null; this._notify('Platform removed (build kept)', '#c66', 100); }
-    else if (hit(px + 16, rowY(7), pw - 32, 28)) { const n = this._deleteWholePlatform(pl); this._anchorPopup = null; this._notify('Whole platform deleted — ' + n + ' block(s) + redstone cleared', '#c66', 150); }
+    else if (hit(px + 16, rowY(6), pw - 32, 28)) { const i = ANCHOR_SKINS.findIndex(sk => sk.block === (pl.skin || null)); pl.skin = ANCHOR_SKINS[(i + 1) % ANCHOR_SKINS.length].block; }   // §Skin
+    else if (hit(px + 16, rowY(7), (pw - 40) / 2, 28)) { this._anchorRepositionMode = pl.id; this._anchorPopup = null; this._notify('Reposition: click a new point on the rail', '#3a6ea5', 160); }
+    else if (hit(px + 24 + (pw - 40) / 2, rowY(7), (pw - 40) / 2, 28)) { this._removePlatform(pl); this._anchorPopup = null; this._notify('Platform removed (build kept)', '#c66', 100); }
+    else if (hit(px + 16, rowY(8), pw - 32, 28)) { const n = this._deleteWholePlatform(pl); this._anchorPopup = null; this._notify('Whole platform deleted — ' + n + ' block(s) + redstone cleared', '#c66', 150); }
     this.input.mouse.clicked = false;
   }
   _removePlatform(pl) {
@@ -19325,7 +19398,7 @@ class Game {
     if (!this._anchorPopup) return;
     const pl = this._platformAt(this._anchorPopup.row, this._anchorPopup.col);
     if (!pl) { this._anchorPopup = null; return; }
-    const pw = 340, ph = 374, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const pw = 340, ph = 408, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     _roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#12202e'; ctx.fill(); ctx.strokeStyle = '#3a6ea5'; ctx.lineWidth = 2; ctx.stroke();
@@ -19341,11 +19414,12 @@ class Game {
     btn(3, 'Return: ' + (pl.returnMode === 'oneway' ? 'One-Way' : 'Round-Trip'));
     btn(4, 'Speed: ' + pl.speed);
     btn(5, 'Center of Gravity (tilt): ' + (pl.cog ? 'On' : 'Off'), pl.cog);
+    btn(6, 'Skin: ' + (ANCHOR_SKINS.find(sk => sk.block === (pl.skin || null)) || ANCHOR_SKINS[0]).label + '  ▸');   // §Skin (Wheel spins in play)
     // reposition + remove on one row
-    _roundRect(ctx, px + 16, rowY(6), (pw - 40) / 2, 28, 5); ctx.fillStyle = '#1d3346'; ctx.fill(); ctx.strokeStyle = '#3a6ea5'; ctx.stroke(); ctx.fillStyle = '#d8ecff'; ctx.fillText('Reposition', px + 16 + (pw - 40) / 4, rowY(6) + 14);
-    _roundRect(ctx, px + 24 + (pw - 40) / 2, rowY(6), (pw - 40) / 2, 28, 5); ctx.fillStyle = '#3a1d1d'; ctx.fill(); ctx.strokeStyle = '#a55'; ctx.stroke(); ctx.fillStyle = '#f0c0c0'; ctx.fillText('Remove', px + 24 + (pw - 40) * 0.75, rowY(6) + 14);
+    _roundRect(ctx, px + 16, rowY(7), (pw - 40) / 2, 28, 5); ctx.fillStyle = '#1d3346'; ctx.fill(); ctx.strokeStyle = '#3a6ea5'; ctx.stroke(); ctx.fillStyle = '#d8ecff'; ctx.fillText('Reposition', px + 16 + (pw - 40) / 4, rowY(7) + 14);
+    _roundRect(ctx, px + 24 + (pw - 40) / 2, rowY(7), (pw - 40) / 2, 28, 5); ctx.fillStyle = '#3a1d1d'; ctx.fill(); ctx.strokeStyle = '#a55'; ctx.stroke(); ctx.fillStyle = '#f0c0c0'; ctx.fillText('Remove', px + 24 + (pw - 40) * 0.75, rowY(7) + 14);
     // Full teardown — clears blocks + all redstone for a clean rebuild.
-    _roundRect(ctx, px + 16, rowY(7), pw - 32, 28, 5); ctx.fillStyle = '#4a1414'; ctx.fill(); ctx.strokeStyle = '#c66'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = '#ffd0d0'; ctx.font = '12px Courier New'; ctx.fillText('⌫ Delete Whole Platform (blocks + redstone)', px + pw / 2, rowY(7) + 14);
+    _roundRect(ctx, px + 16, rowY(8), pw - 32, 28, 5); ctx.fillStyle = '#4a1414'; ctx.fill(); ctx.strokeStyle = '#c66'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = '#ffd0d0'; ctx.font = '12px Courier New'; ctx.fillText('⌫ Delete Whole Platform (blocks + redstone)', px + pw / 2, rowY(8) + 14);
     if (pl.mode === 'redstone' && pl.signalResponse === 'sustained') { ctx.fillStyle = '#e0b050'; ctx.font = '9px Courier New'; ctx.fillText('Toggle needed for pause-until-reactivate nodes', px + pw / 2, py + ph - 10); }
     ctx.restore();
   }
@@ -19409,14 +19483,15 @@ class Game {
     if (!dc) { this._dirCtrlPopup = null; return; }
     if (!this.input.mouse.clicked) return;
     const mx = this.input.mouse.x, my = this.input.mouse.y;
-    const pw = 320, ph = 210, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const pw = 320, ph = 244, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     const hit = (bx, by, bw, bh) => mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
     if (hit(px + pw - 30, py + 8, 22, 22) || mx < px || mx > px + pw || my < py || my > py + ph) { this._dirCtrlPopup = null; this.input.mouse.clicked = false; return; }
     const nums = [...new Set([...this._transmitters.values()].map(t => t.number))].sort((a, b) => a - b);
     const cycle = (cur) => { const arr = [null, ...nums]; return arr[(arr.indexOf(cur) + 1) % arr.length]; };
     if (hit(px + 20, py + 52, pw - 40, 30)) dc.lCh = cycle(dc.lCh);
     else if (hit(px + 20, py + 92, pw - 40, 30)) dc.rCh = cycle(dc.rCh);
-    else if (hit(px + 20, py + 140, pw - 40, 30)) { this.level.set(this._dirCtrlPopup.row, this._dirCtrlPopup.col, BLOCK.AIR); this._dirControllers.delete(key); this._dirCtrlPopup = null; this._notify('Direction Controller removed', '#c66', 100); }
+    else if (hit(px + 20, py + 132, pw - 40, 30)) { const i = DIR_SKINS.findIndex(sk => sk.block === (dc.skin || null)); dc.skin = DIR_SKINS[(i + 1) % DIR_SKINS.length].block; }   // §Skin
+    else if (hit(px + 20, py + 176, pw - 40, 30)) { this.level.set(this._dirCtrlPopup.row, this._dirCtrlPopup.col, BLOCK.AIR); this._dirControllers.delete(key); this._dirCtrlPopup = null; this._notify('Direction Controller removed', '#c66', 100); }
     this.input.mouse.clicked = false;
   }
   // ══════════════════════════════════════════════════════════════════════════════════════════
@@ -19661,7 +19736,7 @@ class Game {
     if (!this._dirCtrlPopup) return;
     const dc = this._dirControllers.get(this._dirCtrlPopup.col + ',' + this._dirCtrlPopup.row);
     if (!dc) { this._dirCtrlPopup = null; return; }
-    const pw = 320, ph = 210, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
+    const pw = 320, ph = 244, px = (CANVAS_W - pw) / 2, py = (CANVAS_H - ph) / 2;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     _roundRect(ctx, px, py, pw, ph, 8); ctx.fillStyle = '#20162e'; ctx.fill(); ctx.strokeStyle = '#7a4fa0'; ctx.lineWidth = 2; ctx.stroke();
@@ -19671,7 +19746,8 @@ class Game {
     const btn = (y, label, danger) => { _roundRect(ctx, px + 20, y, pw - 40, 30, 5); ctx.fillStyle = danger ? '#3a1d2e' : '#2c1f42'; ctx.fill(); ctx.strokeStyle = danger ? '#a55' : '#7a4fa0'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = danger ? '#f0c0d0' : '#e6d0ff'; ctx.font = '12px Courier New'; ctx.fillText(label, px + pw / 2, y + 15); };
     btn(py + 52, 'Left input (→ Backward): ' + (dc.lCh == null ? 'None' : 'ch #' + dc.lCh));
     btn(py + 92, 'Right input (→ Forward): ' + (dc.rCh == null ? 'None' : 'ch #' + dc.rCh));
-    btn(py + 140, 'Remove', true);
+    btn(py + 132, 'Skin: ' + (DIR_SKINS.find(sk => sk.block === (dc.skin || null)) || DIR_SKINS[0]).label + '  ▸');   // §Skin (Pointer/Steering face travel in play)
+    btn(py + 176, 'Remove', true);
     ctx.fillStyle = '#9a86b8'; ctx.font = '9px Courier New';
     ctx.fillText('Same channel on both = one-source TOGGLE. Wire a source → transmitter → channel.', px + pw / 2, py + ph - 12);
     ctx.restore();

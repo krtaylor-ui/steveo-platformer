@@ -158,8 +158,8 @@ const SandboxSaves = {
       })) : [],
       // §Moving Platforms — rails (waypoint paths) + platforms (anchor-bound block groups).
       rails: rails ? rails.map(r => ({ id: r.id, cells: r.cells, vis: r.vis || 'visible', loop: !!r.loop, angled: !!r.angled, pauseNodes: r.pauseNodes || [], collideMode: r.collideMode || 'passthrough', speedSegments: r.speedSegments || [], launchAt: r.launchAt ?? null, launchDir: r.launchDir ?? null })) : [],
-      platforms: platforms ? platforms.map(p => ({ id: p.id, railId: p.railId, anchorCol: p.anchorCol, anchorRow: p.anchorRow, anchorDist: p.anchorDist, cells: p.cells, initialDir: p.initialDir, mode: p.mode, signalResponse: p.signalResponse, returnMode: p.returnMode, speed: p.speed, dirCtrl: p.dirCtrl || null, cog: !!p.cog })) : [],
-      dirControllers: dirControllers ? [...dirControllers.values()].map(d => ({ col: d.col, row: d.row, lCh: d.lCh ?? null, rCh: d.rCh ?? null })) : [],
+      platforms: platforms ? platforms.map(p => ({ id: p.id, railId: p.railId, anchorCol: p.anchorCol, anchorRow: p.anchorRow, anchorDist: p.anchorDist, cells: p.cells, initialDir: p.initialDir, mode: p.mode, signalResponse: p.signalResponse, returnMode: p.returnMode, speed: p.speed, dirCtrl: p.dirCtrl || null, cog: !!p.cog, skin: p.skin || null })) : [],
+      dirControllers: dirControllers ? [...dirControllers.values()].map(d => ({ col: d.col, row: d.row, lCh: d.lCh ?? null, rCh: d.rCh ?? null, skin: d.skin || null })) : [],
       speedSegs: speedSegs ? speedSegs.map(s => ({ id: s.id, railId: s.railId, cells: s.cells, targetSpeed: s.targetSpeed })) : [],
       railGates: railGates ? railGates.map(g => ({ id: g.id, railId: g.railId, cells: g.cells, condition: g.condition, channel: g.channel ?? null, threshold: g.threshold })) : [],
       playerPx:   Math.floor(player.x),
