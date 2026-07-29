@@ -46,11 +46,13 @@
     { key: 'glowstone',  name: 'Glowstone',    blockId: 48, color: '#e6c96a', light: '#ffe59a' },
     { key: 'bush',       name: 'Bush',         blockId: 60, color: '#3f7a3a' },
     { key: 'leaves',     name: 'Leaves',       blockId: 5,  color: '#4f8a44' },
+    { key: 'pit',        name: 'Pit',          blockId: 0,  color: '#0b0b12', pit: true },
   ];
   const OH_TERRAIN_BY_KEY = {};
   OH_TERRAIN.forEach((t) => { OH_TERRAIN_BY_KEY[t.key] = t; });
   const GROUND = 'grass';   // default paint / floor
   const isHazardKey = (key) => !!(OH_TERRAIN_BY_KEY[key] && OH_TERRAIN_BY_KEY[key].hazard);
+  const isPitKey = (key) => !!(OH_TERRAIN_BY_KEY[key] && OH_TERRAIN_BY_KEY[key].pit);
   const terrainColor = (key) => (OH_TERRAIN_BY_KEY[key] || OH_TERRAIN_BY_KEY[GROUND]).color;
   // Light-emitting terrain (glowstone / lava): returns the glow colour or null.
   const lightColor = (key) => (OH_TERRAIN_BY_KEY[key] && OH_TERRAIN_BY_KEY[key].light) || null;
@@ -75,7 +77,7 @@
 
   const OH_PALETTE = {
     OH_SPRITE,
-    OH_TERRAIN, OH_TERRAIN_BY_KEY, GROUND, isHazardKey, terrainColor, lightColor,
+    OH_TERRAIN, OH_TERRAIN_BY_KEY, GROUND, isHazardKey, isPitKey, terrainColor, lightColor,
     OH_MOBS, OH_MOB_BY_KEY, OH_ITEMS, OH_ITEM_BY_KEY,
   };
 

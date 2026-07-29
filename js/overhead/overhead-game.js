@@ -54,14 +54,25 @@
       this._dayStart = (cfg.dayStart != null ? cfg.dayStart : 0.25);
       this._nightMax = (cfg.nightDarkness != null ? cfg.nightDarkness : 0.6);
       this._showSunMoon = cfg.showSunMoon !== false;   // faint tracking disc (toggle)
+      this._sunMoonShape = cfg.sunMoonShape === 'square' ? 'square' : 'circle';
       this._shadows = cfg.shadows !== false;           // dynamic elevation shadows (toggle)
-      this._lightRadius = (cfg.lightRadius != null ? cfg.lightRadius : 4);        // blocks
-      this._lightBrightness = (cfg.lightBrightness != null ? cfg.lightBrightness : 0.9);  // 0..1
+      // Universal light REACH per unit brightness (blocks) + per-object brightness.
+      this._lightRange = (cfg.lightRange != null ? cfg.lightRange : 5);
+      const briOf = { lava: (cfg.lavaBrightness != null ? cfg.lavaBrightness : 0.7),
+                      glowstone: (cfg.glowstoneBrightness != null ? cfg.glowstoneBrightness : 0.95) };
       this._elapsed = 0; this._tod = this._dayNight ? this._dayStart : 0.5; this._detectMult = 1;
-      // Precompute light-emitting cells (glowstone / lava) once — a static list.
+      // Death FX particles (family-friendly: coloured sprite blocks, no gore).
+      this._deathFx = null;
+      // Cliff-fall guard + pit deadliness (creator safety controls).
+      this._blockCliffFall = cfg.blockCliffFall !== false;   // default ON: no accidental walk-offs
+      this._maxStepDown = (cfg.maxStepDown != null ? cfg.maxStepDown : 1);
+      this._pitsDeadly = cfg.pitsDeadly !== false;           // default ON: pits kill
+      // Precompute light-emitting cells (glowstone / lava) once, with each one's
+      // brightness (per-object) and colour. Reach is brightness × the universal range.
       this._lightCells = [];
       for (let r = 0; r < (map.gridH || 0); r++) for (let c = 0; c < (map.gridW || 0); c++) {
-        const col = P().lightColor(this._key(c, r)); if (col) this._lightCells.push({ c, r, color: col });
+        const k = this._key(c, r), col = P().lightColor(k);
+        if (col) this._lightCells.push({ c, r, color: col, bri: (briOf[k] != null ? briOf[k] : 0.8) });
       }
       this.goal = worldData.goal || null;
       // Ramps/ladders let a walk cross ANY elevation delta at that cell.
@@ -133,6 +144,7 @@
         if (inp.mouse.x >= 156 && inp.mouse.x <= 236 && inp.mouse.y <= 30) { this._god = !this._god; }
       }
       if (this.state === 'won' || this.state === 'dead') { if (inp.mouse.clicked || (inp.isJustDown && inp.isJustDown('Enter'))) this._exit(); return; }
+      if (this.state === 'dying') { this._advanceDeath(); return; }   // play the death burst
       if (this.state === 'paused') return;
 
       const p = this.player;
@@ -165,7 +177,8 @@
       if (moving) { p.dist += Math.hypot(intent.move.x, intent.move.y) * p.speed; p.moveAngle = Math.atan2(intent.move.y, intent.move.x); }
       if (p.jump && p.jump.jumping && OH_MOVE.advanceJump(p.jump).landed) this._resolveLanding(p);
       if (!airborne) { const c = this._cellOf(p.x, p.y);
-        if (this._gap(c.col, c.row)) this._fall('Fell'); else if (this._hazard(c.col, c.row) && p.iFrames === 0) this._hurt(4, 'Hazard'); }
+        if (this._pitsDeadly && this._pit(c.col, c.row)) this._die('Fell into a pit');
+        else if (this._gap(c.col, c.row)) this._fall('Fell'); else if (this._hazard(c.col, c.row) && p.iFrames === 0) this._hurt(4, 'Hazard'); }
       // Hidden if standing under an overhang (a cell ≥ player.elev+2).
       { const c = this._cellOf(p.x, p.y); p.hidden = (this._key(c.col, c.row) === 'leaves' && this._elev(c.col, c.row) > p.elev); }
 
@@ -240,8 +253,15 @@
         if (key == null) return airborne ? null : false;     // gap
         if (this._buildingSolidAt(c.col, c.row)) return false;
         if (key === 'leaves') return ent.elev;               // canopy — always pass under (keep elev)
+        if (key === 'pit') return this._pitsDeadly ? ent.elev : false;   // deadly: step in (fatal after); else a hard obstacle
         const tE = this._elev(c.col, c.row), delta = tE - ent.elev;
-        if (delta <= 0) return tE;                           // walk / step down
+        if (delta <= 0) {                                    // walk / step down
+          // Cliff-fall guard (player only): don't let a WALK drop more than
+          // maxStepDown levels — stops accidental falls off high platforms with no
+          // way back. Ramps/bridges (nearby) are the intended way down.
+          if (ent === this.player && this._blockCliffFall && delta < -this._maxStepDown && !this._rampNear(cur.col, cur.row) && !this._rampNear(c.col, c.row)) return false;
+          return tE;
+        }
         if (airborne) return false;                          // can't jump ONTO raised terrain (no jump-mounting)
         if (delta <= C || this._rampNear(cur.col, cur.row) || this._rampNear(c.col, c.row)) return tE;   // climb within limit / via (nearby) ramp
         return false;                                        // raised SOLID terrain → wall (any height)
@@ -343,8 +363,26 @@
       }
     }
 
-    _hurt(amt, why) { const p = this.player; if (this._god || p.iFrames > 0) return; p.hp -= amt; p.iFrames = 45; if (p.hp <= 0) this._fall(why || 'Defeated'); }
-    _fall(msg) { const p = this.player; if (p.hp <= 0) { this.state = 'dead'; this._notify(msg || 'You died', 240); return; } p.x = this._spawn.x; p.y = this._spawn.y; p.jump = null; p.iFrames = 60; const c = this._cellOf(p.x, p.y); p.elev = this._elev(c.col, c.row); }
+    _pit(c, r) { const k = this._key(c, r); return !!k && P().isPitKey(k); }
+    _hurt(amt, why) { const p = this.player; if (this._god || p.iFrames > 0) return; p.hp -= amt; p.iFrames = 45; if (p.hp <= 0) this._die(why || 'Defeated'); }
+    _fall(msg) { const p = this.player; if (p.hp <= 0) { this._die(msg || 'You died'); return; } p.x = this._spawn.x; p.y = this._spawn.y; p.jump = null; p.iFrames = 60; const c = this._cellOf(p.x, p.y); p.elev = this._elev(c.col, c.row); }
+    // Family-friendly death: the player bursts into its own coloured sprite blocks
+    // (no blood/gore) that fly out, fall, spin, and fade — then the Game Over screen.
+    _die(msg) {
+      if (this._god || this.state === 'dying' || this.state === 'dead') return;
+      const p = this.player; p.hp = 0; this.state = 'dying'; this._deathMsg = msg || 'You died';
+      const sp = P().OH_SPRITE, cols = [sp.hair, sp.shirt, sp.shirt, sp.pants, sp.pants, sp.skin];
+      const parts = []; const n = 16;
+      for (let i = 0; i < n; i++) { const ang = (i / n) * Math.PI * 2 + (i % 3) * 0.4, spd = this.unit * (0.06 + (i % 5) * 0.02);
+        parts.push({ x: p.x, y: p.y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - this.unit * 0.05, sz: this.unit * (0.16 + (i % 4) * 0.05), rot: ang, vr: (i % 2 ? 1 : -1) * 0.2, color: cols[i % cols.length], life: 46 + (i % 10) }); }
+      this._deathFx = { parts, t: 0 };
+    }
+    _advanceDeath() {
+      const fx = this._deathFx; if (!fx) { this.state = 'dead'; return; }
+      fx.t++; let alive = 0;
+      for (const q of fx.parts) { if (q.life <= 0) continue; alive++; q.x += q.vx; q.y += q.vy; q.vy += this.unit * 0.012; q.vx *= 0.98; q.rot += q.vr; q.life--; }
+      if (alive === 0 || fx.t > 90) { this.state = 'dead'; this._notify(this._deathMsg, 240); }
+    }
     _win() { if (this.state === 'won') return; this.state = 'won'; if (this._onWin) { try { this._onWin(this, this._wonExitColor || 0); } catch (e) {} } }
     _notify(text, frames) { this._notif = { text, t: frames || 120 }; }
     _exit() { this._running = false; if (document.body) document.body.classList.remove('in-game'); if (this._onExit) this._onExit(this.state); }
@@ -428,6 +466,13 @@
         const Q = OVERHEAD.elevOffset(cs); const sp = S(c * g.cell, r * g.cell); ctx.globalAlpha = 0.96; OVERHEAD.drawTerrainTile(ctx, k, sp.x - elev * Q, sp.y - elev * Q, cs, elev); ctx.globalAlpha = 1; }
       // Hidden indicator (designer opt-in).
       if (this.player.hidden && this.showHidden) { const s = S(this.player.x, this.player.y); ctx.strokeStyle = 'rgba(120,200,255,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s.x, s.y, cs * 0.4, 0, 7); ctx.stroke(); }
+      // Death burst — coloured sprite blocks flying out + fading (family-friendly).
+      if (this._deathFx && (this.state === 'dying' || this.state === 'dead')) {
+        for (const q of this._deathFx.parts) { if (q.life <= 0) continue; const s = S(q.x, q.y);
+          ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(q.rot); ctx.globalAlpha = Math.max(0, Math.min(1, q.life / 22));
+          ctx.fillStyle = q.color; ctx.fillRect(-q.sz * z / 2, -q.sz * z / 2, q.sz * z, q.sz * z); ctx.restore(); }
+        ctx.globalAlpha = 1;
+      }
       // Day/night ambient overlay + light sources + sun/moon disc — drawn before the
       // HUD so the HUD stays crisp.
       if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') this._drawNight(ctx, S, cs);
@@ -439,7 +484,7 @@
       if (e.kind === 'b') { const b = e.ref, t = OH_BUILDINGS.get(b.typeId); const sp = S(b.col * g.cell, b.row * g.cell); const w = (t ? t.footprint.w : 1) * cs, h = (t ? t.footprint.h : 1) * cs; const Q = OVERHEAD.elevOffset(cs), lv = (b.level || 0); OVERHEAD.drawBuilding(ctx, b.typeId, sp.x - lv * Q, sp.y - lv * Q, w, h, Math.min(1, cs / 28), b.skin || 'default'); }
       else if (e.kind === 'i') { const it = e.ref; const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); OVERHEAD.drawItemSprite(ctx, it.itemKey, sp.x, sp.y, this.unit * z * 0.8); }
       else if (e.kind === 'm') { this._drawMob(e.ref, S, z, cs); }
-      else if (e.kind === 'p') { this._drawPlayer(S, z, cs); }
+      else if (e.kind === 'p') { if (this.state !== 'dying' && this.state !== 'dead') this._drawPlayer(S, z, cs); }
     }
 
     _drawMob(m, S, z, cs) {
@@ -510,39 +555,51 @@
     // Night darkening with light-source cut-outs (glowstone / lava) + a faint sun/moon
     // disc. The darkening is composited offscreen so lamps can "punch through" it.
     _drawNight(ctx, S, cs) {
-      const sk = OH_DAYNIGHT.sky(this._tod, this._nightMax), cell = this.grid.cell;
-      const rad = Math.max(cs * 1.2, this._lightRadius * cs);
-      // Gather visible light cells (cap for perf on big lava fields).
-      const lit = [];
-      for (const lc of this._lightCells) { const sp = S((lc.c + 0.5) * cell, (lc.r + 0.5) * cell);
-        if (sp.x < -rad || sp.x > CANVAS_W + rad || sp.y < -rad || sp.y > CANVAS_H + rad) continue; lit.push({ sp, color: lc.color }); if (lit.length >= 80) break; }
+      const sk = OH_DAYNIGHT.sky(this._tod, this._nightMax), cell = this.grid.cell, maxR = 14 * cs;
+      // Collect VISIBLE emitters, each with its own reach (universal range × this
+      // object's brightness). Then STRIDE-sample so a big lava lake lights UNIFORMLY
+      // (not just its top rows — the old row-major cap made the top glow, bottom dark)
+      // within a bounded budget.
+      const vis = [];
+      for (const lc of this._lightCells) {
+        const r = Math.max(cs * 1.1, Math.min(maxR, this._lightRange * lc.bri * cs));
+        const sp = S((lc.c + 0.5) * cell, (lc.r + 0.5) * cell);
+        if (sp.x < -r || sp.x > CANVAS_W + r || sp.y < -r || sp.y > CANVAS_H + r) continue;
+        vis.push({ sp, color: lc.color, bri: lc.bri, r });
+      }
+      const CAP = 120, stride = Math.max(1, Math.ceil(vis.length / CAP));
+      const lit = stride === 1 ? vis : vis.filter((_, i) => i % stride === 0);
       if (sk.a > 0.004) {
         const nc = this._nightCanvas || (this._nightCanvas = document.createElement('canvas'));
         if (nc.width !== CANVAS_W || nc.height !== CANVAS_H) { nc.width = CANVAS_W; nc.height = CANVAS_H; }
         const nx = nc.getContext('2d'); nx.globalCompositeOperation = 'source-over'; nx.clearRect(0, 0, CANVAS_W, CANVAS_H);
         nx.fillStyle = `rgba(${sk.r},${sk.g},${sk.b},1)`; nx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+        // Punch light HOLES (union of circles — no additive stacking, so no blowout).
         nx.globalCompositeOperation = 'destination-out';
-        for (const l of lit) { const grd = nx.createRadialGradient(l.sp.x, l.sp.y, 0, l.sp.x, l.sp.y, rad);
-          grd.addColorStop(0, `rgba(0,0,0,${this._lightBrightness})`); grd.addColorStop(1, 'rgba(0,0,0,0)');
-          nx.fillStyle = grd; nx.beginPath(); nx.arc(l.sp.x, l.sp.y, rad, 0, 7); nx.fill(); }
+        for (const l of lit) { const grd = nx.createRadialGradient(l.sp.x, l.sp.y, 0, l.sp.x, l.sp.y, l.r);
+          grd.addColorStop(0, `rgba(0,0,0,${Math.min(0.96, l.bri)})`); grd.addColorStop(1, 'rgba(0,0,0,0)');
+          nx.fillStyle = grd; nx.beginPath(); nx.arc(l.sp.x, l.sp.y, l.r, 0, 7); nx.fill(); }
         nx.globalCompositeOperation = 'source-over';
         ctx.globalAlpha = sk.a; ctx.drawImage(nc, 0, 0); ctx.globalAlpha = 1;
-        // Warm additive glow at each lamp so it reads as emitted light.
-        ctx.globalCompositeOperation = 'lighter';
-        for (const l of lit) { const a = 0.3 * this._lightBrightness * (sk.a / (this._nightMax || 1));
-          const grd = ctx.createRadialGradient(l.sp.x, l.sp.y, 0, l.sp.x, l.sp.y, rad);
+        // Gentle warm wash over each lamp (source-over, low alpha → no white blowout).
+        for (const l of lit) { const a = 0.14 * l.bri * (sk.a / (this._nightMax || 1));
+          const grd = ctx.createRadialGradient(l.sp.x, l.sp.y, 0, l.sp.x, l.sp.y, l.r);
           grd.addColorStop(0, this._rgba(l.color, a)); grd.addColorStop(1, this._rgba(l.color, 0));
-          ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(l.sp.x, l.sp.y, rad, 0, 7); ctx.fill(); }
-        ctx.globalCompositeOperation = 'source-over';
+          ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(l.sp.x, l.sp.y, l.r, 0, 7); ctx.fill(); }
       }
-      // Faint sun/moon disc (toggle), tracking across the top of the sky.
+      // Faint sun/moon (toggle), circle or square, tracking across the top of the sky.
       if (this._showSunMoon) {
         const b = OH_DAYNIGHT.body(this._tod), dx = b.fx * CANVAS_W, dy = b.fy * CANVAS_H, R = 26;
         const col = b.isDay ? '255,236,150' : '210,220,240';
-        const grd = ctx.createRadialGradient(dx, dy, 0, dx, dy, R);
-        grd.addColorStop(0, `rgba(${col},0.30)`); grd.addColorStop(0.6, `rgba(${col},0.14)`); grd.addColorStop(1, `rgba(${col},0)`);
-        ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(dx, dy, R, 0, 7); ctx.fill();
-        ctx.fillStyle = `rgba(${col},0.22)`; ctx.beginPath(); ctx.arc(dx, dy, R * 0.5, 0, 7); ctx.fill();
+        if (this._sunMoonShape === 'square') {
+          ctx.fillStyle = `rgba(${col},0.12)`; ctx.fillRect(dx - R, dy - R, R * 2, R * 2);
+          ctx.fillStyle = `rgba(${col},0.24)`; ctx.fillRect(dx - R * 0.55, dy - R * 0.55, R * 1.1, R * 1.1);
+        } else {
+          const grd = ctx.createRadialGradient(dx, dy, 0, dx, dy, R);
+          grd.addColorStop(0, `rgba(${col},0.30)`); grd.addColorStop(0.6, `rgba(${col},0.14)`); grd.addColorStop(1, `rgba(${col},0)`);
+          ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(dx, dy, R, 0, 7); ctx.fill();
+          ctx.fillStyle = `rgba(${col},0.22)`; ctx.beginPath(); ctx.arc(dx, dy, R * 0.5, 0, 7); ctx.fill();
+        }
       }
     }
 

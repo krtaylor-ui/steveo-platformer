@@ -44,9 +44,15 @@
       dayStart:         0.25,       // phase to start at (0 midnight · .25 dawn · .5 noon · .75 dusk)
       nightDarkness:    0.6,        // peak darkness of the night overlay (0..1; up to near-black)
       showSunMoon:      true,       // draw a faint sun/moon disc tracking the sky
+      sunMoonShape:     'circle',   // 'circle' | 'square'
       shadows:          true,       // dynamic elevation shadows cast by the sun/moon
-      lightRadius:      4,          // light-source (glowstone/lava) reach, in blocks
-      lightBrightness:  0.9,        // how strongly a light cuts the night (0..1)
+      lightRange:       5,          // UNIVERSAL reach in blocks per unit of brightness
+      lavaBrightness:   0.7,        // per-object light strength (0..1)
+      glowstoneBrightness: 0.95,    // per-object light strength (0..1)
+      // Safety controls (falling / pits).
+      blockCliffFall:   true,       // stop accidental walks off high platforms
+      maxStepDown:      1,          // levels a walk may drop (further needs a ramp/bridge)
+      pitsDeadly:       true,       // pit blocks kill on entry (else they are hard obstacles)
     };
   }
 
@@ -146,9 +152,16 @@
               ${sel('dayStart', 'Start time of day', [['0', 'Midnight'], ['0.25', 'Dawn'], ['0.5', 'Noon'], ['0.75', 'Dusk']])}
               ${range('nightDarkness', 'Night darkness (→ near-black)', 0.2, 0.95, 0.05)}
               ${toggle('showSunMoon', 'Show a faint sun / moon')}
+              ${sel('sunMoonShape', 'Sun / moon shape', [['circle', 'Circle'], ['square', 'Square']])}
               ${toggle('shadows', 'Cast shadows from raised terrain')}
-              ${range('lightRadius', 'Light reach — glowstone/lava (blocks)', 1, 12, 1)}
-              ${range('lightBrightness', 'Light brightness', 0.2, 1, 0.05)}
+              ${range('lightRange', 'Light reach per brightness (blocks)', 1, 12, 1)}
+              ${range('lavaBrightness', 'Lava brightness', 0.1, 1, 0.05)}
+              ${range('glowstoneBrightness', 'Glowstone brightness', 0.1, 1, 0.05)}
+            </div>
+            <div class="ohws-grp"><h3>Safety — Falling &amp; Pits</h3>
+              ${toggle('blockCliffFall', 'Stop players walking off cliffs')}
+              ${sel('maxStepDown', 'Max walk-down without a ramp/bridge', [['1', '1 level'], ['2', '2 levels'], ['99', 'Any (no guard)']])}
+              ${toggle('pitsDeadly', 'Pit blocks are deadly (else hard obstacles)')}
             </div>
           </div>
           <div class="ohws-foot"><button id="ohws-reset">Reset to defaults</button><button class="primary" id="ohws-done">Done</button></div>

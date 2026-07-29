@@ -1,4 +1,22 @@
-## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE ramps-forgiving + DAY/NIGHT depth (build 293) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE pits / death FX / cliff safety + light polish (build 294) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+
+Eighth playtest batch. Suite green (977 assertions); draw-probe + headless safety/render harnesses clean.
+- **Deadly PIT block** (`pit` terrain): fall in → die; a world toggle (`pitsDeadly`) makes pits harmless
+  hard OBSTACLES instead. **Family-friendly DEATH animation:** player bursts into its own coloured sprite
+  blocks (no gore), then Game Over. **Cliff-fall guard** (`blockCliffFall` default ON, `maxStepDown` 1):
+  a walk can't drop off a high platform unless near a ramp; pits stay deadly regardless.
+- **Lava/light fix:** big lakes now light UNIFORMLY (stride-sampled — the old cap lit only the top). New
+  UNIVERSAL `lightRange` + per-object `lavaBrightness`/`glowstoneBrightness`; no more additive blowout.
+- **Sun/moon shape** circle|square; **shadows fade** out/in across the dawn/dusk swap (no snap). Erase
+  already honours the brush size (confirmed). Detail in `DECISIONS_LOG.md`.
+- **Deferred with plans:** bridge item (§36), redstone-in-overhead (§32, the next big rebuild), and the
+  seamless cave↔surface cross-effects design (§35/§35b — one active env + world-global channels).
+
+**NEEDS BROWSER PLAYTEST** before merge. 16 overhead builds (279–294) are stacked on this branch.
+
+---
+
+## PRIOR STATE (2026-07-29) — OVERHEAD ENGINE ramps-forgiving + DAY/NIGHT depth (build 293) on branch `overhead-engine` — NOT merged, browser-UNTESTED
 
 Seventh playtest batch. Suite green (975 assertions); draw-probe + a render smoke-test clean.
 - **Ramps fixed (for real):** a headless collision harness proved the climb logic was already correct in

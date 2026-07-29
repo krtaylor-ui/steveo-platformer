@@ -1090,14 +1090,25 @@ This is really the same Skin Builder need at the "map-creator" scale — a mini-
 palette whose output becomes a building/portal skin. Deferred here so the base engine ships first; when
 built, the assembled block-grid becomes just another `skin` the render layer already dispatches on.
 
-## 32. Redstone in the Overhead Engine  *(deferred 2026-07-29)*
+## 32. Redstone in the Overhead Engine  *(deferred 2026-07-29 — NEXT BIG REBUILD, Kevin has queued it)*
 
 Kevin wants the existing redstone engine (levers, dust, target block, pulse converter, tx/rx,
-adjacency) usable in Overhead worlds, with config modals. This is a substantial integration — the
-side-view redstone (`js/redstone.js` + the `game.js` `_rs*` layer) is tightly coupled to the side-view
-grid/collision. Deferred from the 2026-07-29 batch; the portal/pipe + goal-star config modals shipped,
-redstone did not. When tackled: expose a redstone overlay on the overhead grid + reuse the propagation
-engine + add per-device config modals (mirroring the side-view popups). **Effort:** LARGE.
+adjacency) usable in Overhead worlds, with config modals — and has explicitly flagged it as the next major
+piece ("another big rebuild"). This is a substantial integration — the side-view redstone (`js/redstone.js`
++ the `game.js` `_rs*` layer) is tightly coupled to the side-view grid/collision.
+
+**Recommended approach when tackled (its own focused session):**
+1. **Extract the propagation core** from `js/redstone.js` into a grid-agnostic module (power sources,
+   dust spread, adjacency, pulse/tx-rx, delay) that takes a neighbour function + a cell store — so BOTH the
+   side-view and the overhead grid can drive it. This is the bulk of the work and de-risks the rest.
+2. **Overhead overlay:** a redstone layer on the overhead grid (devices placed like buildings/ramps),
+   evaluated each tick by the extracted core; render wires/power state on the top-down tiles.
+3. **NAMED CHANNELS as the integration seam:** reuse the tx/rx channel idea as the world-global channel
+   table — this is also what §35b (cross-environment cave↔surface effects) and the switch/weight-sensor
+   devices need, so build the channel table once and share it.
+4. **Config modals** mirroring the side-view device popups (already the pattern used by portals/pipes/goal).
+
+**Effort:** LARGE — plan for a dedicated session; step 1 (core extraction) is the gate for everything else.
 
 ---
 
@@ -1171,3 +1182,46 @@ builds 292–293, and each map keeps its own atmosphere — no fighting to balan
 **Recommendation:** ship Option B when caves are wanted (it's mostly a "player-centred light" setting + a
 mode flag), and only pursue Option A if seamless vertical descent becomes a hard requirement. The
 player-centred cave light is a small, self-contained addition to the existing night compositor.
+
+### 35b. Seamless surface↔cave in ONE world, with cross-effects  *(Kevin, 2026-07-29 — "not critical, helpful to understand limits")*
+
+Question: can a single world hold BOTH environments, travel between them seamlessly, and have actions in one
+affect the other? **Feasible — here's the shape + the limits.**
+- **Container:** a world holds an array of *environments* (each its own `mapSnapshot` + entities + settings/
+  atmosphere), plus links (a portal/pipe in env A targets a cell in env B). This is the same multi-map
+  container Campaign mode wants — build once, reuse.
+- **Travel:** the existing portal/pipe teleport already carries the player between maps; extend the target to
+  name an environment id + cell. Seamless = a quick fade, not a level reload (same runtime instance).
+- **State persistence:** keep every environment's ENTITY STATE in memory (mobs, items, switch/redstone
+  states) even while it is not the active/rendered one — so returning finds it as you left it. Cheap:
+  it's just data.
+- **Cross-effects (the interesting part):** model shared state as **named channels** (exactly how redstone
+  §32 will work): a lever/weight-sensor/switch in the cave writes channel "gate-7"; a door/platform on the
+  surface listens to "gate-7". The channel table is world-global, so a change in the inactive environment is
+  observed when you return (or live, if we tick the inactive env — see limit below).
+- **The real limit — simultaneous simulation.** Rendering + fully simulating BOTH environments every frame
+  (so a surface timer keeps ticking while you're in the cave) roughly doubles per-frame cost and needs both
+  terrain caches resident. Recommended default: **one active (fully simulated + rendered) environment; the
+  inactive one holds state and only its CHANNEL outputs are evaluated** (a cheap logic-only tick), not its
+  mobs/physics. That gives "a switch here opens a door there" without the cost of running two full games.
+  True concurrent simulation is possible but is a perf/complexity step-up — do it only if a puzzle needs the
+  inactive world physically moving in real time.
+- **Effort:** MEDIUM for the container + travel + persistent state + channel cross-effects (logic-only
+  inactive tick); LARGE if full concurrent simulation of both is required. Pairs naturally with §32 (redstone
+  channels) and the Campaign multi-map container.
+
+## 36. Overhead BRIDGE item  *(spec captured 2026-07-29 — Kevin; deferred to a focused pass)*
+
+A placeable **bridge** that spans gaps/pits and connects cliff edges (possibly of different heights).
+Kevin's spec: a preset **2-block-wide** (character-sprite blocks) walkway, painted along a run, with a
+user-selectable **"guardrails or not"** — guardrails STOP the player falling off the sides; no guardrails
+means they can fall off (into whatever is below).
+
+**Design when built:** a new editor TOOL (like ramp/ladder) storing `world.bridges = [{col,row,rail,elev}]`
+(auto-stamp a 2-wide strip perpendicular to the drag direction). Runtime collision: a bridge cell is
+**walkable-over-a-gap** (you don't fall through it) at its `elev`; entering/leaving the ends uses the
+existing forgiving-ramp climb so different-height connections work. **Guardrails:** with `rail`, moving from
+a bridge cell OFF the long side onto a gap/lower cell is blocked (you can only exit at the ends); without,
+that move falls through (gap → `_fall`, or into a pit → death). Rendering: plank deck + optional side rails.
+Pairs directly with the build-294 pits (bridge a deadly pit) and the cliff-fall guard (a railed bridge is a
+sanctioned way across; a railless one is a risk the creator opts into). **Effort:** MEDIUM.

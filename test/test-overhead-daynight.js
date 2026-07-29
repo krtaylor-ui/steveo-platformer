@@ -46,6 +46,8 @@ console.log('Sun/moon body + shadow vector:');
   const sNoon = OH_DAYNIGHT.shadow(0.5), sLow = OH_DAYNIGHT.shadow(0.28);
   ok(Math.hypot(sNoon.x, sNoon.y) < Math.hypot(sLow.x, sLow.y), 'shadows are short at noon, long when the body is low');
   ok(OH_DAYNIGHT.shadow(0.3).x > 0 && OH_DAYNIGHT.shadow(0.7).x < 0, 'shadow flips horizontal direction across the arc');
+  ok(near(OH_DAYNIGHT.shadow(0.25).alpha, 0, 1e-9), 'shadow fades to 0 at the dawn swap (no snap)');
+  ok(OH_DAYNIGHT.shadow(0.4).alpha > OH_DAYNIGHT.shadow(0.255).alpha, 'shadow fades IN after the swap');
 }
 
 console.log('Label + detection multiplier:');

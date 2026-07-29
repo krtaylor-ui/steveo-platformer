@@ -1,6 +1,39 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD ENGINE — PITS / DEATH FX / CLIFF SAFETY + LIGHT POLISH (2026-07-29, build 294, branch `overhead-engine`)
+# ═══════════════════════════════════════════════════════════════════════
+Eighth playtest-feedback batch. Suite green (977 assertions); draw-probe + headless safety/render harnesses clean.
+
+- **Deadly PIT block:** new `pit` terrain (`OH_PALETTE.isPitKey`). Collision: with `pitsDeadly` (default on)
+  a pit is walkable so you fall in and die; with it off a pit is a HARD OBSTACLE (blocks like a wall) — the
+  "some pits are obstacles, not dangerous" case, controlled by one world toggle. Post-move check triggers
+  the death on entry. Verified headless (deadly → dies; non-deadly → blocked).
+- **Family-friendly DEATH animation:** `_die` sets state `'dying'`, bursts the player into ~16 of its OWN
+  sprite-palette blocks (hair/shirt/pants/skin — no red/gore) with velocity + gravity + spin + fade; the
+  player sprite is hidden during the burst; `_advanceDeath` runs it (~90 frames max) then → `'dead'` +
+  Game Over. All fatal paths (`_hurt` hp≤0, `_fall` fatal, pit) route through `_die`.
+- **Cliff-fall guard:** new `blockCliffFall` (default ON) + `maxStepDown` (default 1). In `_moveWithCollision`
+  a PLAYER walk that would step DOWN more than `maxStepDown` levels is blocked unless near a ramp — stops
+  accidental falls off high platforms with no way back. Pits stay deadly regardless (a separate mechanic).
+  Verified headless (ON → stays on the plateau edge; OFF → walks down).
+- **Lava/light rework (bug: lake glowed bright at the top, dark at the bottom).** Root cause = the old
+  80-light cap consumed cells in row-major order, lighting only the top rows. Fix: gather VISIBLE emitters
+  then STRIDE-sample (`ceil(n/120)`) so coverage is uniform. Replaced `lightRadius`/`lightBrightness` with a
+  UNIVERSAL `lightRange` (blocks of reach per unit brightness) + PER-OBJECT `lavaBrightness` /
+  `glowstoneBrightness`; each emitter's reach = range × its brightness. Removed the additive (`lighter`)
+  glow that blew out to white in dense areas — the darkness is punched with a union of destination-out
+  holes (no stacking) and a gentle source-over warm wash tints the lit area.
+- **Sun/moon shape:** `sunMoonShape` = `circle` | `square`. **Shadow fade:** `OH_DAYNIGHT.shadow` now returns
+  a `fade` (→0 within 0.07 of the arc ends) so shadows fade OUT before the dawn/dusk sun↔moon swap and fade
+  IN after, instead of snapping direction. (29 day/night assertions.)
+- **Erase brush:** confirmed — `_paintCell` routes erase through `apply()`, which loops the `brush` square,
+  so erase already honours the brush size (no change needed).
+- **DEFERRED with plans:** the **bridge item** (FUTURE_ROADMAP §36) and **redstone in Overhead**
+  (FUTURE_ROADMAP §32 — a large rebuild, flagged for its own focused session). The seamless
+  two-environment ("cave + surface in one world, cross-effects") question is answered in §35.
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD ENGINE — RAMPS FORGIVING + DAY/NIGHT DEPTH (2026-07-29, build 293, branch `overhead-engine`)
 # ═══════════════════════════════════════════════════════════════════════
 Seventh playtest-feedback batch. Suite green (975 assertions), draw-probe + a render smoke-test clean.
