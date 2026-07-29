@@ -133,6 +133,7 @@
         mapSnapshot: { gridW: W, gridH: H, density, baseW, baseH, cell, objectScaleMode: 'independent', ground, elevation, decorations: [] },
         buildings: [], mobs: [], items: [], spawns: [{ col: 1, row: H - 2 }],
         goal: null,
+        settings: (typeof OH_SETTINGS !== 'undefined') ? OH_SETTINGS.defaults() : {},
       };
     },
 
@@ -193,6 +194,7 @@
         <button id="oh-redo" title="Redo (Ctrl+Y)">↷ Redo</button>
         <button id="oh-zout" title="Zoom out (−)">－</button>
         <button id="oh-zin" title="Zoom in (=)">＋</button>
+        <button id="oh-settings">⚙ Settings</button>
         <button id="oh-test">▶ Test</button>
         <button id="oh-save" class="primary">💾 Save</button>
         <button id="oh-exit">✕ Exit</button>
@@ -219,6 +221,7 @@
       g('oh-undo').onclick = () => this.undo(); g('oh-redo').onclick = () => this.redo();
       g('oh-zin').onclick = () => OH_GRID.zoomBy(this.grid, 1.15); g('oh-zout').onclick = () => OH_GRID.zoomBy(this.grid, 0.87);
       g('oh-test').onclick = () => this._test(); g('oh-save').onclick = () => this._save(); g('oh-exit').onclick = () => this.close();
+      g('oh-settings').onclick = () => { if (typeof OH_WORLD_SETTINGS !== 'undefined') OH_WORLD_SETTINGS.open(this.world, () => this._renderBar()); };
       g('oh-erase').onclick = () => { this.tool = 'erase'; this._renderBar(); };
       rail.querySelectorAll('[data-brush]').forEach((el) => el.onclick = () => { this.brush = +el.dataset.brush; this._renderBar(); });
       rail.querySelectorAll('[data-elev]').forEach((el) => el.onclick = () => { this.elevLevel = +el.dataset.elev; this._renderBar(); });
@@ -234,9 +237,11 @@
     // ── Canvas interaction ──────────────────────────────────────────────────
     _bindCanvas() {
       const cv = document.getElementById('gameCanvas');
-      this._md = (e) => { this._dragging = true; this._shift = e.shiftKey; this._paintAt(e); };
-      this._mm = (e) => { if (this._dragging) { this._shift = e.shiftKey; this._paintAt(e); } };
-      this._mu = () => { if (this._dragging) { this._dragging = false; this._pushHistory(); } };
+      this._md = (e) => { this._dragging = true; this._shift = e.shiftKey; this._lastCell = null; this._paintAt(e); };
+      // Interpolate a LINE between the last painted cell and the current one so a
+      // fast drag paints a continuous path (fixes the "spotty" brush).
+      this._mm = (e) => { if (this._dragging) { this._shift = e.shiftKey; this._paintLine(e); } };
+      this._mu = () => { if (this._dragging) { this._dragging = false; this._lastCell = null; this._pushHistory(); } };
       this._wheel = (e) => { OH_GRID.zoomBy(this.grid, e.deltaY < 0 ? 1.1 : 0.9); e.preventDefault(); };
       this._kd = (e) => {
         const K = this.KEYS, pan = 48 / this.grid.masterZoom;
@@ -266,8 +271,22 @@
       const w = OH_GRID.screenToWorld(this.grid, this.cam, sx, sy);
       return OH_GRID.cellAt(this.grid, w.x, w.y);
     },
-    _paintAt(e) {
+    _paintAt(e) { const { col, row } = this._cellFromEvent(e); this._paintCell(col, row); this._lastCell = { col, row }; },
+    // Paint every cell on the line from the previous painted cell to this one
+    // (Bresenham) so a quick drag doesn't leave gaps.
+    _paintLine(e) {
       const { col, row } = this._cellFromEvent(e);
+      const last = this._lastCell;
+      // Only terrain/erase interpolate along a drag; point tools (goal/spawn/
+      // building/mob/item) act on the current cell only.
+      if (!last || (this.tool !== 'terrain' && this.tool !== 'erase' && !this._shift)) { this._paintCell(col, row); this._lastCell = { col, row }; return; }
+      let x0 = last.col, y0 = last.row; const x1 = col, y1 = row;
+      const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+      let err = dx - dy, guard = 0;
+      while (guard++ < 4000) { this._paintCell(x0, y0); if (x0 === x1 && y0 === y1) break; const e2 = 2 * err; if (e2 > -dy) { err -= dy; x0 += sx; } if (e2 < dx) { err += dx; y0 += sy; } }
+      this._lastCell = { col, row };
+    },
+    _paintCell(col, row) {
       const m = this.world.mapSnapshot, half = Math.floor(this.brush / 2);
       const erasing = this.tool === 'erase' || this._shift;
       const apply = (fn) => { for (let dr = -half; dr <= half; dr++) for (let dc = -half; dc <= half; dc++) {
@@ -296,7 +315,7 @@
     _test() {
       this._running = false; this._unbindCanvas(); this._showChrome(false);
       const draft = JSON.parse(JSON.stringify(this.world));
-      OVERHEAD.launchWorld(draft, {}, () => { if (window.game && window.game.destroy) window.game.destroy(); window.game = null; this._reopen(); });
+      OVERHEAD.launchWorld(draft, { testMode: true }, () => { if (window.game && window.game.destroy) window.game.destroy(); window.game = null; this._reopen(); });
     },
     _reopen() {
       this._showChrome(true);

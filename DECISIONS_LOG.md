@@ -1,6 +1,39 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD ENGINE — SETTINGS MENU + PERF + TEST-EXIT (2026-07-29, build 283, branch `overhead-engine`)
+# ═══════════════════════════════════════════════════════════════════════
+Playtest feedback: faster weapons, a separate settings menu, density perf/feel bugs, and test-exit UX.
+
+- **Separate Overhead World Settings menu (§ Kevin — a menu, NOT a tab).** New `js/overhead/
+  overhead-settings.js`: `OH_SETTINGS.defaults()/resolve()` + an `OH_WORLD_SETTINGS` overlay opened by a
+  ⚙ button in the editor top bar. Settings live on `world.settings` (saved with the world) and the
+  runtime reads them via `OH_SETTINGS.resolve` (folding legacy top-level controlScheme/autoClimb/etc.).
+  Groups: Movement (player speed, auto-climb, jump float/scale), Weapons (crossbow/trident/boomerang
+  SPEEDS + trident-return + boomerang range/width + melee reach), Mobs (detection ×), View & Controls
+  (scheme, aim-lock, default zoom, hidden-indicator). This is the seed of a full per-mode overhead
+  settings system; kept focused for the MVP.
+- **Weapon speeds up** (Kevin): `OH_WEAPONS.DEFAULTS` boomerang/trident 7→12, trident-return 9→15,
+  crossbow 9→13; also all now overridable per-world via the settings above.
+- **DENSITY bug — player crawled on a density-4 grid. ROOT CAUSE:** player speed + entity sizes were
+  tied to the FINE cell (`cell = 32/density` → 8px at d4), so at density 4 the player moved/measured 4×
+  smaller. **FIX:** introduced `this.unit = cell × density` (= the base 32px), and put ALL gameplay
+  speed/size in UNITS (player speed/radius, mob radius, melee reach, projectile + pickup + action radii,
+  aim reticle). Positions still use `cell`. Density now only changes terrain granularity, never feel.
+- **Spotty brush — FIX:** the paint fired once per mouse event, so fast drags skipped cells. Added
+  Bresenham line-interpolation (`_paintLine`) between the last painted cell and the current one, for
+  terrain + erase (point tools still act on the single current cell). `_paintCell` split out of `_paintAt`.
+- **Dense-grid slowdown — FIX:** `drawTerrainTile` did a save/clip + per-family texture + a
+  createLinearGradient bevel PER CELL — 16× the work at density 4. Now it early-returns to a flat fill +
+  hairline when `cs < 13px` (invisible detail at that size), keeping the rich look only when zoomed in.
+- **Test-mode exit (Kevin):** a Sandbox playtest now returns to the editor on **Esc** (was opening the
+  pause menu) — gated on a new `opts.testMode` flag — plus a top-left **"◀ Designer"** click button.
+  The editor's `_test` passes `{ testMode: true }`; hearts shift down so they don't collide with the button.
+- Jump float/scale are now settings-driven (`jumpFloat`/`jumpScale`). Demo + new worlds seed
+  `OH_SETTINGS.defaults()`.
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD ENGINE — ART REVISION 3 + EDITOR FIX (2026-07-29, build 282, branch `overhead-engine`)
 # ═══════════════════════════════════════════════════════════════════════
 Second visual-feedback round + a real editor bug. Suite green (11 weapon assertions unchanged).

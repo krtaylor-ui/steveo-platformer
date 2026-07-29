@@ -45,6 +45,7 @@
     return {
       name: 'Overhead Demo', mode: 'platformer', viewMode: 'overhead',
       controlScheme: 'free-aim', angleLockDeg: 0, rules: { autoClimb: '1' }, showHiddenIndicator: false,
+      settings: (typeof OH_SETTINGS !== 'undefined') ? OH_SETTINGS.defaults() : {},
       mapSnapshot: { gridW: W, gridH: H, density, baseW, baseH, cell, objectScaleMode: 'independent', ground, elevation, decorations: [] },
       buildings, mobs, items, spawns: [{ col: 2, row: H - 3 }], goal: { col: W - 3, row: 3 },
     };
@@ -76,6 +77,10 @@
     drawTerrainTile(ctx, key, x, y, cs, elev) {
       const col = P().terrainColor(key);
       ctx.fillStyle = col; ctx.fillRect(x, y, cs + 1, cs + 1);
+      // PERF: below ~13px (dense grids / zoomed out) skip the clip + per-family
+      // texture + bevel gradient — they're invisible at that size and 16× the work
+      // at density 4. Just the flat fill + a hairline edge.
+      if (cs < 13) { ctx.strokeStyle = 'rgba(0,0,0,.14)'; ctx.strokeRect(x, y, cs, cs); return; }
       ctx.save(); ctx.beginPath(); ctx.rect(x, y, cs, cs); ctx.clip();
       if (key === 'grass' || key === 'leaves' || key === 'bush') { ctx.fillStyle = 'rgba(0,0,0,.10)'; for (let i = 0; i < 3; i++) ctx.fillRect(x + (i * 11 % cs), y + (i * 7 % cs), cs * 0.12, cs * 0.12); }
       else if (key === 'lava') { ctx.fillStyle = 'rgba(255,220,80,.5)'; ctx.fillRect(x + cs * 0.2, y + cs * 0.3, cs * 0.25, cs * 0.18); ctx.fillRect(x + cs * 0.55, y + cs * 0.6, cs * 0.2, cs * 0.14); }

@@ -15,9 +15,9 @@
   'use strict';
 
   const DEFAULTS = {
-    crossbowSpeed: 9,  crossbowRange: 420,
-    tridentSpeed:  7,  tridentRange:  380,  tridentReturnSpeed: 9,
-    boomerangSpeed: 7, boomerangMaxRange: 300, boomerangWidth: 0.42,
+    crossbowSpeed: 13,  crossbowRange: 460,
+    tridentSpeed:  12,  tridentRange:  420,  tridentReturnSpeed: 15,
+    boomerangSpeed: 12, boomerangMaxRange: 340, boomerangWidth: 0.42,
   };
 
   // ── Crossbow bolt ───────────────────────────────────────────────────────

@@ -1,4 +1,20 @@
-## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE art rev 3 + editor fix (build 282) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE settings + perf + test-exit (build 283) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+
+Playtest-feedback pass. Suite green.
+- **Separate Overhead World Settings menu** (⚙ in the editor, `js/overhead/overhead-settings.js` →
+  `OH_WORLD_SETTINGS`; NOT a side-view tab). Per-world tunables on `world.settings`: player speed,
+  auto-climb, jump float/scale, **weapon speeds** (crossbow/trident/boomerang) + boomerang range/width,
+  melee reach, mob detection ×, control scheme + aim-lock, default zoom, hidden-indicator. Runtime reads them.
+- **Faster weapons** by default (boomerang/trident 12, trident-return 15, crossbow 13) + tunable above.
+- **Density fixes:** gameplay speed/size now in density-independent UNITS (fixes the player crawling at
+  density 4); brush interpolates a LINE between samples (fixes spotty drag); tile renderer skips
+  clip/texture/bevel below ~13px (fixes dense-grid slowdown).
+- **Test mode:** Esc (or a top-left "◀ Designer" button) returns to the editor instead of the pause menu.
+Detail in `DECISIONS_LOG.md` (Overhead Engine — Settings Menu + Perf + Test-Exit).
+
+---
+
+## PRIOR STATE (2026-07-29) — OVERHEAD ENGINE art rev 3 + editor fix (build 282) on branch `overhead-engine` — NOT merged, browser-UNTESTED
 
 Second visual pass + fixed the editor. Suite green.
 - **Editor menu FIX:** the build-280 rewrite never created the toolbar div (render guard `if(!bar)return`

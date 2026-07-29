@@ -26,26 +26,35 @@
 
       const map = worldData.mapSnapshot || worldData;
       this.map = map;
+      // §Overhead world settings — the runtime's tunables (separate from side-view).
+      this.settings = (typeof OH_SETTINGS !== 'undefined') ? OH_SETTINGS.resolve(worldData) : {};
+      const cfg = this.settings;
       this.grid = OH_GRID.make({ gridW: map.gridW, gridH: map.gridH, density: map.density,
-        objectScaleMode: map.objectScaleMode, cell: map.cell || (32 / (map.density || 1)), masterZoom: 1 });
+        objectScaleMode: map.objectScaleMode, cell: map.cell || (32 / (map.density || 1)), masterZoom: cfg.masterZoom || 1 });
+      // UNIT = base-cell world px (cell × density). Gameplay sizing/speed is in
+      // UNITS so it's DENSITY-INDEPENDENT — a denser grid has smaller cells but the
+      // player/mobs/weapons keep the same real size + speed (the density bug fix).
+      this.unit = this.grid.cell * (map.density || 1);
+      this._testMode = !!opts.testMode;
       this.ground = map.ground || []; this.elevation = map.elevation || [];
       this.buildings = (worldData.buildings || []).slice();
       this.items = (worldData.items || []).map((it) => ({ ...it, taken: false }));
       this.mobs = (worldData.mobs || []).map((m) => { const d = P().OH_MOB_BY_KEY[m.type] || P().OH_MOBS[0];
-        return { ...m, x: (m.col + 0.5) * this.grid.cell, y: (m.row + 0.5) * this.grid.cell, r: this.grid.cell * 0.34,
-          hp: m.hp || d.hp, speed: m.speed || d.speed, detect: m.detect || d.detect, ranged: !!d.ranged, state: 'path', wp: 0, dead: false, cool: 0 }; });
+        return { ...m, x: (m.col + 0.5) * this.grid.cell, y: (m.row + 0.5) * this.grid.cell, r: this.unit * 0.34,
+          hp: m.hp || d.hp, speed: m.speed || d.speed, detect: (m.detect || d.detect) * (cfg.mobDetectMult || 1), ranged: !!d.ranged, state: 'path', wp: 0, dead: false, cool: 0 }; });
       this.mode = worldData.mode || 'platformer';
-      this.rules = worldData.rules || {}; this.showHidden = !!worldData.showHiddenIndicator;
+      this.rules = Object.assign({}, worldData.rules, { autoClimb: cfg.autoClimb || (worldData.rules && worldData.rules.autoClimb) || '1' });
+      this.showHidden = !!cfg.showHiddenIndicator;
       this.goal = worldData.goal || null;
 
-      this.baseScheme = OH_CONTROLS.pickScheme(worldData.controlScheme, opts.playerScheme);
-      this.angleLockDeg = worldData.angleLockDeg || 0;
+      this.baseScheme = OH_CONTROLS.pickScheme(cfg.controlScheme, opts.playerScheme);
+      this.angleLockDeg = cfg.angleLockDeg || 0;
       this._schemeOverlay = 0;
 
       const sp = (worldData.spawns && worldData.spawns[0]) || { col: (map.gridW / 2) | 0, row: (map.gridH / 2) | 0 };
       const cell = this.grid.cell;
-      this.player = { x: (sp.col + 0.5) * cell, y: (sp.row + 0.5) * cell, r: Math.max(9, cell * 0.4),
-        hp: 20, maxHp: 20, speed: cell * 0.11, elev: this._elev(sp.col, sp.row), aim: { x: 1, y: 0 }, lastAim: { x: 1, y: 0 },
+      this.player = { x: (sp.col + 0.5) * cell, y: (sp.row + 0.5) * cell, r: Math.max(9, this.unit * 0.4),
+        hp: 20, maxHp: 20, speed: this.unit * (cfg.moveSpeed || 0.11), elev: this._elev(sp.col, sp.row), aim: { x: 1, y: 0 }, lastAim: { x: 1, y: 0 },
         dist: 0, jump: null, iFrames: 0, hidden: false,
         // §Campaign pulls the weapon the player finished the prior level with
         // (opts.playerWeapon); otherwise the world's start weapon, else unarmed
@@ -75,8 +84,11 @@
 
     _update() {
       const inp = this.input;
-      if (inp.isJustDown && inp.isJustDown('Escape')) { if (this.state === 'playing') this.state = 'paused'; else if (this.state === 'paused') this.state = 'playing'; else { this._exit(); return; } }
+      // In a Sandbox playtest, Esc returns straight to the designer (not a pause menu).
+      if (inp.isJustDown && inp.isJustDown('Escape')) { if (this._testMode) { this._exit(); return; } if (this.state === 'playing') this.state = 'paused'; else if (this.state === 'paused') this.state = 'playing'; else { this._exit(); return; } }
       if (inp.scrollDelta) { OH_GRID.zoomBy(this.grid, inp.scrollDelta < 0 ? 1.08 : 0.92); inp.scrollDelta = 0; }
+      // Test-mode "◀ Designer" button (top-left) — click to return to the editor.
+      if (this._testMode && inp.mouse.clicked && inp.mouse.x <= 150 && inp.mouse.y <= 30) { this._exit(); return; }
       if (this.state === 'won' || this.state === 'dead') { if (inp.mouse.clicked || (inp.isJustDown && inp.isJustDown('Enter'))) this._exit(); return; }
       if (this.state === 'paused') return;
 
@@ -158,35 +170,37 @@
       const fire = intent.fire || (this.input.mouse.down && p._fireCd === 0);
       const ang = OH_CONTROLS.angleOf(p.aim);
       if (!p.weapon) { if (intent.melee) this._melee(p, ang); return; }
-      if (p.weapon === 'crossbow') { if (fire && p._fireCd === 0) { this._bolts.push(Object.assign(OH_WEAPONS.startBolt(p.x, p.y, ang, {}), { owner: 'p' })); p._fireCd = 14; } }
+      const wc = this._weaponCfg();
+      if (p.weapon === 'crossbow') { if (fire && p._fireCd === 0) { this._bolts.push(Object.assign(OH_WEAPONS.startBolt(p.x, p.y, ang, wc), { owner: 'p' })); p._fireCd = 14; } }
       else if (p.weapon === 'trident') {
         if (intent.recallBtn && p._trident) OH_WEAPONS.recallTrident(p._trident);
-        else if (fire && !p._trident) { p._trident = OH_WEAPONS.startTrident(p.x, p.y, ang, {}); p._fireCd = 10; }
+        else if (fire && !p._trident) { p._trident = OH_WEAPONS.startTrident(p.x, p.y, ang, wc); p._fireCd = 10; }
       } else if (p.weapon === 'boomerang') {
-        if (fire && !p._boom) { const dist = Math.hypot(mouseWorld.x - p.x, mouseWorld.y - p.y); p._boom = OH_WEAPONS.startBoomerang(p.x, p.y, ang, dist, {}); p._boom._hit = {}; p._fireCd = 10; }
+        if (fire && !p._boom) { const dist = Math.hypot(mouseWorld.x - p.x, mouseWorld.y - p.y); p._boom = OH_WEAPONS.startBoomerang(p.x, p.y, ang, dist, wc); p._boom._hit = {}; p._fireCd = 10; }
       }
     }
+    _weaponCfg() { const s = this.settings || {}; return { crossbowSpeed: s.crossbowSpeed, tridentSpeed: s.tridentSpeed, tridentReturnSpeed: s.tridentReturnSpeed, boomerangSpeed: s.boomerangSpeed, boomerangMaxRange: s.boomerangRange, boomerangWidth: s.boomerangWidth }; }
     _melee(p, ang) {
       if (p._fireCd > 0) return; p._fireCd = 18;
-      const hits = OH_COMBAT.coneHit({ x: p.x, y: p.y }, ang, this.mobs.filter((m) => !m.dead), { reach: this.grid.cell * 2.4, halfAngle: Math.PI / 4, maxHits: 3 });
+      const hits = OH_COMBAT.coneHit({ x: p.x, y: p.y }, ang, this.mobs.filter((m) => !m.dead), { reach: this.unit * (this.settings.meleeReach || 2.4), halfAngle: Math.PI / 4, maxHits: 3 });
       for (const m of hits) { m.hp -= 4; if (m.hp <= 0) m.dead = true; }
     }
     _updateProjectiles() {
       const p = this.player, live = this.mobs.filter((m) => !m.dead);
       // Crossbow bolts.
-      for (const b of this._bolts) { OH_WEAPONS.stepBolt(b); const hit = OH_COMBAT.lineHit({ x: b.x - b.vx, y: b.y - b.vy }, { x: b.x, y: b.y }, live, this.grid.cell * 0.3); if (hit) { hit.hp -= 5; if (hit.hp <= 0) hit.dead = true; b.dead = true; } }
+      for (const b of this._bolts) { OH_WEAPONS.stepBolt(b); const hit = OH_COMBAT.lineHit({ x: b.x - b.vx, y: b.y - b.vy }, { x: b.x, y: b.y }, live, this.unit * 0.3); if (hit) { hit.hp -= 5; if (hit.hp <= 0) hit.dead = true; b.dead = true; } }
       this._bolts = this._bolts.filter((b) => !b.dead);
       // Trident.
-      if (p._trident) { OH_WEAPONS.stepTrident(p._trident, p); const t = p._trident; if (!t.caught) { for (const m of live) if (Math.hypot(m.x - t.x, m.y - t.y) < m.r + this.grid.cell * 0.3) { m.hp -= 6; if (m.hp <= 0) m.dead = true; if (t.state === 'out') t.state = 'return'; } } if (t.caught) p._trident = null; }
+      if (p._trident) { OH_WEAPONS.stepTrident(p._trident, p); const t = p._trident; if (!t.caught) { for (const m of live) if (Math.hypot(m.x - t.x, m.y - t.y) < m.r + this.unit * 0.3) { m.hp -= 6; if (m.hp <= 0) m.dead = true; if (t.state === 'out') t.state = 'return'; } } if (t.caught) p._trident = null; }
       // Boomerang (arcs, hits along the path, auto-returns).
-      if (p._boom) { OH_WEAPONS.stepBoomerang(p._boom, p); const b = p._boom; for (const m of live) { const id = m.col + ',' + m.row + ',' + (this.mobs.indexOf(m)); if (!b._hit[id] && Math.hypot(m.x - b.x, m.y - b.y) < m.r + this.grid.cell * 0.3) { m.hp -= 4; b._hit[id] = 1; if (m.hp <= 0) m.dead = true; } } if (b.dead) p._boom = null; }
+      if (p._boom) { OH_WEAPONS.stepBoomerang(p._boom, p); const b = p._boom; for (const m of live) { const id = m.col + ',' + m.row + ',' + (this.mobs.indexOf(m)); if (!b._hit[id] && Math.hypot(m.x - b.x, m.y - b.y) < m.r + this.unit * 0.3) { m.hp -= 4; b._hit[id] = 1; if (m.hp <= 0) m.dead = true; } } if (b.dead) p._boom = null; }
       // Mob bolts (skeletons).
-      for (const mb of this._mobBolts) { OH_WEAPONS.stepBolt(mb); if (Math.hypot(mb.x - p.x, mb.y - p.y) < p.r + this.grid.cell * 0.25 && p.iFrames === 0) { this._hurt(3, 'Shot'); mb.dead = true; } }
+      for (const mb of this._mobBolts) { OH_WEAPONS.stepBolt(mb); if (Math.hypot(mb.x - p.x, mb.y - p.y) < p.r + this.unit * 0.25 && p.iFrames === 0) { this._hurt(3, 'Shot'); mb.dead = true; } }
       this._mobBolts = this._mobBolts.filter((b) => !b.dead);
     }
 
-    _doAction(p) { let near = null, nd = 1e9; for (const b of this.buildings) { const bx = (b.col + 0.5) * this.grid.cell, by = (b.row + 0.5) * this.grid.cell; const d = Math.hypot(bx - p.x, by - p.y); if (d < this.grid.cell * 2 && d < nd) { near = b; nd = d; } } if (near) { const t = OH_BUILDINGS.get(near.typeId); this._notify((t ? t.category : 'Building') + ': ' + near.typeId, 90); } }
-    _pickups(p) { for (const it of this.items) { if (it.taken) continue; const ix = (it.col + 0.5) * this.grid.cell, iy = (it.row + 0.5) * this.grid.cell; if (Math.hypot(ix - p.x, iy - p.y) < p.r + this.grid.cell * 0.4) { it.taken = true; if (it.kind === 'weapon') { p.weapon = it.weapon; this._notify('Equipped ' + it.weapon, 120); } else this._notify('Coin!', 60); } } }
+    _doAction(p) { let near = null, nd = 1e9; for (const b of this.buildings) { const bx = (b.col + 0.5) * this.grid.cell, by = (b.row + 0.5) * this.grid.cell; const d = Math.hypot(bx - p.x, by - p.y); if (d < this.unit * 2 && d < nd) { near = b; nd = d; } } if (near) { const t = OH_BUILDINGS.get(near.typeId); this._notify((t ? t.category : 'Building') + ': ' + near.typeId, 90); } }
+    _pickups(p) { for (const it of this.items) { if (it.taken) continue; const ix = (it.col + 0.5) * this.grid.cell, iy = (it.row + 0.5) * this.grid.cell; if (Math.hypot(ix - p.x, iy - p.y) < p.r + this.unit * 0.4) { it.taken = true; if (it.kind === 'weapon') { p.weapon = it.weapon; this._notify('Equipped ' + it.weapon, 120); } else this._notify('Coin!', 60); } } }
 
     _updateMobs() {
       const p = this.player;
@@ -281,8 +295,8 @@
       // Jump = a small UP float + a slight SCALE-UP ("getting closer"), not a dip.
       const jp = OH_MOVE.jumpLift(p.jump), maxH = (p.jump && p.jump.height) || 1;
       const jf = maxH > 0 ? Math.min(1, jp / maxH) : 0;
-      const floatUp = jp * 0.4 * z;
-      const scaleF = 1 + jf * 0.22;
+      const floatUp = jp * (this.settings.jumpFloat != null ? this.settings.jumpFloat : 0.4) * z;
+      const scaleF = 1 + jf * (this.settings.jumpScale != null ? this.settings.jumpScale : 0.22);
       const sp = S(p.x, p.y); const cx = sp.x, cy = sp.y + elevPx - floatUp; const rr = p.r * z * scaleF;
       // Ground shadow stays at the surface and shrinks as the sprite "rises".
       const ss = 1 - jf * 0.35;
@@ -298,13 +312,17 @@
       ctx.globalAlpha = 1;
       if (p.iFrames > 0 && ((p.iFrames >> 2) & 1)) { ctx.globalAlpha = 0.4; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
       // Aim reticle.
-      const rt = S(p.x + p.aim.x * this.grid.cell * 1.8, p.y + p.aim.y * this.grid.cell * 1.8);
+      const rt = S(p.x + p.aim.x * this.unit * 1.8, p.y + p.aim.y * this.unit * 1.8);
       ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(rt.x, rt.y, 5, 0, 7); ctx.stroke();
     }
 
     _drawHUD(ctx) {
-      ctx.textAlign = 'left'; const hearts = Math.ceil(this.player.hp / 2);
-      ctx.font = '18px sans-serif'; ctx.fillStyle = '#ff5a5a'; for (let i = 0; i < hearts; i++) ctx.fillText('♥', 12 + i * 18, 26);
+      ctx.textAlign = 'left';
+      // Test-mode "return to designer" button (top-left); hearts drop below it.
+      const hy = this._testMode ? 56 : 26;
+      if (this._testMode) { ctx.fillStyle = 'rgba(20,26,38,.9)'; ctx.strokeStyle = '#4f86d8'; ctx.lineWidth = 1; ctx.fillRect(8, 6, 142, 24); ctx.strokeRect(8, 6, 142, 24); ctx.fillStyle = '#dbe4f3'; ctx.font = '12px sans-serif'; ctx.fillText('◀ Designer  (Esc)', 18, 22); }
+      const hearts = Math.ceil(this.player.hp / 2);
+      ctx.font = '18px sans-serif'; ctx.fillStyle = '#ff5a5a'; for (let i = 0; i < hearts; i++) ctx.fillText('♥', 12 + i * 18, hy);
       ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = '12px sans-serif';
       ctx.fillText(`Overhead · ${this.mode} · ${this.baseScheme}${this.player.weapon ? ' · ' + this.player.weapon : ''}  (WASD · mouse aim · click fire · F melee · Space jump · E action · RMB recall trident · wheel zoom)`, 12, CANVAS_H - 12);
       if (this._schemeOverlay > 0) { ctx.globalAlpha = Math.min(1, this._schemeOverlay / 30); ctx.fillStyle = '#ffcf4a'; ctx.textAlign = 'center'; ctx.font = 'bold 13px sans-serif'; ctx.fillText('⟳ Twin-Stick auto-fire', CANVAS_W / 2, 24); ctx.globalAlpha = 1; }
