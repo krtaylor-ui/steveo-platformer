@@ -341,7 +341,7 @@
     // level 4, both AROUND the trunk (never covering it). Placed relative to the
     // current elevation; higher placements just push the levels up (no hard cap).
     _stampTree(col, row) {
-      const m = this.world.mapSnapshot, base = this.elevLevel;
+      const m = this.world.mapSnapshot, base = (m.elevation[row] ? (m.elevation[row][col] | 0) : 0);   // relative to the GROUND here, not the paint elevation
       const set = (c, r, key, e) => { if (c >= 0 && r >= 0 && c < m.gridW && r < m.gridH) { m.ground[r][c] = key; m.elevation[r][c] = e; } };
       for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) {
         if (dc === 0 && dr === 0) continue;                 // never cover the trunk
@@ -400,9 +400,11 @@
       const opts = `<option value="">(none)</option>` + others.map((p) => `<option value="${p.key}" ${b.config.dest === p.key ? 'selected' : ''}>${p.label}</option>`).join('');
       this._cfgModal((b.typeId === 'pipe' ? 'Pipe' : 'Portal') + ' @' + b.col + ',' + b.row,
         `<label>Teleport destination <select id="cfg-dest">${opts}</select></label>
-         <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="cfg-goal" ${b.config.isGoal ? 'checked' : ''}> Entering this ends the level (acts as a Goal Star)</label>
-         <p style="color:#8fa0bd;font-size:12px">Pick another portal/pipe to teleport there, or tick “ends the level”. A Player Spawn can be linked to a portal so the player emerges from it (configure the spawn).</p>`,
-        () => { b.config.dest = document.getElementById('cfg-dest').value || null; b.config.isGoal = document.getElementById('cfg-goal').checked; });
+         <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="cfg-two" ${b.config.twoWay ? 'checked' : ''}> Two-way (also link the destination back here)</label>
+         <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="cfg-goal" ${b.config.isGoal ? 'checked' : ''}> Entering this ends the level (acts as a Goal Star)</label>
+         <p style="color:#8fa0bd;font-size:12px">Use with the E button near the portal. Two-way links the other end back so it works in both directions. A Player Spawn can be linked to a portal so the player emerges from it (configure the spawn).</p>`,
+        () => { const dest = document.getElementById('cfg-dest').value || null; b.config.dest = dest; b.config.isGoal = document.getElementById('cfg-goal').checked; b.config.twoWay = document.getElementById('cfg-two').checked;
+          if (b.config.twoWay && dest) { const other = (this.world.buildings || []).find((x) => (x.col + ',' + x.row) === dest); if (other) { other.config = other.config || {}; other.config.dest = b.col + ',' + b.row; } } });
     },
     _goalModal() {
       const colors = (typeof GOAL_COLORS !== 'undefined') ? GOAL_COLORS : [{ name: 'Gold', hex: '#ffd700' }];
@@ -492,11 +494,31 @@
       for (const spn of (this.world.spawns || [])) { const sp = S((spn.col + 0.5) * g.cell, (spn.row + 0.5) * g.cell); ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; ctx.strokeRect(sp.x - cs * 0.42, sp.y - cs * 0.42, cs * 0.84, cs * 0.84); if (cs > 14) { ctx.fillStyle = '#4aa3ff'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('P1', sp.x, sp.y + 3); } }
       for (const rp of (this.world.ramps || [])) { const sp = S((rp.col + 0.5) * g.cell, (rp.row + 0.5) * g.cell); const dir = OVERHEAD.rampDir((c, r) => (m.elevation[r] ? (m.elevation[r][c] | 0) : 0), rp.col, rp.row); OVERHEAD.drawRampIcon(ctx, rp.kind, sp.x, sp.y, cs, dir); }
       if (this.world.goal) { const gc = (typeof GOAL_COLORS !== 'undefined' && GOAL_COLORS[this.world.goal.color || 0]) || { hex: '#ffd700' }; const sp = S((this.world.goal.col + 1) * g.cell, (this.world.goal.row + 1) * g.cell); ctx.fillStyle = gc.hex; ctx.font = `${(cs * 1.8) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.6); }
+      // Distinct MAP-EDGE indicator (hazard stripes just outside the world bounds)
+      // so the creator knows when they're looking at the real edge — deliberately
+      // NOT a block look.
+      this._drawMapEdge(ctx, S, m.gridW * g.cell, m.gridH * g.cell);
       // Live shape preview while dragging.
       if (this._shapeAnchor && this._shapeEnd) { ctx.fillStyle = 'rgba(120,180,255,.4)'; for (const p of this._shapeCells(this._shapeAnchor, this._shapeEnd)) { const sp = S(p.c * g.cell, p.r * g.cell); ctx.fillRect(sp.x, sp.y, cs, cs); } }
       // Info line.
       ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.textAlign = 'left'; ctx.font = '12px sans-serif';
       ctx.fillText(`${this.world.name} · ${m.baseW || m.gridW}×${m.baseH || m.gridH} @ density ${m.density} (${m.gridW}×${m.gridH} cells) · ${this.world.mode} · tool: ${this._shift ? 'erase' : this.tool} @ elev ${this.elevLevel}`, 158, CANVAS_H - 10);
+    },
+    // Yellow/black hazard stripes in a band just OUTSIDE each world edge.
+    _drawMapEdge(ctx, S, worldW, worldH) {
+      const tl = S(0, 0), brc = S(worldW, worldH); const W = 12;
+      const band = (x, y, w, h, horiz) => {
+        if (w <= 0 || h <= 0) return;
+        ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+        ctx.fillStyle = '#111'; ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = '#ffd23a'; ctx.lineWidth = 5;
+        const len = Math.max(w, h) + h + w; for (let i = -h; i < len; i += 14) { ctx.beginPath(); ctx.moveTo(x + i, y); ctx.lineTo(x + i - h, y + h); ctx.stroke(); }
+        ctx.restore();
+      };
+      band(tl.x - W, tl.y - W, brc.x - tl.x + 2 * W, W);          // top
+      band(tl.x - W, brc.y, brc.x - tl.x + 2 * W, W);            // bottom
+      band(tl.x - W, tl.y, W, brc.y - tl.y);                     // left
+      band(brc.x, tl.y, W, brc.y - tl.y);                       // right
     },
     list() { try { return Object.keys(JSON.parse(localStorage.getItem('steveo_overhead_worlds') || '{}')); } catch (e) { return []; } },
   };

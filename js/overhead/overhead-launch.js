@@ -146,10 +146,21 @@
       ctx.save();
       switch (typeId) {
         case 'portal': {
-          const g = ctx.createLinearGradient(x, y, x, y + h); g.addColorStop(0, '#9a5fe0'); g.addColorStop(1, '#5a2fa0');
-          ctx.fillStyle = '#1a1030'; ctx.fillRect(x, y, w, h);
-          ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(cx, cy, w * 0.4, h * 0.42, 0, 0, 7); ctx.fill();
-          if (detail > 0.4) { ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = Math.max(1, min * 0.06); ctx.beginPath(); ctx.ellipse(cx, cy, w * 0.24, h * 0.28, 0, 0, 7); ctx.stroke(); }
+          // A 4×5 obsidian frame (border) with a glowing-purple interior, each a
+          // little block-cube (up-left offset) so it reads 3D like the side view.
+          const cols = 4, rows = 5, mw = w / cols, mh = h / rows, mq = Math.min(mw, mh) * 0.22;
+          const blk = (bx, by, top, glow) => {
+            const tx = bx - mq, ty = by - mq;
+            ctx.fillStyle = _shade(top, 0.4); ctx.beginPath(); ctx.moveTo(tx, ty + mh); ctx.lineTo(tx + mw, ty + mh); ctx.lineTo(bx + mw, by + mh); ctx.lineTo(bx, by + mh); ctx.closePath(); ctx.fill();   // south face
+            ctx.fillStyle = _shade(top, 0.55); ctx.beginPath(); ctx.moveTo(tx + mw, ty); ctx.lineTo(tx + mw, ty + mh); ctx.lineTo(bx + mw, by + mh); ctx.lineTo(bx + mw, by); ctx.closePath(); ctx.fill();   // east face
+            ctx.fillStyle = top; ctx.fillRect(tx, ty, mw + 0.5, mh + 0.5);
+            if (glow) { ctx.fillStyle = 'rgba(200,140,255,.5)'; ctx.fillRect(tx + mw * 0.2, ty + mh * 0.2, mw * 0.6, mh * 0.6); }
+            ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.strokeRect(tx, ty, mw, mh);
+          };
+          for (let r = rows - 1; r >= 0; r--) for (let c = cols - 1; c >= 0; c--) {
+            const frame = (r === 0 || r === rows - 1 || c === 0 || c === cols - 1);
+            blk(x + c * mw, y + r * mh, frame ? '#2a2036' : '#9a5fe0', !frame);   // obsidian border / purple centre
+          }
           break; }
         case 'pipe': {
           ctx.fillStyle = '#2f8f52'; ctx.fillRect(x, y, w, h);
@@ -213,8 +224,17 @@
       const ang = { E: 0, S: Math.PI / 2, W: Math.PI, N: -Math.PI / 2 }[dir || 'E'];
       ctx.save(); ctx.translate(cx, cy); ctx.rotate(ang);
       if (kind === 'ladder') { ctx.strokeStyle = '#c8a05a'; ctx.lineWidth = Math.max(1.5, s * 0.09); ctx.beginPath(); ctx.moveTo(-s * 0.4, -s * 0.22); ctx.lineTo(s * 0.4, -s * 0.22); ctx.moveTo(-s * 0.4, s * 0.22); ctx.lineTo(s * 0.4, s * 0.22); for (let i = -1; i <= 1; i++) { ctx.moveTo(i * s * 0.28, -s * 0.22); ctx.lineTo(i * s * 0.28, s * 0.22); } ctx.stroke(); }
-      else { ctx.fillStyle = 'rgba(200,170,110,.9)'; ctx.beginPath(); ctx.moveTo(-s * 0.42, s * 0.32); ctx.lineTo(s * 0.42, -s * 0.32); ctx.lineTo(s * 0.42, s * 0.32); ctx.closePath(); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.stroke();
-        ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1; for (let i = 1; i <= 3; i++) { const t = i / 4; const px = -s * 0.42 + s * 0.84 * t; ctx.beginPath(); ctx.moveTo(px, s * 0.32); ctx.lineTo(px, s * 0.32 - s * 0.64 * t); ctx.stroke(); } }
+      else {
+        // 3D ramp: a sloped top surface rising toward +x (the high side), lifted
+        // up-left (matching the cube offset), with a dark high-end face + step lines.
+        const ramp = '#b98a4a', L = s * 0.55;
+        const lb = [-s * 0.45, -s * 0.4], lf = [-s * 0.45, s * 0.4], hf = [s * 0.45 - L, s * 0.4 - L], hb = [s * 0.45 - L, -s * 0.4 - L];
+        ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.fillRect(-s * 0.45, -s * 0.4, s * 0.9, s * 0.8);   // ground shadow
+        ctx.fillStyle = _shade(ramp, 0.5); ctx.beginPath(); ctx.moveTo(hb[0], hb[1]); ctx.lineTo(hf[0], hf[1]); ctx.lineTo(s * 0.45, s * 0.4); ctx.lineTo(s * 0.45, -s * 0.4); ctx.closePath(); ctx.fill();   // high-end face
+        ctx.fillStyle = ramp; ctx.beginPath(); ctx.moveTo(lb[0], lb[1]); ctx.lineTo(lf[0], lf[1]); ctx.lineTo(hf[0], hf[1]); ctx.lineTo(hb[0], hb[1]); ctx.closePath(); ctx.fill();   // sloped top
+        ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1; for (let i = 1; i <= 3; i++) { const t = i / 4; ctx.beginPath(); ctx.moveTo(lb[0] + (hb[0] - lb[0]) * t, lb[1] + (hb[1] - lb[1]) * t); ctx.lineTo(lf[0] + (hf[0] - lf[0]) * t, lf[1] + (hf[1] - lf[1]) * t); ctx.stroke(); }
+      }
       ctx.restore();
     },
     // Direction toward the higher neighbour ('E'|'W'|'N'|'S'); horizontal default on
