@@ -134,6 +134,11 @@ const PAUSE_MENU = {
     else LEADERBOARD_SYSTEM.showModal();
   },
 
+  _openCampaignProgress() {
+    const g = this._game; if (!g || !g._campaign) return;
+    if (typeof CAMPAIGN_PLAY !== 'undefined' && CAMPAIGN_PLAY.showProgress) CAMPAIGN_PLAY.showProgress();
+  },
+
   _openWorldSettings() {
     const g = this._game; if (!g) return;
     g.state = 'playing'; this.close();
@@ -324,6 +329,8 @@ const PAUSE_MENU = {
     // picker, which Main Menu already does (redundant).
     const btns = [{ label: '▶  Resume', cls: 'btn-primary', act: () => this._resume() }];
     if (game.isArena && !game._testMode) btns.push({ label: '🏆  View Leaderboard', cls: 'btn-secondary', act: () => this._viewLeaderboard() });
+    // §Campaign — a run inside a campaign can view its progression tracker.
+    if (game._campaign) btns.push({ label: '🗺  Campaign Progress', cls: 'btn-secondary', act: () => this._openCampaignProgress() });
     // In a Sandbox playtest, "exit" returns to the editor (not the main menu).
     btns.push({ label: game._testMode ? '⏻  Exit to Sandbox' : '⏻  Main Menu', cls: 'btn-danger', act: () => this._mainMenu() });
 

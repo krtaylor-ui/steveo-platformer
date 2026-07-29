@@ -48,6 +48,7 @@ const SANDBOX = {
 
     document.getElementById('sandbox-back-btn')?.addEventListener('click', () => this.goBack());
     document.getElementById('create-world-btn')?.addEventListener('click', () => this.showCreateWorldModal());
+    document.getElementById('campaign-builder-btn')?.addEventListener('click', () => { if (typeof CAMPAIGN_BUILDER !== 'undefined') CAMPAIGN_BUILDER.open(); });
     document.getElementById('import-games-btn')?.addEventListener('click', () => this.showImportGamesModal());
     document.getElementById('import-file-btn')?.addEventListener('click', () => this.showImportFileModal());
 

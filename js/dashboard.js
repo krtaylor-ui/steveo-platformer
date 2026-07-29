@@ -115,6 +115,7 @@ const DASHBOARD = {
     document.getElementById('platformer-mode-btn')?.addEventListener('click', () => this._navigateToMode('PLATFORMER'));
     document.getElementById('speedrunner-mode-btn')?.addEventListener('click', () => this._navigateToMode('SPEEDRUNNER'));
     document.getElementById('arena-mode-btn')?.addEventListener('click', () => this._navigateToMode('ARENA'));
+    document.getElementById('campaign-mode-btn')?.addEventListener('click', () => this._navigateToMode('CAMPAIGN'));
     document.getElementById('sandbox-mode-btn')?.addEventListener('click', () => this._navigateToMode('SANDBOX'));
 
     document.getElementById('online-play-btn')?.addEventListener('click', () => {
@@ -205,6 +206,8 @@ const DASHBOARD = {
       SANDBOX.init();
     } else if (mode === 'ARENA') {
       ARENA_SELECT.init();
+    } else if (mode === 'CAMPAIGN') {
+      CAMPAIGN_SELECT.init();
     } else {
       GAME_SELECTION.init(mode);
     }

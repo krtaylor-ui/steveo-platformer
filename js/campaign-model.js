@@ -58,6 +58,7 @@
     return {
       id, zoneId, sandboxWorldUid,
       name:            name || 'World',
+      outOfSequence:   false, // true for bonus levels (reachable only via a route)
       entryPoints:     [],   // [{ spawnPointId, label, isDefault }]
       goalStarRouting: [],   // [{ starIndex, routeType, destinationWorldId, destinationEntryPointId, hidden }]
     };
@@ -130,7 +131,9 @@
     const route = routeFor(w, starIndex);
 
     // Goal Star 1 (Gold): "next in sequence" — with the Boss World special case.
-    if (starIndex === 1) {
+    // An out-of-sequence (bonus) World is NOT part of any worldOrder, so its
+    // Goal Star 1 has no automatic "next" — it must be explicitly routed like 2–10.
+    if (starIndex === 1 && !w.outOfSequence) {
       if (isBossWorld(c, worldId)) {
         const nz = nextZoneId(c, w.zoneId);
         if (!nz) return { kind: 'campaign-complete' };
@@ -215,7 +218,7 @@
   function resolveStarForValidation(c, w, starIndex) {
     const WL = c.worldLabel || DEFAULT_WORLD_LABEL;
     const ZL = c.zoneLabel  || DEFAULT_ZONE_LABEL;
-    if (starIndex === 1) {
+    if (starIndex === 1 && !w.outOfSequence) {
       // Boss World's Goal Star 1 always resolves (next Zone, or Campaign complete).
       if (isBossWorld(c, w.id)) return { ok: true };
       const route   = routeFor(w, 1);
@@ -244,6 +247,20 @@
     return c;
   }
 
+  // Add a bonus / out-of-sequence World (belongs to a Zone for display grouping,
+  // but is NOT in worldOrder — reachable only via a Goal-Star route, §8).
+  function addBonusWorld(c, zoneId, cw) {
+    cw.outOfSequence = true;
+    cw.zoneId = zoneId;
+    c.worlds.push(cw);
+    return c;
+  }
+
+  // Bonus worlds grouped under a Zone (for the Builder's out-of-sequence section).
+  function bonusWorldsInZone(c, zoneId) {
+    return (c.worlds || []).filter((w) => w.outOfSequence && w.zoneId === zoneId);
+  }
+
   // Compact a numeric id sequence — the Builder generates ids as `w<n>` / `z<n>`.
   function nextId(prefix, existing) {
     let max = 0;
@@ -263,7 +280,7 @@
     defaultEntryPointId, routeFor,
     resolveExit, starIndexesFromWorldData,
     validateForPublish, resolveStarForValidation,
-    addWorldToZone, nextId,
+    addWorldToZone, addBonusWorld, bonusWorldsInZone, nextId,
   };
 
   if (typeof window !== 'undefined') window.CAMPAIGN_MODEL = CAMPAIGN_MODEL;

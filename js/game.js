@@ -597,6 +597,15 @@ class Game {
     this._emeraldsCollected   = 0;    // emeralds picked up this level
     this._emeraldsActive      = false;// EMERALD_SYSTEM initialised for this platformer level
     this._wonExitColor        = 0;    // goal-star colour index of the goal that ended the level (for future campaign routing)
+    // ── Campaign mode runtime hooks (additive; null outside a campaign) ──────
+    // When a Platformer level is booted as part of a Campaign, CAMPAIGN_PLAY passes
+    // a context object (onWin/onDeath callbacks + labels), an optional carry-over
+    // inventory snapshot, and the chosen entry point. All gameplay is unchanged;
+    // these only fire when _campaign is set.
+    this._campaign            = options.campaign || null;
+    this._campaignCarry       = options.campaignCarry || null;
+    this._campaignEntry       = options.campaignEntry || null;
+    this._campaignWinHandled  = false;
     this._platformerCheckpoints = [];  // [{col, row, elapsedMs}] checkpoints hit
     this._platformerLevelName  = '';
     this._platformerCreator    = '';
@@ -683,6 +692,8 @@ class Game {
           [BLOCK.OBSIDIAN,     4],
           [BLOCK.EYE_OF_ENDER, 5],
         ]);
+        // §Campaign — route to the entry point the previous level's exit chose.
+        if (this._campaignEntry) this._applyCampaignEntry(platData);
       }
     }
 
@@ -1472,7 +1483,12 @@ class Game {
   _update(deltaMs = 16.67) {
     // Smart Mobs §2 — apply the world's chosen starting weapons once, on the
     // first update (after world load + any saved-progress deserialize).
-    if (!this._startWeaponsApplied) { this._startWeaponsApplied = true; this._applyStartingWeapons(); }
+    if (!this._startWeaponsApplied) {
+      this._startWeaponsApplied = true;
+      this._applyStartingWeapons();
+      // §Campaign — carry-over inventory wins over the level's starting loadout.
+      if (this._campaignCarry) { try { this._applyCampaignCarry(); } catch (e) { /* non-fatal */ } }
+    }
     // Trident returns to hand once the thrown projectile lands/hits/expires.
     if (this.player && this.player._tridentOut && (!this.player._tridentArrow || !this.player._tridentArrow.alive)) {
       this.player._tridentOut = false; this.player._tridentArrow = null;
@@ -1681,6 +1697,15 @@ class Game {
     }
 
     if (this.state !== 'playing') {
+      // §Campaign — a won level hands control to the campaign layer (route to the
+      // next World / show the tracker) instead of the generic single-level win
+      // screen. Fires exactly once; CAMPAIGN_PLAY tears this Game down and boots
+      // the next one.
+      if (this.state === 'won' && this._campaign && this._campaign.onWin && !this._campaignWinHandled) {
+        this._campaignWinHandled = true;
+        try { this._campaign.onWin(this, this._wonExitColor); } catch (e) { console.error('campaign onWin', e); }
+        return;
+      }
       // 'won' — R or Enter restarts; also show Main Menu option in draw
       if (this.input.isDown('KeyR') || this.input.isDown('Enter')) {
         this._buildLevel();
@@ -5542,6 +5567,12 @@ class Game {
   }
 
   _doRespawn() {
+    // §Campaign — a death costs a life. onDeath returns false when lives run out,
+    // in which case the campaign layer takes over (game-over screen) and we do NOT
+    // respawn here. Otherwise fall through to the normal respawn (health resets).
+    if (this._campaign && this._campaign.onDeath) {
+      try { if (this._campaign.onDeath(this) === false) return; } catch (e) { /* fall through to respawn */ }
+    }
     // Respawn Anchor takes priority over bed if set
     if (this._activeRespawnAnchor) {
       const anc = this._activeRespawnAnchor;
@@ -12573,6 +12604,59 @@ class Game {
       // auto-granted at spawn. The player ACQUIRES them by picking up a placed instance
       // (the explicit "Starting Melee = Boomerang" choice above is the one intentional grant).
     }
+  }
+
+  // ── Campaign mode helpers (only used when _campaign is set) ───────────────
+  // Snapshot the player's carry-over state (inventory + owned weapons). Score and
+  // emeralds are accumulated at the campaign level, not part of the player snapshot.
+  campaignSnapshot() {
+    const p = this.player || {};
+    return {
+      hotbar:       (p.hotbar    || []).map((x) => (x ? { ...x } : null)),
+      inventory:    (p.inventory || []).map((x) => (x ? { ...x } : null)),
+      selectedSlot: p.selectedSlot,
+      meleeOwned:   (p.meleeOwned  || []).slice(),
+      rangedOwned:  (p.rangedOwned || []).slice(),
+      meleeIndex:   p.meleeIndex, rangedIndex: p.rangedIndex,
+      pickaxe:      p.pickaxe,
+      hasGrapple:   !!p.hasGrapple, hasShield: !!p.hasShield, hasFlintSteel: !!p.hasFlintSteel,
+      score:        this._score || 0, emeralds: this._emeraldsCollected || 0,
+    };
+  }
+
+  // Restore a carry-over snapshot onto the fresh player (overriding starting gear).
+  _applyCampaignCarry() {
+    const s = this._campaignCarry; const p = this.player;
+    if (!s || !p) return;
+    if (Array.isArray(s.hotbar))     p.hotbar    = s.hotbar.map((x) => (x ? { ...x } : null));
+    if (Array.isArray(s.inventory))  p.inventory = s.inventory.map((x) => (x ? { ...x } : null));
+    if (Array.isArray(s.meleeOwned)  && s.meleeOwned.length) p.meleeOwned  = s.meleeOwned.slice();
+    if (Array.isArray(s.rangedOwned)) p.rangedOwned = s.rangedOwned.slice();
+    if (typeof s.meleeIndex  === 'number') p.meleeIndex  = s.meleeIndex;
+    if (typeof s.rangedIndex === 'number') p.rangedIndex = s.rangedIndex;
+    if (s.pickaxe) p.pickaxe = s.pickaxe;
+    p.hasGrapple = !!s.hasGrapple; p.hasShield = !!s.hasShield; p.hasFlintSteel = !!s.hasFlintSteel;
+    if (p.normalizeWeapons) p.normalizeWeapons();
+    if (typeof s.selectedSlot === 'number') p.selectedSlot = s.selectedSlot;
+  }
+
+  // Place the player at the entry point the previous exit chose (§5). Falls back
+  // to the level's designed spawn when there's no matching placed spawn point.
+  _applyCampaignEntry(worldData) {
+    try {
+      const ep = this._campaignEntry;
+      if (!ep || ep.spawnPointId == null || ep.spawnPointId === 'default') return;
+      const wd = (worldData && typeof worldData === 'object') ? worldData : null;
+      const sps = wd && Array.isArray(wd.playerSpawns) ? wd.playerSpawns : [];
+      if (!sps.length) return;
+      const sp = sps.find((s) => String(s.slot != null ? s.slot : '') === String(ep.spawnPointId));
+      if (!sp || !Number.isFinite(sp.col) || !Number.isFinite(sp.row)) return;
+      const px = sp.col * BLOCK_SIZE + BLOCK_SIZE / 2 - this.player.width / 2;
+      const py = sp.row * BLOCK_SIZE - this.player.height;
+      this.player.x = px; this.player.y = py; this.player.vx = 0; this.player.vy = 0;
+      if (this.level) { this.level.spawnX = px; this.level.spawnY = py; }   // in-world respawns use the entry too
+      if (this._snapCameraToPlayer) this._snapCameraToPlayer();
+    } catch (e) { /* non-fatal — keep the designed spawn */ }
   }
 
   _playerMeleeWither() {

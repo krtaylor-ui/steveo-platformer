@@ -100,6 +100,28 @@ console.log('starIndexesFromWorldData reads gold grid + non-gold goalStars:');
   ok(stars.length === 2, 'exactly 2 distinct stars');
 }
 
+console.log('Bonus (out-of-sequence) world: star 1 needs explicit routing, never boss:');
+{
+  const c = fixture();
+  const bonus = M.newCampaignWorld('wb', 'z1', 'uidB', 'Bonus Vault');
+  bonus.entryPoints = [{ spawnPointId: 'sp1', label: 'Start', isDefault: true }];
+  bonus.stars = [1];
+  M.addBonusWorld(c, 'z1', bonus);
+  ok(bonus.outOfSequence === true, 'flagged out-of-sequence');
+  ok(M.isBossWorld(c, 'wb') === false, 'bonus world is never the boss');
+  ok(M.bossWorldId(c, 'z1') === 'w3', 'boss unchanged after adding a bonus world');
+  ok(M.bonusWorldsInZone(c, 'z1').length === 1, 'bonus grouped under its zone');
+  // Its star 1 is unrouted → resolves as unrouted, and fails validation.
+  let r = M.resolveExit(c, 'wb', 0);
+  ok(r.kind === 'unrouted', 'bonus star 1 unrouted → unrouted (not campaign-complete)');
+  // Route it back to w2 → resolves + validates.
+  bonus.goalStarRouting.push({ starIndex: 1, routeType: 'connect', destinationWorldId: 'w2', destinationEntryPointId: 'sp1' });
+  r = M.resolveExit(c, 'wb', 0);
+  ok(r.kind === 'world' && r.worldId === 'w2', 'routed bonus star 1 → w2');
+  const vr = M.resolveStarForValidation(c, bonus, 1);
+  ok(vr.ok === true, 'routed bonus star 1 passes validation');
+}
+
 console.log('Publish validation gate (§6):');
 {
   const c = fixture();

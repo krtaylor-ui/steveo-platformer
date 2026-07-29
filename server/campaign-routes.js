@@ -195,6 +195,35 @@ module.exports = function setupCampaignRoutes(app) {
     }
   });
 
+  // ── Play-time world fetch ────────────────────────────────────────────────
+  // A player running a published campaign needs each World's world_data to boot
+  // it — but those worlds belong to the CREATOR, so the owner-gated worlds
+  // endpoint won't serve them. This serves a world's data ONLY if it is actually
+  // referenced (sandboxWorldUid) by a campaign the requester can access (their
+  // own, or the published one). Nothing else is exposed.
+  app.get('/api/campaigns/:id/world/:worldUid', verifyToken, async (req, res) => {
+    try {
+      const { data: camp, error: cErr } = await supabaseAdmin.from('campaigns')
+        .select('creator_id, is_published, definition').eq('id', req.params.id).single();
+      if (cErr || !camp) return res.status(404).json({ error: 'Campaign not found' });
+      if (camp.creator_id !== req.user.id && !camp.is_published)
+        return res.status(403).json({ error: 'Not permitted' });
+
+      let def = camp.definition;
+      if (typeof def === 'string') { try { def = JSON.parse(def); } catch (e) { def = {}; } }
+      const referenced = (def && Array.isArray(def.worlds) &&
+        def.worlds.some((w) => String(w.sandboxWorldUid) === String(req.params.worldUid)));
+      if (!referenced) return res.status(404).json({ error: 'World is not part of this campaign' });
+
+      const { data: world, error: wErr } = await supabaseAdmin.from('worlds')
+        .select('id, world_name, world_data').eq('id', req.params.worldUid).single();
+      if (wErr || !world) return res.status(404).json({ error: 'World data not found' });
+      res.json({ worldId: world.id, worldName: world.world_name, worldData: world.world_data });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to load campaign world', detail: e.message });
+    }
+  });
+
   // ── Progress: read my own for a campaign ─────────────────────────────────
   app.get('/api/campaigns/:id/progress', verifyToken, async (req, res) => {
     try {
