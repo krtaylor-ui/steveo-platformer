@@ -112,6 +112,70 @@
       if (n > 1) { const seg = depth / n; for (let i = 1; i < n; i++) { const ly = topBottomY + seg * i; ctx.beginPath(); ctx.moveTo(x, ly); ctx.lineTo(x + cs, ly); ctx.stroke(); } }
     },
 
+    // ── Shared building models (default skins). x,y = top-left screen px of the
+    // footprint; w,h = its px size; detail 0..1 (from density/zoom) adds trim; skin
+    // selects a variant (only 'default' shipped — the skin builder is roadmapped).
+    // Distinct silhouette per type so they read at a glance.
+    drawBuilding(ctx, typeId, x, y, w, h, detail, skin) {
+      const cx = x + w / 2, cy = y + h / 2, min = Math.min(w, h);
+      const rr = (c) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
+      const outline = () => { ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 1; ctx.strokeRect(x + .5, y + .5, w - 1, h - 1); };
+      ctx.save();
+      switch (typeId) {
+        case 'portal': {
+          const g = ctx.createLinearGradient(x, y, x, y + h); g.addColorStop(0, '#9a5fe0'); g.addColorStop(1, '#5a2fa0');
+          ctx.fillStyle = '#1a1030'; ctx.fillRect(x, y, w, h);
+          ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(cx, cy, w * 0.4, h * 0.42, 0, 0, 7); ctx.fill();
+          if (detail > 0.4) { ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = Math.max(1, min * 0.06); ctx.beginPath(); ctx.ellipse(cx, cy, w * 0.24, h * 0.28, 0, 0, 7); ctx.stroke(); }
+          break; }
+        case 'pipe': {
+          ctx.fillStyle = '#2f8f52'; ctx.fillRect(x, y, w, h);
+          ctx.fillStyle = '#1e6b3a'; ctx.fillRect(x, y, w, h * 0.28);
+          ctx.fillStyle = '#0c2415'; ctx.beginPath(); ctx.ellipse(cx, cy + h * 0.05, w * 0.3, h * 0.3, 0, 0, 7); ctx.fill();
+          break; }
+        case 'healer': {
+          rr('#e9efe9'); ctx.fillStyle = '#3fb07b'; ctx.fillRect(x, y, w, h * 0.26);                 // roof band
+          ctx.fillStyle = '#c0392b'; const t = min * 0.13; ctx.fillRect(cx - t / 2, cy - t * 1.6, t, t * 3.2); ctx.fillRect(cx - t * 1.6, cy - t / 2, t * 3.2, t);   // red cross
+          if (detail > 0.4) { ctx.fillStyle = '#7a5a3a'; ctx.fillRect(cx - w * 0.09, y + h - h * 0.22, w * 0.18, h * 0.22); }   // door
+          break; }
+        case 'shop': {
+          rr('#caa25a'); ctx.fillStyle = '#8a5a2a'; ctx.fillRect(x, y, w, h * 0.24);
+          // striped awning
+          const n = 5; for (let i = 0; i < n; i++) { ctx.fillStyle = i % 2 ? '#d9534f' : '#f5f0e6'; ctx.fillRect(x + (w / n) * i, y + h * 0.24, w / n, h * 0.14); }
+          ctx.fillStyle = '#5a3a1a'; ctx.fillRect(cx - w * 0.12, y + h - h * 0.3, w * 0.24, h * 0.3);
+          if (detail > 0.4) { ctx.fillStyle = 'rgba(120,200,255,.6)'; ctx.fillRect(x + w * 0.12, y + h * 0.5, w * 0.16, h * 0.18); ctx.fillRect(x + w - w * 0.28, y + h * 0.5, w * 0.16, h * 0.18); }   // windows
+          break; }
+        case 'savepoint': {
+          ctx.fillStyle = '#274a5a'; ctx.fillRect(cx - min * 0.06, y + h * 0.15, min * 0.12, h * 0.8);   // pole
+          ctx.fillStyle = '#4fc3f7'; ctx.beginPath(); ctx.moveTo(cx + min * 0.06, y + h * 0.18); ctx.lineTo(cx + w * 0.42, y + h * 0.3); ctx.lineTo(cx + min * 0.06, y + h * 0.44); ctx.closePath(); ctx.fill();   // flag
+          break; }
+        case 'spawner': {
+          rr('#3a2430'); ctx.strokeStyle = '#8a3f3f'; ctx.lineWidth = Math.max(1, min * 0.05);
+          for (let i = 1; i < 4; i++) { ctx.beginPath(); ctx.moveTo(x + (w / 4) * i, y); ctx.lineTo(x + (w / 4) * i, y + h); ctx.stroke(); }   // cage bars
+          ctx.fillStyle = 'rgba(255,120,80,.6)'; ctx.beginPath(); ctx.arc(cx, cy, min * 0.22, 0, 7); ctx.fill();   // glow
+          outline(); break; }
+        case 'tower': {
+          ctx.fillStyle = '#6a6a80'; ctx.beginPath(); ctx.arc(cx, cy, min * 0.42, 0, 7); ctx.fill();
+          ctx.fillStyle = '#4a4a5c'; for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; ctx.fillRect(cx + Math.cos(a) * min * 0.4 - min * 0.06, cy + Math.sin(a) * min * 0.4 - min * 0.06, min * 0.12, min * 0.12); }   // crenellations
+          ctx.fillStyle = '#2a2a38'; ctx.beginPath(); ctx.arc(cx, cy, min * 0.16, 0, 7); ctx.fill();
+          break; }
+        case 'statue': {
+          ctx.fillStyle = '#8a8a92'; ctx.fillRect(x + w * 0.2, y + h * 0.7, w * 0.6, h * 0.3);   // pedestal
+          ctx.fillStyle = '#b5b5bd'; ctx.fillRect(cx - w * 0.1, y + h * 0.2, w * 0.2, h * 0.5);   // body
+          ctx.beginPath(); ctx.arc(cx, y + h * 0.22, min * 0.12, 0, 7); ctx.fill();               // head
+          break; }
+        case 'core': case 'nexus': {
+          const teal = typeId === 'nexus'; rr(teal ? '#16233a' : '#2a1620');
+          const g = ctx.createRadialGradient(cx, cy, min * 0.1, cx, cy, min * 0.5); g.addColorStop(0, teal ? '#8fd0ff' : '#ffb08f'); g.addColorStop(1, teal ? '#3f6dc0' : '#c0503f');
+          ctx.fillStyle = g; ctx.beginPath(); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 - Math.PI / 2; const px = cx + Math.cos(a) * min * 0.42, py = cy + Math.sin(a) * min * 0.42; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.closePath(); ctx.fill();   // crystal hexagon
+          ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = Math.max(1, min * 0.03); ctx.stroke();
+          break; }
+        default: rr('#8a7fb0'); outline();
+      }
+      if (typeId !== 'core' && typeId !== 'nexus' && typeId !== 'tower' && typeId !== 'portal' && typeId !== 'pipe') outline();
+      ctx.restore();
+    },
+
     // Shared ramp/ladder icon (editor + runtime).
     drawRampIcon(ctx, kind, cx, cy, s) {
       ctx.save(); ctx.translate(cx, cy);

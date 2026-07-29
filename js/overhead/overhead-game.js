@@ -303,7 +303,7 @@
 
     _drawEntity(e, S, z, cs) {
       const ctx = this.ctx, g = this.grid;
-      if (e.kind === 'b') { const b = e.ref, t = OH_BUILDINGS.get(b.typeId); const sp = S(b.col * g.cell, b.row * g.cell); const w = (t ? t.footprint.w : 1) * cs, h = (t ? t.footprint.h : 1) * cs; const lift = -(b.level || 0) * cs * 0.25; ctx.fillStyle = (t && t.color) || '#8a7fb0'; ctx.fillRect(sp.x, sp.y - h + cs + lift, w, h); ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.strokeRect(sp.x, sp.y - h + cs + lift, w, h); if (cs > 18) { ctx.fillStyle = '#fff'; ctx.font = `${Math.round(cs * 0.3)}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText((t ? t.category : b.typeId), sp.x + w / 2, sp.y - h + cs + lift + h / 2); } }
+      if (e.kind === 'b') { const b = e.ref, t = OH_BUILDINGS.get(b.typeId); const sp = S(b.col * g.cell, b.row * g.cell); const w = (t ? t.footprint.w : 1) * cs, h = (t ? t.footprint.h : 1) * cs; const lift = -(b.level || 0) * cs * 0.25; OVERHEAD.drawBuilding(ctx, b.typeId, sp.x, sp.y - h + cs + lift, w, h, Math.min(1, cs / 28), b.skin || 'default'); }
       else if (e.kind === 'i') { const it = e.ref, d = P().OH_ITEM_BY_KEY[it.itemKey] || P().OH_ITEMS[0]; const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(sp.x, sp.y, cs * 0.24, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.stroke(); }
       else if (e.kind === 'm') { this._drawMob(e.ref, S, z, cs); }
       else if (e.kind === 'p') { this._drawPlayer(S, z, cs); }

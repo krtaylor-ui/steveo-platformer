@@ -40,15 +40,17 @@
   const REGISTRY = {};
   const register = (d) => { REGISTRY[d.id] = d; return d; };
 
-  register(def('portal',      'Portal',   { footprint: { w: 2, h: 2 }, interactionType: 'enter', skinVariants: ['nether', 'end', 'plain'], onInteract: 'teleport', color: '#7b3fb0' }));
-  register(def('healer',      'Healer',   { footprint: { w: 2, h: 2 }, interactionType: 'interact-on-approach', onInteract: 'heal', color: '#3fb07b' }));
-  register(def('shop',        'Shop',     { footprint: { w: 2, h: 2 }, interactionType: 'enter', onInteract: 'shop', color: '#b0923f' }));
-  register(def('savepoint',   'SavePoint',{ footprint: { w: 1, h: 1 }, blocksMovement: false, interactionType: 'interact-on-approach', onInteract: 'save', color: '#3f8cb0' }));
-  register(def('spawner',     'SpawnerBuilding', { footprint: { w: 2, h: 2 }, onInteract: 'spawn', color: '#8a3f3f' }));
-  register(def('core',        'Core',     { footprint: { w: 3, h: 3 }, interactionType: 'passive-visual', onInteract: 'core', color: '#c0503f' }));
-  register(def('nexus',       'Nexus',    { footprint: { w: 3, h: 3 }, interactionType: 'passive-visual', onInteract: 'core', color: '#3f6dc0' }));
-  register(def('tower',       'Tower',    { footprint: { w: 1, h: 1 }, interactionType: 'interact-on-approach', onInteract: 'towerUpgrade', color: '#6a6a80' }));
-  register(def('statue',      'Decoration',{ footprint: { w: 1, h: 1 }, interactionType: 'passive-visual', color: '#9a9a9a' }));
+  // Footprints (w × h in grid cells) per Kevin's dimensions.
+  register(def('portal',      'Portal',   { footprint: { w: 1, h: 4 }, interactionType: 'enter', skinVariants: ['default', 'nether', 'end'], onInteract: 'teleport', color: '#7b3fb0' }));
+  register(def('pipe',        'Portal',   { footprint: { w: 1, h: 1 }, interactionType: 'enter', skinVariants: ['default'], onInteract: 'teleport', color: '#3fae66' }));
+  register(def('healer',      'Healer',   { footprint: { w: 4, h: 4 }, interactionType: 'interact-on-approach', onInteract: 'heal', color: '#3fb07b' }));
+  register(def('shop',        'Shop',     { footprint: { w: 4, h: 4 }, interactionType: 'enter', onInteract: 'shop', color: '#b0923f' }));
+  register(def('savepoint',   'SavePoint',{ footprint: { w: 2, h: 2 }, blocksMovement: false, interactionType: 'interact-on-approach', onInteract: 'save', color: '#3f8cb0' }));
+  register(def('spawner',     'SpawnerBuilding', { footprint: { w: 3, h: 3 }, onInteract: 'spawn', color: '#8a3f3f' }));
+  register(def('core',        'Core',     { footprint: { w: 5, h: 5 }, interactionType: 'passive-visual', onInteract: 'core', color: '#c0503f' }));
+  register(def('nexus',       'Nexus',    { footprint: { w: 5, h: 5 }, interactionType: 'passive-visual', onInteract: 'core', color: '#3f6dc0' }));
+  register(def('tower',       'Tower',    { footprint: { w: 2, h: 2 }, interactionType: 'interact-on-approach', onInteract: 'towerUpgrade', color: '#6a6a80' }));
+  register(def('statue',      'Decoration',{ footprint: { w: 2, h: 2 }, interactionType: 'passive-visual', color: '#9a9a9a' }));
 
   const get = (id) => REGISTRY[id] || null;
   const all = () => Object.values(REGISTRY);

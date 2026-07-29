@@ -101,7 +101,7 @@ console.log('BUILDINGS — registry + placement + skins + footprint:');
   ok(OH_BUILDINGS.byCategory('Tower').length >= 1, 'tower category present');
   const inst = OH_BUILDINGS.place('core', 5, 6);
   ok(inst && inst.typeId === 'core', 'place returns an instance');
-  ok(OH_BUILDINGS.footprintCells(inst).length === 9, 'core footprint = 3×3 = 9 cells');
+  ok(OH_BUILDINGS.footprintCells(inst).length === 25, 'core footprint = 5×5 = 25 cells');
   const p = OH_BUILDINGS.place('portal', 0, 0);
   const s0 = p.skin; OH_BUILDINGS.cycleSkin(p);
   ok(p.skin !== s0, 'cycleSkin advances the skin variant');
