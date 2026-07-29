@@ -5,16 +5,17 @@
 const SANDBOX_PALETTE_BLOCKS = {
   // Oak Leaves moved to the Decorative tab as "Solid Leaves" (front/back + colours);
   // the id-5 block still exists for existing worlds, it's just placed via Decor now.
+  // "World" tab — overworld blocks followed by the nether blocks (nether icons get a nether-tinted
+  // background in the palette so their biome reads at a glance; that tint is palette-only, never placed).
   overworld: [
     BLOCK.GRASS, BLOCK.DIRT, BLOCK.STONE, BLOCK.OAK_LOG,
     BLOCK.OAK_PLANKS, BLOCK.GRAVEL,
     BLOCK.COAL_ORE, BLOCK.IRON_ORE, BLOCK.GOLD_ORE,
     BLOCK.DIAMOND_ORE, BLOCK.NETHERITE_ORE,
     BLOCK.OBSIDIAN, BLOCK.DEEPSLATE, BLOCK.BEDROCK, BLOCK.SLIME_BLOCK,
-  ],
-  nether: [
+    // ── Nether ──
     BLOCK.NETHERRACK, BLOCK.SOUL_SAND, BLOCK.CRIMSON_LOG,
-    BLOCK.WARPED_LOG, BLOCK.OBSIDIAN, BLOCK.LAVA, BLOCK.GLOWSTONE,
+    BLOCK.WARPED_LOG, BLOCK.LAVA, BLOCK.GLOWSTONE,
   ],
   // Smart Mobs §10 — non-solid decorative foliage. "Behind" renders behind the
   // player/mob sprite, "Front" in front (concealment); bushes conceal mobs' line of
@@ -35,6 +36,12 @@ const SANDBOX_PALETTE_BLOCKS = {
     BLOCK.SPEED_SEGMENT, BLOCK.LAUNCH_RAMP, BLOCK.RAIL_GATE,
   ],
 };
+
+// §Palette — nether blocks get a nether-tinted icon background in the World tab (palette-only cue).
+const NETHER_PALETTE_SET = new Set([
+  BLOCK.NETHERRACK, BLOCK.SOUL_SAND, BLOCK.CRIMSON_LOG, BLOCK.WARPED_LOG, BLOCK.LAVA, BLOCK.GLOWSTONE,
+]);
+const NETHER_PALETTE_BG = '#3A0800';   // matches the nether sky gradient
 
 const SPAWN_EGG_DEFS = [
   { key: 'zombie',          label: 'Zombie',         color: '#2A8A2A' },
@@ -80,23 +87,30 @@ const SB_RUINED_PORTAL = 37;
 const SB_END_PORTAL    = 43;  // virtual palette type for End Portal tool (types 40-42 are real blocks)
 const SB_WITHER_ALTAR  = 200; // virtual palette type for Wither Altar 3×4 multi-block (was 56 — COLLIDED with the real SPEED_BOOSTER=56, swapping their icon + name)
 
-// "Other" palette tab: redstone, structural, spawn eggs
-const OTHER_PALETTE_ITEMS = [
-  // ── Redstone devices ─────────────────────────────────────────
-  { kind: 'block',    blockType: BLOCK.LEVER },
-  { kind: 'block',    blockType: BLOCK.TRAPDOOR },
-  { kind: 'block',    blockType: BLOCK.PRESSURE_PLATE },
-  { kind: 'block',    blockType: BLOCK.WEIGHT_PLATE },
-  { kind: 'dust',     name: 'Redstone Dust', color: '#CC2222' },
-  { kind: 'gate',     gateType: 'not', name: 'NOT Gate',   color: '#00AAAA' },
-  { kind: 'gate',     gateType: 'and', name: 'AND Gate',   color: '#CC7700' },
-  { kind: 'block',    blockType: BLOCK.TRANSMITTER,        },
-  { kind: 'block',    blockType: BLOCK.RECEIVER,           },
-  { kind: 'block',    blockType: BLOCK.TARGET_BLOCK,       },
-  { kind: 'block',    blockType: BLOCK.PULSE_CONVERTER,    },
-  { kind: 'block',    blockType: BLOCK.REDSTONE_LAMP,      },
-  // ── Pistons ───────────────────────────────────────────────────
+// "Red Stone" palette tab — ordered: dust, sources, wireless (Tx/Rx), sinks, then logic.
+const REDSTONE_PALETTE_ITEMS = [
+  { kind: 'dust',  name: 'Redstone Dust', color: '#CC2222' },
+  // ── Sources ──
+  { kind: 'block', blockType: BLOCK.LEVER },
+  { kind: 'block', blockType: BLOCK.PRESSURE_PLATE },
+  { kind: 'block', blockType: BLOCK.WEIGHT_PLATE },
+  { kind: 'block', blockType: BLOCK.TARGET_BLOCK },
+  // ── Wireless ──
+  { kind: 'block', blockType: BLOCK.TRANSMITTER },
+  { kind: 'block', blockType: BLOCK.RECEIVER },
+  // ── Sinks ──
+  { kind: 'block', blockType: BLOCK.REDSTONE_LAMP },
+  { kind: 'block', blockType: BLOCK.TRAPDOOR },
   { kind: 'block', blockType: BLOCK.PISTON_BODY },
+  { kind: 'block', blockType: BLOCK.TNT },
+  // ── Logic ──
+  { kind: 'gate',  gateType: 'and', name: 'AND Gate', color: '#CC7700' },
+  { kind: 'gate',  gateType: 'not', name: 'NOT Gate', color: '#00AAAA' },
+  { kind: 'block', blockType: BLOCK.PULSE_CONVERTER },
+];
+
+// "Other" palette tab: storage, structural, special, spawn eggs (redstone lives in its own tab now)
+const OTHER_PALETTE_ITEMS = [
   // ── Storage ───────────────────────────────────────────────────
   { kind: 'block', blockType: BLOCK.CHEST },
   // ── Structural / Special ─────────────────────────────────────
@@ -113,7 +127,6 @@ const OTHER_PALETTE_ITEMS = [
   { kind: 'block', blockType: BLOCK.SPEED_BOOSTER },
   { kind: 'block', blockType: BLOCK.JUMP_PAD },
   { kind: 'block', blockType: BLOCK.SPEED_ITEM },
-  { kind: 'block', blockType: BLOCK.TNT },
   { kind: 'block', blockType: BLOCK.MUSIC_PLAYER },
   // ── Consumable items ─────────────────────────────────────────
   { kind: 'blockItem', blockType: BLOCK.ARROW, defaultCount: 20, name: 'Arrow Stack' },
@@ -881,7 +894,7 @@ class SandboxManager {
     }
 
     // Tab row
-    const TABS = ['overworld', 'nether', 'decorative', 'mechanics', 'gear', 'other'];
+    const TABS = ['overworld', 'decorative', 'mechanics', 'redstone', 'gear', 'other'];
     const tg = this._paletteTabGeom();
     for (let i = 0; i < TABS.length; i++) {
       const tx = tg.x0 + i * tg.tabW;
@@ -895,7 +908,7 @@ class SandboxManager {
     // Block / egg / tool grid (scroll-aware — mirrors _drawPalette geometry)
     const geom = this._paletteGridGeom();
     const gridTop = geom.gridTop, gridBottom = geom.gridBottom, slotSz = geom.slotSz, startX = geom.startX, cols = geom.cols;
-    const isSpecial = this.paletteTab === 'other' || this.paletteTab === 'gear';
+    const isSpecial = this.paletteTab === 'other' || this.paletteTab === 'gear' || this.paletteTab === 'redstone';
     const items  = this._paletteItems();
     const maxScroll = Math.max(0, Math.ceil(items.length / cols) * slotSz - (gridBottom - gridTop));
     const scroll = Math.max(0, Math.min(this.paletteScroll, maxScroll));
@@ -1147,8 +1160,9 @@ class SandboxManager {
   }
 
   _paletteItems() {
-    return this.paletteTab === 'other' ? OTHER_PALETTE_ITEMS
-         : this.paletteTab === 'gear'  ? GEAR_PALETTE_ITEMS   // Boomerang + Grapple always available under Equipment
+    return this.paletteTab === 'other'    ? OTHER_PALETTE_ITEMS
+         : this.paletteTab === 'redstone' ? REDSTONE_PALETTE_ITEMS
+         : this.paletteTab === 'gear'     ? GEAR_PALETTE_ITEMS   // Boomerang + Grapple always available under Equipment
          : (SANDBOX_PALETTE_BLOCKS[this.paletteTab] || []);
   }
 
@@ -1800,10 +1814,10 @@ class SandboxManager {
 
     // Tabs
     const TABS = [
-      { key: 'overworld',  label: 'Overworld', color: '#4CAF50' },
-      { key: 'nether',     label: 'Nether',    color: '#FF4400' },
+      { key: 'overworld',  label: 'World',     color: '#4CAF50' },
       { key: 'decorative', label: 'Decor',     color: '#8ED07A' },
       { key: 'mechanics',  label: 'Plumbing',  color: '#6FB6FF' },
+      { key: 'redstone',   label: 'Red Stone', color: '#CC2222' },
       { key: 'gear',       label: 'Gear',      color: '#FFD700' },
       { key: 'other',      label: 'Other',     color: '#FF9800' },
     ];
@@ -1828,7 +1842,7 @@ class SandboxManager {
     // Item grid (scrollable — a tab can hold more rows than the panel shows)
     const geom = this._paletteGridGeom();
     const gridTop = geom.gridTop, gridBottom = geom.gridBottom, slotSz = geom.slotSz, startX = geom.startX, cols = geom.cols;
-    const isOther = this.paletteTab === 'other';
+    const isOther = this.paletteTab === 'other' || this.paletteTab === 'redstone';   // redstone shares the special-item renderer
     const isGear  = this.paletteTab === 'gear';
     const items  = this._paletteItems();   // §Phase F/G — filtered (opt-in weapons gated by world toggle)
     const maxScroll = Math.max(0, Math.ceil(items.length / cols) * slotSz - (gridBottom - gridTop));
@@ -2020,6 +2034,8 @@ class SandboxManager {
       } else {
         // Block (either special tab block kind or regular tab block)
         const btype = isSpecialTab ? itm.blockType : items[i];
+        // §Palette — nether blocks get a biome-tinted backdrop (palette cue only; never placed).
+        if (NETHER_PALETTE_SET.has(btype)) { ctx.fillStyle = NETHER_PALETTE_BG; _roundRect(ctx, gx + 2, gy + 2, slotSz - 6, slotSz - 6, 3); ctx.fill(); }
         const pad = 6, sz = slotSz - 2 - pad * 2;
         ctx.save();
         ctx.translate(gx + pad, gy + pad);

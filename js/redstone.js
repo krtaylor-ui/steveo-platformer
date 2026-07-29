@@ -275,6 +275,7 @@ class RedstoneSystem {
     this.components.push(comp);
     this._map.set(`${comp.col},${comp.row}`, comp);
     if (comp.type === 'piston') this._rebuildPistonHeads();
+    return comp;
   }
 
   // Remove a component by grid position

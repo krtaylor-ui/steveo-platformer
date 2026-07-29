@@ -48,5 +48,25 @@ console.log('_cellSkin — resolves anchor / direction / weight skins:');
   ok(g._cellSkin(pl,{blockType:BLOCK.OAK_LOG,dcol:2,drow:2})===null, 'plain block → no skin');
 }
 
+console.log('Sticky config — next placed block inherits the last-configured settings:');
+{
+  const gg=Object.create(Game.prototype);
+  // Configure a weight sensor, then remember it.
+  gg._rememberBlockConfig({type:'weight', trigger:'mobs', conduct:true, skin:BLOCK.OAK_PLANKS});
+  const fresh={type:'weight', trigger:'both'};   // a freshly-placed default
+  gg._applyBlockDefaults(fresh);
+  ok(fresh.trigger==='mobs' && fresh.conduct===true && fresh.skin===BLOCK.OAK_PLANKS, 'new weight sensor inherits trigger+conduct+skin');
+  // Lamp remembers colour + conduct, independently of weight.
+  gg._rememberBlockConfig({type:'lamp', color:5, conduct:false});
+  const lamp={type:'lamp', color:0}; gg._applyBlockDefaults(lamp);
+  ok(lamp.color===5 && lamp.conduct===false, 'new lamp inherits colour + conduct');
+  // A type never configured gets no defaults applied.
+  const td={type:'trapdoor'}; gg._applyBlockDefaults(td);
+  ok(td.conduct===undefined, 'unconfigured type keeps its own defaults');
+  // Non-configurable type is ignored by remember.
+  gg._rememberBlockConfig({type:'lever', on:true});
+  ok(!gg._blockDefaults.lever, 'levers are not tracked (no configurable fields)');
+}
+
 if(fail){console.log(`\n${fail} FAILED, ${pass} passed`);process.exit(1);}
 console.log(`\nAll ${pass} block-skin assertions passed`);

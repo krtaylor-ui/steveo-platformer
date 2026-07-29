@@ -1993,6 +1993,10 @@ class Game {
         this._handleRxConfigPopupInput();
         return;
       }
+      // §Sticky config — while any block-config modal is open, snapshot its block as the template for
+      // that type, so the next placed block of the same type inherits the settings.
+      { const cp = this._pistonConfigPopup || this._targetConfigPopup || this._weightPopup || this._platePopup || this._lampPopup || this._trapdoorPopup;
+        if (cp) this._rememberBlockConfig(this.redstone.getAt(cp.col, cp.row)); }
       // Piston direction config popup
       if (this._pistonConfigPopup) {
         this._handlePistonConfigPopupInput();
@@ -3167,13 +3171,13 @@ class Game {
               this.redstone.addComponent({type: 'lever', col: hoverCol, row: hoverRow, on: false, links: [], sandboxPlaced: true});
               this._notify('Lever placed — click it (with Lever selected) to toggle', '#FFD700', 120);
             } else if (sb === BLOCK.TRAPDOOR && !this.redstone.getAt(hoverCol, hoverRow)) {
-              this.redstone.addComponent({type: 'trapdoor', col: hoverCol, row: hoverRow, open: false, links: [], sandboxPlaced: true});
+              this._applyBlockDefaults(this.redstone.addComponent({type: 'trapdoor', col: hoverCol, row: hoverRow, open: false, links: [], sandboxPlaced: true}));
               this._notify('Trap Door placed — click it (with Trap Door selected) to toggle', '#C8A558', 120);
             } else if (sb === BLOCK.PRESSURE_PLATE && !this.redstone.getAt(hoverCol, hoverRow)) {
-              this.redstone.addComponent({type: 'pressure_plate', col: hoverCol, row: hoverRow, on: false, links: [], sandboxPlaced: true});
+              this._applyBlockDefaults(this.redstone.addComponent({type: 'pressure_plate', col: hoverCol, row: hoverRow, on: false, links: [], sandboxPlaced: true}));
               this._notify('Pressure Plate placed — activates when walked on', '#CCCCAA', 120);
             } else if (sb === BLOCK.WEIGHT_PLATE && !this.redstone.getAt(hoverCol, hoverRow)) {
-              this.redstone.addComponent({type: 'weight', col: hoverCol, row: hoverRow, on: false, trigger: 'both', links: [], sandboxPlaced: true});
+              this._applyBlockDefaults(this.redstone.addComponent({type: 'weight', col: hoverCol, row: hoverRow, on: false, trigger: 'both', links: [], sandboxPlaced: true}));
               this._notify('Weight Sensor placed — click it to set trigger (players/mobs/both)', '#ffcf5a', 140);
             } else if (sb === BLOCK.TNT && !this.redstone.getAt(hoverCol, hoverRow)) {
               this.redstone.addComponent({type: 'tnt', col: hoverCol, row: hoverRow, fuse: 0, links: [], sandboxPlaced: true});
@@ -3197,25 +3201,25 @@ class Game {
               }
             } else if (sb === BLOCK.PISTON_BODY) {
               if (!this.redstone.getAt(hoverCol, hoverRow)) {
-                this.redstone.addComponent({
+                this._applyBlockDefaults(this.redstone.addComponent({
                   type: 'piston', col: hoverCol, row: hoverRow,
                   dir: 'right', inverted: false, extended: false, sandboxPlaced: true,
-                });
+                }));
                 this._pistonConfigPopup = { col: hoverCol, row: hoverRow };
               }
             } else if (sb === BLOCK.TARGET_BLOCK) {
               if (!this.redstone.getAt(hoverCol, hoverRow)) {
-                this.redstone.addComponent({ type: 'target', col: hoverCol, row: hoverRow, on: false, mode: 'pulse', pulseDur: 30, links: [], sandboxPlaced: true });
+                this._applyBlockDefaults(this.redstone.addComponent({ type: 'target', col: hoverCol, row: hoverRow, on: false, mode: 'pulse', pulseDur: 30, links: [], sandboxPlaced: true }));
               }
               this._targetConfigPopup = { col: hoverCol, row: hoverRow };   // configure mode/duration
             } else if (sb === BLOCK.REDSTONE_LAMP) {
               if (!this.redstone.getAt(hoverCol, hoverRow)) {
-                this.redstone.addComponent({ type: 'lamp', col: hoverCol, row: hoverRow, on: false, color: 0, links: [], sandboxPlaced: true });
+                this._applyBlockDefaults(this.redstone.addComponent({ type: 'lamp', col: hoverCol, row: hoverRow, on: false, color: 0, links: [], sandboxPlaced: true }));
               }
               this._notify('Redstone Lamp placed — click it (Lamp selected) to change colour', '#ffd166', 130);
             } else if (sb === BLOCK.PULSE_CONVERTER) {
               if (!this.redstone.getAt(hoverCol, hoverRow)) {
-                this.redstone.addComponent({ type: 'pulse_converter', col: hoverCol, row: hoverRow, on: false, dir: 'right', links: [], sandboxPlaced: true });
+                this._applyBlockDefaults(this.redstone.addComponent({ type: 'pulse_converter', col: hoverCol, row: hoverRow, on: false, dir: 'right', links: [], sandboxPlaced: true }));
               }
               this._notify('Pulse Converter placed — click it (Converter selected) to rotate the Pulse side', '#8fd0e6', 140);
             } else if (sb === BLOCK.MUSIC_PLAYER) {
@@ -8356,6 +8360,27 @@ class Game {
   _cycleSkin(comp) {
     const i = SKIN_OPTIONS.findIndex(s => s.block === (comp.skin || null));
     comp.skin = SKIN_OPTIONS[(i + 1) % SKIN_OPTIONS.length].block;
+  }
+
+  // §Sticky config — remember the last-used config per block type so the NEXT placed block of that type
+  // inherits it (weight sensor set to Wood + Conduct → the next one starts the same). Snapshotted while
+  // a config modal is open; applied at placement via _applyBlockDefaults.
+  _rememberBlockConfig(comp) {
+    if (!comp) return;
+    const FIELDS = {
+      weight: ['trigger', 'conduct', 'skin'], pressure_plate: ['conduct', 'skin'], lamp: ['color', 'conduct'],
+      target: ['mode', 'pulseDur', 'conduct'], piston: ['dir', 'inverted', 'conduct'], trapdoor: ['conduct'], pulse_converter: ['dir'],
+    };
+    const fields = FIELDS[comp.type]; if (!fields) return;
+    const store = (this._blockDefaults = this._blockDefaults || {});
+    const snap = (store[comp.type] = store[comp.type] || {});
+    for (const f of fields) if (comp[f] !== undefined) snap[f] = comp[f];
+  }
+  _applyBlockDefaults(comp) {
+    const snap = this._blockDefaults && comp && this._blockDefaults[comp.type];
+    if (!snap) return comp;
+    for (const k in snap) if (snap[k] !== undefined) comp[k] = snap[k];
+    return comp;
   }
   // Shared renderer for a full-width toggle/cycle row inside a config modal.
   _cfgRow(ctx, px, py, w, label, valTxt, accent) {
