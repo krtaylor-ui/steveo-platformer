@@ -1,4 +1,19 @@
-## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE portals/detection/jump polish (build 288) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — OVERHEAD ENGINE solid buildings / vertical portals / somersault / castle (build 289) on branch `overhead-engine` — NOT merged, browser-UNTESTED
+
+Fourth feedback batch. Suite green.
+- **All buildings SOLID** (portals used via proximity + E; teleport lands in front of the dest).
+- **Jump no longer mounts 1-walls** (invalid-elevation landing bounces back).
+- **Portal = standing vertical 4×5 obsidian frame** (4×1 footprint) + Two-way link. **Leaves** = floating
+  canopy (no leaf-sides through low elevations). **Mob grey outline.**
+- **Double jump = somersault** (spin kept as an option). **Hand tool moves mobs/items** (click-select, click-move).
+- **Ramp = right-triangle prism** (90° face at the high edge). **Buildings blockified**: healer=hospital,
+  shop=$ sign, TD core=CASTLE (6×6), MOBA nexus=crystal, pipe=block edges, statue=grey top-down character.
+Detail + the **full deferred list** in `DECISIONS_LOG.md` (Overhead Engine — Solid Buildings / Vertical
+Portals / Somersault / Castle). Roadmap §35 End Portals added.
+
+---
+
+## PRIOR STATE (2026-07-29) — OVERHEAD ENGINE portals/detection/jump polish (build 288) on branch `overhead-engine` — NOT merged, browser-UNTESTED
 
 Third feedback batch. Suite green.
 - **Test-mode God toggle** (invincible). **Mob detection** = absolute blocks setting (default 10),

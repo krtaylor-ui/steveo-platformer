@@ -1116,3 +1116,14 @@ re-bake the shadow layer only when the sun moves a step, not every frame); tint 
 time-of-day; add an additive light layer for lamps at night; give entities a simple offset blob shadow in
 the sun direction. **Effort:** LARGE (arguably its own session). Deferred; captured here in full so the
 vision isn't lost.
+
+---
+
+## 35. Overhead END PORTALS  *(idea captured 2026-07-29)*
+
+The overhead portal already renders as a standing obsidian frame — a natural base for **End portals**.
+When designed: support **Eye of Ender placement** into the frame (fill the frame slots one eye at a time,
+like the side-view End portal) and **portal powering** (the portal activates only once fully charged /
+eyes placed), then it teleports (or ends the level) as configured. Reuse the existing eye-of-ender item +
+the side-view End-portal completion logic where possible. **Effort:** MEDIUM. Depends on the overhead
+inventory/items pass being fleshed out (currently items are pickups only).

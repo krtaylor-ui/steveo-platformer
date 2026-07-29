@@ -1,6 +1,62 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD ENGINE — SOLID BUILDINGS / VERTICAL PORTALS / SOMERSAULT / CASTLE (2026-07-29, build 289, branch `overhead-engine`)
+# ═══════════════════════════════════════════════════════════════════════
+Fourth playtest-feedback batch. Suite green.
+
+- **All buildings SOLID** (Kevin's correction): `_buildingSolidAt` returns true for any footprint cell.
+  Portals are used by standing NEXT to them + E (proximity to the nearest footprint cell, useR 1.6 units);
+  teleport lands the player just IN FRONT of (below) the destination frame (it's solid).
+- **Jump-mount fix (the 1-wall climb):** the player was JUMPING onto +1 walls (airborne movement flies
+  over raised terrain, and an invalid-elevation landing didn't reposition). Now `_jumpFrom` is stored at
+  takeoff and an invalid-elevation / no-ground landing BOUNCES the player back — no more jump-mounting.
+- **Portal = STANDING vertical frame:** footprint 4×1; `drawBuilding('portal')` draws a 4-wide × 5-tall
+  obsidian frame rising UP from the base (purple glowing centre), so it covers ~5 elevation levels like
+  the side-view portal. **Two-way** config links the destination back.
+- **Leaves = floating canopy:** `drawTerrainCube` special-cases 'leaves' to draw only the top (no tall
+  side faces down to the ground) — fixes leaf-sides showing through elevations 1–2. Trees already place
+  relative to ground elevation (leaves only levels 3 & 4).
+- **Mob grey outline:** a grey ring drawn around every mob.
+- **Double jump = SOMERSAULT** (default): a cos() Y-foreshorten flips the sprite head-over-heels (edge-on
+  → upside-down → back). The flat **spin** is kept as a `doubleJumpStyle` world-setting option.
+- **Hand tool move:** click a mob/item → select + highlight ("click to move"); click a new cell → move it
+  (auto-unselect + history); click it again → cancel. Portal/goal/spawn still open config on click.
+- **Ramp = right-triangle prism:** vertical 90° face at the HIGH edge, hypotenuse to the low edge, fills
+  the cell edge-to-edge (was a centred wedge). Closer to Kevin's spec; may still want a pass to weld it to
+  the exact cube-neighbour heights.
+- **Buildings blockified (top-down):** healer = white hospital + red cross + entrance; shop = building +
+  a $ sign board + awning; **core (Tower Defense) = a CASTLE** (stone wall, courtyard, 4 corner turrets,
+  central keep + banner; footprint 6×6); **nexus (MOBA) = a floating crystal cluster** w/ orbiting shards;
+  pipe = green block with visible cube edges; statue = a grey top-down character sprite in an action pose
+  on a pedestal (via `drawOverheadPlayer` with a grey palette). New building art is drawn code, not new
+  palette blocks (no hidden-block additions were needed this pass).
+- **Roadmap:** §35 End Portals (eye-of-ender placement + powering, reusing the standing obsidian frame).
+
+## DEFERRED — running list for the Overhead Engine (as of build 289)
+1. **Day/night cycle + dynamic elevation shadows** (sun/moon tracking, projected shadows, night lamps,
+   entity shadows) — §34. The single biggest item; its own session.
+2. **Tower Defense / MOBA gameplay loops** — rulesets + tower-placement constraints + castle/crystal
+   models exist, but wave-spawning-down-lanes, tower firing, minions, core/nexus HP/win are NOT wired.
+3. **Arena-mode overhead translation** (KOTH/CTF/waves/deathmatch run in overhead) — mapped, not run.
+4. **Redstone in the Overhead Engine** (+ config modals) — §32, large; side-view engine is grid-coupled.
+5. **End portals** (eye-of-ender placement + powering) — §35; needs a fuller overhead inventory/items pass.
+6. **Block-based/3D solid building rebuild** — buildings are drawn top-down + solid now, but Kevin wants a
+   full "block-based" 3D treatment for all of them eventually.
+7. **Building skins + a Skin Builder** — every building has a `skin` field (default only); §31.
+8. **Campaign World-Placement mode + lane preview** — the overhead auto-path A* is proven; the node-binding
+   UI is partial.
+9. **Ramp fidelity** — the right-triangle prism is close; a final pass to match the exact stacked-cube
+   neighbour heights (and multi-level ramps) remains.
+10. **Explicit Stairs/Ramp elevation-transition placeables beyond the current ramp/ladder markers.**
+11. **Edge scrollbars** — replaced for now by the hazard-striped map-edge indicator + hand/arrow pan.
+12. **Full LOS/ranged elevation-blocking model** — the attack wall-height (`attackBlockHeight`) is a first
+    cut; the general architected `losBlocked` (sightlines) is still a stub.
+13. **Touch controls, live multiplayer, Sports/RTS, MOBA hero mechanics** — architected-for / out of scope.
+14. **Overhead limb-animation polish, autotile wall sprites, grid-density object-scale nuances** — MVP-level.
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD ENGINE — PORTALS / DETECTION / JUMP POLISH (2026-07-29, build 288, branch `overhead-engine`)
 # ═══════════════════════════════════════════════════════════════════════
 Third playtest-feedback batch. Suite green. Notable model/UX changes below.
