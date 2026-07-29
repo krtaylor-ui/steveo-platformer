@@ -327,6 +327,7 @@
         ${this._editorBar()}
         <div class="cb-tabs">${tabs}</div>
         <div class="cb-hint">💡 Tip: place an early <b>secret exit</b> in a later ${this._esc(WL)} that loops back to an earlier completed one — since players can't otherwise revisit a completed ${this._esc(WL)}, this is how you let them hunt for something they missed.</div>
+        <div class="cb-bar"><button class="cb-btn" id="cb-worldmap">🗺 Create World Map (overhead overworld — beta)</button></div>
         ${worldCards}
         ${bonusSection}
         ${zoneAdd}
@@ -473,6 +474,7 @@
       on('cb-unpublish', () => this._unpublish());
       on('cb-add-zone', () => this._addZone());
       on('cb-first-zone', () => this._addZone());
+      on('cb-worldmap', () => { const z = M().getZone(c, this._activeZone); if (typeof OH_CAMPAIGN_MAP !== 'undefined') { this.close(); OH_CAMPAIGN_MAP.open(z); } });
       const bindText = (id, apply) => { const el = $(id); if (el) el.onchange = () => { apply(el.value); this._save(true); }; };
       bindText('cb-name', (v) => c.name = v || 'Campaign');
       bindText('cb-zl', (v) => c.zoneLabel = v || 'Zone');

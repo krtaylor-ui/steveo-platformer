@@ -50,6 +50,7 @@ const SANDBOX = {
     document.getElementById('create-world-btn')?.addEventListener('click', () => this.showCreateWorldModal());
     document.getElementById('campaign-builder-btn')?.addEventListener('click', () => { if (typeof CAMPAIGN_BUILDER !== 'undefined') CAMPAIGN_BUILDER.open(); });
     document.getElementById('overhead-demo-btn')?.addEventListener('click', () => { if (typeof OVERHEAD !== 'undefined') OVERHEAD.launchDemo(); });
+    document.getElementById('overhead-new-btn')?.addEventListener('click', () => { if (typeof OH_EDITOR !== 'undefined') OH_EDITOR.open(); });
     document.getElementById('import-games-btn')?.addEventListener('click', () => this.showImportGamesModal());
     document.getElementById('import-file-btn')?.addEventListener('click', () => this.showImportFileModal());
 

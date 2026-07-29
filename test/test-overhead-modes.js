@@ -1,6 +1,7 @@
 // Headless tests for the Overhead mode rulesets + tower placement constraints.
 //   node test/test-overhead-modes.js
 const { OH_MODES } = require('../js/overhead/overhead-modes.js');
+const { OH_CAMPAIGN_MAP } = require('../js/overhead/overhead-campaign-map.js');
 
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) pass++; else { fail++; console.log('  FAIL:', m); } };
@@ -48,6 +49,25 @@ console.log('MOBA minion target priority:');
   ok(OH_MODES.pickMinionTarget(pri, { minion: [{ id: 'm' }], player: [{ id: 'p' }] }).kind === 'minion', 'prefers minions');
   ok(OH_MODES.pickMinionTarget(pri, { tower: [{ id: 't' }], core: [{ id: 'c' }] }).kind === 'tower', 'tower before core');
   ok(OH_MODES.pickMinionTarget(pri, {}) === null, 'no candidates → null');
+}
+
+console.log('Campaign World Map — top-down auto-path between world-nodes (§9):');
+{
+  // 5×3 map, all grass (1) except a wall column at c=2 with a gap at r=1.
+  const g = (rows) => ({ gridW: 5, gridH: 3, ground: rows });
+  const W = 4, F = 1;
+  const map = g([[F, F, W, F, F], [F, F, F, F, F], [F, F, W, F, F]]);
+  const path = OH_CAMPAIGN_MAP.autoPathBetween(map, { col: 0, row: 0 }, { col: 4, row: 0 });
+  ok(path && path[0].col === 0 && path[path.length - 1].col === 4, 'path connects the two nodes');
+  ok(path.some((p) => p.row === 1 && p.col === 2), 'route detours through the wall gap at (2,1)');
+  ok(!path.some((p) => (p.col === 2 && p.row === 0)), 'never steps on a wall cell');
+  // Fully walled off → no path.
+  const blocked = g([[F, W, F], [F, W, F], [F, W, F]]);
+  blocked.gridW = 3;
+  ok(OH_CAMPAIGN_MAP.autoPathBetween(blocked, { col: 0, row: 0 }, { col: 2, row: 0 }) === null, 'unreachable → null');
+  // connectNodes chains an ordered list.
+  const lanes = OH_CAMPAIGN_MAP.connectNodes(map, [{ col: 0, row: 0 }, { col: 4, row: 0 }, { col: 4, row: 2 }]);
+  ok(lanes.length === 2 && lanes[0].path && lanes[1].path, 'connectNodes builds a lane per consecutive pair');
 }
 
 console.log(`\noverhead modes: ${pass} passed, ${fail} failed`);
