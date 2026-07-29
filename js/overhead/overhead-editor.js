@@ -218,7 +218,7 @@
       rail.innerHTML =
         grp('Brush', this.brush + '×' + this.brush, [1, 2, 3, 5, 8].map((b) => `<div class="opt small ${b === this.brush ? 'sel' : ''}" data-brush="${b}">${b}×${b}</div>`).join('')) +
         grp('Shape', this.shape === 'freehand' ? 'Freehand' : (this.shape + (this.shapeFill ? ' fill' : ' line')), shapeOpts) +
-        grp('Elevation', 'Lvl ' + this.elevLevel, [0, 1, 2, 3, 4, 5].map((l) => `<div class="opt small ${l === this.elevLevel ? 'sel' : ''}" data-elev="${l}">Level ${l}</div>`).join('')) +
+        grp('Elevation', 'Lvl ' + this.elevLevel, [0, 1, 2, 3, 4, 5, 6, 7, 8].map((l) => `<div class="opt small ${l === this.elevLevel ? 'sel' : ''}" data-elev="${l}">Level ${l}</div>`).join('')) +
         `<div class="btn ${this.tool === 'erase' ? 'on' : ''}" id="oh-erase">Erase (or ⇧-click)</div>` +
         `<div class="btn ${this.tool === 'configure' ? 'on' : ''}" id="oh-config">⚙ Configure (click a portal/goal/spawn)</div>` +
         grp('Terrain', this.tool === 'terrain' ? P().OH_TERRAIN_BY_KEY[this.terrainKey].name : '', terrOpts) +
@@ -261,7 +261,7 @@
         const K = this.KEYS, pan = 48 / this.grid.masterZoom;
         if (e.code === 'ArrowLeft') this.cam.x -= pan; else if (e.code === 'ArrowRight') this.cam.x += pan;
         else if (e.code === 'ArrowUp') this.cam.y -= pan; else if (e.code === 'ArrowDown') this.cam.y += pan;
-        else if (e.code === K.elevUp) { this.elevLevel = Math.min(5, this.elevLevel + 1); this._renderBar(); }
+        else if (e.code === K.elevUp) { this.elevLevel = Math.min(8, this.elevLevel + 1); this._renderBar(); }
         else if (e.code === K.elevDown) { this.elevLevel = Math.max(0, this.elevLevel - 1); this._renderBar(); }
         else if (e.code === K.zoomIn) OH_GRID.zoomBy(this.grid, 1.12);
         else if (e.code === K.zoomOut) OH_GRID.zoomBy(this.grid, 0.9);
@@ -332,12 +332,20 @@
     },
     _drawRampIcon(ctx, kind, cx, cy, s) { OVERHEAD.drawRampIcon(ctx, kind, cx, cy, s); },
 
-    // Tree prefab: a 2-high log trunk + a 5-diameter leaf canopy at elev 3 (an
-    // overhang the player walks under). Colours use the terrain palette (log/leaves).
+    // Tree prefab: a 2-high log TRUNK (the centre cell, elev base+2 — levels 1&2 are
+    // trunk) + a leaf canopy: an outer Ø5 ring at level 3 and an inner top ring at
+    // level 4, both AROUND the trunk (never covering it). Placed relative to the
+    // current elevation; higher placements just push the levels up (no hard cap).
     _stampTree(col, row) {
-      const m = this.world.mapSnapshot, set = (c, r, key, e) => { if (c >= 0 && r >= 0 && c < m.gridW && r < m.gridH) { m.ground[r][c] = key; m.elevation[r][c] = e; } };
-      for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) if (dc * dc + dr * dr <= 5) set(col + dc, row + dr, 'leaves', 3);   // canopy Ø5 @ elev3
-      set(col, row, 'log', 2);   // trunk (2 high)
+      const m = this.world.mapSnapshot, base = this.elevLevel;
+      const set = (c, r, key, e) => { if (c >= 0 && r >= 0 && c < m.gridW && r < m.gridH) { m.ground[r][c] = key; m.elevation[r][c] = e; } };
+      for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) {
+        if (dc === 0 && dr === 0) continue;                 // never cover the trunk
+        const d2 = dc * dc + dr * dr;
+        if (d2 <= 2) set(col + dc, row + dr, 'leaves', base + 4);   // inner TOP ring (level 4)
+        else if (d2 <= 5) set(col + dc, row + dr, 'leaves', base + 3); // outer canopy Ø5 (level 3)
+      }
+      set(col, row, 'log', base + 2);   // trunk (levels 1&2)
     },
 
     // ── Shapes (line / rect / circle-oval; fill or brush-width outline) ─────────

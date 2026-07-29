@@ -41,7 +41,8 @@
       this.items = (worldData.items || []).map((it) => ({ ...it, taken: false }));
       this.mobs = (worldData.mobs || []).map((m) => { const d = P().OH_MOB_BY_KEY[m.type] || P().OH_MOBS[0];
         return { ...m, x: (m.col + 0.5) * this.grid.cell, y: (m.row + 0.5) * this.grid.cell, r: this.unit * 0.34,
-          hp: m.hp || d.hp, speed: m.speed || d.speed, detect: (m.detect || d.detect || 10) * this.unit * (cfg.mobDetectMult || 1), ranged: !!d.ranged, state: 'path', wp: 0, dead: false, cool: 0, _wc: 0 }; });
+          elev: this._elev(m.col, m.row),   // FIX: mobs need an elevation or collision NaN-blocks them (they sat still)
+          hp: m.hp || d.hp, speed: m.speed || d.speed, detect: (m.detect || d.detect || 8) * this.unit * (cfg.mobDetectMult || 1), ranged: !!d.ranged, state: 'path', wp: 0, dead: false, cool: 0, _wc: 0 }; });
       this.mode = worldData.mode || 'platformer';
       this.climbLevels = cfg.climbLevels != null ? cfg.climbLevels : 0;
       this.playerH = cfg.playerHeight != null ? cfg.playerHeight : 1;
@@ -92,8 +93,10 @@
     _hazard(c, r) { const k = this._key(c, r); return !!k && P().isHazardKey(k); }
     _gap(c, r) { return this._key(c, r) == null; }
     _cellOf(x, y) { return OH_GRID.cellAt(this.grid, x, y); }
+    // All buildings are SOLID except 'enter'-type ones (portal/pipe/shop) which you
+    // walk into — otherwise you couldn't step onto a portal to use it.
     _buildingSolidAt(col, row) {
-      for (const b of this.buildings) { const t = OH_BUILDINGS.get(b.typeId); if (!t || t.blocksMovement === false) continue;
+      for (const b of this.buildings) { const t = OH_BUILDINGS.get(b.typeId); if (!t || t.interactionType === 'enter') continue;
         for (const cl of OH_BUILDINGS.footprintCells(b)) if (cl.col === col && cl.row === row) return true; }
       return false;
     }
@@ -141,7 +144,7 @@
       if (!airborne) { const c = this._cellOf(p.x, p.y);
         if (this._gap(c.col, c.row)) this._fall('Fell'); else if (this._hazard(c.col, c.row) && p.iFrames === 0) this._hurt(4, 'Hazard'); }
       // Hidden if standing under an overhang (a cell ≥ player.elev+2).
-      { const c = this._cellOf(p.x, p.y); p.hidden = this._elev(c.col, c.row) > p.elev + this.playerH; }
+      { const c = this._cellOf(p.x, p.y); p.hidden = (this._key(c.col, c.row) === 'leaves' && this._elev(c.col, c.row) > p.elev); }
 
       // Weapons / melee.
       this._updateWeapons(intent, mouseWorld);
@@ -185,17 +188,19 @@
     //   under, hidden). A ramp/ladder cell lets a walk cross ANY delta. Gaps/solids
     //   block on foot; airborne carries over gap/hazard but not raised terrain.
     _moveWithCollision(ent, dx, dy, airborne) {
-      const C = this.climbLevels, H = this.playerH;
+      const C = this.climbLevels;
+      const cur = this._cellOf(ent.x, ent.y);
       const tryAxis = (nx, ny) => {
         const c = this._cellOf(nx, ny);
-        if (this._key(c.col, c.row) == null) return airborne ? null : false;
+        const key = this._key(c.col, c.row);
+        if (key == null) return airborne ? null : false;     // gap
         if (this._buildingSolidAt(c.col, c.row)) return false;
+        if (key === 'leaves') return ent.elev;               // canopy — always pass under (keep elev)
         const tE = this._elev(c.col, c.row), delta = tE - ent.elev;
-        if (delta > H) return null;                          // overhang → pass under
         if (delta <= 0) return tE;                           // walk / step down
-        if (airborne) return null;                           // in the air over raised terrain
-        if (delta <= C || this._ramp(c.col, c.row) || this._ramp(this._cellOf(ent.x, ent.y).col, this._cellOf(ent.x, ent.y).row)) return tE;  // climb / ramp
-        return false;                                        // wall (too high)
+        if (airborne) return null;                           // flying over raised terrain
+        if (delta <= C || this._ramp(c.col, c.row) || this._ramp(cur.col, cur.row)) return tE;   // climb within limit / ramp
+        return false;                                        // raised SOLID terrain → wall (any height)
       };
       if (dx) { const res = tryAxis(ent.x + dx + Math.sign(dx) * ent.r, ent.y); if (res !== false) { ent.x += dx; if (res != null && !airborne) ent.elev = res; } }
       if (dy) { const res = tryAxis(ent.x, ent.y + dy + Math.sign(dy) * ent.r); if (res !== false) { ent.y += dy; if (res != null && !airborne) ent.elev = res; } }
@@ -230,7 +235,7 @@
       for (const m of hits) { m.hp -= 4; if (m.hp <= 0) m.dead = true; }
     }
     // A projectile dies if it crosses terrain ≥ attackBlock levels above its origin.
-    _boltWalled(b) { const c = this._cellOf(b.x, b.y); return (this._elev(c.col, c.row) - (b.elev || 0)) >= this.attackBlock; }
+    _boltWalled(b) { const c = this._cellOf(b.x, b.y); if (this._key(c.col, c.row) === 'leaves') return false; return (this._elev(c.col, c.row) - (b.elev || 0)) >= this.attackBlock; }
     _updateProjectiles() {
       const p = this.player, live = this.mobs.filter((m) => !m.dead);
       // Crossbow bolts.
@@ -252,7 +257,10 @@
       const p = this.player;
       for (const m of this.mobs) { if (m.dead) continue; if (m.cool > 0) m.cool--;
         const d = Math.hypot(p.x - m.x, p.y - m.y);
-        if (d < m.detect) m.state = 'chase'; else if (m.state === 'chase') m.state = 'path';
+        // On first detecting the player, seed a random initial cooldown so mobs
+        // don't all fire on the same frame / instantly at max range.
+        if (d < m.detect) { if (m.state !== 'chase') m.cool = 25 + (Math.random() * 75 | 0); m.state = 'chase'; }
+        else if (m.state === 'chase') m.state = 'path';
         if (m.ranged && m.state === 'chase' && d < m.detect && m.cool === 0) { const ang = Math.atan2(p.y - m.y, p.x - m.x); this._mobBolts.push(Object.assign(OH_WEAPONS.startBolt(m.x, m.y, ang, { crossbowSpeed: 6, crossbowRange: m.detect + 40 }), { owner: 'm', elev: m.elev || 0 })); m.cool = 90; }
         if (m.state === 'chase') {
           const ang = Math.atan2(p.y - m.y, p.x - m.x);
@@ -343,7 +351,7 @@
       if (p._trident) { const t = p._trident; const s = S(t.x, t.y); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(Math.atan2(t.vy, t.vx) + (t.state === 'return' ? Math.PI : 0)); OVERHEAD.drawWeapon(ctx, this.player.r * z, 'trident'); ctx.restore(); }
       if (p._boom) { const b = p._boom; const s = S(b.x, b.y); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate((b.t || 0) * Math.PI * 8); OVERHEAD.drawWeapon(ctx, this.player.r * z, 'boomerang'); ctx.restore(); }
       // Overhang pass — redraw cells ≥ player.elev+2 so the player is hidden beneath.
-      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const elev = this._elev(c, r); if (elev <= this.player.elev + this.playerH) continue; const k = this._key(c, r); if (k == null) continue;
+      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const k = this._key(c, r); if (k !== 'leaves') continue; const elev = this._elev(c, r); if (elev <= this.player.elev) continue;
         const sp = S(c * g.cell, r * g.cell); const y = sp.y - elev * (cs * 0.25); ctx.globalAlpha = 0.96; OVERHEAD.drawTerrainTile(ctx, k, sp.x, y, cs, elev); ctx.globalAlpha = 1; }
       // Hidden indicator (designer opt-in).
       if (this.player.hidden && this.showHidden) { const s = S(this.player.x, this.player.y); ctx.strokeStyle = 'rgba(120,200,255,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s.x, s.y, cs * 0.4, 0, 7); ctx.stroke(); }
