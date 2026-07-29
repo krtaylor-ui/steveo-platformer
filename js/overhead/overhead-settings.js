@@ -11,7 +11,8 @@
     return {
       // Movement (× unit = base-cell world px, so density never changes feel).
       moveSpeed:        0.11,
-      autoClimb:        '1',        // disabled | 1 | 2 | unlimited
+      climbLevels:      0,          // how many elevation levels a WALK can step up (0 = none; use ramps/ladders)
+      playerHeight:     1,          // player height in levels — a block this-many-or-fewer levels above BLOCKS; taller = an overhang you pass under
       // Jump (impression-of-height): small float + a scale-up.
       jumpFloat:        0.4,
       jumpScale:        0.22,
@@ -42,7 +43,7 @@
     if (world) {
       if (world.controlScheme && !s.controlScheme) out.controlScheme = world.controlScheme;
       if (world.angleLockDeg != null && s.angleLockDeg == null) out.angleLockDeg = world.angleLockDeg;
-      if (world.rules && world.rules.autoClimb && !s.autoClimb) out.autoClimb = world.rules.autoClimb;
+      if (world.rules && world.rules.autoClimb && s.climbLevels == null) { const m = { disabled: 0, none: 0, '1': 1, '2': 2, unlimited: 99 }; out.climbLevels = m[world.rules.autoClimb] != null ? m[world.rules.autoClimb] : 0; }
       if (world.showHiddenIndicator != null && s.showHiddenIndicator == null) out.showHiddenIndicator = world.showHiddenIndicator;
     }
     return out;
@@ -93,9 +94,10 @@
         <div class="ohws-panel" role="dialog" aria-label="Overhead World Settings">
           <div class="ohws-head"><h2>🗺 Overhead World Settings</h2><button class="ohws-close" id="ohws-x">✕</button></div>
           <div class="ohws-body">
-            <div class="ohws-grp"><h3>Movement</h3>
+            <div class="ohws-grp"><h3>Movement &amp; Elevation</h3>
               ${range('moveSpeed', 'Player speed (× cell/frame)', 0.04, 0.28, 0.01)}
-              ${sel('autoClimb', 'Auto-climb (step up)', [['disabled', 'Disabled'], ['1', '1 level'], ['2', '2 levels'], ['unlimited', 'Unlimited']])}
+              ${sel('climbLevels', 'Levels a walk can climb', [['0', 'None (use ramps/ladders)'], ['1', '1 level'], ['2', '2 levels'], ['99', 'Unlimited']])}
+              ${sel('playerHeight', 'Player height (levels)', [['1', '1 (walk under 2+ high)'], ['2', '2'], ['3', '3']])}
               ${range('jumpFloat', 'Jump float (up)', 0, 1, 0.05)}
               ${range('jumpScale', 'Jump scale (grow)', 0, 0.5, 0.02)}
             </div>
@@ -122,7 +124,9 @@
         </div>`;
       const setV = (k, v) => { S[k] = v; const el = document.getElementById('ohws-v-' + k); if (el) el.textContent = v; };
       ov.querySelectorAll('input[type=range]').forEach((el) => el.oninput = () => setV(el.dataset.k, parseFloat(el.value)));
-      ov.querySelectorAll('select').forEach((el) => el.onchange = () => { const n = parseFloat(el.value); S[el.dataset.k] = Number.isNaN(n) ? el.value : (el.dataset.k === 'angleLockDeg' ? n : el.value); if (el.dataset.k === 'angleLockDeg') S[el.dataset.k] = n; });
+      // Numeric-valued selects (angleLockDeg/climbLevels/playerHeight) store a
+      // number; string selects (controlScheme) store the string.
+      ov.querySelectorAll('select').forEach((el) => el.onchange = () => { const n = parseFloat(el.value); S[el.dataset.k] = (/^-?\d+(\.\d+)?$/.test(el.value)) ? n : el.value; });
       ov.querySelectorAll('input[type=checkbox]').forEach((el) => el.onchange = () => S[el.dataset.k] = el.checked);
       document.getElementById('ohws-x').onclick = () => this.close();
       document.getElementById('ohws-done').onclick = () => this.close();

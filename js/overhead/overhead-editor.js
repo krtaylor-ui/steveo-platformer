@@ -131,7 +131,7 @@
         name, mode, viewMode: 'overhead', gameModeDefault: 'NRM',   // NRM keeps server validation happy
         controlScheme: scheme, angleLockDeg: 0, rules: { autoClimb: '1' },
         mapSnapshot: { gridW: W, gridH: H, density, baseW, baseH, cell, objectScaleMode: 'independent', ground, elevation, decorations: [] },
-        buildings: [], mobs: [], items: [], spawns: [{ col: 1, row: H - 2 }],
+        buildings: [], mobs: [], items: [], spawns: [{ col: 1, row: H - 2 }], ramps: [],
         goal: null,
         settings: (typeof OH_SETTINGS !== 'undefined') ? OH_SETTINGS.defaults() : {},
       };
@@ -205,7 +205,8 @@
       const terrOpts = P().OH_TERRAIN.map((t) => `<div class="opt ${this.tool === 'terrain' && this.terrainKey === t.key ? 'sel' : ''}" data-terr="${t.key}">${swatch(t.color)}${t.name}</div>`).join('');
       const bTypes = (typeof OH_BUILDINGS !== 'undefined') ? OH_BUILDINGS.all().map((d) => d.id) : ['healer'];
       const buildOpts = bTypes.map((b) => `<div class="opt ${this.tool === 'building' && this.buildingType === b ? 'sel' : ''}" data-build="${b}">🏛 ${b}</div>`).join('')
-        + `<div class="opt ${this.tool === 'spawn' ? 'sel' : ''}" data-spawn="1">🚩 Player Spawn</div><div class="opt ${this.tool === 'goal' ? 'sel' : ''}" data-goal="1">★ Goal Star</div>`;
+        + `<div class="opt ${this.tool === 'spawn' ? 'sel' : ''}" data-spawn="1">🚩 Player Spawn</div><div class="opt ${this.tool === 'goal' ? 'sel' : ''}" data-goal="1">★ Goal Star</div>`
+        + `<div class="opt ${this.tool === 'ramp' ? 'sel' : ''}" data-ramp="ramp">⟋ Ramp</div><div class="opt ${this.tool === 'ladder' ? 'sel' : ''}" data-ramp="ladder">🪜 Ladder</div>`;
       const mobOpts = P().OH_MOBS.map((mm) => `<div class="opt ${this.tool === 'mob' && this.mobKey === mm.key ? 'sel' : ''}" data-mob="${mm.key}">${swatch(mm.color)}${mm.name}</div>`).join('');
       const itemOpts = P().OH_ITEMS.map((i) => `<div class="opt ${this.tool === 'item' && this.itemKey === i.key ? 'sel' : ''}" data-item="${i.key}">${swatch(i.color)}${i.name}</div>`).join('');
       const grp = (label, cur, opts) => `<div class="grp"><div class="hd"><b>${label} ▸</b><span class="cur">${cur}</span></div><div class="oh-fly">${opts}</div></div>`;
@@ -229,6 +230,7 @@
       rail.querySelectorAll('[data-build]').forEach((el) => el.onclick = () => { this.tool = 'building'; this.buildingType = el.dataset.build; this._renderBar(); });
       rail.querySelectorAll('[data-spawn]').forEach((el) => el.onclick = () => { this.tool = 'spawn'; this._renderBar(); });
       rail.querySelectorAll('[data-goal]').forEach((el) => el.onclick = () => { this.tool = 'goal'; this._renderBar(); });
+      rail.querySelectorAll('[data-ramp]').forEach((el) => el.onclick = () => { this.tool = el.dataset.ramp; this._renderBar(); });
       rail.querySelectorAll('[data-mob]').forEach((el) => el.onclick = () => { this.tool = 'mob'; this.mobKey = el.dataset.mob; this._renderBar(); });
       rail.querySelectorAll('[data-item]').forEach((el) => el.onclick = () => { this.tool = 'item'; this.itemKey = el.dataset.item; this._renderBar(); });
     },
@@ -300,16 +302,19 @@
           this.world.buildings = this.world.buildings.filter((b) => !(b.col === c && b.row === r));
           this.world.mobs = this.world.mobs.filter((x) => !(x.col === c && x.row === r));
           this.world.items = this.world.items.filter((x) => !(x.col === c && x.row === r));
+          this.world.ramps = (this.world.ramps || []).filter((x) => !(x.col === c && x.row === r));
         });
         return;
       }
       if (this.tool === 'terrain') apply((c, r) => { m.ground[r][c] = this.terrainKey; m.elevation[r][c] = this.elevLevel; });
       else if (this.tool === 'goal') { this.world.goal = { col, row }; }
       else if (this.tool === 'spawn') { this.world.spawns = [{ col, row }]; }
+      else if (this.tool === 'ramp' || this.tool === 'ladder') { this.world.ramps = this.world.ramps || []; if (!this.world.ramps.some((x) => x.col === col && x.row === row)) this.world.ramps.push({ col, row, kind: this.tool }); }
       else if (this.tool === 'building') { if (!this.world.buildings.some((b) => b.col === col && b.row === row)) this.world.buildings.push(OH_BUILDINGS.place(this.buildingType, col, row, { level: this.elevLevel })); }
       else if (this.tool === 'mob') { const d = P().OH_MOB_BY_KEY[this.mobKey]; this.world.mobs.push({ col, row, type: this.mobKey, hp: d.hp, speed: d.speed, detect: d.detect }); }
       else if (this.tool === 'item') { this.world.items.push({ col, row, kind: P().OH_ITEM_BY_KEY[this.itemKey].kind, weapon: P().OH_ITEM_BY_KEY[this.itemKey].weapon, itemKey: this.itemKey }); }
     },
+    _drawRampIcon(ctx, kind, cx, cy, s) { OVERHEAD.drawRampIcon(ctx, kind, cx, cy, s); },
 
     // ── Actions ───────────────────────────────────────────────────────────────
     _test() {
@@ -377,6 +382,7 @@
       for (const mo of this.world.mobs) { const d = P().OH_MOB_BY_KEY[mo.type] || P().OH_MOBS[0]; const sp = S((mo.col + 0.5) * g.cell, (mo.row + 0.5) * g.cell); ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(sp.x, sp.y, cs * 0.34, 0, 7); ctx.fill(); }
       for (const it of this.world.items) { const d = P().OH_ITEM_BY_KEY[it.itemKey] || P().OH_ITEMS[0]; const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(sp.x, sp.y, cs * 0.24, 0, 7); ctx.fill(); }
       for (const spn of (this.world.spawns || [])) { const sp = S((spn.col + 0.5) * g.cell, (spn.row + 0.5) * g.cell); ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; ctx.strokeRect(sp.x - cs * 0.42, sp.y - cs * 0.42, cs * 0.84, cs * 0.84); if (cs > 14) { ctx.fillStyle = '#4aa3ff'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('P1', sp.x, sp.y + 3); } }
+      for (const rp of (this.world.ramps || [])) { const sp = S((rp.col + 0.5) * g.cell, (rp.row + 0.5) * g.cell); this._drawRampIcon(ctx, rp.kind, sp.x, sp.y, cs); }
       if (this.world.goal) { const sp = S((this.world.goal.col + 0.5) * g.cell, (this.world.goal.row + 0.5) * g.cell); ctx.fillStyle = '#ffd700'; ctx.font = `${cs | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.35); }
       // Info line.
       ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.textAlign = 'left'; ctx.font = '12px sans-serif';

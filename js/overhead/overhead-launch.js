@@ -112,6 +112,14 @@
       if (n > 1) { const seg = depth / n; for (let i = 1; i < n; i++) { const ly = topBottomY + seg * i; ctx.beginPath(); ctx.moveTo(x, ly); ctx.lineTo(x + cs, ly); ctx.stroke(); } }
     },
 
+    // Shared ramp/ladder icon (editor + runtime).
+    drawRampIcon(ctx, kind, cx, cy, s) {
+      ctx.save(); ctx.translate(cx, cy);
+      if (kind === 'ladder') { ctx.strokeStyle = '#c8a05a'; ctx.lineWidth = Math.max(1.5, s * 0.09); ctx.beginPath(); ctx.moveTo(-s * 0.22, -s * 0.4); ctx.lineTo(-s * 0.22, s * 0.4); ctx.moveTo(s * 0.22, -s * 0.4); ctx.lineTo(s * 0.22, s * 0.4); for (let i = -1; i <= 1; i++) { ctx.moveTo(-s * 0.22, i * s * 0.28); ctx.lineTo(s * 0.22, i * s * 0.28); } ctx.stroke(); }
+      else { ctx.fillStyle = 'rgba(200,170,110,.85)'; ctx.beginPath(); ctx.moveTo(-s * 0.4, s * 0.35); ctx.lineTo(s * 0.4, -s * 0.35); ctx.lineTo(s * 0.4, s * 0.35); ctx.closePath(); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.stroke(); }
+      ctx.restore();
+    },
+
     // ── A small held weapon, drawn in LOCAL space pointing +x (forward). ────────
     drawWeapon(ctx, r, kind) {
       const S = window.OH_SPRITE; ctx.save();

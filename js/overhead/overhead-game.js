@@ -43,9 +43,13 @@
         return { ...m, x: (m.col + 0.5) * this.grid.cell, y: (m.row + 0.5) * this.grid.cell, r: this.unit * 0.34,
           hp: m.hp || d.hp, speed: m.speed || d.speed, detect: (m.detect || d.detect) * (cfg.mobDetectMult || 1), ranged: !!d.ranged, state: 'path', wp: 0, dead: false, cool: 0 }; });
       this.mode = worldData.mode || 'platformer';
-      this.rules = Object.assign({}, worldData.rules, { autoClimb: cfg.autoClimb || (worldData.rules && worldData.rules.autoClimb) || '1' });
+      this.climbLevels = cfg.climbLevels != null ? cfg.climbLevels : 0;
+      this.playerH = cfg.playerHeight != null ? cfg.playerHeight : 1;
       this.showHidden = !!cfg.showHiddenIndicator;
       this.goal = worldData.goal || null;
+      // Ramps/ladders let a walk cross ANY elevation delta at that cell.
+      this._rampList = worldData.ramps || [];
+      this.ramps = new Set(this._rampList.map((r) => r.col + ',' + r.row));
 
       this.baseScheme = OH_CONTROLS.pickScheme(cfg.controlScheme, opts.playerScheme);
       this.angleLockDeg = cfg.angleLockDeg || 0;
@@ -123,7 +127,7 @@
       if (!airborne) { const c = this._cellOf(p.x, p.y);
         if (this._gap(c.col, c.row)) this._fall('Fell'); else if (this._hazard(c.col, c.row) && p.iFrames === 0) this._hurt(4, 'Hazard'); }
       // Hidden if standing under an overhang (a cell ≥ player.elev+2).
-      { const c = this._cellOf(p.x, p.y); p.hidden = this._elev(c.col, c.row) >= p.elev + 2; }
+      { const c = this._cellOf(p.x, p.y); p.hidden = this._elev(c.col, c.row) > p.elev + this.playerH; }
 
       // Weapons / melee.
       this._updateWeapons(intent, mouseWorld);
@@ -140,18 +144,23 @@
       this.camera = OH_GRID.centerOn(this.grid, p.x, p.y, CANVAS_W, CANVAS_H);
     }
 
-    // Elevation-relative movement: +1 = wall (unless auto-climb/ramp), +2 = pass
-    // under (elev unchanged), <=0 = walk (elev = target). Solids/buildings/gaps
-    // block on foot; airborne carries over gap/hazard but not raised terrain.
+    _ramp(c, r) { return this.ramps.has(c + ',' + r); }
+    // Elevation-relative movement (climbLevels C, playerHeight H):
+    //   delta<=0 walk · delta<=C climb-up · delta<=H WALL · delta>H overhang (pass
+    //   under, hidden). A ramp/ladder cell lets a walk cross ANY delta. Gaps/solids
+    //   block on foot; airborne carries over gap/hazard but not raised terrain.
     _moveWithCollision(ent, dx, dy, airborne) {
+      const C = this.climbLevels, H = this.playerH;
       const tryAxis = (nx, ny) => {
         const c = this._cellOf(nx, ny);
-        if (this._key(c.col, c.row) == null) return airborne ? null : false;   // gap: blocked on foot
+        if (this._key(c.col, c.row) == null) return airborne ? null : false;
         if (this._buildingSolidAt(c.col, c.row)) return false;
-        const delta = this._elev(c.col, c.row) - ent.elev;
-        if (delta >= 2) return null;            // pass under (don't change elev)
-        if (delta === 1) { if (airborne) return null; const tier = this.rules.autoClimb || 'disabled'; return OH_ELEV.autoClimbAllows(ent.elev, ent.elev + 1, tier) ? (ent.elev + 1) : false; }
-        return this._elev(c.col, c.row);        // step down / same
+        const tE = this._elev(c.col, c.row), delta = tE - ent.elev;
+        if (delta > H) return null;                          // overhang → pass under
+        if (delta <= 0) return tE;                           // walk / step down
+        if (airborne) return null;                           // in the air over raised terrain
+        if (delta <= C || this._ramp(c.col, c.row) || this._ramp(this._cellOf(ent.x, ent.y).col, this._cellOf(ent.x, ent.y).row)) return tE;  // climb / ramp
+        return false;                                        // wall (too high)
       };
       if (dx) { const res = tryAxis(ent.x + dx + Math.sign(dx) * ent.r, ent.y); if (res !== false) { ent.x += dx; if (res != null && !airborne) ent.elev = res; } }
       if (dy) { const res = tryAxis(ent.x, ent.y + dy + Math.sign(dy) * ent.r); if (res !== false) { ent.y += dy; if (res != null && !airborne) ent.elev = res; } }
@@ -161,7 +170,7 @@
       const res = OH_MOVE.landingValid(p.jump, { landingIsGap: this._gap(c.col, c.row), landingIsHazard: this._hazard(c.col, c.row),
         landingIsSolidGround: this._key(c.col, c.row) != null, elevDelta: this._elev(c.col, c.row) - p.jump.startElev });
       if (!res.valid) { if (res.reason === 'hazard') this._hurt(4, 'Hazard'); else if (res.reason === 'gap') this._fall('Missed the jump'); }
-      else { const d = this._elev(c.col, c.row) - p.elev; if (d < 2) p.elev = this._elev(c.col, c.row); }
+      else { const d = this._elev(c.col, c.row) - p.elev; if (d <= this.playerH) p.elev = this._elev(c.col, c.row); }
     }
 
     // ── Weapons ────────────────────────────────────────────────────────────
@@ -223,6 +232,31 @@
     _exit() { this._running = false; if (document.body) document.body.classList.remove('in-game'); if (this._onExit) this._onExit(this.state); }
     destroy() { this._running = false; if (document.body) document.body.classList.remove('in-game'); }
 
+    // Pre-render the whole static terrain (tops + 3D sides, elevation baked in) to
+    // an offscreen canvas at 1:1 world px. `pad` is a top margin so raised tiles
+    // (drawn UP) aren't clipped. Blitted each frame in _render.
+    _buildTerrainCache() {
+      const g = this.grid, cell = g.cell;
+      const worldW = g.gridW * cell, worldH = g.gridH * cell;
+      const LIFT = cell * 0.25;
+      // Max elevation → top padding so the highest tiles fit above row 0.
+      let maxE = 0; for (let r = 0; r < g.gridH; r++) { const row = this.elevation[r]; if (row) for (let c = 0; c < g.gridW; c++) if ((row[c] | 0) > maxE) maxE = row[c] | 0; }
+      const pad = Math.ceil(maxE * LIFT + cell);
+      this._cachePad = pad;
+      const cv = document.createElement('canvas'); cv.width = Math.max(1, worldW); cv.height = Math.max(1, worldH + pad);
+      const cx = cv.getContext('2d');
+      for (let r = 0; r < g.gridH; r++) for (let c = 0; c < g.gridW; c++) {
+        const k = this._key(c, r); if (k == null) continue; const elev = this._elev(c, r);
+        const x = c * cell, y = r * cell - elev * LIFT + pad;
+        const hasFront = (r + 1 <= g.gridH - 1) && this._key(c, r + 1) != null;
+        const frontElev = hasFront ? this._elev(c, r + 1) : 0;
+        const drop = hasFront ? (elev - frontElev) : Math.max(1, elev + 1);
+        OVERHEAD.drawTerrainSide(cx, k, x, y + cell, cell, drop > 0 ? drop * LIFT : 0, drop);
+        OVERHEAD.drawTerrainTile(cx, k, x, y, cell, elev);
+      }
+      this._terrainCache = cv;
+    }
+
     // ── Render ────────────────────────────────────────────────────────────
     _render() {
       const ctx = this.ctx, g = this.grid, z = g.masterZoom, cs = g.cell * z;
@@ -231,22 +265,18 @@
       const tl = OH_GRID.screenToWorld(g, this.camera, 0, 0), br = OH_GRID.screenToWorld(g, this.camera, CANVAS_W, CANVAS_H);
       const c0 = Math.max(0, (tl.x / g.cell | 0) - 1), c1 = Math.min(g.gridW - 1, (br.x / g.cell | 0) + 1);
       const r0 = Math.max(0, (tl.y / g.cell | 0) - 1), r1 = Math.min(g.gridH - 1, (br.y / g.cell | 0) + 1);
-      const liftScale = g.cell / 32;
-      // Base terrain pass.
       const LIFT = cs * 0.25;   // one elevation level = 1/4 of a block (§)
-      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
-        const k = this._key(c, r); if (k == null) continue; const elev = this._elev(c, r);
-        const sp = S(c * g.cell, r * g.cell); const y = sp.y - elev * LIFT;   // raised = UP
-        // 3D side: the block in FRONT (r+1) covers most sides. A lower/absent
-        // front shows a cliff whose depth reaches that front block's top; each
-        // elevation level is one 1/4-block segment with a divider line.
-        const hasFront = (r + 1 <= this.grid.gridH - 1) && this._key(c, r + 1) != null;
-        const frontElev = hasFront ? this._elev(c, r + 1) : 0;
-        const drop = hasFront ? (elev - frontElev) : Math.max(1, elev + 1);   // edge shows a full side
-        const sideDepth = drop > 0 ? drop * LIFT : 0;
-        OVERHEAD.drawTerrainSide(ctx, k, sp.x, y + cs, cs, sideDepth, drop);
-        OVERHEAD.drawTerrainTile(ctx, k, sp.x, y, cs, elev);
-      }
+      // PERF: terrain is STATIC during play — it's pre-rendered ONCE to an offscreen
+      // canvas (world-px, elevation baked in) and blitted here, so runtime terrain
+      // cost is one drawImage/frame regardless of grid density (the density-4
+      // slowdown fix). Live per-cell drawing only happens in the editor.
+      if (!this._terrainCache) this._buildTerrainCache();
+      const tc = this._terrainCache, pad = this._cachePad;
+      // World region visible → source rect in the cache (which has a `pad` top margin).
+      const sx = this.camera.x, sy = this.camera.y + pad, sw = CANVAS_W / z, sh = CANVAS_H / z;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(tc, sx, sy, sw, sh, 0, 0, CANVAS_W, CANVAS_H);
+      for (const rp of this._rampList) { const sp = S((rp.col + 0.5) * g.cell, (rp.row + 0.5) * g.cell); OVERHEAD.drawRampIcon(ctx, rp.kind, sp.x, sp.y, cs); }
       if (this.goal) { const sp = S((this.goal.col + 0.5) * g.cell, (this.goal.row + 0.5) * g.cell); ctx.fillStyle = '#fff6b0'; ctx.font = `${(cs * 0.9) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.32); }
       // Entities sorted by (row + elev).
       const ents = [];
@@ -264,7 +294,7 @@
       if (p._trident) { const t = p._trident; const s = S(t.x, t.y); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(Math.atan2(t.vy, t.vx) + (t.state === 'return' ? Math.PI : 0)); OVERHEAD.drawWeapon(ctx, this.player.r * z, 'trident'); ctx.restore(); }
       if (p._boom) { const b = p._boom; const s = S(b.x, b.y); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate((b.t || 0) * Math.PI * 8); OVERHEAD.drawWeapon(ctx, this.player.r * z, 'boomerang'); ctx.restore(); }
       // Overhang pass — redraw cells ≥ player.elev+2 so the player is hidden beneath.
-      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const elev = this._elev(c, r); if (elev < this.player.elev + 2) continue; const k = this._key(c, r); if (k == null) continue;
+      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const elev = this._elev(c, r); if (elev <= this.player.elev + this.playerH) continue; const k = this._key(c, r); if (k == null) continue;
         const sp = S(c * g.cell, r * g.cell); const y = sp.y - elev * (cs * 0.25); ctx.globalAlpha = 0.96; OVERHEAD.drawTerrainTile(ctx, k, sp.x, y, cs, elev); ctx.globalAlpha = 1; }
       // Hidden indicator (designer opt-in).
       if (this.player.hidden && this.showHidden) { const s = S(this.player.x, this.player.y); ctx.strokeStyle = 'rgba(120,200,255,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s.x, s.y, cs * 0.4, 0, 7); ctx.stroke(); }
