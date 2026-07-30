@@ -1,4 +1,26 @@
-## CURRENT STATE (2026-07-29) — builds 279–297 SHIPPED to `main` ✅; `overhead-redstone-bridge` branch at build 301 (Bridge + Redstone + Editor 2.0 + selection/clipboard) — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — builds 279–297 SHIPPED to `main` ✅; `overhead-redstone-bridge` branch at build 302 (Bridge + Redstone + Editor 2.0 + selection + redstone devices) — NOT merged, browser-UNTESTED
+
+**SHIPPED to `main` (live):** Overhead builds 279–297 + Campaign MVP.
+
+**Branch `overhead-redstone-bridge` (builds 298–302, NOT merged):** Suite green (997); harnesses + probe clean.
+- 298 Bridge + drawbridge + grid-agnostic `OH_REDSTONE` core.
+- 299 Editor painting (shapes for placeables, fill/bucket, eyedropper, cursors, reveal window, tower 3×3).
+- 300 Editor rail 2.0 (Hand/Draw/Erase, highlighting, block swatches, undo-camera fix).
+- 301 Selection + clipboard (marquee, double-click select-connected, delete, copy/paste, flip/rotate);
+  bridge guardrails → world setting.
+- 302 **Redstone devices + gates + TX/RX config:** pressure plate, weight block, piston (solid-when-powered
+  barrier), AND + NOT gates; every device can transmit/receive on named channels; Hand-click config modals
+  (receiver must name a source). Core v2 = bounded fixpoint with gates. Plate/drawbridge share "gate".
+
+**NEXT (specs in FUTURE_ROADMAP):** §36 drawbridge animated vs vanishing style; §37 scatter brush + 2-wide
+bridge stamp; §32 extract the side-view `js/redstone.js` onto this shared core; confirm the "dust = AND"
+interpretation. Detail in `DECISIONS_LOG.md`.
+
+**NEEDS BROWSER PLAYTEST** before merging 298–302 to `main`.
+
+---
+
+## PRIOR STATE (2026-07-29) — `overhead-redstone-bridge` at build 301 (selection + clipboard)
 
 **SHIPPED to `main` (live):** Overhead builds 279–297 + Campaign MVP.
 

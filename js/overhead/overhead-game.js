@@ -164,7 +164,7 @@
       // Advance the day/night clock (~60fps). detectMultiplier feeds mob sight.
       if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') { this._elapsed += 1 / 60; this._tod = OH_DAYNIGHT.phase(this._elapsed, this._dayLen, this._dayStart); this._detectMult = OH_DAYNIGHT.detectMultiplier(this._tod); }
       // Re-evaluate the redstone network (drives drawbridge channels, lamps, doors).
-      if (this._redstone.length && typeof OH_REDSTONE !== 'undefined') this._rs = OH_REDSTONE.evaluate(this._redstone);
+      if (this._redstone.length && typeof OH_REDSTONE !== 'undefined') { this._updatePlates(); this._rs = OH_REDSTONE.evaluate(this._redstone); }
       // In a Sandbox playtest, Esc returns straight to the designer (not a pause menu).
       if (inp.isJustDown && inp.isJustDown('Escape')) { if (this._testMode) { this._exit(); return; } if (this.state === 'playing') this.state = 'paused'; else if (this.state === 'paused') this.state = 'playing'; else { this._exit(); return; } }
       if (inp.scrollDelta) { OH_GRID.zoomBy(this.grid, inp.scrollDelta < 0 ? 1.08 : 0.92); inp.scrollDelta = 0; }
@@ -308,6 +308,7 @@
         const key = this._key(c.col, c.row);
         if (key == null) return airborne ? null : false;     // gap
         if (this._buildingSolidAt(c.col, c.row)) return false;
+        if (this._pistonSolidAt(c.col, c.row)) return false;   // an extended (powered) piston blocks
         if (key === 'leaves') return ent.elev;               // canopy — always pass under (keep elev)
         if (key === 'pit') return this._pitsDeadly ? ent.elev : false;   // deadly: step in (fatal after); else a hard obstacle
         const tE = this._elev(c.col, c.row), delta = tE - ent.elev;
@@ -430,6 +431,16 @@
     }
 
     _pit(c, r) { const k = this._key(c, r); return !!k && P().isPitKey(k); }
+    // Pressure plates / weight blocks activate when enough entities stand on them.
+    _updatePlates() {
+      for (const d of this._redstone) if (d.kind === 'plate' || d.kind === 'weight') {
+        let n = 0; const pc = this._cellOf(this.player.x, this.player.y); if (pc.col === d.col && pc.row === d.row) n++;
+        for (const m of this.mobs) if (!m.dead) { const mc = this._cellOf(m.x, m.y); if (mc.col === d.col && mc.row === d.row) n++; }
+        d._active = n >= (d.kind === 'weight' ? (d.threshold || 2) : 1);
+      }
+    }
+    // A powered piston is a solid barrier (blocks movement); unpowered = passable.
+    _pistonSolidAt(c, r) { if (!this._redstone.length) return false; for (const d of this._redstone) if (d.kind === 'piston' && d.col === c && d.row === r) return OH_REDSTONE.cellPowered(this._rs, c, r); return false; }
     _bridge(c, r) { return this._bridgeAt.get(c + ',' + r) || null; }
     // A bridge cell is CLOSED (a solid walkable deck) when it's a normal bridge, or a
     // drawbridge whose channel is powered. Open drawbridges are gaps.
@@ -739,6 +750,9 @@
         if (d.kind === 'lever' || d.kind === 'button') OVERHEAD.drawLever(ctx, sp.x, sp.y, u * 0.9, !!d.on);   // ~2 character-blocks
         else if (d.kind === 'dust') OVERHEAD.drawDust(ctx, tl.x, tl.y, cs, on);
         else if (d.kind === 'lamp') OVERHEAD.drawLamp(ctx, sp.x, sp.y, u * 0.8, on);
+        else if (d.kind === 'plate' || d.kind === 'weight') OVERHEAD.drawPlate(ctx, sp.x, sp.y, u * 0.7, on, d.kind === 'weight');
+        else if (d.kind === 'piston') OVERHEAD.drawPiston(ctx, tl.x, tl.y, cs, on);
+        else if (d.kind === 'and' || d.kind === 'not') OVERHEAD.drawGate(ctx, sp.x, sp.y, u * 0.6, d.kind, on);
         else if (d.kind === 'tx' || d.kind === 'rx') { OVERHEAD.drawLamp(ctx, sp.x, sp.y, u * 0.7, on); ctx.fillStyle = '#fff'; ctx.font = `${Math.max(8, u * 0.5) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(d.kind === 'tx' ? '↑' : '↓', sp.x, sp.y); ctx.textBaseline = 'alphabetic'; }
       }
     }

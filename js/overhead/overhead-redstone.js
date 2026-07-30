@@ -19,35 +19,46 @@
   const NB = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   const key = (c, r) => c + ',' + r;
 
-  const OH_REDSTONE = {
-    key,
-    isSource(d) { return (d.kind === 'lever' && !!d.on) || (d.kind === 'button' && !!d.on); },
+  // Device kinds. SOURCES emit on their own (lever/button/plate/weight). CONDUCTORS
+  // carry power to neighbours (dust + sources + gates). OUTPUTS are sinks (lamp/rx/
+  // piston) that light/act but never conduct. GATES (and/not) compute from their
+  // powered neighbours. ANY device may also TRANSMIT on `txChannel` (broadcast while
+  // it's on) and/or RECEIVE from `rxChannel` (on while that channel is on). Legacy
+  // `channel` on a lever/tx == txChannel.
+  const SOURCE = { lever: 1, button: 1, plate: 1, weight: 1 };
+  const CONDUCTS = { dust: 1, lever: 1, button: 1, plate: 1, weight: 1, and: 1, not: 1, tx: 1 };
 
-    // Compute powered cells + active channels from a device list. Only SOURCES and
-    // DUST are "conductive" (carry/emit power); OUTPUTS (lamp/rx/tx targets) light up
-    // but never feed each other — matching real redstone.
+  const OH_REDSTONE = {
+    key, SOURCE, CONDUCTS,
+    isSource(d) { return (d.kind === 'lever' && !!d.on) || (d.kind === 'button' && !!d.on); },
+    baseActive(d) { return (d.kind === 'lever' && !!d.on) || (d.kind === 'button' && !!d.on) || ((d.kind === 'plate' || d.kind === 'weight') && !!d._active); },
+
+    // Evaluate to a fixpoint (bounded — gates + channels can chain). Returns
+    // { powered:Set('c,r'), channels:{name:true} }.
     evaluate(devices) {
       devices = devices || [];
-      const conductive = new Set(), channels = {};
-      // 1) Seed from active sources (+ their wireless channel).
-      for (const d of devices) if (this.isSource(d)) { conductive.add(key(d.col, d.row)); if (d.channel) channels[d.channel] = true; }
-      // 2) Flood power through connected dust (fixpoint) into the conductive set.
-      const dust = devices.filter((d) => d.kind === 'dust');
-      let changed = true;
-      while (changed) {
-        changed = false;
-        for (const d of dust) { const k = key(d.col, d.row); if (conductive.has(k)) continue;
-          for (const [dc, dr] of NB) if (conductive.has(key(d.col + dc, d.row + dr))) { conductive.add(k); changed = true; break; } }
+      const at = new Map(); for (const d of devices) at.set(key(d.col, d.row), d);
+      let powered = new Map(), channels = {};
+      for (let pass = 0; pass < 10; pass++) {
+        const np = new Map();
+        for (const d of devices) {
+          const k = key(d.col, d.row); let on;
+          if (SOURCE[d.kind]) on = this.baseActive(d) || !!(d.rxChannel && channels[d.rxChannel]);
+          else if (d.rxChannel && channels[d.rxChannel]) on = true;
+          else {
+            let cnt = 0; for (const [dc, dr] of NB) { const nd = at.get(key(d.col + dc, d.row + dr)); if (nd && CONDUCTS[nd.kind] && powered.get(key(nd.col, nd.row))) cnt++; }
+            if (d.kind === 'and') on = cnt >= 2; else if (d.kind === 'not') on = cnt === 0; else on = cnt >= 1;
+          }
+          np.set(k, on);
+        }
+        const nc = {}; for (const d of devices) { const ch = d.txChannel || d.channel; if (ch && np.get(key(d.col, d.row))) nc[ch] = true; }
+        let stable = true; for (const [k, v] of np) if (powered.get(k) !== v) { stable = false; break; }
+        if (stable) { const ck = Object.keys(nc), pk = Object.keys(channels); if (ck.length !== pk.length || ck.some((k) => !channels[k])) stable = false; }
+        powered = np; channels = nc;
+        if (stable) break;
       }
-      const adj = (d) => NB.some(([dc, dr]) => conductive.has(key(d.col + dc, d.row + dr)));
-      // 3) A transmitter adjacent to conductive power drives its channel.
-      for (const d of devices) if (d.kind === 'tx' && d.channel && (conductive.has(key(d.col, d.row)) || adj(d))) channels[d.channel] = true;
-      // 4) Outputs light from their channel OR adjacency to conductive power (not other outputs).
-      const powered = new Set(conductive);
-      for (const d of devices) if (d.kind === 'lamp' || d.kind === 'rx' || d.kind === 'output') {
-        if ((d.channel && channels[d.channel]) || adj(d)) powered.add(key(d.col, d.row));
-      }
-      return { powered, channels, conductive };
+      const poweredSet = new Set(); for (const [k, v] of powered) if (v) poweredSet.add(k);
+      return { powered: poweredSet, channels };
     },
 
     cellPowered(res, c, r) { return !!res && res.powered.has(key(c, r)); },

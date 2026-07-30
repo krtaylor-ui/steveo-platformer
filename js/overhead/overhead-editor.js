@@ -243,7 +243,12 @@
       const rsOpts = `<div class="opt ${this.tool === 'lever' ? 'sel' : ''}" data-rs="lever">🔧 Lever (E to flip)</div>`
         + `<div class="opt ${this.tool === 'dust' ? 'sel' : ''}" data-rs="dust">🟥 Redstone dust</div>`
         + `<div class="opt ${this.tool === 'lamp' ? 'sel' : ''}" data-rs="lamp">💡 Lamp</div>`
-        + `<div class="opt small" style="color:#8fa0bd">Lever + Drawbridge share channel "gate" by default.</div>`;
+        + `<div class="opt ${this.tool === 'plate' ? 'sel' : ''}" data-rs="plate">⬛ Pressure plate</div>`
+        + `<div class="opt ${this.tool === 'weight' ? 'sel' : ''}" data-rs="weight">⚖ Weight block</div>`
+        + `<div class="opt ${this.tool === 'piston' ? 'sel' : ''}" data-rs="piston">⊐ Piston (barrier)</div>`
+        + `<div class="opt ${this.tool === 'and' ? 'sel' : ''}" data-rs="and">🅰 AND gate</div>`
+        + `<div class="opt ${this.tool === 'not' ? 'sel' : ''}" data-rs="not">🚫 NOT gate</div>`
+        + `<div class="opt small" style="color:#8fa0bd">Hand-click a device to set its transmit / receive channel. Lever/plate + Drawbridge share "gate" by default.</div>`;
       const grp = (label, cur, opts, active, sw) => `<div class="grp"><div class="hd ${active ? 'on' : ''}"><b>${label} ▸</b><span class="cur">${sw || ''}${cur}</span></div><div class="oh-fly">${opts}</div></div>`;
       const shapeOpts = [['freehand', 'Freehand (B)'], ['line', 'Line (L)'], ['rect', 'Rectangle (R)'], ['circle', 'Circle / Oval (O)'], ['fill', '🪣 Fill / bucket (G)']].map(([k, n]) => `<div class="opt small ${this.shape === k ? 'sel' : ''}" data-shape="${k}">${n}</div>`).join('')
         + `<div class="opt small ${this.shapeFill ? 'sel' : ''}" data-fill="1">${this.shapeFill ? '☑' : '☐'} Solid (else outline = brush width)</div>`
@@ -252,7 +257,7 @@
       const shapeActive = mode === 'draw' && this.shape !== 'freehand';
       const terrActive = mode === 'draw' && (this.tool === 'terrain' || this.tool === 'bridge');
       const buildActive = ['building', 'spawn', 'goal', 'ramp', 'ladder', 'tree'].indexOf(this.tool) >= 0;
-      const rsActive = ['lever', 'dust', 'lamp'].indexOf(this.tool) >= 0;
+      const rsActive = ['lever', 'dust', 'lamp', 'plate', 'weight', 'piston', 'and', 'not'].indexOf(this.tool) >= 0;
       const terrCur = this.tool === 'terrain' ? P().OH_TERRAIN_BY_KEY[this.terrainKey].name : this.tool === 'bridge' ? (this._bridgeDraw ? 'Drawbridge' : 'Bridge') : '';
       const terrSw = this.tool === 'terrain' ? blockSw(this.terrainKey) : '';
       rail.innerHTML =
@@ -420,7 +425,17 @@
       const m = this.world.mapSnapshot; if (col < 0 || row < 0 || col >= m.gridW || row >= m.gridH) return;
       if (tool === 'ramp' || tool === 'ladder') { this.world.ramps = this.world.ramps || []; if (!this.world.ramps.some((x) => x.col === col && x.row === row)) this.world.ramps.push({ col, row, kind: tool }); }
       else if (tool === 'bridge') { this.world.bridges = this.world.bridges || []; if (!this.world.bridges.some((x) => x.col === col && x.row === row)) this.world.bridges.push({ col, row, elev: this.elevLevel, draw: !!this._bridgeDraw, channel: this._bridgeDraw ? 'gate' : null }); }
-      else if (tool === 'lever' || tool === 'dust' || tool === 'lamp') { this.world.redstone = this.world.redstone || []; if (!this.world.redstone.some((x) => x.col === col && x.row === row)) { const dev = { col, row, kind: tool }; if (tool === 'lever') { dev.on = false; dev.channel = 'gate'; } this.world.redstone.push(dev); } }
+      else if (['lever', 'dust', 'lamp', 'plate', 'weight', 'piston', 'and', 'not'].indexOf(tool) >= 0) {
+        this.world.redstone = this.world.redstone || [];
+        if (!this.world.redstone.some((x) => x.col === col && x.row === row)) {
+          const dev = { col, row, kind: tool };
+          if (tool === 'lever') { dev.on = false; dev.channel = 'gate'; }        // channel == transmit
+          else if (tool === 'plate') dev.txChannel = 'gate';
+          else if (tool === 'weight') { dev.txChannel = 'gate'; dev.threshold = 2; }
+          else if (tool === 'piston') dev.rxChannel = 'gate';                     // extends when "gate" is powered
+          this.world.redstone.push(dev);
+        }
+      }
     },
     // Flood-fill (bucket): from the clicked cell, replace every 4-connected cell that
     // matches its (terrain key + elevation) with the selected terrain. 4-connectivity
@@ -596,7 +611,35 @@
       if (mob) { this._selEnt = { kind: 'mob', ref: mob }; return; }
       const item = (this.world.items || []).find((it) => it.col === col && it.row === row);
       if (item) { this._selEnt = { kind: 'item', ref: item }; return; }
+      const dev = (this.world.redstone || []).find((d) => d.col === col && d.row === row);
+      if (dev) return this._deviceModal(dev);
+      const dbr = (this.world.bridges || []).find((b) => b.col === col && b.row === row && b.draw);
+      if (dbr) return this._drawbridgeModal(dbr);
       this._openConfigAt(col, row);
+    },
+    // Redstone device config: transmit / receive channels (+ lever state / weight
+    // threshold). A RECEIVING device (lamp/piston) must have a source channel.
+    _deviceModal(d) {
+      const isRx = (d.kind === 'lamp' || d.kind === 'piston' || d.kind === 'rx');
+      let inner = `<p style="color:#8fa0bd;font-size:12px;margin:0 0 8px">${d.kind.toUpperCase()} @ ${d.col},${d.row}</p>`;
+      if (d.kind === 'lever' || d.kind === 'button') inner += `<label style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input type="checkbox" id="dv-on" ${d.on ? 'checked' : ''}> Starts ON</label>`;
+      if (d.kind === 'weight') inner += `<label>Weight threshold (entities) <input type="number" id="dv-thr" min="1" value="${d.threshold || 2}"></label>`;
+      inner += `<label>Transmit on channel (optional) <input type="text" id="dv-tx" value="${this._esc((d.txChannel || d.channel) || '')}" placeholder="e.g. gate"></label>`;
+      inner += `<label>Receive from channel${isRx ? ' (required)' : ' (optional)'} <input type="text" id="dv-rx" value="${this._esc(d.rxChannel || '')}" placeholder="e.g. gate"></label>`;
+      this._cfgModal('Redstone: ' + d.kind, inner, () => {
+        if (d.kind === 'lever' || d.kind === 'button') d.on = document.getElementById('dv-on').checked;
+        if (d.kind === 'weight') d.threshold = Math.max(1, parseInt(document.getElementById('dv-thr').value, 10) || 2);
+        const tx = document.getElementById('dv-tx').value.trim(), rx = document.getElementById('dv-rx').value.trim();
+        if (isRx && !rx) { this._flash('⚠ A receiving device needs a source channel — not saved'); throw new Error('rx required'); }
+        d.txChannel = tx || undefined; if (d.kind === 'lever' || d.kind === 'button') { d.channel = tx || undefined; }
+        d.rxChannel = rx || undefined;
+      }, d);
+    },
+    _drawbridgeModal(b) {
+      this._cfgModal('Drawbridge @ ' + b.col + ',' + b.row,
+        `<label>Closes on redstone channel <input type="text" id="db-ch" value="${this._esc(b.channel || 'gate')}" placeholder="gate"></label>
+         <p style="color:#8fa0bd;font-size:12px">The drawbridge is a solid deck while this channel is powered, otherwise open.</p>`,
+        () => { const ch = document.getElementById('db-ch').value.trim(); if (!ch) { this._flash('⚠ Drawbridge needs a channel — not saved'); throw new Error('ch required'); } b.channel = ch; }, b);
     },
     // Called from a config modal's "Move" button — closes the modal and arms the
     // click-to-move indicator on the object.
@@ -739,11 +782,15 @@
         const edges = { n: !bAt.has(b.col + ',' + (b.row - 1)), s: !bAt.has(b.col + ',' + (b.row + 1)), w: !bAt.has((b.col - 1) + ',' + b.row), e: !bAt.has((b.col + 1) + ',' + b.row) };
         OVERHEAD.drawBridgeCell(ctx, x, y, cs, { rail: !(this.world.settings && this.world.settings.bridgeGuardrails === false), closed: true, edges });
         if (b.draw && cs > 12) { ctx.fillStyle = '#ffd23a'; ctx.font = `${Math.max(7, cs * 0.3) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('⚡', x + cs / 2, y + cs * 0.62); } }
-      // Redstone devices.
-      for (const d of (this.world.redstone || [])) { const sp = S((d.col + 0.5) * g.cell, (d.row + 0.5) * g.cell), tl = S(d.col * g.cell, d.row * g.cell);
-        if (d.kind === 'lever' || d.kind === 'button') OVERHEAD.drawLever(ctx, sp.x, sp.y, cs * 0.4, !!d.on);
-        else if (d.kind === 'dust') OVERHEAD.drawDust(ctx, tl.x, tl.y, cs, false);
-        else if (d.kind === 'lamp') OVERHEAD.drawLamp(ctx, sp.x, sp.y, cs * 0.5, false); }
+      // Redstone devices (character-scaled so they stay legible at any density).
+      { const u = g.cell * (g.density || 1) * g.masterZoom;
+        for (const d of (this.world.redstone || [])) { const sp = S((d.col + 0.5) * g.cell, (d.row + 0.5) * g.cell), tl = S(d.col * g.cell, d.row * g.cell);
+          if (d.kind === 'lever' || d.kind === 'button') OVERHEAD.drawLever(ctx, sp.x, sp.y, u * 0.9, !!d.on);
+          else if (d.kind === 'dust') OVERHEAD.drawDust(ctx, tl.x, tl.y, cs, false);
+          else if (d.kind === 'lamp') OVERHEAD.drawLamp(ctx, sp.x, sp.y, u * 0.8, false);
+          else if (d.kind === 'plate' || d.kind === 'weight') OVERHEAD.drawPlate(ctx, sp.x, sp.y, u * 0.7, false, d.kind === 'weight');
+          else if (d.kind === 'piston') OVERHEAD.drawPiston(ctx, tl.x, tl.y, cs, false);
+          else if (d.kind === 'and' || d.kind === 'not') OVERHEAD.drawGate(ctx, sp.x, sp.y, u * 0.6, d.kind, false); } }
       if (this.world.goal) { const gc = (typeof GOAL_COLORS !== 'undefined' && GOAL_COLORS[this.world.goal.color || 0]) || { hex: '#ffd700' }; const sp = S((this.world.goal.col + 1) * g.cell, (this.world.goal.row + 1) * g.cell); ctx.fillStyle = gc.hex; ctx.font = `${(cs * 1.8) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.6); }
       // Hand-selected mob/item highlight (moveable — click a new spot to move it).
       if (this._selEnt && this.tool === 'hand') { const s = this._selEnt.ref; const sp = S((s.col + 0.5) * g.cell, (s.row + 0.5) * g.cell); const pulse = 0.5 + 0.3 * Math.sin(Date.now() / 150); ctx.strokeStyle = `rgba(120,220,255,${pulse})`; ctx.lineWidth = 3; ctx.strokeRect(sp.x - cs * 0.5, sp.y - cs * 0.5, cs, cs); ctx.fillStyle = 'rgba(120,220,255,.85)'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('click to move', sp.x, sp.y - cs * 0.6); }
@@ -786,9 +833,12 @@
       else if (tool === 'item') { OVERHEAD.drawItemSprite(ctx, this.itemKey, ctr.x, ctr.y, unitPx * 0.8); }
       else if (tool === 'ramp' || tool === 'ladder') { OVERHEAD.drawRampIcon(ctx, tool, ctr.x, ctr.y, cs, 0); }
       else if (tool === 'bridge') { OVERHEAD.drawBridgeCell(ctx, sp.x, sp.y, cs, { rail: !(this.world.settings && this.world.settings.bridgeGuardrails === false), closed: true, edges: { n: true, e: true, s: true, w: true } }); }
-      else if (tool === 'lever') { OVERHEAD.drawLever(ctx, ctr.x, ctr.y, cs * 0.4, false); }
+      else if (tool === 'lever') { OVERHEAD.drawLever(ctx, ctr.x, ctr.y, unitPx * 0.9, false); }
       else if (tool === 'dust') { OVERHEAD.drawDust(ctx, sp.x, sp.y, cs, false); }
-      else if (tool === 'lamp') { OVERHEAD.drawLamp(ctx, ctr.x, ctr.y, cs * 0.5, false); }
+      else if (tool === 'lamp') { OVERHEAD.drawLamp(ctx, ctr.x, ctr.y, unitPx * 0.8, false); }
+      else if (tool === 'plate' || tool === 'weight') { OVERHEAD.drawPlate(ctx, ctr.x, ctr.y, unitPx * 0.7, false, tool === 'weight'); }
+      else if (tool === 'piston') { OVERHEAD.drawPiston(ctx, sp.x, sp.y, cs, false); }
+      else if (tool === 'and' || tool === 'not') { OVERHEAD.drawGate(ctx, ctr.x, ctr.y, unitPx * 0.6, tool, false); }
       else if (tool === 'goal') { const gc = S((col + 1) * g.cell, (row + 1) * g.cell); ctx.fillStyle = '#ffd700'; ctx.font = `${(cs * 1.8) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', gc.x, gc.y + cs * 0.6); }
       else if (tool === 'spawn') { ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; ctx.strokeRect(ctr.x - cs * 0.42, ctr.y - cs * 0.42, cs * 0.84, cs * 0.84); }
       else if (tool === 'tree') { ctx.fillStyle = '#4f8a44'; ctx.beginPath(); ctx.arc(ctr.x, ctr.y - cs * 0.3, cs * 1.3, 0, 7); ctx.fill(); ctx.fillStyle = '#6e4f2a'; ctx.fillRect(ctr.x - cs * 0.15, ctr.y, cs * 0.3, cs * 0.7); }

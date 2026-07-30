@@ -1,6 +1,35 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD REDSTONE — DEVICES + LOGIC GATES + TX/RX CONFIG (2026-07-29, build 302, branch `overhead-redstone-bridge`)
+# ═══════════════════════════════════════════════════════════════════════
+§32 batch 2. Suite green (997, +8 redstone); device-chain harness + render smoke + probe clean.
+
+- **Core v2 (`OH_REDSTONE.evaluate`)** rewritten to a BOUNDED FIXPOINT (10 passes) so gates + channels chain
+  and settle. Device model: SOURCES (lever/button/plate/weight — emit on their own), CONDUCTORS (those +
+  dust + gates carry power), OUTPUTS (lamp/rx/piston — sinks, never conduct). GATES: `and` (on if ≥2 powered
+  conducting neighbours), `not` (inverter — on when it has no powered input). Every device may TRANSMIT on
+  `txChannel` (broadcast while on) and/or RECEIVE from `rxChannel` (on while that channel is on); legacy
+  `channel` == txChannel (keeps lever→drawbridge working). 20 headless assertions.
+- **New devices, character-scaled** (`unit*zoom`, ~2 blocks): **pressure plate** + **weight block** (runtime
+  `_updatePlates` sets `_active` when ≥1 / ≥threshold entities stand on the cell), **piston** (a barrier —
+  `_pistonSolidAt` makes a POWERED piston solid in collision; passable when off), **AND** + **NOT** gates.
+  Shared renderers `OVERHEAD.drawPlate/drawPiston/drawGate`.
+- **Config modals (Hand-click):** `_deviceModal` sets transmit + receive channels (+ lever start-state,
+  weight threshold); a RECEIVING device (lamp/piston/rx) must name a source channel — save is refused +
+  flashed if blank. `_drawbridgeModal` sets a drawbridge's channel (also required). Hand-click routing in
+  `_handClick` now checks redstone devices + drawbridges before falling through to portal/goal/spawn.
+- **Editor:** Redstone palette gained Plate / Weight / Piston / AND / NOT; placement defaults wire plate/
+  weight → tx "gate" and piston → rx "gate" so a plate+drawbridge/piston works immediately; ghosts + editor
+  render use the shared renderers.
+- Verified headless: plate underfoot → channel "gate" → piston turns SOLID (blocks a walk) + lamp lights;
+  stepping off releases them.
+- **Interpretation flagged (still to confirm with Kevin):** "treat redstone paths as natural AND gates" —
+  shipped explicit AND/NOT gate devices; dust remains OR-propagation. Confirm if dust junctions should AND.
+- **Still deferred:** side-view `js/redstone.js` extraction onto this core; §36 drawbridge animated style;
+  §37 scatter brush + 2-wide bridge stamp.
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD EDITOR — SELECTION + CLIPBOARD; BRIDGE GUARDRAILS → WORLD SETTING (2026-07-29, build 301, branch `overhead-redstone-bridge`)
 # ═══════════════════════════════════════════════════════════════════════
 Editor batch 3 (the §37 selection/clipboard system). Suite green (989); selection-flow harness + probe clean.

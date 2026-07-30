@@ -322,6 +322,27 @@
       ctx.fillRect(cx - r * 0.6, cy - r * 0.6, r * 1.2, r * 1.2); ctx.strokeRect(cx - r * 0.6, cy - r * 0.6, r * 1.2, r * 1.2);
       if (on) { ctx.fillStyle = 'rgba(255,226,122,.35)'; ctx.beginPath(); ctx.arc(cx, cy, r * 1.3, 0, 7); ctx.fill(); }
     },
+    // Pressure plate: a flat pad that presses (smaller/darker) when stepped on.
+    drawPlate(ctx, cx, cy, r, on, weight) {
+      const s = on ? r * 0.72 : r * 0.82;
+      ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(cx - r * 0.85, cy - r * 0.85, r * 1.7, r * 1.7);
+      ctx.fillStyle = on ? '#8a8f9a' : (weight ? '#7a6a4a' : '#b6bcc8'); ctx.strokeStyle = '#2a2f38'; ctx.lineWidth = 1.5;
+      ctx.fillRect(cx - s, cy - s, s * 2, s * 2); ctx.strokeRect(cx - s, cy - s, s * 2, s * 2);
+      if (weight) { ctx.fillStyle = '#2a2f38'; ctx.font = `${Math.max(7, r * 0.7) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('⚖', cx, cy); ctx.textBaseline = 'alphabetic'; }
+    },
+    // Piston: a wood/stone base with a head that extends (a solid barrier) when powered.
+    drawPiston(ctx, x, y, cs, extended) {
+      ctx.fillStyle = '#6b5836'; ctx.fillRect(x + cs * 0.1, y + cs * 0.1, cs * 0.8, cs * 0.8);   // base
+      ctx.strokeStyle = '#2a2620'; ctx.lineWidth = 1.5; ctx.strokeRect(x + cs * 0.1, y + cs * 0.1, cs * 0.8, cs * 0.8);
+      ctx.fillStyle = extended ? '#c9ccd6' : '#8a8f9a'; ctx.fillRect(x + cs * 0.22, y + (extended ? cs * 0.02 : cs * 0.28), cs * 0.56, extended ? cs * 0.34 : cs * 0.2);   // head
+    },
+    // Logic gate: a labelled box, bright when its output is on.
+    drawGate(ctx, cx, cy, r, type, on) {
+      ctx.fillStyle = on ? '#c34a4a' : '#3a2e2e'; ctx.strokeStyle = '#e08a8a'; ctx.lineWidth = 1.5;
+      ctx.fillRect(cx - r, cy - r * 0.7, r * 2, r * 1.4); ctx.strokeRect(cx - r, cy - r * 0.7, r * 2, r * 1.4);
+      ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(7, r * 0.72) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(type === 'not' ? 'NOT' : 'AND', cx, cy); ctx.textBaseline = 'alphabetic';
+    },
 
     // Direction toward the higher neighbour ('E'|'W'|'N'|'S'); horizontal default on
     // a tie/conflict (§). elevAt(c,r) → elevation.

@@ -26,9 +26,9 @@ console.log('Sources + dust propagation:');
 console.log('Channels (wireless) — lever with a channel drives a receiver anywhere:');
 {
   const dev = [
-    { col: 1, row: 1, kind: 'lever', on: true, channel: 'gate' },
-    { col: 20, row: 9, kind: 'rx', channel: 'gate' },
-    { col: 21, row: 9, kind: 'rx', channel: 'other' },
+    { col: 1, row: 1, kind: 'lever', on: true, channel: 'gate' },   // channel == transmit
+    { col: 20, row: 9, kind: 'rx', rxChannel: 'gate' },
+    { col: 21, row: 9, kind: 'rx', rxChannel: 'other' },
   ];
   let r = OH_REDSTONE.evaluate(dev);
   ok(OH_REDSTONE.channelOn(r, 'gate'), 'gate channel is on');
@@ -44,7 +44,7 @@ console.log('Transmitter — a wired tx re-broadcasts on a channel:');
     { col: 1, row: 1, kind: 'lever', on: true },
     { col: 2, row: 1, kind: 'dust' },
     { col: 3, row: 1, kind: 'tx', channel: 'gate' },
-    { col: 40, row: 40, kind: 'rx', channel: 'gate' },
+    { col: 40, row: 40, kind: 'rx', rxChannel: 'gate' },
   ];
   const r = OH_REDSTONE.evaluate(dev);
   ok(OH_REDSTONE.channelOn(r, 'gate') && P(r, 40, 40), 'powered tx drives its channel to a far receiver');
@@ -56,6 +56,47 @@ console.log('toggleAt:');
   ok(OH_REDSTONE.toggleAt(dev, 4, 4) && dev[0].on === true, 'toggles a lever on');
   ok(OH_REDSTONE.toggleAt(dev, 4, 4) && dev[0].on === false, 'toggles it back off');
   ok(!OH_REDSTONE.toggleAt(dev, 9, 9), 'no lever at an empty cell → false');
+}
+
+console.log('Generalized TX/RX channels on any device:');
+{
+  const dev = [
+    { col: 1, row: 1, kind: 'lever', on: true, txChannel: 'a' },
+    { col: 5, row: 5, kind: 'lamp', rxChannel: 'a' },       // receives a → on
+    { col: 6, row: 5, kind: 'lamp', rxChannel: 'b' },       // b never driven → off
+  ];
+  let r = OH_REDSTONE.evaluate(dev);
+  ok(P(r, 5, 5) && !P(r, 6, 5), 'lamp on rxChannel a is powered; on b stays off');
+  dev[0].on = false; r = OH_REDSTONE.evaluate(dev);
+  ok(!P(r, 5, 5), 'clearing the transmitter clears its receiver');
+}
+
+console.log('Pressure plate (runtime sets _active):');
+{
+  const dev = [{ col: 2, row: 2, kind: 'plate', _active: false, txChannel: 'door' }, { col: 9, row: 9, kind: 'rx', rxChannel: 'door' }];
+  let r = OH_REDSTONE.evaluate(dev);
+  ok(!OH_REDSTONE.channelOn(r, 'door'), 'plate idle → channel off');
+  dev[0]._active = true; r = OH_REDSTONE.evaluate(dev);
+  ok(OH_REDSTONE.channelOn(r, 'door') && P(r, 9, 9), 'plate stepped-on drives its channel + the receiver');
+}
+
+console.log('AND gate (needs 2 powered inputs) + NOT gate (inverter):');
+{
+  // two levers feeding an AND at (2,2): levers at (1,2) and (3,2) via... place adjacent.
+  const AND = [
+    { col: 1, row: 2, kind: 'lever', on: true }, { col: 3, row: 2, kind: 'lever', on: true },
+    { col: 2, row: 2, kind: 'and', txChannel: 'g' }, { col: 9, row: 1, kind: 'lamp', rxChannel: 'g' },
+  ];
+  let r = OH_REDSTONE.evaluate(AND);
+  ok(OH_REDSTONE.channelOn(r, 'g') && P(r, 9, 1), 'AND with both inputs on → channel g + lamp on');
+  AND[0].on = false; r = OH_REDSTONE.evaluate(AND);
+  ok(!OH_REDSTONE.channelOn(r, 'g'), 'AND with one input off → off');
+  // NOT gate: lever off → NOT on; lever on → NOT off.
+  const NOT = [{ col: 1, row: 1, kind: 'lever', on: false }, { col: 2, row: 1, kind: 'not', txChannel: 'n' }];
+  r = OH_REDSTONE.evaluate(NOT);
+  ok(OH_REDSTONE.channelOn(r, 'n'), 'NOT with input OFF → output on');
+  NOT[0].on = true; r = OH_REDSTONE.evaluate(NOT);
+  ok(!OH_REDSTONE.channelOn(r, 'n'), 'NOT with input ON → output off');
 }
 
 console.log(`\noverhead redstone: ${pass} passed, ${fail} failed`);
