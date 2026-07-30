@@ -304,6 +304,18 @@
         if (e.e) { ctx.beginPath(); ctx.moveTo(x + cs - 1, y); ctx.lineTo(x + cs - 1, y + cs); ctx.stroke(); }
       }
     },
+    // Cells of a bridge SPAN from `a` to `b` (axis-aligned; snaps to the dominant
+    // axis). Shared by runtime + editor. Back-compat: a per-cell bridge {col,row}
+    // with no from/to is a 1-cell span.
+    spanCells(a, b) {
+      if (!a) return []; if (!b) b = a;
+      const cells = [], dc = b.col - a.col, dr = b.row - a.row;
+      if (Math.abs(dc) >= Math.abs(dr)) { const st = dc >= 0 ? 1 : -1; for (let c = a.col; c !== b.col + st; c += st) cells.push({ col: c, row: a.row }); }
+      else { const st = dr >= 0 ? 1 : -1; for (let r = a.row; r !== b.row + st; r += st) cells.push({ col: a.col, row: r }); }
+      if (!cells.length) cells.push({ col: a.col, row: a.row });
+      return cells;
+    },
+    bridgeSpanCells(span) { return this.spanCells(span.from || { col: span.col, row: span.row }, span.to || span.from || { col: span.col, row: span.row }); },
     // Redstone bits (shared by runtime + editor).
     drawLever(ctx, cx, cy, r, on) {
       ctx.save(); ctx.translate(cx, cy);

@@ -101,10 +101,13 @@
       // Ramps/ladders let a walk cross ANY elevation delta at that cell.
       this._rampList = worldData.ramps || [];
       this.ramps = new Set(this._rampList.map((r) => r.col + ',' + r.row));
-      // Bridges: a walk-over-gap deck at a set elevation. A DRAWBRIDGE (draw:true)
-      // starts OPEN (a gap) and CLOSES (walkable) while its redstone `channel` is on.
+      // Bridges are SPAN entities ({from,to,elev,draw,rail,rxIds,channel}) — a walk-
+      // over-gap deck connecting two cliffs. A DRAWBRIDGE (draw) raises as ONE unit and
+      // is a gap until its redstone source powers it. Expand each span → a cell map
+      // for collision; keep the span list for the single-unit render.
       this._bridges = worldData.bridges || [];
-      this._bridgeAt = new Map(); for (const b of this._bridges) this._bridgeAt.set(b.col + ',' + b.row, b);
+      this._bridgeAt = new Map();
+      for (const b of this._bridges) { b._cells = OVERHEAD.bridgeSpanCells(b); if (b.elev == null) b.elev = 0; for (const cell of b._cells) this._bridgeAt.set(cell.col + ',' + cell.row, b); }
       // Redstone network (levers/dust/lamps/tx/rx). Evaluated each frame → channels.
       this._redstone = worldData.redstone || [];
       this._rs = (typeof OH_REDSTONE !== 'undefined') ? OH_REDSTONE.evaluate(this._redstone) : { powered: new Set(), channels: {} };
@@ -303,7 +306,8 @@
           // Guardrail: while ON a railed bridge, block a sideways step OFF it onto a
           // gap / pit / lower ground (can only leave at the ends — same-level ground
           // or another bridge cell).
-          if (curBridge && this._bridgeGuardrails && !tb) { const tk = this._key(c.col, c.row); if (tk == null || tk === 'pit' || this._elev(c.col, c.row) < (curBridge.elev | 0)) return false; }
+          const rails = curBridge && (curBridge.rail != null ? curBridge.rail : this._bridgeGuardrails);
+          if (curBridge && rails && !tb) { const tk = this._key(c.col, c.row); if (tk == null || tk === 'pit' || this._elev(c.col, c.row) < (curBridge.elev | 0)) return false; }
           if (tb && this._bridgeClosedAt(c.col, c.row)) return tb.elev | 0;   // walkable deck
           // an OPEN drawbridge falls through to normal terrain logic (a gap → fall)
         }
@@ -737,26 +741,39 @@
     }
 
     _drawBridges(ctx, S, cs) {
-      const g = this.grid, Q = OVERHEAD.elevOffset(cs);
+      const Q = OVERHEAD.elevOffset(cs);
       for (const b of this._bridges) {
-        const lv = b.elev | 0, sp = S(b.col * g.cell, b.row * g.cell), x = sp.x - lv * Q, y = sp.y - lv * Q;
-        const edges = { n: !this._bridgeAt.has(b.col + ',' + (b.row - 1)), s: !this._bridgeAt.has(b.col + ',' + (b.row + 1)), w: !this._bridgeAt.has((b.col - 1) + ',' + b.row), e: !this._bridgeAt.has((b.col + 1) + ',' + b.row) };
-        const closed = this._bridgeClosedAt(b.col, b.row);
+        const lv = b.elev | 0, closed = this._bridgeClosedAt(b._cells[0].col, b._cells[0].row);
+        const rails = b.rail != null ? b.rail : this._bridgeGuardrails;
         if (b.draw && this._drawbridgeStyle === 'animated') {
-          // Ease a per-cell phase toward the target (0 down/closed, 1 up/open) and draw
-          // the deck TILTING up toward the viewer (raised part reads bigger — perspective).
-          const k = b.col + ',' + b.row, target = closed ? 0 : 1;
-          let p = this._dbPhase[k]; if (p == null) p = target; p += (target - p) * 0.16; if (Math.abs(target - p) < 0.01) p = target; this._dbPhase[k] = p;
-          if (p < 0.03) { OVERHEAD.drawBridgeCell(ctx, x, y, cs, { rail: this._bridgeGuardrails, closed: true, edges }); }
-          else {
-            const topW = cs * (1 + p * 0.45), h = cs * (1 - p * 0.82), topX = x + cs / 2 - topW / 2, topY = y - p * cs * 0.18, botY = topY + h;
-            ctx.save(); ctx.fillStyle = '#7a5327'; ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(topX, topY); ctx.lineTo(topX + topW, topY); ctx.lineTo(x + cs, botY); ctx.lineTo(x, botY); ctx.closePath(); ctx.fill(); ctx.stroke();
-            for (let i = 1; i < 4; i++) { const t = i / 4; ctx.beginPath(); ctx.moveTo(topX + topW * t, topY); ctx.lineTo(x + cs * t, botY); ctx.stroke(); }   // plank lines converging (perspective)
-            ctx.restore();
-          }
-        } else { OVERHEAD.drawBridgeCell(ctx, x, y, cs, { rail: this._bridgeGuardrails, closed, edges }); }
+          // Ease ONE phase for the whole span (0 down/closed .. 1 up/open) and raise
+          // the entire deck as a single unit about its `from` hinge.
+          const from = b.from || b._cells[0], key = from.col + ',' + from.row, target = closed ? 0 : 1;
+          let p = this._dbPhase[key]; if (p == null) p = target; p += (target - p) * 0.16; if (Math.abs(target - p) < 0.01) p = target; this._dbPhase[key] = p;
+          if (p < 0.03) this._drawFlatSpan(ctx, S, cs, b, lv, Q, rails);
+          else this._drawRaisedSpan(ctx, S, cs, b, lv, Q, p);
+        } else if (closed) { this._drawFlatSpan(ctx, S, cs, b, lv, Q, rails); }   // vanishing/static: deck only when closed
       }
+    }
+    _drawFlatSpan(ctx, S, cs, b, lv, Q, rails) {
+      const g = this.grid, inSpan = (c, r) => this._bridgeAt.get(c + ',' + r) === b;
+      for (const cell of b._cells) { const sp = S(cell.col * g.cell, cell.row * g.cell), x = sp.x - lv * Q, y = sp.y - lv * Q;
+        const edges = { n: !inSpan(cell.col, cell.row - 1), s: !inSpan(cell.col, cell.row + 1), w: !inSpan(cell.col - 1, cell.row), e: !inSpan(cell.col + 1, cell.row) };
+        OVERHEAD.drawBridgeCell(ctx, x, y, cs, { rail: rails, closed: true, edges });
+      }
+    }
+    _drawRaisedSpan(ctx, S, cs, b, lv, Q, p) {
+      const g = this.grid, from = b.from || b._cells[0], to = b.to || b._cells[b._cells.length - 1];
+      const H0 = S((from.col + 0.5) * g.cell, (from.row + 0.5) * g.cell), F0 = S((to.col + 0.5) * g.cell, (to.row + 0.5) * g.cell);
+      const H = { x: H0.x - lv * Q, y: H0.y - lv * Q }, F = { x: F0.x - lv * Q, y: F0.y - lv * Q };
+      const dx = F.x - H.x, dy = F.y - H.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len, px = -uy, py = ux;
+      const fr = { x: H.x + ux * len * (1 - p * 0.85), y: H.y + uy * len * (1 - p * 0.85) - p * len * 0.7 };   // far end swings up toward the hinge
+      const w0 = cs * 0.5, w1 = cs * 0.5 * (1 + p * 0.5);   // widen at the raised end (perspective)
+      ctx.save(); ctx.fillStyle = '#7a5327'; ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(H.x + px * w0, H.y + py * w0); ctx.lineTo(H.x - px * w0, H.y - py * w0); ctx.lineTo(fr.x - px * w1, fr.y - py * w1); ctx.lineTo(fr.x + px * w1, fr.y + py * w1); ctx.closePath(); ctx.fill(); ctx.stroke();
+      const N = Math.max(2, b._cells.length);
+      for (let i = 1; i < N; i++) { const t = i / N, ax = H.x + (fr.x - H.x) * t, ay = H.y + (fr.y - H.y) * t, ww = w0 + (w1 - w0) * t; ctx.beginPath(); ctx.moveTo(ax + px * ww, ay + py * ww); ctx.lineTo(ax - px * ww, ay - py * ww); ctx.stroke(); }
+      ctx.restore();
     }
     _drawRedstone(ctx, S, cs) {
       const g = this.grid, u = this.unit * (this.grid.masterZoom || 1);   // CHARACTER-relative size (density-independent)

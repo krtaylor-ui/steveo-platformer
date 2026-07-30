@@ -1,4 +1,24 @@
-## CURRENT STATE (2026-07-29) — builds 279–297 SHIPPED to `main` ✅; `overhead-redstone-bridge` branch at build 304 — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — builds 279–297 SHIPPED to `main` ✅; `overhead-redstone-bridge` branch at build 305 — NOT merged, browser-UNTESTED
+
+**SHIPPED to `main` (live):** Overhead builds 279–297 + Campaign MVP.
+
+**Branch `overhead-redstone-bridge` (builds 298–305, NOT merged):** Suite green (1005); harnesses + probe clean.
+- 298 bridge+drawbridge+`OH_REDSTONE` · 299 editor painting/fill/reveal · 300 rail 2.0+undo-cam · 301 selection/
+  clipboard · 302 redstone devices+gates+TX/RX · 303 numbered Tx/Rx+move+H/D/E+scatter · 304 consistent device
+  config+Move/Delete modals+1×1 directional gates.
+- **305:** bridges are **SPAN entities** (place from Buildings by clicking two cliffs); the **drawbridge raises
+  as one complete unit** (~80° perspective tilt about its hinge); plain bridge = a drawbridge that never moves
+  (unified); **per-bridge guardrails** in the modal (world setting = the default). Two-click placement +
+  preview; hand/double-click → span modal (rail/draw/rxIds/Move/Delete).
+
+**NEXT (roadmap):** extract side-view `js/redstone.js` onto the shared core (§32). This big overhead stack
+(bridges/drawbridges/redstone/editor-2.0) is due a browser playtest + merge to `main`.
+
+**NEEDS BROWSER PLAYTEST** before merging 298–305 to `main`.
+
+---
+
+## PRIOR STATE (2026-07-29) — `overhead-redstone-bridge` at build 304 (consistent device config, Move/Delete modals, 1×1 directional gates)
 
 **SHIPPED to `main` (live):** Overhead builds 279–297 + Campaign MVP.
 

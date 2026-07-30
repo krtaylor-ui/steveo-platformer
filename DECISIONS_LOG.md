@@ -1,6 +1,29 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD — SPAN BRIDGES + SINGLE-UNIT DRAWBRIDGE (2026-07-29, build 305, branch `overhead-redstone-bridge`)
+# ═══════════════════════════════════════════════════════════════════════
+Bridge rescope (Kevin's design). Suite green (1005); span collision + drawbridge + animated-render harness + probe clean.
+
+- **Bridges are now SPAN entities** `{from,to,elev,draw,rail,rxIds,channel}` connecting two cliffs (a straight
+  axis-aligned run; `OVERHEAD.spanCells`/`bridgeSpanCells` derive the cells). Runtime expands each span into
+  the `_bridgeAt` cell map (collision unchanged per-cell); the span list drives the single-unit render.
+  Back-compat: an old per-cell `{col,row}` bridge = a 1-cell span.
+- **Unified model:** a plain bridge is just a **drawbridge that never moves** (`draw:false`). No separate type.
+- **Single-unit drawbridge raise:** `_drawRaisedSpan` rotates the WHOLE deck up about its `from` hinge as one
+  foreshortened quad (perspective — wider at the raised end, plank lines along the length); one eased phase per
+  span (`_dbPhase[fromKey]`). Vanishing = deck appears/disappears. Walkability stays LOGICAL (channel).
+  Verified headless: static span crossable; drawbridge open → died in pit, lever on → crossable; animated
+  phase eased to 1.0.
+- **Per-bridge guardrails:** `_bridgeModal` toggles `rail` per span (world `bridgeGuardrails` = the default for
+  NEW bridges + the fallback when a span has no explicit rail). Modal also toggles drawbridge on/off + the
+  transmitter multi-select, with Move + Delete.
+- **Editor:** Bridge + Drawbridge moved to the **Buildings** tab (no longer brush/shape). Placement is TWO
+  CLICKS — first cliff, second cliff — with a live span preview; Esc cancels. Hand-click OR double-click a
+  bridge cell → the span modal. Erase removes the whole span the cell belongs to. Span Move translates both
+  ends. Removed bridge from the terrain palette / `_lineableTools` / `_placeAt` / the per-cell flood-select.
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD — CONSISTENT DEVICE CONFIG · MOVE/DELETE MODALS · 1×1 DIRECTIONAL GATES (2026-07-29, build 304, branch `overhead-redstone-bridge`)
 # ═══════════════════════════════════════════════════════════════════════
 Consistency batch (Kevin). Suite green (1005, +4 redstone); gate + render harnesses + probe clean.
