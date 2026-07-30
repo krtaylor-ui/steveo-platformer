@@ -8814,7 +8814,9 @@ class Game {
 
       const isNot    = gate.type === 'not';
       const powered  = gate.outputPowered;
-      const triggered = gate.everTriggered;
+      // Reveal a gate whose output is CURRENTLY powered even without a recorded
+      // transition (a puzzle that starts active should show its live logic).
+      const triggered = gate.everTriggered || gate.outputPowered;
       const hidden   = gate.setting === 'always_hide';
 
       let alpha = 1.0;
@@ -13827,10 +13829,14 @@ class Game {
 
       let alpha;
       const hidden = dust.setting === 'always_hide';
+      // Reveal a wire that is CURRENTLY carrying a signal even if it never recorded a
+      // transition — a puzzle that STARTS with an active signal (or a mid-play save with
+      // on:true, everTriggered:false) should show that live wire, not hide it.
+      const revealed = dust.everTriggered || dust.on;
       if (isSandbox) {
-        alpha = (!dust.everTriggered || hidden) ? 0.32 : 1.0;
+        alpha = (!revealed || hidden) ? 0.32 : 1.0;
       } else {
-        if (!dust.everTriggered || hidden) continue;
+        if (!revealed || hidden) continue;
         alpha = 1.0;
       }
 

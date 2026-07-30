@@ -63,5 +63,27 @@ ok(P.OH_TERRAIN_BY_KEY.glass && P.isGlassKey('glass') && !P.isGlassKey('grass'),
   ok(n0 > 0 && g._shards.length === 0, 'shards decay and clear');
 }
 
+console.log('Redstone visibility in play (hide wiring, keep sources):');
+{
+  const OV = global.OVERHEAD, calls = {};
+  ['drawLever', 'drawDust', 'drawLamp'].forEach((fn) => { const o = OV[fn]; OV[fn] = () => { calls[fn] = (calls[fn] || 0) + 1; }; OV['_orig_' + fn] = o; });
+  const mkVis = (vis, on) => {
+    const ground = [], elevation = [];
+    for (let r = 0; r < 4; r++) { ground.push(new Array(6).fill('grass')); elevation.push(new Array(6).fill(0)); }
+    return { name: 't', mode: 'platformer', viewMode: 'overhead', gameModeDefault: 'NRM', controlScheme: 'free-aim', rules: {},
+      mapSnapshot: { gridW: 6, gridH: 4, density: 1, baseW: 6, baseH: 4, cell: 32, objectScaleMode: 'independent', ground, elevation, decorations: [] },
+      buildings: [], mobs: [], items: [], spawns: [{ col: 0, row: 0 }], ramps: [], bridges: [],
+      redstone: [{ kind: 'lever', col: 1, row: 1, on: on, txId: 1, channel: 'gate' }, { kind: 'dust', col: 2, row: 1 }, { kind: 'lamp', col: 3, row: 1, rxIds: [1] }],
+      goal: null, settings: Object.assign(OH_SETTINGS.defaults(), { redstoneVisibility: vis }) };
+  };
+  const run = (vis, on, testMode) => { for (const k in calls) delete calls[k]; const g = new OverheadGame(mkVis(vis, on), { testMode }, () => {}); g._testMode = testMode; g._drawRedstone(stubCtx(), (x, y) => ({ x, y }), 20); return calls; };
+  let c = run('always', false, false); ok(c.drawLever && c.drawDust && c.drawLamp, 'always: everything drawn');
+  c = run('hidden', false, false); ok(c.drawLever && !c.drawDust && !c.drawLamp, 'hidden (play): source shown, wiring hidden');
+  c = run('hidden', false, true); ok(c.drawLever && c.drawDust && c.drawLamp, 'hidden (Test): all drawn (ghosted)');
+  c = run('active', false, false); ok(c.drawLever && !c.drawDust, 'active + unpowered: wiring hidden');
+  c = run('active', true, false); ok(c.drawLever && c.drawDust && c.drawLamp, 'active + powered: wiring revealed');
+  ['drawLever', 'drawDust', 'drawLamp'].forEach((fn) => { OV[fn] = OV['_orig_' + fn]; });
+}
+
 console.log(`\noverhead glass: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

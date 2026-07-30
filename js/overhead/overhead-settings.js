@@ -68,6 +68,7 @@
       lavaMode:         'damage',   // 'damage' (hurts continuously while touching) | 'death' (insta-kill on touch)
       lavaDamage:       4,          // damage per hit in 'damage' mode (hit is gated by i-frames)
       glassShatter:     true,       // glass breaks (into falling shards) when hit by melee/ranged; always minable in Normal
+      redstoneVisibility: 'always', // 'always' | 'active' (reveal wires once powered) | 'hidden' — hides wiring/logic/sinks in play (sources stay visible)
       bridgeGuardrails: true,       // bridges have rails (can't fall off the sides); off = you can fall
       drawbridgeStyle:  'vanishing',// 'vanishing' (deck appears/disappears) | 'animated' (raises ~80° with perspective)
     };
@@ -195,6 +196,7 @@
               ${sel('lavaMode', 'Lava', [['damage', 'Damage (hurts while touching)'], ['death', 'Death (insta-kill on touch)']])}
               ${range('lavaDamage', 'Lava damage per hit', 1, 20, 1)}
               ${toggle('glassShatter', 'Glass can be shattered (melee / ranged break it)')}
+              ${sel('redstoneVisibility', 'Redstone wiring in play', [['always', 'Always shown'], ['active', 'Reveal when active'], ['hidden', 'Hidden (sources still show)']])}
               ${toggle('bridgeGuardrails', 'Bridge guardrails (off = can fall off bridges)')}
               ${sel('drawbridgeStyle', 'Drawbridge style', [['vanishing', 'Vanishing (appears/disappears)'], ['animated', 'Animated (raises ~80°)']])}
             </div>

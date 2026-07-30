@@ -84,6 +84,7 @@
       this._lavaDamage = (cfg.lavaDamage != null ? cfg.lavaDamage : 4);
       this._glassShatter = cfg.glassShatter !== false;      // glass breaks on melee/ranged (into shards)
       this._shards = [];                                    // live glass-shard particles
+      this._redstoneVis = cfg.redstoneVisibility || 'always';   // 'always' | 'active' | 'hidden' (play-time wiring visibility)
       this._bridgeGuardrails = cfg.bridgeGuardrails !== false;   // rails on bridges (can't fall off the sides)
       this._drawbridgeStyle = cfg.drawbridgeStyle || 'vanishing';
       this._dbPhase = {};   // per-drawbridge animation phase (0 = down/closed, 1 = up/open)
@@ -873,9 +874,21 @@
     }
     _drawRedstone(ctx, S, cs) {
       const g = this.grid, u = this.unit * (this.grid.masterZoom || 1);   // CHARACTER-relative size (density-independent)
+      // Redstone visibility (play): 'always' shows everything; 'hidden' + 'active' hide
+      // the WIRING / logic / passive sinks (dust, gates, lamp, piston, tx/rx) — operable
+      // SOURCES (lever/button/plate/weight/lock) always stay visible so the player can
+      // find + use them. 'active' reveals a wire once it is (or has ever been) powered.
+      const HIDEABLE = { dust: 1, and: 1, not: 1, nor: 1, lamp: 1, piston: 1, tx: 1, rx: 1 };
       for (const d of this._redstone) {
         const sp = S((d.col + 0.5) * g.cell, (d.row + 0.5) * g.cell), tl = S(d.col * g.cell, d.row * g.cell);
         const on = OH_REDSTONE.cellPowered(this._rs, d.col, d.row);
+        if (on) d._everOn = true;
+        let alpha = 1;
+        if (HIDEABLE[d.kind] && this._redstoneVis && this._redstoneVis !== 'always') {
+          const revealed = this._redstoneVis === 'active' && (on || d._everOn);
+          if (!revealed) { if (this._testMode) alpha = 0.28; else continue; }   // ghost in Test, gone in play
+        }
+        ctx.globalAlpha = alpha;
         if (d.kind === 'lever' || d.kind === 'button') OVERHEAD.drawLever(ctx, sp.x, sp.y, u * 0.9, !!d.on);   // ~2 character-blocks
         else if (d.kind === 'lock') OVERHEAD.drawLock(ctx, tl.x, tl.y, cs, on);
         else if (d.kind === 'dust') OVERHEAD.drawDust(ctx, tl.x, tl.y, cs, on);
@@ -885,6 +898,7 @@
         else if (d.kind === 'and' || d.kind === 'not' || d.kind === 'nor') OVERHEAD.drawGate(ctx, tl.x, tl.y, cs, d.kind, on, d.inputs, d.outputs);
         else if (d.kind === 'tx' || d.kind === 'rx') { OVERHEAD.drawLamp(ctx, sp.x, sp.y, u * 0.7, on); ctx.fillStyle = '#fff'; ctx.font = `${Math.max(8, u * 0.5) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(d.kind === 'tx' ? '↑' : '↓', sp.x, sp.y); ctx.textBaseline = 'alphabetic'; }
       }
+      ctx.globalAlpha = 1;
     }
     // Test-critical state readout (top-right) — mirrors the side-view perf HUD style.
     // Prioritises what a browser tester needs to VERIFY from a screenshot: player
