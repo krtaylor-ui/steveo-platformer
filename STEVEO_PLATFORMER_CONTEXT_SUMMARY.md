@@ -1,4 +1,28 @@
-## CURRENT STATE (2026-07-29) — builds 279–297 SHIPPED to `main` ✅; `overhead-redstone-bridge` branch now at build 299 (Bridge + Redstone + Editor painting tools) — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — builds 279–297 SHIPPED to `main` ✅; `overhead-redstone-bridge` branch at build 300 (Bridge + Redstone + Editor 2.0) — NOT merged, browser-UNTESTED
+
+**SHIPPED to `main` (live):** Overhead builds 279–297 + Campaign MVP.
+
+**Branch `overhead-redstone-bridge` (builds 298–300, NOT merged):** Suite green (989); harnesses + probe clean.
+- **298** Bridge deck + guardrails + redstone-driven **drawbridge**; grid-agnostic `OH_REDSTONE` core (levers/
+  dust/lamps/tx/rx + channels).
+- **299** Editor painting: shapes for dust/bridge/ramp; **fill/bucket** (G); **Alt-click eyedropper**; Shift-
+  scroll brush; shape hotkeys; mode cursors; Escape→Hand→quit-modal; character-scaled devices; tower 3×3;
+  **reveal window** world setting.
+- **300** Editor rail 2.0: **Hand / Draw / Erase** top buttons, light-blue active highlighting, block swatch
+  in the Terrain header, reordered groups, **Bridge+Drawbridge in Terrain**, Redstone own palette, and the
+  **undo/redo camera-jump FIX**.
+
+**NEXT (specs captured in FUTURE_ROADMAP §32/§36/§37):** redstone devices (pressure plate / weight block /
+piston / AND / NOT, character-scaled) + TX/RX on all devices + Hand-click config modals (receiver needs a
+required source); drawbridge `animated` (~80° perspective raise/fall) vs `vanishing` style; double-click
+select-connected (whole bridge by type+connectivity, start-cell elevation) → Delete; clipboard mirror/rotate
++ scatter brush; the 2-wide bridge auto-stamp. Detail in `DECISIONS_LOG.md`.
+
+**NEEDS BROWSER PLAYTEST** before merging 298–300 to `main`.
+
+---
+
+## PRIOR STATE (2026-07-29) — builds 279–297 SHIPPED to `main` ✅; builds 298–299 (Bridge/Redstone + Editor painting) on `overhead-redstone-bridge`
 
 **SHIPPED to `main` (live):** Overhead builds 279–297 + Campaign MVP.
 

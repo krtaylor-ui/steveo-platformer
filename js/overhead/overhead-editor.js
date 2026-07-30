@@ -152,7 +152,7 @@
       this._hist.push({ s, d: desc || 'edit' }); this._histPos = this._hist.length - 1;
       if (this._hist.length > 60) { this._hist.shift(); this._histPos--; }
     },
-    _restore(snap) { const d = JSON.parse(snap); this.world.mapSnapshot = d.map; this.world.buildings = d.b; this.world.mobs = d.m; this.world.items = d.i; this.world.spawns = d.s; this.world.goal = d.g; if (d.r !== undefined) this.world.ramps = d.r; if (d.br !== undefined) this.world.bridges = d.br; if (d.rs !== undefined) this.world.redstone = d.rs; if (d.set !== undefined) this.world.settings = d.set; this._setupWorld(); },
+    _restore(snap) { const d = JSON.parse(snap); const cam = this.cam, mz = this.grid && this.grid.masterZoom; this.world.mapSnapshot = d.map; this.world.buildings = d.b; this.world.mobs = d.m; this.world.items = d.i; this.world.spawns = d.s; this.world.goal = d.g; if (d.r !== undefined) this.world.ramps = d.r; if (d.br !== undefined) this.world.bridges = d.br; if (d.rs !== undefined) this.world.redstone = d.rs; if (d.set !== undefined) this.world.settings = d.set; this._setupWorld(); this.cam = cam; if (mz) this.grid.masterZoom = mz; },   // keep the camera + zoom put (undo/redo must not jump the view)
     _paintDesc() { const t = this._shift ? 'erase' : this.tool;
       if (t === 'terrain') return 'paint ' + this.terrainKey; if (t === 'building') return 'place ' + this.buildingType;
       if (t === 'mob') return 'place ' + this.mobKey; if (t === 'item') return 'place ' + this.itemKey;
@@ -174,10 +174,13 @@
           #oh-top .oh-flash{color:#8fe0a0;font-size:12px;margin-left:10px}
           #oh-rail{position:fixed;top:48px;left:8px;z-index:9000;display:none;flex-direction:column;gap:6px;width:120px;font:12px sans-serif;color:#dbe4f3}
           #oh-rail .grp{position:relative}
-          #oh-rail .hd{background:#1c2536;border:1px solid #34425e;border-radius:7px;padding:7px 9px;cursor:default;display:flex;justify-content:space-between;align-items:center}
-          #oh-rail .hd b{font-weight:600} #oh-rail .hd .cur{color:#9fb0cc;font-size:11px;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+          #oh-rail .hd{background:#243049;border:1px solid #3a4a6b;border-radius:7px;padding:7px 9px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:6px}
+          #oh-rail .hd.on{background:#3a5a8c;border-color:#5573ad}
+          #oh-rail .hd b{font-weight:600} #oh-rail .hd .cur{color:#cfe0ff;font-size:11px;max-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px}
           #oh-rail .btn{background:#243049;border:1px solid #3a4a6b;border-radius:7px;padding:7px 9px;cursor:pointer;text-align:left}
           #oh-rail .btn.on{background:#3a5a8c;border-color:#5573ad}
+          #oh-rail .oh-top3{display:flex;gap:6px} #oh-rail .oh-top3 .btn{flex:1;text-align:center;padding:8px 3px}
+          #oh-rail .oh-gap{height:8px}
           .oh-fly{position:absolute;left:124px;top:0;min-width:168px;max-height:74vh;overflow:auto;background:#1a2233;border:1px solid #3a4a6b;border-radius:8px;padding:6px;display:none;z-index:9100;box-shadow:5px 6px 20px rgba(0,0,0,.55)}
           #oh-rail .grp:hover>.oh-fly{display:block}
           .oh-fly .opt{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:5px;cursor:pointer}
@@ -218,9 +221,16 @@
         </span>
         <span class="oh-status">${this._esc(this.world.name)} · ${m.baseW || m.gridW}×${m.baseH || m.gridH} @ d${m.density} · ${this._shift ? 'erase' : this.tool} @ elev ${this.elevLevel}</span>
         <span class="oh-flash" id="oh-flash"></span>`;
-      // LEFT RAIL: Brush / Elevation / Erase, then the four palette tabs (hover to open).
+      // LEFT RAIL. Top three (Hand / Draw / Erase) set the mode + cursor; then
+      // Elevation / Brush / Shape; a gap; then the palettes (Terrain / Mobs / Items /
+      // Buildings); a gap; then Redstone. Active buttons highlight light-blue.
+      const mode = this.tool === 'hand' ? 'hand' : (this.tool === 'erase' || this._shift) ? 'erase' : 'draw';
+      const blockSw = (key) => { const t = P().OH_TERRAIN_BY_KEY[key]; return `<span class="oh-sw" style="background:${t ? t.color : '#888'};box-shadow:inset -3px -3px 0 rgba(0,0,0,.3),inset 2px 2px 0 rgba(255,255,255,.18)"></span>`; };
       const swatch = (c) => `<span class="oh-sw" style="background:${c}"></span>`;
-      const terrOpts = P().OH_TERRAIN.map((t) => `<div class="opt ${this.tool === 'terrain' && this.terrainKey === t.key ? 'sel' : ''}" data-terr="${t.key}">${swatch(t.color)}${t.name}</div>`).join('');
+      const terrOpts = P().OH_TERRAIN.map((t) => `<div class="opt ${this.tool === 'terrain' && this.terrainKey === t.key ? 'sel' : ''}" data-terr="${t.key}">${blockSw(t.key)}${t.name}</div>`).join('')
+        + `<div class="opt ${this.tool === 'bridge' && !this._bridgeDraw ? 'sel' : ''}" data-tbridge="0">🌉 Bridge</div>`
+        + `<div class="opt ${this.tool === 'bridge' && this._bridgeDraw ? 'sel' : ''}" data-tbridge="1">🌉 Drawbridge (redstone)</div>`
+        + `<div class="opt small ${this._bridgeRail ? 'sel' : ''}" data-brail="1">${this._bridgeRail ? '☑' : '☐'} Bridge guardrails</div>`;
       const bTypes = (typeof OH_BUILDINGS !== 'undefined') ? OH_BUILDINGS.all().map((d) => d.id) : ['healer'];
       const buildOpts = bTypes.map((b) => `<div class="opt ${this.tool === 'building' && this.buildingType === b ? 'sel' : ''}" data-build="${b}">🏛 ${b}</div>`).join('')
         + `<div class="opt ${this.tool === 'spawn' ? 'sel' : ''}" data-spawn="1">🚩 Player Spawn</div><div class="opt ${this.tool === 'goal' ? 'sel' : ''}" data-goal="1">★ Goal Star</div>`
@@ -228,36 +238,46 @@
         + `<div class="opt ${this.tool === 'tree' ? 'sel' : ''}" data-tree="1">🌳 Tree (prefab)</div>`;
       const mobOpts = P().OH_MOBS.map((mm) => `<div class="opt ${this.tool === 'mob' && this.mobKey === mm.key ? 'sel' : ''}" data-mob="${mm.key}">${swatch(mm.color)}${mm.name}</div>`).join('');
       const itemOpts = P().OH_ITEMS.map((i) => `<div class="opt ${this.tool === 'item' && this.itemKey === i.key ? 'sel' : ''}" data-item="${i.key}">${swatch(i.color)}${i.name}</div>`).join('');
-      const grp = (label, cur, opts) => `<div class="grp"><div class="hd"><b>${label} ▸</b><span class="cur">${cur}</span></div><div class="oh-fly">${opts}</div></div>`;
+      const rsOpts = `<div class="opt ${this.tool === 'lever' ? 'sel' : ''}" data-rs="lever">🔧 Lever (E to flip)</div>`
+        + `<div class="opt ${this.tool === 'dust' ? 'sel' : ''}" data-rs="dust">🟥 Redstone dust</div>`
+        + `<div class="opt ${this.tool === 'lamp' ? 'sel' : ''}" data-rs="lamp">💡 Lamp</div>`
+        + `<div class="opt small" style="color:#8fa0bd">Lever + Drawbridge share channel "gate" by default.</div>`;
+      const grp = (label, cur, opts, active, sw) => `<div class="grp"><div class="hd ${active ? 'on' : ''}"><b>${label} ▸</b><span class="cur">${sw || ''}${cur}</span></div><div class="oh-fly">${opts}</div></div>`;
       const shapeOpts = [['freehand', 'Freehand (B)'], ['line', 'Line (L)'], ['rect', 'Rectangle (R)'], ['circle', 'Circle / Oval (O)'], ['fill', '🪣 Fill / bucket (G)']].map(([k, n]) => `<div class="opt small ${this.shape === k ? 'sel' : ''}" data-shape="${k}">${n}</div>`).join('')
         + `<div class="opt small ${this.shapeFill ? 'sel' : ''}" data-fill="1">${this.shapeFill ? '☑' : '☐'} Solid (else outline = brush width)</div>`
         + `<div class="opt small" style="color:#8fa0bd">Alt-click = eyedropper · Shift-scroll = brush size</div>`;
+      const brushActive = mode === 'erase' || (mode === 'draw' && this.shape === 'freehand');
+      const shapeActive = mode === 'draw' && this.shape !== 'freehand';
+      const terrActive = mode === 'draw' && (this.tool === 'terrain' || this.tool === 'bridge');
+      const buildActive = ['building', 'spawn', 'goal', 'ramp', 'ladder', 'tree'].indexOf(this.tool) >= 0;
+      const rsActive = ['lever', 'dust', 'lamp'].indexOf(this.tool) >= 0;
+      const terrCur = this.tool === 'terrain' ? P().OH_TERRAIN_BY_KEY[this.terrainKey].name : this.tool === 'bridge' ? (this._bridgeDraw ? 'Drawbridge' : 'Bridge') : '';
+      const terrSw = this.tool === 'terrain' ? blockSw(this.terrainKey) : '';
       rail.innerHTML =
-        `<div class="btn ${this.tool === 'hand' ? 'on' : ''}" id="oh-hand">✋ Hand (drag to pan · click to configure)</div>` +
-        grp('Brush', this.brush + '×' + this.brush, [1, 2, 3, 5, 8].map((b) => `<div class="opt small ${b === this.brush ? 'sel' : ''}" data-brush="${b}">${b}×${b}</div>`).join('')) +
-        grp('Shape', this.shape === 'freehand' ? 'Freehand' : (this.shape + (this.shapeFill ? ' fill' : ' line')), shapeOpts) +
+        `<div class="oh-top3">
+           <div class="btn ${mode === 'hand' ? 'on' : ''}" id="oh-hand" title="Pan · click to configure/move">✋ Hand</div>
+           <div class="btn ${mode === 'draw' ? 'on' : ''}" id="oh-draw" title="Draw with the last terrain + brush/shape">✏ Draw</div>
+           <div class="btn ${mode === 'erase' ? 'on' : ''}" id="oh-erase" title="Erase everything the brush touches (⇧-click too)">⌫ Erase</div>
+         </div>` +
         grp('Elevation', 'Lvl ' + this.elevLevel, [0, 1, 2, 3, 4, 5, 6, 7, 8].map((l) => `<div class="opt small ${l === this.elevLevel ? 'sel' : ''}" data-elev="${l}">Level ${l}</div>`).join('')) +
-        `<div class="btn ${this.tool === 'erase' ? 'on' : ''}" id="oh-erase">Erase (or ⇧-click)</div>` +
-        grp('Terrain', this.tool === 'terrain' ? P().OH_TERRAIN_BY_KEY[this.terrainKey].name : '', terrOpts) +
-        grp('Buildings', (this.tool === 'building' ? this.buildingType : this.tool === 'spawn' ? 'Spawn' : this.tool === 'goal' ? 'Goal' : ''), buildOpts) +
-        grp('Mobs', this.tool === 'mob' ? P().OH_MOB_BY_KEY[this.mobKey].name : '', mobOpts) +
-        grp('Items', this.tool === 'item' ? P().OH_ITEM_BY_KEY[this.itemKey].name : '', itemOpts) +
-        grp('Bridge & Redstone', (this.tool === 'bridge' ? 'Bridge' : ['lever', 'dust', 'lamp'].includes(this.tool) ? this.tool : ''),
-          `<div class="opt ${this.tool === 'bridge' ? 'sel' : ''}" data-bridge="1">🌉 Bridge</div>`
-          + `<div class="opt small ${this._bridgeRail ? 'sel' : ''}" data-brail="1">${this._bridgeRail ? '☑' : '☐'} Guardrails</div>`
-          + `<div class="opt small ${this._bridgeDraw ? 'sel' : ''}" data-bdraw="1">${this._bridgeDraw ? '☑' : '☐'} Drawbridge (closes on redstone)</div>`
-          + `<div class="opt ${this.tool === 'lever' ? 'sel' : ''}" data-rs="lever">🔧 Lever (E to flip)</div>`
-          + `<div class="opt ${this.tool === 'dust' ? 'sel' : ''}" data-rs="dust">🟥 Redstone dust</div>`
-          + `<div class="opt ${this.tool === 'lamp' ? 'sel' : ''}" data-rs="lamp">💡 Lamp</div>`
-          + `<div class="opt small" style="color:#8fa0bd">Lever + Drawbridge share channel "gate" by default.</div>`);
+        grp('Brush', this.brush + '×' + this.brush, [1, 2, 3, 5, 8].map((b) => `<div class="opt small ${b === this.brush ? 'sel' : ''}" data-brush="${b}">${b}×${b}</div>`).join(''), brushActive) +
+        grp('Shape', this.shape === 'freehand' ? 'Freehand' : (this.shape + (this.shapeFill ? ' fill' : '')), shapeOpts, shapeActive) +
+        `<div class="oh-gap"></div>` +
+        grp('Terrain', terrCur, terrOpts, terrActive, terrSw) +
+        grp('Mobs', this.tool === 'mob' ? P().OH_MOB_BY_KEY[this.mobKey].name : '', mobOpts, this.tool === 'mob') +
+        grp('Items', this.tool === 'item' ? P().OH_ITEM_BY_KEY[this.itemKey].name : '', itemOpts, this.tool === 'item') +
+        grp('Buildings', (this.tool === 'building' ? this.buildingType : this.tool === 'spawn' ? 'Spawn' : this.tool === 'goal' ? 'Goal' : this.tool === 'ramp' ? 'Ramp' : this.tool === 'ladder' ? 'Ladder' : this.tool === 'tree' ? 'Tree' : ''), buildOpts, buildActive) +
+        `<div class="oh-gap"></div>` +
+        grp('Redstone', rsActive ? this.tool : '', rsOpts, rsActive);
       const g = (id) => document.getElementById(id);
       g('oh-undo').onclick = () => this.undo(); g('oh-redo').onclick = () => this.redo();
       g('oh-zin').onclick = () => OH_GRID.zoomBy(this.grid, 1.15); g('oh-zout').onclick = () => OH_GRID.zoomBy(this.grid, 0.87);
       g('oh-test').onclick = () => this._test(); g('oh-save').onclick = () => this._save(); g('oh-exit').onclick = () => this.close();
       g('oh-settings').onclick = () => { if (typeof OH_WORLD_SETTINGS !== 'undefined') OH_WORLD_SETTINGS.open(this.world, () => { this._renderBar(); this._pushHistory('settings change'); }); };
       ['buildings', 'mobs', 'items', 'elev'].forEach((k) => { const el = g('oh-v-' + k); if (el) el.onchange = () => { this.view[k] = el.checked; }; });
-      g('oh-erase').onclick = () => { this.tool = 'erase'; this._renderBar(); };
-      g('oh-hand').onclick = () => { this.tool = 'hand'; this._renderBar(); };
+      g('oh-erase').onclick = () => { this.tool = 'erase'; this._renderBar(); this._updateCursor(); };
+      g('oh-hand').onclick = () => { this.tool = 'hand'; this._selEnt = null; this._renderBar(); this._updateCursor(); };
+      g('oh-draw').onclick = () => { this.tool = 'terrain'; this._renderBar(); this._updateCursor(); };   // restore drawing with the last terrain + brush/shape (all persist)
       rail.querySelectorAll('[data-brush]').forEach((el) => el.onclick = () => { this.brush = +el.dataset.brush; this._renderBar(); });
       rail.querySelectorAll('[data-shape]').forEach((el) => el.onclick = () => { this.shape = el.dataset.shape; this._renderBar(); });
       rail.querySelectorAll('[data-fill]').forEach((el) => el.onclick = () => { this.shapeFill = !this.shapeFill; this._renderBar(); });
@@ -270,9 +290,8 @@
       rail.querySelectorAll('[data-tree]').forEach((el) => el.onclick = () => { this.tool = 'tree'; this._renderBar(); });
       rail.querySelectorAll('[data-mob]').forEach((el) => el.onclick = () => { this.tool = 'mob'; this.mobKey = el.dataset.mob; this._renderBar(); });
       rail.querySelectorAll('[data-item]').forEach((el) => el.onclick = () => { this.tool = 'item'; this.itemKey = el.dataset.item; this._renderBar(); });
-      rail.querySelectorAll('[data-bridge]').forEach((el) => el.onclick = () => { this.tool = 'bridge'; this._renderBar(); });
+      rail.querySelectorAll('[data-tbridge]').forEach((el) => el.onclick = () => { this.tool = 'bridge'; this._bridgeDraw = el.dataset.tbridge === '1'; this._renderBar(); });
       rail.querySelectorAll('[data-brail]').forEach((el) => el.onclick = () => { this._bridgeRail = !this._bridgeRail; this._renderBar(); });
-      rail.querySelectorAll('[data-bdraw]').forEach((el) => el.onclick = () => { this._bridgeDraw = !this._bridgeDraw; this._renderBar(); });
       rail.querySelectorAll('[data-rs]').forEach((el) => el.onclick = () => { this.tool = el.dataset.rs; this._renderBar(); });
       this._updateCursor();
     },

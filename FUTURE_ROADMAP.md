@@ -1095,10 +1095,21 @@ built, the assembled block-grid becomes just another `skin` the render layer alr
 **Done (build 298, branch `overhead-redstone-bridge`):** a NEW pure, grid-agnostic core `overhead-redstone.js`
 (`OH_REDSTONE`: levers/buttons, dust wire, lamps, tx/rx, a named-channel table, `evaluate()`), wired into the
 overhead runtime (evaluated per frame; levers flip on E) and editor (Lever/Dust/Lamp palette). The drawbridge
-consumes it via channels. **Still to do:** custom channel names + config modals; more devices (repeaters,
-comparators, logic gates, buttons with timers, pressure/weight plates); doors/other channel-driven outputs;
-and the original goal of **extracting the side-view `js/redstone.js` onto this same core** so both grids
-share one engine. The remaining plan (unchanged):
+consumes it via channels. **Still to do — KEVIN'S SPEC (2026-07-29, batch 3):**
+- **New devices, sized to the player sprite** (character-scale like levers now are): **pressure plates**,
+  **weight-detecting blocks** (reuse the side-view weight-sensor idea), **pistons** (push/retract a block —
+  a natural drawbridge-alternative + puzzle piece), **AND gate**, **NOT gate**. "Treat redstone PATHS as
+  natural AND gates" — interpret dust junctions/logic so a path only conducts when its feeding inputs agree
+  (confirm with Kevin whether he means dust = AND at merges, vs. standard OR + explicit AND-gate devices;
+  ship the explicit AND/NOT gate devices regardless).
+- **Transmitters + receivers on ALL sinks and sources** (keep redstone dust for local logic too): every
+  device can optionally TX (broadcast a channel) and/or RX (listen to a channel). The drawbridge already
+  auto-acts as an RX on "gate" — generalise it.
+- **Config modals via Hand-click** (like the side-view device popups): clicking a device with the Hand opens
+  a modal. Receiving devices get an **optional transmitter SOURCE selector that cannot be left unset** (if a
+  device is set to receive, it must pick a valid source channel/transmitter — validate on save).
+- Then the original goal: **extract the side-view `js/redstone.js` onto this same core** so both grids share
+  one engine. The remaining plan (unchanged):
 
 Kevin wants the existing redstone engine (levers, dust, target block, pulse converter, tx/rx,
 adjacency) usable in Overhead worlds, with config modals — and has explicitly flagged it as the next major
@@ -1225,7 +1236,15 @@ Guardrails block/allow falling off the sides; a Drawbridge starts open and close
 (lever+drawbridge default to "gate"). Editor Bridge tool with Guardrails + Drawbridge toggles; ghosts/undo/erase.
 **Still to do:** the "2-wide preset" auto-stamp (bridges currently paint free-form, so you draw the width by
 hand); per-bridge channel selection in a config modal; and connecting-different-heights niceties (currently the
-creator sets each cell's elevation and the forgiving-ramp climb handles the transition). Original spec below.
+creator sets each cell's elevation and the forgiving-ramp climb handles the transition).
+
+**Drawbridge STYLE — Kevin's spec (2026-07-29), a new world setting `drawbridgeStyle: 'animated' | 'vanishing'`:**
+- *vanishing* (current) — the deck just appears/disappears when the channel toggles.
+- *animated* — when "up" the span lifts to ~80° with a bit of PERSPECTIVE so the raised part reads bigger
+  toward the viewer; dropping animates it swinging down and easing the angle back to flat. If the two ends
+  sit at different elevation levels, keep a little perspective in the raised pose. Needs a per-drawbridge
+  animation phase (0=down..1=up) eased over a few frames on channel change, and a perspective quad render
+  for the lifting deck. Original spec below.
 
 A placeable **bridge** that spans gaps/pits and connects cliff edges (possibly of different heights).
 Kevin's spec: a preset **2-block-wide** (character-sprite blocks) walkway, painted along a run, with a
@@ -1258,6 +1277,15 @@ tower 3×3, reveal window.
   clipboard; a paste ghost preview; Escape clears the selection/clipboard. Keep it on the current-elevation
   filter for select + delete; paste writes at the active elevation. Undo already snapshots the whole world,
   so paste/delete are undoable for free.
+- **DOUBLE-CLICK select-connected (Kevin's spec, 2026-07-29):** double-click a cell to select ALL connected
+  cells of the SAME type (a flood-fill selection like the bucket, 4-connectivity), then **Delete** removes
+  them in one shot — primary use case: pull up a whole bridge run at once. Restricted to ONE elevation, but
+  determined by the STARTING cell's elevation — so a bridge that spans two different elevation ends is still
+  selected as one unit (match by type/layer + connectivity, using the start elevation, not a per-cell elev
+  gate). Works for terrain AND placeable layers (bridges/dust): double-clicking a bridge cell selects the
+  whole connected bridge.
+- **Clipboard MIRROR / ROTATE + SCATTER brush (Kevin approved):** flip a copied stamp H/V or rotate 90°
+  before pasting; a scatter/randomize brush that places with a % chance for natural foliage/rubble.
 
 **Additional painting tools worth considering (Kevin asked "any others?"):**
 - **2-wide bridge auto-stamp** — bridges paint free-form today; a preset stamps a 2-cell strip perpendicular

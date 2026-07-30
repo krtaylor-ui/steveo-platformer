@@ -1,6 +1,35 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD EDITOR — RAIL RESTRUCTURE + HIGHLIGHTING + UNDO-CAMERA FIX (2026-07-29, build 300, branch `overhead-redstone-bridge`)
+# ═══════════════════════════════════════════════════════════════════════
+Editor UX overhaul batch 2 (of the multi-part rail request). Suite green (989); editor load + undo-camera
+harness + probe clean. Browser-UNTESTED.
+
+- **Top three buttons Hand / Draw / Erase** (equal size, `.oh-top3`), each sets the cursor on click.
+  **Draw** re-enters terrain drawing (terrainKey + brush + shape all persist). **Erase** removes every
+  block/mob/item/building the brush touches (existing `_opCell` erase).
+- **Active-button highlighting (light blue, consistent):** a `mode` = hand|draw|erase drives `.on` on the
+  three buttons; the Brush header lights when erasing or drawing freehand, the Shape header when a shape is
+  active, and the active palette header (Terrain/Mobs/Items/Buildings/Redstone) lights. `.hd` headers made
+  clickable + `.hd.on` blue; Hand/Erase now share the same blue as everything else.
+- **Terrain header shows the BLOCK** (a bevelled colour swatch of the current terrain), and every terrain
+  option shows its block swatch.
+- **Rail order:** Hand/Draw/Erase · Elevation · Brush · Shape · (gap) · Terrain · Mobs · Items · Buildings ·
+  (gap) · Redstone. **Bridge + Drawbridge moved into the Terrain palette** as two separate items (`data-tbridge`
+  0/1) so they get line/rect; **Redstone is its own palette** (Lever/Dust/Lamp).
+- **UNDO/REDO CAMERA FIX:** `_restore` was calling `_setupWorld`, which resets `cam` to {0,0} (jumped the view
+  to the corner every undo). Now `_restore` saves + restores `cam` and `masterZoom` around `_setupWorld`.
+  Verified headless (pan to 250,120 @ zoom 1.5 → undo → unchanged).
+
+**DEFERRED with Kevin's full specs captured in FUTURE_ROADMAP (batch 3+):**
+- §32 redstone: pressure plates, weight blocks, pistons, AND/NOT gates (character-scaled); TX/RX on ALL
+  devices; Hand-click config modals with a required source selector for receivers ("can't be unset").
+- §36 drawbridge `drawbridgeStyle: animated | vanishing` — the ~80° perspective raise/fall animation.
+- §37 double-click select-connected (flood-select a whole bridge/run by type + connectivity, using the START
+  cell's elevation so a two-elevation bridge counts as one) → Delete; plus clipboard mirror/rotate + scatter.
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD EDITOR — PAINTING TOOLS + REVEAL WINDOW (2026-07-29, build 299, branch `overhead-redstone-bridge`)
 # ═══════════════════════════════════════════════════════════════════════
 Editor UX overhaul (batch 1 of 2). Suite green (989); editor-logic + render harnesses + probe clean.
