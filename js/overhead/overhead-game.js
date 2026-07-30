@@ -78,7 +78,10 @@
       // Pits: 'deadly' (fall in → insta-death) | 'block' (impassable, even in GOD mode).
       this._pitMode = cfg.pitMode || (cfg.pitsDeadly === false ? 'block' : 'deadly');
       this._pitsDeadly = this._pitMode !== 'block';
-      this._lavaDeadly = !!cfg.lavaDeadly;                   // lava is insta-death instead of damage
+      // Lava: 'damage' (hurts continuously while touching, gated by i-frames) or 'death'
+      // (insta-kill). Legacy worlds used a lavaDeadly boolean — migrate it here.
+      this._lavaMode = cfg.lavaMode || (cfg.lavaDeadly ? 'death' : 'damage');
+      this._lavaDamage = (cfg.lavaDamage != null ? cfg.lavaDamage : 4);
       this._bridgeGuardrails = cfg.bridgeGuardrails !== false;   // rails on bridges (can't fall off the sides)
       this._drawbridgeStyle = cfg.drawbridgeStyle || 'vanishing';
       this._dbPhase = {};   // per-drawbridge animation phase (0 = down/closed, 1 = up/open)
@@ -227,7 +230,7 @@
         if (this._bridgeClosedAt(c.col, c.row)) { /* standing on a solid bridge deck — no fall/hazard */ }
         else if (this._pitsDeadly && this._pit(c.col, c.row)) this._die('Fell into a pit', 'pit');
         else if (this._gap(c.col, c.row)) this._fall('Fell');
-        else if (this._hazard(c.col, c.row)) { if (this._lavaDeadly) this._die('Fell in lava'); else if (p.iFrames === 0) this._hurt(4, 'Hazard'); } }
+        else if (this._hazard(c.col, c.row)) { if (this._lavaMode === 'death') this._die('Fell in lava'); else if (p.iFrames === 0) this._hurt(this._lavaDamage, 'Lava'); } }
       // Hidden if standing under an overhang (a cell ≥ player.elev+2).
       { const c = this._cellOf(p.x, p.y); p.hidden = (this._key(c.col, c.row) === 'leaves' && this._elev(c.col, c.row) > p.elev); }
 
@@ -359,7 +362,7 @@
       const res = OH_MOVE.landingValid(p.jump, { landingIsGap: this._gap(c.col, c.row), landingIsHazard: this._hazard(c.col, c.row),
         landingIsSolidGround: this._key(c.col, c.row) != null, elevDelta: this._elev(c.col, c.row) - p.jump.startElev });
       if (!res.valid) {
-        if (res.reason === 'hazard') { if (this._lavaDeadly) this._die('Fell in lava'); else this._hurt(4, 'Hazard'); }
+        if (res.reason === 'hazard') { if (this._lavaMode === 'death') this._die('Fell in lava'); else this._hurt(this._lavaDamage, 'Lava'); }
         else if (res.reason === 'gap') this._fall('Missed the jump');
         else if (p._jumpFrom) { p.x = p._jumpFrom.x; p.y = p._jumpFrom.y; }   // couldn't clear the wall → bounce back
       } else { p.elev = this._elev(c.col, c.row); }   // landed within the jump's clearance
@@ -464,7 +467,7 @@
       for (const d of this._redstone) if (d.kind === 'plate' || d.kind === 'weight') {
         let n = 0; const pc = this._cellOf(this.player.x, this.player.y); if (pc.col === d.col && pc.row === d.row) n++;
         for (const m of this.mobs) if (!m.dead) { const mc = this._cellOf(m.x, m.y); if (mc.col === d.col && mc.row === d.row) n++; }
-        d._active = n >= (d.kind === 'weight' ? (d.threshold || 2) : 1);
+        d._active = n >= (d.kind === 'weight' ? (d.threshold || 1) : 1);
       }
     }
     // A powered piston is a solid barrier (blocks movement); unpowered = passable.
@@ -472,7 +475,15 @@
     _bridge(c, r) { return this._bridgeAt.get(c + ',' + r) || null; }
     // A bridge cell is CLOSED (a solid walkable deck) when it's a normal bridge, or a
     // drawbridge whose channel is powered. Open drawbridges are gaps.
-    _bridgeClosedAt(c, r) { const b = this._bridgeAt.get(c + ',' + r); return !!b && (!b.draw || (typeof OH_REDSTONE !== 'undefined' && OH_REDSTONE.receives(this._rs, b))); }
+    _bridgeClosedAt(c, r) {
+      const b = this._bridgeAt.get(c + ',' + r);
+      if (!b) return false;
+      if (!b.draw) return true;                              // a plain bridge is always a solid deck
+      const powered = (typeof OH_REDSTONE !== 'undefined') && OH_REDSTONE.receives(this._rs, b);
+      // startDown = deck rests DOWN (crossable), a signal RAISES it (classic castle drawbridge).
+      // default = deck rests RAISED (open gap), a signal LOWERS it to cross (puzzle gate).
+      return b.startDown ? !powered : powered;
+    }
     _hurt(amt, why) { const p = this.player; if (this._god || p.iFrames > 0) return; p.hp -= amt; p.iFrames = 45; if (p.hp <= 0) this._die(why || 'Defeated'); }
     _fall(msg) { const p = this.player; if (p.hp <= 0) { this._die(msg || 'You died'); return; } p.x = this._spawn.x; p.y = this._spawn.y; p.jump = null; p.iFrames = 60; const c = this._cellOf(p.x, p.y); p.elev = this._elev(c.col, c.row); }
     // Family-friendly death (no blood/gore). Default: the player bursts into its

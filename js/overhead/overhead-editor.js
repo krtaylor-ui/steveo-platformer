@@ -456,7 +456,7 @@
           const dev = this._TX_KINDS[tool] ? { col, row, kind: tool, txId: this._nextTxId() } : { col, row, kind: tool };
           if (tool === 'lever') { dev.on = false; dev.channel = 'gate'; }        // channel == transmit (quick default)
           else if (tool === 'plate') dev.txChannel = 'gate';
-          else if (tool === 'weight') { dev.txChannel = 'gate'; dev.threshold = 2; }
+          else if (tool === 'weight') { dev.txChannel = 'gate'; dev.threshold = 1; }
           else if (tool === 'piston') dev.rxChannel = 'gate';                     // extends when "gate" is powered
           else if (tool === 'and' || tool === 'not' || tool === 'nor') { dev.inputs = tool === 'and' ? ['w', 's'] : ['w']; dev.outputs = ['e']; }
           else if (tool === 'lock') { dev.on = false; dev.channel = 'gate'; dev.acceptKeys = []; dev.consume = false; dev.toggle = false; }
@@ -670,7 +670,7 @@
         ? `<p style="color:#cfe0ff;font-size:13px;margin:0 0 8px">Receives a signal — <b>${d.kind}</b> @ ${d.col},${d.row}</p>`
         : `<p style="color:#cfe0ff;font-size:13px;margin:0 0 8px">Broadcasts as <b>Tx #${d.txId}</b> — ${d.kind} @ ${d.col},${d.row}</p>`;
       if (d.kind === 'lever' || d.kind === 'button') inner += `<label style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input type="checkbox" id="dv-on" ${d.on ? 'checked' : ''}> Starts ON</label>`;
-      if (d.kind === 'weight') inner += `<label>Weight threshold (entities) <input type="number" id="dv-thr" min="1" value="${d.threshold || 2}"></label>`;
+      if (d.kind === 'weight') inner += `<label>Weight threshold (entities) <input type="number" id="dv-thr" min="1" value="${d.threshold || 1}"></label>`;
       if (isGate) { inner += `<div style="font-size:12px;color:#9fb0cc;margin-top:6px">Input sides:</div><div style="margin:4px 0">${sideRow('gt-in', d.inputs)}</div><div style="font-size:12px;color:#9fb0cc">Output sides:</div><div style="margin:4px 0">${sideRow('gt-out', d.outputs)}</div>`; }
       else if (isSink) { inner += `<div style="font-size:12px;color:#9fb0cc;margin-top:6px">Receive from (pick at least one):</div>` + this._txChecklist('dv-rx', d.rxIds, d.col, d.row); }
       else if (isLock) {
@@ -682,7 +682,7 @@
       }
       this._cfgModal('Redstone: ' + d.kind + (isSink ? ' (Rx)' : ' (Tx #' + d.txId + ')'), inner, () => {
         if (d.kind === 'lever' || d.kind === 'button') d.on = document.getElementById('dv-on').checked;
-        if (d.kind === 'weight') { const t = document.getElementById('dv-thr'); if (t) d.threshold = Math.max(1, parseInt(t.value, 10) || 2); }
+        if (d.kind === 'weight') { const t = document.getElementById('dv-thr'); if (t) d.threshold = Math.max(1, parseInt(t.value, 10) || 1); }
         if (isGate) { const rd = (c) => [].slice.call(document.querySelectorAll('.' + c + ':checked')).map((el) => el.value); d.inputs = rd('gt-in'); d.outputs = rd('gt-out'); if (!d.outputs.length) d.outputs = ['e']; if (!d.inputs.length) d.inputs = ['w']; }
         else if (isSink) { const ids = [].slice.call(document.querySelectorAll('.dv-rx:checked')).map((el) => +el.value); if (!ids.length) { this._flash('⚠ A receiver needs at least one source — not saved'); throw new Error('rx required'); } d.rxIds = ids; d.rxChannel = undefined; }
         else if (isLock) { d.acceptKeys = [].slice.call(document.querySelectorAll('.lk-key:checked')).map((el) => el.value); d.consume = document.getElementById('lk-consume').checked; d.toggle = document.getElementById('lk-toggle').checked; }
@@ -697,11 +697,13 @@
       const railOn = b.rail != null ? b.rail : !(this.world.settings && this.world.settings.bridgeGuardrails === false);
       let inner = `<p style="color:#8fa0bd;font-size:12px;margin:0 0 8px">${cells.length}-cell span @ elev ${b.elev | 0}</p>`;
       inner += `<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="br-rail" ${railOn ? 'checked' : ''}> Guardrails (can't fall off the sides)</label>`;
-      inner += `<label style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="checkbox" id="br-draw" ${b.draw ? 'checked' : ''}> Drawbridge (raises on a redstone signal)</label>`;
-      inner += `<div style="font-size:12px;color:#9fb0cc;margin-top:6px">Raises when ANY selected source is powered (drawbridge only):</div>` + this._txChecklist('br-rx', cur, -1, -1);
+      inner += `<label style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="checkbox" id="br-draw" ${b.draw ? 'checked' : ''}> Drawbridge (moves on a redstone signal)</label>`;
+      inner += `<label style="display:flex;gap:8px;align-items:center;margin-top:2px"><input type="checkbox" id="br-startdown" ${b.startDown ? 'checked' : ''}> Rests DOWN — signal RAISES it to block (else rests raised, signal lowers it to cross)</label>`;
+      inner += `<div style="font-size:12px;color:#9fb0cc;margin-top:6px">Signal source (drawbridge only):</div>` + this._txChecklist('br-rx', cur, -1, -1);
       this._cfgModal('Bridge span', inner, () => {
         b.rail = document.getElementById('br-rail').checked;
         b.draw = document.getElementById('br-draw').checked;
+        b.startDown = document.getElementById('br-startdown').checked;
         const ids = [].slice.call(document.querySelectorAll('.br-rx:checked')).map((el) => +el.value);
         if (b.draw) { b.rxIds = ids.length ? ids : undefined; b.channel = ids.length ? undefined : 'gate'; } else { b.rxIds = undefined; b.channel = undefined; }
       }, b);

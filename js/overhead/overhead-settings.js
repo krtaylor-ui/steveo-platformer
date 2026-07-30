@@ -65,7 +65,8 @@
       blockCliffFall:   true,       // stop accidental walks off high platforms
       maxStepDown:      1,          // levels a walk may drop (0 = none; further needs a ramp/bridge)
       pitMode:          'deadly',   // 'deadly' (fall in → insta-death) | 'block' (impassable, even in GOD)
-      lavaDeadly:       false,      // lava is insta-death instead of dealing damage
+      lavaMode:         'damage',   // 'damage' (hurts continuously while touching) | 'death' (insta-kill on touch)
+      lavaDamage:       4,          // damage per hit in 'damage' mode (hit is gated by i-frames)
       bridgeGuardrails: true,       // bridges have rails (can't fall off the sides); off = you can fall
       drawbridgeStyle:  'vanishing',// 'vanishing' (deck appears/disappears) | 'animated' (raises ~80° with perspective)
     };
@@ -85,6 +86,10 @@
       //  climbLevels comes purely from settings now, default 0.)
       if (world.showHiddenIndicator != null && s.showHiddenIndicator == null) out.showHiddenIndicator = world.showHiddenIndicator;
     }
+    // Legacy lava: a world saved with the old lavaDeadly boolean (and no lavaMode yet)
+    // maps true → 'death', false → 'damage'. Checked on the RAW saved settings so the
+    // default lavaMode:'damage' doesn't mask it.
+    if (s.lavaMode == null && s.lavaDeadly != null) out.lavaMode = s.lavaDeadly ? 'death' : 'damage';
     return out;
   }
 
@@ -186,7 +191,8 @@
               ${toggle('blockCliffFall', 'Stop players walking off cliffs')}
               ${sel('maxStepDown', 'Max walk-down without a ramp/bridge', [['0', '0 (none)'], ['1', '1 level'], ['2', '2 levels'], ['99', 'Any (no guard)']])}
               ${sel('pitMode', 'Pit blocks', [['deadly', 'Deadly (fall in → death)'], ['block', 'Solid obstacle (impassable)']])}
-              ${toggle('lavaDeadly', 'Lava is insta-death (else it hurts)')}
+              ${sel('lavaMode', 'Lava', [['damage', 'Damage (hurts while touching)'], ['death', 'Death (insta-kill on touch)']])}
+              ${range('lavaDamage', 'Lava damage per hit', 1, 20, 1)}
               ${toggle('bridgeGuardrails', 'Bridge guardrails (off = can fall off bridges)')}
               ${sel('drawbridgeStyle', 'Drawbridge style', [['vanishing', 'Vanishing (appears/disappears)'], ['animated', 'Animated (raises ~80°)']])}
             </div>
