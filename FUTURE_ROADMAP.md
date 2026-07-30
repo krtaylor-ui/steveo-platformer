@@ -1240,3 +1240,34 @@ a bridge cell OFF the long side onto a gap/lower cell is blocked (you can only e
 that move falls through (gap → `_fall`, or into a pit → death). Rendering: plank deck + optional side rails.
 Pairs directly with the build-294 pits (bridge a deadly pit) and the cliff-fall guard (a railed bridge is a
 sanctioned way across; a railless one is a risk the creator opts into). **Effort:** MEDIUM.
+
+## 37. Overhead editor — selection/clipboard + more painting tools  *(batch 2, captured 2026-07-29)*
+
+**Batch 1 shipped (build 299):** shape tools for dust/bridge/ramp, fill/bucket, eyedropper (Alt-click),
+Shift-scroll brush size, shape hotkeys, mode cursors, Escape→Hand→quit-modal, character-scaled devices,
+tower 3×3, reveal window.
+
+**Batch 2 — marquee SELECTION + CLIPBOARD (deferred; the interacting, higher-risk piece):**
+- **Ctrl + drag** → highlight a rectangular selection, restricted to the CURRENT elevation (only cells whose
+  elevation matches the active level are selected — so you can grab one layer of a stack).
+- **Delete** → clear all selected cells (terrain + entities on them).
+- **Ctrl + C** → copy the selected pattern (relative cells + their keys/elev/entities) onto the cursor as an
+  active "stamp".
+- **Click** → paste the copied group at the cursor (anchored to the hovered cell).
+- Implementation notes: a `this._sel = {c0,r0,c1,r1}` marquee + a `this._clip = [{dc,dr,key,elev,...}]`
+  clipboard; a paste ghost preview; Escape clears the selection/clipboard. Keep it on the current-elevation
+  filter for select + delete; paste writes at the active elevation. Undo already snapshots the whole world,
+  so paste/delete are undoable for free.
+
+**Additional painting tools worth considering (Kevin asked "any others?"):**
+- **2-wide bridge auto-stamp** — bridges paint free-form today; a preset stamps a 2-cell strip perpendicular
+  to the drag direction (the requested default width).
+- **Elevation BRUSH / raise-lower** — a tool that only changes elevation (+/-) without repainting the block,
+  so you can sculpt terrain height quickly (scroll or drag to raise/lower).
+- **Replace-all (global bucket)** — swap every cell of key A → key B across the map (or within the selection).
+- **Mirror / rotate the clipboard** — flip a copied stamp H/V or rotate 90° before pasting (great for symmetry).
+- **Stamp/prefab library** — save a selection as a named prefab (like the Tree) and re-drop it; a natural
+  home for Kevin's future block-built buildings/portals (§31) and rooms.
+- **Line-of-elevation ramp** — auto-fill a staircase of ascending elevations between two points.
+- **Randomize/scatter brush** — paint a cell with a % chance (for natural-looking foliage/rubble fields).
+- **Rectangular select → fill/outline with the pen** (a selection-scoped version of the shape tools).

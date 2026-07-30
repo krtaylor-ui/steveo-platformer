@@ -1,6 +1,42 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD EDITOR — PAINTING TOOLS + REVEAL WINDOW (2026-07-29, build 299, branch `overhead-redstone-bridge`)
+# ═══════════════════════════════════════════════════════════════════════
+Editor UX overhaul (batch 1 of 2). Suite green (989); editor-logic + render harnesses + probe clean.
+
+- **Shapes for placeables:** `_lineableTools` = terrain/erase/dust/bridge/ramp/ladder/lamp. `_isShapeMode`
+  + `_commitShape` route the line/rect/circle shapes through a new `_placeAt(tool,c,r)` (extracted from
+  `_paintCell`) so DUST/BRIDGES/RAMPS draw as runs, not one-by-one. Verified headless.
+- **Fill / bucket** (`shape:'fill'`, hotkey G): `_floodFill` — 4-connected flood from the clicked cell,
+  matching (terrain key + elevation), replacing with the pen. 4-connectivity ⇒ diagonal gaps seal a region
+  (verified: a diagonal stone line blocks the fill; a stone ring's 9 interior cells fill, ring + outside
+  untouched). Single-click on mousedown (not a drag).
+- **Eyedropper (Alt-click):** `_eyedrop` picks the terrain + elevation under the cursor into the pen.
+- **Shift-scroll = brush size** (plain scroll stays zoom); **B/L/R/O/G** shape hotkeys.
+- **Cursors:** `_updateCursor` (called from `_renderBar`) → a PEN (SVG data-URI) for draw tools, `grab` for
+  Hand, `default` arrow for building/mob/item/goal/spawn/tree placement.
+- **Escape flow:** ESC → back to Hand (clears selection); ESC again on Hand → `_quitModal` (Save-&-Quit /
+  Quit without saving / Cancel).
+- **Character-scaled devices:** `_drawRedstone` sizes levers/lamps off `unit*zoom` (~2 blocks) not `cs`, so
+  they stay legible/clickable at any density. **Tower** building footprint 2×2 → **3×3**.
+- **Reveal window (world setting `revealPlayer` + `revealRadius`):** the overhang pass skips canopy within
+  the radius of the player (punches a hole) so the player + nearby ground show under trees; a dashed circle
+  is drawn ONLY when the player is actually covered. Encourages searching woods.
+
+**DESIGN CALLS (Kevin asked):**
+- *Merge shapes with the brush/scroll?* — Did NOT overload the wheel with two meanings (size AND shape).
+  Instead: plain scroll = zoom, **Shift-scroll = brush size**, shapes via **hotkeys + the flyout**. Cleaner,
+  no mode ambiguity. Kept the "Solid" (fill vs outline) toggle in the flyout rather than Shift/Ctrl-click,
+  because Shift is already the erase modifier.
+- *Fill behaviour* — classic bucket (match clicked cell, replace with pen), 4-connectivity per Kevin.
+
+**DEFERRED to editor batch 2 (its own focused pass — the riskiest, most interacting piece):** the marquee
+**SELECTION + clipboard** — Ctrl-drag to select an area on the current elevation, **Delete** to clear it,
+**Ctrl+C** to copy the pattern onto the cursor, **click to paste**. Also the **2-wide bridge auto-stamp**.
+Captured in FUTURE_ROADMAP §37 with more painting-tool ideas.
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD ENGINE — BRIDGE ITEM + REDSTONE CORE (2026-07-29, build 298, branch `overhead-redstone-bridge` off `main`)
 # ═══════════════════════════════════════════════════════════════════════
 Builds 279–297 SHIPPED to `main` + deployed (fast-forward, commit 0d05667). Then a NEW work branch

@@ -48,6 +48,8 @@
       angleLockDeg:     0,          // 0 = smooth aim
       masterZoom:       1.0,
       showHiddenIndicator: false,   // show a ring when the player is under an overhang
+      revealPlayer:     false,      // punch a circle through canopy so the player stays visible
+      revealRadius:     4,          // reveal-window radius in blocks
       // Atmosphere — day/night cycle (visual tint + a small night mob-sight boost).
       dayNight:         false,      // off by default (worlds stay in daylight)
       dayLengthSec:     120,        // seconds for one full day→night→day
@@ -163,6 +165,8 @@
               ${sel('angleLockDeg', 'Aim lock', [['0', 'Smooth'], ['45', '8-way (45°)'], ['90', '4-way (90°)']])}
               ${range('masterZoom', 'Default zoom', 0.4, 2, 0.1)}
               ${toggle('showHiddenIndicator', 'Show a ring when hidden under an overhang')}
+              ${toggle('revealPlayer', 'Always show player (reveal window under canopy)')}
+              ${range('revealRadius', 'Reveal-window radius (blocks)', 2, 10, 1)}
             </div>
             <div class="ohws-grp"><h3>Atmosphere — Day / Night</h3>
               ${toggle('dayNight', 'Enable day / night cycle')}

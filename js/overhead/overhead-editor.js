@@ -229,8 +229,9 @@
       const mobOpts = P().OH_MOBS.map((mm) => `<div class="opt ${this.tool === 'mob' && this.mobKey === mm.key ? 'sel' : ''}" data-mob="${mm.key}">${swatch(mm.color)}${mm.name}</div>`).join('');
       const itemOpts = P().OH_ITEMS.map((i) => `<div class="opt ${this.tool === 'item' && this.itemKey === i.key ? 'sel' : ''}" data-item="${i.key}">${swatch(i.color)}${i.name}</div>`).join('');
       const grp = (label, cur, opts) => `<div class="grp"><div class="hd"><b>${label} ▸</b><span class="cur">${cur}</span></div><div class="oh-fly">${opts}</div></div>`;
-      const shapeOpts = [['freehand', 'Freehand'], ['line', 'Line'], ['rect', 'Rectangle'], ['circle', 'Circle / Oval']].map(([k, n]) => `<div class="opt small ${this.shape === k ? 'sel' : ''}" data-shape="${k}">${n}</div>`).join('')
-        + `<div class="opt small ${this.shapeFill ? 'sel' : ''}" data-fill="1">${this.shapeFill ? '☑' : '☐'} Fill (else outline = brush width)</div>`;
+      const shapeOpts = [['freehand', 'Freehand (B)'], ['line', 'Line (L)'], ['rect', 'Rectangle (R)'], ['circle', 'Circle / Oval (O)'], ['fill', '🪣 Fill / bucket (G)']].map(([k, n]) => `<div class="opt small ${this.shape === k ? 'sel' : ''}" data-shape="${k}">${n}</div>`).join('')
+        + `<div class="opt small ${this.shapeFill ? 'sel' : ''}" data-fill="1">${this.shapeFill ? '☑' : '☐'} Solid (else outline = brush width)</div>`
+        + `<div class="opt small" style="color:#8fa0bd">Alt-click = eyedropper · Shift-scroll = brush size</div>`;
       rail.innerHTML =
         `<div class="btn ${this.tool === 'hand' ? 'on' : ''}" id="oh-hand">✋ Hand (drag to pan · click to configure)</div>` +
         grp('Brush', this.brush + '×' + this.brush, [1, 2, 3, 5, 8].map((b) => `<div class="opt small ${b === this.brush ? 'sel' : ''}" data-brush="${b}">${b}×${b}</div>`).join('')) +
@@ -273,6 +274,7 @@
       rail.querySelectorAll('[data-brail]').forEach((el) => el.onclick = () => { this._bridgeRail = !this._bridgeRail; this._renderBar(); });
       rail.querySelectorAll('[data-bdraw]').forEach((el) => el.onclick = () => { this._bridgeDraw = !this._bridgeDraw; this._renderBar(); });
       rail.querySelectorAll('[data-rs]').forEach((el) => el.onclick = () => { this.tool = el.dataset.rs; this._renderBar(); });
+      this._updateCursor();
     },
     _esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); },
 
@@ -280,8 +282,11 @@
     _bindCanvas() {
       const cv = document.getElementById('gameCanvas');
       this._md = (e) => {
+        if (e.altKey) { const cel = this._cellFromEvent(e); this._eyedrop(cel.col, cel.row); return; }   // Alt-click = eyedropper
         if (this.tool === 'hand') { const cv2 = document.getElementById('gameCanvas'); const rect = cv2.getBoundingClientRect(); this._pan = { cx: e.clientX, cy: e.clientY, camx: this.cam.x, camy: this.cam.y, sx: CANVAS_W / rect.width, sy: CANVAS_H / rect.height, moved: false, e }; if (cv2) cv2.style.cursor = 'grabbing'; return; }
-        this._dragging = true; this._shift = e.shiftKey; this._lastCell = null;
+        this._shift = e.shiftKey;
+        if (!this._shift && this.tool === 'terrain' && this.shape === 'fill') { const cel = this._cellFromEvent(e); const n = this._floodFill(cel.col, cel.row); if (n) { this._pushHistory('fill ' + this.terrainKey); this._flash('🪣 Filled ' + n + ' cells'); } return; }
+        this._dragging = true; this._lastCell = null;
         if (this._isShapeMode()) { const cel = this._cellFromEvent(e); this._shapeAnchor = cel; this._shapeEnd = cel; } else this._paintAt(e); };
       this._mm = (e) => {
         this._hover = this._cellFromEvent(e);   // for the placement ghost
@@ -291,7 +296,7 @@
       this._mu = (e) => {
         if (this._pan) { const cv2 = document.getElementById('gameCanvas'); if (cv2) cv2.style.cursor = 'grab'; if (!this._pan.moved) { const cel = this._cellFromEvent(this._pan.e); this._handClick(cel.col, cel.row); } this._pan = null; return; }
         if (!this._dragging) return; this._dragging = false; this._lastCell = null; if (this._shapeAnchor) { this._commitShape(); this._shapeAnchor = this._shapeEnd = null; } this._pushHistory(this._paintDesc()); };
-      this._wheel = (e) => { OH_GRID.zoomBy(this.grid, e.deltaY < 0 ? 1.1 : 0.9); e.preventDefault(); };
+      this._wheel = (e) => { if (e.shiftKey) { this.brush = Math.max(1, Math.min(8, this.brush + (e.deltaY < 0 ? 1 : -1))); this._renderBar(); } else OH_GRID.zoomBy(this.grid, e.deltaY < 0 ? 1.1 : 0.9); e.preventDefault(); };
       this._kd = (e) => {
         const K = this.KEYS, pan = 48 / this.grid.masterZoom;
         if (e.code === 'ArrowLeft') this.cam.x -= pan; else if (e.code === 'ArrowRight') this.cam.x += pan;
@@ -303,7 +308,14 @@
         else if (e.code === K.zoomOut) OH_GRID.zoomBy(this.grid, 0.9);
         else if (e.code === K.undo && (e.ctrlKey || e.metaKey)) { this.undo(); }
         else if (e.code === K.redo && (e.ctrlKey || e.metaKey)) { this.redo(); }
-        else if (e.code === 'Escape') this.close();
+        // Shape hotkeys (B freehand · L line · R rect · O oval · G bucket).
+        else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyB') { this.shape = 'freehand'; this._renderBar(); }
+        else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyL') { this.shape = 'line'; this._renderBar(); }
+        else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyR') { this.shape = 'rect'; this._renderBar(); }
+        else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyO') { this.shape = 'circle'; this._renderBar(); }
+        else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyG') { this.shape = 'fill'; this.tool = 'terrain'; this._renderBar(); }
+        // Escape: return to Hand; a second Escape (already on Hand) offers save/quit.
+        else if (e.code === 'Escape') { if (this.tool !== 'hand') { this.tool = 'hand'; this._selEnt = null; this._renderBar(); } else this._quitModal(); }
       };
       cv.addEventListener('mousedown', this._md); cv.addEventListener('mousemove', this._mm);
       cv.addEventListener('mouseleave', this._ml);
@@ -337,7 +349,7 @@
       while (guard++ < 4000) { this._paintCell(x0, y0); if (x0 === x1 && y0 === y1) break; const e2 = 2 * err; if (e2 > -dy) { err -= dy; x0 += sx; } if (e2 < dx) { err += dx; y0 += sy; } }
       this._lastCell = { col, row };
     },
-    _isShapeMode() { return this.shape !== 'freehand' && (this.tool === 'terrain' || this.tool === 'erase' || this._shift); },
+    _isShapeMode() { const t = this._shift ? 'erase' : this.tool; return this.shape !== 'freehand' && this.shape !== 'fill' && this._lineableTools.indexOf(t) >= 0; },
     // Single-cell terrain-or-erase op (shared by brush + shapes). Erase only
     // affects the selected elevation + clears entities/ramps at the cell.
     _opCell(c, r) {
@@ -355,23 +367,71 @@
       }
       m.ground[r][c] = this.terrainKey; m.elevation[r][c] = this.elevLevel;
     },
+    // Tools that support the LINE/RECT/CIRCLE shape tools (drawn as a run, not 1-by-1).
+    _lineableTools: ['terrain', 'erase', 'dust', 'bridge', 'ramp', 'ladder', 'lamp'],
     _paintCell(col, row) {
       if (this.tool === 'configure') { this._openConfigAt(col, row); return; }
-      const m = this.world.mapSnapshot, half = Math.floor(this.brush / 2);
+      const half = Math.floor(this.brush / 2);
       const erasing = this.tool === 'erase' || this._shift;
       const apply = (fn) => { for (let dr = -half; dr <= half; dr++) for (let dc = -half; dc <= half; dc++) fn(col + dc, row + dr); };
       if (erasing || this.tool === 'terrain') { apply((c, r) => this._opCell(c, r)); return; }
       if (this.tool === 'tree') { this._stampTree(col, row); return; }
-      if (this.tool === 'goal') { this.world.goal = { col, row }; }
-      else if (this.tool === 'spawn') { this.world.spawns = [{ col, row }]; }
-      else if (this.tool === 'ramp' || this.tool === 'ladder') { this.world.ramps = this.world.ramps || []; if (!this.world.ramps.some((x) => x.col === col && x.row === row)) this.world.ramps.push({ col, row, kind: this.tool }); }
-      else if (this.tool === 'bridge') { this.world.bridges = this.world.bridges || []; if (!this.world.bridges.some((x) => x.col === col && x.row === row)) this.world.bridges.push({ col, row, elev: this.elevLevel, rail: !!this._bridgeRail, draw: !!this._bridgeDraw, channel: this._bridgeDraw ? 'gate' : null }); }
-      else if (this.tool === 'lever' || this.tool === 'dust' || this.tool === 'lamp') { this.world.redstone = this.world.redstone || []; if (!this.world.redstone.some((x) => x.col === col && x.row === row)) { const dev = { col, row, kind: this.tool }; if (this.tool === 'lever') { dev.on = false; dev.channel = 'gate'; } this.world.redstone.push(dev); } }
-      else if (this.tool === 'building') { if (!this.world.buildings.some((b) => b.col === col && b.row === row)) this.world.buildings.push(OH_BUILDINGS.place(this.buildingType, col, row, { level: this.elevLevel })); }
-      else if (this.tool === 'mob') { const d = P().OH_MOB_BY_KEY[this.mobKey]; this.world.mobs.push({ col, row, type: this.mobKey, hp: d.hp, speed: d.speed, detect: d.detect }); }
-      else if (this.tool === 'item') { this.world.items.push({ col, row, kind: P().OH_ITEM_BY_KEY[this.itemKey].kind, weapon: P().OH_ITEM_BY_KEY[this.itemKey].weapon, itemKey: this.itemKey }); }
+      if (this.tool === 'goal') { this.world.goal = { col, row }; return; }
+      if (this.tool === 'spawn') { this.world.spawns = [{ col, row }]; return; }
+      if (this.tool === 'building') { if (!this.world.buildings.some((b) => b.col === col && b.row === row)) this.world.buildings.push(OH_BUILDINGS.place(this.buildingType, col, row, { level: this.elevLevel })); return; }
+      if (this.tool === 'mob') { const d = P().OH_MOB_BY_KEY[this.mobKey]; this.world.mobs.push({ col, row, type: this.mobKey, hp: d.hp, speed: d.speed, detect: d.detect }); return; }
+      if (this.tool === 'item') { this.world.items.push({ col, row, kind: P().OH_ITEM_BY_KEY[this.itemKey].kind, weapon: P().OH_ITEM_BY_KEY[this.itemKey].weapon, itemKey: this.itemKey }); return; }
+      this._placeAt(this.tool, col, row);   // ramp / ladder / bridge / lever / dust / lamp (line-able)
+    },
+    // Single-cell placement for the line-able placeable layers (used by freehand AND
+    // by the shape tools so they can be drawn as runs).
+    _placeAt(tool, col, row) {
+      const m = this.world.mapSnapshot; if (col < 0 || row < 0 || col >= m.gridW || row >= m.gridH) return;
+      if (tool === 'ramp' || tool === 'ladder') { this.world.ramps = this.world.ramps || []; if (!this.world.ramps.some((x) => x.col === col && x.row === row)) this.world.ramps.push({ col, row, kind: tool }); }
+      else if (tool === 'bridge') { this.world.bridges = this.world.bridges || []; if (!this.world.bridges.some((x) => x.col === col && x.row === row)) this.world.bridges.push({ col, row, elev: this.elevLevel, rail: !!this._bridgeRail, draw: !!this._bridgeDraw, channel: this._bridgeDraw ? 'gate' : null }); }
+      else if (tool === 'lever' || tool === 'dust' || tool === 'lamp') { this.world.redstone = this.world.redstone || []; if (!this.world.redstone.some((x) => x.col === col && x.row === row)) { const dev = { col, row, kind: tool }; if (tool === 'lever') { dev.on = false; dev.channel = 'gate'; } this.world.redstone.push(dev); } }
+    },
+    // Flood-fill (bucket): from the clicked cell, replace every 4-connected cell that
+    // matches its (terrain key + elevation) with the selected terrain. 4-connectivity
+    // means diagonal gaps are treated as CLOSED (a 1-wide diagonal seals the region).
+    _floodFill(col, row) {
+      const m = this.world.mapSnapshot;
+      if (col < 0 || row < 0 || col >= m.gridW || row >= m.gridH) return 0;
+      const sk = m.ground[row][col] || 'grass', se = m.elevation[row][col] | 0;
+      if (sk === this.terrainKey && se === this.elevLevel) return 0;
+      const seen = new Set(), stack = [[col, row]]; let n = 0;
+      while (stack.length && n < 40000) {
+        const [c, r] = stack.pop(), k = c + ',' + r;
+        if (c < 0 || r < 0 || c >= m.gridW || r >= m.gridH || seen.has(k)) continue;
+        if ((m.ground[r][c] || 'grass') !== sk || (m.elevation[r][c] | 0) !== se) continue;
+        seen.add(k); n++; m.ground[r][c] = this.terrainKey; m.elevation[r][c] = this.elevLevel;
+        stack.push([c + 1, r], [c - 1, r], [c, r + 1], [c, r - 1]);
+      }
+      return n;
     },
     _drawRampIcon(ctx, kind, cx, cy, s) { OVERHEAD.drawRampIcon(ctx, kind, cx, cy, s); },
+    // Alt-click: pick the terrain + elevation under the cursor into the pen.
+    _eyedrop(col, row) {
+      const m = this.world.mapSnapshot; if (col < 0 || row < 0 || col >= m.gridW || row >= m.gridH) return;
+      this.tool = 'terrain'; this.terrainKey = m.ground[row][col] || 'grass'; this.elevLevel = m.elevation[row][col] | 0; this._renderBar(); this._flash('Picked ' + this.terrainKey + ' @ elev ' + this.elevLevel);
+    },
+    // Set the canvas cursor to match the mode: hand (pan), pen (draw), arrow (place).
+    _updateCursor() {
+      const cv = document.getElementById('gameCanvas'); if (!cv) return;
+      const t = this._shift ? 'erase' : this.tool;
+      if (t === 'hand') cv.style.cursor = 'grab';
+      else if (['building', 'mob', 'item', 'goal', 'spawn', 'tree'].indexOf(t) >= 0) cv.style.cursor = 'default';
+      else cv.style.cursor = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M4 20l3-1L18 8l-2-2L5 17z' fill='%23ffd23a' stroke='%23222' stroke-width='1.2'/%3E%3C/svg%3E\") 3 21, crosshair";
+    },
+    _quitModal() {
+      let ov = document.getElementById('oh-cfg-modal');
+      if (!ov) { ov = document.createElement('div'); ov.id = 'oh-cfg-modal'; ov.style.cssText = 'position:fixed;inset:0;z-index:9550;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6)'; document.body.appendChild(ov); }
+      ov.style.display = 'flex';
+      ov.innerHTML = `<div class="ohc-panel"><h2>Leave the editor?</h2><p style="color:#8fa0bd;font-size:13px">Save your changes before quitting?</p><div class="ohc-btns"><button id="q-cancel">Cancel</button><button id="q-quit">Quit without saving</button><button class="primary" id="q-save">Save &amp; quit</button></div></div>`;
+      document.getElementById('q-cancel').onclick = () => { ov.style.display = 'none'; };
+      document.getElementById('q-quit').onclick = () => { ov.style.display = 'none'; this.close(); };
+      document.getElementById('q-save').onclick = async () => { ov.style.display = 'none'; try { await this._save(); } catch (e) {} this.close(); };
+    },
 
     // Tree prefab: a 2-high log TRUNK (the centre cell, elev base+2 — levels 1&2 are
     // trunk) + a leaf canopy: an outer Ø5 ring at level 3 and an inner top ring at
@@ -407,8 +467,13 @@
     _commitShape() {
       if (!this._shapeAnchor || !this._shapeEnd) return;
       const cells = this._shapeCells(this._shapeAnchor, this._shapeEnd);
+      const tool = this._shift ? 'erase' : this.tool;
+      const terrainy = (tool === 'terrain' || tool === 'erase');
       const half = (this.shape === 'line' || !this.shapeFill) ? Math.floor(this.brush / 2) : 0;   // brush = outline/line width
-      for (const p of cells) { if (half > 0) { for (let dr = -half; dr <= half; dr++) for (let dc = -half; dc <= half; dc++) this._opCell(p.c + dc, p.r + dr); } else this._opCell(p.c, p.r); }
+      for (const p of cells) {
+        if (terrainy) { if (half > 0) { for (let dr = -half; dr <= half; dr++) for (let dc = -half; dc <= half; dc++) this._opCell(p.c + dc, p.r + dr); } else this._opCell(p.c, p.r); }
+        else this._placeAt(tool, p.c, p.r);   // dust / bridge / ramp / ladder / lamp along the shape
+      }
     },
 
     // ── Configuration modals (portal/pipe, goal star, spawn) ───────────────────

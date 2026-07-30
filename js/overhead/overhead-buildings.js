@@ -49,7 +49,7 @@
   register(def('spawner',     'SpawnerBuilding', { footprint: { w: 3, h: 3 }, onInteract: 'spawn', color: '#8a3f3f' }));
   register(def('core',        'Core',     { footprint: { w: 6, h: 6 }, interactionType: 'passive-visual', onInteract: 'core', color: '#c0503f' }));
   register(def('nexus',       'Nexus',    { footprint: { w: 5, h: 5 }, interactionType: 'passive-visual', onInteract: 'core', color: '#3f6dc0' }));
-  register(def('tower',       'Tower',    { footprint: { w: 2, h: 2 }, interactionType: 'interact-on-approach', onInteract: 'towerUpgrade', color: '#6a6a80' }));
+  register(def('tower',       'Tower',    { footprint: { w: 3, h: 3 }, interactionType: 'interact-on-approach', onInteract: 'towerUpgrade', color: '#6a6a80' }));
   register(def('statue',      'Decoration',{ footprint: { w: 2, h: 2 }, interactionType: 'passive-visual', color: '#9a9a9a' }));
 
   const get = (id) => REGISTRY[id] || null;

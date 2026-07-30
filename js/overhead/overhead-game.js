@@ -48,6 +48,11 @@
       this.playerH = cfg.playerHeight != null ? cfg.playerHeight : 1;
       this.attackBlock = cfg.attackBlockHeight != null ? cfg.attackBlockHeight : 2;
       this.showHidden = !!cfg.showHiddenIndicator;
+      // "Always show player" reveal window: a circle of revealRadius blocks around the
+      // player that punches through canopy/overhangs so the player + nearby ground stay
+      // visible (encourages searching woods). Only shows when actually covered.
+      this._revealPlayer = !!cfg.revealPlayer;
+      this._revealRadius = (cfg.revealRadius != null ? cfg.revealRadius : 4);
       // Day / night cycle (visual tint + a small mob-detection boost at night).
       this._dayNight = !!cfg.dayNight;
       this._dayLen = cfg.dayLengthSec > 0 ? cfg.dayLengthSec : 120;
@@ -565,9 +570,14 @@
       // along travel; boomerang spins.
       if (p._trident) { const t = p._trident; const s = S(t.x, t.y); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(Math.atan2(t.vy, t.vx) + (t.state === 'return' ? Math.PI : 0)); OVERHEAD.drawWeapon(ctx, this.player.r * z, 'trident'); ctx.restore(); }
       if (p._boom) { const b = p._boom; const s = S(b.x, b.y); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate((b.t || 0) * Math.PI * 8); OVERHEAD.drawWeapon(ctx, this.player.r * z, 'boomerang'); ctx.restore(); }
-      // Overhang pass — redraw cells ≥ player.elev+2 so the player is hidden beneath.
+      // Overhang pass — redraw canopy above the player so it hides beneath. With the
+      // reveal window on, skip canopy within revealRadius of the player (punch a hole).
+      const revR = this._revealPlayer ? this._revealRadius * this.unit : 0; let revealed = false;
       for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const k = this._key(c, r); if (k !== 'leaves') continue; const elev = this._elev(c, r); if (elev <= this.player.elev) continue;
+        if (revR > 0 && Math.hypot((c + 0.5) * g.cell - this.player.x, (r + 0.5) * g.cell - this.player.y) <= revR) { revealed = true; continue; }
         const Q = OVERHEAD.elevOffset(cs); const sp = S(c * g.cell, r * g.cell); ctx.globalAlpha = 0.96; OVERHEAD.drawTerrainTile(ctx, k, sp.x - elev * Q, sp.y - elev * Q, cs, elev); ctx.globalAlpha = 1; }
+      // The reveal circle only appears when the player is actually under canopy.
+      if (this._revealPlayer && revealed) { const s = S(this.player.x, this.player.y); ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.arc(s.x, s.y, revR * z, 0, 7); ctx.stroke(); ctx.setLineDash([]); ctx.restore(); }
       // Hidden indicator (designer opt-in).
       if (this.player.hidden && this.showHidden) { const s = S(this.player.x, this.player.y); ctx.strokeStyle = 'rgba(120,200,255,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s.x, s.y, cs * 0.4, 0, 7); ctx.stroke(); }
       // Death FX (family-friendly). Pit deaths shrink+flail first, then everyone bursts
@@ -721,14 +731,14 @@
       }
     }
     _drawRedstone(ctx, S, cs) {
-      const g = this.grid;
+      const g = this.grid, u = this.unit * (this.grid.masterZoom || 1);   // CHARACTER-relative size (density-independent)
       for (const d of this._redstone) {
         const sp = S((d.col + 0.5) * g.cell, (d.row + 0.5) * g.cell), tl = S(d.col * g.cell, d.row * g.cell);
         const on = OH_REDSTONE.cellPowered(this._rs, d.col, d.row);
-        if (d.kind === 'lever' || d.kind === 'button') OVERHEAD.drawLever(ctx, sp.x, sp.y, cs * 0.4, !!d.on);
+        if (d.kind === 'lever' || d.kind === 'button') OVERHEAD.drawLever(ctx, sp.x, sp.y, u * 0.9, !!d.on);   // ~2 character-blocks
         else if (d.kind === 'dust') OVERHEAD.drawDust(ctx, tl.x, tl.y, cs, on);
-        else if (d.kind === 'lamp') OVERHEAD.drawLamp(ctx, sp.x, sp.y, cs * 0.5, on);
-        else if (d.kind === 'tx' || d.kind === 'rx') { OVERHEAD.drawLamp(ctx, sp.x, sp.y, cs * 0.42, on); ctx.fillStyle = '#fff'; ctx.font = `${Math.max(8, cs * 0.3) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(d.kind === 'tx' ? '↑' : '↓', sp.x, sp.y); ctx.textBaseline = 'alphabetic'; }
+        else if (d.kind === 'lamp') OVERHEAD.drawLamp(ctx, sp.x, sp.y, u * 0.8, on);
+        else if (d.kind === 'tx' || d.kind === 'rx') { OVERHEAD.drawLamp(ctx, sp.x, sp.y, u * 0.7, on); ctx.fillStyle = '#fff'; ctx.font = `${Math.max(8, u * 0.5) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(d.kind === 'tx' ? '↑' : '↓', sp.x, sp.y); ctx.textBaseline = 'alphabetic'; }
       }
     }
     _drawHUD(ctx) {

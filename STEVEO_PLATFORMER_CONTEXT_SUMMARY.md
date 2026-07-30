@@ -1,4 +1,25 @@
-## CURRENT STATE (2026-07-29) — builds 279–297 SHIPPED to `main` ✅; NEW work on `overhead-redstone-bridge` (build 298) — Bridge item + Redstone core — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — builds 279–297 SHIPPED to `main` ✅; `overhead-redstone-bridge` branch now at build 299 (Bridge + Redstone + Editor painting tools) — NOT merged, browser-UNTESTED
+
+**SHIPPED to `main` (live):** Overhead builds 279–297 + Campaign MVP.
+
+**Branch `overhead-redstone-bridge` (builds 298–299, NOT merged):** Suite green (989); harnesses + probe clean.
+- **298 — Bridge + Redstone core:** grid-agnostic `OH_REDSTONE` (levers/dust/lamps/tx/rx + named channels);
+  bridge deck (walk-over-gap), guardrails, and a **drawbridge** that closes on a redstone channel (lever+
+  drawbridge default to "gate"). Editor Bridge & Redstone palette.
+- **299 — Editor painting tools:** shapes for dust/bridge/ramp; **fill/bucket** (G, 4-conn); **Alt-click
+  eyedropper**; **Shift-scroll brush size**; shape hotkeys B/L/R/O/G; mode **cursors** (pen/hand/arrow);
+  **Escape → Hand → save/quit modal**; character-scaled levers/lamps; **tower 3×3**; **"Always show player"
+  reveal window** (world setting). Design calls + deferred **selection/clipboard** (batch 2) in FUTURE_ROADMAP §37.
+
+**Next (editor batch 2, §37):** marquee select (Ctrl-drag, current-elevation) + Delete + Ctrl+C + click-paste,
+the 2-wide bridge auto-stamp, and more tools (elevation brush, replace-all, clipboard mirror/rotate, prefab
+library). Plus redstone device set + config modals (§32). Detail in `DECISIONS_LOG.md`.
+
+**NEEDS BROWSER PLAYTEST** before merging 298–299 to `main`.
+
+---
+
+## PRIOR STATE (2026-07-29) — builds 279–297 SHIPPED to `main` ✅; build 298 (Bridge + Redstone core) on `overhead-redstone-bridge`
 
 **SHIPPED:** the whole Overhead engine (builds 279–297) + Campaign MVP (278) fast-forwarded to `main` and
 pushed (0d05667) — live on Railway. (Campaign server features need `server/sql/campaigns.sql` in Supabase;
