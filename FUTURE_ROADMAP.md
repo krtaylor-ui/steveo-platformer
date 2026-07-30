@@ -944,7 +944,11 @@ speed segments, launch platform, center of gravity, rail gate) plus everything b
 
 ---
 
-## 24. Overhead Engine — free-roam top-down substrate  *(split from Campaign §12 2026-07-27; **MVP FOUNDATION BUILT build 279, branch `overhead-engine`, 2026-07-28** — see status note)*
+## 24. Overhead Engine — free-roam top-down substrate  *(SCALE MODEL now speced in §39 — read that first)*
+
+> **See §39** for the agreed scale/nomenclature model (Plan A block-elevation, tiling, mining, grid-lock, independent zoom ratios).
+
+### 24-orig. Overhead Engine — free-roam top-down substrate  *(split from Campaign §12 2026-07-27; **MVP FOUNDATION BUILT build 279, branch `overhead-engine`, 2026-07-28** — see status note)*
 
 > **STATUS 2026-07-28 — MVP FOUNDATION BUILT (depth-first), browser-UNTESTED, NOT merged.** Built per the
 > "Overhead Engine (FULL BUILD — MEGA SESSION)" brief on branch `overhead-engine`. **SHIPPED + headless-tested
@@ -1073,7 +1077,7 @@ same treatment as Sports / RTS / MOBA Hero mechanics.
 
 ---
 
-## 31. Overhead building/sprite SKIN BUILDER  *(idea captured 2026-07-29)*
+## 31. Overhead building/sprite SKIN BUILDER  *(now also the PREFAB / structure creator — see §39)*  *(idea captured 2026-07-29)*
 
 The Overhead Engine draws each building type from a data-driven `drawBuilding(type, …, skin)`
 with a `skin` field on every placed instance (only the `'default'` skin ships today). Eventually:
@@ -1320,3 +1324,90 @@ passable. **Effort:** MEDIUM–LARGE (own batch).
 coins), set in its modal. Opening (E, or a proximity trigger) plays an open/close lid ANIMATION and grants
 the contents to the player (weapons → hotbar, keys → key-ring, coins → score). Optionally lockable (reuse the
 key logic). **Effort:** MEDIUM.
+
+## 39. Overhead SCALE MODEL & authoring tiers — CANONICAL DESIGN SPEC  *(agreed with Kevin 2026-07-30; supersedes the scale bits of §24/§31; NOT yet implemented)*
+
+The reference for how density, size, elevation, mining, and prefabs relate in the overhead engine.
+Distilled from the 2026-07-30 design conversation + the comparison artifact (Current vs Plan A vs Plan B).
+
+### 39.1 Nomenclature (use these words going forward)
+- **Block** (tile) = one player-sprite footprint = 32 world-px = `unit`. **The gameplay ruler** — distances,
+  speeds, elevation, reach, detection are all in blocks. The player is always 1 block; density never resizes it.
+- **Subcell** = one fine grid cell = `32 ÷ density` px. **The painting/detail resolution only** — never a size.
+- **Density** = subcells per block per axis (1,2,3,4…). A *detail* knob, not a scale knob.
+- **Level** = one step of elevation = **one block of height** (Plan A).
+- **Zoom** (`masterZoom`) = camera magnification only; zero gameplay effect.
+- Quote world size to creators in **blocks** (baseW × baseH), never the fine-grid dims.
+
+### 39.2 The scale decision — PLAN A (chosen), Plan B (rejected for the world)
+Root cause of Kevin's pain: elevation + structures render in **subcells** (`elevOffset = cell*0.22`) while the
+player/mobs/items render in **blocks** (`unit`), so structures shrink as density rises.
+- **PLAN A (chosen):** measure elevation in BLOCKS. One level = one block tall at any density. Fix = a
+  render-scale change (`elevOffset`/jump-lift/building/bridge/ramp visuals use `unit`, not `cell`) + elevation
+  painting quantized to blocks. **Ramps/collision/climb/jump UNCHANGED.** Density stays purely horizontal.
+- **PLAN B (rejected for the open world):** subdivide height by density (N subcells = 1 level). Same look as A
+  for a block-tall wall, but forces ramps to climb `density` steps/block and re-defines every "level" — the big
+  rework. NOT done in the world; instead allowed *inside prefabs* (see 39.5).
+- **Surface vs height split:** the block's TOP SURFACE stays subcell-resolution (fine texture/detail); only
+  HEIGHT quantizes to blocks. So Plan A keeps the horizontal detail benefit of high density.
+- **Tiling, not stretching:** when a block spans density² subcells, TILE/duplicate the surface pattern (constant
+  texel size); do not stretch one texture over the block.
+
+### 39.3 Object scale references (per-thing ruler)
+- **Player-scale (block, density-independent), DEFAULT:** player, mobs, items, keys, weapons, redstone devices,
+  interactive objects, ramps, bridges, doors, chests, elevation. Footprints defined in **blocks**.
+- **Subcell-scale (density-scaled):** raw ground tiles / textures / fine decorative detail (the resolution layer).
+- **Independent ZOOM RATIOS (world settings, planned):** buildings carry their OWN zoom ratio so a creator can do
+  RPG-style small towns; items/mobs/interactive objects default to **player scale** but each gets an optional
+  world-setting override. Ramps scale like structures (block-scaled visual).
+
+### 39.4 Ramps under Plan A
+Gameplay unchanged (a per-block "climb the delta here" cell). Visual becomes block-scaled (reads as a full
+block-tall wedge). Long-term, replace neighbour-inference with **explicit low-edge / high-edge** ramps authored
+in the prefab creator and **rotated** on placement (see 39.5).
+
+### 39.5 Two authoring tiers — coarse world + detailed PREFABS (the §31 creator)
+- **World** = Plan A (coarse, block-scaled, gameplay-clean; no ramp rework).
+- **Prefab / structure creator** = author with Plan-B-level detail INSIDE a block-bounded box (fine sub-block
+  elevation, decorated relief, custom ramps). Standard "prefab/tileset/structure-block" pattern.
+- **Placement** = drop the prefab at whole-block positions as a single **block-sized entity** (like a building),
+  with **rotation** (0/90/180/270).
+- A prefab stores: **footprint** (in blocks), **internal art** (subcell res), a **gameplay profile** the world
+  reads per-block (solid / walkable / hazard / ramp-with-explicit-low+high-edges / floor-at-elev-N), **edge
+  ports** for redstone (which sides accept/emit), an **interaction** hook (door/chest/lever/lock), and rotation.
+- **Depth decision:** start with **(a) OPAQUE** prefabs — the world uses the prefab's summary per-block profile
+  (visual detail is cosmetic; gameplay is block-level). Covers custom ramps, decorated buildings, statues,
+  lock-doors. Only build **(b) EXPANDED** (stamp internal subcells so the player traverses real sub-block
+  geometry) if a level truly needs it.
+
+### 39.6 Mining (overhead "normal" mode) — block-mined, subcell-yielded  *(Kevin's model)*
+- Mining is **block-based** (you mine a whole block), but the **YIELD = the subcells within that block.** So a
+  density-4 block yields **16** subcell-worth of materials (density², flat surface layer) — or **64** (density³)
+  if blocks are treated as volumetric. Default = flat surface = **density²**.
+- Consequence (intended): higher density = **much more material per mine**, so recipe/ingredient **costs scale up
+  to match** — density becomes a deliberate **economy lever**, not just detail. (Alternative if we ever want it
+  neutral: normalize yield per block regardless of density.)
+- Because traits live on the **subcell surface layer** (39.2), a block can contain **mixed ores** — mining it
+  collects each subcell's trait. No "which trait wins" problem. Pairs with grid-lock (39.7) if a creator wants
+  uniform-trait blocks.
+- **No density restriction needed** for normal/mining worlds — the model scales at any density.
+
+### 39.7 Grid-lock + placement (the player is CONTINUOUS)
+- The player moves in continuous world-coords; collision is point-sampled. **Grid alignment is never required for
+  movement/collision** — it's an authoring convenience + matters only to inherently cell-based systems (mining,
+  redstone).
+- **Grid-lock paint mode (planned):** a "snap to block" brush that lays a whole block (density² subcells) of one
+  terrain type, snapped to block boundaries — for clean block-aligned terrain and uniform-trait blocks. (Same
+  mechanism as Plan A's block-quantized elevation brush.)
+- **Placement:** buildings default to **block-snap** (block-scaled structures look right aligned, nudge to subcell
+  allowed); mobs/items/keys/decorations place **freely on subcells**; a global **"snap to block" toggle** covers
+  "make everything line up."
+
+### 39.8 Implementation order (when we return, after shipping 298–306)
+1. **Scale-unification pass (Plan A):** structure/elevation visuals → `unit` (block); tile surfaces; quantize the
+   elevation brush to blocks; building footprints in blocks; re-tune the 3 sample worlds. Small, reversible.
+2. **Independent zoom ratios** (world settings: building zoom; item/mob/interactive default player-scale + overrides).
+3. **Prefab / structure creator (§31)** — opaque prefabs first; custom ramps (explicit low/high + rotation); the
+   home for detailed structures + doors/chests.
+4. **Mining + grid-lock** (if/when normal-mode-in-overhead ships): block-mine → subcell-yield; grid-lock paint;
+   snap toggle.

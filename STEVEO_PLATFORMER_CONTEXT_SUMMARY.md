@@ -11,9 +11,11 @@
 - **Sample worlds:** `tools/gen-overhead-worlds.js` + 3 validated worlds in `tools/overhead-worlds/` (maze /
   valley / temple) — import via Sandbox ▸ Import from file.
 
-**NEXT (FUTURE_ROADMAP §38):** DOORS (span entity — placed between 2 waypoints w/ height, pivots about the
-anchor, opens via redstone / key / action button, swing-dir + invert + skin) and CHESTS (holds items, open/
-close animation). Then: build out the 16 Campaign levels; make a game mode (Tower Defense) real.
+**NEXT:** (1) **Scale-unification pass — the whole model is speced in FUTURE_ROADMAP §39** (CANONICAL): Plan A
+block-elevation + tiling + nomenclature (block/subcell/density/level/zoom), independent building/item zoom
+ratios, the prefab/structure creator (§31, Plan-B detail inside block entities + custom ramps), mining
+(block-mined → subcell-yield → density-as-economy), and grid-lock/snap. (2) DOORS + CHESTS (§38). Then build
+the 16 Campaign levels; make a mode (Tower Defense) real. **Read §39 before touching scale/elevation.**
 
 **NEEDS BROWSER PLAYTEST** before merging 298–306 to `main`. (This is a large stack — playtest + merge is due.)
 
