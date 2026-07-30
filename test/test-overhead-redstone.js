@@ -135,5 +135,21 @@ console.log('Directional gate (input/output sides):');
   ok(!P(r, 5, 6), 'AND with input side N (empty) ignores the W lever → off');
 }
 
+console.log('Dust is pure WIRE — it conducts but never transmits a channel:');
+{
+  // A lever (Tx #1) → dust → dust → lamp. The dust carries a legacy txId (as older
+  // saved worlds did), but must NOT broadcast 'T2'/'T3'; only the lever broadcasts 'T1'.
+  const dev = [
+    { col: 1, row: 1, kind: 'lever', on: true, txId: 1 },
+    { col: 2, row: 1, kind: 'dust', txId: 2 }, { col: 3, row: 1, kind: 'dust', txId: 3 },
+    { col: 4, row: 1, kind: 'lamp', rxIds: [1] },
+  ];
+  const r = OH_REDSTONE.evaluate(dev);
+  ok(P(r, 2, 1) && P(r, 3, 1), 'powered dust still CONDUCTS to neighbours');
+  ok(OH_REDSTONE.channelOn(r, 'T1'), 'the lever transmits on its channel T1');
+  ok(!OH_REDSTONE.channelOn(r, 'T2') && !OH_REDSTONE.channelOn(r, 'T3'), 'dust does NOT transmit T2/T3 even with a baked txId');
+  ok(P(r, 4, 1), 'a lamp listening to the lever (T1) lights through the dust wire');
+}
+
 console.log(`\noverhead redstone: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

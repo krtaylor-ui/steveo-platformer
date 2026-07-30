@@ -448,7 +448,9 @@
       else if (['lever', 'dust', 'lamp', 'plate', 'weight', 'piston', 'and', 'not', 'nor', 'lock'].indexOf(tool) >= 0) {
         this.world.redstone = this.world.redstone || [];
         if (!this.world.redstone.some((x) => x.col === col && x.row === row)) {
-          const dev = { col, row, kind: tool, txId: this._nextTxId() };   // every device gets an auto Tx number
+          // Dust is pure WIRE — it conducts power to neighbours but does NOT transmit,
+          // so it gets no Tx number; every other device gets an auto Tx number.
+          const dev = (tool === 'dust') ? { col, row, kind: tool } : { col, row, kind: tool, txId: this._nextTxId() };
           if (tool === 'lever') { dev.on = false; dev.channel = 'gate'; }        // channel == transmit (quick default)
           else if (tool === 'plate') dev.txChannel = 'gate';
           else if (tool === 'weight') { dev.txChannel = 'gate'; dev.threshold = 2; }
@@ -645,7 +647,7 @@
     // Multi-select checklist of every OTHER device's Tx number (labelled by name) to
     // listen to — the side-scroll Tx/Rx model.
     _txChecklist(cls, listenIds, excludeCol, excludeRow) {
-      const others = (this.world.redstone || []).filter((x) => x.txId != null && !(x.col === excludeCol && x.row === excludeRow));
+      const others = (this.world.redstone || []).filter((x) => x.txId != null && x.kind !== 'dust' && !(x.col === excludeCol && x.row === excludeRow));
       if (!others.length) return `<p style="color:#8fa0bd;font-size:12px">No transmitters yet — place a lever / plate / gate first.</p>`;
       const set = Array.isArray(listenIds) ? listenIds : [];
       return `<div style="max-height:150px;overflow:auto;margin:4px 0;border:1px solid #2c3648;border-radius:6px;padding:4px">` +
