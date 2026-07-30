@@ -36,6 +36,7 @@
       // player/mobs/weapons keep the same real size + speed (the density bug fix).
       this.unit = this.grid.cell * (map.density || 1);
       this._testMode = !!opts.testMode;
+      this._debug = !!opts.testMode;   // test-critical state HUD (top-right); ` toggles
       this.ground = map.ground || []; this.elevation = map.elevation || [];
       this.buildings = (worldData.buildings || []).slice();
       this.items = (worldData.items || []).map((it) => ({ ...it, taken: false }));
@@ -166,6 +167,7 @@
 
     _update() {
       const inp = this.input; this._frame = (this._frame || 0) + 1;
+      if (inp.isJustDown && inp.isJustDown('Backquote')) this._debug = !this._debug;   // toggle the debug HUD
       // Advance the day/night clock (~60fps). detectMultiplier feeds mob sight.
       if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') { this._elapsed += 1 / 60; this._tod = OH_DAYNIGHT.phase(this._elapsed, this._dayLen, this._dayStart); this._detectMult = OH_DAYNIGHT.detectMultiplier(this._tod); }
       // Re-evaluate the redstone network (drives drawbridge channels, lamps, doors).
@@ -806,8 +808,33 @@
         else if (d.kind === 'tx' || d.kind === 'rx') { OVERHEAD.drawLamp(ctx, sp.x, sp.y, u * 0.7, on); ctx.fillStyle = '#fff'; ctx.font = `${Math.max(8, u * 0.5) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(d.kind === 'tx' ? '↑' : '↓', sp.x, sp.y); ctx.textBaseline = 'alphabetic'; }
       }
     }
+    // Test-critical state readout (top-right) — mirrors the side-view perf HUD style.
+    // Prioritises what a browser tester needs to VERIFY from a screenshot: player
+    // elevation, keys held, live redstone channels, time-of-day, mode. ` toggles it.
+    _drawDebugHUD(ctx) {
+      const p = this.player, c = this._cellOf(p.x, p.y);
+      const chans = (this._rs && this._rs.channels) ? Object.keys(this._rs.channels) : [];
+      const tod = (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') ? OH_DAYNIGHT.label(this._tod) + ' ' + this._tod.toFixed(2) : 'off';
+      const ver = (typeof GAME_VERSION !== 'undefined') ? GAME_VERSION.split(' (')[0] : 'overhead';
+      const lines = [
+        ver + '  · ' + this.mode + '  · ' + this.state,
+        'map ' + this.grid.gridW + '×' + this.grid.gridH + ' d' + (this.map.density || 1) + '  zoom ' + (this.grid.masterZoom || 1).toFixed(2),
+        'plr c' + c.col + ',r' + c.row + ' elev' + p.elev + ' hp' + p.hp + '/' + p.maxHp + ' wpn:' + (p.weapon || '-'),
+        'keys: ' + ((p.keys && p.keys.length) ? p.keys.join(',') : '—') + '  sprint:' + (this._sprint ? 1 : 0),
+        'jumpClear ' + this._jumpClear + '+' + this._doubleJumpClear + '  day/night: ' + tod,
+        'channels ON: ' + (chans.length ? chans.join(' ') : '—'),
+      ];
+      ctx.save(); ctx.font = '11px ui-monospace,monospace'; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+      let w = 0; for (const l of lines) w = Math.max(w, ctx.measureText(l).width);
+      const x = CANVAS_W - w - 12, y = 40;
+      ctx.fillStyle = 'rgba(0,0,0,.72)'; ctx.fillRect(x - 6, y - 4, w + 12, lines.length * 14 + 20);
+      ctx.fillStyle = '#9fddff'; lines.forEach((l, i) => ctx.fillText(l, x, y + i * 14));
+      ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.fillText('` toggles HUD', x, y + lines.length * 14 + 3);
+      ctx.restore();
+    }
     _drawHUD(ctx) {
       ctx.textAlign = 'left';
+      if (this._debug) this._drawDebugHUD(ctx);
       // Day/night clock (top-right): a sun (day) or moon (night) disc + a label.
       if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') {
         const t = this._tod, lab = OH_DAYNIGHT.label(t), night = OH_DAYNIGHT.darkness(t) > 0.5, cx = CANVAS_W - 96;
