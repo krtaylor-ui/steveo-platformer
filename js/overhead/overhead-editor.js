@@ -376,7 +376,7 @@
         else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyO') { this.shape = 'circle'; this._renderBar(); }
         else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyG') { this.shape = 'fill'; this.tool = 'terrain'; this._renderBar(); }
         // Escape: clear paste/selection first, then return to Hand, then offer quit.
-        else if (e.code === 'Escape') { if (this._bridgeStart) { this._bridgeStart = null; this._flash('Bridge cancelled'); } else if (this._pasting || this._clip) { this._pasting = false; this._clip = null; this._flash('Paste cancelled'); } else if (this._sel) { this._sel = null; this._selBox = null; } else if (this.tool !== 'hand') { this.tool = 'hand'; this._selEnt = null; this._renderBar(); } else this._quitModal(); }
+        else if (e.code === 'Escape' || e.code === 'Enter') { if (this._pickTx) { this._endPickTx(); } else if (e.code !== 'Escape') { /* Enter only finishes pick mode */ } else if (this._bridgeStart) { this._bridgeStart = null; this._flash('Bridge cancelled'); } else if (this._pasting || this._clip) { this._pasting = false; this._clip = null; this._flash('Paste cancelled'); } else if (this._sel) { this._sel = null; this._selBox = null; } else if (this.tool !== 'hand') { this.tool = 'hand'; this._selEnt = null; this._renderBar(); } else this._quitModal(); }
       };
       this._dbl = (e) => { const cel = this._cellFromEvent(e); this._selectConnected(cel.col, cel.row); };
       cv.addEventListener('mousedown', this._md); cv.addEventListener('mousemove', this._mm);
@@ -634,6 +634,7 @@
     // portal/goal/spawn. Selecting highlights; a second click moves + unselects
     // (clicking the same one again just unselects).
     _handClick(col, row) {
+      if (this._pickTx) { this._pickTxClick(col, row); return; }   // click-to-connect: toggle a transmitter
       if (this._selEnt) { const s = this._selEnt.ref;
         if (s.from) { const dc = col - s.from.col, dr = row - s.from.row; s.from = { col, row }; s.to = { col: s.to.col + dc, row: s.to.row + dr }; }   // move a bridge SPAN (translate both ends)
         else if (s.col === col && s.row === row) { this._selEnt = null; return; }
@@ -655,10 +656,15 @@
     // listen to — the side-scroll Tx/Rx model.
     _txChecklist(cls, listenIds, excludeCol, excludeRow) {
       const others = (this.world.redstone || []).filter((x) => x.txId != null && x.kind !== 'dust' && ['lamp', 'piston', 'rx'].indexOf(x.kind) < 0 && !(x.col === excludeCol && x.row === excludeRow));
-      if (!others.length) return `<p style="color:#8fa0bd;font-size:12px">No transmitters yet — place a lever / plate / gate first.</p>`;
       const set = Array.isArray(listenIds) ? listenIds : [];
-      return `<div style="max-height:150px;overflow:auto;margin:4px 0;border:1px solid #2c3648;border-radius:6px;padding:4px">` +
-        others.map((o) => `<label style="display:flex;gap:8px;align-items:center;padding:3px 4px"><input type="checkbox" class="${cls}" value="${o.txId}" ${set.indexOf(o.txId) >= 0 ? 'checked' : ''}> Tx #${o.txId} — ${o.kind} @${o.col},${o.row}</label>`).join('') + `</div>`;
+      const summary = set.length
+        ? `<p style="color:#7fe0a0;font-size:12px;margin:2px 0">Listening to: ${set.map((id) => 'Tx #' + id).join(', ')}</p>`
+        : `<p style="color:#8fa0bd;font-size:12px;margin:2px 0">Not listening to any transmitter yet.</p>`;
+      if (!others.length) return summary + `<p style="color:#8fa0bd;font-size:12px">No transmitters on the map — place a lever / plate / gate first.</p>`;
+      // Selected transmitters sort to the TOP (then by number), so it's clear what's wired.
+      const sorted = others.slice().sort((a, b) => (set.indexOf(a.txId) >= 0 ? 0 : 1) - (set.indexOf(b.txId) >= 0 ? 0 : 1) || a.txId - b.txId);
+      return summary + `<div style="max-height:150px;overflow:auto;margin:4px 0;border:1px solid #2c3648;border-radius:6px;padding:4px">` +
+        sorted.map((o) => `<label style="display:flex;gap:8px;align-items:center;padding:3px 4px"><input type="checkbox" class="${cls}" value="${o.txId}" ${set.indexOf(o.txId) >= 0 ? 'checked' : ''}> Tx #${o.txId} — ${o.kind} @${o.col},${o.row}</label>`).join('') + `</div>`;
     },
     // Redstone device config: shows this device's auto Tx number + name, a multi-select
     // of sources to RECEIVE from (rxIds), plus lever start-state / weight threshold.
@@ -690,7 +696,7 @@
         if (isGate) { const rd = (c) => [].slice.call(document.querySelectorAll('.' + c + ':checked')).map((el) => el.value); d.inputs = rd('gt-in'); d.outputs = rd('gt-out'); if (!d.outputs.length) d.outputs = ['e']; if (!d.inputs.length) d.inputs = ['w']; }
         else if (isSink) { const ids = [].slice.call(document.querySelectorAll('.dv-rx:checked')).map((el) => +el.value); if (!ids.length) { this._flash('⚠ A receiver needs at least one source — not saved'); throw new Error('rx required'); } d.rxIds = ids; d.rxChannel = undefined; }
         else if (isLock) { d.acceptKeys = [].slice.call(document.querySelectorAll('.lk-key:checked')).map((el) => el.value); d.consume = document.getElementById('lk-consume').checked; d.toggle = document.getElementById('lk-toggle').checked; }
-      }, d);
+      }, d, isSink ? { target: d } : null);
     },
     // Unique key ids currently placed on the map (for the Lock's accepted-keys list).
     _keysOnMap() {
@@ -725,7 +731,7 @@
         b.startDown = document.getElementById('br-startdown').checked;
         const ids = [].slice.call(document.querySelectorAll('.br-rx:checked')).map((el) => +el.value);
         if (b.draw) { b.rxIds = ids.length ? ids : undefined; b.channel = ids.length ? undefined : 'gate'; } else { b.rxIds = undefined; b.channel = undefined; }
-      }, b);
+      }, b, { target: b, isBridge: true });
     },
     // Called from a config modal's "Move" button — closes the modal and arms the
     // click-to-move indicator on the object.
@@ -738,18 +744,35 @@
       if (sp) return this._spawnModal(sp);
       this._flash('Nothing to configure here — click a portal/pipe, goal, or spawn.');
     },
-    _cfgModal(title, inner, onSave, moveRef) {
+    _cfgModal(title, inner, onSave, moveRef, pickCfg) {
       let ov = document.getElementById('oh-cfg-modal');
       if (!ov) { ov = document.createElement('div'); ov.id = 'oh-cfg-modal'; ov.style.cssText = 'position:fixed;inset:0;z-index:9550;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6)'; document.body.appendChild(ov); }
       ov.style.display = 'flex';
+      const pickBtn = pickCfg ? `<button id="cfg-pick">＋ Pick on map</button>` : '';
       const extra = moveRef ? `<button id="cfg-move">✥ Move</button><button id="cfg-del" style="background:#7a2b2b;border-color:#a85252">🗑 Delete</button>` : '';
-      ov.innerHTML = `<div class="ohc-panel"><h2>${title}</h2>${inner}<div class="ohc-btns">${extra}<button id="cfg-cancel">Cancel</button><button class="primary" id="cfg-save">Save</button></div></div>`;
+      ov.innerHTML = `<div class="ohc-panel"><h2>${title}</h2>${inner}<div class="ohc-btns">${pickBtn}${extra}<button id="cfg-cancel">Cancel</button><button class="primary" id="cfg-save">Save</button></div></div>`;
       document.getElementById('cfg-cancel').onclick = () => { ov.style.display = 'none'; };
       document.getElementById('cfg-save').onclick = () => { try { onSave(); } catch (e) {} ov.style.display = 'none'; };
       if (moveRef) {
         document.getElementById('cfg-move').onclick = () => { try { onSave(); } catch (e) {} ov.style.display = 'none'; this._startMove(moveRef); };
         document.getElementById('cfg-del').onclick = () => { ov.style.display = 'none'; this._deleteObj(moveRef); };
       }
+      // "Pick on map": save the current checkboxes, close, then arm click-to-connect so
+      // clicking transmitters on the canvas toggles them in this receiver's rxIds.
+      if (pickCfg) document.getElementById('cfg-pick').onclick = () => { try { onSave(); } catch (e) {} ov.style.display = 'none'; this._armPickTx(pickCfg); };
+    },
+    // ── Click-to-connect: pick transmitters on the map instead of hunting the list ──
+    _armPickTx(cfg) { this._pickTx = cfg; this.tool = 'hand'; this._renderBar(); this._updateCursor(); this._flash('Click transmitters on the map to toggle · Esc when done'); },
+    _endPickTx() { const cfg = this._pickTx; this._pickTx = null; if (!cfg) return; this._pushHistory('wire receiver'); if (cfg.isBridge) this._bridgeModal(cfg.target); else this._deviceModal(cfg.target); },
+    _pickTxClick(col, row) {
+      const t = (this.world.redstone || []).find((d) => d.col === col && d.row === row);
+      const isTx = t && t.txId != null && t.kind !== 'dust' && ['lamp', 'piston', 'rx'].indexOf(t.kind) < 0;
+      if (!isTx) { this._flash('Not a transmitter — click a lever / plate / gate / lock'); return; }
+      const tgt = this._pickTx.target; tgt.rxIds = Array.isArray(tgt.rxIds) ? tgt.rxIds : [];
+      const i = tgt.rxIds.indexOf(t.txId);
+      if (i >= 0) { tgt.rxIds.splice(i, 1); this._flash('Removed Tx #' + t.txId); }
+      else { tgt.rxIds.push(t.txId); this._flash('Listening to Tx #' + t.txId); }
+      if (this._pickTx.isBridge) { tgt.draw = true; tgt.channel = tgt.rxIds.length ? undefined : 'gate'; }
     },
     // Remove an object (device / bridge / building / mob / item / ramp / spawn / goal) by reference.
     _deleteObj(ref) {
@@ -900,6 +923,23 @@
       if (this.world.goal) { const gc = (typeof GOAL_COLORS !== 'undefined' && GOAL_COLORS[this.world.goal.color || 0]) || { hex: '#ffd700' }; const sp = S((this.world.goal.col + 1) * g.cell, (this.world.goal.row + 1) * g.cell); ctx.fillStyle = gc.hex; ctx.font = `${(cs * 1.8) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.6); }
       // Hand-selected mob/item highlight (moveable — click a new spot to move it).
       if (this._selEnt && this.tool === 'hand') { const s = this._selEnt.ref; const sp = S((s.col + 0.5) * g.cell, (s.row + 0.5) * g.cell); const pulse = 0.5 + 0.3 * Math.sin(Date.now() / 150); ctx.strokeStyle = `rgba(120,220,255,${pulse})`; ctx.lineWidth = 3; ctx.strokeRect(sp.x - cs * 0.5, sp.y - cs * 0.5, cs, cs); ctx.fillStyle = 'rgba(120,220,255,.85)'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('click to move', sp.x, sp.y - cs * 0.6); }
+      // Click-to-connect (pick transmitters): ring + #N badge on every transmitter,
+      // green if this receiver already listens to it, blue if available.
+      if (this._pickTx) {
+        const listen = Array.isArray(this._pickTx.target.rxIds) ? this._pickTx.target.rxIds : [];
+        const pulse = 0.55 + 0.3 * Math.sin(Date.now() / 140);
+        for (const d of (this.world.redstone || [])) {
+          if (d.txId == null || d.kind === 'dust' || ['lamp', 'piston', 'rx'].indexOf(d.kind) >= 0) continue;
+          const sel = listen.indexOf(d.txId) >= 0, sp = S((d.col + 0.5) * g.cell, (d.row + 0.5) * g.cell);
+          ctx.strokeStyle = sel ? `rgba(127,224,160,${pulse})` : `rgba(120,190,255,${pulse})`; ctx.lineWidth = 3;
+          ctx.strokeRect(sp.x - cs * 0.5, sp.y - cs * 0.5, cs, cs);
+          ctx.fillStyle = sel ? '#7fe0a0' : '#bfe0ff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+          ctx.fillText('#' + d.txId, sp.x, sp.y - cs * 0.55);
+        }
+        ctx.fillStyle = 'rgba(10,14,22,.82)'; ctx.fillRect(0, 0, ctx.canvas.width, 26);
+        ctx.fillStyle = '#dbe4f3'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('Click transmitters to toggle  ·  Esc / Enter when done', ctx.canvas.width / 2, 17);
+      }
       // Distinct MAP-EDGE indicator (hazard stripes just outside the world bounds)
       // so the creator knows when they're looking at the real edge — deliberately
       // NOT a block look.
