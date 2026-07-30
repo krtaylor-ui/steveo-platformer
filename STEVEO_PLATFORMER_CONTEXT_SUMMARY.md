@@ -1,4 +1,23 @@
-## CURRENT STATE (2026-07-29) — builds 279–297 SHIPPED to `main` ✅; `overhead-redstone-bridge` branch at build 302 (Bridge + Redstone + Editor 2.0 + selection + redstone devices) — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — builds 279–297 SHIPPED to `main` ✅; `overhead-redstone-bridge` branch at build 303 — NOT merged, browser-UNTESTED
+
+**SHIPPED to `main` (live):** Overhead builds 279–297 + Campaign MVP.
+
+**Branch `overhead-redstone-bridge` (builds 298–303, NOT merged):** Suite green (1001); harnesses + probe clean.
+- 298 Bridge + drawbridge + `OH_REDSTONE` core · 299 Editor painting/fill/reveal · 300 rail 2.0 + undo-camera
+  fix · 301 selection + clipboard; guardrails→world setting · 302 redstone devices + gates + TX/RX config.
+- **303:** numbered Tx / multi-select Rx (side-scroll model; auto `txId`, `receives()`); Hand-click a device
+  = **move** (config on double-click); **H/D/E** tool keys (clip flips → X/Y; typing guard); **drawbridge
+  Animated vs Vanishing** style (~80° perspective raise); **scatter brush** (25/50/75%).
+
+**NEXT (roadmap):** extract side-view `js/redstone.js` onto this shared core (§32); the 2-wide bridge
+auto-stamp was dropped (bridges use shapes now). Detail in `DECISIONS_LOG.md`.
+
+**NEEDS BROWSER PLAYTEST** before merging 298–303 to `main` — this is a big stack (bridges, drawbridges,
+full redstone with devices/gates/numbered wiring, editor 2.0 with selection/clipboard/fill/scatter).
+
+---
+
+## PRIOR STATE (2026-07-29) — `overhead-redstone-bridge` at build 302 (redstone devices + gates + TX/RX config)
 
 **SHIPPED to `main` (live):** Overhead builds 279–297 + Campaign MVP.
 

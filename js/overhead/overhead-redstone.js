@@ -38,20 +38,24 @@
     evaluate(devices) {
       devices = devices || [];
       const at = new Map(); for (const d of devices) at.set(key(d.col, d.row), d);
+      // A device RECEIVES if a legacy string channel it listens to is on, OR any of
+      // its numbered sources (rxIds → transmitter txId) is broadcasting.
+      const rxOn = (d, ch) => (d.rxChannel && ch[d.rxChannel]) || (Array.isArray(d.rxIds) && d.rxIds.some((id) => ch['T' + id]));
       let powered = new Map(), channels = {};
       for (let pass = 0; pass < 10; pass++) {
         const np = new Map();
         for (const d of devices) {
           const k = key(d.col, d.row); let on;
-          if (SOURCE[d.kind]) on = this.baseActive(d) || !!(d.rxChannel && channels[d.rxChannel]);
-          else if (d.rxChannel && channels[d.rxChannel]) on = true;
+          if (SOURCE[d.kind]) on = this.baseActive(d) || rxOn(d, channels);
+          else if (rxOn(d, channels)) on = true;
           else {
             let cnt = 0; for (const [dc, dr] of NB) { const nd = at.get(key(d.col + dc, d.row + dr)); if (nd && CONDUCTS[nd.kind] && powered.get(key(nd.col, nd.row))) cnt++; }
             if (d.kind === 'and') on = cnt >= 2; else if (d.kind === 'not') on = cnt === 0; else on = cnt >= 1;
           }
           np.set(k, on);
         }
-        const nc = {}; for (const d of devices) { const ch = d.txChannel || d.channel; if (ch && np.get(key(d.col, d.row))) nc[ch] = true; }
+        // Broadcast: while ON, a device drives its legacy channel AND its numbered 'T'+txId.
+        const nc = {}; for (const d of devices) if (np.get(key(d.col, d.row))) { const ch = d.txChannel || d.channel; if (ch) nc[ch] = true; if (d.txId != null) nc['T' + d.txId] = true; }
         let stable = true; for (const [k, v] of np) if (powered.get(k) !== v) { stable = false; break; }
         if (stable) { const ck = Object.keys(nc), pk = Object.keys(channels); if (ck.length !== pk.length || ck.some((k) => !channels[k])) stable = false; }
         powered = np; channels = nc;
@@ -63,6 +67,14 @@
 
     cellPowered(res, c, r) { return !!res && res.powered.has(key(c, r)); },
     channelOn(res, name) { return !!(res && name && res.channels[name]); },
+    // Does a receiver (device or drawbridge) receive power? Legacy string `channel`/
+    // `rxChannel`, OR any numbered source in `rxIds` (multi-select).
+    receives(res, obj) {
+      if (!res || !obj) return false;
+      if (obj.channel && res.channels[obj.channel]) return true;
+      if (obj.rxChannel && res.channels[obj.rxChannel]) return true;
+      return Array.isArray(obj.rxIds) && obj.rxIds.some((id) => res.channels['T' + id]);
+    },
 
     // Toggle a lever/button device in a list at (c,r). Returns true if one flipped.
     toggleAt(devices, c, r) {

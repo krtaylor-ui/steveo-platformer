@@ -24,6 +24,7 @@
     shape: 'freehand',             // freehand | line | rect | circle
     shapeFill: false,              // false = outline (brush = width) | true = filled
     _bridgeDraw: false,   // bridge tool: normal vs drawbridge (guardrails are now a world setting)
+    _scatter: 0,          // 0 = solid paint; 0.25/0.5/0.75 = place each cell with that chance
     _sel: null,           // Set of 'c,r' currently selected (+ _selBox bounds)
     _selBox: null, _marquee: null, _selecting: false,   // marquee drag state
     _clip: null, _pasting: false,   // clipboard pattern + paste mode
@@ -267,7 +268,10 @@
            <div class="btn ${mode === 'erase' ? 'on' : ''}" id="oh-erase" title="Erase everything the brush touches (⇧-click too)">⌫ Erase</div>
          </div>` +
         grp('Elevation', 'Lvl ' + this.elevLevel, [0, 1, 2, 3, 4, 5, 6, 7, 8].map((l) => `<div class="opt small ${l === this.elevLevel ? 'sel' : ''}" data-elev="${l}">Level ${l}</div>`).join('')) +
-        grp('Brush', this.brush + '×' + this.brush, [1, 2, 3, 5, 8].map((b) => `<div class="opt small ${b === this.brush ? 'sel' : ''}" data-brush="${b}">${b}×${b}</div>`).join(''), brushActive) +
+        grp('Brush', this.brush + '×' + this.brush + (this._scatter ? ' · ' + (this._scatter * 100 | 0) + '%' : ''),
+          [1, 2, 3, 5, 8].map((b) => `<div class="opt small ${b === this.brush ? 'sel' : ''}" data-brush="${b}">${b}×${b}</div>`).join('')
+          + `<div class="opt small" style="color:#8fa0bd;margin-top:2px">Scatter (natural fill):</div>`
+          + [['0', 'Solid'], ['0.25', '25%'], ['0.5', '50%'], ['0.75', '75%']].map(([v, n]) => `<div class="opt small ${+v === this._scatter ? 'sel' : ''}" data-scatter="${v}">${n}</div>`).join(''), brushActive) +
         grp('Shape', this.shape === 'freehand' ? 'Freehand' : (this.shape + (this.shapeFill ? ' fill' : '')), shapeOpts, shapeActive) +
         `<div class="oh-gap"></div>` +
         grp('Terrain', terrCur, terrOpts, terrActive, terrSw) +
@@ -286,6 +290,7 @@
       g('oh-hand').onclick = () => { this.tool = 'hand'; this._selEnt = null; this._renderBar(); this._updateCursor(); };
       g('oh-draw').onclick = () => { this.tool = 'terrain'; this._renderBar(); this._updateCursor(); };   // restore drawing with the last terrain + brush/shape (all persist)
       rail.querySelectorAll('[data-brush]').forEach((el) => el.onclick = () => { this.brush = +el.dataset.brush; this._renderBar(); });
+      rail.querySelectorAll('[data-scatter]').forEach((el) => el.onclick = () => { this._scatter = +el.dataset.scatter; this._renderBar(); });
       rail.querySelectorAll('[data-shape]').forEach((el) => el.onclick = () => { this.shape = el.dataset.shape; this._renderBar(); });
       rail.querySelectorAll('[data-fill]').forEach((el) => el.onclick = () => { this.shapeFill = !this.shapeFill; this._renderBar(); });
       rail.querySelectorAll('[data-elev]').forEach((el) => el.onclick = () => { this.elevLevel = +el.dataset.elev; this._renderBar(); });
@@ -327,6 +332,8 @@
         if (!this._dragging) return; this._dragging = false; this._lastCell = null; if (this._shapeAnchor) { this._commitShape(); this._shapeAnchor = this._shapeEnd = null; } this._pushHistory(this._paintDesc()); };
       this._wheel = (e) => { if (e.shiftKey) { this.brush = Math.max(1, Math.min(8, this.brush + (e.deltaY < 0 ? 1 : -1))); this._renderBar(); } else OH_GRID.zoomBy(this.grid, e.deltaY < 0 ? 1.1 : 0.9); e.preventDefault(); };
       this._kd = (e) => {
+        // Don't hijack keys while typing in a modal field (channel names, etc.).
+        const ae = document.activeElement; if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
         const K = this.KEYS, pan = 48 / this.grid.masterZoom;
         if (e.code === 'ArrowLeft') this.cam.x -= pan; else if (e.code === 'ArrowRight') this.cam.x += pan;
         else if (e.code === 'ArrowUp') this.cam.y -= pan; else if (e.code === 'ArrowDown') this.cam.y += pan;
@@ -340,9 +347,13 @@
         // Selection / clipboard.
         else if (e.code === 'KeyC' && (e.ctrlKey || e.metaKey)) { this._copySelection(); }
         else if ((e.code === 'Delete' || e.code === 'Backspace') && this._sel) { e.preventDefault(); this._deleteSelection(); }
-        else if ((e.code === 'KeyH' || e.code === 'KeyV') && this._clip && !e.ctrlKey && !e.metaKey) { this._flipClip(e.code === 'KeyH'); }
+        // Clipboard transforms (X/Y flip · T rotate).
+        else if ((e.code === 'KeyX' || e.code === 'KeyY') && this._clip && !e.ctrlKey && !e.metaKey) { this._flipClip(e.code === 'KeyX'); }
         else if (e.code === 'KeyT' && this._clip && !e.ctrlKey && !e.metaKey) { this._rotateClip(); }
-        // Shape hotkeys (B freehand · L line · R rect · O oval · G bucket).
+        // Tool + shape hotkeys (H hand · D draw · E erase · B freehand · L line · R rect · O oval · G bucket).
+        else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyH') { this.tool = 'hand'; this._selEnt = null; this._renderBar(); this._updateCursor(); }
+        else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyD') { this.tool = 'terrain'; this._renderBar(); this._updateCursor(); }
+        else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyE') { this.tool = 'erase'; this._renderBar(); this._updateCursor(); }
         else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyB') { this.shape = 'freehand'; this._renderBar(); }
         else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyL') { this.shape = 'line'; this._renderBar(); }
         else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyR') { this.shape = 'rect'; this._renderBar(); }
@@ -401,6 +412,7 @@
         this.world.redstone = (this.world.redstone || []).filter((x) => !(x.col === c && x.row === r));
         return;
       }
+      if (this._scatter > 0 && Math.random() > this._scatter) return;   // scatter: skip some cells for a natural fill
       m.ground[r][c] = this.terrainKey; m.elevation[r][c] = this.elevLevel;
     },
     // Tools that support the LINE/RECT/CIRCLE shape tools (drawn as a run, not 1-by-1).
@@ -428,8 +440,8 @@
       else if (['lever', 'dust', 'lamp', 'plate', 'weight', 'piston', 'and', 'not'].indexOf(tool) >= 0) {
         this.world.redstone = this.world.redstone || [];
         if (!this.world.redstone.some((x) => x.col === col && x.row === row)) {
-          const dev = { col, row, kind: tool };
-          if (tool === 'lever') { dev.on = false; dev.channel = 'gate'; }        // channel == transmit
+          const dev = { col, row, kind: tool, txId: this._nextTxId() };   // every device gets an auto Tx number
+          if (tool === 'lever') { dev.on = false; dev.channel = 'gate'; }        // channel == transmit (quick default)
           else if (tool === 'plate') dev.txChannel = 'gate';
           else if (tool === 'weight') { dev.txChannel = 'gate'; dev.threshold = 2; }
           else if (tool === 'piston') dev.rxChannel = 'gate';                     // extends when "gate" is powered
@@ -539,6 +551,9 @@
     // connected run at any elevation; terrain = same key + the start cell's elevation).
     _selectConnected(col, row) {
       const m = this.world.mapSnapshot; if (col < 0 || row < 0 || col >= m.gridW || row >= m.gridH) return;
+      // Double-clicking a device or drawbridge opens its config modal (not a flood).
+      const dev = (this.world.redstone || []).find((d) => d.col === col && d.row === row); if (dev) return this._deviceModal(dev);
+      const dbr = (this.world.bridges || []).find((b) => b.col === col && b.row === row && b.draw); if (dbr) return this._drawbridgeModal(dbr);
       const onBridge = (this.world.bridges || []).some((x) => x.col === col && x.row === row);
       const sel = new Set(); let label;
       if (onBridge) {
@@ -612,34 +627,45 @@
       const item = (this.world.items || []).find((it) => it.col === col && it.row === row);
       if (item) { this._selEnt = { kind: 'item', ref: item }; return; }
       const dev = (this.world.redstone || []).find((d) => d.col === col && d.row === row);
-      if (dev) return this._deviceModal(dev);
-      const dbr = (this.world.bridges || []).find((b) => b.col === col && b.row === row && b.draw);
-      if (dbr) return this._drawbridgeModal(dbr);
+      if (dev) { this._selEnt = { kind: 'obj', ref: dev }; this._flash('Selected ' + dev.kind + (dev.txId != null ? ' #' + dev.txId : '') + ' — click to move · double-click to configure'); return; }
       this._openConfigAt(col, row);
     },
-    // Redstone device config: transmit / receive channels (+ lever state / weight
-    // threshold). A RECEIVING device (lamp/piston) must have a source channel.
+    _nextTxId() { let mx = 0; for (const d of (this.world.redstone || [])) if (typeof d.txId === 'number' && d.txId > mx) mx = d.txId; return mx + 1; },
+    // Multi-select checklist of every OTHER device's Tx number (labelled by name) to
+    // listen to — the side-scroll Tx/Rx model.
+    _txChecklist(cls, listenIds, excludeCol, excludeRow) {
+      const others = (this.world.redstone || []).filter((x) => x.txId != null && !(x.col === excludeCol && x.row === excludeRow));
+      if (!others.length) return `<p style="color:#8fa0bd;font-size:12px">No transmitters yet — place a lever / plate / gate first.</p>`;
+      const set = Array.isArray(listenIds) ? listenIds : [];
+      return `<div style="max-height:150px;overflow:auto;margin:4px 0;border:1px solid #2c3648;border-radius:6px;padding:4px">` +
+        others.map((o) => `<label style="display:flex;gap:8px;align-items:center;padding:3px 4px"><input type="checkbox" class="${cls}" value="${o.txId}" ${set.indexOf(o.txId) >= 0 ? 'checked' : ''}> Tx #${o.txId} — ${o.kind} @${o.col},${o.row}</label>`).join('') + `</div>`;
+    },
+    // Redstone device config: shows this device's auto Tx number + name, a multi-select
+    // of sources to RECEIVE from (rxIds), plus lever start-state / weight threshold.
+    // A pure receiver (lamp/piston) must pick at least one source.
     _deviceModal(d) {
+      if (d.txId == null) d.txId = this._nextTxId();
       const isRx = (d.kind === 'lamp' || d.kind === 'piston' || d.kind === 'rx');
-      let inner = `<p style="color:#8fa0bd;font-size:12px;margin:0 0 8px">${d.kind.toUpperCase()} @ ${d.col},${d.row}</p>`;
+      let inner = `<p style="color:#cfe0ff;font-size:13px;margin:0 0 8px">Broadcasts as <b>Tx #${d.txId}</b> — ${d.kind} @ ${d.col},${d.row}</p>`;
       if (d.kind === 'lever' || d.kind === 'button') inner += `<label style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input type="checkbox" id="dv-on" ${d.on ? 'checked' : ''}> Starts ON</label>`;
       if (d.kind === 'weight') inner += `<label>Weight threshold (entities) <input type="number" id="dv-thr" min="1" value="${d.threshold || 2}"></label>`;
-      inner += `<label>Transmit on channel (optional) <input type="text" id="dv-tx" value="${this._esc((d.txChannel || d.channel) || '')}" placeholder="e.g. gate"></label>`;
-      inner += `<label>Receive from channel${isRx ? ' (required)' : ' (optional)'} <input type="text" id="dv-rx" value="${this._esc(d.rxChannel || '')}" placeholder="e.g. gate"></label>`;
-      this._cfgModal('Redstone: ' + d.kind, inner, () => {
+      inner += `<div style="font-size:12px;color:#9fb0cc;margin-top:6px">Receive from${isRx ? ' (pick at least one)' : ' (optional)'}:</div>` + this._txChecklist('dv-rx', d.rxIds, d.col, d.row);
+      this._cfgModal('Redstone: ' + d.kind + ' (Tx #' + d.txId + ')', inner, () => {
         if (d.kind === 'lever' || d.kind === 'button') d.on = document.getElementById('dv-on').checked;
-        if (d.kind === 'weight') d.threshold = Math.max(1, parseInt(document.getElementById('dv-thr').value, 10) || 2);
-        const tx = document.getElementById('dv-tx').value.trim(), rx = document.getElementById('dv-rx').value.trim();
-        if (isRx && !rx) { this._flash('⚠ A receiving device needs a source channel — not saved'); throw new Error('rx required'); }
-        d.txChannel = tx || undefined; if (d.kind === 'lever' || d.kind === 'button') { d.channel = tx || undefined; }
-        d.rxChannel = rx || undefined;
+        if (d.kind === 'weight') { const t = document.getElementById('dv-thr'); if (t) d.threshold = Math.max(1, parseInt(t.value, 10) || 2); }
+        const ids = [].slice.call(document.querySelectorAll('.dv-rx:checked')).map((el) => +el.value);
+        if (isRx && !ids.length) { this._flash('⚠ A receiving device needs at least one source — not saved'); throw new Error('rx required'); }
+        d.rxIds = ids.length ? ids : undefined; if (ids.length) d.rxChannel = undefined;
       }, d);
     },
     _drawbridgeModal(b) {
-      this._cfgModal('Drawbridge @ ' + b.col + ',' + b.row,
-        `<label>Closes on redstone channel <input type="text" id="db-ch" value="${this._esc(b.channel || 'gate')}" placeholder="gate"></label>
-         <p style="color:#8fa0bd;font-size:12px">The drawbridge is a solid deck while this channel is powered, otherwise open.</p>`,
-        () => { const ch = document.getElementById('db-ch').value.trim(); if (!ch) { this._flash('⚠ Drawbridge needs a channel — not saved'); throw new Error('ch required'); } b.channel = ch; }, b);
+      const cur = Array.isArray(b.rxIds) ? b.rxIds : [];
+      const inner = `<div style="font-size:12px;color:#9fb0cc">Raises/lowers when ANY selected source is powered:</div>` + this._txChecklist('db-rx', cur, -1, -1)
+        + `<p style="color:#8fa0bd;font-size:12px">Pick nothing to keep the default "gate" channel (levers/plates use it).</p>`;
+      this._cfgModal('Drawbridge @ ' + b.col + ',' + b.row, inner, () => {
+        const ids = [].slice.call(document.querySelectorAll('.db-rx:checked')).map((el) => +el.value);
+        b.rxIds = ids.length ? ids : undefined; b.channel = ids.length ? undefined : 'gate';
+      }, b);
     },
     // Called from a config modal's "Move" button — closes the modal and arms the
     // click-to-move indicator on the object.

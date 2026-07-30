@@ -1,6 +1,30 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD — NUMBERED TX/RX · DEVICE MOVE · H/D/E KEYS · ANIMATED DRAWBRIDGE · SCATTER (2026-07-29, build 303, branch `overhead-redstone-bridge`)
+# ═══════════════════════════════════════════════════════════════════════
+Follow-up batch. Suite green (1001, +4 redstone); numbered-tx/drawbridge + render harnesses + probe clean.
+
+- **Numbered Tx / multi-Rx (side-scroll model):** every redstone device gets an auto `txId` (`_nextTxId` =
+  max+1) and broadcasts channel `'T'+txId` while on. A receiver — device OR drawbridge — carries `rxIds`
+  (array of txIds) and is on if ANY listened transmitter is broadcasting (`OH_REDSTONE.receives`). Config
+  modals show the device's Tx number + name and a MULTI-SELECT checklist of other transmitters. Legacy
+  string channels (`channel`/`txChannel`/`rxChannel`, incl. the `gate` quick-default) still work alongside.
+- **Device move:** Hand single-click a device now SELECTS it for move (like mobs/items, "click to move"); its
+  CONFIG modal opens on **double-click** (routed through `_selectConnected`). Fixes Kevin's "clicked hand then
+  the lever to move it but nothing happened" (it was opening the modal instead).
+- **Keyboard shortcuts H = Hand · D = Draw · E = Erase.** Clipboard flips moved off H/V to **X / Y**, rotate
+  stays **T**. Added a typing guard in `_kd` (ignore shortcuts while an INPUT/TEXTAREA/SELECT is focused) so
+  channel names, etc. don't trigger tools.
+- **Drawbridge style world setting `drawbridgeStyle: vanishing | animated`:** animated eases a per-cell phase
+  (0 down/closed .. 1 up/open) and draws the deck as a foreshortened trapezoid tilting up ~80° with
+  perspective (top edge wider, plank lines converging). Walkability stays LOGICAL (channel state); the tilt
+  is cosmetic. `_dbPhase` per cell.
+- **Scatter brush:** `_scatter` (0 / .25 / .5 / .75) in the Brush flyout; `_opCell` places a terrain cell with
+  that probability for natural foliage/rubble fills.
+- **Confirmed:** dust stays OR (Kevin: the "AND paths" line was a typo).
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD REDSTONE — DEVICES + LOGIC GATES + TX/RX CONFIG (2026-07-29, build 302, branch `overhead-redstone-bridge`)
 # ═══════════════════════════════════════════════════════════════════════
 §32 batch 2. Suite green (997, +8 redstone); device-chain harness + render smoke + probe clean.

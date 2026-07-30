@@ -76,6 +76,8 @@
       this._pitsDeadly = this._pitMode !== 'block';
       this._lavaDeadly = !!cfg.lavaDeadly;                   // lava is insta-death instead of damage
       this._bridgeGuardrails = cfg.bridgeGuardrails !== false;   // rails on bridges (can't fall off the sides)
+      this._drawbridgeStyle = cfg.drawbridgeStyle || 'vanishing';
+      this._dbPhase = {};   // per-drawbridge animation phase (0 = down/closed, 1 = up/open)
       // Jump CLEARANCE: blocks a jump can clear/mount. Additive with double jump —
       // e.g. jump 1 + double 1 = clear 2; jump 0 + double 1 = a double jump clears 1.
       this._jumpClear = (cfg.jumpClear != null ? cfg.jumpClear : 1);
@@ -444,7 +446,7 @@
     _bridge(c, r) { return this._bridgeAt.get(c + ',' + r) || null; }
     // A bridge cell is CLOSED (a solid walkable deck) when it's a normal bridge, or a
     // drawbridge whose channel is powered. Open drawbridges are gaps.
-    _bridgeClosedAt(c, r) { const b = this._bridgeAt.get(c + ',' + r); return !!b && (!b.draw || (typeof OH_REDSTONE !== 'undefined' && OH_REDSTONE.channelOn(this._rs, b.channel))); }
+    _bridgeClosedAt(c, r) { const b = this._bridgeAt.get(c + ',' + r); return !!b && (!b.draw || (typeof OH_REDSTONE !== 'undefined' && OH_REDSTONE.receives(this._rs, b))); }
     _hurt(amt, why) { const p = this.player; if (this._god || p.iFrames > 0) return; p.hp -= amt; p.iFrames = 45; if (p.hp <= 0) this._die(why || 'Defeated'); }
     _fall(msg) { const p = this.player; if (p.hp <= 0) { this._die(msg || 'You died'); return; } p.x = this._spawn.x; p.y = this._spawn.y; p.jump = null; p.iFrames = 60; const c = this._cellOf(p.x, p.y); p.elev = this._elev(c.col, c.row); }
     // Family-friendly death (no blood/gore). Default: the player bursts into its
@@ -739,7 +741,21 @@
       for (const b of this._bridges) {
         const lv = b.elev | 0, sp = S(b.col * g.cell, b.row * g.cell), x = sp.x - lv * Q, y = sp.y - lv * Q;
         const edges = { n: !this._bridgeAt.has(b.col + ',' + (b.row - 1)), s: !this._bridgeAt.has(b.col + ',' + (b.row + 1)), w: !this._bridgeAt.has((b.col - 1) + ',' + b.row), e: !this._bridgeAt.has((b.col + 1) + ',' + b.row) };
-        OVERHEAD.drawBridgeCell(ctx, x, y, cs, { rail: this._bridgeGuardrails, closed: this._bridgeClosedAt(b.col, b.row), edges });
+        const closed = this._bridgeClosedAt(b.col, b.row);
+        if (b.draw && this._drawbridgeStyle === 'animated') {
+          // Ease a per-cell phase toward the target (0 down/closed, 1 up/open) and draw
+          // the deck TILTING up toward the viewer (raised part reads bigger — perspective).
+          const k = b.col + ',' + b.row, target = closed ? 0 : 1;
+          let p = this._dbPhase[k]; if (p == null) p = target; p += (target - p) * 0.16; if (Math.abs(target - p) < 0.01) p = target; this._dbPhase[k] = p;
+          if (p < 0.03) { OVERHEAD.drawBridgeCell(ctx, x, y, cs, { rail: this._bridgeGuardrails, closed: true, edges }); }
+          else {
+            const topW = cs * (1 + p * 0.45), h = cs * (1 - p * 0.82), topX = x + cs / 2 - topW / 2, topY = y - p * cs * 0.18, botY = topY + h;
+            ctx.save(); ctx.fillStyle = '#7a5327'; ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(topX, topY); ctx.lineTo(topX + topW, topY); ctx.lineTo(x + cs, botY); ctx.lineTo(x, botY); ctx.closePath(); ctx.fill(); ctx.stroke();
+            for (let i = 1; i < 4; i++) { const t = i / 4; ctx.beginPath(); ctx.moveTo(topX + topW * t, topY); ctx.lineTo(x + cs * t, botY); ctx.stroke(); }   // plank lines converging (perspective)
+            ctx.restore();
+          }
+        } else { OVERHEAD.drawBridgeCell(ctx, x, y, cs, { rail: this._bridgeGuardrails, closed, edges }); }
       }
     }
     _drawRedstone(ctx, S, cs) {

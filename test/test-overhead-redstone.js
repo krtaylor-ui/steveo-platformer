@@ -99,5 +99,21 @@ console.log('AND gate (needs 2 powered inputs) + NOT gate (inverter):');
   ok(!OH_REDSTONE.channelOn(r, 'n'), 'NOT with input ON → output off');
 }
 
+console.log('Numbered transmitters + multi-source receiver (rxIds):');
+{
+  const dev = [
+    { col: 1, row: 1, kind: 'lever', on: false, txId: 5 },
+    { col: 2, row: 2, kind: 'lever', on: true, txId: 9 },
+    { col: 9, row: 9, kind: 'lamp', rxIds: [5, 9] },   // listens to BOTH #5 and #9 (OR)
+  ];
+  let r = OH_REDSTONE.evaluate(dev);
+  ok(P(r, 9, 9), 'receiver on because source #9 is broadcasting (multi-source OR)');
+  dev[1].on = false; r = OH_REDSTONE.evaluate(dev);
+  ok(!P(r, 9, 9), 'both sources off → receiver off');
+  dev[0].on = true; r = OH_REDSTONE.evaluate(dev);
+  ok(P(r, 9, 9), 'turning on the OTHER listened source (#5) powers it again');
+  ok(OH_REDSTONE.receives(r, { rxIds: [5] }) && !OH_REDSTONE.receives(r, { rxIds: [9] }), 'receives() checks numbered sources');
+}
+
 console.log(`\noverhead redstone: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
