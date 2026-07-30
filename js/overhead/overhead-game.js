@@ -75,6 +75,7 @@
       this._pitMode = cfg.pitMode || (cfg.pitsDeadly === false ? 'block' : 'deadly');
       this._pitsDeadly = this._pitMode !== 'block';
       this._lavaDeadly = !!cfg.lavaDeadly;                   // lava is insta-death instead of damage
+      this._bridgeGuardrails = cfg.bridgeGuardrails !== false;   // rails on bridges (can't fall off the sides)
       // Jump CLEARANCE: blocks a jump can clear/mount. Additive with double jump —
       // e.g. jump 1 + double 1 = clear 2; jump 0 + double 1 = a double jump clears 1.
       this._jumpClear = (cfg.jumpClear != null ? cfg.jumpClear : 1);
@@ -300,7 +301,7 @@
           // Guardrail: while ON a railed bridge, block a sideways step OFF it onto a
           // gap / pit / lower ground (can only leave at the ends — same-level ground
           // or another bridge cell).
-          if (curBridge && curBridge.rail && !tb) { const tk = this._key(c.col, c.row); if (tk == null || tk === 'pit' || this._elev(c.col, c.row) < (curBridge.elev | 0)) return false; }
+          if (curBridge && this._bridgeGuardrails && !tb) { const tk = this._key(c.col, c.row); if (tk == null || tk === 'pit' || this._elev(c.col, c.row) < (curBridge.elev | 0)) return false; }
           if (tb && this._bridgeClosedAt(c.col, c.row)) return tb.elev | 0;   // walkable deck
           // an OPEN drawbridge falls through to normal terrain logic (a gap → fall)
         }
@@ -727,7 +728,7 @@
       for (const b of this._bridges) {
         const lv = b.elev | 0, sp = S(b.col * g.cell, b.row * g.cell), x = sp.x - lv * Q, y = sp.y - lv * Q;
         const edges = { n: !this._bridgeAt.has(b.col + ',' + (b.row - 1)), s: !this._bridgeAt.has(b.col + ',' + (b.row + 1)), w: !this._bridgeAt.has((b.col - 1) + ',' + b.row), e: !this._bridgeAt.has((b.col + 1) + ',' + b.row) };
-        OVERHEAD.drawBridgeCell(ctx, x, y, cs, { rail: b.rail, closed: this._bridgeClosedAt(b.col, b.row), edges });
+        OVERHEAD.drawBridgeCell(ctx, x, y, cs, { rail: this._bridgeGuardrails, closed: this._bridgeClosedAt(b.col, b.row), edges });
       }
     }
     _drawRedstone(ctx, S, cs) {

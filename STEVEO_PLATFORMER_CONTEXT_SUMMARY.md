@@ -1,4 +1,26 @@
-## CURRENT STATE (2026-07-29) — builds 279–297 SHIPPED to `main` ✅; `overhead-redstone-bridge` branch at build 300 (Bridge + Redstone + Editor 2.0) — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — builds 279–297 SHIPPED to `main` ✅; `overhead-redstone-bridge` branch at build 301 (Bridge + Redstone + Editor 2.0 + selection/clipboard) — NOT merged, browser-UNTESTED
+
+**SHIPPED to `main` (live):** Overhead builds 279–297 + Campaign MVP.
+
+**Branch `overhead-redstone-bridge` (builds 298–301, NOT merged):** Suite green (989); harnesses + probe clean.
+- 298 Bridge + drawbridge + grid-agnostic `OH_REDSTONE` core (levers/dust/lamps/tx/rx + channels).
+- 299 Editor painting: shapes for dust/bridge/ramp, fill/bucket, eyedropper, shift-scroll brush, cursors,
+  escape flow, character-scaled devices, tower 3×3, reveal window.
+- 300 Editor rail 2.0: Hand/Draw/Erase, light-blue highlighting, block swatches, reorder, Bridge in Terrain,
+  Redstone own palette, undo/redo camera-jump fix.
+- 301 **Selection + clipboard:** Ctrl-drag marquee (start-elevation), **double-click select-connected** (whole
+  bridge run), **Delete** (bridge-only keeps terrain), **Ctrl+C copy → click paste**, **H/V flip + T rotate**,
+  Esc unwinds paste→selection→hand→quit. **Bridge guardrails are now a WORLD SETTING** (per-bridge checkbox removed).
+
+**NEXT (specs in FUTURE_ROADMAP §32/§36/§37):** redstone devices (plate/weight/piston/AND/NOT) + TX/RX on all
+devices + Hand-click config modals (receiver requires a source); drawbridge animated vs vanishing; scatter
+brush + 2-wide bridge auto-stamp. Detail in `DECISIONS_LOG.md`.
+
+**NEEDS BROWSER PLAYTEST** before merging 298–301 to `main`.
+
+---
+
+## PRIOR STATE (2026-07-29) — `overhead-redstone-bridge` at build 300 (rail restructure + undo-camera fix)
 
 **SHIPPED to `main` (live):** Overhead builds 279–297 + Campaign MVP.
 

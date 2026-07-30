@@ -1,6 +1,32 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD EDITOR — SELECTION + CLIPBOARD; BRIDGE GUARDRAILS → WORLD SETTING (2026-07-29, build 301, branch `overhead-redstone-bridge`)
+# ═══════════════════════════════════════════════════════════════════════
+Editor batch 3 (the §37 selection/clipboard system). Suite green (989); selection-flow harness + probe clean.
+
+- **Bridge guardrails → WORLD SETTING** (Kevin: the per-bridge checkbox was weird): removed the `data-brail`
+  toggle + `_bridgeRail` + per-bridge `rail` field; new `bridgeGuardrails` world setting (default on; off = you
+  can fall off bridges, mirroring the cliff-fall guard). Collision + both editor/runtime bridge renders read
+  the setting.
+- **Marquee select (Ctrl-drag):** `_commitMarquee` selects cells in the rect at the START cell's elevation
+  (so you grab one layer). Verified: a raised patch is excluded from an elev-0 marquee.
+- **Double-click select-connected:** `_selectConnected` floods same-type cells (4-conn). A BRIDGE cell floods
+  the whole connected bridge run across ANY elevation (start-point rule); terrain floods same key + the start
+  elevation. Verified: a 2-elevation bridge selects as one unit.
+- **Delete:** `_deleteSelection` — a BRIDGE selection removes only the bridges (keeps the terrain/pit beneath);
+  a terrain/marquee selection resets terrain + removes placeables. Verified (bridge run gone, pit kept).
+- **Copy/paste:** `Ctrl+C` → `_copySelection` captures terrain + bridges/ramps/dust/lamps/mobs/items relative
+  to the box corner and enters paste mode; **click** → `_paste` writes at the cursor (multi-paste; Esc exits).
+  Clipboard **H/V flip** (`_flipClip`) + **T rotate 90°** (`_rotateClip`, swaps dims). Verified copy→paste of
+  a stone block + lever, and a 3×1→1×3 rotate.
+- **Escape** now unwinds in order: cancel paste/clipboard → clear selection → return to Hand → quit modal.
+- Render: cyan selection cells, a dashed live marquee, and a translucent paste ghost at the cursor.
+
+**Still deferred (FUTURE_ROADMAP):** §32 redstone devices (plates/weight/piston/AND/NOT) + TX/RX on all
+devices + Hand-click config modals; §36 drawbridge animated style; §37 scatter brush + 2-wide bridge stamp.
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD EDITOR — RAIL RESTRUCTURE + HIGHLIGHTING + UNDO-CAMERA FIX (2026-07-29, build 300, branch `overhead-redstone-bridge`)
 # ═══════════════════════════════════════════════════════════════════════
 Editor UX overhaul batch 2 (of the multi-part rail request). Suite green (989); editor load + undo-camera

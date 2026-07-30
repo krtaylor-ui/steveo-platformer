@@ -66,6 +66,7 @@
       maxStepDown:      1,          // levels a walk may drop (0 = none; further needs a ramp/bridge)
       pitMode:          'deadly',   // 'deadly' (fall in → insta-death) | 'block' (impassable, even in GOD)
       lavaDeadly:       false,      // lava is insta-death instead of dealing damage
+      bridgeGuardrails: true,       // bridges have rails (can't fall off the sides); off = you can fall
     };
   }
 
@@ -185,6 +186,7 @@
               ${sel('maxStepDown', 'Max walk-down without a ramp/bridge', [['0', '0 (none)'], ['1', '1 level'], ['2', '2 levels'], ['99', 'Any (no guard)']])}
               ${sel('pitMode', 'Pit blocks', [['deadly', 'Deadly (fall in → death)'], ['block', 'Solid obstacle (impassable)']])}
               ${toggle('lavaDeadly', 'Lava is insta-death (else it hurts)')}
+              ${toggle('bridgeGuardrails', 'Bridge guardrails (off = can fall off bridges)')}
             </div>
           </div>
           <div class="ohws-foot"><button id="ohws-reset">Reset to defaults</button><button class="primary" id="ohws-done">Done</button></div>

@@ -23,7 +23,10 @@
     elevLevel: 1, brush: 1,
     shape: 'freehand',             // freehand | line | rect | circle
     shapeFill: false,              // false = outline (brush = width) | true = filled
-    _bridgeRail: true, _bridgeDraw: false,   // bridge tool options (guardrails / drawbridge)
+    _bridgeDraw: false,   // bridge tool: normal vs drawbridge (guardrails are now a world setting)
+    _sel: null,           // Set of 'c,r' currently selected (+ _selBox bounds)
+    _selBox: null, _marquee: null, _selecting: false,   // marquee drag state
+    _clip: null, _pasting: false,   // clipboard pattern + paste mode
     view: { mobs: true, items: true, buildings: true, elev: false },   // top-bar view filters
     _running: false, _dragging: false, _shift: false, _shapeAnchor: null, _shapeEnd: null,
     _hist: [], _histPos: -1,
@@ -229,8 +232,7 @@
       const swatch = (c) => `<span class="oh-sw" style="background:${c}"></span>`;
       const terrOpts = P().OH_TERRAIN.map((t) => `<div class="opt ${this.tool === 'terrain' && this.terrainKey === t.key ? 'sel' : ''}" data-terr="${t.key}">${blockSw(t.key)}${t.name}</div>`).join('')
         + `<div class="opt ${this.tool === 'bridge' && !this._bridgeDraw ? 'sel' : ''}" data-tbridge="0">🌉 Bridge</div>`
-        + `<div class="opt ${this.tool === 'bridge' && this._bridgeDraw ? 'sel' : ''}" data-tbridge="1">🌉 Drawbridge (redstone)</div>`
-        + `<div class="opt small ${this._bridgeRail ? 'sel' : ''}" data-brail="1">${this._bridgeRail ? '☑' : '☐'} Bridge guardrails</div>`;
+        + `<div class="opt ${this.tool === 'bridge' && this._bridgeDraw ? 'sel' : ''}" data-tbridge="1">🌉 Drawbridge (redstone)</div>`;
       const bTypes = (typeof OH_BUILDINGS !== 'undefined') ? OH_BUILDINGS.all().map((d) => d.id) : ['healer'];
       const buildOpts = bTypes.map((b) => `<div class="opt ${this.tool === 'building' && this.buildingType === b ? 'sel' : ''}" data-build="${b}">🏛 ${b}</div>`).join('')
         + `<div class="opt ${this.tool === 'spawn' ? 'sel' : ''}" data-spawn="1">🚩 Player Spawn</div><div class="opt ${this.tool === 'goal' ? 'sel' : ''}" data-goal="1">★ Goal Star</div>`
@@ -291,7 +293,6 @@
       rail.querySelectorAll('[data-mob]').forEach((el) => el.onclick = () => { this.tool = 'mob'; this.mobKey = el.dataset.mob; this._renderBar(); });
       rail.querySelectorAll('[data-item]').forEach((el) => el.onclick = () => { this.tool = 'item'; this.itemKey = el.dataset.item; this._renderBar(); });
       rail.querySelectorAll('[data-tbridge]').forEach((el) => el.onclick = () => { this.tool = 'bridge'; this._bridgeDraw = el.dataset.tbridge === '1'; this._renderBar(); });
-      rail.querySelectorAll('[data-brail]').forEach((el) => el.onclick = () => { this._bridgeRail = !this._bridgeRail; this._renderBar(); });
       rail.querySelectorAll('[data-rs]').forEach((el) => el.onclick = () => { this.tool = el.dataset.rs; this._renderBar(); });
       this._updateCursor();
     },
@@ -301,18 +302,22 @@
     _bindCanvas() {
       const cv = document.getElementById('gameCanvas');
       this._md = (e) => {
+        if (this._pasting && this._clip) { const cel = this._cellFromEvent(e); this._paste(cel.col, cel.row); return; }   // click to paste
         if (e.altKey) { const cel = this._cellFromEvent(e); this._eyedrop(cel.col, cel.row); return; }   // Alt-click = eyedropper
+        if (e.ctrlKey || e.metaKey) { const cel = this._cellFromEvent(e); this._selecting = true; this._marquee = { a: cel, b: cel }; return; }   // Ctrl-drag = marquee select
         if (this.tool === 'hand') { const cv2 = document.getElementById('gameCanvas'); const rect = cv2.getBoundingClientRect(); this._pan = { cx: e.clientX, cy: e.clientY, camx: this.cam.x, camy: this.cam.y, sx: CANVAS_W / rect.width, sy: CANVAS_H / rect.height, moved: false, e }; if (cv2) cv2.style.cursor = 'grabbing'; return; }
         this._shift = e.shiftKey;
         if (!this._shift && this.tool === 'terrain' && this.shape === 'fill') { const cel = this._cellFromEvent(e); const n = this._floodFill(cel.col, cel.row); if (n) { this._pushHistory('fill ' + this.terrainKey); this._flash('🪣 Filled ' + n + ' cells'); } return; }
         this._dragging = true; this._lastCell = null;
         if (this._isShapeMode()) { const cel = this._cellFromEvent(e); this._shapeAnchor = cel; this._shapeEnd = cel; } else this._paintAt(e); };
       this._mm = (e) => {
-        this._hover = this._cellFromEvent(e);   // for the placement ghost
+        this._hover = this._cellFromEvent(e);   // for the placement / paste ghost
+        if (this._selecting && this._marquee) { this._marquee.b = this._hover; return; }
         if (this._pan) { const dx = (e.clientX - this._pan.cx) * this._pan.sx / this.grid.masterZoom, dy = (e.clientY - this._pan.cy) * this._pan.sy / this.grid.masterZoom; if (Math.abs(e.clientX - this._pan.cx) + Math.abs(e.clientY - this._pan.cy) > 3) this._pan.moved = true; this.cam.x = this._pan.camx - dx; this.cam.y = this._pan.camy - dy; return; }
         if (!this._dragging) return; this._shift = e.shiftKey; if (this._isShapeMode()) this._shapeEnd = this._cellFromEvent(e); else this._paintLine(e); };
       this._ml = () => { this._hover = null; };
       this._mu = (e) => {
+        if (this._selecting) { this._commitMarquee(); this._selecting = false; this._marquee = null; return; }
         if (this._pan) { const cv2 = document.getElementById('gameCanvas'); if (cv2) cv2.style.cursor = 'grab'; if (!this._pan.moved) { const cel = this._cellFromEvent(this._pan.e); this._handClick(cel.col, cel.row); } this._pan = null; return; }
         if (!this._dragging) return; this._dragging = false; this._lastCell = null; if (this._shapeAnchor) { this._commitShape(); this._shapeAnchor = this._shapeEnd = null; } this._pushHistory(this._paintDesc()); };
       this._wheel = (e) => { if (e.shiftKey) { this.brush = Math.max(1, Math.min(8, this.brush + (e.deltaY < 0 ? 1 : -1))); this._renderBar(); } else OH_GRID.zoomBy(this.grid, e.deltaY < 0 ? 1.1 : 0.9); e.preventDefault(); };
@@ -327,23 +332,30 @@
         else if (e.code === K.zoomOut) OH_GRID.zoomBy(this.grid, 0.9);
         else if (e.code === K.undo && (e.ctrlKey || e.metaKey)) { this.undo(); }
         else if (e.code === K.redo && (e.ctrlKey || e.metaKey)) { this.redo(); }
+        // Selection / clipboard.
+        else if (e.code === 'KeyC' && (e.ctrlKey || e.metaKey)) { this._copySelection(); }
+        else if ((e.code === 'Delete' || e.code === 'Backspace') && this._sel) { e.preventDefault(); this._deleteSelection(); }
+        else if ((e.code === 'KeyH' || e.code === 'KeyV') && this._clip && !e.ctrlKey && !e.metaKey) { this._flipClip(e.code === 'KeyH'); }
+        else if (e.code === 'KeyT' && this._clip && !e.ctrlKey && !e.metaKey) { this._rotateClip(); }
         // Shape hotkeys (B freehand · L line · R rect · O oval · G bucket).
         else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyB') { this.shape = 'freehand'; this._renderBar(); }
         else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyL') { this.shape = 'line'; this._renderBar(); }
         else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyR') { this.shape = 'rect'; this._renderBar(); }
         else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyO') { this.shape = 'circle'; this._renderBar(); }
         else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyG') { this.shape = 'fill'; this.tool = 'terrain'; this._renderBar(); }
-        // Escape: return to Hand; a second Escape (already on Hand) offers save/quit.
-        else if (e.code === 'Escape') { if (this.tool !== 'hand') { this.tool = 'hand'; this._selEnt = null; this._renderBar(); } else this._quitModal(); }
+        // Escape: clear paste/selection first, then return to Hand, then offer quit.
+        else if (e.code === 'Escape') { if (this._pasting || this._clip) { this._pasting = false; this._clip = null; this._flash('Paste cancelled'); } else if (this._sel) { this._sel = null; this._selBox = null; } else if (this.tool !== 'hand') { this.tool = 'hand'; this._selEnt = null; this._renderBar(); } else this._quitModal(); }
       };
+      this._dbl = (e) => { const cel = this._cellFromEvent(e); this._selectConnected(cel.col, cel.row); };
       cv.addEventListener('mousedown', this._md); cv.addEventListener('mousemove', this._mm);
+      cv.addEventListener('dblclick', this._dbl);
       cv.addEventListener('mouseleave', this._ml);
       cv.addEventListener('wheel', this._wheel, { passive: false });
       window.addEventListener('mouseup', this._mu); window.addEventListener('keydown', this._kd);
     },
     _unbindCanvas() {
       const cv = document.getElementById('gameCanvas');
-      if (cv) { cv.removeEventListener('mousedown', this._md); cv.removeEventListener('mousemove', this._mm); cv.removeEventListener('mouseleave', this._ml); cv.removeEventListener('wheel', this._wheel); }
+      if (cv) { cv.removeEventListener('mousedown', this._md); cv.removeEventListener('mousemove', this._mm); cv.removeEventListener('dblclick', this._dbl); cv.removeEventListener('mouseleave', this._ml); cv.removeEventListener('wheel', this._wheel); }
       window.removeEventListener('mouseup', this._mu); window.removeEventListener('keydown', this._kd);
     },
 
@@ -407,7 +419,7 @@
     _placeAt(tool, col, row) {
       const m = this.world.mapSnapshot; if (col < 0 || row < 0 || col >= m.gridW || row >= m.gridH) return;
       if (tool === 'ramp' || tool === 'ladder') { this.world.ramps = this.world.ramps || []; if (!this.world.ramps.some((x) => x.col === col && x.row === row)) this.world.ramps.push({ col, row, kind: tool }); }
-      else if (tool === 'bridge') { this.world.bridges = this.world.bridges || []; if (!this.world.bridges.some((x) => x.col === col && x.row === row)) this.world.bridges.push({ col, row, elev: this.elevLevel, rail: !!this._bridgeRail, draw: !!this._bridgeDraw, channel: this._bridgeDraw ? 'gate' : null }); }
+      else if (tool === 'bridge') { this.world.bridges = this.world.bridges || []; if (!this.world.bridges.some((x) => x.col === col && x.row === row)) this.world.bridges.push({ col, row, elev: this.elevLevel, draw: !!this._bridgeDraw, channel: this._bridgeDraw ? 'gate' : null }); }
       else if (tool === 'lever' || tool === 'dust' || tool === 'lamp') { this.world.redstone = this.world.redstone || []; if (!this.world.redstone.some((x) => x.col === col && x.row === row)) { const dev = { col, row, kind: tool }; if (tool === 'lever') { dev.on = false; dev.channel = 'gate'; } this.world.redstone.push(dev); } }
     },
     // Flood-fill (bucket): from the clicked cell, replace every 4-connected cell that
@@ -494,6 +506,82 @@
         else this._placeAt(tool, p.c, p.r);   // dust / bridge / ramp / ladder / lamp along the shape
       }
     },
+
+    // ── Selection + clipboard ──────────────────────────────────────────────────
+    _boxOf(sel) { if (!sel || !sel.size) return null; let c0 = 1e9, r0 = 1e9, c1 = -1e9, r1 = -1e9; for (const k of sel) { const [c, r] = k.split(',').map(Number); if (c < c0) c0 = c; if (c > c1) c1 = c; if (r < r0) r0 = r; if (r > r1) r1 = r; } return { c0, r0, c1, r1 }; },
+    // Ctrl-drag marquee: select cells in the rect at the START cell's elevation.
+    _commitMarquee() {
+      if (!this._marquee) return; const m = this.world.mapSnapshot, a = this._marquee.a, b = this._marquee.b;
+      const inB = (a.col >= 0 && a.row >= 0 && a.col < m.gridW && a.row < m.gridH);
+      const se = inB ? (m.elevation[a.row][a.col] | 0) : this.elevLevel;
+      const c0 = Math.max(0, Math.min(a.col, b.col)), c1 = Math.min(m.gridW - 1, Math.max(a.col, b.col));
+      const r0 = Math.max(0, Math.min(a.row, b.row)), r1 = Math.min(m.gridH - 1, Math.max(a.row, b.row));
+      const sel = new Set(); for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) if ((m.elevation[r][c] | 0) === se) sel.add(c + ',' + r);
+      this._sel = sel.size ? sel : null; this._selBox = this._boxOf(sel); this._selKind = 'marquee'; this._selElev = se;
+      if (sel.size) this._flash(sel.size + ' cells selected @ elev ' + se + ' (Del · Ctrl+C)');
+    },
+    // Double-click: flood-select all connected same-type cells (bridges = the whole
+    // connected run at any elevation; terrain = same key + the start cell's elevation).
+    _selectConnected(col, row) {
+      const m = this.world.mapSnapshot; if (col < 0 || row < 0 || col >= m.gridW || row >= m.gridH) return;
+      const onBridge = (this.world.bridges || []).some((x) => x.col === col && x.row === row);
+      const sel = new Set(); let label;
+      if (onBridge) {
+        const set = new Set((this.world.bridges || []).map((x) => x.col + ',' + x.row)), st = [[col, row]];
+        while (st.length) { const [c, r] = st.pop(), k = c + ',' + r; if (sel.has(k) || !set.has(k)) continue; sel.add(k); st.push([c + 1, r], [c - 1, r], [c, r + 1], [c, r - 1]); }
+        this._selKind = 'bridge'; this._selElev = null; label = 'bridge';
+      } else {
+        const sk = m.ground[row][col] || 'grass', se = m.elevation[row][col] | 0, st = [[col, row]];
+        while (st.length) { const [c, r] = st.pop(), k = c + ',' + r; if (c < 0 || r < 0 || c >= m.gridW || r >= m.gridH || sel.has(k)) continue; if ((m.ground[r][c] || 'grass') !== sk || (m.elevation[r][c] | 0) !== se) continue; sel.add(k); st.push([c + 1, r], [c - 1, r], [c, r + 1], [c, r - 1]); }
+        this._selKind = 'terrain'; this._selElev = se; label = sk;
+      }
+      this._sel = sel.size ? sel : null; this._selBox = this._boxOf(sel);
+      if (sel.size) this._flash('Selected ' + sel.size + ' connected ' + label + ' cells — Del to remove');
+    },
+    _deleteSelection() {
+      if (!this._sel) return; const m = this.world.mapSnapshot, byCell = (c, r) => (x) => !(x.col === c && x.row === r);
+      for (const k of this._sel) { const [c, r] = k.split(',').map(Number);
+        if (this._selKind === 'bridge') { this.world.bridges = (this.world.bridges || []).filter(byCell(c, r)); continue; }   // bridge-only: keep the terrain underneath
+        m.ground[r][c] = 'grass'; m.elevation[r][c] = 0;
+        this.world.buildings = (this.world.buildings || []).filter(byCell(c, r));
+        this.world.mobs = (this.world.mobs || []).filter(byCell(c, r));
+        this.world.items = (this.world.items || []).filter(byCell(c, r));
+        this.world.ramps = (this.world.ramps || []).filter(byCell(c, r));
+        this.world.bridges = (this.world.bridges || []).filter(byCell(c, r));
+        this.world.redstone = (this.world.redstone || []).filter(byCell(c, r));
+      }
+      const n = this._sel.size; this._sel = null; this._selBox = null; this._pushHistory('delete ' + n + ' cells'); this._flash('🗑 Deleted ' + n + ' cells');
+    },
+    _copySelection() {
+      if (!this._sel) { this._flash('Nothing selected — Ctrl-drag or double-click first'); return; }
+      const box = this._selBox, m = this.world.mapSnapshot, cells = [];
+      for (const k of this._sel) { const [c, r] = k.split(',').map(Number), cell = { dc: c - box.c0, dr: r - box.r0, key: m.ground[r][c] || 'grass', elev: m.elevation[r][c] | 0 };
+        const b = (this.world.bridges || []).find(byC(c, r)); if (b) cell.bridge = { elev: b.elev, draw: b.draw, channel: b.channel };
+        const rp = (this.world.ramps || []).find(byC(c, r)); if (rp) cell.ramp = rp.kind;
+        const rs = (this.world.redstone || []).find(byC(c, r)); if (rs) cell.rs = { kind: rs.kind, on: rs.on, channel: rs.channel };
+        const mo = (this.world.mobs || []).find(byC(c, r)); if (mo) cell.mob = mo.type;
+        const it = (this.world.items || []).find(byC(c, r)); if (it) cell.item = it.itemKey;
+        cells.push(cell);
+      }
+      function byC(c, r) { return (x) => x.col === c && x.row === r; }
+      this._clip = { w: box.c1 - box.c0 + 1, h: box.r1 - box.r0 + 1, cells }; this._pasting = true;
+      this._flash('📋 Copied ' + cells.length + ' cells — click to paste · H/V flip · T rotate · Esc');
+    },
+    _paste(col, row) {
+      if (!this._clip) return; const m = this.world.mapSnapshot;
+      for (const cell of this._clip.cells) { const c = col + cell.dc, r = row + cell.dr; if (c < 0 || r < 0 || c >= m.gridW || r >= m.gridH) continue;
+        m.ground[r][c] = cell.key; m.elevation[r][c] = cell.elev;
+        const clr = (arr) => (arr || []).filter((x) => !(x.col === c && x.row === r));
+        if (cell.bridge) { this.world.bridges = clr(this.world.bridges); this.world.bridges.push({ col: c, row: r, elev: cell.bridge.elev, draw: cell.bridge.draw, channel: cell.bridge.channel }); }
+        if (cell.ramp) { this.world.ramps = clr(this.world.ramps); this.world.ramps.push({ col: c, row: r, kind: cell.ramp }); }
+        if (cell.rs) { this.world.redstone = clr(this.world.redstone); this.world.redstone.push({ col: c, row: r, kind: cell.rs.kind, on: cell.rs.on, channel: cell.rs.channel }); }
+        if (cell.mob) { const d = P().OH_MOB_BY_KEY[cell.mob]; if (d) this.world.mobs.push({ col: c, row: r, type: cell.mob, hp: d.hp, speed: d.speed, detect: d.detect }); }
+        if (cell.item) { const d = P().OH_ITEM_BY_KEY[cell.item]; if (d) this.world.items.push({ col: c, row: r, kind: d.kind, weapon: d.weapon, itemKey: cell.item }); }
+      }
+      this._pushHistory('paste'); this._flash('Pasted @ ' + col + ',' + row);
+    },
+    _flipClip(horizontal) { if (!this._clip) return; const { w, h, cells } = this._clip; for (const c of cells) { if (horizontal) c.dc = w - 1 - c.dc; else c.dr = h - 1 - c.dr; } this._flash('Clipboard ' + (horizontal ? 'flipped ↔' : 'flipped ↕')); },
+    _rotateClip() { if (!this._clip) return; const { h, cells } = this._clip; for (const c of cells) { const ndc = h - 1 - c.dr, ndr = c.dc; c.dc = ndc; c.dr = ndr; } const t = this._clip.w; this._clip.w = this._clip.h; this._clip.h = t; this._flash('Clipboard rotated 90°'); },
 
     // ── Configuration modals (portal/pipe, goal star, spawn) ───────────────────
     _portalList() { let n = 0; return (this.world.buildings || []).filter((b) => b.typeId === 'portal' || b.typeId === 'pipe').map((b) => ({ key: b.col + ',' + b.row, n: ++n, label: '#' + n + ' ' + (b.typeId === 'pipe' ? 'Pipe' : 'Portal') + ' (' + b.col + ',' + b.row + ')' })); },
@@ -649,7 +737,7 @@
       const bAt = new Set((this.world.bridges || []).map((b) => b.col + ',' + b.row));
       for (const b of (this.world.bridges || [])) { const sp = S(b.col * g.cell, b.row * g.cell), lv = b.elev | 0, x = sp.x - lv * Q, y = sp.y - lv * Q;
         const edges = { n: !bAt.has(b.col + ',' + (b.row - 1)), s: !bAt.has(b.col + ',' + (b.row + 1)), w: !bAt.has((b.col - 1) + ',' + b.row), e: !bAt.has((b.col + 1) + ',' + b.row) };
-        OVERHEAD.drawBridgeCell(ctx, x, y, cs, { rail: b.rail, closed: true, edges });
+        OVERHEAD.drawBridgeCell(ctx, x, y, cs, { rail: !(this.world.settings && this.world.settings.bridgeGuardrails === false), closed: true, edges });
         if (b.draw && cs > 12) { ctx.fillStyle = '#ffd23a'; ctx.font = `${Math.max(7, cs * 0.3) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('⚡', x + cs / 2, y + cs * 0.62); } }
       // Redstone devices.
       for (const d of (this.world.redstone || [])) { const sp = S((d.col + 0.5) * g.cell, (d.row + 0.5) * g.cell), tl = S(d.col * g.cell, d.row * g.cell);
@@ -668,6 +756,11 @@
       // Placement GHOST of the selected tool at the hovered cell (red-X if a building
       // won't fit). Not shown in hand mode or while dragging/shaping.
       this._drawGhost(ctx, S, cs, Q);
+      // Selection cells (cyan) + live marquee + paste ghost.
+      if (this._sel) { ctx.save(); ctx.fillStyle = 'rgba(90,200,255,.28)'; ctx.strokeStyle = 'rgba(150,230,255,.9)'; ctx.lineWidth = 1;
+        for (const k of this._sel) { const [c, r] = k.split(',').map(Number); const sp = S(c * g.cell, r * g.cell); ctx.fillRect(sp.x, sp.y, cs, cs); ctx.strokeRect(sp.x + .5, sp.y + .5, cs - 1, cs - 1); } ctx.restore(); }
+      if (this._selecting && this._marquee) { const a = this._marquee.a, b = this._marquee.b; const p0 = S(Math.min(a.col, b.col) * g.cell, Math.min(a.row, b.row) * g.cell); const p1 = S((Math.max(a.col, b.col) + 1) * g.cell, (Math.max(a.row, b.row) + 1) * g.cell); ctx.save(); ctx.strokeStyle = '#6ad0ff'; ctx.setLineDash([5, 4]); ctx.lineWidth = 2; ctx.strokeRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y); ctx.setLineDash([]); ctx.restore(); }
+      if (this._pasting && this._clip && this._hover) { ctx.save(); ctx.globalAlpha = 0.55; for (const cell of this._clip.cells) { const c = this._hover.col + cell.dc, r = this._hover.row + cell.dr; const sp = S(c * g.cell, r * g.cell); OVERHEAD.drawTerrainCube(ctx, cell.key, sp.x, sp.y, cs, cell.elev | 0, true, true); if (cell.bridge) OVERHEAD.drawBridgeCell(ctx, sp.x, sp.y, cs, { rail: false, closed: true, edges: { n: true, e: true, s: true, w: true } }); } ctx.globalAlpha = 1; ctx.restore(); }
       // Info line.
       ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.textAlign = 'left'; ctx.font = '12px sans-serif';
       ctx.fillText(`${this.world.name} · ${m.baseW || m.gridW}×${m.baseH || m.gridH} @ density ${m.density} (${m.gridW}×${m.gridH} cells) · ${this.world.mode} · tool: ${this._shift ? 'erase' : this.tool} @ elev ${this.elevLevel}`, 158, CANVAS_H - 10);
@@ -676,7 +769,7 @@
     // a red X when they can't fit (off the map / overlapping another building). The
     // ghost is a single placement — it does NOT reflect the brush size.
     _drawGhost(ctx, S, cs, Q) {
-      if (this.tool === 'hand' || this._dragging || this._shapeAnchor || !this._hover) return;
+      if (this.tool === 'hand' || this._dragging || this._shapeAnchor || this._pasting || this._selecting || !this._hover) return;
       const g = this.grid, m = this.world.mapSnapshot, col = this._hover.col, row = this._hover.row;
       if (col < 0 || row < 0 || col >= m.gridW || row >= m.gridH) return;
       const tool = this._shift ? 'erase' : this.tool;
@@ -692,7 +785,7 @@
       } else if (tool === 'mob') { const d = P().OH_MOB_BY_KEY[this.mobKey] || P().OH_MOBS[0]; ctx.fillStyle = d.color; ctx.strokeStyle = 'rgba(150,150,160,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(ctr.x, ctr.y, unitPx * 0.34, 0, 7); ctx.fill(); ctx.stroke(); }
       else if (tool === 'item') { OVERHEAD.drawItemSprite(ctx, this.itemKey, ctr.x, ctr.y, unitPx * 0.8); }
       else if (tool === 'ramp' || tool === 'ladder') { OVERHEAD.drawRampIcon(ctx, tool, ctr.x, ctr.y, cs, 0); }
-      else if (tool === 'bridge') { OVERHEAD.drawBridgeCell(ctx, sp.x, sp.y, cs, { rail: this._bridgeRail, closed: true, edges: { n: true, e: true, s: true, w: true } }); }
+      else if (tool === 'bridge') { OVERHEAD.drawBridgeCell(ctx, sp.x, sp.y, cs, { rail: !(this.world.settings && this.world.settings.bridgeGuardrails === false), closed: true, edges: { n: true, e: true, s: true, w: true } }); }
       else if (tool === 'lever') { OVERHEAD.drawLever(ctx, ctr.x, ctr.y, cs * 0.4, false); }
       else if (tool === 'dust') { OVERHEAD.drawDust(ctx, sp.x, sp.y, cs, false); }
       else if (tool === 'lamp') { OVERHEAD.drawLamp(ctx, ctr.x, ctr.y, cs * 0.5, false); }
