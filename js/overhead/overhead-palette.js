@@ -42,6 +42,7 @@
     { key: 'netherrack', name: 'Netherrack',   blockId: 21, color: '#7a3535' },
     { key: 'soulsand',   name: 'Soul Sand',    blockId: 17, color: '#4a3a2c' },
     { key: 'ice',        name: 'Ice',          blockId: 69, color: '#a9d6ea' },
+    { key: 'glass',      name: 'Glass',        blockId: 14, color: '#cfeef5', glass: true },
     { key: 'lava',       name: 'Lava',         blockId: 22, color: '#e0662a', hazard: true, light: '#ff8a3a' },
     { key: 'glowstone',  name: 'Glowstone',    blockId: 48, color: '#e6c96a', light: '#ffe59a' },
     { key: 'bush',       name: 'Bush',         blockId: 60, color: '#3f7a3a' },
@@ -53,6 +54,7 @@
   const GROUND = 'grass';   // default paint / floor
   const isHazardKey = (key) => !!(OH_TERRAIN_BY_KEY[key] && OH_TERRAIN_BY_KEY[key].hazard);
   const isPitKey = (key) => !!(OH_TERRAIN_BY_KEY[key] && OH_TERRAIN_BY_KEY[key].pit);
+  const isGlassKey = (key) => !!(OH_TERRAIN_BY_KEY[key] && OH_TERRAIN_BY_KEY[key].glass);
   const terrainColor = (key) => (OH_TERRAIN_BY_KEY[key] || OH_TERRAIN_BY_KEY[GROUND]).color;
   // Light-emitting terrain (glowstone / lava): returns the glow colour or null.
   const lightColor = (key) => (OH_TERRAIN_BY_KEY[key] && OH_TERRAIN_BY_KEY[key].light) || null;
@@ -85,7 +87,7 @@
 
   const OH_PALETTE = {
     OH_SPRITE,
-    OH_TERRAIN, OH_TERRAIN_BY_KEY, GROUND, isHazardKey, isPitKey, terrainColor, lightColor,
+    OH_TERRAIN, OH_TERRAIN_BY_KEY, GROUND, isHazardKey, isPitKey, isGlassKey, terrainColor, lightColor,
     OH_MOBS, OH_MOB_BY_KEY, OH_ITEMS, OH_ITEM_BY_KEY,
   };
 

@@ -128,6 +128,16 @@
           ctx.strokeStyle = 'rgba(0,0,0,.3)'; for (let i = 1; i <= elev; i++) { const xx = tx + cs + (fx + cs - (tx + cs)) * (i / elev); const yy = ty + (fy - ty) * (i / elev); ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx, yy + cs); ctx.stroke(); } }
       }
       this.drawTerrainTile(ctx, key, tx, ty, cs, elev);
+      // GLASS reads as a bright, glossy pane: a translucent white wash + a diagonal
+      // highlight streak + a light rim on the top face.
+      if (key === 'glass') {
+        ctx.save();
+        ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fillRect(tx, ty, cs, cs);
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = Math.max(1, cs * 0.05); ctx.strokeRect(tx + cs * 0.08, ty + cs * 0.08, cs * 0.84, cs * 0.84);
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = Math.max(1, cs * 0.06);
+        ctx.beginPath(); ctx.moveTo(tx + cs * 0.18, ty + cs * 0.62); ctx.lineTo(tx + cs * 0.6, ty + cs * 0.2); ctx.stroke();
+        ctx.restore();
+      }
     },
 
     // ── 3D-extruded SIDE (front) face — noticeably darker than the top (§).
@@ -368,13 +378,22 @@
     // Logic gate — a DISCRETE 1×1 block filling its cell (x,y = cell top-left, cs =
     // cell px). Bright when its output is on; blue dots = input sides, green = outputs.
     drawGate(ctx, x, y, cs, type, on, inputs, outputs) {
-      ctx.fillStyle = on ? '#8a3a3a' : '#33282a'; ctx.fillRect(x, y, cs, cs);
-      ctx.strokeStyle = '#e08a8a'; ctx.lineWidth = 1.5; ctx.strokeRect(x + 0.5, y + 0.5, cs - 1, cs - 1);
-      ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(6, cs * 0.32) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      // A gate is an OVERLAY on the terrain (like dust), NOT an opaque block — so it can
+      // be hidden / blend in. A translucent inset panel lets the ground read through it.
+      ctx.save();
+      const m = cs * 0.14;
+      ctx.globalAlpha = on ? 0.58 : 0.42;
+      ctx.fillStyle = on ? '#c85454' : '#5a4a4c';
+      ctx.fillRect(x + m, y + m, cs - 2 * m, cs - 2 * m);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = on ? 'rgba(255,190,190,0.9)' : 'rgba(220,170,170,0.55)'; ctx.lineWidth = 1;
+      ctx.strokeRect(x + m + 0.5, y + m + 0.5, cs - 2 * m - 1, cs - 2 * m - 1);
+      ctx.fillStyle = on ? '#fff' : 'rgba(255,255,255,0.72)'; ctx.font = `bold ${Math.max(5, cs * 0.26) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(type === 'nor' ? 'NOR' : type === 'not' ? 'NOT' : 'AND', x + cs / 2, y + cs / 2); ctx.textBaseline = 'alphabetic';
       const mid = { n: [x + cs / 2, y + cs * 0.14], s: [x + cs / 2, y + cs * 0.86], e: [x + cs * 0.86, y + cs / 2], w: [x + cs * 0.14, y + cs / 2] };
       const dot = (s, col) => { if (!mid[s]) return; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(mid[s][0], mid[s][1], Math.max(2, cs * 0.09), 0, 7); ctx.fill(); };
       (inputs || []).forEach((s) => dot(s, '#6ad0ff')); (outputs || []).forEach((s) => dot(s, '#7fe0a0'));
+      ctx.restore();
     },
 
     // Direction toward the higher neighbour ('E'|'W'|'N'|'S'); horizontal default on

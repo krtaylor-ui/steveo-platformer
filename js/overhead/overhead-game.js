@@ -82,6 +82,8 @@
       // (insta-kill). Legacy worlds used a lavaDeadly boolean — migrate it here.
       this._lavaMode = cfg.lavaMode || (cfg.lavaDeadly ? 'death' : 'damage');
       this._lavaDamage = (cfg.lavaDamage != null ? cfg.lavaDamage : 4);
+      this._glassShatter = cfg.glassShatter !== false;      // glass breaks on melee/ranged (into shards)
+      this._shards = [];                                    // live glass-shard particles
       this._bridgeGuardrails = cfg.bridgeGuardrails !== false;   // rails on bridges (can't fall off the sides)
       this._drawbridgeStyle = cfg.drawbridgeStyle || 'vanishing';
       this._dbPhase = {};   // per-drawbridge animation phase (0 = down/closed, 1 = up/open)
@@ -240,7 +242,7 @@
       // Item pickup.
       this._pickups(p);
       // Mobs + projectiles.
-      this._updateMobs(); this._updateProjectiles();
+      this._updateMobs(); this._updateProjectiles(); this._updateShards();
 
       // Portals / pipes take PRIORITY on the E button over the generic decoration
       // notice (a pipe next to a statue must still teleport). PROXIMITY + E (both
@@ -390,17 +392,22 @@
       if (p._fireCd > 0) return; p._fireCd = 18; p._swingT = 14; p._swingDur = 14; p._swingAng = ang; p._swingWeapon = weapon || 'pickaxe';   // trigger the swing anim
       const hits = OH_COMBAT.coneHit({ x: p.x, y: p.y }, ang, this.mobs.filter((m) => !m.dead && this._canAttack(p.elev, m.elev || 0)), { reach: this.unit * (this.settings.meleeReach || 2.4), halfAngle: this._meleeHalfAngle(), maxHits: 3 });
       for (const m of hits) { m.hp -= 4; if (m.hp <= 0) m.dead = true; }
+      // Shatter the first glass pane in the swing arc (within reach).
+      if (this._glassShatter) {
+        const reach = this.unit * (this.settings.meleeReach || 2.4), step = this.grid.cell * 0.5;
+        for (let d = step; d <= reach; d += step) { const gc = this._cellOf(p.x + Math.cos(ang) * d, p.y + Math.sin(ang) * d); if (this._shatterGlass(gc.col, gc.row)) break; }
+      }
     }
     // A projectile dies if it crosses terrain ≥ attackBlock levels above its origin.
     _boltWalled(b) { const c = this._cellOf(b.x, b.y); if (this._key(c.col, c.row) === 'leaves') return false; return (this._elev(c.col, c.row) - (b.elev || 0)) >= this.attackBlock; }
     _updateProjectiles() {
       const p = this.player, live = this.mobs.filter((m) => !m.dead);
       // Crossbow bolts.
-      for (const b of this._bolts) { OH_WEAPONS.stepBolt(b); if (this._boltWalled(b)) { b.dead = true; continue; } const hit = OH_COMBAT.lineHit({ x: b.x - b.vx, y: b.y - b.vy }, { x: b.x, y: b.y }, live, this.unit * 0.3); if (hit && this._canAttack(b.elev || 0, hit.elev || 0)) { hit.hp -= 5; if (hit.hp <= 0) hit.dead = true; b.dead = true; } }
+      for (const b of this._bolts) { OH_WEAPONS.stepBolt(b); const bc = this._cellOf(b.x, b.y); const brokeGlass = this._shatterGlass(bc.col, bc.row); if (!brokeGlass && this._boltWalled(b)) { b.dead = true; continue; } const hit = OH_COMBAT.lineHit({ x: b.x - b.vx, y: b.y - b.vy }, { x: b.x, y: b.y }, live, this.unit * 0.3); if (hit && this._canAttack(b.elev || 0, hit.elev || 0)) { hit.hp -= 5; if (hit.hp <= 0) hit.dead = true; b.dead = true; } }
       this._bolts = this._bolts.filter((b) => !b.dead);
       // Trident.
       if (p._trident) { OH_WEAPONS.stepTrident(p._trident, p); const t = p._trident;
-        if (t.state === 'out' && this._boltWalled(t)) OH_WEAPONS.recallTrident(t);   // hit a too-high wall → return
+        if (t.state === 'out') { const tc = this._cellOf(t.x, t.y); if (!this._shatterGlass(tc.col, tc.row) && this._boltWalled(t)) OH_WEAPONS.recallTrident(t); }   // shatter glass and fly on, else a too-high wall returns it
         if (!t.caught) { for (const m of live) if (this._canAttack(p.elev, m.elev || 0) && Math.hypot(m.x - t.x, m.y - t.y) < m.r + this.unit * 0.3) { m.hp -= 6; if (m.hp <= 0) m.dead = true; if (t.state === 'out') t.state = 'return'; } } if (t.caught) p._trident = null; }
       // Boomerang (arcs, hits along the path, auto-returns; a wall cuts it to the return leg).
       if (p._boom) { OH_WEAPONS.stepBoomerang(p._boom, p); const b = p._boom;
@@ -500,6 +507,35 @@
       for (let i = 0; i < n; i++) { const ang = (i / n) * Math.PI * 2 + (i % 3) * 0.4, spd = this.unit * (0.06 + (i % 5) * 0.02);
         parts.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, sz: this.unit * (0.16 + (i % 4) * 0.05), rot: ang, vr: (i % 2 ? 1 : -1) * 0.2, color: cols[i % cols.length], life: 46 + (i % 10) }); }
       return parts;
+    }
+    // GLASS shatter: a raised glass wall struck by melee/ranged collapses to a walkable
+    // gap and throws jagged shards (family-friendly, no gore). Returns true if it broke.
+    _shatterGlass(c, r) {
+      if (!this._glassShatter) return false;
+      if (this._key(c, r) !== 'glass' || this._elev(c, r) <= 0) return false;   // only a raised pane shatters
+      this._spawnShards((c + 0.5) * this.grid.cell, (r + 0.5) * this.grid.cell);
+      if (this.ground[r]) this.ground[r][c] = 'grass';       // clear gap where the pane was
+      if (this.elevation[r]) this.elevation[r][c] = 0;
+      this._terrainCache = null;                             // force the static terrain re-bake
+      return true;
+    }
+    _spawnShards(x, y) {
+      const cell = this.grid.cell, cols = ['#cfeef5', '#eaf7fb', '#a9d6ea', '#ffffff'];
+      for (let i = 0; i < 11; i++) { const ang = (i / 11) * Math.PI * 2 + 0.35, spd = cell * (0.02 + (i % 3) * 0.015);
+        this._shards.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, sz: cell * (0.09 + (i % 3) * 0.04), rot: ang, vr: (i % 2 ? 1 : -1) * 0.28, color: cols[i % cols.length], life: 32 + (i % 8) }); }
+    }
+    _updateShards() {
+      if (!this._shards.length) return;
+      for (const s of this._shards) { s.x += s.vx; s.y += s.vy; s.vx *= 0.86; s.vy *= 0.86; s.rot += s.vr; s.vr *= 0.94; s.life--; }
+      this._shards = this._shards.filter((s) => s.life > 0);
+    }
+    _drawShards(ctx, S, cs) {
+      if (!this._shards.length) return;
+      const z = this.grid.masterZoom || 1;
+      for (const s of this._shards) { const p = S(s.x, s.y), a = Math.min(1, s.life / 16), r = s.sz * z;
+        ctx.save(); ctx.globalAlpha = a; ctx.translate(p.x, p.y); ctx.rotate(s.rot); ctx.fillStyle = s.color;
+        ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(r * 0.7, r * 0.6); ctx.lineTo(-r * 0.6, r * 0.55); ctx.closePath(); ctx.fill(); ctx.restore(); }
+      ctx.globalAlpha = 1;
     }
     _advanceDeath() {
       const fx = this._deathFx; if (!fx) { this.state = 'dead'; return; }
@@ -646,6 +682,7 @@
       // Day/night ambient overlay + light sources + sun/moon disc — drawn before the
       // HUD so the HUD stays crisp.
       if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') this._drawNight(ctx, S, cs);
+      this._drawShards(ctx, S, cs);
       this._drawHUD(ctx);
     }
 
