@@ -49,6 +49,10 @@
         this.world = JSON.parse(JSON.stringify(wd));
         this.world.name = existing.world_name || this.world.name || 'Overhead World';
         this.worldId = existing.id || null;
+        // Normalise settings on load so the editor menu + Save reflect migrations the
+        // runtime already applies (e.g. legacy lavaDeadly → lavaMode) — otherwise the
+        // menu shows the raw default and re-saving would silently drop the old value.
+        if (typeof OH_SETTINGS !== 'undefined' && OH_SETTINGS.resolve) this.world.settings = OH_SETTINGS.resolve(this.world);
       } else {
         const made = await this._newWorldModal();
         if (!made) return;   // cancelled
@@ -689,7 +693,22 @@
       }, d);
     },
     // Unique key ids currently placed on the map (for the Lock's accepted-keys list).
-    _keysOnMap() { const s = new Set(); for (const it of (this.world.items || [])) { const def = P().OH_ITEM_BY_KEY[it.itemKey]; if (def && def.kind === 'key') s.add(def.keyId || it.itemKey); } return [].slice.call(s); },
+    _keysOnMap() {
+      // Robust: an item may carry itemKey (editor) or a legacy `key`; and it already
+      // stamps its own kind at placement. Trust that kind:'key' AND the palette def, and
+      // derive the keyId locally (strip the "<type>_" prefix: key_gold→gold, jewel_emerald
+      // →emerald, passcard→passcard) so this works even if the palette lookup misses.
+      const s = new Set();
+      const byKey = (P() && P().OH_ITEM_BY_KEY) || {};
+      for (const it of (this.world.items || [])) {
+        const k = it.itemKey || it.key;
+        const def = k ? byKey[k] : null;
+        if ((def && def.kind === 'key') || it.kind === 'key') {
+          s.add((def && def.keyId) || (k ? String(k).replace(/^[^_]*_/, '') : k));
+        }
+      }
+      return Array.from(s);   // NB: [].slice.call(aSet) === [] — a Set is not array-like
+    },
     // A bridge span: per-bridge guardrails, whether it's a drawbridge (raises on
     // redstone), and — if so — which transmitters raise it. Move/Delete built in.
     _bridgeModal(b) {
@@ -785,7 +804,11 @@
         if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
           // Offline fallback — localStorage (server unavailable).
           const all = JSON.parse(localStorage.getItem('steveo_overhead_worlds') || '{}');
-          const key = this.worldId || ('oh-' + name); all[key] = worldData; this.worldId = key;
+          const key = this.worldId || ('oh-' + name);
+          // Preserve the original creation time (or stamp one now) so the Sandbox card
+          // shows a date and Newest-sort has something to order on.
+          worldData.created_at = worldData.created_at || (all[key] && all[key].created_at) || new Date().toISOString();
+          all[key] = worldData; this.worldId = key;
           localStorage.setItem('steveo_overhead_worlds', JSON.stringify(all));
           this._flash('Saved (offline)'); return;
         }
