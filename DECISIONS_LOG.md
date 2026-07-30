@@ -1,6 +1,27 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD — CONSISTENT DEVICE CONFIG · MOVE/DELETE MODALS · 1×1 DIRECTIONAL GATES (2026-07-29, build 304, branch `overhead-redstone-bridge`)
+# ═══════════════════════════════════════════════════════════════════════
+Consistency batch (Kevin). Suite green (1005, +4 redstone); gate + render harnesses + probe clean.
+
+- **Consistent device roles:** SOURCES (lever/button/plate/weight) auto-numbered Tx; SINKS
+  (lamp/piston/drawbridge/receiver) carry built-in receivers with a MULTI-SELECT of transmitters. Config
+  modals branch by role — source (Tx# + start-state/threshold), sink (Tx# + rx checklist), gate (Tx# + side
+  pickers).
+- **Move + Delete in every modal:** `_cfgModal` gained a Delete button (`_deleteObj` removes the ref from any
+  world array / clears the goal) alongside Move; applies to device/drawbridge/portal/goal/spawn modals.
+- **Hand-click model (Kevin's spec):** a configurable device → opens its modal (Move/Delete inside); a device
+  with NO config (dust) → straight to click-to-move; mobs/items unchanged (click-to-move). Reverts the 303
+  "hand-click always moves" so the modal is the primary config path.
+- **1×1 DIRECTIONAL gates (like the side-scroller):** AND / NOT / **NOR** are now discrete cell-filling 1×1
+  blocks (`drawGate` fills the cell, blue dots = input sides, green = output sides). The engine
+  (`OH_REDSTONE.evaluate`) is now DIRECTION-AWARE: a gate reads only its `inputs` sides and conducts only to
+  its `outputs` sides (`feeds()` checks the gate→neighbour side against `outputs`). AND = all present
+  input-side conductors powered (≥2); NOT/NOR = none powered. Config modal picks input/output sides.
+  Gates without inputs/outputs default to all-sides (back-compat with the old undirected tests). 28 assertions.
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD — NUMBERED TX/RX · DEVICE MOVE · H/D/E KEYS · ANIMATED DRAWBRIDGE · SCATTER (2026-07-29, build 303, branch `overhead-redstone-bridge`)
 # ═══════════════════════════════════════════════════════════════════════
 Follow-up batch. Suite green (1001, +4 redstone); numbered-tx/drawbridge + render harnesses + probe clean.

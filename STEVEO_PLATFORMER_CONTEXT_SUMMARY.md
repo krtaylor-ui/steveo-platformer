@@ -1,4 +1,25 @@
-## CURRENT STATE (2026-07-29) — builds 279–297 SHIPPED to `main` ✅; `overhead-redstone-bridge` branch at build 303 — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-29) — builds 279–297 SHIPPED to `main` ✅; `overhead-redstone-bridge` branch at build 304 — NOT merged, browser-UNTESTED
+
+**SHIPPED to `main` (live):** Overhead builds 279–297 + Campaign MVP.
+
+**Branch `overhead-redstone-bridge` (builds 298–304, NOT merged):** Suite green (1005); harnesses + probe clean.
+- 298 Bridge+drawbridge+`OH_REDSTONE` · 299 Editor painting/fill/reveal · 300 rail 2.0+undo-cam · 301 selection/
+  clipboard+guardrails→setting · 302 redstone devices+gates+TX/RX · 303 numbered Tx/Rx+device-move+H/D/E+animated
+  drawbridge+scatter.
+- **304:** consistent device roles (sources auto-numbered; sinks have built-in multi-select receivers); Move +
+  Delete in every config modal; hand-click opens the modal (dust → click-to-move); logic gates are now **1×1
+  DIRECTIONAL** blocks (AND/NOT/NOR) with an input/output SIDE config, engine routes power by side.
+
+**OPEN — drawbridge single-unit render (Kevin's design Q):** current animated drawbridge tilts PER CELL. Kevin
+wants the whole span to rise as ONE unit (a bridge connecting two cliffs, flipping up to rest on one edge).
+RECOMMENDATION (see below / next batch): rescope bridges to SPAN entities (from-cliff → to-cliff), unify
+"static bridge = a drawbridge that never moves", optionally preset lengths (S/M/L). NOT yet implemented.
+
+**NEEDS BROWSER PLAYTEST** before merging 298–304 to `main`.
+
+---
+
+## PRIOR STATE (2026-07-29) — `overhead-redstone-bridge` at build 303 (numbered Tx/Rx, device move, H/D/E, animated drawbridge, scatter)
 
 **SHIPPED to `main` (live):** Overhead builds 279–297 + Campaign MVP.
 

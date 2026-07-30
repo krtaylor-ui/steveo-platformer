@@ -115,5 +115,25 @@ console.log('Numbered transmitters + multi-source receiver (rxIds):');
   ok(OH_REDSTONE.receives(r, { rxIds: [5] }) && !OH_REDSTONE.receives(r, { rxIds: [9] }), 'receives() checks numbered sources');
 }
 
+console.log('Directional gate (input/output sides):');
+{
+  // AND at (2,2) reads inputs W (1,2) + N (2,1); outputs E (3,2) → a lamp/dust there.
+  const dev = [
+    { col: 1, row: 2, kind: 'lever', on: true }, { col: 2, row: 1, kind: 'lever', on: true },
+    { col: 2, row: 2, kind: 'and', inputs: ['w', 'n'], outputs: ['e'] },
+    { col: 3, row: 2, kind: 'lamp' },   // on the output side (E, adjacency)
+    { col: 2, row: 3, kind: 'lamp' },   // on the gate's unused SOUTH side → not fed
+  ];
+  let r = OH_REDSTONE.evaluate(dev);
+  ok(P(r, 3, 2), 'gate feeds the lamp on its OUTPUT side');
+  ok(!P(r, 2, 3), 'gate does NOT feed a lamp off its output side');
+  dev[0].on = false; r = OH_REDSTONE.evaluate(dev);
+  ok(!P(r, 3, 2), 'AND drops when one input side loses power');
+  // a lever on a non-input side must not satisfy the AND
+  const d2 = [{ col: 3, row: 5, kind: 'lever', on: true }, { col: 4, row: 5, kind: 'lever', on: true }, { col: 5, row: 5, kind: 'and', inputs: ['n'], outputs: ['s'] }, { col: 5, row: 6, kind: 'lamp' }];
+  r = OH_REDSTONE.evaluate(d2);
+  ok(!P(r, 5, 6), 'AND with input side N (empty) ignores the W lever → off');
+}
+
 console.log(`\noverhead redstone: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

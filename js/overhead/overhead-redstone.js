@@ -26,7 +26,10 @@
   // it's on) and/or RECEIVE from `rxChannel` (on while that channel is on). Legacy
   // `channel` on a lever/tx == txChannel.
   const SOURCE = { lever: 1, button: 1, plate: 1, weight: 1 };
-  const CONDUCTS = { dust: 1, lever: 1, button: 1, plate: 1, weight: 1, and: 1, not: 1, tx: 1 };
+  const CONDUCTS = { dust: 1, lever: 1, button: 1, plate: 1, weight: 1, and: 1, not: 1, nor: 1, tx: 1 };
+  const GATE = { and: 1, not: 1, nor: 1 };
+  const SIDE = { n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0] };
+  const dirOf = (fc, fr, tc, tr) => tc > fc ? 'e' : tc < fc ? 'w' : tr > fr ? 's' : 'n';
 
   const OH_REDSTONE = {
     key, SOURCE, CONDUCTS,
@@ -42,15 +45,29 @@
       // its numbered sources (rxIds → transmitter txId) is broadcasting.
       const rxOn = (d, ch) => (d.rxChannel && ch[d.rxChannel]) || (Array.isArray(d.rxIds) && d.rxIds.some((id) => ch['T' + id]));
       let powered = new Map(), channels = {};
+      // Power flows into `d` from neighbour `nd` iff nd is a powered conductor AND —
+      // if nd is a GATE — the side nd→d is one of nd's OUTPUT sides (directional).
+      const feeds = (d, nd, prev) => {
+        if (!nd || !CONDUCTS[nd.kind] || !prev.get(key(nd.col, nd.row))) return false;
+        if (GATE[nd.kind]) { const outs = (nd.outputs && nd.outputs.length) ? nd.outputs : ['n', 's', 'e', 'w']; if (outs.indexOf(dirOf(nd.col, nd.row, d.col, d.row)) < 0) return false; }
+        return true;
+      };
       for (let pass = 0; pass < 10; pass++) {
         const np = new Map();
         for (const d of devices) {
           const k = key(d.col, d.row); let on;
           if (SOURCE[d.kind]) on = this.baseActive(d) || rxOn(d, channels);
           else if (rxOn(d, channels)) on = true;
-          else {
-            let cnt = 0; for (const [dc, dr] of NB) { const nd = at.get(key(d.col + dc, d.row + dr)); if (nd && CONDUCTS[nd.kind] && powered.get(key(nd.col, nd.row))) cnt++; }
-            if (d.kind === 'and') on = cnt >= 2; else if (d.kind === 'not') on = cnt === 0; else on = cnt >= 1;
+          else if (GATE[d.kind]) {
+            // Read only the INPUT sides. AND = all present input-side conductors powered
+            // (≥2); NOT/NOR = none of the input-side conductors powered.
+            const ins = (d.inputs && d.inputs.length) ? d.inputs : ['n', 's', 'e', 'w'];
+            let condCount = 0, onCount = 0;
+            for (const side of ins) { const [dc, dr] = SIDE[side]; const nd = at.get(key(d.col + dc, d.row + dr)); if (nd && CONDUCTS[nd.kind]) { condCount++; if (feeds(d, nd, powered)) onCount++; } }
+            on = (d.kind === 'and') ? (condCount >= 2 && onCount === condCount) : (onCount === 0);
+          } else {
+            let cnt = 0; for (const s of ['n', 's', 'e', 'w']) { const [dc, dr] = SIDE[s]; if (feeds(d, at.get(key(d.col + dc, d.row + dr)), powered)) cnt++; }
+            on = cnt >= 1;
           }
           np.set(k, on);
         }

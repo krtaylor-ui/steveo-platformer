@@ -336,12 +336,16 @@
       ctx.strokeStyle = '#2a2620'; ctx.lineWidth = 1.5; ctx.strokeRect(x + cs * 0.1, y + cs * 0.1, cs * 0.8, cs * 0.8);
       ctx.fillStyle = extended ? '#c9ccd6' : '#8a8f9a'; ctx.fillRect(x + cs * 0.22, y + (extended ? cs * 0.02 : cs * 0.28), cs * 0.56, extended ? cs * 0.34 : cs * 0.2);   // head
     },
-    // Logic gate: a labelled box, bright when its output is on.
-    drawGate(ctx, cx, cy, r, type, on) {
-      ctx.fillStyle = on ? '#c34a4a' : '#3a2e2e'; ctx.strokeStyle = '#e08a8a'; ctx.lineWidth = 1.5;
-      ctx.fillRect(cx - r, cy - r * 0.7, r * 2, r * 1.4); ctx.strokeRect(cx - r, cy - r * 0.7, r * 2, r * 1.4);
-      ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(7, r * 0.72) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(type === 'not' ? 'NOT' : 'AND', cx, cy); ctx.textBaseline = 'alphabetic';
+    // Logic gate — a DISCRETE 1×1 block filling its cell (x,y = cell top-left, cs =
+    // cell px). Bright when its output is on; blue dots = input sides, green = outputs.
+    drawGate(ctx, x, y, cs, type, on, inputs, outputs) {
+      ctx.fillStyle = on ? '#8a3a3a' : '#33282a'; ctx.fillRect(x, y, cs, cs);
+      ctx.strokeStyle = '#e08a8a'; ctx.lineWidth = 1.5; ctx.strokeRect(x + 0.5, y + 0.5, cs - 1, cs - 1);
+      ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(6, cs * 0.32) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(type === 'nor' ? 'NOR' : type === 'not' ? 'NOT' : 'AND', x + cs / 2, y + cs / 2); ctx.textBaseline = 'alphabetic';
+      const mid = { n: [x + cs / 2, y + cs * 0.14], s: [x + cs / 2, y + cs * 0.86], e: [x + cs * 0.86, y + cs / 2], w: [x + cs * 0.14, y + cs / 2] };
+      const dot = (s, col) => { if (!mid[s]) return; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(mid[s][0], mid[s][1], Math.max(2, cs * 0.09), 0, 7); ctx.fill(); };
+      (inputs || []).forEach((s) => dot(s, '#6ad0ff')); (outputs || []).forEach((s) => dot(s, '#7fe0a0'));
     },
 
     // Direction toward the higher neighbour ('E'|'W'|'N'|'S'); horizontal default on
