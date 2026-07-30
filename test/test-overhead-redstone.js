@@ -151,5 +151,21 @@ console.log('Dust is pure WIRE — it conducts but never transmits a channel:');
   ok(P(r, 4, 1), 'a lamp listening to the lever (T1) lights through the dust wire');
 }
 
+console.log('Sinks (lamp/piston/rx) RECEIVE — they never transmit a channel:');
+{
+  // A lever (T1) lights a lamp that carries a legacy txId (T9). The lit lamp must NOT
+  // broadcast T9 — sinks receive, they don't transmit (older saves baked a txId on them).
+  const dev = [
+    { col: 1, row: 1, kind: 'lever', on: true, txId: 1 },
+    { col: 2, row: 1, kind: 'lamp', txId: 9, rxIds: [1] },
+    { col: 3, row: 1, kind: 'piston', txId: 8, rxIds: [1] },
+  ];
+  const r = OH_REDSTONE.evaluate(dev);
+  ok(OH_REDSTONE.receives(r, dev[1]), 'the lamp receives the lever signal (T1)');
+  ok(!OH_REDSTONE.channelOn(r, 'T9'), 'a lit lamp does NOT transmit its own T9');
+  ok(!OH_REDSTONE.channelOn(r, 'T8'), 'an energised piston does NOT transmit its own T8');
+  ok(OH_REDSTONE.channelOn(r, 'T1'), 'only the lever (real transmitter) broadcasts T1');
+}
+
 console.log(`\noverhead redstone: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

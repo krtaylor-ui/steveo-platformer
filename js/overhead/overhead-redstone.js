@@ -71,10 +71,11 @@
           }
           np.set(k, on);
         }
-        // Broadcast: while ON, a device drives its legacy channel AND its numbered 'T'+txId.
-        // Dust is pure WIRE — it conducts to neighbours but never transmits a channel
-        // (guarded here so legacy worlds that baked a txId onto dust don't broadcast).
-        const nc = {}; for (const d of devices) if (d.kind !== 'dust' && np.get(key(d.col, d.row))) { const ch = d.txChannel || d.channel; if (ch) nc[ch] = true; if (d.txId != null) nc['T' + d.txId] = true; }
+        // Broadcast: while ON, a TRANSMITTER drives its legacy channel AND its 'T'+txId.
+        // Wire (dust) and SINKS (lamp/piston/rx) never transmit — guarded here so legacy
+        // worlds that baked a txId onto them don't broadcast.
+        const NO_TX = { dust: 1, lamp: 1, piston: 1, rx: 1 };
+        const nc = {}; for (const d of devices) if (!NO_TX[d.kind] && np.get(key(d.col, d.row))) { const ch = d.txChannel || d.channel; if (ch) nc[ch] = true; if (d.txId != null) nc['T' + d.txId] = true; }
         let stable = true; for (const [k, v] of np) if (powered.get(k) !== v) { stable = false; break; }
         if (stable) { const ck = Object.keys(nc), pk = Object.keys(channels); if (ck.length !== pk.length || ck.some((k) => !channels[k])) stable = false; }
         powered = np; channels = nc;

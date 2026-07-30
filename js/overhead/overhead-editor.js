@@ -16,6 +16,9 @@
 
   const OH_EDITOR = {
     world: null, grid: null, cam: { x: 0, y: 0 },
+    // Devices that TRANSMIT a numbered channel (sources + logic gates). Dust is pure
+    // wire; sinks (lamp/piston/rx) receive — none of these transmit, so no Tx number.
+    _TX_KINDS: { lever: 1, button: 1, plate: 1, weight: 1, lock: 1, and: 1, not: 1, nor: 1, tx: 1 },
     worldId: null,                 // server world id (null until first save)
     tab: 'terrain',                // active palette tab
     tool: 'terrain',               // terrain | building | mob | item | spawn
@@ -448,9 +451,9 @@
       else if (['lever', 'dust', 'lamp', 'plate', 'weight', 'piston', 'and', 'not', 'nor', 'lock'].indexOf(tool) >= 0) {
         this.world.redstone = this.world.redstone || [];
         if (!this.world.redstone.some((x) => x.col === col && x.row === row)) {
-          // Dust is pure WIRE — it conducts power to neighbours but does NOT transmit,
-          // so it gets no Tx number; every other device gets an auto Tx number.
-          const dev = (tool === 'dust') ? { col, row, kind: tool } : { col, row, kind: tool, txId: this._nextTxId() };
+          // Only TRANSMITTERS get a Tx number (sources + gates). Dust is pure WIRE and
+          // SINKS (lamp/piston/rx) RECEIVE via rxIds — none of them transmit a channel.
+          const dev = this._TX_KINDS[tool] ? { col, row, kind: tool, txId: this._nextTxId() } : { col, row, kind: tool };
           if (tool === 'lever') { dev.on = false; dev.channel = 'gate'; }        // channel == transmit (quick default)
           else if (tool === 'plate') dev.txChannel = 'gate';
           else if (tool === 'weight') { dev.txChannel = 'gate'; dev.threshold = 2; }
@@ -647,7 +650,7 @@
     // Multi-select checklist of every OTHER device's Tx number (labelled by name) to
     // listen to — the side-scroll Tx/Rx model.
     _txChecklist(cls, listenIds, excludeCol, excludeRow) {
-      const others = (this.world.redstone || []).filter((x) => x.txId != null && x.kind !== 'dust' && !(x.col === excludeCol && x.row === excludeRow));
+      const others = (this.world.redstone || []).filter((x) => x.txId != null && x.kind !== 'dust' && ['lamp', 'piston', 'rx'].indexOf(x.kind) < 0 && !(x.col === excludeCol && x.row === excludeRow));
       if (!others.length) return `<p style="color:#8fa0bd;font-size:12px">No transmitters yet — place a lever / plate / gate first.</p>`;
       const set = Array.isArray(listenIds) ? listenIds : [];
       return `<div style="max-height:150px;overflow:auto;margin:4px 0;border:1px solid #2c3648;border-radius:6px;padding:4px">` +
@@ -657,12 +660,15 @@
     // of sources to RECEIVE from (rxIds), plus lever start-state / weight threshold.
     // A pure receiver (lamp/piston) must pick at least one source.
     _deviceModal(d) {
-      if (d.txId == null) d.txId = this._nextTxId();
       const isGate = (d.kind === 'and' || d.kind === 'not' || d.kind === 'nor');
       const isSink = (d.kind === 'lamp' || d.kind === 'piston' || d.kind === 'rx');
       const isLock = (d.kind === 'lock');
+      // Only transmitters carry a Tx number; a SINK receives (rxIds), it never broadcasts.
+      if (!isSink && d.txId == null) d.txId = this._nextTxId();
       const sideRow = (cls, sel) => ['n', 's', 'e', 'w'].map((s) => `<label style="display:inline-flex;gap:4px;margin-right:10px"><input type="checkbox" class="${cls}" value="${s}" ${(sel || []).indexOf(s) >= 0 ? 'checked' : ''}> ${s.toUpperCase()}</label>`).join('');
-      let inner = `<p style="color:#cfe0ff;font-size:13px;margin:0 0 8px">Broadcasts as <b>Tx #${d.txId}</b> — ${d.kind} @ ${d.col},${d.row}</p>`;
+      let inner = isSink
+        ? `<p style="color:#cfe0ff;font-size:13px;margin:0 0 8px">Receives a signal — <b>${d.kind}</b> @ ${d.col},${d.row}</p>`
+        : `<p style="color:#cfe0ff;font-size:13px;margin:0 0 8px">Broadcasts as <b>Tx #${d.txId}</b> — ${d.kind} @ ${d.col},${d.row}</p>`;
       if (d.kind === 'lever' || d.kind === 'button') inner += `<label style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input type="checkbox" id="dv-on" ${d.on ? 'checked' : ''}> Starts ON</label>`;
       if (d.kind === 'weight') inner += `<label>Weight threshold (entities) <input type="number" id="dv-thr" min="1" value="${d.threshold || 2}"></label>`;
       if (isGate) { inner += `<div style="font-size:12px;color:#9fb0cc;margin-top:6px">Input sides:</div><div style="margin:4px 0">${sideRow('gt-in', d.inputs)}</div><div style="font-size:12px;color:#9fb0cc">Output sides:</div><div style="margin:4px 0">${sideRow('gt-out', d.outputs)}</div>`; }
@@ -674,7 +680,7 @@
         inner += `<label style="display:flex;gap:8px;align-items:center;margin-top:4px"><input type="checkbox" id="lk-consume" ${d.consume ? 'checked' : ''}> Consume the key</label>`;
         inner += `<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="lk-toggle" ${d.toggle ? 'checked' : ''}> Can be turned off again (else stays unlocked)</label>`;
       }
-      this._cfgModal('Redstone: ' + d.kind + ' (Tx #' + d.txId + ')', inner, () => {
+      this._cfgModal('Redstone: ' + d.kind + (isSink ? ' (Rx)' : ' (Tx #' + d.txId + ')'), inner, () => {
         if (d.kind === 'lever' || d.kind === 'button') d.on = document.getElementById('dv-on').checked;
         if (d.kind === 'weight') { const t = document.getElementById('dv-thr'); if (t) d.threshold = Math.max(1, parseInt(t.value, 10) || 2); }
         if (isGate) { const rd = (c) => [].slice.call(document.querySelectorAll('.' + c + ':checked')).map((el) => el.value); d.inputs = rd('gt-in'); d.outputs = rd('gt-out'); if (!d.outputs.length) d.outputs = ['e']; if (!d.inputs.length) d.inputs = ['w']; }

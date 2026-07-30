@@ -211,6 +211,7 @@
 
       // Sprint (Shift by default) — a speed multiplier, also carried into a jump.
       const sprinting = this._sprint && inp.isDown && (inp.isDown('ShiftLeft') || inp.isDown('ShiftRight'));
+      this._sprinting = !!sprinting;   // live state for the debug HUD (vs the enabled setting)
       const spd = p.speed * (sprinting ? this._sprintMult : 1);
       // Jump. maxElevationJump = the jump's clearance (additive with the double jump).
       const airborneBefore = p.jump && p.jump.jumping;
@@ -849,7 +850,7 @@
         ver + '  · ' + this.mode + '  · ' + this.state,
         'map ' + this.grid.gridW + '×' + this.grid.gridH + ' d' + (this.map.density || 1) + '  zoom ' + (this.grid.masterZoom || 1).toFixed(2),
         'plr c' + c.col + ',r' + c.row + ' elev' + p.elev + ' hp' + p.hp + '/' + p.maxHp + ' wpn:' + (p.weapon || '-'),
-        'keys: ' + ((p.keys && p.keys.length) ? p.keys.join(',') : '—') + '  sprint:' + (this._sprint ? 1 : 0),
+        'keys: ' + ((p.keys && p.keys.length) ? p.keys.join(',') : '—') + '  sprint:' + (this._sprinting ? 'ON' : (this._sprint ? 'ready' : 'off')),
         'jumpClear ' + this._jumpClear + '+' + this._doubleJumpClear + '  day/night: ' + tod,
         'channels ON: ' + (chans.length ? chans.join(' ') : '—'),
       ];

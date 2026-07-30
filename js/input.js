@@ -305,6 +305,15 @@ class InputManager {
       (t && typeof t.closest === 'function' && t.closest('#canvas-wrap'));
     window.addEventListener('mousedown', e => {
       if (!_inGameArea(e.target)) return;   // HTML UI outside the game area handles itself
+      // Map the click position NOW — mouse.x/y otherwise only refresh on mousemove, so a
+      // click with no preceding move (a synthetic/programmatic click, or a trackpad tap
+      // from rest) would fire at STALE coords (0,0) and hit whatever sits top-left — e.g.
+      // the overhead Test-mode "◀ Designer" button, exiting the session on any click.
+      const rect = this._canvas.getBoundingClientRect();
+      if (rect.width && rect.height) {
+        this.mouse.x = Math.max(0, Math.min(this._canvas.width,  (e.clientX - rect.left) * (this._canvas.width  / rect.width)));
+        this.mouse.y = Math.max(0, Math.min(this._canvas.height, (e.clientY - rect.top)  * (this._canvas.height / rect.height)));
+      }
       if (e.button === 0) {
         this.mouse.down       = true;
         this.mouse.clicked    = true;

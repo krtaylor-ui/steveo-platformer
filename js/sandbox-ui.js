@@ -231,6 +231,13 @@ const SANDBOX = {
     const wantOverhead = this.viewFilter === 'overhead';
     const filtered = (worlds || []).filter(w => this._isOverhead(w) === wantOverhead);
     let html = filtered.map(w => this._worldCard(w)).join('');
+    // Under the Overhead view, also show overhead worlds saved OFFLINE (own store) —
+    // otherwise they save successfully but never appear and can't be reopened.
+    if (wantOverhead) {
+      const have = new Set(filtered.map(w => w.id));
+      const offline = this._offlineOverheadWorlds().filter(w => !have.has(w.id));
+      if (offline.length) html += offline.map(w => this._worldCard(w)).join('');
+    }
     // Online only: also show your LOCAL worlds as full cards under a divider, so
     // you can Edit/Copy/Delete them and (via Copy) promote them to your account —
     // all in one place. (Offline shows only local worlds.)
@@ -254,9 +261,24 @@ const SANDBOX = {
   // online and vice-versa.
   _isLocalWorld(id) { return typeof LOCAL_WORLDS !== 'undefined' && !!LOCAL_WORLDS.get(id); },
 
+  // Overhead worlds saved OFFLINE live in their own store (steveo_overhead_worlds,
+  // keyed "oh-<name>"), NOT in steveo_local_worlds — so they need their own read path
+  // to appear in the Sandbox list and to Edit/Delete. (Bug: they were saved but never
+  // listed, because the Overhead view skipped local worlds entirely.)
+  _ohStore() { try { return JSON.parse(localStorage.getItem('steveo_overhead_worlds') || '{}'); } catch (e) { return {}; } },
+  _isOfflineOverhead(id) { return !!id && Object.prototype.hasOwnProperty.call(this._ohStore(), id); },
+  _offlineOverheadWorlds() {
+    const all = this._ohStore();
+    return Object.keys(all).map((k) => {
+      const wd = all[k] || {};
+      // Wrap the raw overhead object in the list-card schema the browser renders from.
+      return { id: k, world_name: wd.name || k.replace(/^oh-/, ''), description: wd.description || '', is_published: false, created_at: wd.created_at || null, world_data: wd };
+    });
+  },
+
   _worldCard(w) {
     const mode = (w.world_data && w.world_data.gameModeDefault) || 'NRM';
-    const isLocal = this._isLocalWorld(w.id);
+    const isLocal = this._isLocalWorld(w.id) || this._isOfflineOverhead(w.id);
     const overhead = this._isOverhead(w);
     const origin = isLocal
       ? '<span class="origin-badge">💾 Local</span>'
@@ -803,6 +825,10 @@ const SANDBOX = {
       } else if (local) {
         world = LOCAL_WORLDS.get(worldId);
         if (!world) { alert('World not found'); return; }
+      } else if (this._isOfflineOverhead(worldId)) {
+        const wd = this._ohStore()[worldId];
+        if (!wd) { alert('World not found'); return; }
+        world = { id: worldId, world_name: wd.name || worldId.replace(/^oh-/, ''), world_data: wd };
       } else {
         const res = await AUTH.authedFetch(`/api/worlds/sandbox/${worldId}`);
         if (!res.ok) { alert('Failed to load world'); return; }
@@ -925,6 +951,13 @@ const SANDBOX = {
     if (!worldId) return;
     if (this._isLocalWorld(worldId)) {
       LOCAL_WORLDS.remove(worldId);
+      if (this.selectedWorldId === worldId) this.exitEditor();
+      else await this.loadWorlds();
+      return;
+    }
+    if (this._isOfflineOverhead(worldId)) {
+      const all = this._ohStore(); delete all[worldId];
+      try { localStorage.setItem('steveo_overhead_worlds', JSON.stringify(all)); } catch (e) {}
       if (this.selectedWorldId === worldId) this.exitEditor();
       else await this.loadWorlds();
       return;
