@@ -66,6 +66,9 @@
       this._lightRange = (cfg.lightRange != null ? cfg.lightRange : 5);
       const briOf = { lava: (cfg.lavaBrightness != null ? cfg.lavaBrightness : 0.7),
                       glowstone: (cfg.glowstoneBrightness != null ? cfg.glowstoneBrightness : 0.95) };
+      // A POWERED redstone lamp is a light source too (warm yellow), like glowstone/lava.
+      this._lampBrightness = (cfg.lampBrightness != null ? cfg.lampBrightness : 0.85);
+      this._lampLightColor = cfg.lampLightColor || '#ffd24a';
       this._elapsed = 0; this._tod = this._dayNight ? this._dayStart : 0.5; this._detectMult = 1;
       // Death FX particles (family-friendly: coloured sprite blocks, no gore).
       this._deathFx = null;
@@ -695,6 +698,7 @@
       if (sc.width !== CANVAS_W || sc.height !== CANVAS_H) { sc.width = CANVAS_W; sc.height = CANVAS_H; }
       const sx = sc.getContext('2d'); sx.clearRect(0, 0, CANVAS_W, CANVAS_H); sx.fillStyle = '#000';
       const sgnx = Math.sign(sh.x) || 1, sgny = Math.sign(sh.y) || 1, cell = this.grid.cell;
+      // PASS 1 — cast each exposed cliff edge's shadow beam (union blacks, no stacking).
       for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
         const e = this._elev(c, r); if (e <= 0) continue; if (this._key(c, r) === 'leaves') continue;
         // Only an edge facing away from the light casts (a lower neighbour that way).
@@ -704,7 +708,22 @@
         sx.lineTo(base.x + cs + ox, base.y + cs + oy); sx.lineTo(base.x + ox, base.y + cs + oy);
         sx.closePath(); sx.fill();
       }
-      ctx.globalAlpha = sh.alpha; ctx.drawImage(sc, 0, 0); ctx.globalAlpha = 1;
+      // PASS 2 — erase every raised-block footprint so a shadow lands on the GROUND
+      // beyond the block, never on the block's own lit top (fixes "shadow covers the
+      // block"); the union of erased footprints + blur reads as one object's shadow.
+      sx.globalCompositeOperation = 'destination-out'; sx.fillStyle = '#000';
+      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+        if (this._elev(c, r) <= 0 || this._key(c, r) === 'leaves') continue;
+        const b = S(c * cell, r * cell); sx.fillRect(b.x - 0.5, b.y - 0.5, cs + 1, cs + 1);
+      }
+      sx.globalCompositeOperation = 'source-over';
+      // Blit with a light blur so the stepped per-cell edges soften into a smooth edge.
+      const blur = Math.max(0.6, cs * 0.05);
+      ctx.globalAlpha = sh.alpha;
+      if ('filter' in ctx) ctx.filter = `blur(${blur}px)`;
+      ctx.drawImage(sc, 0, 0);
+      if ('filter' in ctx) ctx.filter = 'none';
+      ctx.globalAlpha = 1;
     }
 
     // Night darkening with light-source cut-outs (glowstone / lava) + a faint sun/moon
@@ -715,8 +734,18 @@
       // object's brightness). Then STRIDE-sample so a big lava lake lights UNIFORMLY
       // (not just its top rows — the old row-major cap made the top glow, bottom dark)
       // within a bounded budget.
+      // Static terrain emitters (glowstone/lava) + DYNAMIC powered redstone lamps.
+      let emitters = this._lightCells;
+      if (this._redstone.length && typeof OH_REDSTONE !== 'undefined') {
+        const dyn = [];
+        for (const d of this._redstone) {
+          if ((d.kind === 'lamp' || d.kind === 'tx' || d.kind === 'rx') && OH_REDSTONE.cellPowered(this._rs, d.col, d.row))
+            dyn.push({ c: d.col, r: d.row, color: this._lampLightColor, bri: this._lampBrightness });
+        }
+        if (dyn.length) emitters = emitters.concat(dyn);
+      }
       const vis = [];
-      for (const lc of this._lightCells) {
+      for (const lc of emitters) {
         const r = Math.max(cs * 1.1, Math.min(maxR, this._lightRange * lc.bri * cs));
         const sp = S((lc.c + 0.5) * cell, (lc.r + 0.5) * cell);
         if (sp.x < -r || sp.x > CANVAS_W + r || sp.y < -r || sp.y > CANVAS_H + r) continue;
