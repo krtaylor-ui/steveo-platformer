@@ -254,8 +254,25 @@
     // player (pass a player-scaled size, not a map-cell size).
     drawItemSprite(ctx, itemKey, cx, cy, size) {
       if (itemKey === 'coin' || !itemKey) { ctx.fillStyle = '#ffd94a'; ctx.beginPath(); ctx.arc(cx, cy, size * 0.32, 0, 7); ctx.fill(); ctx.strokeStyle = '#b8860b'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.beginPath(); ctx.arc(cx - size * 0.1, cy - size * 0.1, size * 0.08, 0, 7); ctx.fill(); return; }
+      const it = window.OH_PALETTE && window.OH_PALETTE.OH_ITEM_BY_KEY[itemKey];
+      if (it && it.kind === 'key') { const col = it.color; ctx.save(); ctx.translate(cx, cy);
+        if (itemKey.indexOf('jewel') === 0) { ctx.fillStyle = col; ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = 1; const s = size * 0.28; ctx.beginPath(); ctx.moveTo(0, -s); ctx.lineTo(s, -s * 0.2); ctx.lineTo(s * 0.5, s); ctx.lineTo(-s * 0.5, s); ctx.lineTo(-s, -s * 0.2); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+        else if (itemKey === 'passcard') { ctx.fillStyle = col; ctx.fillRect(-size * 0.28, -size * 0.18, size * 0.56, size * 0.36); ctx.fillStyle = '#3a4050'; ctx.fillRect(-size * 0.22, -size * 0.1, size * 0.28, size * 0.08); }
+        else { ctx.strokeStyle = col; ctx.lineWidth = Math.max(2, size * 0.12); ctx.beginPath(); ctx.arc(-size * 0.12, 0, size * 0.16, 0, 7); ctx.moveTo(size * 0.02, 0); ctx.lineTo(size * 0.32, 0); ctx.moveTo(size * 0.32, 0); ctx.lineTo(size * 0.32, size * 0.14); ctx.moveTo(size * 0.22, 0); ctx.lineTo(size * 0.22, size * 0.12); ctx.stroke(); }
+        ctx.restore(); return;
+      }
       const wk = itemKey === 'crossbow' ? 'bow' : itemKey;   // reuse the held-weapon shapes
       ctx.save(); ctx.translate(cx - size * 0.45, cy); ctx.rotate(-0.35); this.drawWeapon(ctx, size * 0.62, wk); ctx.restore();
+    },
+    // Lock block: a padlock; open (green) when powered, closed (grey) otherwise.
+    drawLock(ctx, x, y, cs, on) {
+      ctx.fillStyle = on ? '#2f5a3a' : '#3a3f4a'; ctx.fillRect(x + cs * 0.12, y + cs * 0.12, cs * 0.76, cs * 0.76);
+      ctx.strokeStyle = '#20242c'; ctx.lineWidth = 1.5; ctx.strokeRect(x + cs * 0.12, y + cs * 0.12, cs * 0.76, cs * 0.76);
+      const cx = x + cs / 2, cy = y + cs * 0.52;
+      ctx.strokeStyle = on ? '#7fe0a0' : '#c9ccd6'; ctx.lineWidth = Math.max(2, cs * 0.1);
+      ctx.beginPath(); ctx.arc(cx, cy - cs * 0.14, cs * 0.16, on ? -2.6 : Math.PI, on ? 0.4 : 0); ctx.stroke();   // shackle (swung open when on)
+      ctx.fillStyle = on ? '#ffe27a' : '#e6c14a'; ctx.fillRect(cx - cs * 0.16, cy - cs * 0.02, cs * 0.32, cs * 0.26);   // body
+      ctx.fillStyle = '#20242c'; ctx.fillRect(cx - cs * 0.03, cy + cs * 0.06, cs * 0.06, cs * 0.1);   // keyhole
     },
 
     // Shared ramp/ladder icon, oriented up-slope toward `dir` ('E' default). A

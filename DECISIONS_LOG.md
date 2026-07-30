@@ -1,6 +1,27 @@
 # Steveo Platformer — Phase 3 Overnight Run — Decisions Log
 
 # ═══════════════════════════════════════════════════════════════════════
+# OVERHEAD — HIDE-ABOVE VIEW · KEYS · LOCK BLOCK (2026-07-30, build 306, branch `overhead-redstone-bridge`)
+# ═══════════════════════════════════════════════════════════════════════
+Key-puzzle slice (Kevin's batch; doors + chests deferred). Suite green (1005); key→lock harness + probe clean.
+
+- **"Hide above elev N" view filter** (editor top bar, beside Elevation map): `this.view.hideAbove` skips
+  every terrain cell / building / mob / item / ramp / bridge / redstone device above the active elevLevel —
+  so you can see + build INSIDE mountains (hidden redstone rooms). Editor-only render filter (`hiAbove(e)`).
+- **Keys** — new `kind:'key'` items with a `keyId` (gold/red/blue keys, emerald/amethyst jewels, passcard),
+  rendered by `drawItemSprite` (key/gem/card shapes). Player collects them onto `player.keys` in `_pickups`.
+- **Lock block** — new redstone SOURCE kind `lock` (added to `SOURCE`/`CONDUCTS`/`baseActive`; active while
+  `on`). `_useNearbyLock`: E next to a lock with a matching key → sets `on` (broadcasts its channel/Tx),
+  consumes the key if configured; `toggle` lets it reset, else it stays unlocked; wrong/no key → "Locked"
+  notice. Config modal (`_deviceModal` lock branch) picks accepted keys FROM KEYS PRESENT ON THE MAP
+  (`_keysOnMap`), consume, and toggle. Shared `OVERHEAD.drawLock` (padlock, open/green when powered).
+  Verified headless: pickup → insert → unlock+consume+signal; wrong key stays locked; lamp on the channel lights.
+- **DEFERRED (next batch), Kevin's full spec captured:** DOORS (a span entity like the bridge — placed
+  between two waypoints at a set height, anchored to the first point + pivots, swing-dir + anchor-invert +
+  skin in the modal; opens via redstone / a key / the action button) and CHESTS (a placeable holding items,
+  open/close animation, opening gives the contents). See FUTURE_ROADMAP.
+
+# ═══════════════════════════════════════════════════════════════════════
 # OVERHEAD — SPAN BRIDGES + SINGLE-UNIT DRAWBRIDGE (2026-07-29, build 305, branch `overhead-redstone-bridge`)
 # ═══════════════════════════════════════════════════════════════════════
 Bridge rescope (Kevin's design). Suite green (1005); span collision + drawbridge + animated-render harness + probe clean.

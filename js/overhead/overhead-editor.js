@@ -28,7 +28,7 @@
     _sel: null,           // Set of 'c,r' currently selected (+ _selBox bounds)
     _selBox: null, _marquee: null, _selecting: false,   // marquee drag state
     _clip: null, _pasting: false,   // clipboard pattern + paste mode
-    view: { mobs: true, items: true, buildings: true, elev: false },   // top-bar view filters
+    view: { mobs: true, items: true, buildings: true, elev: false, hideAbove: false },   // top-bar view filters
     _running: false, _dragging: false, _shift: false, _shapeAnchor: null, _shapeEnd: null,
     _hist: [], _histPos: -1,
 
@@ -222,6 +222,7 @@
           <label><input type="checkbox" id="oh-v-mobs" ${this.view.mobs ? 'checked' : ''}> Mobs</label>
           <label><input type="checkbox" id="oh-v-items" ${this.view.items ? 'checked' : ''}> Items</label>
           <label><input type="checkbox" id="oh-v-elev" ${this.view.elev ? 'checked' : ''}> Elevation map</label>
+          <label title="Hide everything above the active elevation — see inside mountains"><input type="checkbox" id="oh-v-hideAbove" ${this.view.hideAbove ? 'checked' : ''}> Hide above elev ${this.elevLevel}</label>
         </span>
         <span class="oh-status">${this._esc(this.world.name)} · ${m.baseW || m.gridW}×${m.baseH || m.gridH} @ d${m.density} · ${this._shift ? 'erase' : this.tool} @ elev ${this.elevLevel}</span>
         <span class="oh-flash" id="oh-flash"></span>`;
@@ -250,6 +251,7 @@
         + `<div class="opt ${this.tool === 'and' ? 'sel' : ''}" data-rs="and">🅰 AND gate (1×1)</div>`
         + `<div class="opt ${this.tool === 'not' ? 'sel' : ''}" data-rs="not">🚫 NOT gate (1×1)</div>`
         + `<div class="opt ${this.tool === 'nor' ? 'sel' : ''}" data-rs="nor">⛔ NOR gate (1×1)</div>`
+        + `<div class="opt ${this.tool === 'lock' ? 'sel' : ''}" data-rs="lock">🔒 Lock (key → signal)</div>`
         + `<div class="opt small" style="color:#8fa0bd">Hand-click a device to set its transmit / receive channel. Lever/plate + Drawbridge share "gate" by default.</div>`;
       const grp = (label, cur, opts, active, sw) => `<div class="grp"><div class="hd ${active ? 'on' : ''}"><b>${label} ▸</b><span class="cur">${sw || ''}${cur}</span></div><div class="oh-fly">${opts}</div></div>`;
       const shapeOpts = [['freehand', 'Freehand (B)'], ['line', 'Line (L)'], ['rect', 'Rectangle (R)'], ['circle', 'Circle / Oval (O)'], ['fill', '🪣 Fill / bucket (G)']].map(([k, n]) => `<div class="opt small ${this.shape === k ? 'sel' : ''}" data-shape="${k}">${n}</div>`).join('')
@@ -259,7 +261,7 @@
       const shapeActive = mode === 'draw' && this.shape !== 'freehand';
       const terrActive = mode === 'draw' && this.tool === 'terrain';
       const buildActive = ['building', 'spawn', 'goal', 'ramp', 'ladder', 'tree', 'bridge'].indexOf(this.tool) >= 0;
-      const rsActive = ['lever', 'dust', 'lamp', 'plate', 'weight', 'piston', 'and', 'not', 'nor'].indexOf(this.tool) >= 0;
+      const rsActive = ['lever', 'dust', 'lamp', 'plate', 'weight', 'piston', 'and', 'not', 'nor', 'lock'].indexOf(this.tool) >= 0;
       const terrCur = this.tool === 'terrain' ? P().OH_TERRAIN_BY_KEY[this.terrainKey].name : '';
       const terrSw = this.tool === 'terrain' ? blockSw(this.terrainKey) : '';
       rail.innerHTML =
@@ -286,7 +288,7 @@
       g('oh-zin').onclick = () => OH_GRID.zoomBy(this.grid, 1.15); g('oh-zout').onclick = () => OH_GRID.zoomBy(this.grid, 0.87);
       g('oh-test').onclick = () => this._test(); g('oh-save').onclick = () => this._save(); g('oh-exit').onclick = () => this.close();
       g('oh-settings').onclick = () => { if (typeof OH_WORLD_SETTINGS !== 'undefined') OH_WORLD_SETTINGS.open(this.world, () => { this._renderBar(); this._pushHistory('settings change'); }); };
-      ['buildings', 'mobs', 'items', 'elev'].forEach((k) => { const el = g('oh-v-' + k); if (el) el.onchange = () => { this.view[k] = el.checked; }; });
+      ['buildings', 'mobs', 'items', 'elev', 'hideAbove'].forEach((k) => { const el = g('oh-v-' + k); if (el) el.onchange = () => { this.view[k] = el.checked; }; });
       g('oh-erase').onclick = () => { this.tool = 'erase'; this._renderBar(); this._updateCursor(); };
       g('oh-hand').onclick = () => { this.tool = 'hand'; this._selEnt = null; this._renderBar(); this._updateCursor(); };
       g('oh-draw').onclick = () => { this.tool = 'terrain'; this._renderBar(); this._updateCursor(); };   // restore drawing with the last terrain + brush/shape (all persist)
@@ -443,7 +445,7 @@
     _placeAt(tool, col, row) {
       const m = this.world.mapSnapshot; if (col < 0 || row < 0 || col >= m.gridW || row >= m.gridH) return;
       if (tool === 'ramp' || tool === 'ladder') { this.world.ramps = this.world.ramps || []; if (!this.world.ramps.some((x) => x.col === col && x.row === row)) this.world.ramps.push({ col, row, kind: tool }); }
-      else if (['lever', 'dust', 'lamp', 'plate', 'weight', 'piston', 'and', 'not', 'nor'].indexOf(tool) >= 0) {
+      else if (['lever', 'dust', 'lamp', 'plate', 'weight', 'piston', 'and', 'not', 'nor', 'lock'].indexOf(tool) >= 0) {
         this.world.redstone = this.world.redstone || [];
         if (!this.world.redstone.some((x) => x.col === col && x.row === row)) {
           const dev = { col, row, kind: tool, txId: this._nextTxId() };   // every device gets an auto Tx number
@@ -452,6 +454,7 @@
           else if (tool === 'weight') { dev.txChannel = 'gate'; dev.threshold = 2; }
           else if (tool === 'piston') dev.rxChannel = 'gate';                     // extends when "gate" is powered
           else if (tool === 'and' || tool === 'not' || tool === 'nor') { dev.inputs = tool === 'and' ? ['w', 's'] : ['w']; dev.outputs = ['e']; }
+          else if (tool === 'lock') { dev.on = false; dev.channel = 'gate'; dev.acceptKeys = []; dev.consume = false; dev.toggle = false; }
           this.world.redstone.push(dev);
         }
       }
@@ -655,19 +658,30 @@
       if (d.txId == null) d.txId = this._nextTxId();
       const isGate = (d.kind === 'and' || d.kind === 'not' || d.kind === 'nor');
       const isSink = (d.kind === 'lamp' || d.kind === 'piston' || d.kind === 'rx');
+      const isLock = (d.kind === 'lock');
       const sideRow = (cls, sel) => ['n', 's', 'e', 'w'].map((s) => `<label style="display:inline-flex;gap:4px;margin-right:10px"><input type="checkbox" class="${cls}" value="${s}" ${(sel || []).indexOf(s) >= 0 ? 'checked' : ''}> ${s.toUpperCase()}</label>`).join('');
       let inner = `<p style="color:#cfe0ff;font-size:13px;margin:0 0 8px">Broadcasts as <b>Tx #${d.txId}</b> — ${d.kind} @ ${d.col},${d.row}</p>`;
       if (d.kind === 'lever' || d.kind === 'button') inner += `<label style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input type="checkbox" id="dv-on" ${d.on ? 'checked' : ''}> Starts ON</label>`;
       if (d.kind === 'weight') inner += `<label>Weight threshold (entities) <input type="number" id="dv-thr" min="1" value="${d.threshold || 2}"></label>`;
       if (isGate) { inner += `<div style="font-size:12px;color:#9fb0cc;margin-top:6px">Input sides:</div><div style="margin:4px 0">${sideRow('gt-in', d.inputs)}</div><div style="font-size:12px;color:#9fb0cc">Output sides:</div><div style="margin:4px 0">${sideRow('gt-out', d.outputs)}</div>`; }
       else if (isSink) { inner += `<div style="font-size:12px;color:#9fb0cc;margin-top:6px">Receive from (pick at least one):</div>` + this._txChecklist('dv-rx', d.rxIds, d.col, d.row); }
+      else if (isLock) {
+        const keys = this._keysOnMap(), sel = d.acceptKeys || [];
+        inner += `<div style="font-size:12px;color:#9fb0cc;margin-top:6px">Accepted keys (leave all unchecked = any key):</div>`;
+        inner += keys.length ? `<div style="margin:4px 0">${keys.map((k) => `<label style="display:inline-flex;gap:4px;margin-right:10px"><input type="checkbox" class="lk-key" value="${k}" ${sel.indexOf(k) >= 0 ? 'checked' : ''}> ${k}</label>`).join('')}</div>` : `<p style="color:#8fa0bd;font-size:12px">No keys placed on the map yet — add a key/jewel item first.</p>`;
+        inner += `<label style="display:flex;gap:8px;align-items:center;margin-top:4px"><input type="checkbox" id="lk-consume" ${d.consume ? 'checked' : ''}> Consume the key</label>`;
+        inner += `<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="lk-toggle" ${d.toggle ? 'checked' : ''}> Can be turned off again (else stays unlocked)</label>`;
+      }
       this._cfgModal('Redstone: ' + d.kind + ' (Tx #' + d.txId + ')', inner, () => {
         if (d.kind === 'lever' || d.kind === 'button') d.on = document.getElementById('dv-on').checked;
         if (d.kind === 'weight') { const t = document.getElementById('dv-thr'); if (t) d.threshold = Math.max(1, parseInt(t.value, 10) || 2); }
         if (isGate) { const rd = (c) => [].slice.call(document.querySelectorAll('.' + c + ':checked')).map((el) => el.value); d.inputs = rd('gt-in'); d.outputs = rd('gt-out'); if (!d.outputs.length) d.outputs = ['e']; if (!d.inputs.length) d.inputs = ['w']; }
         else if (isSink) { const ids = [].slice.call(document.querySelectorAll('.dv-rx:checked')).map((el) => +el.value); if (!ids.length) { this._flash('⚠ A receiver needs at least one source — not saved'); throw new Error('rx required'); } d.rxIds = ids; d.rxChannel = undefined; }
+        else if (isLock) { d.acceptKeys = [].slice.call(document.querySelectorAll('.lk-key:checked')).map((el) => el.value); d.consume = document.getElementById('lk-consume').checked; d.toggle = document.getElementById('lk-toggle').checked; }
       }, d);
     },
+    // Unique key ids currently placed on the map (for the Lock's accepted-keys list).
+    _keysOnMap() { const s = new Set(); for (const it of (this.world.items || [])) { const def = P().OH_ITEM_BY_KEY[it.itemKey]; if (def && def.kind === 'key') s.add(def.keyId || it.itemKey); } return [].slice.call(s); },
     // A bridge span: per-bridge guardrails, whether it's a drawbridge (raises on
     // redstone), and — if so — which transmitters raise it. Move/Delete built in.
     _bridgeModal(b) {
@@ -805,8 +819,10 @@
       cells.sort((a, b) => (a.r + a.c) - (b.r + b.c) || a.e - b.e);
       // Elevation-map view: flat top-down tiles shaded purple(low)→pink(high).
       let maxE = 1; for (const cl of cells) if (cl.e > maxE) maxE = cl.e;
+      const hiAbove = (e) => this.view.hideAbove && (e | 0) > this.elevLevel;   // "see inside mountains" filter
       for (const cl of cells) {
         const sp = S(cl.c * g.cell, cl.r * g.cell);
+        if (hiAbove(cl.e)) continue;
         if (this.view.elev) {
           ctx.fillStyle = OVERHEAD.elevMapColor(cl.e, maxE); ctx.fillRect(sp.x, sp.y, cs + 1, cs + 1);
           ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.strokeRect(sp.x + .5, sp.y + .5, cs, cs);
@@ -822,15 +838,15 @@
       }
       // Entities.
       const unitPx = g.cell * (g.density || 1) * g.masterZoom;   // player-scale in editor px
-      if (this.view.buildings) for (const b of this.world.buildings) { const t = OH_BUILDINGS.get(b.typeId); const w = (t ? t.footprint.w : 1) * cs, h = (t ? t.footprint.h : 1) * cs; const lv = (b.level || 0); const sp = S(b.col * g.cell, b.row * g.cell); const bx = sp.x - lv * Q, by = sp.y - lv * Q; OVERHEAD.drawBuilding(ctx, b.typeId, bx, by, w, h, Math.min(1, cs / 28), b.skin || 'default');
+      if (this.view.buildings) for (const b of this.world.buildings) { if (hiAbove(b.level || 0)) continue; const t = OH_BUILDINGS.get(b.typeId); const w = (t ? t.footprint.w : 1) * cs, h = (t ? t.footprint.h : 1) * cs; const lv = (b.level || 0); const sp = S(b.col * g.cell, b.row * g.cell); const bx = sp.x - lv * Q, by = sp.y - lv * Q; OVERHEAD.drawBuilding(ctx, b.typeId, bx, by, w, h, Math.min(1, cs / 28), b.skin || 'default');
         if (b.typeId === 'portal' || b.typeId === 'pipe') { const br = Math.max(11, cs * 0.5), cyN = by + cs * 0.4; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.beginPath(); ctx.arc(bx + w / 2, cyN, br, 0, 7); ctx.fill(); ctx.strokeStyle = '#b56bde'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(12, cs * 0.55) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('#' + this._portalNum(b), bx + w / 2, cyN); ctx.textBaseline = 'alphabetic'; } }
-      if (this.view.mobs) for (const mo of this.world.mobs) { const d = P().OH_MOB_BY_KEY[mo.type] || P().OH_MOBS[0]; const sp = S((mo.col + 0.5) * g.cell, (mo.row + 0.5) * g.cell); ctx.strokeStyle = 'rgba(150,150,160,.9)'; ctx.lineWidth = 2; ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(sp.x, sp.y, unitPx * 0.34, 0, 7); ctx.fill(); ctx.stroke(); }
-      if (this.view.items) for (const it of this.world.items) { const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); OVERHEAD.drawItemSprite(ctx, it.itemKey, sp.x, sp.y, unitPx * 0.8); }
+      if (this.view.mobs) for (const mo of this.world.mobs) { if (hiAbove(m.elevation[mo.row] ? m.elevation[mo.row][mo.col] : 0)) continue; const d = P().OH_MOB_BY_KEY[mo.type] || P().OH_MOBS[0]; const sp = S((mo.col + 0.5) * g.cell, (mo.row + 0.5) * g.cell); ctx.strokeStyle = 'rgba(150,150,160,.9)'; ctx.lineWidth = 2; ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(sp.x, sp.y, unitPx * 0.34, 0, 7); ctx.fill(); ctx.stroke(); }
+      if (this.view.items) for (const it of this.world.items) { if (hiAbove(m.elevation[it.row] ? m.elevation[it.row][it.col] : 0)) continue; const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); OVERHEAD.drawItemSprite(ctx, it.itemKey, sp.x, sp.y, unitPx * 0.8); }
       for (const spn of (this.world.spawns || [])) { const sp = S((spn.col + 0.5) * g.cell, (spn.row + 0.5) * g.cell); ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; ctx.strokeRect(sp.x - cs * 0.42, sp.y - cs * 0.42, cs * 0.84, cs * 0.84); if (cs > 14) { ctx.fillStyle = '#4aa3ff'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('P1', sp.x, sp.y + 3); } }
-      for (const rp of (this.world.ramps || [])) { const sp = S((rp.col + 0.5) * g.cell, (rp.row + 0.5) * g.cell); const dir = OVERHEAD.rampDir((c, r) => (m.elevation[r] ? (m.elevation[r][c] | 0) : 0), rp.col, rp.row); OVERHEAD.drawRampIcon(ctx, rp.kind, sp.x, sp.y, cs, dir); }
+      for (const rp of (this.world.ramps || [])) { if (hiAbove(m.elevation[rp.row] ? m.elevation[rp.row][rp.col] : 0)) continue; const sp = S((rp.col + 0.5) * g.cell, (rp.row + 0.5) * g.cell); const dir = OVERHEAD.rampDir((c, r) => (m.elevation[r] ? (m.elevation[r][c] | 0) : 0), rp.col, rp.row); OVERHEAD.drawRampIcon(ctx, rp.kind, sp.x, sp.y, cs, dir); }
       // Bridge SPANS (always shown as the deck in the editor; drawbridges get a ⚡ tag).
       const worldRail = !(this.world.settings && this.world.settings.bridgeGuardrails === false);
-      for (const b of (this.world.bridges || [])) { const cells = OVERHEAD.bridgeSpanCells(b), lv = b.elev | 0, rails = b.rail != null ? b.rail : worldRail;
+      for (const b of (this.world.bridges || [])) { if (hiAbove(b.elev | 0)) continue; const cells = OVERHEAD.bridgeSpanCells(b), lv = b.elev | 0, rails = b.rail != null ? b.rail : worldRail;
         const inSpan = (c, r) => cells.some((cc) => cc.col === c && cc.row === r);
         for (const cell of cells) { const sp = S(cell.col * g.cell, cell.row * g.cell), x = sp.x - lv * Q, y = sp.y - lv * Q;
           const edges = { n: !inSpan(cell.col, cell.row - 1), s: !inSpan(cell.col, cell.row + 1), w: !inSpan(cell.col - 1, cell.row), e: !inSpan(cell.col + 1, cell.row) };
@@ -840,8 +856,9 @@
       if (this.tool === 'bridge' && this._bridgeStart && this._hover) { ctx.save(); ctx.globalAlpha = 0.5; for (const cell of OVERHEAD.spanCells(this._bridgeStart, this._hover)) { const sp = S(cell.col * g.cell, cell.row * g.cell); OVERHEAD.drawBridgeCell(ctx, sp.x, sp.y, cs, { rail: worldRail, closed: true, edges: { n: true, e: true, s: true, w: true } }); } ctx.restore(); }
       // Redstone devices (character-scaled so they stay legible at any density).
       { const u = g.cell * (g.density || 1) * g.masterZoom;
-        for (const d of (this.world.redstone || [])) { const sp = S((d.col + 0.5) * g.cell, (d.row + 0.5) * g.cell), tl = S(d.col * g.cell, d.row * g.cell);
+        for (const d of (this.world.redstone || [])) { if (hiAbove(m.elevation[d.row] ? m.elevation[d.row][d.col] : 0)) continue; const sp = S((d.col + 0.5) * g.cell, (d.row + 0.5) * g.cell), tl = S(d.col * g.cell, d.row * g.cell);
           if (d.kind === 'lever' || d.kind === 'button') OVERHEAD.drawLever(ctx, sp.x, sp.y, u * 0.9, !!d.on);
+          else if (d.kind === 'lock') OVERHEAD.drawLock(ctx, tl.x, tl.y, cs, false);
           else if (d.kind === 'dust') OVERHEAD.drawDust(ctx, tl.x, tl.y, cs, false);
           else if (d.kind === 'lamp') OVERHEAD.drawLamp(ctx, sp.x, sp.y, u * 0.8, false);
           else if (d.kind === 'plate' || d.kind === 'weight') OVERHEAD.drawPlate(ctx, sp.x, sp.y, u * 0.7, false, d.kind === 'weight');
@@ -895,6 +912,7 @@
       else if (tool === 'plate' || tool === 'weight') { OVERHEAD.drawPlate(ctx, ctr.x, ctr.y, unitPx * 0.7, false, tool === 'weight'); }
       else if (tool === 'piston') { OVERHEAD.drawPiston(ctx, sp.x, sp.y, cs, false); }
       else if (tool === 'and' || tool === 'not' || tool === 'nor') { OVERHEAD.drawGate(ctx, sp.x, sp.y, cs, tool, false, tool === 'and' ? ['w', 's'] : ['w'], ['e']); }
+      else if (tool === 'lock') { OVERHEAD.drawLock(ctx, sp.x, sp.y, cs, false); }
       else if (tool === 'goal') { const gc = S((col + 1) * g.cell, (row + 1) * g.cell); ctx.fillStyle = '#ffd700'; ctx.font = `${(cs * 1.8) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', gc.x, gc.y + cs * 0.6); }
       else if (tool === 'spawn') { ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; ctx.strokeRect(ctr.x - cs * 0.42, ctr.y - cs * 0.42, cs * 0.84, cs * 0.84); }
       else if (tool === 'tree') { ctx.fillStyle = '#4f8a44'; ctx.beginPath(); ctx.arc(ctr.x, ctr.y - cs * 0.3, cs * 1.3, 0, 7); ctx.fill(); ctx.fillStyle = '#6e4f2a'; ctx.fillRect(ctr.x - cs * 0.15, ctr.y, cs * 0.3, cs * 0.7); }

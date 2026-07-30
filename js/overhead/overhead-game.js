@@ -137,7 +137,7 @@
         // (opts.playerWeapon); otherwise the world's start weapon, else unarmed
         // (displayed as a pickaxe). A real ranged weapon changes fire behaviour;
         // pickaxe/none = cone melee.
-        weapon: opts.playerWeapon || worldData.startWeapon || null, weapons: [], _fireCd: 0, _trident: null, _boom: null };
+        weapon: opts.playerWeapon || worldData.startWeapon || null, weapons: [], keys: [], _fireCd: 0, _trident: null, _boom: null };
       if (this.player.weapon) this.player.weapons.push(this.player.weapon);
       // A Player Spawn linked to a portal → emerge from that portal.
       if (sp.fromPortal && this._portalCenter.has(sp.fromPortal)) { const d = this._portalCenter.get(sp.fromPortal); this.player.x = d.x; this.player.y = d.y; const c = this._cellOf(d.x, d.y); this.player.elev = this._elev(c.col, c.row); this._portalCd = true; this.camera = OH_GRID.centerOn(this.grid, d.x, d.y, CANVAS_W, CANVAS_H); }
@@ -262,7 +262,8 @@
         }
         if (!near || nd > useR * 0.6) this._portalCd = false;   // release the guard once clear of the destination
       }
-      // A nearby LEVER toggles on E (before the decoration notice).
+      // A nearby LOCK (insert key) or LEVER toggles on E (before the decoration notice).
+      if (intent.action && !actionUsed && this._useNearbyLock(p)) actionUsed = true;
       if (intent.action && !actionUsed && this._toggleNearbyLever(p)) actionUsed = true;
       // Universal action (decoration notice) — only if nothing else consumed E.
       if (intent.action && !actionUsed) this._doAction(p);
@@ -408,8 +409,23 @@
       if (!near) return false;
       near.on = !near.on; this._rs = OH_REDSTONE.evaluate(this._redstone); this._notify('Lever ' + (near.on ? 'ON' : 'OFF'), 40); return true;
     }
+    // A LOCK block: insert a matching key (E nearby) to power it. Consumes the key /
+    // stays locked-in / can toggle off, per config.
+    _useNearbyLock(p) {
+      if (!this._redstone.length || typeof OH_REDSTONE === 'undefined') return false;
+      let near = null, nd = this.unit * 1.6;
+      for (const d of this._redstone) if (d.kind === 'lock') { const dx = (d.col + 0.5) * this.grid.cell - p.x, dy = (d.row + 0.5) * this.grid.cell - p.y; const dd = Math.hypot(dx, dy); if (dd < nd) { nd = dd; near = d; } }
+      if (!near) return false;
+      const reEval = () => { this._rs = OH_REDSTONE.evaluate(this._redstone); };
+      if (near.on) { if (near.toggle) { near.on = false; reEval(); this._notify('Lock reset', 40); } return true; }   // already unlocked
+      const accept = (near.acceptKeys && near.acceptKeys.length) ? near.acceptKeys : null;
+      const have = (p.keys || []).find((k) => !accept || accept.indexOf(k) >= 0);
+      if (have) { near.on = true; if (near.consume) { p.keys.splice(p.keys.indexOf(have), 1); } reEval(); this._notify('Unlocked' + (near.consume ? ' (used ' + have + ')' : ''), 70); }
+      else this._notify('Locked — need ' + (accept ? accept.join('/') + ' ' : 'a ') + 'key', 90);
+      return true;
+    }
     _doAction(p) { let near = null, nd = 1e9; for (const b of this.buildings) { if (b.typeId === 'portal' || b.typeId === 'pipe') continue; const bx = (b.col + 0.5) * this.grid.cell, by = (b.row + 0.5) * this.grid.cell; const d = Math.hypot(bx - p.x, by - p.y); if (d < this.unit * 2 && d < nd) { near = b; nd = d; } } if (near) { const t = OH_BUILDINGS.get(near.typeId); this._notify((t ? t.category : 'Building') + ': ' + near.typeId, 90); } }
-    _pickups(p) { for (const it of this.items) { if (it.taken) continue; const ix = (it.col + 0.5) * this.grid.cell, iy = (it.row + 0.5) * this.grid.cell; if (Math.hypot(ix - p.x, iy - p.y) < p.r + this.unit * 0.4) { it.taken = true; if (it.kind === 'weapon') { if (!p.weapons.includes(it.weapon)) p.weapons.push(it.weapon); p.weapon = it.weapon; this._notify('Equipped ' + it.weapon + ' (Q to switch)', 120); } else this._notify('Coin!', 60); } } }
+    _pickups(p) { for (const it of this.items) { if (it.taken) continue; const ix = (it.col + 0.5) * this.grid.cell, iy = (it.row + 0.5) * this.grid.cell; if (Math.hypot(ix - p.x, iy - p.y) < p.r + this.unit * 0.4) { it.taken = true; if (it.kind === 'weapon') { if (!p.weapons.includes(it.weapon)) p.weapons.push(it.weapon); p.weapon = it.weapon; this._notify('Equipped ' + it.weapon + ' (Q to switch)', 120); } else if (it.kind === 'key') { p.keys.push(it.keyId || it.itemKey); this._notify('Picked up ' + (it.keyId || 'key') + ' key', 90); } else this._notify('Coin!', 60); } } }
     // Cycle the equipped weapon through the collected list (+ pickaxe fallback).
     _cycleWeapon() { const list = this.player.weapons.length ? this.player.weapons.slice() : []; if (!list.includes('pickaxe')) list.push('pickaxe'); if (list.length < 2) return; const i = Math.max(0, list.indexOf(this.player.weapon)); this.player.weapon = list[(i + 1) % list.length]; this._notify(this.player.weapon, 60); }
 
@@ -781,6 +797,7 @@
         const sp = S((d.col + 0.5) * g.cell, (d.row + 0.5) * g.cell), tl = S(d.col * g.cell, d.row * g.cell);
         const on = OH_REDSTONE.cellPowered(this._rs, d.col, d.row);
         if (d.kind === 'lever' || d.kind === 'button') OVERHEAD.drawLever(ctx, sp.x, sp.y, u * 0.9, !!d.on);   // ~2 character-blocks
+        else if (d.kind === 'lock') OVERHEAD.drawLock(ctx, tl.x, tl.y, cs, on);
         else if (d.kind === 'dust') OVERHEAD.drawDust(ctx, tl.x, tl.y, cs, on);
         else if (d.kind === 'lamp') OVERHEAD.drawLamp(ctx, sp.x, sp.y, u * 0.8, on);
         else if (d.kind === 'plate' || d.kind === 'weight') OVERHEAD.drawPlate(ctx, sp.x, sp.y, u * 0.7, on, d.kind === 'weight');

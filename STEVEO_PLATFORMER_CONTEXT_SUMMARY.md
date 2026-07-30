@@ -1,4 +1,25 @@
-## CURRENT STATE (2026-07-29) — builds 279–297 SHIPPED to `main` ✅; `overhead-redstone-bridge` branch at build 305 — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-07-30) — builds 279–297 SHIPPED to `main` ✅; `overhead-redstone-bridge` branch at build 306 — NOT merged, browser-UNTESTED
+
+**SHIPPED to `main` (live):** Overhead builds 279–297 + Campaign MVP.
+
+**Branch `overhead-redstone-bridge` (builds 298–306, NOT merged):** Suite green (1005); harnesses + probe clean.
+- 298–305: bridges/drawbridges, redstone (devices/gates/numbered wiring), editor 2.0 (rail, selection/clipboard,
+  fill/scatter, painting tools), span bridges + single-unit drawbridge.
+- **306:** editor **"Hide above elev"** view filter (build inside mountains); **KEY items** (keys/jewels/
+  passcard) → player key-ring; **LOCK block** (key → E → redstone signal; config: accepted keys from map,
+  consume, toggle). Complete key→lock→redstone loop.
+- **Sample worlds:** `tools/gen-overhead-worlds.js` + 3 validated worlds in `tools/overhead-worlds/` (maze /
+  valley / temple) — import via Sandbox ▸ Import from file.
+
+**NEXT (FUTURE_ROADMAP §38):** DOORS (span entity — placed between 2 waypoints w/ height, pivots about the
+anchor, opens via redstone / key / action button, swing-dir + invert + skin) and CHESTS (holds items, open/
+close animation). Then: build out the 16 Campaign levels; make a game mode (Tower Defense) real.
+
+**NEEDS BROWSER PLAYTEST** before merging 298–306 to `main`. (This is a large stack — playtest + merge is due.)
+
+---
+
+## PRIOR STATE (2026-07-29) — `overhead-redstone-bridge` at build 305 (span bridges + single-unit drawbridge)
 
 **SHIPPED to `main` (live):** Overhead builds 279–297 + Campaign MVP.
 

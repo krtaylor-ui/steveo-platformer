@@ -25,8 +25,8 @@
   // powered neighbours. ANY device may also TRANSMIT on `txChannel` (broadcast while
   // it's on) and/or RECEIVE from `rxChannel` (on while that channel is on). Legacy
   // `channel` on a lever/tx == txChannel.
-  const SOURCE = { lever: 1, button: 1, plate: 1, weight: 1 };
-  const CONDUCTS = { dust: 1, lever: 1, button: 1, plate: 1, weight: 1, and: 1, not: 1, nor: 1, tx: 1 };
+  const SOURCE = { lever: 1, button: 1, plate: 1, weight: 1, lock: 1 };
+  const CONDUCTS = { dust: 1, lever: 1, button: 1, plate: 1, weight: 1, lock: 1, and: 1, not: 1, nor: 1, tx: 1 };
   const GATE = { and: 1, not: 1, nor: 1 };
   const SIDE = { n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0] };
   const dirOf = (fc, fr, tc, tr) => tc > fc ? 'e' : tc < fc ? 'w' : tr > fr ? 's' : 'n';
@@ -34,7 +34,7 @@
   const OH_REDSTONE = {
     key, SOURCE, CONDUCTS,
     isSource(d) { return (d.kind === 'lever' && !!d.on) || (d.kind === 'button' && !!d.on); },
-    baseActive(d) { return (d.kind === 'lever' && !!d.on) || (d.kind === 'button' && !!d.on) || ((d.kind === 'plate' || d.kind === 'weight') && !!d._active); },
+    baseActive(d) { return ((d.kind === 'lever' || d.kind === 'button' || d.kind === 'lock') && !!d.on) || ((d.kind === 'plate' || d.kind === 'weight') && !!d._active); },
 
     // Evaluate to a fixpoint (bounded — gates + channels can chain). Returns
     // { powered:Set('c,r'), channels:{name:true} }.

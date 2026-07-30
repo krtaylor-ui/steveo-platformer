@@ -72,6 +72,14 @@
     { key: 'trident',   name: 'Trident',   color: '#4fb0c0', kind: 'weapon', weapon: 'trident' },
     { key: 'boomerang', name: 'Boomerang', color: '#c08a4a', kind: 'weapon', weapon: 'boomerang' },
     { key: 'coin',      name: 'Coin',      color: '#ffd94a', kind: 'coin' },
+    // Keys / jewels / passcards — collected into the player's key ring; used at a
+    // Lock block (or, later, locked doors). `keyId` is what a lock matches against.
+    { key: 'key_gold',      name: 'Gold Key',    color: '#e6c14a', kind: 'key', keyId: 'gold' },
+    { key: 'key_red',       name: 'Red Key',     color: '#d24a4a', kind: 'key', keyId: 'red' },
+    { key: 'key_blue',      name: 'Blue Key',    color: '#4a7ad2', kind: 'key', keyId: 'blue' },
+    { key: 'jewel_emerald', name: 'Emerald',     color: '#3ad07a', kind: 'key', keyId: 'emerald' },
+    { key: 'jewel_amethyst',name: 'Amethyst',    color: '#b06ad0', kind: 'key', keyId: 'amethyst' },
+    { key: 'passcard',      name: 'Passcard',    color: '#c9ccd6', kind: 'key', keyId: 'passcard' },
   ];
   const OH_ITEM_BY_KEY = {}; OH_ITEMS.forEach((i) => { OH_ITEM_BY_KEY[i.key] = i; });
 

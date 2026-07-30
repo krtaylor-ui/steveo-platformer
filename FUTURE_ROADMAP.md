@@ -1299,3 +1299,24 @@ tower 3×3, reveal window.
 - **Line-of-elevation ramp** — auto-fill a staircase of ascending elevations between two points.
 - **Randomize/scatter brush** — paint a cell with a % chance (for natural-looking foliage/rubble fields).
 - **Rectangular select → fill/outline with the pen** (a selection-scoped version of the shape tools).
+
+## 38. Overhead DOORS + CHESTS + key-driven puzzles  *(Kevin, 2026-07-30 — keys + lock block SHIPPED build 306; doors + chests deferred)*
+
+**Shipped (build 306):** KEY items (coloured keys / jewels / passcard) collected onto the player key-ring;
+a LOCK block (redstone source) that a matching key powers on E — config picks accepted keys (from keys on
+the map), consume-on-use, and toggle-off. Complete key → lock → redstone loop. Plus the editor
+"Hide above elevation" view filter for building hidden interiors.
+
+**DOORS (deferred — full spec):** a span entity like the bridge. Placed as a WALL between two waypoints (the
+creator sets a HEIGHT). Anchored to the FIRST-clicked point; the door PIVOTS about that anchor (swing
+animation). Settings in its modal: swing DIRECTION, INVERT the anchor point, HEIGHT, SKIN (multiple skins),
+and how it opens — (a) redstone channel (rxIds, like the drawbridge), (b) a KEY (accepted-keys list + consume,
+like the lock block → but here the door itself is locked), or (c) the ACTION button (E) to push it open. A
+plain door = openable by E; a locked door needs the key/redstone. Reuse the bridge span infra + the lock's
+key logic + the drawbridge's channel/animation. Collision: closed door = solid wall along the span; open =
+passable. **Effort:** MEDIUM–LARGE (own batch).
+
+**CHESTS (deferred — full spec):** a placeable that holds a configurable list of items (weapons / keys /
+coins), set in its modal. Opening (E, or a proximity trigger) plays an open/close lid ANIMATION and grants
+the contents to the player (weapons → hotbar, keys → key-ring, coins → score). Optionally lockable (reuse the
+key logic). **Effort:** MEDIUM.
