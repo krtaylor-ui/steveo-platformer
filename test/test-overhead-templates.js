@@ -58,5 +58,22 @@ console.log('Runtime overlay — ADDITIVE, solid trunk, renders + shadows:');
   ok(!threw, 'render + live + static shadows run with template voxels');
 }
 
+console.log('Editor capture (base = region floor; metadata; placement):');
+{
+  require(path.join(__dirname, '..', 'js', 'overhead', 'overhead-editor.js'));
+  const E = global.OH_EDITOR, gW = 8, gH = 8, ground = [], elevation = [];
+  for (let r = 0; r < gH; r++) { ground.push(new Array(gW).fill('grass')); elevation.push(new Array(gW).fill(0)); }
+  for (let r = 2; r <= 4; r++) { ground[r][3] = 'stone'; elevation[r][3] = 3; }   // a wall at elev 3 over grass@0
+  const ctx = { world: { mapSnapshot: { gridW: gW, gridH: gH, density: 2, ground, elevation }, templates: [], settings: { playerHeight: 2 } }, _templateMode: { name: 'Wall', x: 3, y: 3, z: 4, anchor: { col: 2, row: 2 } }, _flash() {}, _pushHistory() {}, _renderBar() {} };
+  E._captureTemplate.call(ctx);
+  const def = ctx.world.templates[0];
+  ok(def && def.cells.length === 3, 'captures the 3 raised wall cells (floor = region min elevation)');
+  ok(def && def.cells.every((c) => c.dz === 3), 'heights are relative to the region floor (dz 3)');
+  ok(def && def.density === 2 && def.playerHeight === 2, 'captures the authoring density + player height');
+  const ctx2 = { world: { mapSnapshot: { gridW: gW, gridH: gH, ground, elevation } } };
+  E._placeTemplate.call(ctx2, def.id, 5, 5);
+  ok(ctx2.world.templateStamps && ctx2.world.templateStamps[0].templateId === def.id, 'placing a template pushes a stamp record');
+}
+
 console.log(`\noverhead templates: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

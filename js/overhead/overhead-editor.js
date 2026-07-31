@@ -239,7 +239,8 @@
       const mode = this.tool === 'hand' ? 'hand' : (this.tool === 'erase' || this._shift) ? 'erase' : 'draw';
       const blockSw = (key) => { const t = P().OH_TERRAIN_BY_KEY[key]; return `<span class="oh-sw" style="background:${t ? t.color : '#888'};box-shadow:inset -3px -3px 0 rgba(0,0,0,.3),inset 2px 2px 0 rgba(255,255,255,.18)"></span>`; };
       const swatch = (c) => `<span class="oh-sw" style="background:${c}"></span>`;
-      const terrOpts = P().OH_TERRAIN.map((t) => `<div class="opt ${this.tool === 'terrain' && this.terrainKey === t.key ? 'sel' : ''}" data-terr="${t.key}">${blockSw(t.key)}${t.name}</div>`).join('');
+      const terrOpts = `<input id="oh-terr-filter" placeholder="🔎 filter blocks…" value="${this._esc(this._terrFilter || '')}" style="width:90%;margin:2px auto;display:block;padding:3px 6px;background:#141a26;border:1px solid #2c3648;color:#dbe4f3;border-radius:5px;font-size:12px">`
+        + P().OH_TERRAIN.map((t) => `<div class="opt ${this.tool === 'terrain' && this.terrainKey === t.key ? 'sel' : ''}" data-terr="${t.key}">${blockSw(t.key)}${t.name}</div>`).join('');
       const bTypes = (typeof OH_BUILDINGS !== 'undefined') ? OH_BUILDINGS.all().map((d) => d.id) : ['healer'];
       const buildOpts = bTypes.map((b) => `<div class="opt ${this.tool === 'building' && this.buildingType === b ? 'sel' : ''}" data-build="${b}">🏛 ${b}</div>`).join('')
         + `<div class="opt ${this.tool === 'spawn' ? 'sel' : ''}" data-spawn="1">🚩 Player Spawn</div><div class="opt ${this.tool === 'goal' ? 'sel' : ''}" data-goal="1">★ Goal Star</div>`
@@ -247,6 +248,9 @@
         + `<div class="opt ${this.tool === 'tree' ? 'sel' : ''}" data-tree="1">🌳 Tree (prefab)</div>`
         + `<div class="opt ${this.tool === 'bridge' && !this._bridgeDraw ? 'sel' : ''}" data-bspan="0">🌉 Bridge — click 2 cliffs</div>`
         + `<div class="opt ${this.tool === 'bridge' && this._bridgeDraw ? 'sel' : ''}" data-bspan="1">🌉 Drawbridge — click 2 cliffs</div>`;
+      const tplList = (typeof OH_TEMPLATES !== 'undefined') ? OH_TEMPLATES.forWorld(this.world) : [];
+      const tplOpts = tplList.map((t) => `<div class="opt ${this.tool === 'template' && this._templateId === t.id ? 'sel' : ''}" data-template="${t.id}">${t.system ? '🧩' : '📦'} ${this._esc(t.name)}</div>`).join('')
+        + `<div class="opt" data-newtemplate="1" style="color:#7fe0a0">＋ New Template…</div>`;
       const mobOpts = P().OH_MOBS.map((mm) => `<div class="opt ${this.tool === 'mob' && this.mobKey === mm.key ? 'sel' : ''}" data-mob="${mm.key}">${swatch(mm.color)}${mm.name}</div>`).join('');
       const itemOpts = P().OH_ITEMS.map((i) => `<div class="opt ${this.tool === 'item' && this.itemKey === i.key ? 'sel' : ''}" data-item="${i.key}">${swatch(i.color)}${i.name}</div>`).join('');
       const rsOpts = `<div class="opt ${this.tool === 'lever' ? 'sel' : ''}" data-rs="lever">🔧 Lever (E to flip)</div>`
@@ -288,6 +292,7 @@
         grp('Mobs', this.tool === 'mob' ? P().OH_MOB_BY_KEY[this.mobKey].name : '', mobOpts, this.tool === 'mob') +
         grp('Items', this.tool === 'item' ? P().OH_ITEM_BY_KEY[this.itemKey].name : '', itemOpts, this.tool === 'item') +
         grp('Buildings', (this.tool === 'building' ? this.buildingType : this.tool === 'spawn' ? 'Spawn' : this.tool === 'goal' ? 'Goal' : this.tool === 'ramp' ? 'Ramp' : this.tool === 'ladder' ? 'Ladder' : this.tool === 'tree' ? 'Tree' : this.tool === 'bridge' ? (this._bridgeDraw ? 'Drawbridge' : 'Bridge') : ''), buildOpts, buildActive) +
+        grp('Templates', this.tool === 'template' && this._templateId ? (tplList.find((t) => t.id === this._templateId) || {}).name || '' : '', tplOpts, this.tool === 'template') +
         `<div class="oh-gap"></div>` +
         grp('Redstone', rsActive ? this.tool : '', rsOpts, rsActive);
       const g = (id) => document.getElementById(id);
@@ -310,6 +315,9 @@
       rail.querySelectorAll('[data-goal]').forEach((el) => el.onclick = () => { this.tool = 'goal'; this._renderBar(); });
       rail.querySelectorAll('[data-ramp]').forEach((el) => el.onclick = () => { this.tool = el.dataset.ramp; this._renderBar(); });
       rail.querySelectorAll('[data-tree]').forEach((el) => el.onclick = () => { this.tool = 'tree'; this._renderBar(); });
+      rail.querySelectorAll('[data-template]').forEach((el) => el.onclick = () => { this.tool = 'template'; this._templateId = el.dataset.template; this._renderBar(); this._updateCursor(); });
+      rail.querySelectorAll('[data-newtemplate]').forEach((el) => el.onclick = () => this._newTemplateModal());
+      { const tf = g('oh-terr-filter'); if (tf) { const doFilter = () => { const q = tf.value.toLowerCase(); this._terrFilter = tf.value; rail.querySelectorAll('[data-terr]').forEach((el) => { el.style.display = (!q || el.textContent.toLowerCase().indexOf(q) >= 0 || (el.dataset.terr || '').indexOf(q) >= 0) ? '' : 'none'; }); }; tf.oninput = doFilter; tf.onclick = (ev) => ev.stopPropagation(); if (this._terrFilter) doFilter(); } }
       rail.querySelectorAll('[data-mob]').forEach((el) => el.onclick = () => { this.tool = 'mob'; this.mobKey = el.dataset.mob; this._renderBar(); });
       rail.querySelectorAll('[data-item]').forEach((el) => el.onclick = () => { this.tool = 'item'; this.itemKey = el.dataset.item; this._renderBar(); });
       rail.querySelectorAll('[data-bspan]').forEach((el) => el.onclick = () => { this.tool = 'bridge'; this._bridgeDraw = el.dataset.bspan === '1'; this._bridgeStart = null; this._renderBar(); });
@@ -322,6 +330,7 @@
     _bindCanvas() {
       const cv = document.getElementById('gameCanvas');
       this._md = (e) => {
+        if (this._templateMode) { const cel = this._cellFromEvent(e); this._templateMode.anchor = { col: cel.col, row: cel.row }; this._flash('Region placed · Enter = capture · Esc = cancel'); return; }   // template mode: click anchors the region
         if (this._pasting && this._clip) { const cel = this._cellFromEvent(e); this._paste(cel.col, cel.row); return; }   // click to paste
         if (e.altKey) { const cel = this._cellFromEvent(e); this._eyedrop(cel.col, cel.row); return; }   // Alt-click = eyedropper
         if (e.ctrlKey || e.metaKey) { const cel = this._cellFromEvent(e); this._selecting = true; this._marquee = { a: cel, b: cel }; return; }   // Ctrl-drag = marquee select
@@ -350,6 +359,7 @@
       this._kd = (e) => {
         // Don't hijack keys while typing in a modal field (channel names, etc.).
         const ae = document.activeElement; if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
+        if (this._templateMode) { if (e.code === 'Enter') { e.preventDefault(); this._captureTemplate(); return; } if (e.code === 'Escape') { e.preventDefault(); this._cancelTemplateMode(); return; } }
         const K = this.KEYS, pan = 48 / this.grid.masterZoom;
         if (e.code === 'ArrowLeft') this.cam.x -= pan; else if (e.code === 'ArrowRight') this.cam.x += pan;
         else if (e.code === 'ArrowUp') this.cam.y -= pan; else if (e.code === 'ArrowDown') this.cam.y += pan;
@@ -538,6 +548,45 @@
     _templateVoxels() { return (typeof OH_TEMPLATES !== 'undefined') ? OH_TEMPLATES.expandStamps(this.world, this.grid.gridW, this.grid.gridH) : []; },
     // Remove the template stamp whose anchor is at (col,row) — for hand-click delete.
     _stampAt(col, row) { return (this.world.templateStamps || []).find((s) => s.col === col && s.row === row); },
+    // ── Template MODE — author a reusable model from a region of the map ─────────
+    // Prompt name + dims, then click to anchor the X×Y region (greyed outside), Enter to
+    // capture the raised cells into a new template (flagging out-of-bounds / floating).
+    _newTemplateModal() {
+      const inner = `<label>Name <input id="tpl-name" value="My Template" style="width:160px"></label>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <label>X <input id="tpl-x" type="number" min="1" max="16" value="4" style="width:52px"></label>
+          <label>Y <input id="tpl-y" type="number" min="1" max="16" value="4" style="width:52px"></label>
+          <label>Z <input id="tpl-z" type="number" min="1" max="16" value="6" style="width:52px"></label>
+        </div>
+        <p style="color:#8fa0bd;font-size:12px;margin-top:8px">Dims are in BLOCKS. After OK: click the map to place the region, then press Enter to capture (Esc cancels). Only RAISED cells (elevation &gt; the ground) are captured; anything above Z or floating is flagged.</p>`;
+      this._cfgModal('New Template', inner, () => {
+        const clamp = (id, d) => Math.max(1, Math.min(16, parseInt((document.getElementById(id) || {}).value, 10) || d));
+        const name = ((document.getElementById('tpl-name') || {}).value || 'Template').trim() || 'Template';
+        this._templateMode = { name, x: clamp('tpl-x', 4), y: clamp('tpl-y', 4), z: clamp('tpl-z', 6), anchor: null };
+        this.tool = 'hand'; this._selEnt = null; this._renderBar(); this._updateCursor();
+        this._flash('Click the map to place the ' + this._templateMode.x + '×' + this._templateMode.y + ' region · Enter = capture · Esc = cancel');
+      });
+    },
+    _cancelTemplateMode() { this._templateMode = null; this._flash('Template cancelled'); },
+    _captureTemplate() {
+      const tm = this._templateMode; if (!tm || !tm.anchor) { this._flash('Click the map to place the region first'); return; }
+      const m = this.world.mapSnapshot;
+      // Ground reference = the LOWEST elevation in the region (the floor the structure sits
+      // on); cells above it are captured with dz = elev − base. So a tree on grass@0 → dz 1-4.
+      let base = Infinity; for (let dy = 0; dy < tm.y; dy++) for (let dx = 0; dx < tm.x; dx++) { const c = tm.anchor.col + dx, r = tm.anchor.row + dy; if (c < 0 || r < 0 || c >= m.gridW || r >= m.gridH) continue; base = Math.min(base, m.elevation[r] ? (m.elevation[r][c] | 0) : 0); }
+      if (!isFinite(base)) base = 0;
+      const sample = (c, r) => { if (c < 0 || r < 0 || c >= m.gridW || r >= m.gridH) return null; const e = m.elevation[r] ? (m.elevation[r][c] | 0) : 0; return { block: (m.ground[r] ? (m.ground[r][c] || 'grass') : 'grass'), elev: e }; };
+      const res = OH_TEMPLATES.capture(tm.name, { ax: tm.anchor.col, ay: tm.anchor.row, x: tm.x, y: tm.y, z: tm.z }, sample, base);
+      if (!res.def.cells.length) { this._flash('Nothing raised in the region to capture'); return; }
+      res.def.density = m.density || 1; res.def.playerHeight = (this.world.settings && this.world.settings.playerHeight) || 1;
+      this.world.templates = this.world.templates || []; this.world.templates.push(res.def);
+      this._templateMode = null; this.tool = 'template'; this._templateId = res.def.id;
+      this._pushHistory('new template'); this._renderBar();
+      let msg = 'Template "' + res.def.name + '" saved (' + res.def.cells.length + ' cells)';
+      if (res.outOfBounds) msg += ' · ' + res.outOfBounds + ' clamped to Z';
+      if (res.floating) msg += ' · ⚠ floating';
+      this._flash(msg);
+    },
 
     // ── Shapes (line / rect / circle-oval; fill or brush-width outline) ─────────
     _shapeCells(a, b) {
@@ -971,6 +1020,26 @@
         for (const k of this._sel) { const [c, r] = k.split(',').map(Number); const sp = S(c * g.cell, r * g.cell); ctx.fillRect(sp.x, sp.y, cs, cs); ctx.strokeRect(sp.x + .5, sp.y + .5, cs - 1, cs - 1); } ctx.restore(); }
       if (this._selecting && this._marquee) { const a = this._marquee.a, b = this._marquee.b; const p0 = S(Math.min(a.col, b.col) * g.cell, Math.min(a.row, b.row) * g.cell); const p1 = S((Math.max(a.col, b.col) + 1) * g.cell, (Math.max(a.row, b.row) + 1) * g.cell); ctx.save(); ctx.strokeStyle = '#6ad0ff'; ctx.setLineDash([5, 4]); ctx.lineWidth = 2; ctx.strokeRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y); ctx.setLineDash([]); ctx.restore(); }
       if (this._pasting && this._clip && this._hover) { ctx.save(); ctx.globalAlpha = 0.55; for (const cell of this._clip.cells) { const c = this._hover.col + cell.dc, r = this._hover.row + cell.dr; const sp = S(c * g.cell, r * g.cell); OVERHEAD.drawTerrainCube(ctx, cell.key, sp.x, sp.y, cs, cell.elev | 0, true, true); if (cell.bridge) OVERHEAD.drawBridgeCell(ctx, sp.x, sp.y, cs, { rail: false, closed: true, edges: { n: true, e: true, s: true, w: true } }); } ctx.globalAlpha = 1; ctx.restore(); }
+      // Template MODE overlay — grey out everything OUTSIDE the X×Y region so it's clear
+      // what will be captured; outline the region; flag out-of-Z / floating cells in red.
+      if (this._templateMode) {
+        const tm = this._templateMode;
+        if (tm.anchor) {
+          const p0 = S(tm.anchor.col * g.cell, tm.anchor.row * g.cell), p1 = S((tm.anchor.col + tm.x) * g.cell, (tm.anchor.row + tm.y) * g.cell);
+          ctx.save();
+          ctx.fillStyle = 'rgba(8,10,16,.6)';   // grey-out outside the region (four bands)
+          ctx.fillRect(0, 0, CANVAS_W, Math.max(0, p0.y)); ctx.fillRect(0, p1.y, CANVAS_W, Math.max(0, CANVAS_H - p1.y));
+          ctx.fillRect(0, p0.y, Math.max(0, p0.x), p1.y - p0.y); ctx.fillRect(p1.x, p0.y, Math.max(0, CANVAS_W - p1.x), p1.y - p0.y);
+          ctx.strokeStyle = '#7fe0a0'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.strokeRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y); ctx.setLineDash([]);
+          const base = m.elevation[tm.anchor.row] ? (m.elevation[tm.anchor.row][tm.anchor.col] | 0) : 0;
+          for (let dy = 0; dy < tm.y; dy++) for (let dx = 0; dx < tm.x; dx++) { const c = tm.anchor.col + dx, r = tm.anchor.row + dy; const e = (m.elevation[r] ? (m.elevation[r][c] | 0) : 0) - base; if (e > tm.z) { const sp = S(c * g.cell, r * g.cell); ctx.fillStyle = 'rgba(230,80,80,.4)'; ctx.fillRect(sp.x, sp.y, cs, cs); } }   // over-Z cells flagged red
+          ctx.restore();
+        }
+        ctx.save(); ctx.fillStyle = 'rgba(10,14,22,.85)'; ctx.fillRect(0, 0, CANVAS_W, 28);
+        ctx.fillStyle = '#dbe4f3'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('Template "' + tm.name + '"  ' + tm.x + '×' + tm.y + '×' + tm.z + '  ·  ' + (tm.anchor ? 'Enter = capture' : 'click the map to place the region') + '  ·  Esc = cancel', CANVAS_W / 2, 18);
+        ctx.restore();
+      }
       // Info line.
       ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.textAlign = 'left'; ctx.font = '12px sans-serif';
       ctx.fillText(`${this.world.name} · ${m.baseW || m.gridW}×${m.baseH || m.gridH} @ density ${m.density} (${m.gridW}×${m.gridH} cells) · ${this.world.mode} · tool: ${this._shift ? 'erase' : this.tool} @ elev ${this.elevLevel}`, 158, CANVAS_H - 10);
