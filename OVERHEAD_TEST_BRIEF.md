@@ -1,4 +1,4 @@
-# Overhead Engine — Test Brief (builds 312–315)
+# Steveo Platformer — Test Brief (builds 312–316, overhead + side-scroll glass)
 
 > **Paste everything below the line into the Chrome-enabled Claude session.**
 > Target the LOCAL build at http://localhost:8000 (WSL-hosted; not production).
@@ -76,6 +76,20 @@ World Settings → **"Redstone wiring in play"**:
 - **F5** Pits deadly → death animation; cliff-fall guard blocks big drops; keys → lock → E
   powers the lock (HUD channel gains the lock's Tx).
 - **F6** Click the Test-mode **God** button → toggles to "★ God ON" (does NOT exit the session).
+
+## G. Side-scroll glass (build 316) — switch to a SIDE-SCROLL (platformer) world
+Editor → **Mechanics** palette tab → place **Glass**. World Settings → **"Glass Shatters"** ON.
+- **G1** Glass renders as a **solid, see-through pane**; the player stands/walks on it and
+  can't pass through it.
+- **G2 (arrow)** Shoot a glass block with the **bow** → it **shatters** into shards.
+- **G3 (head-butt)** Jump up **into** a glass block from below → it shatters.
+- **G4 (hard fall)** Fall from a **height** onto a glass floor → you **crash through** (it
+  shatters); a **gentle** step onto glass keeps it **solid**.
+- **G5 (explosion)** Detonate **TNT** next to glass → it's destroyed (shards on the nether-bed
+  blast).
+- **G6 (mining)** In **Normal** mode, mine a glass block normally (hold to mine) → it breaks.
+- **G7 (off)** Set "Glass Shatters" **OFF** → arrows/falls/explosions no longer break it (still
+  minable in Normal).
 
 ## Report
 A table: `Item | PASS/FAIL/BLOCKED | note`. Attach screenshots inline. Open DevTools console
