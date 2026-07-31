@@ -197,7 +197,9 @@ class Level {
       for (let dc = -radius; dc <= radius; dc++) {
         if (dr * dr + dc * dc > radius * radius) continue;
         const b = this.get(centerRow + dr, centerCol + dc);
-        if (b !== BLOCK.BEDROCK && b !== BLOCK.AIR && b !== BLOCK.GOAL) {
+        // GLASS is left for the game to SHATTER (shards + respects the world setting) — see
+        // the onExplode callback in redstone.tickTnt; a plain radius-clear would skip the FX.
+        if (b !== BLOCK.BEDROCK && b !== BLOCK.AIR && b !== BLOCK.GOAL && b !== BLOCK.GLASS) {
           this.set(centerRow + dr, centerCol + dc, BLOCK.AIR);
         }
       }

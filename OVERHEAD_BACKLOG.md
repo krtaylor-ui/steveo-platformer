@@ -36,10 +36,11 @@ A see-through, solid block for the overhead **and** side-scroll palettes.
 
 ---
 
-## 3. Retire Rx / Tx from the palette  (keep engine kinds for legacy loads)
-Transmit is built into every source, receive into every sink, so dedicated Rx/Tx blocks are redundant for the common flows. **Remove them from the palette; keep the `tx`/`rx` kinds in the engine** so old saves still load.
-
-**Open decision:** the one capability `tx` uniquely had is a **relay / wireless→wired bridge** ("receive channel A, re-emit onto a dust wire or channel B"). The engine already lets a *source* listen to channels (rxOn) and conduct — it's just not exposed in the editor. If we ever want relays, expose an **"also listen to channel(s)"** option on transmitters (strictly better than a dedicated block). **Do we need wireless→wired bridging / channel relays?** If no → Rx/Tx can vanish from the UI entirely.
+## 3. Rx / Tx — RESOLVED: keep them in side-scroll  ✅
+Decision (Kevin, 2026-07-30): **keep the dedicated Rx / Tx blocks in the side-scroll
+palette.** The overhead palette never had them (transmit/receive is built into every
+overhead device), so there is nothing to retire there. No change to make — Rx/Tx stay as
+they are in side-scroll (they cover the wireless→wired relay case).
 
 ---
 

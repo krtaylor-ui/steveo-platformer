@@ -212,20 +212,22 @@ class RedstoneSystem {
   }
 
   // Counts down TNT fuses; explodes when done
-  tickTnt(level, mobManager) {
+  tickTnt(level, mobManager, onExplode) {
     for (const comp of this.components) {
       if (comp.type !== 'tnt' || !comp.fuse) continue;
       comp.fuse--;
       if (comp.fuse <= 0) {
         comp.fuse = 0;
-        this._doExplosion(comp, level, mobManager);
+        this._doExplosion(comp, level, mobManager, onExplode);
       }
     }
   }
 
-  _doExplosion(comp, level, mobManager) {
+  _doExplosion(comp, level, mobManager, onExplode) {
     const radius = 3;
     level.destroyRadius(comp.col, comp.row, radius);
+    // Let the game shatter any GLASS in the blast (shards + world-setting respect).
+    if (onExplode) onExplode(comp.col, comp.row, radius);
     // Remove the TNT block itself
     level.set(comp.row, comp.col, BLOCK.AIR);
     // Damage mobs in range

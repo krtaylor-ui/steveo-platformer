@@ -48,6 +48,15 @@ function mkGame(shatterSetting) {
   const g = mkGame(false);
   ok(g._shatterGlassBlock(5, 5) === false && g.level.get(5, 5) === BLOCK.GLASS, 'shatter OFF: glass is left intact');
 }
+{ // TNT radius shatters every glass cell in range (explosion trigger)
+  const g = Object.create(Game.prototype);
+  const grid = {}; for (let r = 4; r <= 6; r++) { grid[r] = {}; for (let c = 4; c <= 6; c++) grid[r][c] = BLOCK.GLASS; }
+  g.level = { get: (r, c) => (grid[r] && grid[r][c] != null ? grid[r][c] : BLOCK.AIR), set: (r, c, v) => { (grid[r] || (grid[r] = {}))[c] = v; } };
+  g._worldAdvSettings = { glassShatter: true }; g._shatterFx = () => {}; g._playSound = () => {};
+  g._shatterGlassInRadius(5, 5, 2);
+  let remaining = 0; for (let r = 4; r <= 6; r++) for (let c = 4; c <= 6; c++) if (g.level.get(r, c) === BLOCK.GLASS) remaining++;
+  ok(remaining === 0, 'an explosion shatters every glass block in its radius');
+}
 
 console.log(`\nglass block: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

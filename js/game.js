@@ -2956,7 +2956,7 @@ class Game {
       }
     }
     this.mobManager.explosionEvents = [];
-    this.redstone.tickTnt(this.level, this.mobManager);
+    this.redstone.tickTnt(this.level, this.mobManager, (col, row, r) => this._shatterGlassInRadius(col, row, r));
     this.redstone.tickTargets(this.level);   // §Phase R — count down Target-Block pulses
     this._updatePulseConverters();           // §Phase R — directional pulse↔toggle devices
     // Remove dust/gate overlays whose block was destroyed (e.g. by TNT).
@@ -3540,6 +3540,13 @@ class Game {
         this._tooWeakNotified = true;
       }
       if (!mineResult?.tooWeak) this._tooWeakNotified = false;
+    }
+
+    // §Glass — a melee attack (a fresh click) shatters a NEARBY glass block even where
+    // mining is off (non-Normal modes); in Normal, the mining path above handles glass.
+    if (!this._miningEnabled && this.input.mouse.clicked && this.level.get(hoverRow, hoverCol) === BLOCK.GLASS) {
+      const dxb = hoverCol - Math.floor(this.player.cx / BLOCK_SIZE), dyb = hoverRow - Math.floor(this.player.cy / BLOCK_SIZE);
+      if (dxb * dxb + dyb * dyb <= 9) this._shatterGlassBlock(hoverRow, hoverCol);   // within ~3 blocks
     }
 
     // ── Mob AI + combat (suppressed in sandbox — mobs appear as eggs) ──
@@ -18181,6 +18188,14 @@ class Game {
     else if (this._isPowerupContent(content)) this._grantPowerup(content.slice(3), p);
     else this._spawnContentDrop(row, col, content, 'rise');
     this._playSound('sounds/item-collected.mp3', 0.85);
+  }
+  // §Glass — shatter every glass block within an explosion radius (TNT). destroyRadius
+  // deliberately skips glass so this can add shards + honour the "Glass Shatters" setting.
+  _shatterGlassInRadius(centerCol, centerRow, radius) {
+    for (let dr = -radius; dr <= radius; dr++) for (let dc = -radius; dc <= radius; dc++) {
+      if (dr * dr + dc * dc > radius * radius) continue;
+      this._shatterGlassBlock(centerRow + dr, centerCol + dc);
+    }
   }
   // §Glass — break a glass block into shards (if the world allows shattering). Returns
   // true if it broke. Shared by every shatter trigger: melee, arrow, explosion, hard fall.

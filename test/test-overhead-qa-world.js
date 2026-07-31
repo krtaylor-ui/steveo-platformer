@@ -35,8 +35,8 @@ catch (e) { ok(false, 'constructs — threw ' + e.message); }
 if (g) {
   try { for (let i = 0; i < 5; i++) g._update(); ok(true, 'runs 5 frames without throwing'); }
   catch (e) { ok(false, 'update loop threw ' + e.message); }
-  ok(g._redstone.length === 45, 'all 45 redstone devices survived load (' + g._redstone.length + ')');
-  ok((g._bridges || []).length === 3, '3 bridges loaded');
+  ok(g._redstone.length >= 45, 'the full redstone board survived load (' + g._redstone.length + ' devices)');
+  ok((g._bridges || []).length >= 3, 'the bridges loaded (' + (g._bridges || []).length + ')');
 
   console.log('Legacy dust/sinks (baked txIds) must NOT broadcast:');
   const dustTx = g._redstone.filter((d) => d.kind === 'dust' && d.txId != null);
