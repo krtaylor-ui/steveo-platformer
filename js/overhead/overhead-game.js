@@ -683,8 +683,29 @@
       // Day/night ambient overlay + light sources + sun/moon disc — drawn before the
       // HUD so the HUD stays crisp.
       if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') this._drawNight(ctx, S, cs);
+      if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') this._drawGlassGlare(ctx, S, cs, c0, c1, r0, r1);
       this._drawShards(ctx, S, cs);
       this._drawHUD(ctx);
+    }
+    // §Glass glare — a bright glint sweeps across each glass pane as the sun / moon crosses
+    // the sky (its position tracks the disc's x); stronger by DAY + when the disc is high.
+    _drawGlassGlare(ctx, S, cs, c0, c1, r0, r1) {
+      const body = OH_DAYNIGHT.body(this._tod);
+      const intensity = (body.isDay ? 0.6 : 0.22) * Math.max(0, 1 - (body.fy || 0) * 0.85);
+      if (intensity <= 0.02) return;
+      const g = this.grid, cell = g.cell, Q = OVERHEAD.elevOffset(cs), phase = body.fx || 0;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+        if (this._key(c, r) !== 'glass') continue;
+        const e = this._elev(c, r), base = S(c * cell, r * cell), x = base.x - e * Q, y = base.y - e * Q;
+        const gx = x + cs * (0.1 + phase * 0.8);   // the glint band sweeps with the disc
+        const grd = ctx.createLinearGradient(gx - cs * 0.35, y, gx + cs * 0.35, y + cs);
+        grd.addColorStop(0, 'rgba(255,255,255,0)');
+        grd.addColorStop(0.5, `rgba(255,255,255,${intensity})`);
+        grd.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grd; ctx.fillRect(x, y, cs, cs);
+      }
+      ctx.restore();
     }
 
     _drawEntity(e, S, z, cs) {
@@ -747,24 +768,24 @@
       const sc = this._shadowCanvas || (this._shadowCanvas = document.createElement('canvas'));
       if (sc.width !== CANVAS_W || sc.height !== CANVAS_H) { sc.width = CANVAS_W; sc.height = CANVAS_H; }
       const sx = sc.getContext('2d'); sx.clearRect(0, 0, CANVAS_W, CANVAS_H); sx.fillStyle = '#000';
-      const sgnx = Math.sign(sh.x) || 1, sgny = Math.sign(sh.y) || 1, cell = this.grid.cell;
-      // PASS 1 — cast each exposed cliff edge's shadow beam (union blacks, no stacking).
+      const cell = this.grid.cell, Q = OVERHEAD.elevOffset(cs);
+      // PASS 1 — cast each raised cell's CUBE shadow: SWEEP the footprint square from the
+      // block to its ground-projection in the light direction (displacement grows with
+      // height). The step-fill unions into the whole cube's cast shape, not just one edge.
       for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
-        const e = this._elev(c, r); if (e <= 0) continue; if (this._key(c, r) === 'leaves') continue;
-        // Only an edge facing away from the light casts (a lower neighbour that way).
-        if (this._elev(c + sgnx, r) >= e && this._elev(c, r + sgny) >= e && this._elev(c + sgnx, r + sgny) >= e) continue;
-        const base = S(c * cell, r * cell); const ox = sh.x * e * cs, oy = sh.y * e * cs;
-        sx.beginPath(); sx.moveTo(base.x, base.y); sx.lineTo(base.x + cs, base.y);
-        sx.lineTo(base.x + cs + ox, base.y + cs + oy); sx.lineTo(base.x + ox, base.y + cs + oy);
-        sx.closePath(); sx.fill();
+        const e = this._elev(c, r); if (e <= 0 || this._key(c, r) === 'leaves') continue;
+        const base = S(c * cell, r * cell), ox = sh.x * e * cs, oy = sh.y * e * cs;
+        const steps = Math.max(1, Math.ceil(Math.hypot(ox, oy) / (cs * 0.5)));
+        for (let i = 0; i <= steps; i++) { const t = i / steps; sx.fillRect(base.x + ox * t, base.y + oy * t, cs, cs); }
       }
-      // PASS 2 — erase every raised-block footprint so a shadow lands on the GROUND
-      // beyond the block, never on the block's own lit top (fixes "shadow covers the
-      // block"); the union of erased footprints + blur reads as one object's shadow.
+      // PASS 2 — erase each block's DRAWN CUBE: the footprint AND the up-left-shifted top
+      // face (tx,ty = base − e·Q). Erasing only the footprint left the shifted top exposed,
+      // so a shadow could land on top of the block during the dawn/dusk fade — fixed here.
       sx.globalCompositeOperation = 'destination-out'; sx.fillStyle = '#000';
       for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
-        if (this._elev(c, r) <= 0 || this._key(c, r) === 'leaves') continue;
-        const b = S(c * cell, r * cell); sx.fillRect(b.x - 0.5, b.y - 0.5, cs + 1, cs + 1);
+        const e = this._elev(c, r); if (e <= 0 || this._key(c, r) === 'leaves') continue;
+        const base = S(c * cell, r * cell), tx = base.x - e * Q, ty = base.y - e * Q;
+        sx.fillRect(tx - 0.5, ty - 0.5, (base.x + cs) - tx + 1, (base.y + cs) - ty + 1);
       }
       sx.globalCompositeOperation = 'source-over';
       // Blit with a light blur so the stepped per-cell edges soften into a smooth edge.
