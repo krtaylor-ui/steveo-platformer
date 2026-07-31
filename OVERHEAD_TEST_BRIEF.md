@@ -13,7 +13,7 @@ a compact table + any red console errors.
 
 ## Setup
 1. Open **http://localhost:8000**. Hard-refresh (Ctrl+Shift+R). Confirm the debug HUD's top
-   line reads **v3 build 317** — if not, refresh again (stale cache).
+   line reads **v3 build 318** — if not, refresh again (stale cache).
 2. If a login screen appears, pause and let the human log in.
 3. Sandbox → switch to the **🗺 Overhead** view → **New Overhead World** (e.g. 40×26, d1),
    OR open an existing overhead world → **Test**.
@@ -92,6 +92,17 @@ Editor → **Mechanics** palette tab → place **Glass**. World Settings → **"
 - **G7 (mining)** In **Normal** mode, mine a glass block normally (hold to mine) → it breaks.
 - **G8 (off)** Set "Glass Shatters" **OFF** → arrows / falls / melee / TNT no longer break it
   (glass survives the blast); still **minable in Normal**.
+
+## H. Cube shadows + glass glare (build 318) — overhead, Day/Night ON, zoomed in
+Build a tall block (elevation 3–4) and a raised **glass** pane. Enable Day/Night + shadows.
+- **H1 (cube shadow)** A tall block casts a **longer, cube-shaped shadow** that grows with
+  its height and points **away** from the sun/moon. Screenshot at a low sun angle.
+- **H2 (no shadow on the block)** Let the sun/moon **fade through dawn/dusk** and watch the
+  shadow direction flip. The shadow must **always land on the ground beyond the block** —
+  it must **never** appear on top of the block (esp. its up-left top face). This was the bug.
+- **H3 (glare)** Watch a **glass** pane as the sun/moon crosses the sky → a bright **glint
+  sweeps across it**, tracking the disc. It's **stronger in daytime** and when the sun is
+  high, **fainter at night** (moon). Screenshot the daytime glint.
 
 ## Report
 A table: `Item | PASS/FAIL/BLOCKED | note`. Attach screenshots inline. Open DevTools console
