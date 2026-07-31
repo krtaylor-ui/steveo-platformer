@@ -87,3 +87,27 @@ player height — worth keeping in mind when defining a template's Z.
   models, reference for skins.)
 - Do templates need **rotation** on placement (N/E/S/W)? (Likely yes for houses.)
 - Are templates **per-world** or a **shared library** across worlds?
+
+## Refined questions (round 2 — please answer any that matter to you)
+1. **Contents:** terrain + elevation only, or should a template also bake in **decorations,
+   mobs, items, redstone**? (A "haunted house" template with a mob inside is powerful but
+   bigger scope. Leaning: terrain/elevation + decorations first; mobs/items later.)
+2. **Size limits:** a sensible **max X/Y/Z** (e.g. 8×8×8)? Bigger templates cost more to
+   stamp + shadow. What ceiling feels right?
+3. **Overlap on placement:** when a template is stamped over existing terrain, should it
+   **overwrite**, **merge (only fill empty cells)**, or **refuse if blocked**? (Leaning:
+   overwrite, with a ghost preview + a warning if it clobbers non-empty cells.)
+4. **Building skins — collision vs visuals:** should a skin drive **only the visuals** (the
+   building keeps its defined footprint + solidity), or should the skin's **cells define
+   collision too**? (Leaning: skin = visuals + shadow; collision stays from the building def,
+   so gameplay is predictable.)
+5. **Editing:** re-open a saved template back into template mode to tweak it? (Leaning: yes —
+   store the cell data so it round-trips.)
+6. **Library scope + sharing:** per-world vs a shared library (repeat of Q above) — and should
+   templates be **exportable/importable as JSON** like worlds, so they travel between worlds?
+7. **Z vs player height:** templates author a Z in levels; with the new player-height scaling,
+   a Z-4 template renders shorter at player-height 2. Should a template **remember the player
+   height it was authored at** and rescale, or always be authored in raw levels? (Leaning: raw
+   levels — simplest, and it just scales with the world like everything else.)
+8. **Thumbnails:** auto-generate a small preview icon for each template in the list? (Nice for
+   a growing library; a bit of extra work.)

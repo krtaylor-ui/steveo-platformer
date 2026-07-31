@@ -1,4 +1,4 @@
-# Steveo Platformer — Test Brief (builds 312–319)
+# Steveo Platformer — Test Brief (builds 312–320)
 
 > **Paste everything below the line into the Chrome-enabled Claude session.**
 > Target the LOCAL build at http://localhost:8000 (WSL-hosted; not production).
@@ -13,7 +13,7 @@ a compact table + any red console errors.
 
 ## Setup
 1. Open **http://localhost:8000**. Hard-refresh (Ctrl+Shift+R). Confirm the debug HUD's top
-   line reads **v3 build 319** — if not, refresh again (stale cache).
+   line reads **v3 build 320** — if not, refresh again (stale cache).
 2. If a login screen appears, pause and let the human log in.
 3. Sandbox → switch to the **🗺 Overhead** view → **New Overhead World** (e.g. 40×26, d1),
    OR open an existing overhead world → **Test**.
@@ -114,6 +114,18 @@ Build a tall block (elevation 3–4) and a raised **glass** pane. Enable Day/Nig
   Each elevation level should render **shorter** (a level = ½ height at 2, ⅓ at 3) — a wall
   of N levels looks proportionally lower, and terrain + player + shadows stay consistent with
   each other. Set back to 1 to confirm the default look is unchanged.
+
+## J. Shadow style + tree shadow fix (build 320) — overhead
+- **J1 (fixed shadows)** World Settings → **Shadow style = Fixed**. Shadows should appear
+  **baked/static** (not moving with the sun/moon), pointing the configured direction
+  (**Fixed shadow falls** = Down-right by default), at the configured **darkness**. Confirm
+  they **do not shift** as time passes, and the frame rate is smooth. Screenshot.
+- **J2 (live shadows)** Set **Shadow style = Live** → shadows track the sun/moon again (the
+  build-318/319 behavior).
+- **J3 (tree shadow)** Place a **Tree**. Its canopy should cast a **soft floating drop-shadow
+  (a discrete blob)**, NOT a big solid black column, and the **trunk** should cast its own
+  shadow that **separates from the canopy shadow when the sun is low**. Confirm the old hard
+  black blob under trees is gone. Screenshot at a low sun angle.
 
 ## Report
 A table: `Item | PASS/FAIL/BLOCKED | note`. Attach screenshots inline. Open DevTools console
