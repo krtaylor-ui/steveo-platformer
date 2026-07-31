@@ -124,6 +124,9 @@
       this._bridges = worldData.bridges || [];
       this._bridgeAt = new Map();
       for (const b of this._bridges) { b._cells = OVERHEAD.bridgeSpanCells(b); if (b.elev == null) b.elev = 0; for (const cell of b._cells) this._bridgeAt.set(cell.col + ',' + cell.row, b); }
+      // TEMPLATE overlay — placed models (trees/houses) rendered ADDITIVELY on top of the
+      // terrain (the grid is never overwritten, so the ground below a canopy is preserved).
+      this._buildTemplateOverlay(worldData);
       // Redstone network (levers/dust/lamps/tx/rx). Evaluated each frame → channels.
       this._redstone = worldData.redstone || [];
       this._rs = (typeof OH_REDSTONE !== 'undefined') ? OH_REDSTONE.evaluate(this._redstone) : { powered: new Set(), channels: {} };
@@ -334,6 +337,7 @@
         if (key == null) return airborne ? null : false;     // gap
         if (this._buildingSolidAt(c.col, c.row)) return false;
         if (this._pistonSolidAt(c.col, c.row)) return false;   // an extended (powered) piston blocks
+        if (this._templateSolid && this._templateSolid.has(c.col + ',' + c.row)) return false;   // a template trunk/wall blocks (canopy is pass-under)
         if (key === 'leaves') return ent.elev;               // canopy — always pass under (keep elev)
         if (key === 'pit') return this._pitsDeadly ? ent.elev : false;   // deadly: step in (fatal after); else a hard obstacle
         const tE = this._elev(c.col, c.row), delta = tE - ent.elev;
@@ -577,6 +581,14 @@
     _exit() { this._running = false; if (document.body) document.body.classList.remove('in-game'); if (this._onExit) this._onExit(this.state); }
     destroy() { this._running = false; if (document.body) document.body.classList.remove('in-game'); }
 
+    // Expand template STAMPS into absolute overlay voxels + a solidity set (a NON-leaves
+    // voxel — a trunk/wall — blocks movement; leaf canopies stay pass-under).
+    _buildTemplateOverlay(worldData) {
+      const g = this.grid;
+      this._templateVoxels = (typeof OH_TEMPLATES !== 'undefined') ? OH_TEMPLATES.expandStamps(worldData, g.gridW, g.gridH) : [];
+      this._templateSolid = new Set();
+      for (const v of this._templateVoxels) if (!v.isLeaves) this._templateSolid.add(v.col + ',' + v.row);
+    }
     // Pre-render the whole static terrain (tops + 3D sides, elevation baked in) to
     // an offscreen canvas at 1:1 world px. `pad` is a top margin so raised tiles
     // (drawn UP) aren't clipped. Blitted each frame in _render.
@@ -636,6 +648,7 @@
       for (const b of this.buildings) ents.push({ kind: 'b', row: b.row, level: b.level || 0, ref: b });
       for (const it of this.items) if (!it.taken) ents.push({ kind: 'i', row: it.row, level: 0, ref: it });
       for (const m of this.mobs) if (!m.dead) ents.push({ kind: 'm', row: (m.y / g.cell) | 0, level: m.elev || 0, ref: m });
+      for (const v of this._templateVoxels) ents.push({ kind: 'tv', row: v.row, level: v.elev, ref: v });   // template overlay voxels (interleave with terrain/entities)
       ents.push({ kind: 'p', row: (this.player.y / g.cell) | 0, level: this.player.elev, ref: this.player });
       OH_ELEV.sortForDraw(ents).forEach((e) => this._drawEntity(e, S, z, cs));
       // Melee swing — the ACTUAL held weapon sweeps through the attack cone. The
@@ -723,6 +736,10 @@
       if (e.kind === 'b') { const b = e.ref, t = OH_BUILDINGS.get(b.typeId); const sp = S(b.col * g.cell, b.row * g.cell); const w = (t ? t.footprint.w : 1) * cs, h = (t ? t.footprint.h : 1) * cs; const Q = OVERHEAD.elevOffset(cs), lv = (b.level || 0); OVERHEAD.drawBuilding(ctx, b.typeId, sp.x - lv * Q, sp.y - lv * Q, w, h, Math.min(1, cs / 28), b.skin || 'default'); }
       else if (e.kind === 'i') { const it = e.ref; const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); OVERHEAD.drawItemSprite(ctx, it.itemKey, sp.x, sp.y, this.unit * z * 0.8); }
       else if (e.kind === 'm') { this._drawMob(e.ref, S, z, cs); }
+      else if (e.kind === 'tv') {   // template overlay voxel: a 1-level cube floating at its elevation
+        const v = e.ref, Q = OVERHEAD.elevOffset(cs), base = S(v.col * g.cell, v.row * g.cell);
+        OVERHEAD.drawTerrainCube(ctx, v.block, base.x - (v.elev - 1) * Q, base.y - (v.elev - 1) * Q, cs, 1, true, true);
+      }
       else if (e.kind === 'p') { if (this.state !== 'dying' && this.state !== 'dead') this._drawPlayer(S, z, cs); }
     }
 
@@ -802,9 +819,11 @@
       const cell = this.grid.cell, Q = OVERHEAD.elevOffset(cs);
       for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const e = this._elev(c, r); if (e <= 0) continue;
         const base = S(c * cell, r * cell); this._castShadowCell(sx, base.x, base.y, e, this._key(c, r) === 'leaves', sh.x * e * cs, sh.y * e * cs, cs, Q); }
+      for (const v of this._templateVoxels) { const base = S(v.col * cell, v.row * cell); this._castShadowCell(sx, base.x, base.y, v.elev, v.isLeaves, sh.x * v.elev * cs, sh.y * v.elev * cs, cs, Q); }   // template overlay voxels cast too
       sx.globalCompositeOperation = 'destination-out'; sx.fillStyle = '#000';
       for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const e = this._elev(c, r); if (e <= 0) continue;
         const base = S(c * cell, r * cell); this._eraseShadowCell(sx, base.x, base.y, e, this._key(c, r) === 'leaves', cs, Q); }
+      for (const v of this._templateVoxels) { const base = S(v.col * cell, v.row * cell); this._eraseShadowCell(sx, base.x, base.y, v.elev, v.isLeaves, cs, Q); }
       sx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = sh.alpha;
       if ('filter' in ctx) ctx.filter = `blur(${Math.max(0.6, cs * 0.05)}px)`;
@@ -819,15 +838,18 @@
       if (!this._staticShadowCanvas) {
         const Q = OVERHEAD.elevOffset(cell), sh = this._fixedSh();
         let maxE = 0; for (let r = 0; r < g.gridH; r++) { const row = this.elevation[r]; if (row) for (let c = 0; c < g.gridW; c++) if ((row[c] | 0) > maxE) maxE = row[c] | 0; }
+        for (const v of this._templateVoxels) if (v.elev > maxE) maxE = v.elev;   // template canopies can be the tallest thing
         const pad = Math.ceil(maxE * (Q + Math.max(Math.abs(sh.x), Math.abs(sh.y)) * cell) + cell);
         const worldW = g.gridW * cell, worldH = g.gridH * cell;
         const cv = document.createElement('canvas'); cv.width = Math.max(1, worldW + 2 * pad); cv.height = Math.max(1, worldH + 2 * pad);
         const sx = cv.getContext('2d'); sx.fillStyle = '#000';
         for (let r = 0; r < g.gridH; r++) for (let c = 0; c < g.gridW; c++) { const e = this._elev(c, r); if (e <= 0) continue;
           this._castShadowCell(sx, c * cell + pad, r * cell + pad, e, this._key(c, r) === 'leaves', sh.x * e * cell, sh.y * e * cell, cell, Q); }
+        for (const v of this._templateVoxels) this._castShadowCell(sx, v.col * cell + pad, v.row * cell + pad, v.elev, v.isLeaves, sh.x * v.elev * cell, sh.y * v.elev * cell, cell, Q);
         sx.globalCompositeOperation = 'destination-out'; sx.fillStyle = '#000';
         for (let r = 0; r < g.gridH; r++) for (let c = 0; c < g.gridW; c++) { const e = this._elev(c, r); if (e <= 0) continue;
           this._eraseShadowCell(sx, c * cell + pad, r * cell + pad, e, this._key(c, r) === 'leaves', cell, Q); }
+        for (const v of this._templateVoxels) this._eraseShadowCell(sx, v.col * cell + pad, v.row * cell + pad, v.elev, v.isLeaves, cell, Q);
         sx.globalCompositeOperation = 'source-over';
         this._staticShadowCanvas = cv; this._staticShadowPad = pad;
       }

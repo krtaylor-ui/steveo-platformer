@@ -22,7 +22,7 @@ global.document = { getElementById: () => mkEl(), head: { appendChild() {} }, cr
 global.window.addEventListener = () => {}; global.window.dispatchEvent = () => {}; global.Event = function () {};
 global.InputManager = function () { this.flush = () => {}; this.isJustDown = () => false; this.isDown = () => false; this.mouse = { x: 0, y: 0, clicked: false, down: false, rightClicked: false, moveVec: { x: 0, y: 0 } }; };
 global.requestAnimationFrame = () => 0;
-['palette', 'grid', 'buildings', 'movement', 'controls', 'combat', 'weapons', 'elevation', 'settings', 'daynight', 'redstone', 'launch', 'game']
+['palette', 'grid', 'buildings', 'movement', 'controls', 'combat', 'weapons', 'elevation', 'settings', 'daynight', 'redstone', 'templates', 'launch', 'game']
   .forEach((m) => require(path.join(__dirname, '..', 'js', 'overhead', 'overhead-' + m + '.js')));
 const OverheadGame = global.OverheadGame, OH_REDSTONE = global.OH_REDSTONE;
 

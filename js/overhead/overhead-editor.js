@@ -153,7 +153,7 @@
     },
 
     // ── History (undo/redo) ─────────────────────────────────────────────────
-    _snapshot() { return JSON.stringify({ map: this.world.mapSnapshot, b: this.world.buildings, m: this.world.mobs, i: this.world.items, s: this.world.spawns, g: this.world.goal, r: this.world.ramps, br: this.world.bridges, rs: this.world.redstone, set: this.world.settings }); },
+    _snapshot() { return JSON.stringify({ map: this.world.mapSnapshot, b: this.world.buildings, m: this.world.mobs, i: this.world.items, s: this.world.spawns, g: this.world.goal, r: this.world.ramps, br: this.world.bridges, rs: this.world.redstone, set: this.world.settings, ts: this.world.templateStamps, tpl: this.world.templates }); },
     // History captures CONTENT + SETTINGS only (never zoom/scroll — those don't
     // snapshot). Each entry carries a description for the undo/redo notification.
     _pushHistory(desc) {
@@ -163,7 +163,7 @@
       this._hist.push({ s, d: desc || 'edit' }); this._histPos = this._hist.length - 1;
       if (this._hist.length > 60) { this._hist.shift(); this._histPos--; }
     },
-    _restore(snap) { const d = JSON.parse(snap); const cam = this.cam, mz = this.grid && this.grid.masterZoom; this.world.mapSnapshot = d.map; this.world.buildings = d.b; this.world.mobs = d.m; this.world.items = d.i; this.world.spawns = d.s; this.world.goal = d.g; if (d.r !== undefined) this.world.ramps = d.r; if (d.br !== undefined) this.world.bridges = d.br; if (d.rs !== undefined) this.world.redstone = d.rs; if (d.set !== undefined) this.world.settings = d.set; this._setupWorld(); this.cam = cam; if (mz) this.grid.masterZoom = mz; },   // keep the camera + zoom put (undo/redo must not jump the view)
+    _restore(snap) { const d = JSON.parse(snap); const cam = this.cam, mz = this.grid && this.grid.masterZoom; this.world.mapSnapshot = d.map; this.world.buildings = d.b; this.world.mobs = d.m; this.world.items = d.i; this.world.spawns = d.s; this.world.goal = d.g; if (d.r !== undefined) this.world.ramps = d.r; if (d.br !== undefined) this.world.bridges = d.br; if (d.rs !== undefined) this.world.redstone = d.rs; if (d.set !== undefined) this.world.settings = d.set; if (d.ts !== undefined) this.world.templateStamps = d.ts; if (d.tpl !== undefined) this.world.templates = d.tpl; this._setupWorld(); this.cam = cam; if (mz) this.grid.masterZoom = mz; },   // keep the camera + zoom put (undo/redo must not jump the view)
     _paintDesc() { const t = this._shift ? 'erase' : this.tool;
       if (t === 'terrain') return 'paint ' + this.terrainKey; if (t === 'building') return 'place ' + this.buildingType;
       if (t === 'mob') return 'place ' + this.mobKey; if (t === 'item') return 'place ' + this.itemKey;
@@ -439,7 +439,8 @@
       const erasing = this.tool === 'erase' || this._shift;
       const apply = (fn) => { for (let dr = -half; dr <= half; dr++) for (let dc = -half; dc <= half; dc++) fn(col + dc, row + dr); };
       if (erasing || this.tool === 'terrain') { apply((c, r) => this._opCell(c, r)); return; }
-      if (this.tool === 'tree') { this._stampTree(col, row); return; }
+      if (this.tool === 'tree') { this._placeTemplate('sys:tree', col, row); return; }   // the tree is now a SYSTEM template (additive overlay — no black void)
+      if (this.tool === 'template') { if (this._templateId) this._placeTemplate(this._templateId, col, row); return; }
       if (this.tool === 'goal') { this.world.goal = { col, row }; return; }
       if (this.tool === 'spawn') { this.world.spawns = [{ col, row }]; return; }
       if (this.tool === 'building') { if (!this.world.buildings.some((b) => b.col === col && b.row === row)) this.world.buildings.push(OH_BUILDINGS.place(this.buildingType, col, row, { level: this.elevLevel })); return; }
@@ -525,6 +526,18 @@
       }
       set(col, row, 'log', base + 2);   // trunk (levels 1&2)
     },
+    // Place a TEMPLATE as an ADDITIVE overlay stamp (does NOT overwrite the terrain, so the
+    // ground below a canopy is preserved — no black void). `base` = the ground elevation here.
+    _placeTemplate(templateId, col, row) {
+      const m = this.world.mapSnapshot, base = (m.elevation[row] ? (m.elevation[row][col] | 0) : 0);
+      this.world.templateStamps = this.world.templateStamps || [];
+      this._stampSeq = (this._stampSeq || 0) + 1;
+      this.world.templateStamps.push({ id: 'st' + this._stampSeq, templateId, col, row, base });
+    },
+    // Absolute overlay voxels for the editor render (mirrors the runtime).
+    _templateVoxels() { return (typeof OH_TEMPLATES !== 'undefined') ? OH_TEMPLATES.expandStamps(this.world, this.grid.gridW, this.grid.gridH) : []; },
+    // Remove the template stamp whose anchor is at (col,row) — for hand-click delete.
+    _stampAt(col, row) { return (this.world.templateStamps || []).find((s) => s.col === col && s.row === row); },
 
     // ── Shapes (line / rect / circle-oval; fill or brush-width outline) ─────────
     _shapeCells(a, b) {
@@ -900,6 +913,8 @@
         if (b.typeId === 'portal' || b.typeId === 'pipe') { const br = Math.max(11, cs * 0.5), cyN = by + cs * 0.4; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.beginPath(); ctx.arc(bx + w / 2, cyN, br, 0, 7); ctx.fill(); ctx.strokeStyle = '#b56bde'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(12, cs * 0.55) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('#' + this._portalNum(b), bx + w / 2, cyN); ctx.textBaseline = 'alphabetic'; } }
       if (this.view.mobs) for (const mo of this.world.mobs) { if (hiAbove(m.elevation[mo.row] ? m.elevation[mo.row][mo.col] : 0)) continue; const d = P().OH_MOB_BY_KEY[mo.type] || P().OH_MOBS[0]; const sp = S((mo.col + 0.5) * g.cell, (mo.row + 0.5) * g.cell); ctx.strokeStyle = 'rgba(150,150,160,.9)'; ctx.lineWidth = 2; ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(sp.x, sp.y, unitPx * 0.34, 0, 7); ctx.fill(); ctx.stroke(); }
       if (this.view.items) for (const it of this.world.items) { if (hiAbove(m.elevation[it.row] ? m.elevation[it.row][it.col] : 0)) continue; const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); OVERHEAD.drawItemSprite(ctx, it.itemKey, sp.x, sp.y, unitPx * 0.8); }
+      // Template overlay voxels (placed models — trees/houses) — additive on top of terrain.
+      for (const v of this._templateVoxels()) { if (hiAbove(v.elev)) continue; const sp = S(v.col * g.cell, v.row * g.cell); OVERHEAD.drawTerrainCube(ctx, v.block, sp.x - (v.elev - 1) * Q, sp.y - (v.elev - 1) * Q, cs, 1, true, true); }
       for (const spn of (this.world.spawns || [])) { const sp = S((spn.col + 0.5) * g.cell, (spn.row + 0.5) * g.cell); ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; ctx.strokeRect(sp.x - cs * 0.42, sp.y - cs * 0.42, cs * 0.84, cs * 0.84); if (cs > 14) { ctx.fillStyle = '#4aa3ff'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('P1', sp.x, sp.y + 3); } }
       for (const rp of (this.world.ramps || [])) { if (hiAbove(m.elevation[rp.row] ? m.elevation[rp.row][rp.col] : 0)) continue; const sp = S((rp.col + 0.5) * g.cell, (rp.row + 0.5) * g.cell); const dir = OVERHEAD.rampDir((c, r) => (m.elevation[r] ? (m.elevation[r][c] | 0) : 0), rp.col, rp.row); OVERHEAD.drawRampIcon(ctx, rp.kind, sp.x, sp.y, cs, dir); }
       // Bridge SPANS (always shown as the deck in the editor; drawbridges get a ⚡ tag).

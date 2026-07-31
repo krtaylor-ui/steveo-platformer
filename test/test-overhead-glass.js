@@ -12,7 +12,7 @@ global.window.addEventListener = () => {}; global.window.dispatchEvent = () => {
 global.InputManager = function () { this.flush = () => {}; this.isJustDown = () => false; this.isDown = () => false; this.mouse = { x: 0, y: 0, clicked: false, down: false, rightClicked: false, moveVec: { x: 0, y: 0 } }; };
 global.requestAnimationFrame = () => 0;
 const path = require('path');
-['palette', 'grid', 'buildings', 'movement', 'controls', 'combat', 'weapons', 'elevation', 'settings', 'daynight', 'redstone', 'launch', 'game']
+['palette', 'grid', 'buildings', 'movement', 'controls', 'combat', 'weapons', 'elevation', 'settings', 'daynight', 'redstone', 'templates', 'launch', 'game']
   .forEach((m) => require(path.join(__dirname, '..', 'js', 'overhead', 'overhead-' + m + '.js')));
 const OverheadGame = global.OverheadGame, OH_SETTINGS = global.OH_SETTINGS, OH_WEAPONS = global.OH_WEAPONS, P = global.OH_PALETTE;
 
