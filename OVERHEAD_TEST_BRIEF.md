@@ -13,7 +13,7 @@ a compact table + any red console errors.
 
 ## Setup
 1. Open **http://localhost:8000**. Hard-refresh (Ctrl+Shift+R). Confirm the debug HUD's top
-   line reads **v3 build 316** — if not, refresh again (stale cache).
+   line reads **v3 build 317** — if not, refresh again (stale cache).
 2. If a login screen appears, pause and let the human log in.
 3. Sandbox → switch to the **🗺 Overhead** view → **New Overhead World** (e.g. 40×26, d1),
    OR open an existing overhead world → **Test**.
@@ -85,11 +85,13 @@ Editor → **Mechanics** palette tab → place **Glass**. World Settings → **"
 - **G3 (head-butt)** Jump up **into** a glass block from below → it shatters.
 - **G4 (hard fall)** Fall from a **height** onto a glass floor → you **crash through** (it
   shatters); a **gentle** step onto glass keeps it **solid**.
-- **G5 (explosion)** Detonate **TNT** next to glass → it's destroyed (shards on the nether-bed
-  blast).
-- **G6 (mining)** In **Normal** mode, mine a glass block normally (hold to mine) → it breaks.
-- **G7 (off)** Set "Glass Shatters" **OFF** → arrows/falls/explosions no longer break it (still
-  minable in Normal).
+- **G5 (explosion)** Detonate **TNT** next to glass → the glass in the blast **shatters into
+  shards** (not just vanishes).
+- **G6 (melee)** In a **non-Normal** mode (Platformer/Run), **click** a nearby glass block →
+  it shatters (a melee swing; no mining needed).
+- **G7 (mining)** In **Normal** mode, mine a glass block normally (hold to mine) → it breaks.
+- **G8 (off)** Set "Glass Shatters" **OFF** → arrows / falls / melee / TNT no longer break it
+  (glass survives the blast); still **minable in Normal**.
 
 ## Report
 A table: `Item | PASS/FAIL/BLOCKED | note`. Attach screenshots inline. Open DevTools console
