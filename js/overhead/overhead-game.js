@@ -64,7 +64,10 @@
       this._nightMax = (cfg.nightDarkness != null ? cfg.nightDarkness : 0.6);
       this._showSunMoon = cfg.showSunMoon !== false;   // faint tracking disc (toggle)
       this._sunMoonShape = cfg.sunMoonShape === 'square' ? 'square' : 'circle';
-      this._shadows = cfg.shadows !== false;           // dynamic elevation shadows (toggle)
+      this._shadows = cfg.shadows !== false;           // master shadow toggle
+      this._shadowStyle = cfg.shadowStyle || 'live';   // 'live' (follow sun/moon) | 'fixed' (baked once)
+      this._shadowDir = cfg.shadowDir || 'dr';         // fixed-shadow direction (dr/d/dl/r/l)
+      this._shadowDarkness = (cfg.shadowDarkness != null ? cfg.shadowDarkness : 0.32);   // fixed-shadow alpha
       // Universal light REACH per unit brightness (blocks) + per-object brightness.
       this._lightRange = (cfg.lightRange != null ? cfg.lightRange : 5);
       const briOf = { lava: (cfg.lavaBrightness != null ? cfg.lavaBrightness : 0.7),
@@ -521,6 +524,7 @@
       if (this.ground[r]) this.ground[r][c] = 'grass';       // clear gap where the pane was
       if (this.elevation[r]) this.elevation[r][c] = 0;
       this._terrainCache = null;                             // force the static terrain re-bake
+      this._staticShadowCanvas = null;                       // …and the baked static shadow
       return true;
     }
     _spawnShards(x, y) {
@@ -619,7 +623,10 @@
       ctx.drawImage(tc, sx, sy, sw, sh, 0, 0, CANVAS_W, CANVAS_H);
       // Dynamic elevation shadows (cast by the sun/moon; drawn on the ground under
       // entities). Independent of whether the sun/moon disc itself is shown.
-      if (this._dayNight && this._shadows && typeof OH_DAYNIGHT !== 'undefined') this._drawShadows(ctx, S, cs, c0, c1, r0, r1);
+      if (this._shadows) {
+        if (this._shadowStyle === 'fixed') this._drawStaticShadows(ctx, cs);                                   // baked once, cheap
+        else if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') this._drawShadows(ctx, S, cs, c0, c1, r0, r1);   // live, follows sun/moon
+      }
       for (const rp of this._rampList) { const sp = S((rp.col + 0.5) * g.cell, (rp.row + 0.5) * g.cell); const dir = OVERHEAD.rampDir((c, r) => this._elev(c, r), rp.col, rp.row); OVERHEAD.drawRampIcon(ctx, rp.kind, sp.x, sp.y, cs, dir); }
       if (this._bridges.length) this._drawBridges(ctx, S, cs);
       if (this._redstone.length) this._drawRedstone(ctx, S, cs);
@@ -766,40 +773,68 @@
     // Dynamic elevation shadows: cast from cliff edges facing away from the sun/moon,
     // onto an offscreen canvas (so overlapping casts don't stack darker), then blit
     // at the shadow alpha. Length scales with elevation and low-body angle.
+    // Cast ONE cell's shadow into offscreen ctx `sx`. (x,y) = the cell's top-left in that
+    // ctx's space; (ox,oy) = the ground displacement for this cell's elevation.
+    //  • SOLID terrain (incl. the tree TRUNK) sweeps its full CUBE (the vertical stack of
+    //    squares, footprint → up-left top) so a run reads as one solid, side-inclusive shape.
+    //  • LEAVES are a FLOATING canopy — they cast a single silhouette OFFSET by their height
+    //    (a drop shadow), NOT a solid ground column, so the canopy shadow is a discrete blob
+    //    that separates from the trunk shadow when the sun is low.
+    _castShadowCell(sx, x, y, e, isLeaves, ox, oy, cs, Q) {
+      if (isLeaves) { sx.fillRect(x + ox, y + oy, cs, cs); return; }
+      const steps = Math.max(1, Math.ceil(Math.hypot(ox, oy) / (cs * 0.5)));
+      for (let s = 0; s <= steps; s++) { const t = s / steps, dx = ox * t, dy = oy * t;
+        for (let i = 0; i <= e; i++) sx.fillRect(x - i * Q + dx, y - i * Q + dy, cs, cs); }
+    }
+    // Erase a cell's DRAWN shape from the shadow layer so a shadow never covers the block.
+    _eraseShadowCell(sx, x, y, e, isLeaves, cs, Q) {
+      const tx = x - e * Q, ty = y - e * Q;
+      if (isLeaves) { sx.fillRect(tx - 0.5, ty - 0.5, cs + 1, cs + 1); return; }   // floating canopy footprint
+      sx.fillRect(tx - 0.5, ty - 0.5, (x + cs) - tx + 1, (y + cs) - ty + 1);        // full cube column
+    }
+    _fixedSh() { const D = { dr: [0.7, 0.7], d: [0, 1], dl: [-0.7, 0.7], r: [1, 0.25], l: [-1, 0.25] }; const v = D[this._shadowDir] || D.dr; return { x: v[0] * 0.9, y: v[1] * 0.9 }; }
+    // LIVE shadows — recomputed each frame from the moving sun/moon (day/night worlds).
     _drawShadows(ctx, S, cs, c0, c1, r0, r1) {
       const sh = OH_DAYNIGHT.shadow(this._tod); if (sh.alpha <= 0.01) return;
       const sc = this._shadowCanvas || (this._shadowCanvas = document.createElement('canvas'));
       if (sc.width !== CANVAS_W || sc.height !== CANVAS_H) { sc.width = CANVAS_W; sc.height = CANVAS_H; }
       const sx = sc.getContext('2d'); sx.clearRect(0, 0, CANVAS_W, CANVAS_H); sx.fillStyle = '#000';
       const cell = this.grid.cell, Q = OVERHEAD.elevOffset(cs);
-      // PASS 1 — cast each raised cell's full CUBE shadow. For every sweep position (from
-      // the block toward its ground-projection in the light direction), fill the block's
-      // DRAWN STACK of squares — footprint up to the up-left-shifted top (i·Q per level).
-      // Filling the stack (not just the footprint/top face) includes the SIDES, so a
-      // vertical run reads as one solid shape instead of stepped top-face stamps. Leaves
-      // (tree canopies) cast too now, so trees actually shade the ground.
-      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
-        const e = this._elev(c, r); if (e <= 0) continue;
-        const base = S(c * cell, r * cell), ox = sh.x * e * cs, oy = sh.y * e * cs;
-        const steps = Math.max(1, Math.ceil(Math.hypot(ox, oy) / (cs * 0.5)));
-        for (let s = 0; s <= steps; s++) { const t = s / steps, dx = ox * t, dy = oy * t;
-          for (let i = 0; i <= e; i++) sx.fillRect(base.x - i * Q + dx, base.y - i * Q + dy, cs, cs); }
-      }
-      // PASS 2 — erase each block's DRAWN CUBE (footprint AND the up-left-shifted top face,
-      // tx,ty = base − e·Q) so a shadow always lands on the GROUND beyond the block, never
-      // on top of it (fixes shadow-on-the-block during the dawn/dusk fade).
+      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const e = this._elev(c, r); if (e <= 0) continue;
+        const base = S(c * cell, r * cell); this._castShadowCell(sx, base.x, base.y, e, this._key(c, r) === 'leaves', sh.x * e * cs, sh.y * e * cs, cs, Q); }
       sx.globalCompositeOperation = 'destination-out'; sx.fillStyle = '#000';
-      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
-        const e = this._elev(c, r); if (e <= 0) continue;
-        const base = S(c * cell, r * cell), tx = base.x - e * Q, ty = base.y - e * Q;
-        sx.fillRect(tx - 0.5, ty - 0.5, (base.x + cs) - tx + 1, (base.y + cs) - ty + 1);
-      }
+      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const e = this._elev(c, r); if (e <= 0) continue;
+        const base = S(c * cell, r * cell); this._eraseShadowCell(sx, base.x, base.y, e, this._key(c, r) === 'leaves', cs, Q); }
       sx.globalCompositeOperation = 'source-over';
-      // Blit with a light blur so the stepped per-cell edges soften into a smooth edge.
-      const blur = Math.max(0.6, cs * 0.05);
       ctx.globalAlpha = sh.alpha;
-      if ('filter' in ctx) ctx.filter = `blur(${blur}px)`;
+      if ('filter' in ctx) ctx.filter = `blur(${Math.max(0.6, cs * 0.05)}px)`;
       ctx.drawImage(sc, 0, 0);
+      if ('filter' in ctx) ctx.filter = 'none';
+      ctx.globalAlpha = 1;
+    }
+    // STATIC shadows — baked ONCE in world space from a FIXED direction + darkness, then
+    // blitted with the camera offset each frame (cheap: one drawImage). No day/night needed.
+    _drawStaticShadows(ctx, cs) {
+      const g = this.grid, cell = g.cell, z = g.masterZoom;
+      if (!this._staticShadowCanvas) {
+        const Q = OVERHEAD.elevOffset(cell), sh = this._fixedSh();
+        let maxE = 0; for (let r = 0; r < g.gridH; r++) { const row = this.elevation[r]; if (row) for (let c = 0; c < g.gridW; c++) if ((row[c] | 0) > maxE) maxE = row[c] | 0; }
+        const pad = Math.ceil(maxE * (Q + Math.max(Math.abs(sh.x), Math.abs(sh.y)) * cell) + cell);
+        const worldW = g.gridW * cell, worldH = g.gridH * cell;
+        const cv = document.createElement('canvas'); cv.width = Math.max(1, worldW + 2 * pad); cv.height = Math.max(1, worldH + 2 * pad);
+        const sx = cv.getContext('2d'); sx.fillStyle = '#000';
+        for (let r = 0; r < g.gridH; r++) for (let c = 0; c < g.gridW; c++) { const e = this._elev(c, r); if (e <= 0) continue;
+          this._castShadowCell(sx, c * cell + pad, r * cell + pad, e, this._key(c, r) === 'leaves', sh.x * e * cell, sh.y * e * cell, cell, Q); }
+        sx.globalCompositeOperation = 'destination-out'; sx.fillStyle = '#000';
+        for (let r = 0; r < g.gridH; r++) for (let c = 0; c < g.gridW; c++) { const e = this._elev(c, r); if (e <= 0) continue;
+          this._eraseShadowCell(sx, c * cell + pad, r * cell + pad, e, this._key(c, r) === 'leaves', cell, Q); }
+        sx.globalCompositeOperation = 'source-over';
+        this._staticShadowCanvas = cv; this._staticShadowPad = pad;
+      }
+      const cv = this._staticShadowCanvas, pad = this._staticShadowPad;
+      ctx.globalAlpha = this._shadowDarkness;
+      if ('filter' in ctx) ctx.filter = `blur(${Math.max(0.6, cs * 0.05)}px)`;
+      ctx.drawImage(cv, this.camera.x + pad, this.camera.y + pad, CANVAS_W / z, CANVAS_H / z, 0, 0, CANVAS_W, CANVAS_H);
       if ('filter' in ctx) ctx.filter = 'none';
       ctx.globalAlpha = 1;
     }
