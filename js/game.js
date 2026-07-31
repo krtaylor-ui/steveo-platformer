@@ -3994,7 +3994,8 @@ class Game {
           for (let dc = -R; dc <= R; dc++) {
             if (dr * dr + dc * dc <= R * R) {
               const b = this.level.get(row + dr, col + dc);
-              if (b !== BLOCK.BEDROCK && b !== BLOCK.AIR)
+              if (b === BLOCK.GLASS) this._shatterGlassBlock(row + dr, col + dc);   // §Glass — shards in the blast
+              else if (b !== BLOCK.BEDROCK && b !== BLOCK.AIR)
                 this.level.set(row + dr, col + dc, BLOCK.AIR);
             }
           }
@@ -18117,6 +18118,7 @@ class Game {
         else if (b === BLOCK.CONVEYOR_LEFT)  p.x -= (this._worldAdvSettings.conveyorSpeed ?? 2) * 0.8;
         else if (b === BLOCK.CONVEYOR_RIGHT) p.x += (this._worldAdvSettings.conveyorSpeed ?? 2) * 0.8;
         else if (b === BLOCK.CRUMBLE_BLOCK)  this._crumbleTouch(feetRow, c);
+        else if (b === BLOCK.GLASS && (p._preVy || 0) > 9) { if (this._shatterGlassBlock(feetRow, c)) { p.onGround = false; p.vy = Math.max(p.vy, 2); } }   // §Glass — a HARD fall crashes through (gentle landing keeps it solid)
       }
     }
     // §Unified pipe entry — Warp Pipes use the SAME mouth mechanic as Travel Tubes, on a designer-
@@ -18131,6 +18133,7 @@ class Game {
         const b = L.get(hr, c);
         if (b === BLOCK.QUESTION_BLOCK) { L.set(hr, c, BLOCK.QUESTION_USED); this._popBlockContent(hr, c, p); }
         else if (b === BLOCK.BREAKABLE_BLOCK) { this._breakBlock(hr, c, p); }
+        else if (b === BLOCK.GLASS) { this._shatterGlassBlock(hr, c); }   // §Glass — head-butt shatters it
       }
       // Hidden (non-solid): the block the head passed into → reveal + settle just below it.
       const hr2 = Math.floor((p.y + 2) / BS);
@@ -18178,6 +18181,16 @@ class Game {
     else if (this._isPowerupContent(content)) this._grantPowerup(content.slice(3), p);
     else this._spawnContentDrop(row, col, content, 'rise');
     this._playSound('sounds/item-collected.mp3', 0.85);
+  }
+  // §Glass — break a glass block into shards (if the world allows shattering). Returns
+  // true if it broke. Shared by every shatter trigger: melee, arrow, explosion, hard fall.
+  _shatterGlassBlock(row, col) {
+    if (this.level.get(row, col) !== BLOCK.GLASS) return false;
+    if (this._worldAdvSettings && this._worldAdvSettings.glassShatter === false) return false;
+    this.level.set(row, col, BLOCK.AIR);
+    this._shatterFx(row, col, '#cfeef5');
+    this._playSound('sounds/mining.mp3', 0.4);
+    return true;
   }
   // A Breakable Block was hit from below: shatter + its content POPS OUT (random direction) to land + be collected.
   _breakBlock(row, col, p) {
@@ -18322,6 +18335,7 @@ class Game {
       a._blockHitDone = true;
       const { row, col } = a._blockHit;
       if (this.level.get(row, col) === BLOCK.TARGET_BLOCK) this.redstone.hitTarget(col, row, this.level, false);
+      else if (this.level.get(row, col) === BLOCK.GLASS && this._shatterGlassBlock(row, col)) { a.alive = false; a.stuck = false; }   // §Glass — an arrow shatters glass (and doesn't stick)
     }
   }
 

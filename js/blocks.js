@@ -111,6 +111,7 @@ const BLOCK = Object.freeze({
   RAIL_GATE:              92,   // §Moving Platforms — rail segment that blocks/allows passage by redstone or platform weight
   WEIGHT_PLATE:           93,   // §Weight Sensor — a SOLID full block that emits redstone while a player/mob/both stands ON TOP (config modal)
   RAIL_SWITCH:            94,   // §Moving Platforms — a railroad switch: pivot + two routes, flips by redstone; platforms hand off to touching rails
+  GLASS:                  95,   // solid, see-through pane; minable in Normal; a world setting lets melee/ranged/explosion/impact SHATTER it into shards
 });
 
 // §Phase R — Redstone Lamp colours (click a placed lamp with the Lamp selected to cycle). One hue
@@ -254,6 +255,7 @@ const BLOCK_DATA = {
   [BLOCK.REDSTONE_LAMP]:     { name: 'Redstone Lamp',   hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
   [BLOCK.WEIGHT_PLATE]:      { name: 'Weight Sensor',   hardness: Infinity, mineable: false, solid: true,  mineTier: 0 },
   [BLOCK.RAIL_SWITCH]:       { name: 'Rail Switch',     hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
+  [BLOCK.GLASS]:             { name: 'Glass',           hardness: 40,       mineable: true,  solid: true,  mineTier: 0, classic: true, isGlass: true },
   // §Moving Platforms — the rail's grid cells are only solid in the 'Visible + Solid' visibility state
   // (game.js paints/clears them). Non-solid by default so a platform's anchor rides freely along it.
   [BLOCK.RAIL]:              { name: 'Rail',            hardness: Infinity, mineable: false, solid: true,  mineTier: 0, classic: true },
@@ -346,6 +348,7 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.SPIKES:                 _drawSpikes(ctx, px, py, s);                     break;
     case BLOCK.COIN:                   _drawCoinBlock(ctx, px, py, s, state.frame || 0);break;
     case BLOCK.ICE:                    _drawIce(ctx, px, py, s);                        break;
+    case BLOCK.GLASS:                  _drawGlass(ctx, px, py, s);                      break;
     case BLOCK.QUESTION_BLOCK:         _drawQuestionBlock(ctx, px, py, s, false, state.frame || 0); break;
     case BLOCK.QUESTION_USED:          _drawQuestionBlock(ctx, px, py, s, true, 0);     break;
     case BLOCK.HIDDEN_BLOCK:           _drawHiddenBlock(ctx, px, py, s, !!state.editor);break;
@@ -1831,6 +1834,15 @@ function _drawIce(ctx, px, py, s) {
   ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(px + 5, py + 6); ctx.lineTo(px + 13, py + 16); ctx.moveTo(px + s - 6, py + 5); ctx.lineTo(px + s - 14, py + 14); ctx.stroke();
   ctx.strokeStyle = 'rgba(90,150,180,0.5)'; ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
+}
+function _drawGlass(ctx, px, py, s) {
+  // A see-through pane: faint translucent fill, a bright rim, and a diagonal gloss streak.
+  ctx.fillStyle = 'rgba(200,235,245,0.22)'; ctx.fillRect(px, py, s, s);
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = Math.max(1, s * 0.06);
+  ctx.strokeRect(px + s * 0.08, py + s * 0.08, s * 0.84, s * 0.84);
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = Math.max(1, s * 0.07);
+  ctx.beginPath(); ctx.moveTo(px + s * 0.2, py + s * 0.66); ctx.lineTo(px + s * 0.62, py + s * 0.22); ctx.stroke();
+  ctx.strokeStyle = 'rgba(120,175,200,0.35)'; ctx.lineWidth = 1; ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
 }
 function _drawQuestionBlock(ctx, px, py, s, used, frame) {
   const bob = used ? 0 : Math.sin((frame || 0) * 0.06) * 1;
