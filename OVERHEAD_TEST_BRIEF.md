@@ -13,7 +13,7 @@ a compact table + any red console errors.
 
 ## Setup
 1. Open **http://localhost:8000**. Hard-refresh (Ctrl+Shift+R). Confirm the debug HUD's top
-   line reads **v3 build 315** — if not, refresh again (stale cache).
+   line reads **v3 build 316** — if not, refresh again (stale cache).
 2. If a login screen appears, pause and let the human log in.
 3. Sandbox → switch to the **🗺 Overhead** view → **New Overhead World** (e.g. 40×26, d1),
    OR open an existing overhead world → **Test**.
