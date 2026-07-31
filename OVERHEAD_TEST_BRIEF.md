@@ -1,4 +1,4 @@
-# Steveo Platformer — Test Brief (builds 312–316, overhead + side-scroll glass)
+# Steveo Platformer — Test Brief (builds 312–318)
 
 > **Paste everything below the line into the Chrome-enabled Claude session.**
 > Target the LOCAL build at http://localhost:8000 (WSL-hosted; not production).
