@@ -856,6 +856,8 @@
     _render() {
       const cv = document.getElementById('gameCanvas'); const ctx = cv.getContext('2d');
       const g = this.grid, m = this.world.mapSnapshot, z = g.masterZoom, cs = g.cell * z;
+      // Match the play-time elevation scale to the world's player height (see elevOffset).
+      if (typeof OVERHEAD !== 'undefined') OVERHEAD._elevScale = 1 / Math.max(1, (this.world.settings && this.world.settings.playerHeight) || 1);
       // Reserve a top strip so the fixed 40px command bar never covers the map (incl.
       // its top edge indicator). Bar is 40px SCREEN → convert to canvas-logical px via
       // the current display scale so the map content starts just below it.

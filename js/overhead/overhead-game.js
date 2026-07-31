@@ -47,6 +47,9 @@
       this.mode = worldData.mode || 'platformer';
       this.climbLevels = Number.isFinite(+cfg.climbLevels) ? +cfg.climbLevels : 0;   // coerce (guards a stringy setting)
       this.playerH = cfg.playerHeight != null ? cfg.playerHeight : 1;
+      // A taller player makes each elevation LEVEL render smaller (height 2 → ½ a level),
+      // so structures scale to the sprite. Set before the terrain cache bakes so it agrees.
+      if (typeof OVERHEAD !== 'undefined') OVERHEAD._elevScale = 1 / Math.max(1, this.playerH || 1);
       this.attackBlock = cfg.attackBlockHeight != null ? cfg.attackBlockHeight : 2;
       this.showHidden = !!cfg.showHiddenIndicator;
       // "Always show player" reveal window: a circle of revealRadius blocks around the
@@ -769,21 +772,25 @@
       if (sc.width !== CANVAS_W || sc.height !== CANVAS_H) { sc.width = CANVAS_W; sc.height = CANVAS_H; }
       const sx = sc.getContext('2d'); sx.clearRect(0, 0, CANVAS_W, CANVAS_H); sx.fillStyle = '#000';
       const cell = this.grid.cell, Q = OVERHEAD.elevOffset(cs);
-      // PASS 1 — cast each raised cell's CUBE shadow: SWEEP the footprint square from the
-      // block to its ground-projection in the light direction (displacement grows with
-      // height). The step-fill unions into the whole cube's cast shape, not just one edge.
+      // PASS 1 — cast each raised cell's full CUBE shadow. For every sweep position (from
+      // the block toward its ground-projection in the light direction), fill the block's
+      // DRAWN STACK of squares — footprint up to the up-left-shifted top (i·Q per level).
+      // Filling the stack (not just the footprint/top face) includes the SIDES, so a
+      // vertical run reads as one solid shape instead of stepped top-face stamps. Leaves
+      // (tree canopies) cast too now, so trees actually shade the ground.
       for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
-        const e = this._elev(c, r); if (e <= 0 || this._key(c, r) === 'leaves') continue;
+        const e = this._elev(c, r); if (e <= 0) continue;
         const base = S(c * cell, r * cell), ox = sh.x * e * cs, oy = sh.y * e * cs;
         const steps = Math.max(1, Math.ceil(Math.hypot(ox, oy) / (cs * 0.5)));
-        for (let i = 0; i <= steps; i++) { const t = i / steps; sx.fillRect(base.x + ox * t, base.y + oy * t, cs, cs); }
+        for (let s = 0; s <= steps; s++) { const t = s / steps, dx = ox * t, dy = oy * t;
+          for (let i = 0; i <= e; i++) sx.fillRect(base.x - i * Q + dx, base.y - i * Q + dy, cs, cs); }
       }
-      // PASS 2 — erase each block's DRAWN CUBE: the footprint AND the up-left-shifted top
-      // face (tx,ty = base − e·Q). Erasing only the footprint left the shifted top exposed,
-      // so a shadow could land on top of the block during the dawn/dusk fade — fixed here.
+      // PASS 2 — erase each block's DRAWN CUBE (footprint AND the up-left-shifted top face,
+      // tx,ty = base − e·Q) so a shadow always lands on the GROUND beyond the block, never
+      // on top of it (fixes shadow-on-the-block during the dawn/dusk fade).
       sx.globalCompositeOperation = 'destination-out'; sx.fillStyle = '#000';
       for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
-        const e = this._elev(c, r); if (e <= 0 || this._key(c, r) === 'leaves') continue;
+        const e = this._elev(c, r); if (e <= 0) continue;
         const base = S(c * cell, r * cell), tx = base.x - e * Q, ty = base.y - e * Q;
         sx.fillRect(tx - 0.5, ty - 0.5, (base.x + cs) - tx + 1, (base.y + cs) - ty + 1);
       }

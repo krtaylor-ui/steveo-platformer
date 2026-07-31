@@ -143,7 +143,7 @@
             <div class="ohws-grp"><h3>Movement &amp; Elevation</h3>
               ${range('moveSpeed', 'Player speed (× cell/frame)', 0.04, 0.28, 0.01)}
               ${sel('climbLevels', 'Levels a walk can climb', [['0', 'None (use ramps/ladders)'], ['1', '1 level'], ['2', '2 levels'], ['99', 'Unlimited']])}
-              ${sel('playerHeight', 'Player height (levels)', [['1', '1 (walk under 2+ high)'], ['2', '2'], ['3', '3']])}
+              ${sel('playerHeight', 'Player height (levels — scales elevation)', [['1', '1 (a level = full height)'], ['2', '2 (a level = ½ height)'], ['3', '3 (a level = ⅓ height)'], ['4', '4']])}
               ${range('jumpFloat', 'Jump float (up)', 0, 1, 0.05)}
               ${range('jumpScale', 'Jump scale (grow)', 0, 0.5, 0.02)}
               ${sel('jumpClear', 'Blocks a jump can clear', [['0', '0 (no vault)'], ['1', '1 block'], ['2', '2 blocks'], ['3', '3 blocks']])}

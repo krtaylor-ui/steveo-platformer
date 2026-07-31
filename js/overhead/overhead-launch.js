@@ -103,8 +103,11 @@
       return `rgb(${(lo[0] + (hi[0] - lo[0]) * t) | 0},${(lo[1] + (hi[1] - lo[1]) * t) | 0},${(lo[2] + (hi[2] - lo[2]) * t) | 0})`;
     },
     // Elevation offset per level, in px (up AND left) — the diagonal "stacked cube"
-    // shift. Kept here so terrain + entities agree.
-    elevOffset(cs) { return cs * 0.22; },
+    // shift. Kept here so terrain + entities agree. `_elevScale` (set by the game/editor
+    // from the world's PLAYER HEIGHT) shrinks each level so a taller player spans more
+    // levels: player height 2 → a level renders at 1/2 the height, etc. Default 1.
+    _elevScale: 1,
+    elevOffset(cs) { return cs * 0.22 * (this._elevScale || 1); },
     // A stacked-cube tile: top shifted up-left by elev×Q, with darker SOUTH + EAST
     // faces exposed toward lower/absent neighbours (east darkest). fx,fy = the
     // FOOTPRINT (elev-0) top-left. Draw cells back→front (by r+c then elev).
