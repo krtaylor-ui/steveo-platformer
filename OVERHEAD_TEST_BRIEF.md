@@ -1,4 +1,4 @@
-# Steveo Platformer — Test Brief (builds 312–320)
+# Steveo Platformer — Test Brief (builds 312–322)
 
 > **Paste everything below the line into the Chrome-enabled Claude session.**
 > Target the LOCAL build at http://localhost:8000 (WSL-hosted; not production).
@@ -13,7 +13,7 @@ a compact table + any red console errors.
 
 ## Setup
 1. Open **http://localhost:8000**. Hard-refresh (Ctrl+Shift+R). Confirm the debug HUD's top
-   line reads **v3 build 320** — if not, refresh again (stale cache).
+   line reads **v3 build 322** — if not, refresh again (stale cache).
 2. If a login screen appears, pause and let the human log in.
 3. Sandbox → switch to the **🗺 Overhead** view → **New Overhead World** (e.g. 40×26, d1),
    OR open an existing overhead world → **Test**.
@@ -126,6 +126,21 @@ Build a tall block (elevation 3–4) and a raised **glass** pane. Enable Day/Nig
   (a discrete blob)**, NOT a big solid black column, and the **trunk** should cast its own
   shadow that **separates from the canopy shadow when the sun is low**. Confirm the old hard
   black blob under trees is gone. Screenshot at a low sun angle.
+
+## K. Templates — tree fix + authoring (builds 321–322) — overhead
+- **K1 (tree = additive template, no void)** Buildings tab → place a **Tree**. Under/around
+  the canopy you should now see **grass** (real ground), **NOT black** — the void is gone.
+  The trunk **blocks** movement; you can walk **under the canopy**. Screenshot.
+- **K2 (tree shadow)** With Day/Night + shadows on, the tree casts a cell-accurate shadow
+  (canopy blob + trunk), tracking the sun (or fixed if that style is set).
+- **K3 (Templates palette)** A **Templates** section appears under Buildings, listing 🧩 Tree
+  (system) + a **"＋ New Template…"** button.
+- **K4 (template mode)** Click "＋ New Template…", name it + set X/Y/Z (e.g. 4×4×6), OK. Build
+  a little structure (raise some blocks), then **click the map** to place the region — the
+  rest greys out; cells above Z flag **red**. Press **Enter** → it's captured and appears in
+  the Templates list; place it → it stamps additively (ground preserved). **Esc** cancels.
+- **K5 (block filter)** Type in the **🔎 filter** box atop the Terrain palette → the block
+  list narrows to matches live.
 
 ## Report
 A table: `Item | PASS/FAIL/BLOCKED | note`. Attach screenshots inline. Open DevTools console
