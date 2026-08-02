@@ -1,4 +1,4 @@
-# Steveo Platformer — Test Brief (builds 312–322)
+# Steveo Platformer — Test Brief (builds 312–323)
 
 > **Paste everything below the line into the Chrome-enabled Claude session.**
 > Target the LOCAL build at http://localhost:8000 (WSL-hosted; not production).
@@ -13,7 +13,7 @@ a compact table + any red console errors.
 
 ## Setup
 1. Open **http://localhost:8000**. Hard-refresh (Ctrl+Shift+R). Confirm the debug HUD's top
-   line reads **v3 build 322** — if not, refresh again (stale cache).
+   line reads **v3 build 323** — if not, refresh again (stale cache).
 2. If a login screen appears, pause and let the human log in.
 3. Sandbox → switch to the **🗺 Overhead** view → **New Overhead World** (e.g. 40×26, d1),
    OR open an existing overhead world → **Test**.
@@ -141,6 +141,17 @@ Build a tall block (elevation 3–4) and a raised **glass** pane. Enable Day/Nig
   the Templates list; place it → it stamps additively (ground preserved). **Esc** cancels.
 - **K5 (block filter)** Type in the **🔎 filter** box atop the Terrain palette → the block
   list narrows to matches live.
+
+## L. Pipe climb-in animation (build 323) — overhead
+Build two **Pipes** (Buildings tab) and link them (hand-click a pipe → set its destination to
+the other). World Settings → **Interaction animations**: leave **Pipe climb-in** ON.
+- **L1 (climb plays)** Walk to a linked pipe and press **E** → instead of an instant jump, the
+  player plays the **pull-up**: reaches + grabs the rim, pulls up, a leg lifts (foot on the
+  pipe), rises, moves to the opening, shrinks in — **then** teleports to the other pipe. Screenshot mid-climb.
+- **L2 (zoom)** The camera should **ease in** (interaction zoom) during the climb and **restore**
+  after. Try changing **Interaction zoom** + **speed** in settings.
+- **L3 (off = instant)** Set **Pipe climb-in OFF** → pressing E teleports instantly (no animation).
+- **L4 (portals unaffected)** A **Portal** (not a pipe) still teleports instantly (no climb).
 
 ## Report
 A table: `Item | PASS/FAIL/BLOCKED | note`. Attach screenshots inline. Open DevTools console
