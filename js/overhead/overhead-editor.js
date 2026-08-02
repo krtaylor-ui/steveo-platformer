@@ -31,7 +31,7 @@
     _sel: null,           // Set of 'c,r' currently selected (+ _selBox bounds)
     _selBox: null, _marquee: null, _selecting: false,   // marquee drag state
     _clip: null, _pasting: false,   // clipboard pattern + paste mode
-    view: { mobs: true, items: true, buildings: true, elev: false, hideAbove: false, focusLayer: true },   // top-bar view filters
+    view: { mobs: true, items: true, buildings: true, elev: false, hideAbove: false, focusLayer: true, airGhosts: false },   // top-bar view filters
     _running: false, _dragging: false, _shift: false, _shapeAnchor: null, _shapeEnd: null,
     _hist: [], _histPos: -1,
 
@@ -297,7 +297,8 @@
           <label><input type="checkbox" id="oh-v-mobs" ${this.view.mobs ? 'checked' : ''}> Mobs</label>
           <label><input type="checkbox" id="oh-v-items" ${this.view.items ? 'checked' : ''}> Items</label>
           <label><input type="checkbox" id="oh-v-elev" ${this.view.elev ? 'checked' : ''}> Elevation map</label>
-          <label title="Grey out every block NOT at the active elevation so the layer you're editing stands out"><input type="checkbox" id="oh-v-focusLayer" ${this.view.focusLayer !== false ? 'checked' : ''}> Focus layer</label>
+          <label title="Grey out every block NOT at the active elevation (the layer directly below stays coloured — that's what you build on)"><input type="checkbox" id="oh-v-focusLayer" ${this.view.focusLayer !== false ? 'checked' : ''}> Focus layer</label>
+          <label title="Show hollow dashed ghost cubes for each air level below the cursor when placing above the surface"><input type="checkbox" id="oh-v-airGhosts" ${this.view.airGhosts ? 'checked' : ''}> Air ghosts</label>
           <label title="Slice off everything above the active elevation — a cell taller than it shows the block AT that level (no black holes)"><input type="checkbox" id="oh-v-hideAbove" ${this.view.hideAbove ? 'checked' : ''}> Hide above elev ${this.elevLevel}</label>
           <label style="display:flex;align-items:center;gap:5px" title="Zoom (also: mouse wheel, + / − buttons)">🔍<input type="range" id="oh-zoom" min="0.35" max="3" step="0.05" value="${this.grid ? this.grid.masterZoom : 1}" style="width:96px;vertical-align:middle"></label>
           <label title="Performance overlay — FPS, render time, terrain draw mode, cell counts"><input type="checkbox" id="oh-v-perf" ${this.view.perf ? 'checked' : ''}> ⏱ Perf</label>
@@ -370,7 +371,7 @@
       g('oh-zin').onclick = () => OH_GRID.zoomBy(this.grid, 1.15); g('oh-zout').onclick = () => OH_GRID.zoomBy(this.grid, 0.87);
       g('oh-test').onclick = () => this._test(); g('oh-save').onclick = () => this._save(); g('oh-exit').onclick = () => this.close();
       g('oh-settings').onclick = () => { if (typeof OH_WORLD_SETTINGS !== 'undefined') OH_WORLD_SETTINGS.open(this.world, () => { this._renderBar(); this._pushHistory('settings change'); }); };
-      ['buildings', 'mobs', 'items', 'elev', 'hideAbove', 'focusLayer', 'perf'].forEach((k) => { const el = g('oh-v-' + k); if (el) el.onchange = () => { this.view[k] = el.checked; }; });
+      ['buildings', 'mobs', 'items', 'elev', 'hideAbove', 'focusLayer', 'airGhosts', 'perf'].forEach((k) => { const el = g('oh-v-' + k); if (el) el.onchange = () => { this.view[k] = el.checked; }; });
       { const zr = g('oh-zoom'); if (zr) zr.oninput = () => OH_GRID.setZoom(this.grid, +zr.value); }
       g('oh-erase').onclick = () => { this.tool = 'erase'; this._renderBar(); this._updateCursor(); };
       g('oh-hand').onclick = () => { this.tool = 'hand'; this._selEnt = null; this._renderBar(); this._updateCursor(); };
@@ -431,11 +432,15 @@
         // Don't hijack keys while typing in a modal field (channel names, etc.).
         const ae = document.activeElement; if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
         if (this._templateMode) { if (e.code === 'Enter') { e.preventDefault(); this._captureTemplate(); return; } if (e.code === 'Escape') { e.preventDefault(); this._cancelTemplateMode(); return; } }
-        const K = this.KEYS, pan = 48 / this.grid.masterZoom;
-        if (e.code === 'ArrowLeft') this.cam.x -= pan; else if (e.code === 'ArrowRight') this.cam.x += pan;
-        else if (e.code === 'ArrowUp') this.cam.y -= pan; else if (e.code === 'ArrowDown') this.cam.y += pan;
-        else if (e.code === K.elevUp) { this.elevLevel = Math.min(8, this.elevLevel + 1); this._renderBar(); }
-        else if (e.code === K.elevDown) { this.elevLevel = Math.max(0, this.elevLevel - 1); this._renderBar(); }
+        const K = this.KEYS, pan = 48 / this.grid.masterZoom, plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+        // NAV: WASD + Left/Right arrows PAN the map; Up/Down arrows change the active ELEVATION
+        // (works with Hide-above on); number keys set elevation directly.
+        if (plain && (e.code === 'ArrowLeft' || e.code === 'KeyA')) { e.preventDefault(); this.cam.x -= pan; }
+        else if (plain && (e.code === 'ArrowRight' || e.code === 'KeyD')) { e.preventDefault(); this.cam.x += pan; }
+        else if (plain && e.code === 'KeyW') { e.preventDefault(); this.cam.y -= pan; }
+        else if (plain && e.code === 'KeyS') { e.preventDefault(); this.cam.y += pan; }
+        else if (plain && (e.code === 'ArrowUp' || e.code === K.elevUp)) { e.preventDefault(); this.elevLevel = Math.min(8, this.elevLevel + 1); this._renderBar(); }
+        else if (plain && (e.code === 'ArrowDown' || e.code === K.elevDown)) { e.preventDefault(); this.elevLevel = Math.max(0, this.elevLevel - 1); this._renderBar(); }
         else if (/^(Digit|Numpad)[0-8]$/.test(e.code) && !e.ctrlKey && !e.metaKey) { this.elevLevel = +e.code.slice(-1); this._renderBar(); }   // number keys set the elevation directly
         else if (e.code === K.zoomIn) OH_GRID.zoomBy(this.grid, 1.12);
         else if (e.code === K.zoomOut) OH_GRID.zoomBy(this.grid, 0.9);
@@ -449,7 +454,7 @@
         else if (e.code === 'KeyT' && this._clip && !e.ctrlKey && !e.metaKey) { this._rotateClip(); }
         // Tool + shape hotkeys (H hand · D draw · E erase · B freehand · L line · R rect · O oval · G bucket).
         else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyH') { this.tool = 'hand'; this._selEnt = null; this._renderBar(); this._updateCursor(); }
-        else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyD') { this.tool = 'terrain'; this._renderBar(); this._updateCursor(); }
+        else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyP') { this.tool = 'terrain'; this._renderBar(); this._updateCursor(); }   // P = paint/draw (D now pans)
         else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyE') { this.tool = 'erase'; this._renderBar(); this._updateCursor(); }
         else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyB') { this.shape = 'freehand'; this._renderBar(); }
         else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyL') { this.shape = 'line'; this._renderBar(); }
@@ -1043,11 +1048,11 @@
       // NOT at the active elevation is greyed (a distinct artifact + faint hatch) so the layer
       // you're editing pops. Heights are labelled when zoomed in. Cheap per-visible-cell fills.
       if (!this.view.elev) {
-        const focus = this.view.focusLayer !== false;
+        const focus = this.view.focusLayer !== false, below = this.elevLevel - 1;   // the layer you BUILD ON — kept full colour
         for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
           const e0 = m.elevation[r][c] | 0, e = this._capE(e0), sp = S(c * g.cell, r * g.cell), tx = sp.x - e * Q, ty = sp.y - e * Q;
-          if (e === this.elevLevel) { ctx.fillStyle = 'rgba(255,236,110,.20)'; ctx.fillRect(tx, ty, cs, cs); ctx.strokeStyle = 'rgba(255,226,80,.9)'; ctx.lineWidth = Math.max(1, cs * 0.06); ctx.strokeRect(tx + .5, ty + .5, cs - 1, cs - 1); }
-          else if (focus) { ctx.fillStyle = 'rgba(64,70,86,.34)'; ctx.fillRect(tx, ty, cs, cs);
+          if (e === this.elevLevel) { ctx.fillStyle = 'rgba(255,236,110,.22)'; ctx.fillRect(tx, ty, cs, cs); ctx.strokeStyle = 'rgba(255,226,80,.92)'; ctx.lineWidth = Math.max(1, cs * 0.06); ctx.strokeRect(tx + .5, ty + .5, cs - 1, cs - 1); }
+          else if (focus && e0 !== below) { ctx.fillStyle = 'rgba(64,70,86,.36)'; ctx.fillRect(tx, ty, cs, cs);   // grey everything except the active level + the surface directly below it
             if (cs > 10) { ctx.strokeStyle = 'rgba(200,208,224,.28)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(tx, ty + cs); ctx.lineTo(tx + cs, ty); ctx.moveTo(tx + cs * 0.5, ty + cs); ctx.lineTo(tx + cs, ty + cs * 0.5); ctx.stroke(); } }
           if (cs > 16 && e0 > 0) { ctx.fillStyle = e0 > this.elevLevel ? 'rgba(255,206,120,.92)' : 'rgba(255,255,255,.62)'; ctx.font = `${Math.max(7, cs * 0.28) | 0}px sans-serif`; ctx.textAlign = 'left'; ctx.fillText(String(e0), tx + 2, ty + Math.max(9, cs * 0.36)); }
         }
@@ -1190,7 +1195,7 @@
       // block below and where you're placing — drawn BEHIND the solid object ghost, low to high,
       // so it's obvious at a glance how much air is under the block. (Nothing when it rests flush.)
       const air = eLvl - hBelow;
-      if (air > 0 && tool !== 'erase') {
+      if (air > 0 && tool !== 'erase' && this.view.airGhosts) {
         ctx.save();
         const fwA = (tool === 'building' && OH_BUILDINGS.get(this.buildingType)) ? OH_BUILDINGS.get(this.buildingType).footprint.w : 1;
         const fhA = (tool === 'building' && OH_BUILDINGS.get(this.buildingType)) ? OH_BUILDINGS.get(this.buildingType).footprint.h : 1;
