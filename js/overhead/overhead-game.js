@@ -169,7 +169,30 @@
     }
 
     _key(c, r) { if (c < 0 || r < 0 || c >= this.grid.gridW || r >= this.grid.gridH) return null; const row = this.ground[r]; return row ? (row[c] || 'grass') : null; }
-    _elev(c, r) { const row = this.elevation[r]; return row ? (row[c] | 0) : 0; }
+    _elev(c, r) { const row = this.elevation[r]; let e = row ? (row[c] | 0) : 0; if (this._pistonBoostMap) { const b = this._pistonBoostMap[c + ',' + r]; if (b) e += b; } return e; }   // + live vertical-piston lift
+    // Directional pistons: ease each piston's extension on its redstone signal. UP = raise the
+    // block + any rider on the cell (elevator / rising gate). N/S/E/W = push a solid head out
+    // that many cells (a barrier / closing gate). Sticky pulls back on retract; UP always comes
+    // back down (gravity). Recomputes a boost map (vertical lift) + a head set (solid barrier).
+    _updatePistons() {
+      const list = this._pistonList || (this._pistonList = this._redstone.filter((d) => d.kind === 'piston' && d.dir));
+      if (!list.length) { this._pistonBoostMap = null; this._pistonHeadSet = null; return; }
+      const boost = {}, heads = new Map();
+      for (const d of list) {
+        const powered = OH_REDSTONE.cellPowered(this._rs, d.col, d.row), target = powered ? 1 : 0;
+        d._phase = (d._phase == null) ? target : d._phase + (target - d._phase) * 0.22;
+        if (d._phase < 0.002) d._phase = 0; else if (d._phase > 0.998) d._phase = 1;
+        const reach = Math.max(1, d.reach || 2), ext = d._phase * reach, dir = d.dir;
+        if (dir === 'up') { if (ext > 0.001) boost[d.col + ',' + d.row] = ext; }
+        else { const dc = dir === 'e' ? 1 : dir === 'w' ? -1 : 0, dr = dir === 's' ? 1 : dir === 'n' ? -1 : 0, n = Math.round(ext);
+          for (let i = 1; i <= n; i++) { const hc = d.col + dc * i, hr = d.row + dr * i; if (hc >= 0 && hr >= 0 && hc < this.grid.gridW && hr < this.grid.gridH) heads.set(hc + ',' + hr, d); } }
+      }
+      this._pistonBoostMap = Object.keys(boost).length ? boost : null;
+      this._pistonHeadSet = heads.size ? heads : null;
+      // Carry riders on a vertical piston: match their elevation to the rising/falling floor.
+      const carry = (ent) => { if (!ent) return; const c = this._cellOf(ent.x, ent.y), b = boost[c.col + ',' + c.row]; if (b != null) ent.elev = (this.elevation[c.row] ? (this.elevation[c.row][c.col] | 0) : 0) + b; };
+      carry(this.player); if (this.mobs) for (const m of this.mobs) carry(m);
+    }
     _hazard(c, r) { const k = this._key(c, r); return !!k && P().isHazardKey(k); }
     _gap(c, r) { return this._key(c, r) == null; }
     _cellOf(x, y) { return OH_GRID.cellAt(this.grid, x, y); }
@@ -189,7 +212,7 @@
       // Advance the day/night clock (~60fps). detectMultiplier feeds mob sight.
       if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') { this._elapsed += 1 / 60; this._tod = OH_DAYNIGHT.phase(this._elapsed, this._dayLen, this._dayStart); this._detectMult = OH_DAYNIGHT.detectMultiplier(this._tod); }
       // Re-evaluate the redstone network (drives drawbridge channels, lamps, doors).
-      if (this._redstone.length && typeof OH_REDSTONE !== 'undefined') { this._updatePlates(); this._rs = OH_REDSTONE.evaluate(this._redstone); }
+      if (this._redstone.length && typeof OH_REDSTONE !== 'undefined') { this._updatePlates(); this._rs = OH_REDSTONE.evaluate(this._redstone); this._updatePistons(); }
       // In a Sandbox playtest, Esc returns straight to the designer (not a pause menu).
       if (inp.isJustDown && inp.isJustDown('Escape')) { if (this._testMode) { this._exit(); return; } if (this.state === 'playing') this.state = 'paused'; else if (this.state === 'paused') this.state = 'playing'; else { this._exit(); return; } }
       if (inp.scrollDelta) { OH_GRID.zoomBy(this.grid, inp.scrollDelta < 0 ? 1.08 : 0.92); inp.scrollDelta = 0; }
@@ -539,7 +562,8 @@
       }
     }
     // A powered piston is a solid barrier (blocks movement); unpowered = passable.
-    _pistonSolidAt(c, r) { if (!this._redstone.length) return false; for (const d of this._redstone) if (d.kind === 'piston' && d.col === c && d.row === r) return OH_REDSTONE.cellPowered(this._rs, c, r); return false; }
+    _pistonSolidAt(c, r) { if (!this._redstone.length) return false; if (this._pistonHeadSet && this._pistonHeadSet.has(c + ',' + r)) return true;   // an extended horizontal piston head = barrier
+      for (const d of this._redstone) if (d.kind === 'piston' && !d.dir && d.col === c && d.row === r) return OH_REDSTONE.cellPowered(this._rs, c, r); return false; }   // legacy piston (no dir) = solid on its own cell when powered
     _bridge(c, r) { return this._bridgeAt.get(c + ',' + r) || null; }
     // A bridge cell is CLOSED (a solid walkable deck) when it's a normal bridge, or a
     // drawbridge whose channel is powered. Open drawbridges are gaps.
@@ -1032,7 +1056,7 @@
         else if (d.kind === 'dust') OVERHEAD.drawDust(ctx, tl.x, tl.y, cs, on);
         else if (d.kind === 'lamp') OVERHEAD.drawLamp(ctx, sp.x, sp.y, u * 0.8, on);
         else if (d.kind === 'plate' || d.kind === 'weight') OVERHEAD.drawPlate(ctx, sp.x, sp.y, u * 0.7, on, d.kind === 'weight');
-        else if (d.kind === 'piston') OVERHEAD.drawPiston(ctx, tl.x, tl.y, cs, on);
+        else if (d.kind === 'piston') OVERHEAD.drawPiston(ctx, tl.x, tl.y, cs, on, d.dir ? { dir: d.dir, ext: (d._phase || 0) * Math.max(1, d.reach || 2), Q: OVERHEAD.elevOffset(cs) } : null);
         else if (d.kind === 'and' || d.kind === 'not' || d.kind === 'nor') OVERHEAD.drawGate(ctx, tl.x, tl.y, cs, d.kind, on, d.inputs, d.outputs);
         else if (d.kind === 'tx' || d.kind === 'rx') { OVERHEAD.drawLamp(ctx, sp.x, sp.y, u * 0.7, on); ctx.fillStyle = '#fff'; ctx.font = `${Math.max(8, u * 0.5) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(d.kind === 'tx' ? '↑' : '↓', sp.x, sp.y); ctx.textBaseline = 'alphabetic'; }
       }

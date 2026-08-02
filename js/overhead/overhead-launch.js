@@ -385,10 +385,24 @@
       if (weight) { ctx.fillStyle = '#2a2f38'; ctx.font = `${Math.max(7, r * 0.7) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('⚖', cx, cy); ctx.textBaseline = 'alphabetic'; }
     },
     // Piston: a wood/stone base with a head that extends (a solid barrier) when powered.
-    drawPiston(ctx, x, y, cs, extended) {
+    drawPiston(ctx, x, y, cs, extended, opts) {
+      const dir = opts && opts.dir, ext = opts ? (opts.ext || 0) : 0, Q = opts ? (opts.Q || 0) : 0;
       ctx.fillStyle = '#6b5836'; ctx.fillRect(x + cs * 0.1, y + cs * 0.1, cs * 0.8, cs * 0.8);   // base
       ctx.strokeStyle = '#2a2620'; ctx.lineWidth = 1.5; ctx.strokeRect(x + cs * 0.1, y + cs * 0.1, cs * 0.8, cs * 0.8);
-      ctx.fillStyle = extended ? '#c9ccd6' : '#8a8f9a'; ctx.fillRect(x + cs * 0.22, y + (extended ? cs * 0.02 : cs * 0.28), cs * 0.56, extended ? cs * 0.34 : cs * 0.2);   // head
+      if (dir === 'up') {   // vertical — a raised block cube (2.5D up-left) on a shaft
+        const off = ext * Q, hx = x - off, hy = y - off;
+        if (ext > 0.05) { ctx.fillStyle = '#5a4e33'; ctx.fillRect(x + cs * 0.34, hy + cs * 0.5, cs * 0.32, off + 2); }
+        ctx.fillStyle = '#c3c7d2'; ctx.fillRect(hx + cs * 0.14, hy + cs * 0.14, cs * 0.72, cs * 0.72);
+        ctx.strokeStyle = '#6b7080'; ctx.strokeRect(hx + cs * 0.14, hy + cs * 0.14, cs * 0.72, cs * 0.72);
+        return;
+      }
+      if (dir && ext > 0.05) {   // horizontal — an arm + head cap `ext` cells out
+        const dc = dir === 'e' ? 1 : dir === 'w' ? -1 : 0, dr = dir === 's' ? 1 : dir === 'n' ? -1 : 0;
+        ctx.strokeStyle = '#8a8f9a'; ctx.lineWidth = Math.max(3, cs * 0.2); ctx.beginPath(); ctx.moveTo(x + cs * 0.5, y + cs * 0.5); ctx.lineTo(x + cs * 0.5 + dc * ext * cs, y + cs * 0.5 + dr * ext * cs); ctx.stroke();
+        const hx = x + dc * ext * cs, hy = y + dr * ext * cs; ctx.fillStyle = '#c3c7d2'; ctx.fillRect(hx + cs * 0.26, hy + cs * 0.26, cs * 0.48, cs * 0.48);
+        return;
+      }
+      ctx.fillStyle = extended ? '#c9ccd6' : '#8a8f9a'; ctx.fillRect(x + cs * 0.22, y + (extended ? cs * 0.02 : cs * 0.28), cs * 0.56, extended ? cs * 0.34 : cs * 0.2);   // legacy head
     },
     // Logic gate — a DISCRETE 1×1 block filling its cell (x,y = cell top-left, cs =
     // cell px). Bright when its output is on; blue dots = input sides, green = outputs.

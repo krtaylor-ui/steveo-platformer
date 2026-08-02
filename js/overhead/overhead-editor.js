@@ -561,7 +561,7 @@
           if (tool === 'lever') { dev.on = false; dev.channel = 'gate'; }        // channel == transmit (quick default)
           else if (tool === 'plate') dev.txChannel = 'gate';
           else if (tool === 'weight') { dev.txChannel = 'gate'; dev.threshold = 1; }
-          else if (tool === 'piston') dev.rxChannel = 'gate';                     // extends when "gate" is powered
+          else if (tool === 'piston') { dev.rxChannel = 'gate'; dev.dir = 'up'; dev.reach = 2; dev.sticky = false; }   // extends when "gate" is powered; Up = elevator by default
           else if (tool === 'and' || tool === 'not' || tool === 'nor') { dev.inputs = tool === 'and' ? ['w', 's'] : ['w']; dev.outputs = ['e']; }
           else if (tool === 'lock') { dev.on = false; dev.channel = 'gate'; dev.acceptKeys = []; dev.consume = false; dev.toggle = false; }
           this.world.redstone.push(dev);
@@ -843,7 +843,14 @@
       if (d.kind === 'weight') inner += `<label>Weight threshold (entities) <input type="number" id="dv-thr" min="1" value="${d.threshold || 1}"></label>`;
       if (isGate) { inner += `<div style="font-size:12px;color:#9fb0cc;margin-top:6px">Input sides:</div><div style="margin:4px 0">${sideRow('gt-in', d.inputs)}</div><div style="font-size:12px;color:#9fb0cc">Output sides:</div><div style="margin:4px 0">${sideRow('gt-out', d.outputs)}</div>`; }
       else if (isSink) { inner += `<div style="font-size:12px;color:#9fb0cc;margin-top:6px">Receive from (pick at least one):</div>` + this._txChecklist('dv-rx', d.rxIds, d.col, d.row); }
-      else if (isLock) {
+      if (d.kind === 'piston') {
+        const dir = d.dir || 'up', dopt = (v, lbl) => `<option value="${v}" ${dir === v ? 'selected' : ''}>${lbl}</option>`;
+        inner += `<div style="font-size:12px;color:#9fb0cc;margin-top:8px">Push direction:</div>
+          <select id="dv-dir" style="margin:3px 0;width:100%">${dopt('up', 'Up — raise the block + rider (elevator / gate)')}${dopt('n', 'North ↑')}${dopt('s', 'South ↓')}${dopt('e', 'East →')}${dopt('w', 'West ←')}</select>
+          <label style="display:block;margin-top:4px">Reach (levels / cells): <input type="number" id="dv-reach" min="1" max="4" value="${d.reach || 2}" style="width:52px"></label>
+          <label style="display:flex;gap:8px;align-items:center;margin-top:4px"><input type="checkbox" id="dv-sticky" ${d.sticky ? 'checked' : ''}> Sticky — pull the block/head back in when it retracts</label>`;
+      }
+      if (isLock) {
         const keys = this._keysOnMap(), sel = d.acceptKeys || [];
         inner += `<div style="font-size:12px;color:#9fb0cc;margin-top:6px">Accepted keys (leave all unchecked = any key):</div>`;
         inner += keys.length ? `<div style="margin:4px 0">${keys.map((k) => `<label style="display:inline-flex;gap:4px;margin-right:10px"><input type="checkbox" class="lk-key" value="${k}" ${sel.indexOf(k) >= 0 ? 'checked' : ''}> ${k}</label>`).join('')}</div>` : `<p style="color:#8fa0bd;font-size:12px">No keys placed on the map yet — add a key/jewel item first.</p>`;
@@ -855,7 +862,8 @@
         if (d.kind === 'weight') { const t = document.getElementById('dv-thr'); if (t) d.threshold = Math.max(1, parseInt(t.value, 10) || 1); }
         if (isGate) { const rd = (c) => [].slice.call(document.querySelectorAll('.' + c + ':checked')).map((el) => el.value); d.inputs = rd('gt-in'); d.outputs = rd('gt-out'); if (!d.outputs.length) d.outputs = ['e']; if (!d.inputs.length) d.inputs = ['w']; }
         else if (isSink) { const ids = [].slice.call(document.querySelectorAll('.dv-rx:checked')).map((el) => +el.value); if (!ids.length) { this._flash('⚠ A receiver needs at least one source — not saved'); throw new Error('rx required'); } d.rxIds = ids; d.rxChannel = undefined; }
-        else if (isLock) { d.acceptKeys = [].slice.call(document.querySelectorAll('.lk-key:checked')).map((el) => el.value); d.consume = document.getElementById('lk-consume').checked; d.toggle = document.getElementById('lk-toggle').checked; }
+        if (d.kind === 'piston') { const ds = document.getElementById('dv-dir'); if (ds) d.dir = ds.value; const rc = document.getElementById('dv-reach'); if (rc) d.reach = Math.max(1, Math.min(4, parseInt(rc.value, 10) || 2)); const st = document.getElementById('dv-sticky'); if (st) d.sticky = st.checked; }
+        if (isLock) { d.acceptKeys = [].slice.call(document.querySelectorAll('.lk-key:checked')).map((el) => el.value); d.consume = document.getElementById('lk-consume').checked; d.toggle = document.getElementById('lk-toggle').checked; }
       }, d, isSink ? { target: d } : null);
     },
     // Unique key ids currently placed on the map (for the Lock's accepted-keys list).
