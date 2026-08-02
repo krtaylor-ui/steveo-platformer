@@ -124,7 +124,7 @@ function buildArenaWorldDataFromSave(save) {
   const EGG_TO_MOB = {
     zombie: 'Zombie', skeleton: 'Skeleton', creeper: 'Creeper',
     cave_spider: 'CaveSpider', piglin: 'Piglin', blaze: 'Blaze',
-    wither_skeleton: 'WitherSkeleton', enderman: 'Enderman',
+    wither_skeleton: 'WitherSkeleton', enderman: 'Enderman', goomba: 'Goomba', koopa: 'Koopa',
   };
   const spawnPoints = Array.isArray(data.spawnEggs)
     ? data.spawnEggs

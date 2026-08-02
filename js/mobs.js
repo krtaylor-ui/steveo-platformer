@@ -154,6 +154,20 @@ class Mob {
            this.y < p.y + p.height && this.y + this.height > p.y;
   }
 
+  // ── Jump-attack / stomp (world setting `jumpAttack`) ────────────────────────
+  // True when player `p` is DESCENDING (vy>0, Y-down) onto this mob's head.
+  _isStomp(p) {
+    if (p.vy <= 0 || !this.alive) return false;
+    if (!this._touchesPlayer(p)) return false;
+    return (p.y + p.height) - this.y <= this.height * 0.6 + Math.max(4, p.vy);   // feet in the upper part
+  }
+  // Bounce the player back up off the mob (higher if the jump key is held — Mario-style).
+  _stompBounce(p) { p.vy = (p.jumpHeld || p.holdingJump) ? JUMP_VELOCITY : -11; p.onGround = false; }
+  // Default reaction: a stomp knocks a normal enemy out in one hit. Overridden by Goomba/Koopa.
+  onStomp(mgr, p) { this._stompBounce(p); this.hitCooldown = 0; this.takeDamage(9999, 0); if (mgr && mgr._onStomp) mgr._onStomp(this); }
+  // Flatten-then-die. The manager loop counts `_squishT` down and reaps at 0 (normal death → drops/XP).
+  squish(mgr) { if (!this.alive || (this._squishT | 0) > 0) return; this._squishT = 18; this.vx = 0; this.vy = 0; this.state = 'squish'; if (mgr && mgr._onStomp) mgr._onStomp(this); }
+
   _tickTimers() {
     if (this.hitCooldown    > 0) this.hitCooldown--;
     if (this.knockbackTimer > 0) { this.knockbackTimer--; this.vx *= 0.80; }
@@ -472,7 +486,7 @@ Mob._nextId = 0;
 // line up across all the per-mob-type config surfaces).
 const MOB_CLASS_KEY = {
   Zombie: 'zombie', Skeleton: 'skeleton', Creeper: 'creeper', CaveSpider: 'cave_spider',
-  Piglin: 'piglin', Blaze: 'blaze', WitherSkeleton: 'wither_skeleton', Enderman: 'enderman',
+  Piglin: 'piglin', Blaze: 'blaze', WitherSkeleton: 'wither_skeleton', Enderman: 'enderman', Goomba: 'goomba', Koopa: 'koopa', Shell: 'shell',
 };
 
 // ── Zombie ───────────────────────────────────────────────────
@@ -1925,6 +1939,122 @@ class ItemDrop {
   }
 }
 
+// ── Mario-style stomp enemies (jump-attack) ──────────────────────────────────
+// GOOMBA: a little mushroom that just patrols; one stomp squishes it flat.
+class Goomba extends Mob {
+  constructor(x, y) { super(x, y, 24, 22, 1); this.meleeDamage = 1; this.attackTimer = 0; this.speed = 0.9; }
+  update(player, level) {
+    if (!this.alive) return;
+    this._tickTimers();
+    if (this.attackTimer > 0) this.attackTimer--;
+    if (this.knockbackTimer <= 0) this._wanderUpdate(level, this.speed);   // patrol: reverse at walls/edges
+    this.walkTimer += Math.abs(this.vx) > 0.3 ? 0.18 : 0;
+    _mobPhysics(this, level);
+    if (this.attackTimer === 0 && this._touchesPlayer(player)) { player.takeDamage(this.meleeDamage, Math.sign(player.cx - this.cx) || 1); this.attackTimer = MOB_ATTACK_RATE; }
+  }
+  onStomp(mgr, p) { this._stompBounce(p); this.squish(mgr); }   // one stomp = squish
+  draw(ctx, camera) {
+    const sx = Math.floor(this.x - camera.x), sy = Math.floor(this.y - camera.y);
+    if (sx > camera.viewMaxX() + 40 || sx + this.width < camera.viewMinX() - 40) return;
+    ctx.save(); this._flashAlpha(ctx); this._drawBody(ctx, sx, sy); ctx.restore();
+  }
+  _drawBody(ctx, sx, sy) {
+    const w = this.width, h = this.height;
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(sx + w / 2, sy + h + 1, w * 0.45, 3, 0, 0, 7); ctx.fill();
+    if ((this._squishT | 0) > 0) { ctx.fillStyle = '#8B5A2B'; ctx.beginPath(); ctx.ellipse(sx + w / 2, sy + h - 2, w * 0.6, 4, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#000'; ctx.fillRect(sx + w * 0.32, sy + h - 4, 3, 2); ctx.fillRect(sx + w * 0.6, sy + h - 4, 3, 2); return; }
+    const sw = Math.sin(this.walkTimer) > 0 ? 1 : 0;
+    ctx.fillStyle = '#4A2A14'; ctx.fillRect(sx + 2 + sw, sy + h - 5, 8, 5); ctx.fillRect(sx + w - 10 - sw, sy + h - 5, 8, 5);   // feet
+    ctx.fillStyle = '#9B5A2B'; ctx.beginPath(); ctx.moveTo(sx + 1, sy + h * 0.55); ctx.quadraticCurveTo(sx + w / 2, sy - 3, sx + w - 1, sy + h * 0.55); ctx.closePath(); ctx.fill();   // cap dome
+    ctx.fillStyle = '#F2DBB3'; ctx.fillRect(sx + 4, sy + h * 0.5, w - 8, h * 0.3);   // face
+    ctx.fillStyle = '#000'; ctx.fillRect(sx + 6, sy + h * 0.52, 3, 5); ctx.fillRect(sx + w - 9, sy + h * 0.52, 3, 5);   // eyes
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(sx + 5, sy + h * 0.48); ctx.lineTo(sx + 10, sy + h * 0.54); ctx.moveTo(sx + w - 5, sy + h * 0.48); ctx.lineTo(sx + w - 10, sy + h * 0.54); ctx.stroke();   // angry brows
+  }
+}
+
+// KOOPA: a turtle. First stomp knocks its shell off (a kickable Shell spawns + it scurries
+// shell-less); a second stomp squishes it.
+class Koopa extends Mob {
+  constructor(x, y) { super(x, y, 26, 34, 2); this.meleeDamage = 1; this.attackTimer = 0; this.speed = 0.8; this.hasShell = true; }
+  update(player, level) {
+    if (!this.alive) return;
+    this._tickTimers();
+    if (this.attackTimer > 0) this.attackTimer--;
+    if (this.knockbackTimer <= 0) this._wanderUpdate(level, this.hasShell ? this.speed : this.speed * 2.1);
+    this.walkTimer += Math.abs(this.vx) > 0.3 ? 0.15 : 0;
+    _mobPhysics(this, level);
+    if (this.attackTimer === 0 && this._touchesPlayer(player)) { player.takeDamage(this.meleeDamage, Math.sign(player.cx - this.cx) || 1); this.attackTimer = MOB_ATTACK_RATE; }
+  }
+  onStomp(mgr, p) {
+    this._stompBounce(p);
+    if (this.hasShell) { this.hasShell = false; this.height = 24; this.y += 10; if (mgr) mgr.spawnShell(this.cx, this.y + this.height, p.cx < this.cx ? 1 : -1); if (mgr && mgr._onStomp) mgr._onStomp(this); }
+    else this.squish(mgr);
+  }
+  draw(ctx, camera) {
+    const sx = Math.floor(this.x - camera.x), sy = Math.floor(this.y - camera.y);
+    if (sx > camera.viewMaxX() + 40 || sx + this.width < camera.viewMinX() - 40) return;
+    ctx.save(); this._flashAlpha(ctx); this._drawBody(ctx, sx, sy); ctx.restore(); this._drawHealthBar(ctx, sx, sy);
+  }
+  _drawBody(ctx, sx, sy) {
+    const w = this.width, h = this.height, f = this.facing;
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(sx + w / 2, sy + h + 1, w * 0.45, 3, 0, 0, 7); ctx.fill();
+    if ((this._squishT | 0) > 0) { ctx.fillStyle = '#2E8B57'; ctx.beginPath(); ctx.ellipse(sx + w / 2, sy + h - 2, w * 0.6, 4, 0, 0, 7); ctx.fill(); return; }
+    const sw = Math.sin(this.walkTimer) > 0 ? 1 : 0;
+    ctx.fillStyle = '#E8B84B'; ctx.fillRect(sx + 3 + sw, sy + h - 6, 7, 6); ctx.fillRect(sx + w - 10 - sw, sy + h - 6, 7, 6);   // feet
+    // head (leans toward facing)
+    const hx = sx + (f > 0 ? w - 8 : 2);
+    ctx.fillStyle = '#8FD46A'; ctx.fillRect(hx, sy + 2, 8, 9);
+    ctx.fillStyle = '#000'; ctx.fillRect(hx + (f > 0 ? 4 : 1), sy + 4, 2, 3);   // eye
+    // body / shell
+    if (this.hasShell) { ctx.fillStyle = '#2E8B57'; ctx.beginPath(); ctx.ellipse(sx + w / 2, sy + h * 0.6, w * 0.42, h * 0.34, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#F2C14E'; ctx.beginPath(); ctx.ellipse(sx + w / 2, sy + h * 0.6, w * 0.42, h * 0.34, 0, 0, 7); ctx.strokeStyle = '#1C5E3A'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = '#3AA34A'; ctx.beginPath(); ctx.ellipse(sx + w / 2, sy + h * 0.6, w * 0.28, h * 0.22, 0, 0, 7); ctx.fill(); }
+    else { ctx.fillStyle = '#9FE07A'; ctx.fillRect(sx + w * 0.28, sy + h * 0.4, w * 0.44, h * 0.5); }   // shell-less body
+  }
+}
+
+// SHELL: knocked-off koopa shell. Sits still until touched, then SLIDES fast, KOing any mob
+// it hits and hurting the player. Stomping a sliding shell stops it; stomping a still one kicks it.
+class Shell extends Mob {
+  constructor(x, y, facing) { super(x - 12, y - 18, 24, 18, 9999); this.stompable = true; this.slideState = 'idle'; this.facing = facing || 1; this.meleeDamage = 0; this.slideSpeed = 7; this._kickCd = 10; this.knockbackTimer = 0; }
+  update(player, level) {
+    if (!this.alive) return;
+    this._tickTimers();
+    if (this._kickCd > 0) this._kickCd--;
+    const px = this.x;
+    if (this.slideState === 'idle') {
+      this.vx = 0;
+      if (this._kickCd === 0 && this._touchesPlayer(player)) { this.slideState = 'sliding'; this.facing = (player.cx <= this.cx) ? 1 : -1; this._kickCd = 12; }
+    } else {
+      this.vx = this.facing * this.slideSpeed;
+      if (this._mobManager) for (const mob of this._mobManager.mobs) {
+        if (mob === this || !mob.alive || mob instanceof Shell || (mob._squishT | 0) > 0) continue;
+        if (this.x < mob.x + mob.width && this.x + this.width > mob.x && this.y < mob.y + mob.height && this.y + this.height > mob.y) {
+          mob.hitCooldown = 0; mob._launched = true; mob._tossDeath = 12; mob._launchFrames = 12; mob._launchSpin = 0.4; mob.vx = this.facing * 5; mob.vy = -7; mob.takeDamage(9999, this.facing);   // KO with a spin toss
+        }
+      }
+      if (this._kickCd === 0 && this._touchesPlayer(player)) { player.takeDamage(2, this.facing); this._kickCd = 22; }
+    }
+    _mobPhysics(this, level);
+    if (this.slideState === 'sliding' && Math.abs(this.x - px) < 0.8 && this.onGround) { this.facing *= -1; }   // hit a wall → reverse
+  }
+  onStomp(mgr, p) {
+    this._stompBounce(p);
+    if (this.slideState === 'sliding') { this.slideState = 'idle'; this.vx = 0; this._kickCd = 12; }
+    else { this.slideState = 'sliding'; this.facing = (p.cx <= this.cx) ? 1 : -1; this._kickCd = 12; }
+  }
+  draw(ctx, camera) {
+    const sx = Math.floor(this.x - camera.x), sy = Math.floor(this.y - camera.y);
+    if (sx > camera.viewMaxX() + 40 || sx + this.width < camera.viewMinX() - 40) return;
+    const w = this.width, h = this.height;
+    ctx.save(); this._flashAlpha(ctx);
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(sx + w / 2, sy + h + 1, w * 0.45, 3, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#2E8B57'; ctx.beginPath(); ctx.ellipse(sx + w / 2, sy + h * 0.55, w * 0.5, h * 0.55, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#F2C14E'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(sx + w / 2, sy + h * 0.55, w * 0.5, h * 0.55, 0, 0, 7); ctx.stroke();
+    ctx.strokeStyle = '#1C5E3A'; ctx.lineWidth = 1.5; for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(sx + w / 2 + i * 6, sy + 2); ctx.lineTo(sx + w / 2 + i * 8, sy + h - 2); ctx.stroke(); }
+    ctx.restore();
+  }
+}
+
 // ── Mob Manager ───────────────────────────────────────────────
 
 class MobManager {
@@ -2089,6 +2219,8 @@ class MobManager {
       case 'Blaze':          mob = new Blaze(mx - 10, my - 52);          break;
       case 'WitherSkeleton': mob = new WitherSkeleton(mx - 11, my - 50); break;
       case 'Enderman':       mob = new Enderman(mx - 16, my - 96);       break;
+      case 'Goomba':         mob = new Goomba(mx - 12, my - 22);         break;
+      case 'Koopa':          mob = new Koopa(mx - 13, my - 34);         break;
       default: return null;
     }
     if (mob) {
@@ -2134,6 +2266,9 @@ class MobManager {
     // Keep the id counter ahead of any restored ids so later spawns stay unique.
     if (maxId > Mob._nextId) Mob._nextId = maxId;
   }
+
+  // Drop a kickable Koopa shell into the mob list (behaves like a mob: updates/draws/stomps).
+  spawnShell(x, y, facing) { const s = new Shell(x, y, facing); s._mobManager = this; this.mobs.push(s); return s; }
 
   addPlayerArrow(x, y, vx, vy, damage, owner = 'p1', opts = null) {
     const a = new Arrow(x, y, vx, vy, damage, BOW_GRAVITY, true);
@@ -2423,6 +2558,15 @@ class MobManager {
         else { mob.knockbackTimer = Math.max(mob.knockbackTimer, 3); }
         if (!mob.alive) continue;   // toss-death expired this frame → let the filter reap it
       }
+      // Jump-attack / STOMP (world setting, default on): a player FALLING onto a mob's head
+      // hits it from above (squish / lose shell / bounce) instead of taking contact damage.
+      // Checked before the mob's own update so its contact hit never lands on the same frame.
+      if (this._jumpAttack !== false && mob.alive && mob.stompable !== false && (mob._squishT | 0) === 0) {
+        let stomped = false;
+        for (const pl of allPlayers) { if (pl && !pl.dead && mob._isStomp(pl)) { mob.onStomp(this, pl); stomped = true; break; } }
+        if (stomped) continue;   // skip AI + contact damage this frame
+      }
+      if ((mob._squishT | 0) > 0) { if (--mob._squishT <= 0) mob.alive = false; mob.vx = 0; continue; }   // being squished — hold, flatten, then reap
       const target = this._nearestPlayer(mob.cx, mob.cy, player, player2);
       this._updateDetection(mob, target, level);   // Smart Mobs §4 — sight axis + gate
       this._updateSprint(mob, target);             // Smart Mobs §7 — telegraphed sprint
@@ -2865,7 +3009,7 @@ class MobManager {
     const MOB_CLASS_TO_KEY = {
       Zombie: 'zombie', Skeleton: 'skeleton', Creeper: 'creeper',
       CaveSpider: 'cave_spider', Piglin: 'piglin', Blaze: 'blaze',
-      WitherSkeleton: 'wither_skeleton', Enderman: 'enderman',
+      WitherSkeleton: 'wither_skeleton', Enderman: 'enderman', Goomba: 'goomba', Koopa: 'koopa', Shell: 'shell',
     };
     const mobKey = MOB_CLASS_TO_KEY[mob.constructor.name];
 

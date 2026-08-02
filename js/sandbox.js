@@ -52,6 +52,8 @@ const SPAWN_EGG_DEFS = [
   { key: 'blaze',           label: 'Blaze',           color: '#FF8800' },
   { key: 'wither_skeleton', label: 'Wither Skel.',    color: '#444444' },
   { key: 'enderman',        label: 'Enderman',         color: '#111111' },
+  { key: 'goomba',          label: 'Goomba',          color: '#9B5A2B' },
+  { key: 'koopa',           label: 'Koopa',           color: '#3AA34A' },
 ];
 
 // "Gear" palette tab: weapons, tools, and armor

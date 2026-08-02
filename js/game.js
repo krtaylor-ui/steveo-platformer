@@ -99,6 +99,7 @@ class Game {
 
     // Must be initialized before _buildLevel() which reads twoPlayerMode (Phase 12)
     this._worldAdvSettings = {
+      jumpAttack:                true,    // Mario-style stomp: a falling player squishes/hits enemies from above (default on)
       disableDragonHealing:      false,
       dayCycleMinutes:           DAY_CYCLE_DEFAULT_MINUTES,
       nightSpawnBoost:           true,
@@ -619,7 +620,7 @@ class Game {
         const MOB_TO_EGG = {
           Zombie: 'zombie', Skeleton: 'skeleton', Creeper: 'creeper',
           CaveSpider: 'cave_spider', Piglin: 'piglin', Blaze: 'blaze',
-          WitherSkeleton: 'wither_skeleton', Enderman: 'enderman',
+          WitherSkeleton: 'wither_skeleton', Enderman: 'enderman', Goomba: 'goomba', Koopa: 'koopa',
         };
         for (const sp of this.mobManager.spawnPoints) {
           const mobType = MOB_TO_EGG[sp.mobTypeName];
@@ -3581,6 +3582,7 @@ class Game {
       this.mobManager.fleeCfg   = this._fleeConfig();   // §8 — per-mob-type low-HP flee
       this.mobManager.webCfg    = this._webConfig();    // §9 — spider web slow
       this.mobManager.pathCfg   = this._pathConfig();   // §6 — path-aware pursuit
+      this.mobManager._jumpAttack = this._worldAdvSettings.jumpAttack !== false;   // Mario-style stomp (default on)
       if (!_onlineNonHost) {
         const _mt = (this._prof && typeof performance !== 'undefined') ? performance.now() : 0;
         this.mobManager.update(this.player, this.level, this.player2 || null, this.players.slice(2).filter(Boolean));
@@ -16666,7 +16668,7 @@ class Game {
     const EGG_TO_MOB = {
       zombie: 'Zombie', skeleton: 'Skeleton', creeper: 'Creeper',
       cave_spider: 'CaveSpider', piglin: 'Piglin', blaze: 'Blaze',
-      wither_skeleton: 'WitherSkeleton', enderman: 'Enderman',
+      wither_skeleton: 'WitherSkeleton', enderman: 'Enderman', goomba: 'Goomba', koopa: 'Koopa',
     };
     // Replace buildWorld() default spawn points with only player-placed eggs.
     // buildWorld() seeds the mob manager before this load runs; merging would spawn
@@ -17105,7 +17107,7 @@ class Game {
     const EGG_TO_MOB = {
       zombie: 'Zombie', skeleton: 'Skeleton', creeper: 'Creeper',
       cave_spider: 'CaveSpider', piglin: 'Piglin', blaze: 'Blaze',
-      wither_skeleton: 'WitherSkeleton', enderman: 'Enderman',
+      wither_skeleton: 'WitherSkeleton', enderman: 'Enderman', goomba: 'Goomba', koopa: 'Koopa',
     };
     const eggSpawnsPf = Array.isArray(data.spawnEggs)
       ? data.spawnEggs
@@ -17759,7 +17761,7 @@ class Game {
     const EGG_TO_MOB = {
       zombie:'Zombie', skeleton:'Skeleton', creeper:'Creeper',
       cave_spider:'CaveSpider', piglin:'Piglin', blaze:'Blaze',
-      wither_skeleton:'WitherSkeleton', enderman:'Enderman',
+      wither_skeleton:'WitherSkeleton', enderman:'Enderman', goomba:'Goomba', koopa:'Koopa',
     };
     const eggSpawnsSr = Array.isArray(data.spawnEggs)
       ? data.spawnEggs
