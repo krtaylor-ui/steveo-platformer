@@ -313,8 +313,7 @@
         + `<div class="opt ${this.tool === 'spawn' ? 'sel' : ''}" data-spawn="1">🚩 Player Spawn</div><div class="opt ${this.tool === 'goal' ? 'sel' : ''}" data-goal="1">★ Goal Star</div>`
         + `<div class="opt ${this.tool === 'ramp' ? 'sel' : ''}" data-ramp="ramp">⟋ Ramp</div><div class="opt ${this.tool === 'ladder' ? 'sel' : ''}" data-ramp="ladder">🪜 Ladder</div>`
         + `<div class="opt ${this.tool === 'tree' ? 'sel' : ''}" data-tree="1">🌳 Tree (prefab)</div>`
-        + `<div class="opt ${this.tool === 'bridge' && !this._bridgeDraw ? 'sel' : ''}" data-bspan="0">🌉 Bridge — click 2 cliffs</div>`
-        + `<div class="opt ${this.tool === 'bridge' && this._bridgeDraw ? 'sel' : ''}" data-bspan="1">🌉 Drawbridge — click 2 cliffs</div>`;
+        + `<div class="opt ${this.tool === 'bridge' ? 'sel' : ''}" data-bspan="0" title="Click two cliffs to span a gap. Make it a drawbridge (raises on a signal) in its config after placing.">🌉 Bridge — click 2 cliffs</div>`;
       const tplList = (typeof OH_TEMPLATES !== 'undefined') ? OH_TEMPLATES.forWorld(this.world) : [];
       const tplOpts = tplList.map((t) => `<div class="opt ${this.tool === 'template' && this._templateId === t.id ? 'sel' : ''}" data-template="${t.id}">${t.system ? '🧩' : '📦'} ${this._esc(t.name)}</div>`).join('')
         + `<div class="opt" data-newtemplate="1" style="color:#7fe0a0">＋ New Template…</div>`;
@@ -358,7 +357,7 @@
         grp('Terrain', terrCur, terrOpts, terrActive, terrSw) +
         grp('Mobs', this.tool === 'mob' ? P().OH_MOB_BY_KEY[this.mobKey].name : '', mobOpts, this.tool === 'mob') +
         grp('Items', this.tool === 'item' ? P().OH_ITEM_BY_KEY[this.itemKey].name : '', itemOpts, this.tool === 'item') +
-        grp('Buildings', (this.tool === 'building' ? this.buildingType : this.tool === 'spawn' ? 'Spawn' : this.tool === 'goal' ? 'Goal' : this.tool === 'ramp' ? 'Ramp' : this.tool === 'ladder' ? 'Ladder' : this.tool === 'tree' ? 'Tree' : this.tool === 'bridge' ? (this._bridgeDraw ? 'Drawbridge' : 'Bridge') : ''), buildOpts, buildActive) +
+        grp('Buildings', (this.tool === 'building' ? this.buildingType : this.tool === 'spawn' ? 'Spawn' : this.tool === 'goal' ? 'Goal' : this.tool === 'ramp' ? 'Ramp' : this.tool === 'ladder' ? 'Ladder' : this.tool === 'tree' ? 'Tree' : this.tool === 'bridge' ? 'Bridge' : ''), buildOpts, buildActive) +
         grp('Templates', this.tool === 'template' && this._templateId ? (tplList.find((t) => t.id === this._templateId) || {}).name || '' : '', tplOpts, this.tool === 'template') +
         `<div class="oh-gap"></div>` +
         grp('Redstone', rsActive ? this.tool : '', rsOpts, rsActive);
@@ -388,7 +387,7 @@
       { const tf = g('oh-terr-filter'); if (tf) { const doFilter = () => { const q = tf.value.toLowerCase(); this._terrFilter = tf.value; rail.querySelectorAll('[data-terr]').forEach((el) => { el.style.display = (!q || el.textContent.toLowerCase().indexOf(q) >= 0 || (el.dataset.terr || '').indexOf(q) >= 0) ? '' : 'none'; }); }; tf.oninput = doFilter; tf.onclick = (ev) => ev.stopPropagation(); if (this._terrFilter) doFilter(); } }
       rail.querySelectorAll('[data-mob]').forEach((el) => el.onclick = () => { this.tool = 'mob'; this.mobKey = el.dataset.mob; this._renderBar(); });
       rail.querySelectorAll('[data-item]').forEach((el) => el.onclick = () => { this.tool = 'item'; this.itemKey = el.dataset.item; this._renderBar(); });
-      rail.querySelectorAll('[data-bspan]').forEach((el) => el.onclick = () => { this.tool = 'bridge'; this._bridgeDraw = el.dataset.bspan === '1'; this._bridgeStart = null; this._renderBar(); });
+      rail.querySelectorAll('[data-bspan]').forEach((el) => el.onclick = () => { this.tool = 'bridge'; this._bridgeStart = null; this._renderBar(); });
       rail.querySelectorAll('[data-rs]').forEach((el) => el.onclick = () => { this.tool = el.dataset.rs; this._renderBar(); });
       this._updateCursor();
     },
@@ -406,7 +405,7 @@
         if (this.tool === 'bridge') {   // two-click SPAN: click one cliff, then the other
           const cel = this._cellFromEvent(e);
           if (!this._bridgeStart) { this._bridgeStart = cel; this._flash('Bridge: click the far cliff — Brush size sets width (Esc to cancel)'); }
-          else { const w = Math.max(1, this.brush || 1); const span = { from: this._bridgeStart, to: cel, elev: this.elevLevel, width: w, draw: !!this._bridgeDraw, rail: !(this.world.settings && this.world.settings.bridgeGuardrails === false) }; if (this._bridgeDraw) span.channel = 'gate'; this.world.bridges = this.world.bridges || []; this.world.bridges.push(span); this._bridgeStart = null; this._pushHistory('bridge'); this._flash('Bridge placed' + (w > 1 ? ' (' + w + ' wide — brush size)' : '')); }
+          else { const w = Math.max(1, this.brush || 1); const span = { from: this._bridgeStart, to: cel, elev: this.elevLevel, width: w, draw: false, rail: !(this.world.settings && this.world.settings.bridgeGuardrails === false) }; this.world.bridges = this.world.bridges || []; this.world.bridges.push(span); this._bridgeStart = null; this._pushHistory('bridge'); this._flash('Bridge placed' + (w > 1 ? ' (' + w + ' wide)' : '') + ' — click it to make it a drawbridge'); }
           return;
         }
         this._shift = e.shiftKey;
@@ -440,7 +439,7 @@
         else if (e.code === K.redo && (e.ctrlKey || e.metaKey)) { this.redo(); }
         // Selection / clipboard.
         else if (e.code === 'KeyC' && (e.ctrlKey || e.metaKey)) { this._copySelection(); }
-        else if ((e.code === 'Delete' || e.code === 'Backspace') && this._sel) { e.preventDefault(); this._deleteSelection(); }
+        else if ((e.code === 'Delete' || e.code === 'Backspace') && (this._sel || this._selEnt)) { e.preventDefault(); if (this._selEnt) { this._deleteObj(this._selEnt.ref); } else this._deleteSelection(); }
         // Clipboard transforms (X/Y flip · T rotate).
         else if ((e.code === 'KeyX' || e.code === 'KeyY') && this._clip && !e.ctrlKey && !e.metaKey) { this._flipClip(e.code === 'KeyX'); }
         else if (e.code === 'KeyT' && this._clip && !e.ctrlKey && !e.metaKey) { this._rotateClip(); }
@@ -498,7 +497,10 @@
       if (c < 0 || r < 0 || c >= m.gridW || r >= m.gridH) return;
       this._markDirty(c, r);
       if (this.tool === 'erase' || this._shift) {
-        if ((m.elevation[r][c] | 0) === this.elevLevel) { m.ground[r][c] = 'grass'; m.elevation[r][c] = 0; }
+        // Remove the block AT the active elevation (and anything above it), KEEPING the blocks
+        // below — a heightmap has no gaps, so erasing level L drops the column to L-1.
+        const h = m.elevation[r][c] | 0;
+        if (h >= this.elevLevel) { const nh = Math.max(0, this.elevLevel - 1); m.elevation[r][c] = nh; if (nh === 0) m.ground[r][c] = 'grass'; }
         this.world.buildings = this.world.buildings.filter((b) => !(b.col === c && b.row === r));
         this.world.mobs = this.world.mobs.filter((x) => !(x.col === c && x.row === r));
         this.world.items = this.world.items.filter((x) => !(x.col === c && x.row === r));
@@ -522,7 +524,7 @@
       if (this.tool === 'template') { if (this._templateId) this._placeTemplate(this._templateId, col, row); return; }
       if (this.tool === 'goal') { this.world.goal = { col, row }; return; }
       if (this.tool === 'spawn') { this.world.spawns = [{ col, row }]; return; }
-      if (this.tool === 'building') { if (!this.world.buildings.some((b) => b.col === col && b.row === row)) this.world.buildings.push(OH_BUILDINGS.place(this.buildingType, col, row, { level: this.elevLevel })); return; }
+      if (this.tool === 'building') { if (this._buildingFits(this.buildingType, col, row, this.elevLevel)) this.world.buildings.push(OH_BUILDINGS.place(this.buildingType, col, row, { level: this.elevLevel })); else this._flash('Cannot place there — needs blocks under the corners (or overlaps)'); return; }
       if (this.tool === 'mob') { const d = P().OH_MOB_BY_KEY[this.mobKey]; this.world.mobs.push({ col, row, type: this.mobKey, hp: d.hp, speed: d.speed, detect: d.detect }); return; }
       if (this.tool === 'item') { this.world.items.push({ col, row, kind: P().OH_ITEM_BY_KEY[this.itemKey].kind, weapon: P().OH_ITEM_BY_KEY[this.itemKey].weapon, itemKey: this.itemKey }); return; }
       this._placeAt(this.tool, col, row);   // ramp / ladder / bridge / lever / dust / lamp (line-able)
@@ -761,6 +763,15 @@
     _portalList() { let n = 0; return (this.world.buildings || []).filter((b) => b.typeId === 'portal' || b.typeId === 'pipe').map((b) => ({ key: b.col + ',' + b.row, n: ++n, label: '#' + n + ' ' + (b.typeId === 'pipe' ? 'Pipe' : 'Portal') + ' (' + b.col + ',' + b.row + ')' })); },
     _portalNum(b) { const p = this._portalList().find((x) => x.key === b.col + ',' + b.row); return p ? p.n : '?'; },
     _buildingAt(col, row) { return (this.world.buildings || []).find((b) => { const t = OH_BUILDINGS.get(b.typeId); const w = t ? t.footprint.w : 1, h = t ? t.footprint.h : 1; return col >= b.col && col < b.col + w && row >= b.row && row < b.row + h; }); },
+    // A building must be on the map, not overlap another, and (if raised) have blocks under
+    // all four footprint corners to rest on. Shared by the placement ghost + actual placement.
+    _buildingFits(typeId, col, row, level) {
+      const m = this.world.mapSnapshot, t = OH_BUILDINGS.get(typeId), fw = t ? t.footprint.w : 1, fh = t ? t.footprint.h : 1;
+      if (col < 0 || row < 0 || col + fw > m.gridW || row + fh > m.gridH) return false;
+      for (const b of (this.world.buildings || [])) { const bt = OH_BUILDINGS.get(b.typeId), bw = bt ? bt.footprint.w : 1, bh = bt ? bt.footprint.h : 1; if (col < b.col + bw && col + fw > b.col && row < b.row + bh && row + fh > b.row) return false; }
+      if ((level | 0) > 0) { const corners = [[col, row], [col + fw - 1, row], [col, row + fh - 1], [col + fw - 1, row + fh - 1]]; if (!corners.every(([cc, rr]) => (m.elevation[rr] && (m.elevation[rr][cc] | 0)) >= (level | 0))) return false; }
+      return true;
+    },
     // Hand click: move a selected mob/item, else select one, else configure a
     // portal/goal/spawn. Selecting highlights; a second click moves + unselects
     // (clicking the same one again just unselects).
@@ -1147,15 +1158,22 @@
       const g = this.grid, m = this.world.mapSnapshot, col = this._hover.col, row = this._hover.row;
       if (col < 0 || row < 0 || col >= m.gridW || row >= m.gridH) return;
       const tool = this._shift ? 'erase' : this.tool;
-      const sp = S(col * g.cell, row * g.cell), ctr = S((col + 0.5) * g.cell, (row + 0.5) * g.cell);
+      // Offset the whole preview UP-LEFT by the active elevation so it sits on TOP of the
+      // block below (matching how placed cubes/buildings render), instead of at the ground plane.
+      const eLvl = this.elevLevel | 0, hBelow = (m.elevation[row] && m.elevation[row][col] != null) ? (m.elevation[row][col] | 0) : 0, oy = eLvl * Q;
+      const sp0 = S(col * g.cell, row * g.cell), ctr0 = S((col + 0.5) * g.cell, (row + 0.5) * g.cell);
+      const sp = { x: sp0.x - oy, y: sp0.y - oy }, ctr = { x: ctr0.x - oy, y: ctr0.y - oy };
       const unitPx = g.cell * (g.density || 1) * g.masterZoom;
       ctx.save(); ctx.globalAlpha = 0.5;
       if (tool === 'building') {
         const t = OH_BUILDINGS.get(this.buildingType), fw = t ? t.footprint.w : 1, fh = t ? t.footprint.h : 1;
-        let fits = (col + fw <= m.gridW && row + fh <= m.gridH);
-        if (fits) for (const b of this.world.buildings) { const bt = OH_BUILDINGS.get(b.typeId), bw = bt ? bt.footprint.w : 1, bh = bt ? bt.footprint.h : 1; if (col < b.col + bw && col + fw > b.col && row < b.row + bh && row + fh > b.row) { fits = false; break; } }
+        let fits = (col + fw <= m.gridW && row + fh <= m.gridH), reason = '';
+        if (fits) for (const b of this.world.buildings) { const bt = OH_BUILDINGS.get(b.typeId), bw = bt ? bt.footprint.w : 1, bh = bt ? bt.footprint.h : 1; if (col < b.col + bw && col + fw > b.col && row < b.row + bh && row + fh > b.row) { fits = false; reason = 'overlaps a building'; break; } }
+        // A raised building needs solid blocks under all four footprint corners to rest on.
+        if (fits && eLvl > 0) { const corners = [[col, row], [col + fw - 1, row], [col, row + fh - 1], [col + fw - 1, row + fh - 1]]; if (!corners.every(([cc, rr]) => (m.elevation[rr] && (m.elevation[rr][cc] | 0)) >= eLvl)) { fits = false; reason = 'needs blocks under the corners'; } }
         if (fits) { OVERHEAD.drawBuilding(ctx, this.buildingType, sp.x, sp.y, fw * cs, fh * cs, Math.min(1, cs / 28), 'default'); }
-        else { ctx.fillStyle = 'rgba(200,48,58,.55)'; ctx.fillRect(sp.x, sp.y, fw * cs, fh * cs); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(sp.x + fw * cs, sp.y + fh * cs); ctx.moveTo(sp.x + fw * cs, sp.y); ctx.lineTo(sp.x, sp.y + fh * cs); ctx.stroke(); }
+        else { ctx.fillStyle = 'rgba(200,48,58,.55)'; ctx.fillRect(sp.x, sp.y, fw * cs, fh * cs); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(sp.x + fw * cs, sp.y + fh * cs); ctx.moveTo(sp.x + fw * cs, sp.y); ctx.lineTo(sp.x, sp.y + fh * cs); ctx.stroke();
+          if (reason && cs > 10) { ctx.globalAlpha = 1; ctx.fillStyle = '#ffd23a'; ctx.font = `${Math.max(9, cs * 0.32) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText(reason, sp.x + fw * cs / 2, sp.y - 5); ctx.globalAlpha = 0.5; } }
       } else if (tool === 'mob') { const d = P().OH_MOB_BY_KEY[this.mobKey] || P().OH_MOBS[0]; ctx.fillStyle = d.color; ctx.strokeStyle = 'rgba(150,150,160,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(ctr.x, ctr.y, unitPx * 0.34, 0, 7); ctx.fill(); ctx.stroke(); }
       else if (tool === 'item') { OVERHEAD.drawItemSprite(ctx, this.itemKey, ctr.x, ctr.y, unitPx * 0.8); }
       else if (tool === 'ramp' || tool === 'ladder') { OVERHEAD.drawRampIcon(ctx, tool, ctr.x, ctr.y, cs, 0); }
@@ -1167,11 +1185,26 @@
       else if (tool === 'piston') { OVERHEAD.drawPiston(ctx, sp.x, sp.y, cs, false); }
       else if (tool === 'and' || tool === 'not' || tool === 'nor') { OVERHEAD.drawGate(ctx, sp.x, sp.y, cs, tool, false, tool === 'and' ? ['w', 's'] : ['w'], ['e']); }
       else if (tool === 'lock') { OVERHEAD.drawLock(ctx, sp.x, sp.y, cs, false); }
-      else if (tool === 'goal') { const gc = S((col + 1) * g.cell, (row + 1) * g.cell); ctx.fillStyle = '#ffd700'; ctx.font = `${(cs * 1.8) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', gc.x, gc.y + cs * 0.6); }
+      else if (tool === 'goal') { ctx.fillStyle = '#ffd700'; ctx.font = `${(cs * 1.8) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', ctr.x, ctr.y + cs * 0.6); }
       else if (tool === 'spawn') { ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; ctx.strokeRect(ctr.x - cs * 0.42, ctr.y - cs * 0.42, cs * 0.84, cs * 0.84); }
       else if (tool === 'tree') { ctx.fillStyle = '#4f8a44'; ctx.beginPath(); ctx.arc(ctr.x, ctr.y - cs * 0.3, cs * 1.3, 0, 7); ctx.fill(); ctx.fillStyle = '#6e4f2a'; ctx.fillRect(ctr.x - cs * 0.15, ctr.y, cs * 0.3, cs * 0.7); }
       else if (tool === 'erase') { ctx.strokeStyle = '#e05555'; ctx.lineWidth = 2; ctx.strokeRect(sp.x + 1, sp.y + 1, cs - 2, cs - 2); ctx.beginPath(); ctx.moveTo(sp.x + 2, sp.y + 2); ctx.lineTo(sp.x + cs - 2, sp.y + cs - 2); ctx.stroke(); }
-      else { OVERHEAD.drawTerrainCube(ctx, this.terrainKey, sp.x, sp.y, cs, this.elevLevel, true, true); }
+      else { OVERHEAD.drawTerrainCube(ctx, this.terrainKey, sp0.x, sp0.y, cs, eLvl, true, true); }   // terrain cube self-offsets by elevation → draw from the un-offset base
+      // Air-gap indicator: how many empty levels are below the cursor here (you are pointing
+      // above the current surface). Helps place at the intended height / spot floating builds.
+      const air = eLvl - hBelow;
+      if (air > 0 && tool !== 'erase' && cs > 8) {
+        ctx.globalAlpha = 1;
+        // dashed drop-line from the placement level down to the surface below
+        ctx.strokeStyle = 'rgba(255,210,58,.55)'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.moveTo(ctr.x, ctr.y); ctx.lineTo(ctr0.x - hBelow * Q, ctr0.y - hBelow * Q); ctx.stroke(); ctx.setLineDash([]);
+        const label = '↑' + air, fh2 = Math.max(13, cs * 0.42);
+        ctx.font = `${Math.max(9, cs * 0.34) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const tw = ctx.measureText(label).width + 10, bx = ctr.x, by = ctr.y - cs * 0.55 - fh2 / 2;
+        ctx.fillStyle = 'rgba(10,14,22,.85)'; ctx.fillRect(bx - tw / 2, by - fh2 / 2, tw, fh2);
+        ctx.fillStyle = '#ffd23a'; ctx.fillText(label, bx, by);
+        ctx.textBaseline = 'alphabetic';
+      }
       ctx.restore();
     },
     // Yellow/black hazard stripes in a band just OUTSIDE each world edge.
