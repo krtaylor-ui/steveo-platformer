@@ -345,7 +345,19 @@
       if (!cells.length) cells.push({ col: a.col, row: a.row });
       return cells;
     },
-    bridgeSpanCells(span) { return this.spanCells(span.from || { col: span.col, row: span.row }, span.to || span.from || { col: span.col, row: span.row }); },
+    bridgeSpanCells(span) {
+      const line = this.spanCells(span.from || { col: span.col, row: span.row }, span.to || span.from || { col: span.col, row: span.row });
+      const w = Math.max(1, span.width | 0);
+      if (w <= 1) return line;
+      // Widen the 1-cell line into a band `w` cells wide, perpendicular to its run.
+      const horiz = line.length < 2 || line[0].row === line[line.length - 1].row;
+      const half = Math.floor((w - 1) / 2), out = [], seen = new Set();
+      for (const c of line) for (let k = -half; k <= w - 1 - half; k++) {
+        const col = horiz ? c.col : c.col + k, row = horiz ? c.row + k : c.row;
+        const key = col + ',' + row; if (!seen.has(key)) { seen.add(key); out.push({ col, row }); }
+      }
+      return out;
+    },
     // Redstone bits (shared by runtime + editor).
     drawLever(ctx, cx, cy, r, on) {
       ctx.save(); ctx.translate(cx, cy);

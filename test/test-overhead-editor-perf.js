@@ -1,0 +1,53 @@
+// Overhead editor: incremental terrain-cache patching (fast editing on big maps) +
+// bridge width bands. Exercises OH_EDITOR's cache methods on a lightweight fake context.
+//   node test/test-overhead-editor-perf.js
+global.window = global; global.CANVAS_W = 800; global.CANVAS_H = 500; global.GAME_VERSION = 'v3 build 327 (editor-perf test)';
+function stubCtx() { return new Proxy({ filter: 'none', globalAlpha: 1, imageSmoothingEnabled: true, canvas: { width: 1, height: 1 } }, { get(t, k) { if (k === 'measureText') return () => ({ width: 8 }); if (k === 'createLinearGradient' || k === 'createRadialGradient') return () => ({ addColorStop() {} }); if (k === 'getContext') return () => stubCtx(); if (k === 'drawImage') return () => {}; if (k in t) return t[k]; return (typeof k === 'string') ? (() => {}) : undefined; }, set(t, k, v) { t[k] = v; return true; } }); }
+const cls = { add() {}, remove() {}, toggle() {}, contains() { return false; } };
+function mkCanvas() { return { style: {}, classList: cls, width: 1, height: 1, getContext: () => stubCtx(), getBoundingClientRect: () => ({ width: 800, height: 500, left: 0, top: 0 }) }; }
+global.document = { getElementById: () => mkCanvas(), head: { appendChild() {} }, createElement: () => mkCanvas(), body: { appendChild() {}, classList: cls }, addEventListener() {} };
+global.window.addEventListener = () => {}; global.window.dispatchEvent = () => {}; global.Event = function () {};
+global.InputManager = function () { this.flush = () => {}; this.isJustDown = () => false; this.isDown = () => false; this.mouse = { x: 0, y: 0, moveVec: { x: 0, y: 0 } }; };
+global.requestAnimationFrame = () => 0;
+const path = require('path');
+['palette', 'grid', 'buildings', 'movement', 'controls', 'combat', 'weapons', 'elevation', 'settings', 'daynight', 'redstone', 'templates', 'launch', 'editor']
+  .forEach((m) => require(path.join(__dirname, '..', 'js', 'overhead', 'overhead-' + m + '.js')));
+const OH_EDITOR = global.OH_EDITOR, OVERHEAD = global.OVERHEAD;
+
+let pass = 0, fail = 0;
+const ok = (c, m) => { if (c) pass++; else { fail++; console.log('  FAIL:', m); } };
+
+console.log('Bridge width bands:');
+{
+  const h = OVERHEAD.bridgeSpanCells({ from: { col: 2, row: 5 }, to: { col: 8, row: 5 }, width: 3 });
+  ok(h.length === 7 * 3, 'a 3-wide horizontal span covers 7×3 cells');
+  ok(h.some((c) => c.row === 4) && h.some((c) => c.row === 6), 'the band widens perpendicular to the run (rows 4 & 6)');
+  const v = OVERHEAD.bridgeSpanCells({ from: { col: 3, row: 2 }, to: { col: 3, row: 9 }, width: 2 });
+  ok(v.some((c) => c.col === 3) && v.some((c) => c.col === 4), 'a vertical span widens across columns');
+  ok(OVERHEAD.bridgeSpanCells({ from: { col: 1, row: 1 }, to: { col: 5, row: 1 } }).length === 5, 'no width = the original 1-wide line');
+}
+
+console.log('Incremental terrain-cache patch:');
+{
+  const W = 120, H = 90, ground = [], elevation = [];
+  for (let r = 0; r < H; r++) { ground.push(new Array(W).fill('grass')); elevation.push(new Array(W).fill(0)); }
+  const m = { gridW: W, gridH: H, cell: 8, ground, elevation }, g = { cell: 8, masterZoom: 1 };
+  OVERHEAD._elevScale = 1;
+  const ed = { view: { elev: false, hideAbove: false }, elevLevel: 2, world: { mapSnapshot: m, settings: { playerHeight: 1 } }, grid: g,
+    _mapMaxElev: OH_EDITOR._mapMaxElev, _buildTerrCache: OH_EDITOR._buildTerrCache, _patchTerrCache: OH_EDITOR._patchTerrCache, _paintTerrainRegion: OH_EDITOR._paintTerrainRegion, _markDirty: OH_EDITOR._markDirty };
+  ed._buildTerrCache(m, g, ed._mapMaxElev.call(ed));
+  ok(!!ed._terrCache && ed._terrCacheMaxE === 5, 'the cache builds with elevation headroom (padMax = maxE + 4)');
+  for (let r = 10; r < 14; r++) for (let c = 20; c < 24; c++) { ed._markDirty(c, r); ground[r][c] = 'stone'; elevation[r][c] = 2; }
+  ok(ed._editBox && ed._editBox.c0 === 20 && ed._editBox.c1 === 23, '_markDirty tracks the painted bounding box');
+  let threw = false; try { ok(ed._patchTerrCache(ed._editBox) === true, 'a patch within the headroom succeeds (no full rebuild)'); } catch (e) { threw = true; console.log('  threw:', e.message); }
+  ok(!threw, 'the patch does not throw');
+  ed._markDirty(30, 30); elevation[30][30] = 12;
+  ok(ed._patchTerrCache(ed._editBox) === false, 'a patch past the pad headroom refuses (signals a full rebuild)');
+  ed.view.elev = true; let t2 = false; try { ed._buildTerrCache(m, g, ed._mapMaxElev.call(ed)); ed._patchTerrCache({ c0: 20, r0: 10, c1: 23, r1: 13 }); } catch (e) { t2 = true; }
+  ok(!t2, 'patching the elevation-map view does not throw');
+  ed.view.elev = false; ed.view.hideAbove = true; let t3 = false; try { ed._buildTerrCache(m, g, ed._mapMaxElev.call(ed)); ed._patchTerrCache({ c0: 20, r0: 10, c1: 23, r1: 13 }); } catch (e) { t3 = true; }
+  ok(!t3, 'patching with hide-above-elev does not throw');
+}
+
+console.log(`\noverhead editor perf: ${pass} passed, ${fail} failed`);
+if (fail) process.exit(1);
