@@ -74,6 +74,10 @@
       redstoneVisibility: 'always', // 'always' | 'active' (reveal wires once powered) | 'hidden' — hides wiring/logic/sinks in play (sources stay visible)
       bridgeGuardrails: true,       // bridges have rails (can't fall off the sides); off = you can fall
       drawbridgeStyle:  'vanishing',// 'vanishing' (deck appears/disappears) | 'animated' (raises ~80° with perspective)
+      // Interaction animations (pipe climb-in now; portal/lever/chest to follow).
+      pipeClimbAnim:    true,       // play the pull-up climb when entering a pipe (off = instant)
+      interactionZoom:  1.25,       // camera zoom during an interaction animation (overrides game zoom)
+      interactionSpeed: 1,          // interaction-animation speed multiplier
     };
   }
 
@@ -205,6 +209,11 @@
               ${sel('redstoneVisibility', 'Redstone wiring in play', [['always', 'Always shown'], ['active', 'Reveal when active'], ['hidden', 'Hidden (sources still show)']])}
               ${toggle('bridgeGuardrails', 'Bridge guardrails (off = can fall off bridges)')}
               ${sel('drawbridgeStyle', 'Drawbridge style', [['vanishing', 'Vanishing (appears/disappears)'], ['animated', 'Animated (raises ~80°)']])}
+            </div>
+            <div class="ohws-grp"><h3>Interaction animations</h3>
+              ${toggle('pipeClimbAnim', 'Pipe climb-in (pull-up) — off = instant')}
+              ${range('interactionZoom', 'Interaction zoom (overrides game zoom)', 1, 2, 0.05)}
+              ${range('interactionSpeed', 'Interaction animation speed', 0.5, 2, 0.1)}
             </div>
           </div>
           <div class="ohws-foot"><button id="ohws-reset">Reset to defaults</button><button class="primary" id="ohws-done">Done</button></div>

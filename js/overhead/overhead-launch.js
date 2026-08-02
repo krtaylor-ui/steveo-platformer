@@ -445,15 +445,25 @@
       if (opts.somersault != null) { const f = opts.facing != null ? opts.facing : (aimAngle || 0); const cv = Math.cos(opts.somersault * Math.PI * 2); ctx.rotate(f); ctx.scale(Math.abs(cv) < 0.06 ? 0.06 : cv, 1); ctx.rotate(-f); }
 
       // ── LOWER BODY — faces movement ──
+      const crouch = opts.crouch || 0, mantle = opts.mantleLeg || 0;   // pipe-climb pose
       ctx.save(); if (opts.rotate !== false && moveAngle != null) ctx.rotate(moveAngle);
       ctx.lineCap = 'round';
       for (const sy of [-1, 1]) {
+        if (mantle > 0.3 && sy === 1) continue;               // the raised leg is the trapezoid below
         const yB = sy * (span / 2) * 0.7;                      // hip
-        const footX = restFwd + (moving ? -swing * sy * legAmp : -r * 0.05);   // legs drive the walk
-        ctx.strokeStyle = S.pants; ctx.lineWidth = limbW;
+        const footX = (restFwd + (moving ? -swing * sy * legAmp : -r * 0.05)) * (1 - crouch * 0.6);   // legs drive the walk
+        ctx.strokeStyle = S.pants; ctx.lineWidth = limbW * (1 - crouch * 0.25);
         ctx.beginPath(); ctx.moveTo(0, yB); ctx.lineTo(footX, yB); ctx.stroke();   // leg (connected)
         ctx.fillStyle = _shade(S.pants, 0.2);                   // foot — forward-pointing, in line with hip
         ctx.fillRect(footX - limbW * 0.2, yB - limbW * 0.5, limbW * 1.1, limbW);
+      }
+      // FORESHORTENED raised leg — a bent knee rising toward the camera (a growing trapezoid
+      // waist→knee + a foot beyond it) — the climb-in "pull-up" leg.
+      if (mantle > 0.01) {
+        const t = mantle * mantle * (3 - 2 * mantle), bw = r * 0.95, waistW = bw * 0.5, kneeW = waistW * 1.05 * (0.53 + 0.47 * t), thigh = r * (0.18 + 0.67 * t), oy = r * 0.1;
+        ctx.fillStyle = S.pants; ctx.beginPath(); ctx.moveTo(0, oy - waistW / 2); ctx.lineTo(thigh, oy - kneeW / 2); ctx.lineTo(thigh, oy + kneeW / 2); ctx.lineTo(0, oy + waistW / 2); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.fillRect(thigh - 2, oy - kneeW / 2, 4, kneeW);   // knee edge (nearer = lighter)
+        const footL = kneeW * 0.85, footW = kneeW * 1.05; ctx.fillStyle = _shade(S.pants, 0.65); ctx.fillRect(thigh, oy - footW / 2, footL, footW);   // foot on the pipe
       }
       ctx.restore();
 
@@ -463,7 +473,7 @@
       // Arms (drawn first in the upper group so they cover the legs/feet below).
       for (const sy of [-1, 1]) {
         const yB = sy * (span / 2);
-        const handX = restFwd + (moving ? swing * sy * armAmp : r * 0.1);
+        const handX = restFwd + (moving ? swing * sy * armAmp : r * 0.1) + (opts.grab || 0) * r * 1.6;   // grab = BOTH hands reach UP to the rim
         ctx.strokeStyle = S.shirt; ctx.lineWidth = limbW;
         ctx.beginPath(); ctx.moveTo(0, yB); ctx.lineTo(handX, yB); ctx.stroke();   // arm (connected, shirt)
         ctx.fillStyle = S.skin; ctx.beginPath(); ctx.arc(handX, yB, limbW * 0.42, 0, 7); ctx.fill();   // hand

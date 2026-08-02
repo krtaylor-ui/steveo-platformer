@@ -201,6 +201,9 @@
       if (this.state === 'won' || this.state === 'dead') { if (inp.mouse.clicked || (inp.isJustDown && inp.isJustDown('Enter'))) this._exit(); return; }
       if (this.state === 'dying') { this._advanceDeath(); return; }   // play the death burst
       if (this.state === 'paused') return;
+      // Interaction animation (pipe climb-in) drives the player itself — keep the world
+      // alive (mobs/projectiles) but skip normal control until it finishes + teleports.
+      if (this._climb) { this._updatePipeClimb(); this._updateMobs(); this._updateProjectiles(); this._updateShards(); return; }
 
       const p = this.player;
       if (p.iFrames > 0) p.iFrames--; if (p._fireCd > 0) p._fireCd--;
@@ -273,8 +276,10 @@
             actionUsed = true;
             const db = this._portalByKey.get(cfg.dest), dt = OH_BUILDINGS.get(db.typeId), dw = dt ? dt.footprint.w : 1, dh = dt ? dt.footprint.h : 1;
             const px = (db.col + dw / 2) * this.grid.cell, py = (db.row + dh + 0.5) * this.grid.cell;
-            const c = this._cellOf(px, py); p.x = px; p.y = py; p.elev = this._elev(c.col, c.row); this._portalCd = true;
-            this._portalGlow = { keys: [nk, cfg.dest], t: 42 };
+            const dest = { px, py, key: cfg.dest };
+            // A PIPE plays the climb-in animation, THEN teleports; a portal is instant.
+            if (near.typeId === 'pipe' && this.settings.pipeClimbAnim !== false) { this._startPipeClimb(near, dest); }
+            else { const c = this._cellOf(px, py); p.x = px; p.y = py; p.elev = this._elev(c.col, c.row); this._portalCd = true; this._portalGlow = { keys: [nk, cfg.dest], t: 42 }; }
           } else {
             // In range + pressed E, but this end has no destination — tell the player
             // instead of silently doing nothing (and don't fall through to the statue).
@@ -452,6 +457,51 @@
       return true;
     }
     _doAction(p) { let near = null, nd = 1e9; for (const b of this.buildings) { if (b.typeId === 'portal' || b.typeId === 'pipe') continue; const bx = (b.col + 0.5) * this.grid.cell, by = (b.row + 0.5) * this.grid.cell; const d = Math.hypot(bx - p.x, by - p.y); if (d < this.unit * 2 && d < nd) { near = b; nd = d; } } if (near) { const t = OH_BUILDINGS.get(near.typeId); this._notify((t ? t.category : 'Building') + ': ' + near.typeId, 90); } }
+
+    // ── PIPE CLIMB-IN animation — the "pull-up (foreshortened leg)" from the mockup ──
+    // Grab the rim → pull the body up to the hands → a leg lifts (foot on the pipe) → the
+    // body rises to the foot → move to the opening → shrink into the tube → teleport.
+    _startPipeClimb(pipe, dest) {
+      const t = OH_BUILDINGS.get(pipe.typeId), fw = t ? t.footprint.w : 1, fh = t ? t.footprint.h : 1, cell = this.grid.cell;
+      const cx = (pipe.col + fw / 2) * cell, cy = (pipe.row + fh / 2) * cell;
+      const cl = { pipe, dest, t: 0, sx: this.player.x, sy: this.player.y, cx, cy, edgeY: cy + cell * 0.45,
+        face: -Math.PI / 2, scale: 1, alpha: 1, grab: 0, mantleLeg: 0, crouch: 0, zoomFrom: this.grid.masterZoom };
+      cl.timeline = this._pipeClimbTimeline(cl);
+      cl.total = cl.timeline.reduce((a, ph) => a + ph.dur, 0);
+      this._climb = cl;
+      this.player.dist = 0;   // freeze the walk cycle
+    }
+    _pipeClimbTimeline(cl) {
+      const eo = (t) => 1 - Math.pow(1 - t, 3), ei = (t) => t * t * t, eio = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2, L = (a, b, t) => a + (b - a) * t;
+      const P = this.player, cell = this.grid.cell, cx = cl.cx, cy = cl.cy, edgeY = cl.edgeY, below = edgeY + cell * 0.5;
+      return [
+        { name: '1·grab', dur: 0.5, fn: (t) => { P.x = L(cl.sx, cx, eo(t)); P.y = L(cl.sy, below, eo(t)); cl.grab = eo(t); } },          // reach + grab the rim
+        { name: '2·pull', dur: 0.45, fn: (t) => { P.x = cx; P.y = L(below, edgeY, eio(t)); cl.grab = 1 - eio(t); cl.scale = L(1, 1.03, eio(t)); } },   // body pulled to the hands
+        { name: '3·leg', dur: 0.5, fn: (t) => { cl.mantleLeg = eio(t); cl.crouch = eio(t) * 0.5; } },                                    // a leg lifts, foot on the pipe
+        { name: '4·rise', dur: 0.5, fn: (t) => { P.y = L(edgeY, cy, eio(t)); cl.mantleLeg = 1 - eio(t); cl.crouch = L(0.5, 0, t); cl.scale = L(1.03, 1.02, t); } },   // body rises to the foot
+        { name: '5·open', dur: 0.3, fn: (t) => { P.x = cx; P.y = L(cy, cy - cell * 0.14, eio(t)); } },                                   // move to the opening
+        { name: '6·sink', dur: 0.55, fn: (t) => { cl.scale = L(1.02, 0.16, ei(t)); cl.alpha = L(1, 0.08, t); } }                          // shrink into the tube
+      ];
+    }
+    _updatePipeClimb() {
+      const cl = this._climb; if (!cl) return;
+      cl.t += (1 / 60) * (this.settings.interactionSpeed || 1);
+      const iz = this.settings.interactionZoom || 1.25;
+      this.grid.masterZoom += (iz - this.grid.masterZoom) * 0.15;   // ease the camera in to appreciate it
+      let acc = 0, cur = null, ct = 0;
+      for (const ph of cl.timeline) { if (cl.t <= acc + ph.dur) { cur = ph; ct = (cl.t - acc) / ph.dur; break; } acc += ph.dur; }
+      if (!cur) { cl.timeline[cl.timeline.length - 1].fn(1); this._finishPipeClimb(); return; }
+      cur.fn(Math.max(0, Math.min(1, ct)));
+      this.camera = OH_GRID.centerOn(this.grid, cl.cx, cl.cy, CANVAS_W, CANVAS_H);   // hold on the pipe
+    }
+    _finishPipeClimb() {
+      const cl = this._climb; this._climb = null;
+      const p = this.player, d = cl.dest, c = this._cellOf(d.px, d.py);
+      p.x = d.px; p.y = d.py; p.elev = this._elev(c.col, c.row);
+      this._portalCd = true; this._portalGlow = { keys: [cl.pipe.col + ',' + cl.pipe.row, d.key], t: 42 };
+      this.grid.masterZoom = cl.zoomFrom;   // restore the game zoom
+      this.camera = OH_GRID.centerOn(this.grid, p.x, p.y, CANVAS_W, CANVAS_H);
+    }
     _pickups(p) { for (const it of this.items) { if (it.taken) continue; const ix = (it.col + 0.5) * this.grid.cell, iy = (it.row + 0.5) * this.grid.cell; if (Math.hypot(ix - p.x, iy - p.y) < p.r + this.unit * 0.4) { it.taken = true; if (it.kind === 'weapon') { if (!p.weapons.includes(it.weapon)) p.weapons.push(it.weapon); p.weapon = it.weapon; this._notify('Equipped ' + it.weapon + ' (Q to switch)', 120); } else if (it.kind === 'key') { p.keys.push(it.keyId || it.itemKey); this._notify('Picked up ' + (it.keyId || 'key') + ' key', 90); } else this._notify('Coin!', 60); } } }
     // Cycle the equipped weapon through the collected list (+ pickaxe fallback).
     _cycleWeapon() { const list = this.player.weapons.length ? this.player.weapons.slice() : []; if (!list.includes('pickaxe')) list.push('pickaxe'); if (list.length < 2) return; const i = Math.max(0, list.indexOf(this.player.weapon)); this.player.weapon = list[(i + 1) % list.length]; this._notify(this.player.weapon, 60); }
@@ -768,7 +818,8 @@
       const ss = 1 - jf * 0.35;
       ctx.fillStyle = `rgba(0,0,0,${0.32 * ss})`; ctx.beginPath(); ctx.ellipse(sp.x + eo, sp.y + eo, rr * 0.85 * ss, rr * 0.5 * ss, 0, 0, 7); ctx.fill();
       const moving = (this.input.isDown('KeyW') || this.input.isDown('KeyA') || this.input.isDown('KeyS') || this.input.isDown('KeyD') || this.input.isDown('ArrowUp') || this.input.isDown('ArrowLeft') || this.input.isDown('ArrowRight') || this.input.isDown('ArrowDown'));
-      const alpha = (p.hidden && !this.showHidden) ? 0.9 : 1;
+      const cl = this._climb;
+      const alpha = ((p.hidden && !this.showHidden) ? 0.9 : 1) * (cl ? cl.alpha : 1);
       ctx.globalAlpha = alpha;
       // Legs face movement; upper body + weapon face aim. Weapon hidden while a
       // trident/boomerang is in flight (it's the thing flying).
@@ -776,8 +827,10 @@
       // Double-jump flourish: 'somersault' (head-over-heels y-foreshorten) or 'spin'.
       let spin = 0, somersault = null;
       if (p.jump && p.jump.jumping && p.jump.doubleUsed) { const prog = Math.min(1, p.jump.t / p.jump.dur); if ((this.settings.doubleJumpStyle || 'somersault') === 'spin') spin = prog * Math.PI * 3; else somersault = prog; }
-      OVERHEAD.drawOverheadPlayer(ctx, cx, cy, rr, p.dist, moving, OH_CONTROLS.angleOf(p.aim),
-        { rotate: true, weapon: inFlight ? null : (p.weapon || 'pickaxe'), moveAngle: (p.moveAngle != null ? p.moveAngle : OH_CONTROLS.angleOf(p.aim)), spin, somersault, facing: OH_CONTROLS.angleOf(p.aim) });
+      const aimA = cl ? cl.face : OH_CONTROLS.angleOf(p.aim);
+      OVERHEAD.drawOverheadPlayer(ctx, cx, cy, cl ? rr * cl.scale : rr, p.dist, cl ? false : moving, aimA,
+        { rotate: true, weapon: inFlight ? null : (p.weapon || 'pickaxe'), moveAngle: (cl ? cl.face : (p.moveAngle != null ? p.moveAngle : OH_CONTROLS.angleOf(p.aim))), spin, somersault, facing: aimA,
+          grab: cl ? cl.grab : 0, mantleLeg: cl ? cl.mantleLeg : 0, crouch: cl ? cl.crouch : 0 });
       ctx.globalAlpha = 1;
       if (p.iFrames > 0 && ((p.iFrames >> 2) & 1)) { ctx.globalAlpha = 0.4; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
       // Aim reticle.
