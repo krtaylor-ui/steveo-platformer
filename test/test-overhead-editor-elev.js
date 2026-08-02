@@ -63,6 +63,16 @@ console.log('Click-selected entity delete (_deleteObj):');
   ok(ed.world.items.length === 0, 'deleting a selected item removes it');
 }
 
+console.log('Hide-above slice caps tall cells (no black holes):');
+{
+  const ed = { view: { hideAbove: false }, elevLevel: 2, _capE: OH_EDITOR._capE };
+  ok(ed._capE.call(ed, 5) === 5, 'with hide-above OFF, elevation is unchanged');
+  ed.view.hideAbove = true;
+  ok(ed._capE.call(ed, 5) === 2, 'with hide-above ON, a taller cell is capped to the active level (shows the block under)');
+  ok(ed._capE.call(ed, 2) === 2, 'a cell at the active level is unchanged');
+  ok(ed._capE.call(ed, 1) === 1, 'a cell below the active level is unchanged');
+}
+
 console.log('Mouse-focused zoom keeps the point under the cursor fixed:');
 {
   const under = (ed, sx, sy) => ({ x: ed.cam.x + sx / ed.grid.masterZoom, y: ed.cam.y + (sy - ed._topInset) / ed.grid.masterZoom });

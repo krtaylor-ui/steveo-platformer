@@ -34,7 +34,7 @@ console.log('Incremental terrain-cache patch:');
   const m = { gridW: W, gridH: H, cell: 8, ground, elevation }, g = { cell: 8, masterZoom: 1 };
   OVERHEAD._elevScale = 1;
   const ed = { view: { elev: false, hideAbove: false }, elevLevel: 2, world: { mapSnapshot: m, settings: { playerHeight: 1 } }, grid: g,
-    _mapMaxElev: OH_EDITOR._mapMaxElev, _buildTerrCache: OH_EDITOR._buildTerrCache, _patchTerrCache: OH_EDITOR._patchTerrCache, _paintTerrainRegion: OH_EDITOR._paintTerrainRegion, _markDirty: OH_EDITOR._markDirty };
+    _mapMaxElev: OH_EDITOR._mapMaxElev, _buildTerrCache: OH_EDITOR._buildTerrCache, _patchTerrCache: OH_EDITOR._patchTerrCache, _paintTerrainRegion: OH_EDITOR._paintTerrainRegion, _markDirty: OH_EDITOR._markDirty, _capE: OH_EDITOR._capE };
   ed._buildTerrCache(m, g, ed._mapMaxElev.call(ed));
   ok(!!ed._terrCache && ed._terrCacheMaxE === 5, 'the cache builds with elevation headroom (padMax = maxE + 4)');
   for (let r = 10; r < 14; r++) for (let c = 20; c < 24; c++) { ed._markDirty(c, r); ground[r][c] = 'stone'; elevation[r][c] = 2; }

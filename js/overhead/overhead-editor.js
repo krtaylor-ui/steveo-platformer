@@ -31,7 +31,7 @@
     _sel: null,           // Set of 'c,r' currently selected (+ _selBox bounds)
     _selBox: null, _marquee: null, _selecting: false,   // marquee drag state
     _clip: null, _pasting: false,   // clipboard pattern + paste mode
-    view: { mobs: true, items: true, buildings: true, elev: false, hideAbove: false },   // top-bar view filters
+    view: { mobs: true, items: true, buildings: true, elev: false, hideAbove: false, focusLayer: true },   // top-bar view filters
     _running: false, _dragging: false, _shift: false, _shapeAnchor: null, _shapeEnd: null,
     _hist: [], _histPos: -1,
 
@@ -169,30 +169,33 @@
     },
     _mapMaxElev() { const m = this.world.mapSnapshot; let mx = 1; for (let r = 0; r < m.gridH; r++) { const row = m.elevation[r]; if (row) for (let c = 0; c < m.gridW; c++) if ((row[c] | 0) > mx) mx = row[c] | 0; } return mx; },
     _markDirty(c, r) { const b = this._editBox; if (!b) this._editBox = { c0: c, r0: r, c1: c, r1: r }; else { if (c < b.c0) b.c0 = c; if (c > b.c1) b.c1 = c; if (r < b.r0) b.r0 = r; if (r > b.r1) b.r1 = r; } },
+    // Hide-above-elev SLICE: a cell taller than the active level draws CAPPED at that level
+    // (so you see the block underneath) instead of vanishing to black.
+    _capE(e) { return (this.view.hideAbove && e > this.elevLevel) ? this.elevLevel : e; },
     // Repaint one terrain region in back-to-front order into a target context. `orig(c,r)`
-    // gives the top-left pixel of cell (c,r); `unit` is the cell size in px; `qf` the elev
-    // offset. Clears only the footprint rect (a `reach` margin around the changed cells makes
-    // sure any taller cube tops that reached into it get erased + redrawn), so raising AND
-    // lowering both come out clean. Shared by the live overlay + the cache patch.
+    // gives the footprint top-left pixel of cell (c,r); `unit` is the cell size; `qf` the elev
+    // offset. The cube's top + side faces sit UP-LEFT of the footprint by up to maxE*qf, so we
+    // clear the WHOLE clip region (footprint + that up-left margin) and redraw every cell whose
+    // cube can fall inside it (extending the set up-left to refill the margin). Outer cells are
+    // unchanged, so any clip-cut at the boundary lands on identical pixels — no stale tops/sides
+    // (the "black shadow" left when lowering a tall block). Shared by the live overlay + cache patch.
     _paintTerrainRegion(cx, orig, unit, qf, maxE, box, opts) {
       const m = this.world.mapSnapshot, reach = Math.ceil(maxE * 0.22) + 3;
       const c0 = Math.max(0, box.c0 - reach), r0 = Math.max(0, box.r0 - reach), c1 = Math.min(m.gridW - 1, box.c1 + reach), r1 = Math.min(m.gridH - 1, box.r1 + reach);
-      const fp0 = orig(c0, r0), fp1 = orig(c1 + 1, r1 + 1), up = maxE * qf + unit;
+      const up = maxE * qf + unit, cr0 = orig(c0, r0), cr1 = orig(c1 + 1, r1 + 1);
+      const rx = cr0.x - up, ry = cr0.y - up, rw = (cr1.x - cr0.x) + up + 2, rh = (cr1.y - cr0.y) + up + 2;
       cx.save();
-      cx.beginPath(); cx.rect(fp0.x - up, fp0.y - up, (fp1.x - fp0.x) + up + 2, (fp1.y - fp0.y) + up + 2); cx.clip();   // clip covers up-left cube tops
-      if (opts.clearStyle) { cx.fillStyle = opts.clearStyle; cx.fillRect(fp0.x, fp0.y, fp1.x - fp0.x, fp1.y - fp0.y); } else cx.clearRect(fp0.x, fp0.y, fp1.x - fp0.x, fp1.y - fp0.y);
+      cx.beginPath(); cx.rect(rx, ry, rw, rh); cx.clip();
+      if (opts.clearStyle) { cx.fillStyle = opts.clearStyle; cx.fillRect(rx, ry, rw, rh); } else cx.clearRect(rx, ry, rw, rh);
+      const mUp = Math.ceil(up / unit) + 1, dc0 = Math.max(0, c0 - mUp), dr0 = Math.max(0, r0 - mUp);   // extra up-left rows/cols to refill the cleared margin
       const cells = [];
-      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const e = m.elevation[r][c] | 0; if (this.view.hideAbove && e > this.elevLevel) continue; cells.push({ c, r, key: m.ground[r][c] || 'grass', e }); }
+      for (let r = dr0; r <= r1; r++) for (let c = dc0; c <= c1; c++) cells.push({ c, r, key: m.ground[r][c] || 'grass', e: this._capE(m.elevation[r][c] | 0) });
       cells.sort((a, b) => (a.r + a.c) - (b.r + b.c) || a.e - b.e);
       for (const cl of cells) {
         const sp = orig(cl.c, cl.r);
-        if (this.view.elev) { cx.fillStyle = OVERHEAD.elevMapColor(cl.e, maxE); cx.fillRect(sp.x, sp.y, unit + 1, unit + 1); cx.strokeStyle = 'rgba(0,0,0,.18)'; cx.strokeRect(sp.x + .5, sp.y + .5, unit, unit); if (opts.overlay && cl.e === this.elevLevel) { cx.strokeStyle = 'rgba(255,255,150,.9)'; cx.lineWidth = 2; cx.strokeRect(sp.x + 1, sp.y + 1, unit - 2, unit - 2); } continue; }
-        const sN = (cl.r + 1 <= m.gridH - 1) ? (m.elevation[cl.r + 1][cl.c] | 0) : -1, eN = (cl.c + 1 <= m.gridW - 1) ? (m.elevation[cl.r][cl.c + 1] | 0) : -1;
+        if (this.view.elev) { cx.fillStyle = OVERHEAD.elevMapColor(cl.e, maxE); cx.fillRect(sp.x, sp.y, unit + 1, unit + 1); cx.strokeStyle = 'rgba(0,0,0,.18)'; cx.strokeRect(sp.x + .5, sp.y + .5, unit, unit); continue; }
+        const sN = (cl.r + 1 <= m.gridH - 1) ? this._capE(m.elevation[cl.r + 1][cl.c] | 0) : -1, eN = (cl.c + 1 <= m.gridW - 1) ? this._capE(m.elevation[cl.r][cl.c + 1] | 0) : -1;
         OVERHEAD.drawTerrainCube(cx, cl.key, sp.x, sp.y, unit, cl.e, sN < cl.e, eN < cl.e);
-        if (opts.overlay) { const tx = sp.x - cl.e * qf, ty = sp.y - cl.e * qf;
-          if (cl.e === this.elevLevel && cl.e >= 0) { cx.fillStyle = 'rgba(255,255,150,.22)'; cx.fillRect(tx, ty, unit, unit); }
-          if (cl.e > 0 && unit > 12) { cx.fillStyle = 'rgba(255,255,255,.6)'; cx.font = `${Math.max(7, unit * 0.28) | 0}px sans-serif`; cx.textAlign = 'left'; cx.fillText(String(cl.e), tx + 2, ty + Math.max(9, unit * 0.36)); }
-        }
       }
       cx.restore();
     },
@@ -218,12 +221,12 @@
       cv.width = Math.max(1, m.gridW * cell + pad + cell); cv.height = Math.max(1, m.gridH * cell + pad + cell);
       const cx = cv.getContext('2d'); cx.clearRect(0, 0, cv.width, cv.height);
       const cells = [];
-      for (let r = 0; r < m.gridH; r++) for (let c = 0; c < m.gridW; c++) { const e = m.elevation[r][c] | 0; if (this.view.hideAbove && e > this.elevLevel) continue; cells.push({ c, r, key: m.ground[r][c] || 'grass', e }); }
+      for (let r = 0; r < m.gridH; r++) for (let c = 0; c < m.gridW; c++) cells.push({ c, r, key: m.ground[r][c] || 'grass', e: this._capE(m.elevation[r][c] | 0) });
       cells.sort((a, b) => (a.r + a.c) - (b.r + b.c) || a.e - b.e);
       for (const cl of cells) {
         const fx = cl.c * cell + pad, fy = cl.r * cell + pad;
         if (this.view.elev) { cx.fillStyle = OVERHEAD.elevMapColor(cl.e, maxE); cx.fillRect(fx, fy, cell + 1, cell + 1); cx.strokeStyle = 'rgba(0,0,0,.18)'; cx.strokeRect(fx + .5, fy + .5, cell, cell); continue; }
-        const sN = (cl.r + 1 <= m.gridH - 1) ? (m.elevation[cl.r + 1][cl.c] | 0) : -1, eN = (cl.c + 1 <= m.gridW - 1) ? (m.elevation[cl.r][cl.c + 1] | 0) : -1;
+        const sN = (cl.r + 1 <= m.gridH - 1) ? this._capE(m.elevation[cl.r + 1][cl.c] | 0) : -1, eN = (cl.c + 1 <= m.gridW - 1) ? this._capE(m.elevation[cl.r][cl.c + 1] | 0) : -1;
         OVERHEAD.drawTerrainCube(cx, cl.key, fx, fy, cell, cl.e, sN < cl.e, eN < cl.e);
       }
       this._terrCache = cv; this._terrCachePad = pad; this._terrCacheMaxE = padMax;
@@ -294,7 +297,8 @@
           <label><input type="checkbox" id="oh-v-mobs" ${this.view.mobs ? 'checked' : ''}> Mobs</label>
           <label><input type="checkbox" id="oh-v-items" ${this.view.items ? 'checked' : ''}> Items</label>
           <label><input type="checkbox" id="oh-v-elev" ${this.view.elev ? 'checked' : ''}> Elevation map</label>
-          <label title="Hide everything above the active elevation — see inside mountains"><input type="checkbox" id="oh-v-hideAbove" ${this.view.hideAbove ? 'checked' : ''}> Hide above elev ${this.elevLevel}</label>
+          <label title="Grey out every block NOT at the active elevation so the layer you're editing stands out"><input type="checkbox" id="oh-v-focusLayer" ${this.view.focusLayer !== false ? 'checked' : ''}> Focus layer</label>
+          <label title="Slice off everything above the active elevation — a cell taller than it shows the block AT that level (no black holes)"><input type="checkbox" id="oh-v-hideAbove" ${this.view.hideAbove ? 'checked' : ''}> Hide above elev ${this.elevLevel}</label>
           <label style="display:flex;align-items:center;gap:5px" title="Zoom (also: mouse wheel, + / − buttons)">🔍<input type="range" id="oh-zoom" min="0.35" max="3" step="0.05" value="${this.grid ? this.grid.masterZoom : 1}" style="width:96px;vertical-align:middle"></label>
           <label title="Performance overlay — FPS, render time, terrain draw mode, cell counts"><input type="checkbox" id="oh-v-perf" ${this.view.perf ? 'checked' : ''}> ⏱ Perf</label>
         </span>
@@ -366,7 +370,7 @@
       g('oh-zin').onclick = () => OH_GRID.zoomBy(this.grid, 1.15); g('oh-zout').onclick = () => OH_GRID.zoomBy(this.grid, 0.87);
       g('oh-test').onclick = () => this._test(); g('oh-save').onclick = () => this._save(); g('oh-exit').onclick = () => this.close();
       g('oh-settings').onclick = () => { if (typeof OH_WORLD_SETTINGS !== 'undefined') OH_WORLD_SETTINGS.open(this.world, () => { this._renderBar(); this._pushHistory('settings change'); }); };
-      ['buildings', 'mobs', 'items', 'elev', 'hideAbove', 'perf'].forEach((k) => { const el = g('oh-v-' + k); if (el) el.onchange = () => { this.view[k] = el.checked; }; });
+      ['buildings', 'mobs', 'items', 'elev', 'hideAbove', 'focusLayer', 'perf'].forEach((k) => { const el = g('oh-v-' + k); if (el) el.onchange = () => { this.view[k] = el.checked; }; });
       { const zr = g('oh-zoom'); if (zr) zr.oninput = () => OH_GRID.setZoom(this.grid, +zr.value); }
       g('oh-erase').onclick = () => { this.tool = 'erase'; this._renderBar(); this._updateCursor(); };
       g('oh-hand').onclick = () => { this.tool = 'hand'; this._selEnt = null; this._renderBar(); this._updateCursor(); };
@@ -1035,10 +1039,18 @@
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(this._terrCache, this.cam.x + this._terrCachePad, this.cam.y + this._terrCachePad, CANVAS_W / z, (CANVAS_H - TOP) / z, 0, TOP, CANVAS_W, CANVAS_H - TOP);
       if (this._editBox) this._drawEditRegion(ctx, S, cs, Q, maxE, hiAbove);   // in-progress brush stroke, live
-      if (cs > 16 && !this.view.elev) for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {   // active-elevation highlight + numbers (zoomed in)
-        const e = m.elevation[r][c] | 0; if (hiAbove(e)) continue; const sp = S(c * g.cell, r * g.cell), tx = sp.x - e * Q, ty = sp.y - e * Q;
-        if (e === this.elevLevel) { ctx.fillStyle = 'rgba(255,255,150,.22)'; ctx.fillRect(tx, ty, cs, cs); }
-        if (e > 0) { ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.font = `${Math.max(7, cs * 0.28) | 0}px sans-serif`; ctx.textAlign = 'left'; ctx.fillText(String(e), tx + 2, ty + Math.max(9, cs * 0.36)); }
+      // ELEVATION-CLARITY overlay: the ACTIVE-elevation cells stay bright + outlined; every cell
+      // NOT at the active elevation is greyed (a distinct artifact + faint hatch) so the layer
+      // you're editing pops. Heights are labelled when zoomed in. Cheap per-visible-cell fills.
+      if (!this.view.elev) {
+        const focus = this.view.focusLayer !== false;
+        for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+          const e0 = m.elevation[r][c] | 0, e = this._capE(e0), sp = S(c * g.cell, r * g.cell), tx = sp.x - e * Q, ty = sp.y - e * Q;
+          if (e === this.elevLevel) { ctx.fillStyle = 'rgba(255,236,110,.20)'; ctx.fillRect(tx, ty, cs, cs); ctx.strokeStyle = 'rgba(255,226,80,.9)'; ctx.lineWidth = Math.max(1, cs * 0.06); ctx.strokeRect(tx + .5, ty + .5, cs - 1, cs - 1); }
+          else if (focus) { ctx.fillStyle = 'rgba(64,70,86,.34)'; ctx.fillRect(tx, ty, cs, cs);
+            if (cs > 10) { ctx.strokeStyle = 'rgba(200,208,224,.28)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(tx, ty + cs); ctx.lineTo(tx + cs, ty); ctx.moveTo(tx + cs * 0.5, ty + cs); ctx.lineTo(tx + cs, ty + cs * 0.5); ctx.stroke(); } }
+          if (cs > 16 && e0 > 0) { ctx.fillStyle = e0 > this.elevLevel ? 'rgba(255,206,120,.92)' : 'rgba(255,255,255,.62)'; ctx.font = `${Math.max(7, cs * 0.28) | 0}px sans-serif`; ctx.textAlign = 'left'; ctx.fillText(String(e0), tx + 2, ty + Math.max(9, cs * 0.36)); }
+        }
       }
       // Entities.
       const unitPx = g.cell * (g.density || 1) * g.masterZoom;   // player-scale in editor px
@@ -1174,6 +1186,22 @@
       const sp = { x: sp0.x - oy, y: sp0.y - oy }, ctr = { x: ctr0.x - oy, y: ctr0.y - oy };
       const unitPx = g.cell * (g.density || 1) * g.masterZoom;
       ctx.save(); ctx.globalAlpha = 0.5;
+      // AIR-LAYER ghosts: one distinct hollow/dashed cyan cube for every empty level between the
+      // block below and where you're placing — drawn BEHIND the solid object ghost, low to high,
+      // so it's obvious at a glance how much air is under the block. (Nothing when it rests flush.)
+      const air = eLvl - hBelow;
+      if (air > 0 && tool !== 'erase') {
+        ctx.save();
+        const fwA = (tool === 'building' && OH_BUILDINGS.get(this.buildingType)) ? OH_BUILDINGS.get(this.buildingType).footprint.w : 1;
+        const fhA = (tool === 'building' && OH_BUILDINGS.get(this.buildingType)) ? OH_BUILDINGS.get(this.buildingType).footprint.h : 1;
+        for (let L = hBelow + 1; L < eLvl; L++) {
+          const ax = sp0.x - L * Q, ay = sp0.y - L * Q, w = fwA * cs, h = fhA * cs;
+          ctx.globalAlpha = 0.9; ctx.fillStyle = 'rgba(120,200,255,.10)'; ctx.fillRect(ax, ay, w, h);
+          ctx.strokeStyle = 'rgba(130,205,255,.8)'; ctx.lineWidth = Math.max(1, cs * 0.05); ctx.setLineDash([Math.max(2, cs * 0.16), Math.max(2, cs * 0.12)]);
+          ctx.strokeRect(ax + .5, ay + .5, w - 1, h - 1);
+        }
+        ctx.setLineDash([]); ctx.restore();
+      }
       if (tool === 'building') {
         const t = OH_BUILDINGS.get(this.buildingType), fw = t ? t.footprint.w : 1, fh = t ? t.footprint.h : 1;
         let fits = (col + fw <= m.gridW && row + fh <= m.gridH), reason = '';
@@ -1199,19 +1227,14 @@
       else if (tool === 'tree') { ctx.fillStyle = '#4f8a44'; ctx.beginPath(); ctx.arc(ctr.x, ctr.y - cs * 0.3, cs * 1.3, 0, 7); ctx.fill(); ctx.fillStyle = '#6e4f2a'; ctx.fillRect(ctr.x - cs * 0.15, ctr.y, cs * 0.3, cs * 0.7); }
       else if (tool === 'erase') { ctx.strokeStyle = '#e05555'; ctx.lineWidth = 2; ctx.strokeRect(sp.x + 1, sp.y + 1, cs - 2, cs - 2); ctx.beginPath(); ctx.moveTo(sp.x + 2, sp.y + 2); ctx.lineTo(sp.x + cs - 2, sp.y + cs - 2); ctx.stroke(); }
       else { OVERHEAD.drawTerrainCube(ctx, this.terrainKey, sp0.x, sp0.y, cs, eLvl, true, true); }   // terrain cube self-offsets by elevation → draw from the un-offset base
-      // Air-gap indicator: how many empty levels are below the cursor here (you are pointing
-      // above the current surface). Helps place at the intended height / spot floating builds.
-      const air = eLvl - hBelow;
+      // Count badge for the air layers above (matches the stacked air-ghosts drawn behind).
       if (air > 0 && tool !== 'erase' && cs > 8) {
         ctx.globalAlpha = 1;
-        // dashed drop-line from the placement level down to the surface below
-        ctx.strokeStyle = 'rgba(255,210,58,.55)'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
-        ctx.beginPath(); ctx.moveTo(ctr.x, ctr.y); ctx.lineTo(ctr0.x - hBelow * Q, ctr0.y - hBelow * Q); ctx.stroke(); ctx.setLineDash([]);
-        const label = '↑' + air, fh2 = Math.max(13, cs * 0.42);
+        const label = '↑' + air + ' air', fh2 = Math.max(13, cs * 0.42);
         ctx.font = `${Math.max(9, cs * 0.34) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         const tw = ctx.measureText(label).width + 10, bx = ctr.x, by = ctr.y - cs * 0.55 - fh2 / 2;
         ctx.fillStyle = 'rgba(10,14,22,.85)'; ctx.fillRect(bx - tw / 2, by - fh2 / 2, tw, fh2);
-        ctx.fillStyle = '#ffd23a'; ctx.fillText(label, bx, by);
+        ctx.fillStyle = '#8ecdff'; ctx.fillText(label, bx, by);
         ctx.textBaseline = 'alphabetic';
       }
       ctx.restore();
