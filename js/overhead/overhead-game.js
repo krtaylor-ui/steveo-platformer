@@ -124,6 +124,10 @@
       this._bridges = worldData.bridges || [];
       this._bridgeAt = new Map();
       for (const b of this._bridges) { b._cells = OVERHEAD.bridgeSpanCells(b); if (b.elev == null) b.elev = 0; for (const cell of b._cells) this._bridgeAt.set(cell.col + ',' + cell.row, b); }
+      // Swinging GATES — a hinged panel that rotates from its placed (rest) angle to a
+      // configured powered angle on a redstone signal, stopping if it hits an obstruction.
+      this._gates = worldData.gates || [];
+      for (const gt of this._gates) { gt._phase = 0; gt._curDeg = gt.rest || 0; gt._cells = this._gateCells(gt, gt._curDeg); }
       // TEMPLATE overlay — placed models (trees/houses) rendered ADDITIVELY on top of the
       // terrain (the grid is never overwritten, so the ground below a canopy is preserved).
       this._buildTemplateOverlay(worldData);
@@ -213,6 +217,7 @@
       if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') { this._elapsed += 1 / 60; this._tod = OH_DAYNIGHT.phase(this._elapsed, this._dayLen, this._dayStart); this._detectMult = OH_DAYNIGHT.detectMultiplier(this._tod); }
       // Re-evaluate the redstone network (drives drawbridge channels, lamps, doors).
       if (this._redstone.length && typeof OH_REDSTONE !== 'undefined') { this._updatePlates(); this._rs = OH_REDSTONE.evaluate(this._redstone); this._updatePistons(); }
+      if (this._gates.length) this._updateGates();
       // In a Sandbox playtest, Esc returns straight to the designer (not a pause menu).
       if (inp.isJustDown && inp.isJustDown('Escape')) { if (this._testMode) { this._exit(); return; } if (this.state === 'playing') this.state = 'paused'; else if (this.state === 'paused') this.state = 'playing'; else { this._exit(); return; } }
       if (inp.scrollDelta) { OH_GRID.zoomBy(this.grid, inp.scrollDelta < 0 ? 1.08 : 0.92); inp.scrollDelta = 0; }
@@ -365,6 +370,7 @@
         if (key == null) return airborne ? null : false;     // gap
         if (this._buildingSolidAt(c.col, c.row)) return false;
         if (this._pistonSolidAt(c.col, c.row)) return false;   // an extended (powered) piston blocks
+        if (this._gateSolid && this._gateSolidAt(c.col, c.row)) return false;   // a closed/swinging gate panel blocks
         if (this._templateSolid && this._templateSolid.has(c.col + ',' + c.row)) return false;   // a template trunk/wall blocks (canopy is pass-under)
         if (key === 'leaves') return ent.elev;               // canopy — always pass under (keep elev)
         if (key === 'pit') return this._pitsDeadly ? ent.elev : false;   // deadly: step in (fatal after); else a hard obstacle
@@ -564,6 +570,45 @@
     // A powered piston is a solid barrier (blocks movement); unpowered = passable.
     _pistonSolidAt(c, r) { if (!this._redstone.length) return false; if (this._pistonHeadSet && this._pistonHeadSet.has(c + ',' + r)) return true;   // an extended horizontal piston head = barrier
       for (const d of this._redstone) if (d.kind === 'piston' && !d.dir && d.col === c && d.row === r) return OH_REDSTONE.cellPowered(this._rs, c, r); return false; }   // legacy piston (no dir) = solid on its own cell when powered
+    // ── Swinging gates ──────────────────────────────────────────────────────────
+    _gateCells(gt, deg) {
+      const a = deg * Math.PI / 180, dc = Math.cos(a), dr = Math.sin(a), len = Math.max(1, gt.len || 1), out = [];
+      let pc = gt.col, pr = gt.row;
+      for (let i = 1; i <= len; i++) { const cc = Math.round(gt.col + dc * i), rr = Math.round(gt.row + dr * i);
+        if (cc >= 0 && rr >= 0 && cc < this.grid.gridW && rr < this.grid.gridH && !(cc === pc && rr === pr)) out.push({ col: cc, row: rr }); pc = cc; pr = rr; }
+      return out;
+    }
+    _gateOccupied(cc, rr) { const pc = this._cellOf(this.player.x, this.player.y); if (pc.col === cc && pc.row === rr) return true;
+      if (this.mobs) for (const m of this.mobs) { if (!m.dead) { const mc = this._cellOf(m.x, m.y); if (mc.col === cc && mc.row === rr) return true; } } return false; }
+    _updateGates() {
+      if (!this._gates.length) { this._gateSolid = null; return; }
+      const solid = new Set();
+      for (const gt of this._gates) {
+        const powered = OH_REDSTONE.receives(this._rs, gt), target = powered ? 1 : 0, swing = gt.angle || 90;
+        let np = gt._phase + (target - gt._phase) * 0.14; if (np < 0.002) np = 0; else if (np > 0.998) np = 1;
+        // Obstruction-stop: don't advance the swing into a cell an entity is standing in.
+        const oldSet = new Set((gt._cells || []).map((c) => c.col + ',' + c.row));
+        const nextCells = this._gateCells(gt, (gt.rest || 0) + swing * np);
+        let blocked = false; for (const c of nextCells) if (!oldSet.has(c.col + ',' + c.row) && this._gateOccupied(c.col, c.row)) { blocked = true; break; }
+        if (!blocked) gt._phase = np;
+        gt._curDeg = (gt.rest || 0) + swing * gt._phase; gt._cells = this._gateCells(gt, gt._curDeg);
+        for (const c of gt._cells) solid.add(c.col + ',' + c.row);
+      }
+      this._gateSolid = solid.size ? solid : null;
+    }
+    _gateSolidAt(c, r) { return !!(this._gateSolid && this._gateSolid.has(c + ',' + r)); }
+    _drawGates(ctx, S, cs) {
+      const cell = this.grid.cell;
+      for (const gt of this._gates) {
+        const cells = gt._cells || this._gateCells(gt, gt.rest || 0);
+        const hinge = S((gt.col + 0.5) * cell, (gt.row + 0.5) * cell);
+        ctx.save(); ctx.strokeStyle = '#7a5a30'; ctx.lineWidth = Math.max(3, cs * 0.3); ctx.lineCap = 'round';
+        ctx.fillStyle = '#4a3620'; ctx.beginPath(); ctx.arc(hinge.x, hinge.y, cs * 0.2, 0, 7); ctx.fill();   // hinge post
+        let prev = hinge;
+        for (const c of cells) { const p = S((c.col + 0.5) * cell, (c.row + 0.5) * cell); ctx.beginPath(); ctx.moveTo(prev.x, prev.y); ctx.lineTo(p.x, p.y); ctx.stroke(); ctx.fillStyle = '#6b4f2c'; ctx.fillRect(p.x - cs * 0.14, p.y - cs * 0.14, cs * 0.28, cs * 0.28); prev = p; }
+        ctx.restore();
+      }
+    }
     _bridge(c, r) { return this._bridgeAt.get(c + ',' + r) || null; }
     // A bridge cell is CLOSED (a solid walkable deck) when it's a normal bridge, or a
     // drawbridge whose channel is powered. Open drawbridges are gaps.
@@ -715,6 +760,7 @@
       }
       for (const rp of this._rampList) { const sp = S((rp.col + 0.5) * g.cell, (rp.row + 0.5) * g.cell); const dir = OVERHEAD.rampDir((c, r) => this._elev(c, r), rp.col, rp.row); OVERHEAD.drawRampIcon(ctx, rp.kind, sp.x, sp.y, cs, dir); }
       if (this._bridges.length) this._drawBridges(ctx, S, cs);
+      if (this._gates.length) this._drawGates(ctx, S, cs);
       if (this._redstone.length) this._drawRedstone(ctx, S, cs);
       if (this.goal) { const gc = (typeof GOAL_COLORS !== 'undefined' && GOAL_COLORS[this.goal.color || 0]) || { hex: '#ffd700' }; const sp = S((this.goal.col + 1) * g.cell, (this.goal.row + 1) * g.cell); ctx.fillStyle = gc.hex; ctx.font = `${(cs * 1.8) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.62); }
       // Entities sorted by (row + elev).

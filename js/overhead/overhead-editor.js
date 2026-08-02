@@ -318,7 +318,8 @@
         + `<div class="opt ${this.tool === 'spawn' ? 'sel' : ''}" data-spawn="1">🚩 Player Spawn</div><div class="opt ${this.tool === 'goal' ? 'sel' : ''}" data-goal="1">★ Goal Star</div>`
         + `<div class="opt ${this.tool === 'ramp' ? 'sel' : ''}" data-ramp="ramp">⟋ Ramp</div><div class="opt ${this.tool === 'ladder' ? 'sel' : ''}" data-ramp="ladder">🪜 Ladder</div>`
         + `<div class="opt ${this.tool === 'tree' ? 'sel' : ''}" data-tree="1">🌳 Tree (prefab)</div>`
-        + `<div class="opt ${this.tool === 'bridge' ? 'sel' : ''}" data-bspan="0" title="Click two cliffs to span a gap. Make it a drawbridge (raises on a signal) in its config after placing.">🌉 Bridge — click 2 cliffs</div>`;
+        + `<div class="opt ${this.tool === 'bridge' ? 'sel' : ''}" data-bspan="0" title="Click two cliffs to span a gap. Make it a drawbridge (raises on a signal) in its config after placing.">🌉 Bridge — click 2 cliffs</div>`
+        + `<div class="opt ${this.tool === 'gate' ? 'sel' : ''}" data-gate="1" title="Click the hinge cell, then the tip. A swinging panel that rotates to a configured angle on a redstone signal (stops on obstructions).">🚪 Gate — click hinge, then tip</div>`;
       const tplList = (typeof OH_TEMPLATES !== 'undefined') ? OH_TEMPLATES.forWorld(this.world) : [];
       const tplOpts = tplList.map((t) => `<div class="opt ${this.tool === 'template' && this._templateId === t.id ? 'sel' : ''}" data-template="${t.id}">${t.system ? '🧩' : '📦'} ${this._esc(t.name)}</div>`).join('')
         + `<div class="opt" data-newtemplate="1" style="color:#7fe0a0">＋ New Template…</div>`;
@@ -393,6 +394,7 @@
       rail.querySelectorAll('[data-mob]').forEach((el) => el.onclick = () => { this.tool = 'mob'; this.mobKey = el.dataset.mob; this._renderBar(); });
       rail.querySelectorAll('[data-item]').forEach((el) => el.onclick = () => { this.tool = 'item'; this.itemKey = el.dataset.item; this._renderBar(); });
       rail.querySelectorAll('[data-bspan]').forEach((el) => el.onclick = () => { this.tool = 'bridge'; this._bridgeStart = null; this._renderBar(); });
+      rail.querySelectorAll('[data-gate]').forEach((el) => el.onclick = () => { this.tool = 'gate'; this._gateStart = null; this._renderBar(); });
       rail.querySelectorAll('[data-rs]').forEach((el) => el.onclick = () => { this.tool = el.dataset.rs; this._renderBar(); });
       this._updateCursor();
     },
@@ -411,6 +413,15 @@
           const cel = this._cellFromEvent(e);
           if (!this._bridgeStart) { this._bridgeStart = cel; this._flash('Bridge: click the far cliff — Brush size sets width (Esc to cancel)'); }
           else { const w = Math.max(1, this.brush || 1); const span = { from: this._bridgeStart, to: cel, elev: this.elevLevel, width: w, draw: false, rail: !(this.world.settings && this.world.settings.bridgeGuardrails === false) }; this.world.bridges = this.world.bridges || []; this.world.bridges.push(span); this._bridgeStart = null; this._pushHistory('bridge'); this._flash('Bridge placed' + (w > 1 ? ' (' + w + ' wide)' : '') + ' — click it to make it a drawbridge'); }
+          return;
+        }
+        if (this.tool === 'gate') {   // two-click: hinge, then tip (rest orientation + length)
+          const cel = this._cellFromEvent(e);
+          if (!this._gateStart) { this._gateStart = cel; this._flash('Gate: click the TIP (rest position) — Esc to cancel'); }
+          else { const dc = cel.col - this._gateStart.col, dr = cel.row - this._gateStart.row, len = Math.max(1, Math.max(Math.abs(dc), Math.abs(dr)));
+            const rest = Math.round(Math.atan2(dr, dc) * 180 / Math.PI / 45) * 45;   // snap to 45°
+            const gt = { col: this._gateStart.col, row: this._gateStart.row, len, rest, angle: 90, height: 2, channel: 'gate' };
+            this.world.gates = this.world.gates || []; this.world.gates.push(gt); this._gateStart = null; this._pushHistory('gate'); this._gateModal(gt); }
           return;
         }
         this._shift = e.shiftKey;
@@ -462,7 +473,7 @@
         else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyO') { this.shape = 'circle'; this._renderBar(); }
         else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyG') { this.shape = 'fill'; this.tool = 'terrain'; this._renderBar(); }
         // Escape: clear paste/selection first, then return to Hand, then offer quit.
-        else if (e.code === 'Escape' || e.code === 'Enter') { if (this._pickTx) { this._endPickTx(); } else if (e.code !== 'Escape') { /* Enter only finishes pick mode */ } else if (this._bridgeStart) { this._bridgeStart = null; this._flash('Bridge cancelled'); } else if (this._pasting || this._clip) { this._pasting = false; this._clip = null; this._flash('Paste cancelled'); } else if (this._sel) { this._sel = null; this._selBox = null; } else if (this.tool !== 'hand') { this.tool = 'hand'; this._selEnt = null; this._renderBar(); } else this._quitModal(); }
+        else if (e.code === 'Escape' || e.code === 'Enter') { if (this._pickTx) { this._endPickTx(); } else if (e.code !== 'Escape') { /* Enter only finishes pick mode */ } else if (this._bridgeStart) { this._bridgeStart = null; this._flash('Bridge cancelled'); } else if (this._gateStart) { this._gateStart = null; this._flash('Gate cancelled'); } else if (this._pasting || this._clip) { this._pasting = false; this._clip = null; this._flash('Paste cancelled'); } else if (this._sel) { this._sel = null; this._selBox = null; } else if (this.tool !== 'hand') { this.tool = 'hand'; this._selEnt = null; this._renderBar(); } else this._quitModal(); }
       };
       this._dbl = (e) => { const cel = this._cellFromEvent(e); this._selectConnected(cel.col, cel.row); };
       cv.addEventListener('mousedown', this._md); cv.addEventListener('mousemove', this._mm);
@@ -724,6 +735,7 @@
       // Double-clicking a device or bridge span opens its config modal (bridges are one
       // span object now — the modal Delete removes the whole run).
       const dev = (this.world.redstone || []).find((d) => d.col === col && d.row === row); if (dev) return this._deviceModal(dev);
+      const gt = (this.world.gates || []).find((x) => x.col === col && x.row === row); if (gt) return this._gateModal(gt);   // click the hinge to reconfigure
       const span = (this.world.bridges || []).find((b) => OVERHEAD.bridgeSpanCells(b).some((cc) => cc.col === col && cc.row === row)); if (span) return this._bridgeModal(span);
       // Terrain: flood-select the connected same-type run at the start elevation.
       const sk = m.ground[row][col] || 'grass', se = m.elevation[row][col] | 0, st = [[col, row]], sel = new Set();
@@ -901,6 +913,20 @@
         if (b.draw) { b.rxIds = ids.length ? ids : undefined; b.channel = ids.length ? undefined : 'gate'; } else { b.rxIds = undefined; b.channel = undefined; }
       }, b, { target: b, isBridge: true });
     },
+    _gateModal(gt) {
+      const cur = Array.isArray(gt.rxIds) ? gt.rxIds : [];
+      const aopt = (v) => `<option value="${v}" ${(gt.angle || 90) === v ? 'selected' : ''}>${v > 0 ? '+' : ''}${v}°</option>`;
+      let inner = `<p style="color:#8fa0bd;font-size:12px;margin:0 0 8px">Hinge @ ${gt.col},${gt.row} · length ${gt.len} · rest ${gt.rest || 0}°. The panel swings from its rest position by this angle when powered (stops on obstructions).</p>`;
+      inner += `<label style="display:block">Powered swing angle: <select id="gt-ang">${[45, 90, 135, 180, -45, -90, -135, -180].map(aopt).join('')}</select></label>`;
+      inner += `<label style="display:block;margin-top:4px">Height (levels): <input type="number" id="gt-h" min="1" max="4" value="${gt.height || 2}" style="width:52px"></label>`;
+      inner += `<div style="font-size:12px;color:#9fb0cc;margin-top:6px">Signal source (leave empty = channel "gate"):</div>` + this._txChecklist('gt-rx', cur, -1, -1);
+      this._cfgModal('Swinging gate', inner, () => {
+        gt.angle = parseInt(document.getElementById('gt-ang').value, 10) || 90;
+        gt.height = Math.max(1, Math.min(4, parseInt(document.getElementById('gt-h').value, 10) || 2));
+        const ids = [].slice.call(document.querySelectorAll('.gt-rx:checked')).map((el) => +el.value);
+        gt.rxIds = ids.length ? ids : undefined; gt.channel = ids.length ? undefined : 'gate';
+      }, gt, { target: gt });
+    },
     // Called from a config modal's "Move" button — closes the modal and arms the
     // click-to-move indicator on the object.
     _startMove(ref) { this._selEnt = { kind: 'obj', ref }; this.tool = 'hand'; this._renderBar(); },
@@ -944,7 +970,7 @@
     },
     // Remove an object (device / bridge / building / mob / item / ramp / spawn / goal) by reference.
     _deleteObj(ref) {
-      ['redstone', 'bridges', 'buildings', 'mobs', 'items', 'ramps', 'spawns'].forEach((k) => { if (Array.isArray(this.world[k])) this.world[k] = this.world[k].filter((x) => x !== ref); });
+      ['redstone', 'bridges', 'gates', 'buildings', 'mobs', 'items', 'ramps', 'spawns'].forEach((k) => { if (Array.isArray(this.world[k])) this.world[k] = this.world[k].filter((x) => x !== ref); });
       if (this.world.goal === ref) this.world.goal = null;
       this._selEnt = null; this._pushHistory('delete'); this._flash('🗑 Deleted');
     },
@@ -1071,6 +1097,18 @@
         if (b.typeId === 'portal' || b.typeId === 'pipe') { const br = Math.max(11, cs * 0.5), cyN = by + cs * 0.4; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.beginPath(); ctx.arc(bx + w / 2, cyN, br, 0, 7); ctx.fill(); ctx.strokeStyle = '#b56bde'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(12, cs * 0.55) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('#' + this._portalNum(b), bx + w / 2, cyN); ctx.textBaseline = 'alphabetic'; } }
       if (this.view.mobs) for (const mo of this.world.mobs) { if (hiAbove(m.elevation[mo.row] ? m.elevation[mo.row][mo.col] : 0)) continue; const d = P().OH_MOB_BY_KEY[mo.type] || P().OH_MOBS[0]; const sp = S((mo.col + 0.5) * g.cell, (mo.row + 0.5) * g.cell); ctx.strokeStyle = 'rgba(150,150,160,.9)'; ctx.lineWidth = 2; ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(sp.x, sp.y, unitPx * 0.34, 0, 7); ctx.fill(); ctx.stroke(); }
       if (this.view.items) for (const it of this.world.items) { if (hiAbove(m.elevation[it.row] ? m.elevation[it.row][it.col] : 0)) continue; const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); OVERHEAD.drawItemSprite(ctx, it.itemKey, sp.x, sp.y, unitPx * 0.8); }
+      // Swinging gates (shown at their rest position — the hinge + the panel line).
+      for (const gt of (this.world.gates || [])) {
+        const a = (gt.rest || 0) * Math.PI / 180, hinge = S((gt.col + 0.5) * g.cell, (gt.row + 0.5) * g.cell);
+        ctx.save(); ctx.strokeStyle = '#7a5a30'; ctx.lineWidth = Math.max(3, cs * 0.3); ctx.lineCap = 'round';
+        ctx.fillStyle = '#4a3620'; ctx.beginPath(); ctx.arc(hinge.x, hinge.y, cs * 0.2, 0, 7); ctx.fill();
+        const tip = S((gt.col + 0.5 + Math.cos(a) * (gt.len || 1)) * g.cell, (gt.row + 0.5 + Math.sin(a) * (gt.len || 1)) * g.cell);
+        ctx.beginPath(); ctx.moveTo(hinge.x, hinge.y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
+        // an arc hint showing the powered swing
+        ctx.strokeStyle = 'rgba(130,205,255,.5)'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]); const R2 = Math.hypot(tip.x - hinge.x, tip.y - hinge.y);
+        ctx.beginPath(); ctx.arc(hinge.x, hinge.y, R2, a, a + (gt.angle || 90) * Math.PI / 180, (gt.angle || 90) < 0); ctx.stroke(); ctx.setLineDash([]);
+        ctx.restore();
+      }
       // Template overlay voxels (placed models — trees/houses) — additive on top of terrain.
       for (const v of this._templateVoxels()) { if (hiAbove(v.elev)) continue; const sp = S(v.col * g.cell, v.row * g.cell); OVERHEAD.drawTerrainCube(ctx, v.block, sp.x - (v.elev - 1) * Q, sp.y - (v.elev - 1) * Q, cs, 1, true, true); }
       for (const spn of (this.world.spawns || [])) { const sp = S((spn.col + 0.5) * g.cell, (spn.row + 0.5) * g.cell); ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; ctx.strokeRect(sp.x - cs * 0.42, sp.y - cs * 0.42, cs * 0.84, cs * 0.84); if (cs > 14) { ctx.fillStyle = '#4aa3ff'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('P1', sp.x, sp.y + 3); } }
