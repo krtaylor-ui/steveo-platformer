@@ -422,7 +422,7 @@
         if (this._selecting) { this._commitMarquee(); this._selecting = false; this._marquee = null; return; }
         if (this._pan) { const cv2 = document.getElementById('gameCanvas'); if (cv2) cv2.style.cursor = 'grab'; if (!this._pan.moved) { const cel = this._cellFromEvent(this._pan.e); this._handClick(cel.col, cel.row); } this._pan = null; return; }
         if (!this._dragging) return; this._dragging = false; this._lastCell = null; if (this._shapeAnchor) { this._commitShape(); this._shapeAnchor = this._shapeEnd = null; } this._pushHistory(this._paintDesc()); };
-      this._wheel = (e) => { if (e.shiftKey) { this.brush = Math.max(1, Math.min(8, this.brush + (e.deltaY < 0 ? 1 : -1))); this._renderBar(); } else OH_GRID.zoomBy(this.grid, e.deltaY < 0 ? 1.1 : 0.9); e.preventDefault(); };
+      this._wheel = (e) => { if (e.shiftKey) { this.brush = Math.max(1, Math.min(8, this.brush + (e.deltaY < 0 ? 1 : -1))); this._renderBar(); } else this._zoomAt(e.deltaY < 0 ? 1.1 : 0.9, e); e.preventDefault(); };
       this._kd = (e) => {
         // Don't hijack keys while typing in a modal field (channel names, etc.).
         const ae = document.activeElement; if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
@@ -473,6 +473,15 @@
       const sx = (e.clientX - rect.left) * (CANVAS_W / rect.width), sy = (e.clientY - rect.top) * (CANVAS_H / rect.height);
       const w = OH_GRID.screenToWorld(this.grid, this.cam, sx, sy - (this._topInset || 0));   // account for the top-bar inset
       return OH_GRID.cellAt(this.grid, w.x, w.y);
+    },
+    // Zoom toward the mouse: keep the world point under the cursor fixed on screen.
+    _zoomAt(factor, e) {
+      const g = this.grid, cv = document.getElementById('gameCanvas'); if (!cv) { OH_GRID.zoomBy(g, factor); return; }
+      const rect = cv.getBoundingClientRect(), TOP = this._topInset || 0;
+      const sx = (e.clientX - rect.left) * (CANVAS_W / rect.width), sy = (e.clientY - rect.top) * (CANVAS_H / rect.height) - TOP;
+      const z0 = g.masterZoom, wx = this.cam.x + sx / z0, wy = this.cam.y + sy / z0;   // world point under the cursor
+      const z1 = OH_GRID.setZoom(g, z0 * factor);
+      this.cam.x = wx - sx / z1; this.cam.y = wy - sy / z1;                            // re-anchor so it stays put (clamped in _render)
     },
     _paintAt(e) { const { col, row } = this._cellFromEvent(e); this._paintCell(col, row); this._lastCell = { col, row }; },
     // Paint every cell on the line from the previous painted cell to this one

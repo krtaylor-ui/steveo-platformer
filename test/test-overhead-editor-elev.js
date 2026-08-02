@@ -63,5 +63,19 @@ console.log('Click-selected entity delete (_deleteObj):');
   ok(ed.world.items.length === 0, 'deleting a selected item removes it');
 }
 
+console.log('Mouse-focused zoom keeps the point under the cursor fixed:');
+{
+  const under = (ed, sx, sy) => ({ x: ed.cam.x + sx / ed.grid.masterZoom, y: ed.cam.y + (sy - ed._topInset) / ed.grid.masterZoom });
+  const ed = { grid: { masterZoom: 1, cell: 32 }, cam: { x: 100, y: 80 }, _topInset: 46, _zoomAt: OH_EDITOR._zoomAt };
+  const e = { clientX: 400, clientY: 346 }, sx = 400, sy = 346, before = under(ed, sx, sy);
+  ed._zoomAt.call(ed, 2, e);
+  const a = under(ed, sx, sy);
+  ok(ed.grid.masterZoom === 2, 'the wheel changes the zoom level');
+  ok(Math.abs(before.x - a.x) < 0.01 && Math.abs(before.y - a.y) < 0.01, 'zooming IN keeps the world point under the cursor fixed');
+  ed._zoomAt.call(ed, 0.5, e);
+  const b = under(ed, sx, sy);
+  ok(Math.abs(before.x - b.x) < 0.01 && Math.abs(before.y - b.y) < 0.01, 'zooming back OUT keeps it fixed too');
+}
+
 console.log(`\noverhead editor elev: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
