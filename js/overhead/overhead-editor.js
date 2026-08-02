@@ -1050,7 +1050,7 @@
       // Distinct MAP-EDGE indicator (hazard stripes just outside the world bounds)
       // so the creator knows when they're looking at the real edge — deliberately
       // NOT a block look.
-      this._drawMapEdge(ctx, S, m.gridW * g.cell, m.gridH * g.cell, TOP);
+      this._drawMapEdge(ctx, S, m.gridW * g.cell, m.gridH * g.cell);
       // Live shape preview while dragging.
       if (this._shapeAnchor && this._shapeEnd) { ctx.fillStyle = 'rgba(120,180,255,.4)'; for (const p of this._shapeCells(this._shapeAnchor, this._shapeEnd)) { const sp = S(p.c * g.cell, p.r * g.cell); ctx.fillRect(sp.x, sp.y, cs, cs); } }
       // Placement GHOST of the selected tool at the hovered cell (red-X if a building
@@ -1152,8 +1152,8 @@
       ctx.restore();
     },
     // Yellow/black hazard stripes in a band just OUTSIDE each world edge.
-    _drawMapEdge(ctx, S, worldW, worldH, TOP) {
-      const tl = S(0, 0), brc = S(worldW, worldH), W = 7, RAIL = 150, NEAR = 170, top = TOP || 0;   // W halved (was 14)
+    _drawMapEdge(ctx, S, worldW, worldH) {
+      const tl = S(0, 0), brc = S(worldW, worldH), W = 7;   // W halved (was 14); sits right on the true edge
       const band = (x, y, w, h) => {
         if (w <= 0 || h <= 0) return;
         ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
@@ -1162,19 +1162,13 @@
         for (let i = -h - w; i < w + h; i += 11) { ctx.beginPath(); ctx.moveTo(x + i, y + h); ctx.lineTo(x + i + h, y); ctx.stroke(); }
         ctx.restore();
       };
-      // Pin the top/left bands to the chrome edge when the true edge sits just behind the
-      // command bar / tool rail, so the boundary shows at ALL zoom levels — not only zoomed
-      // way out (previously the left edge hid under the tool rail until fully zoomed out).
-      let lx = tl.x - W; if (lx < RAIL && lx > RAIL - NEAR) lx = RAIL;
-      let ty = tl.y - W; if (ty < top && ty > top - NEAR) ty = top;
-      band(lx, ty, brc.x + W - lx, W);          // top
-      band(lx, brc.y, brc.x + W - lx, W);       // bottom
-      band(lx, ty, W, brc.y - ty);              // left
-      band(brc.x, ty, W, brc.y - ty);           // right
-      // Bright dashed boundary line on the INNER edge of the hazard frame — follows the same
-      // pinned corner as the band so the two never split into a double border.
+      band(tl.x - W, tl.y - W, brc.x - tl.x + 2 * W, W);        // top
+      band(tl.x - W, brc.y, brc.x - tl.x + 2 * W, W);           // bottom
+      band(tl.x - W, tl.y, W, brc.y - tl.y);                    // left
+      band(brc.x, tl.y, W, brc.y - tl.y);                       // right
+      // Bright dashed boundary line right on the true world edge (inner edge of the band).
       ctx.save(); ctx.strokeStyle = '#ffe14d'; ctx.lineWidth = 3; ctx.setLineDash([10, 6]);
-      ctx.strokeRect(lx + W, ty + W, brc.x - lx - W, brc.y - ty - W); ctx.setLineDash([]); ctx.restore();
+      ctx.strokeRect(tl.x, tl.y, brc.x - tl.x, brc.y - tl.y); ctx.setLineDash([]); ctx.restore();
     },
     list() { try { return Object.keys(JSON.parse(localStorage.getItem('steveo_overhead_worlds') || '{}')); } catch (e) { return []; } },
   };
