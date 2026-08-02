@@ -1171,9 +1171,10 @@
       band(lx, brc.y, brc.x + W - lx, W);       // bottom
       band(lx, ty, W, brc.y - ty);              // left
       band(brc.x, ty, W, brc.y - ty);           // right
-      // Bright dashed boundary line right on the world edge — unmistakable.
+      // Bright dashed boundary line on the INNER edge of the hazard frame — follows the same
+      // pinned corner as the band so the two never split into a double border.
       ctx.save(); ctx.strokeStyle = '#ffe14d'; ctx.lineWidth = 3; ctx.setLineDash([10, 6]);
-      ctx.strokeRect(tl.x, tl.y, brc.x - tl.x, brc.y - tl.y); ctx.setLineDash([]); ctx.restore();
+      ctx.strokeRect(lx + W, ty + W, brc.x - lx - W, brc.y - ty - W); ctx.setLineDash([]); ctx.restore();
     },
     list() { try { return Object.keys(JSON.parse(localStorage.getItem('steveo_overhead_worlds') || '{}')); } catch (e) { return []; } },
   };
