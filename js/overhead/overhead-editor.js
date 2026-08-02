@@ -162,8 +162,29 @@
       this._hist = this._hist.slice(0, this._histPos + 1);
       this._hist.push({ s, d: desc || 'edit' }); this._histPos = this._hist.length - 1;
       if (this._hist.length > 60) { this._hist.shift(); this._histPos--; }
+      this._terrRev = (this._terrRev || 0) + 1;   // any committed edit invalidates the terrain cache
     },
-    _restore(snap) { const d = JSON.parse(snap); const cam = this.cam, mz = this.grid && this.grid.masterZoom; this.world.mapSnapshot = d.map; this.world.buildings = d.b; this.world.mobs = d.m; this.world.items = d.i; this.world.spawns = d.s; this.world.goal = d.g; if (d.r !== undefined) this.world.ramps = d.r; if (d.br !== undefined) this.world.bridges = d.br; if (d.rs !== undefined) this.world.redstone = d.rs; if (d.set !== undefined) this.world.settings = d.set; if (d.ts !== undefined) this.world.templateStamps = d.ts; if (d.tpl !== undefined) this.world.templates = d.tpl; this._setupWorld(); this.cam = cam; if (mz) this.grid.masterZoom = mz; },   // keep the camera + zoom put (undo/redo must not jump the view)
+    _mapMaxElev() { const m = this.world.mapSnapshot; let mx = 1; for (let r = 0; r < m.gridH; r++) { const row = m.elevation[r]; if (row) for (let c = 0; c < m.gridW; c++) if ((row[c] | 0) > mx) mx = row[c] | 0; } return mx; },
+    // Bake the whole terrain to a WORLD-SPACE offscreen canvas (see _render). Honors the
+    // Elevation-map view + Hide-above-elev filter; excludes the active-elevation highlight and
+    // per-cell numbers (those overlay live). Rebuilt only when _terrCacheKey changes.
+    _buildTerrCache(m, g, maxE) {
+      const cell = g.cell, Q = OVERHEAD.elevOffset(cell), pad = Math.ceil(maxE * Q + cell);
+      const cv = this._terrCacheCv || (this._terrCacheCv = document.createElement('canvas'));
+      cv.width = Math.max(1, m.gridW * cell + pad + cell); cv.height = Math.max(1, m.gridH * cell + pad + cell);
+      const cx = cv.getContext('2d'); cx.clearRect(0, 0, cv.width, cv.height);
+      const cells = [];
+      for (let r = 0; r < m.gridH; r++) for (let c = 0; c < m.gridW; c++) { const e = m.elevation[r][c] | 0; if (this.view.hideAbove && e > this.elevLevel) continue; cells.push({ c, r, key: m.ground[r][c] || 'grass', e }); }
+      cells.sort((a, b) => (a.r + a.c) - (b.r + b.c) || a.e - b.e);
+      for (const cl of cells) {
+        const fx = cl.c * cell + pad, fy = cl.r * cell + pad;
+        if (this.view.elev) { cx.fillStyle = OVERHEAD.elevMapColor(cl.e, maxE); cx.fillRect(fx, fy, cell + 1, cell + 1); cx.strokeStyle = 'rgba(0,0,0,.18)'; cx.strokeRect(fx + .5, fy + .5, cell, cell); continue; }
+        const sN = (cl.r + 1 <= m.gridH - 1) ? (m.elevation[cl.r + 1][cl.c] | 0) : -1, eN = (cl.c + 1 <= m.gridW - 1) ? (m.elevation[cl.r][cl.c + 1] | 0) : -1;
+        OVERHEAD.drawTerrainCube(cx, cl.key, fx, fy, cell, cl.e, sN < cl.e, eN < cl.e);
+      }
+      this._terrCache = cv; this._terrCachePad = pad;
+    },
+    _restore(snap) { const d = JSON.parse(snap); const cam = this.cam, mz = this.grid && this.grid.masterZoom; this.world.mapSnapshot = d.map; this.world.buildings = d.b; this.world.mobs = d.m; this.world.items = d.i; this.world.spawns = d.s; this.world.goal = d.g; if (d.r !== undefined) this.world.ramps = d.r; if (d.br !== undefined) this.world.bridges = d.br; if (d.rs !== undefined) this.world.redstone = d.rs; if (d.set !== undefined) this.world.settings = d.set; if (d.ts !== undefined) this.world.templateStamps = d.ts; if (d.tpl !== undefined) this.world.templates = d.tpl; this._setupWorld(); this.cam = cam; if (mz) this.grid.masterZoom = mz; this._terrRev = (this._terrRev || 0) + 1; },   // keep the camera + zoom put (undo/redo must not jump the view)
     _paintDesc() { const t = this._shift ? 'erase' : this.tool;
       if (t === 'terrain') return 'paint ' + this.terrainKey; if (t === 'building') return 'place ' + this.buildingType;
       if (t === 'mob') return 'place ' + this.mobKey; if (t === 'item') return 'place ' + this.itemKey;
@@ -230,6 +251,8 @@
           <label><input type="checkbox" id="oh-v-items" ${this.view.items ? 'checked' : ''}> Items</label>
           <label><input type="checkbox" id="oh-v-elev" ${this.view.elev ? 'checked' : ''}> Elevation map</label>
           <label title="Hide everything above the active elevation — see inside mountains"><input type="checkbox" id="oh-v-hideAbove" ${this.view.hideAbove ? 'checked' : ''}> Hide above elev ${this.elevLevel}</label>
+          <label style="display:flex;align-items:center;gap:5px" title="Zoom (also: mouse wheel, + / − buttons)">🔍<input type="range" id="oh-zoom" min="0.35" max="3" step="0.05" value="${this.grid ? this.grid.masterZoom : 1}" style="width:96px;vertical-align:middle"></label>
+          <label title="Performance overlay — FPS, render time, terrain draw mode, cell counts"><input type="checkbox" id="oh-v-perf" ${this.view.perf ? 'checked' : ''}> ⏱ Perf</label>
         </span>
         <span class="oh-status">${this._esc(this.world.name)} · ${m.baseW || m.gridW}×${m.baseH || m.gridH} @ d${m.density} · ${this._shift ? 'erase' : this.tool} @ elev ${this.elevLevel}</span>
         <span class="oh-flash" id="oh-flash"></span>`;
@@ -300,7 +323,8 @@
       g('oh-zin').onclick = () => OH_GRID.zoomBy(this.grid, 1.15); g('oh-zout').onclick = () => OH_GRID.zoomBy(this.grid, 0.87);
       g('oh-test').onclick = () => this._test(); g('oh-save').onclick = () => this._save(); g('oh-exit').onclick = () => this.close();
       g('oh-settings').onclick = () => { if (typeof OH_WORLD_SETTINGS !== 'undefined') OH_WORLD_SETTINGS.open(this.world, () => { this._renderBar(); this._pushHistory('settings change'); }); };
-      ['buildings', 'mobs', 'items', 'elev', 'hideAbove'].forEach((k) => { const el = g('oh-v-' + k); if (el) el.onchange = () => { this.view[k] = el.checked; }; });
+      ['buildings', 'mobs', 'items', 'elev', 'hideAbove', 'perf'].forEach((k) => { const el = g('oh-v-' + k); if (el) el.onchange = () => { this.view[k] = el.checked; }; });
+      { const zr = g('oh-zoom'); if (zr) zr.oninput = () => OH_GRID.setZoom(this.grid, +zr.value); }
       g('oh-erase').onclick = () => { this.tool = 'erase'; this._renderBar(); this._updateCursor(); };
       g('oh-hand').onclick = () => { this.tool = 'hand'; this._selEnt = null; this._renderBar(); this._updateCursor(); };
       g('oh-draw').onclick = () => { this.tool = 'terrain'; this._renderBar(); this._updateCursor(); };   // restore drawing with the last terrain + brush/shape (all persist)
@@ -916,8 +940,10 @@
     // ── Render loop ─────────────────────────────────────────────────────────
     _loop() { if (!this._running) return; try { this._render(); } catch (e) { console.error('OH editor', e); } requestAnimationFrame(this._loop); },
     _render() {
+      const _pt0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
       const cv = document.getElementById('gameCanvas'); const ctx = cv.getContext('2d');
       const g = this.grid, m = this.world.mapSnapshot, z = g.masterZoom, cs = g.cell * z;
+      { const zr = document.getElementById('oh-zoom'); if (zr && document.activeElement !== zr && +zr.value !== z) zr.value = z; }   // keep the zoom slider in sync with wheel/buttons/keys
       // Match the play-time elevation scale to the world's player height (see elevOffset).
       if (typeof OVERHEAD !== 'undefined') OVERHEAD._elevScale = 1 / Math.max(1, (this.world.settings && this.world.settings.playerHeight) || 1);
       // Reserve a top strip so the fixed 40px command bar never covers the map (incl.
@@ -933,28 +959,43 @@
       const c0 = Math.max(0, (tl.x / g.cell | 0) - 1), c1 = Math.min(m.gridW - 1, (br.x / g.cell | 0) + 1);
       const r0 = Math.max(0, (tl.y / g.cell | 0) - 1), r1 = Math.min(m.gridH - 1, (br.y / g.cell | 0) + 1);
       const Q = OVERHEAD.elevOffset(cs);
-      // Stacked-cube terrain, back-to-front (r+c then elev), matching the runtime.
-      const cells = [];
-      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) cells.push({ c, r, key: m.ground[r][c] || 'grass', e: m.elevation[r][c] | 0 });
-      cells.sort((a, b) => (a.r + a.c) - (b.r + b.c) || a.e - b.e);
-      // Elevation-map view: flat top-down tiles shaded purple(low)→pink(high).
-      let maxE = 1; for (const cl of cells) if (cl.e > maxE) maxE = cl.e;
+      const maxE = this._mapMaxElev();
       const hiAbove = (e) => this.view.hideAbove && (e | 0) > this.elevLevel;   // "see inside mountains" filter
-      for (const cl of cells) {
-        const sp = S(cl.c * g.cell, cl.r * g.cell);
-        if (hiAbove(cl.e)) continue;
-        if (this.view.elev) {
-          ctx.fillStyle = OVERHEAD.elevMapColor(cl.e, maxE); ctx.fillRect(sp.x, sp.y, cs + 1, cs + 1);
-          ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.strokeRect(sp.x + .5, sp.y + .5, cs, cs);
-          if (cl.e === this.elevLevel) { ctx.strokeStyle = 'rgba(255,255,150,.9)'; ctx.lineWidth = 2; ctx.strokeRect(sp.x + 1, sp.y + 1, cs - 2, cs - 2); }
-          if (cs > 12) { ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.font = `${Math.max(7, cs * 0.3) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText(String(cl.e), sp.x + cs / 2, sp.y + cs * 0.62); }
-          continue;
+      // PERF: while IDLE (incl. PANNING with the hand tool) blit a WORLD-SPACE terrain CACHE
+      // (rebuilt only when the map/view changes) — one drawImage instead of thousands of
+      // per-cell cubes, so huge + dense maps scroll smoothly. Live per-cell draw only while
+      // actively EDITING (dragging/selecting/shaping) for full brush feedback.
+      const editingLive = this._dragging || this._selecting || this._pasting || !!this._shapeAnchor;
+      if (!editingLive) {
+        const key = (this.view.elev ? 1 : 0) + '|' + (this.view.hideAbove ? this.elevLevel : '-') + '|' + ((this.world.settings && this.world.settings.playerHeight) || 1) + '|' + (this._terrRev || 0) + '|' + m.gridW + 'x' + m.gridH;
+        if (!this._terrCache || this._terrCacheKey !== key) { this._buildTerrCache(m, g, maxE); this._terrCacheKey = key; }
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(this._terrCache, this.cam.x + this._terrCachePad, this.cam.y + this._terrCachePad, CANVAS_W / z, (CANVAS_H - TOP) / z, 0, TOP, CANVAS_W, CANVAS_H - TOP);
+        if (cs > 16) for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {   // active-elevation highlight + numbers (only when zoomed in)
+          const e = m.elevation[r][c] | 0; if (hiAbove(e) || this.view.elev) continue; const sp = S(c * g.cell, r * g.cell), tx = sp.x - e * Q, ty = sp.y - e * Q;
+          if (e === this.elevLevel) { ctx.fillStyle = 'rgba(255,255,150,.22)'; ctx.fillRect(tx, ty, cs, cs); }
+          if (e > 0) { ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.font = `${Math.max(7, cs * 0.28) | 0}px sans-serif`; ctx.textAlign = 'left'; ctx.fillText(String(e), tx + 2, ty + Math.max(9, cs * 0.36)); }
         }
-        const sN = (cl.r + 1 <= m.gridH - 1) ? (m.elevation[cl.r + 1][cl.c] | 0) : -1, eN = (cl.c + 1 <= m.gridW - 1) ? (m.elevation[cl.r][cl.c + 1] | 0) : -1;
-        OVERHEAD.drawTerrainCube(ctx, cl.key, sp.x, sp.y, cs, cl.e, sN < cl.e, eN < cl.e);
-        const tx = sp.x - cl.e * Q, ty = sp.y - cl.e * Q;
-        if (cl.e === this.elevLevel && cl.e >= 0) { ctx.fillStyle = 'rgba(255,255,150,.22)'; ctx.fillRect(tx, ty, cs, cs); }   // highlight the active elevation
-        if (cl.e > 0 && cs > 12) { ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.font = `${Math.max(7, cs * 0.28) | 0}px sans-serif`; ctx.textAlign = 'left'; ctx.fillText(String(cl.e), tx + 2, ty + Math.max(9, cs * 0.36)); }
+      } else {
+        const cells = [];
+        for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) cells.push({ c, r, key: m.ground[r][c] || 'grass', e: m.elevation[r][c] | 0 });
+        cells.sort((a, b) => (a.r + a.c) - (b.r + b.c) || a.e - b.e);
+        for (const cl of cells) {
+          const sp = S(cl.c * g.cell, cl.r * g.cell);
+          if (hiAbove(cl.e)) continue;
+          if (this.view.elev) {
+            ctx.fillStyle = OVERHEAD.elevMapColor(cl.e, maxE); ctx.fillRect(sp.x, sp.y, cs + 1, cs + 1);
+            ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.strokeRect(sp.x + .5, sp.y + .5, cs, cs);
+            if (cl.e === this.elevLevel) { ctx.strokeStyle = 'rgba(255,255,150,.9)'; ctx.lineWidth = 2; ctx.strokeRect(sp.x + 1, sp.y + 1, cs - 2, cs - 2); }
+            if (cs > 12) { ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.font = `${Math.max(7, cs * 0.3) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText(String(cl.e), sp.x + cs / 2, sp.y + cs * 0.62); }
+            continue;
+          }
+          const sN = (cl.r + 1 <= m.gridH - 1) ? (m.elevation[cl.r + 1][cl.c] | 0) : -1, eN = (cl.c + 1 <= m.gridW - 1) ? (m.elevation[cl.r][cl.c + 1] | 0) : -1;
+          OVERHEAD.drawTerrainCube(ctx, cl.key, sp.x, sp.y, cs, cl.e, sN < cl.e, eN < cl.e);
+          const tx = sp.x - cl.e * Q, ty = sp.y - cl.e * Q;
+          if (cl.e === this.elevLevel && cl.e >= 0) { ctx.fillStyle = 'rgba(255,255,150,.22)'; ctx.fillRect(tx, ty, cs, cs); }
+          if (cl.e > 0 && cs > 12) { ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.font = `${Math.max(7, cs * 0.28) | 0}px sans-serif`; ctx.textAlign = 'left'; ctx.fillText(String(cl.e), tx + 2, ty + Math.max(9, cs * 0.36)); }
+        }
       }
       // Entities.
       const unitPx = g.cell * (g.density || 1) * g.masterZoom;   // player-scale in editor px
@@ -1009,7 +1050,7 @@
       // Distinct MAP-EDGE indicator (hazard stripes just outside the world bounds)
       // so the creator knows when they're looking at the real edge — deliberately
       // NOT a block look.
-      this._drawMapEdge(ctx, S, m.gridW * g.cell, m.gridH * g.cell);
+      this._drawMapEdge(ctx, S, m.gridW * g.cell, m.gridH * g.cell, TOP);
       // Live shape preview while dragging.
       if (this._shapeAnchor && this._shapeEnd) { ctx.fillStyle = 'rgba(120,180,255,.4)'; for (const p of this._shapeCells(this._shapeAnchor, this._shapeEnd)) { const sp = S(p.c * g.cell, p.r * g.cell); ctx.fillRect(sp.x, sp.y, cs, cs); } }
       // Placement GHOST of the selected tool at the hovered cell (red-X if a building
@@ -1043,6 +1084,37 @@
       // Info line.
       ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.textAlign = 'left'; ctx.font = '12px sans-serif';
       ctx.fillText(`${this.world.name} · ${m.baseW || m.gridW}×${m.baseH || m.gridH} @ density ${m.density} (${m.gridW}×${m.gridH} cells) · ${this.world.mode} · tool: ${this._shift ? 'erase' : this.tool} @ elev ${this.elevLevel}`, 158, CANVAS_H - 10);
+      // SCROLLBARS — a position indicator so creators know where they are in a big map.
+      { const worldW = m.gridW * g.cell, worldH = m.gridH * g.cell, viewW = CANVAS_W / z, viewH = (CANVAS_H - TOP) / z, RAIL = 150;
+        ctx.save();
+        const hx0 = RAIL + 8, hx1 = CANVAS_W - 14, htrk = hx1 - hx0, hsy = CANVAS_H - 6;
+        if (htrk > 20) { ctx.fillStyle = 'rgba(255,255,255,.10)'; ctx.fillRect(hx0, hsy, htrk, 4);
+          const tw = Math.max(20, htrk * Math.min(1, viewW / worldW)), fx = hx0 + Math.max(0, Math.min(htrk - tw, (this.cam.x / worldW) * htrk));
+          ctx.fillStyle = 'rgba(120,180,255,.65)'; ctx.fillRect(fx, hsy, tw, 4); }
+        const vy0 = TOP + 8, vy1 = CANVAS_H - 14, vtrk = vy1 - vy0, vsx = CANVAS_W - 6;
+        if (vtrk > 20) { ctx.fillStyle = 'rgba(255,255,255,.10)'; ctx.fillRect(vsx, vy0, 4, vtrk);
+          const th = Math.max(20, vtrk * Math.min(1, viewH / worldH)), fy = vy0 + Math.max(0, Math.min(vtrk - th, (this.cam.y / worldH) * vtrk));
+          ctx.fillStyle = 'rgba(120,180,255,.65)'; ctx.fillRect(vsx, fy, 4, th); }
+        ctx.restore();
+      }
+      // PERF overlay (⏱ Perf checkbox) — FPS, render time, terrain draw mode, cell counts.
+      if (this.view.perf) {
+        const ring = this._fpsRing || (this._fpsRing = []); ring.push(_pt0); if (ring.length > 30) ring.shift();
+        const fps = ring.length > 1 ? ((ring.length - 1) * 1000 / Math.max(1, _pt0 - ring[0])) : 0;
+        const visCells = (c1 - c0 + 1) * (r1 - r0 + 1);
+        const ms = (typeof performance !== 'undefined' && performance.now) ? (performance.now() - _pt0) : 0;
+        const lines = [`${fps.toFixed(0)} fps · ${ms.toFixed(1)} ms render`,
+          `terrain: ${editingLive ? 'LIVE — ' + visCells + ' cells' : 'CACHED — 1 blit'}`,
+          `zoom ${z.toFixed(2)}× · cam ${this.cam.x | 0},${this.cam.y | 0}`,
+          `map ${m.baseW || m.gridW}×${m.baseH || m.gridH} d${m.density} = ${m.gridW}×${m.gridH} cells`,
+          `viewport ${visCells} cells`];
+        ctx.save(); ctx.font = '12px monospace'; ctx.textAlign = 'left';
+        const w = 250, h = lines.length * 16 + 12, bx = CANVAS_W - w - 12, by = TOP + 8;
+        ctx.fillStyle = 'rgba(8,12,20,.85)'; ctx.fillRect(bx, by, w, h);
+        ctx.strokeStyle = fps < 40 ? '#e0a04a' : 'rgba(120,180,255,.5)'; ctx.strokeRect(bx + .5, by + .5, w, h);
+        ctx.fillStyle = fps < 40 ? '#ffcc80' : '#cfe0ff'; lines.forEach((L, i) => ctx.fillText(L, bx + 8, by + 18 + i * 16));
+        ctx.restore();
+      }
     },
     // Translucent preview of the selected tool at the hovered cell. Buildings show
     // a red X when they can't fit (off the map / overlapping another building). The
@@ -1080,22 +1152,27 @@
       ctx.restore();
     },
     // Yellow/black hazard stripes in a band just OUTSIDE each world edge.
-    _drawMapEdge(ctx, S, worldW, worldH) {
-      const tl = S(0, 0), brc = S(worldW, worldH); const W = 14;
+    _drawMapEdge(ctx, S, worldW, worldH, TOP) {
+      const tl = S(0, 0), brc = S(worldW, worldH), W = 7, RAIL = 150, NEAR = 170, top = TOP || 0;   // W halved (was 14)
       const band = (x, y, w, h) => {
         if (w <= 0 || h <= 0) return;
         ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
-        ctx.fillStyle = '#1a1a1a'; ctx.fillRect(x, y, w, h);
-        ctx.strokeStyle = '#ffd23a'; ctx.lineWidth = 6;
-        for (let i = -h - w; i < w + h; i += 16) { ctx.beginPath(); ctx.moveTo(x + i, y + h); ctx.lineTo(x + i + h, y); ctx.stroke(); }
+        ctx.fillStyle = '#3a2f08'; ctx.fillRect(x, y, w, h);   // amber ground so it reads YELLOW even at 7px
+        ctx.strokeStyle = '#ffd23a'; ctx.lineWidth = 4;
+        for (let i = -h - w; i < w + h; i += 11) { ctx.beginPath(); ctx.moveTo(x + i, y + h); ctx.lineTo(x + i + h, y); ctx.stroke(); }
         ctx.restore();
       };
-      band(tl.x - W, tl.y - W, brc.x - tl.x + 2 * W, W);          // top
-      band(tl.x - W, brc.y, brc.x - tl.x + 2 * W, W);            // bottom
-      band(tl.x - W, tl.y, W, brc.y - tl.y);                     // left
-      band(brc.x, tl.y, W, brc.y - tl.y);                        // right
-      // Bold dashed boundary line right on the world edge — unmistakable.
-      ctx.save(); ctx.strokeStyle = '#ff3ea8'; ctx.lineWidth = 3; ctx.setLineDash([10, 6]);
+      // Pin the top/left bands to the chrome edge when the true edge sits just behind the
+      // command bar / tool rail, so the boundary shows at ALL zoom levels — not only zoomed
+      // way out (previously the left edge hid under the tool rail until fully zoomed out).
+      let lx = tl.x - W; if (lx < RAIL && lx > RAIL - NEAR) lx = RAIL;
+      let ty = tl.y - W; if (ty < top && ty > top - NEAR) ty = top;
+      band(lx, ty, brc.x + W - lx, W);          // top
+      band(lx, brc.y, brc.x + W - lx, W);       // bottom
+      band(lx, ty, W, brc.y - ty);              // left
+      band(brc.x, ty, W, brc.y - ty);           // right
+      // Bright dashed boundary line right on the world edge — unmistakable.
+      ctx.save(); ctx.strokeStyle = '#ffe14d'; ctx.lineWidth = 3; ctx.setLineDash([10, 6]);
       ctx.strokeRect(tl.x, tl.y, brc.x - tl.x, brc.y - tl.y); ctx.setLineDash([]); ctx.restore();
     },
     list() { try { return Object.keys(JSON.parse(localStorage.getItem('steveo_overhead_worlds') || '{}')); } catch (e) { return []; } },
