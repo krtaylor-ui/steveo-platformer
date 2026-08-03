@@ -346,6 +346,24 @@
       if (!cells.length) cells.push({ col: a.col, row: a.row });
       return cells;
     },
+    // Cells a swinging gate's panel occupies at angle `deg` (from its hinge col/row, `len` long).
+    gateCells(gt, deg, gw, gh) {
+      const a = deg * Math.PI / 180, dc = Math.cos(a), dr = Math.sin(a), len = Math.max(1, gt.len || 1), out = [];
+      let pc = gt.col, pr = gt.row;
+      for (let i = 1; i <= len; i++) { const cc = Math.round(gt.col + dc * i), rr = Math.round(gt.row + dr * i);
+        if (cc >= 0 && rr >= 0 && cc < gw && rr < gh && !(cc === pc && rr === pr)) out.push({ col: cc, row: rr }); pc = cc; pr = rr; }
+      return out;
+    },
+    // Draw gates as BLOCK-based panels — stacked `planks` cubes (log hinge post) at the gate's
+    // height, honoring the same 2.5D stacking offset + face shading as terrain.
+    drawGates(ctx, S, cs, cell, gates, cellsOf) {
+      for (const gt of gates) {
+        const height = Math.max(1, gt.height || 2), cells = cellsOf ? cellsOf(gt) : [];
+        const all = [{ col: gt.col, row: gt.row, post: true }].concat(cells);
+        all.sort((a, b) => (a.row + a.col) - (b.row + b.col));
+        for (const c of all) { const sp = S(c.col * cell, c.row * cell); this.drawTerrainCube(ctx, c.post ? 'log' : 'planks', sp.x, sp.y, cs, height, true, true); }
+      }
+    },
     bridgeSpanCells(span) {
       const line = this.spanCells(span.from || { col: span.col, row: span.row }, span.to || span.from || { col: span.col, row: span.row });
       const w = Math.max(1, span.width | 0);

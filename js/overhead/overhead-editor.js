@@ -260,11 +260,12 @@
           #oh-rail .btn.on{background:#3a5a8c;border-color:#5573ad}
           #oh-rail .oh-top3{display:flex;gap:6px} #oh-rail .oh-top3 .btn{flex:1;text-align:center;padding:8px 3px}
           #oh-rail .oh-gap{height:8px}
-          .oh-fly{position:absolute;left:124px;top:0;min-width:168px;max-height:74vh;overflow:auto;background:#1a2233;border:1px solid #3a4a6b;border-radius:8px;padding:6px;display:none;z-index:9100;box-shadow:5px 6px 20px rgba(0,0,0,.55)}
-          #oh-rail .grp:hover>.oh-fly{display:block}
+          .oh-fly{position:absolute;left:112px;top:-2px;min-width:172px;max-height:74vh;overflow:auto;background:#1a2233;border:1px solid #3a4a6b;border-radius:8px;padding:6px 6px 6px 12px;display:none;z-index:9100;box-shadow:5px 6px 20px rgba(0,0,0,.55)}
+          #oh-rail .grp:hover>.oh-fly,.oh-fly:hover{display:block}
           .oh-fly .opt{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:5px;cursor:pointer}
           .oh-fly .opt:hover{background:#2a3852} .oh-fly .opt.sel{background:#3a5a8c}
           .oh-fly .opt.small{padding:4px 7px} .oh-sw{width:16px;height:16px;border-radius:3px;border:1px solid rgba(255,255,255,.3);flex:none}
+          .oh-ic{width:20px;height:20px;flex:none;image-rendering:pixelated;filter:drop-shadow(0 1px 1px rgba(0,0,0,.4))}
           #oh-create-modal{position:fixed;inset:0;z-index:9500;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.65)}
           .ohc-panel{background:#141a26;border:1px solid #2c3648;border-radius:12px;padding:20px 22px;min-width:320px;color:#e8eef7;font:14px sans-serif}
           .ohc-panel h2{margin:0 0 12px} .ohc-panel label{display:block;margin:8px 0;font-size:13px}
@@ -323,8 +324,8 @@
       const tplList = (typeof OH_TEMPLATES !== 'undefined') ? OH_TEMPLATES.forWorld(this.world) : [];
       const tplOpts = tplList.map((t) => `<div class="opt ${this.tool === 'template' && this._templateId === t.id ? 'sel' : ''}" data-template="${t.id}">${t.system ? '🧩' : '📦'} ${this._esc(t.name)}</div>`).join('')
         + `<div class="opt" data-newtemplate="1" style="color:#7fe0a0">＋ New Template…</div>`;
-      const mobOpts = P().OH_MOBS.map((mm) => `<div class="opt ${this.tool === 'mob' && this.mobKey === mm.key ? 'sel' : ''}" data-mob="${mm.key}">${swatch(mm.color)}${mm.name}</div>`).join('');
-      const itemOpts = P().OH_ITEMS.map((i) => `<div class="opt ${this.tool === 'item' && this.itemKey === i.key ? 'sel' : ''}" data-item="${i.key}">${swatch(i.color)}${i.name}</div>`).join('');
+      const mobOpts = P().OH_MOBS.map((mm) => `<div class="opt ${this.tool === 'mob' && this.mobKey === mm.key ? 'sel' : ''}" data-mob="${mm.key}"><img class="oh-ic" src="${this._mobIcon(mm)}">${mm.name}</div>`).join('');
+      const itemOpts = P().OH_ITEMS.map((i) => `<div class="opt ${this.tool === 'item' && this.itemKey === i.key ? 'sel' : ''}" data-item="${i.key}"><img class="oh-ic" src="${this._itemIcon(i)}">${i.name}</div>`).join('');
       const rsOpts = `<div class="opt ${this.tool === 'lever' ? 'sel' : ''}" data-rs="lever">🔧 Lever (E to flip)</div>`
         + `<div class="opt ${this.tool === 'dust' ? 'sel' : ''}" data-rs="dust">🟥 Redstone dust</div>`
         + `<div class="opt ${this.tool === 'lamp' ? 'sel' : ''}" data-rs="lamp">💡 Lamp</div>`
@@ -792,6 +793,35 @@
     // ── Configuration modals (portal/pipe, goal star, spawn) ───────────────────
     _portalList() { let n = 0; return (this.world.buildings || []).filter((b) => b.typeId === 'portal' || b.typeId === 'pipe').map((b) => ({ key: b.col + ',' + b.row, n: ++n, label: '#' + n + ' ' + (b.typeId === 'pipe' ? 'Pipe' : 'Portal') + ' (' + b.col + ',' + b.row + ')' })); },
     _portalNum(b) { const p = this._portalList().find((x) => x.key === b.col + ',' + b.row); return p ? p.n : '?'; },
+    // Cached palette icons (data URLs, rendered once per key).
+    _icon(key, drawFn) {
+      this._iconCache = this._iconCache || {};
+      if (this._iconCache[key]) return this._iconCache[key];
+      let url = '';
+      try { const s = 20, cv = document.createElement('canvas'); cv.width = s; cv.height = s; const cx = cv.getContext('2d'); drawFn(cx, s); url = cv.toDataURL(); } catch (e) {}
+      this._iconCache[key] = url; return url;
+    },
+    _mobIcon(mm) { return this._icon('mob:' + mm.key, (cx, s) => {   // a little side-profile creature head
+      cx.fillStyle = mm.color; cx.beginPath(); cx.arc(s * 0.44, s * 0.55, s * 0.34, 0, 7); cx.fill();   // head
+      cx.fillRect(s * 0.44, s * 0.46, s * 0.44, s * 0.24);   // snout
+      cx.fillStyle = 'rgba(0,0,0,.25)'; cx.fillRect(s * 0.78, s * 0.46, s * 0.1, s * 0.24);   // nose shade
+      cx.fillStyle = '#fff'; cx.beginPath(); cx.arc(s * 0.56, s * 0.46, s * 0.09, 0, 7); cx.fill();   // eye
+      cx.fillStyle = '#000'; cx.beginPath(); cx.arc(s * 0.585, s * 0.47, s * 0.045, 0, 7); cx.fill();
+      cx.fillStyle = mm.color; cx.beginPath(); cx.moveTo(s * 0.2, s * 0.28); cx.lineTo(s * 0.34, s * 0.12); cx.lineTo(s * 0.42, s * 0.34); cx.closePath(); cx.fill();   // ear
+    }); },
+    _itemIcon(i) { return this._icon('item:' + i.key, (cx, s) => { if (OVERHEAD.drawItemSprite) OVERHEAD.drawItemSprite(cx, i.key, s * 0.5, s * 0.52, s * 0.9); else { cx.fillStyle = i.color; cx.fillRect(2, 2, s - 4, s - 4); } }); },
+    // Name of whatever sits at a cell (top-most entity, else the terrain block) — for the hover tooltip.
+    _hoverName(col, row) {
+      const m = this.world.mapSnapshot; if (!m.ground[row]) return '';
+      const b = this._buildingAt(col, row); if (b) { const t = OH_BUILDINGS.get(b.typeId); return (t && (t.name || t.label)) || b.typeId; }
+      const mob = (this.world.mobs || []).find((x) => x.col === col && x.row === row); if (mob) { const d = P().OH_MOB_BY_KEY[mob.type]; return (d && d.name) || mob.type; }
+      const it = (this.world.items || []).find((x) => x.col === col && x.row === row); if (it) { const d = P().OH_ITEM_BY_KEY[it.itemKey]; return (d && d.name) || it.itemKey; }
+      const dev = (this.world.redstone || []).find((x) => x.col === col && x.row === row); if (dev) return dev.kind;
+      if ((this.world.gates || []).some((x) => x.col === col && x.row === row)) return 'gate hinge';
+      const e = m.elevation[row] ? (m.elevation[row][col] | 0) : 0, key = m.ground[row][col] || 'grass';
+      const td = P().OH_TERRAIN_BY_KEY && P().OH_TERRAIN_BY_KEY[key];
+      return ((td && (td.name || td.label)) || key) + (e > 0 ? ' · lvl ' + e : '');
+    },
     _buildingAt(col, row) { return (this.world.buildings || []).find((b) => { const t = OH_BUILDINGS.get(b.typeId); const w = t ? t.footprint.w : 1, h = t ? t.footprint.h : 1; return col >= b.col && col < b.col + w && row >= b.row && row < b.row + h; }); },
     // A building must be on the map, not overlap another, and (if raised) have blocks under
     // all four footprint corners to rest on. Shared by the placement ghost + actual placement.
@@ -1097,17 +1127,14 @@
         if (b.typeId === 'portal' || b.typeId === 'pipe') { const br = Math.max(11, cs * 0.5), cyN = by + cs * 0.4; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.beginPath(); ctx.arc(bx + w / 2, cyN, br, 0, 7); ctx.fill(); ctx.strokeStyle = '#b56bde'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(12, cs * 0.55) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('#' + this._portalNum(b), bx + w / 2, cyN); ctx.textBaseline = 'alphabetic'; } }
       if (this.view.mobs) for (const mo of this.world.mobs) { if (hiAbove(m.elevation[mo.row] ? m.elevation[mo.row][mo.col] : 0)) continue; const d = P().OH_MOB_BY_KEY[mo.type] || P().OH_MOBS[0]; const sp = S((mo.col + 0.5) * g.cell, (mo.row + 0.5) * g.cell); ctx.strokeStyle = 'rgba(150,150,160,.9)'; ctx.lineWidth = 2; ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(sp.x, sp.y, unitPx * 0.34, 0, 7); ctx.fill(); ctx.stroke(); }
       if (this.view.items) for (const it of this.world.items) { if (hiAbove(m.elevation[it.row] ? m.elevation[it.row][it.col] : 0)) continue; const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); OVERHEAD.drawItemSprite(ctx, it.itemKey, sp.x, sp.y, unitPx * 0.8); }
-      // Swinging gates (shown at their rest position — the hinge + the panel line).
-      for (const gt of (this.world.gates || [])) {
-        const a = (gt.rest || 0) * Math.PI / 180, hinge = S((gt.col + 0.5) * g.cell, (gt.row + 0.5) * g.cell);
-        ctx.save(); ctx.strokeStyle = '#7a5a30'; ctx.lineWidth = Math.max(3, cs * 0.3); ctx.lineCap = 'round';
-        ctx.fillStyle = '#4a3620'; ctx.beginPath(); ctx.arc(hinge.x, hinge.y, cs * 0.2, 0, 7); ctx.fill();
-        const tip = S((gt.col + 0.5 + Math.cos(a) * (gt.len || 1)) * g.cell, (gt.row + 0.5 + Math.sin(a) * (gt.len || 1)) * g.cell);
-        ctx.beginPath(); ctx.moveTo(hinge.x, hinge.y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
-        // an arc hint showing the powered swing
-        ctx.strokeStyle = 'rgba(130,205,255,.5)'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]); const R2 = Math.hypot(tip.x - hinge.x, tip.y - hinge.y);
-        ctx.beginPath(); ctx.arc(hinge.x, hinge.y, R2, a, a + (gt.angle || 90) * Math.PI / 180, (gt.angle || 90) < 0); ctx.stroke(); ctx.setLineDash([]);
-        ctx.restore();
+      // Swinging gates — block-based panels at rest, plus a dashed arc hint for the powered swing.
+      if ((this.world.gates || []).length) {
+        OVERHEAD.drawGates(ctx, S, cs, g.cell, this.world.gates, (gt) => OVERHEAD.gateCells(gt, gt.rest || 0, m.gridW, m.gridH));
+        for (const gt of this.world.gates) {
+          const a = (gt.rest || 0) * Math.PI / 180, hy = (gt.height || 2) * Q, hinge = S((gt.col + 0.5) * g.cell, (gt.row + 0.5) * g.cell);
+          const R2 = (gt.len || 1) * cs; ctx.save(); ctx.strokeStyle = 'rgba(130,205,255,.55)'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
+          ctx.beginPath(); ctx.arc(hinge.x - hy, hinge.y - hy, R2, a, a + (gt.angle || 90) * Math.PI / 180, (gt.angle || 90) < 0); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+        }
       }
       // Template overlay voxels (placed models — trees/houses) — additive on top of terrain.
       for (const v of this._templateVoxels()) { if (hiAbove(v.elev)) continue; const sp = S(v.col * g.cell, v.row * g.cell); OVERHEAD.drawTerrainCube(ctx, v.block, sp.x - (v.elev - 1) * Q, sp.y - (v.elev - 1) * Q, cs, 1, true, true); }
@@ -1162,6 +1189,12 @@
       // Placement GHOST of the selected tool at the hovered cell (red-X if a building
       // won't fit). Not shown in hand mode or while dragging/shaping.
       this._drawGhost(ctx, S, cs, Q);
+      // Hover tooltip — name of whatever is under the cursor (cheap: one lookup + a text box).
+      if (this._hover && !this._pan && !this._dragging) { const nm = this._hoverName(this._hover.col, this._hover.row);
+        if (nm) { const e = (m.elevation[this._hover.row] ? (m.elevation[this._hover.row][this._hover.col] | 0) : 0), sp = S((this._hover.col + 0.5) * g.cell, this._hover.row * g.cell), tx = sp.x - e * Q, ty = sp.y - e * Q;
+          ctx.save(); ctx.font = '12px sans-serif'; ctx.textAlign = 'center'; const w = ctx.measureText(nm).width + 12;
+          ctx.fillStyle = 'rgba(12,16,24,.9)'; ctx.fillRect(tx - w / 2, ty - 22, w, 17); ctx.strokeStyle = 'rgba(120,150,190,.5)'; ctx.strokeRect(tx - w / 2 + .5, ty - 21.5, w, 17);
+          ctx.fillStyle = '#dbe4f3'; ctx.fillText(nm, tx, ty - 10); ctx.restore(); } }
       // Selection cells (cyan) + live marquee + paste ghost.
       if (this._sel) { ctx.save(); ctx.fillStyle = 'rgba(90,200,255,.28)'; ctx.strokeStyle = 'rgba(150,230,255,.9)'; ctx.lineWidth = 1;
         for (const k of this._sel) { const [c, r] = k.split(',').map(Number); const sp = S(c * g.cell, r * g.cell); ctx.fillRect(sp.x, sp.y, cs, cs); ctx.strokeRect(sp.x + .5, sp.y + .5, cs - 1, cs - 1); } ctx.restore(); }
