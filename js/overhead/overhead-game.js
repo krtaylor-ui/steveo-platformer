@@ -298,16 +298,18 @@
         if (near && !this._portalCd && intent.action) {
           const cfg = near.config || {}; const label = near.typeId === 'pipe' ? 'pipe' : 'portal';
           if (cfg.isGoal) { actionUsed = true; this._wonExitColor = (this.goal && this.goal.color) || 0; this._win(); }
-          else if (cfg.dest && this._portalByKey.has(cfg.dest)) {
+          else if (cfg.dest && (this._portalByKey.get(cfg.dest) || this._portalCells.get(cfg.dest))) {
             // Land just IN FRONT of (below) the destination portal — it's solid, so
             // don't drop the player inside it. Guard against instant re-trigger.
+            // Resolve the destination by its anchor OR ANY footprint cell (a pipe is 2×2, so a
+            // dest pointing at a non-anchor cell must still link — the earlier bug).
             actionUsed = true;
-            const db = this._portalByKey.get(cfg.dest), dt = OH_BUILDINGS.get(db.typeId), dw = dt ? dt.footprint.w : 1, dh = dt ? dt.footprint.h : 1;
+            const db = this._portalByKey.get(cfg.dest) || this._portalCells.get(cfg.dest), dt = OH_BUILDINGS.get(db.typeId), dw = dt ? dt.footprint.w : 1, dh = dt ? dt.footprint.h : 1;
             const px = (db.col + dw / 2) * this.grid.cell, py = (db.row + dh + 0.5) * this.grid.cell;
-            const dest = { px, py, key: cfg.dest };
+            const dest = { px, py, key: db.col + ',' + db.row };
             // A PIPE plays the climb-in animation, THEN teleports; a portal is instant.
             if (near.typeId === 'pipe' && this.settings.pipeClimbAnim !== false) { this._startPipeClimb(near, dest); }
-            else { const c = this._cellOf(px, py); p.x = px; p.y = py; p.elev = this._elev(c.col, c.row); this._portalCd = true; this._portalGlow = { keys: [nk, cfg.dest], t: 42 }; }
+            else { const c = this._cellOf(px, py); p.x = px; p.y = py; p.elev = this._elev(c.col, c.row); this._portalCd = true; this._portalGlow = { keys: [nk, dest.key], t: 42 }; }
           } else {
             // In range + pressed E, but this end has no destination — tell the player
             // instead of silently doing nothing (and don't fall through to the statue).
@@ -362,7 +364,15 @@
           // gap / pit / lower ground (can only leave at the ends — same-level ground
           // or another bridge cell).
           const rails = curBridge && (curBridge.rail != null ? curBridge.rail : this._bridgeGuardrails);
-          if (curBridge && rails && !tb) { const tk = this._key(c.col, c.row); if (tk == null || tk === 'pit' || this._elev(c.col, c.row) < (curBridge.elev | 0)) return false; }
+          if (curBridge && rails && !tb) {
+            // Guardrails are only on the LONG SIDES: block a step off the bridge that is
+            // PERPENDICULAR to its run (falling off the side), but allow stepping off the
+            // ENDS onto land (entering/exiting). Along-axis steps fall through to normal logic.
+            const fc = curBridge.from ? curBridge.from.col : curBridge.col, fr = curBridge.from ? curBridge.from.row : curBridge.row;
+            const tc = curBridge.to ? curBridge.to.col : fc, tr = curBridge.to ? curBridge.to.row : fr;
+            const horiz = Math.abs(tc - fc) >= Math.abs(tr - fr), perp = horiz ? ((c.row - cur.row) !== 0) : ((c.col - cur.col) !== 0);
+            if (perp) { const tk = this._key(c.col, c.row); if (tk == null || tk === 'pit' || this._elev(c.col, c.row) < (curBridge.elev | 0)) return false; }
+          }
           if (tb && this._bridgeClosedAt(c.col, c.row)) return tb.elev | 0;   // walkable deck
           // an OPEN drawbridge falls through to normal terrain logic (a gap → fall)
         }
@@ -373,7 +383,7 @@
         if (this._gateSolid && this._gateSolidAt(c.col, c.row)) return false;   // a closed/swinging gate panel blocks
         if (this._templateSolid && this._templateSolid.has(c.col + ',' + c.row)) return false;   // a template trunk/wall blocks (canopy is pass-under)
         if (key === 'leaves') return ent.elev;               // canopy — always pass under (keep elev)
-        if (key === 'pit') return this._pitsDeadly ? ent.elev : false;   // deadly: step in (fatal after); else a hard obstacle
+        if (key === 'pit') return (this._pitsDeadly && ent === this.player) ? ent.elev : false;   // player steps into a deadly pit (fatal); mobs/others are always BLOCKED (cross only at bridges)
         const tE = this._elev(c.col, c.row), delta = tE - ent.elev;
         if (delta <= 0) {                                    // walk / step down
           // Cliff-fall guard (player only): don't let a WALK drop more than

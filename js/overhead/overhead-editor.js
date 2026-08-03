@@ -260,14 +260,14 @@
           #oh-rail .btn.on{background:#3a5a8c;border-color:#5573ad}
           #oh-rail .oh-top3{display:flex;gap:6px} #oh-rail .oh-top3 .btn{flex:1;text-align:center;padding:8px 3px}
           #oh-rail .oh-gap{height:8px}
-          .oh-fly{position:absolute;left:112px;top:-2px;min-width:172px;max-height:74vh;overflow:auto;background:#1a2233;border:1px solid #3a4a6b;border-radius:8px;padding:6px 6px 6px 12px;display:none;z-index:9100;box-shadow:5px 6px 20px rgba(0,0,0,.55)}
+          .oh-fly{position:absolute;left:112px;top:-2px;min-width:172px;max-height:74vh;overflow:auto;background:#1a2233;border:1px solid #3a4a6b;border-radius:8px;padding:22px 6px 6px 12px;display:none;z-index:9100;box-shadow:5px 6px 20px rgba(0,0,0,.55)}
+          .oh-fly .pin{position:absolute;top:4px;right:8px;opacity:.6;cursor:pointer;font-size:13px;z-index:2} .oh-fly .pin:hover{opacity:1}
           #oh-rail .grp:hover>.oh-fly,.oh-fly:hover{display:block}
           .oh-fly .opt{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:5px;cursor:pointer}
           .oh-fly .opt:hover{background:#2a3852} .oh-fly .opt.sel{background:#3a5a8c}
           .oh-fly .opt.small{padding:4px 7px} .oh-sw{width:16px;height:16px;border-radius:3px;border:1px solid rgba(255,255,255,.3);flex:none}
           .oh-ic{width:20px;height:20px;flex:none;image-rendering:pixelated;filter:drop-shadow(0 1px 1px rgba(0,0,0,.4))}
-          #oh-rail .pin{opacity:.5;cursor:pointer;font-size:11px;margin-left:2px} #oh-rail .pin:hover{opacity:1}
-          #oh-rail .grp.pinned .hd{background:#2e6f4e;border-color:#3f9a6c} #oh-rail .pinx{cursor:pointer;color:#dbe4f3;font-weight:700;padding:0 4px}
+          #oh-rail .grp.pinned .hd{background:#2e6f4e;border-color:#3f9a6c;display:flex;justify-content:space-between} #oh-rail .pinx{cursor:pointer;color:#dbe4f3;font-weight:700;padding:0 4px}
           .oh-pinned{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:6px 4px;max-height:56vh;overflow:auto;background:#1a2233;border:1px solid #3a4a6b;border-top:none;border-radius:0 0 8px 8px}
           .oh-pinned .opt{display:flex;align-items:center;gap:5px;padding:5px 6px;border-radius:5px;cursor:pointer;font-size:11px;overflow:hidden}
           .oh-pinned .opt:hover{background:#2a3852} .oh-pinned .opt.sel{background:#3a5a8c}
@@ -344,7 +344,7 @@
         + `<div class="opt small" style="color:#8fa0bd">Hand-click a device to set its transmit / receive channel. Lever/plate + Drawbridge share "gate" by default.</div>`;
       const grp = (label, cur, opts, active, sw) => {
         if (this._pinnedGrp === label) return `<div class="grp pinned"><div class="hd on"><b>${label}</b><span class="pinx" data-unpin="1" title="Unpin">✕</span></div><div class="oh-pinned">${opts}</div></div>`;
-        return `<div class="grp"><div class="hd ${active ? 'on' : ''}"><b>${label} ▸</b><span class="cur">${sw || ''}${cur}<span class="pin" data-pin="${label}" title="Pin this palette open">📌</span></span></div><div class="oh-fly">${opts}</div></div>`;
+        return `<div class="grp"><div class="hd ${active ? 'on' : ''}"><b>${label} ▸</b><span class="cur">${sw || ''}${cur}</span></div><div class="oh-fly"><span class="pin" data-pin="${label}" title="Pin this palette open">📌</span>${opts}</div></div>`;
       };
       const shapeOpts = [['freehand', 'Freehand (B)'], ['line', 'Line (L)'], ['rect', 'Rectangle (R)'], ['circle', 'Circle / Oval (O)'], ['fill', '🪣 Fill / bucket (G)']].map(([k, n]) => `<div class="opt small ${this.shape === k ? 'sel' : ''}" data-shape="${k}">${n}</div>`).join('')
         + `<div class="opt small ${this.shapeFill ? 'sel' : ''}" data-fill="1">${this.shapeFill ? '☑' : '☐'} Solid (else outline = brush width)</div>`
@@ -864,7 +864,8 @@
     // Select whatever is at a cell (top-most entity, else the terrain block) + show the action bar.
     _selectObjAt(col, row) {
       const b = this._buildingAt(col, row);
-      const gt = (this.world.gates || []).find((x) => x.col === col && x.row === row);
+      const m0 = this.world.mapSnapshot;
+      const gt = (this.world.gates || []).find((x) => (x.col === col && x.row === row) || OVERHEAD.gateCells(x, x.rest || 0, m0.gridW, m0.gridH).some((cc) => cc.col === col && cc.row === row));   // hinge OR any panel cell
       const dev = (this.world.redstone || []).find((d) => d.col === col && d.row === row);
       const span = (this.world.bridges || []).find((x) => OVERHEAD.bridgeSpanCells(x).some((cc) => cc.col === col && cc.row === row));
       const mob = (this.world.mobs || []).find((m) => m.col === col && m.row === row);
