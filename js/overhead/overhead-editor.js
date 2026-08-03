@@ -274,7 +274,9 @@
           #oh-create-modal{position:fixed;inset:0;z-index:9500;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.65)}
           .ohc-panel{background:#141a26;border:1px solid #2c3648;border-radius:12px;padding:20px 22px;min-width:320px;color:#e8eef7;font:14px sans-serif}
           .ohc-panel h2{margin:0 0 12px} .ohc-panel label{display:block;margin:8px 0;font-size:13px}
-          .ohc-panel select,.ohc-panel input{width:100%;background:#1c2230;border:1px solid #3a465c;color:#e8eef7;border-radius:6px;padding:6px;margin-top:3px}
+          .ohc-panel select,.ohc-panel input:not([type=checkbox]):not([type=radio]){width:100%;box-sizing:border-box;background:#1c2230;border:1px solid #3a465c;color:#e8eef7;border-radius:6px;padding:6px;margin-top:3px}
+          .ohc-panel input[type=checkbox]{width:16px;height:16px;flex:none;margin:0;accent-color:#3f9a6c;cursor:pointer;vertical-align:middle}
+          .ohc-panel label:has(input[type=checkbox]){display:flex;align-items:center;gap:8px}
           .ohc-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
           .ohc-btns button{background:#2b3548;border:1px solid #46557a;color:#dfe7f5;border-radius:6px;padding:7px 16px;cursor:pointer} .ohc-btns button.primary{background:#2e6f4e;border-color:#3f9a6c}`;
         document.head.appendChild(s);
@@ -823,6 +825,20 @@
       cx.fillStyle = mm.color; cx.beginPath(); cx.moveTo(s * 0.2, s * 0.28); cx.lineTo(s * 0.34, s * 0.12); cx.lineTo(s * 0.42, s * 0.34); cx.closePath(); cx.fill();   // ear
     }); },
     _itemIcon(i) { return this._icon('item:' + i.key, (cx, s) => { if (OVERHEAD.drawItemSprite) OVERHEAD.drawItemSprite(cx, i.key, s * 0.5, s * 0.52, s * 0.9); else { cx.fillStyle = i.color; cx.fillRect(2, 2, s - 4, s - 4); } }); },
+    // Display name for a selected object (by KIND — not a cell lookup, so bridges/gates
+    // don't report the terrain under them).
+    _selName(sel) {
+      if (!sel) return '';
+      if (sel.kind === 'gate') return 'Gate';
+      if (sel.kind === 'bridge') return sel.ref.draw ? 'Drawbridge' : 'Bridge';
+      if (sel.kind === 'device') return sel.ref.kind;
+      if (sel.kind === 'building') { const t = OH_BUILDINGS.get(sel.ref.typeId); return (t && (t.name || t.label)) || sel.ref.typeId; }
+      if (sel.kind === 'mob') { const d = P().OH_MOB_BY_KEY[sel.ref.type]; return (d && d.name) || sel.ref.type; }
+      if (sel.kind === 'item') { const d = P().OH_ITEM_BY_KEY[sel.ref.itemKey]; return (d && d.name) || sel.ref.itemKey; }
+      if (sel.kind === 'goal') return 'Goal Star';
+      if (sel.kind === 'spawn') return 'Player Spawn';
+      return this._hoverName(sel.col, sel.row);
+    },
     // Name of whatever sits at a cell (top-most entity, else the terrain block) — for the hover tooltip.
     _hoverName(col, row) {
       const m = this.world.mapSnapshot; if (!m.ground[row]) return '';
@@ -830,7 +846,8 @@
       const mob = (this.world.mobs || []).find((x) => x.col === col && x.row === row); if (mob) { const d = P().OH_MOB_BY_KEY[mob.type]; return (d && d.name) || mob.type; }
       const it = (this.world.items || []).find((x) => x.col === col && x.row === row); if (it) { const d = P().OH_ITEM_BY_KEY[it.itemKey]; return (d && d.name) || it.itemKey; }
       const dev = (this.world.redstone || []).find((x) => x.col === col && x.row === row); if (dev) return dev.kind;
-      if ((this.world.gates || []).some((x) => x.col === col && x.row === row)) return 'gate hinge';
+      if ((this.world.gates || []).some((x) => (x.col === col && x.row === row) || OVERHEAD.gateCells(x, x.rest || 0, m.gridW, m.gridH).some((cc) => cc.col === col && cc.row === row))) return 'gate';
+      if ((this.world.bridges || []).some((x) => OVERHEAD.bridgeSpanCells(x).some((cc) => cc.col === col && cc.row === row))) return 'bridge';
       const e = m.elevation[row] ? (m.elevation[row][col] | 0) : 0, key = m.ground[row][col] || 'grass';
       const td = P().OH_TERRAIN_BY_KEY && P().OH_TERRAIN_BY_KEY[key];
       return ((td && (td.name || td.label)) || key) + (e > 0 ? ' · lvl ' + e : '');
@@ -905,7 +922,7 @@
       let bar = document.getElementById('oh-selbar');
       if (!this._selEnt) { if (bar) bar.style.display = 'none'; return; }
       if (!bar) { bar = document.createElement('div'); bar.id = 'oh-selbar'; bar.style.cssText = 'position:fixed;z-index:9200;display:flex;gap:4px;align-items:center;background:#1a2233;border:1px solid #46557a;border-radius:8px;padding:4px 5px;box-shadow:0 4px 14px rgba(0,0,0,.55);font:12px sans-serif'; document.body.appendChild(bar); }
-      const sel = this._selEnt, name = this._hoverName(sel.col, sel.row);
+      const sel = this._selEnt, name = this._selName(sel);
       const btn = (id, txt, bg) => `<button data-sb="${id}" style="background:${bg || '#2b3548'};border:1px solid #46557a;color:#dfe7f5;border-radius:6px;padding:5px 9px;cursor:pointer;white-space:nowrap">${txt}</button>`;
       bar.innerHTML = `<span style="color:#9fb0cc;padding:0 6px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>`
         + (this._selMovable(sel) ? btn('move', '✥ Move') : '')

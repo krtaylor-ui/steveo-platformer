@@ -66,13 +66,14 @@ console.log('Click-selected entity delete (_deleteObj):');
 console.log('Unified selection + action bar logic:');
 {
   const m = mkMap(16, 16), ed = mkEd(m);
-  Object.assign(ed, { _buildingAt: OH_EDITOR._buildingAt, _selectObjAt: OH_EDITOR._selectObjAt, _selHasSettings: OH_EDITOR._selHasSettings, _selMovable: OH_EDITOR._selMovable, _deleteSel: OH_EDITOR._deleteSel, _renderSelBar() {}, _hideSelBar() {} });
+  Object.assign(ed, { _buildingAt: OH_EDITOR._buildingAt, _selectObjAt: OH_EDITOR._selectObjAt, _selHasSettings: OH_EDITOR._selHasSettings, _selMovable: OH_EDITOR._selMovable, _deleteSel: OH_EDITOR._deleteSel, _selName: OH_EDITOR._selName, _hoverName: OH_EDITOR._hoverName, _renderSelBar() {}, _hideSelBar() {} });
   ed.world.gates = [{ col: 5, row: 5, len: 2, rest: 0, angle: 90 }];
   ed.world.mobs.push({ col: 2, row: 2, type: 'goomba' });
   m.elevation[7][7] = 3; m.ground[7][7] = 'stone';
   ed._selectObjAt(2, 2); ok(ed._selEnt && ed._selEnt.kind === 'mob', 'clicking a mob selects it (kind=mob)');
   ok(ed._selMovable(ed._selEnt) && !ed._selHasSettings(ed._selEnt), 'a mob is movable and has no settings');
   ed._selectObjAt(5, 5); ok(ed._selEnt.kind === 'gate' && ed._selHasSettings(ed._selEnt), 'clicking a gate selects it and it HAS settings');
+  ok(ed._selName(ed._selEnt) === 'Gate', 'the action bar names a gate "Gate" (not the block underneath)');
   ed._selectObjAt(7, 7); ok(ed._selEnt.kind === 'terrain', 'clicking a plain block selects the terrain');
   ok(ed._selMovable(ed._selEnt), 'a terrain block is movable');
   ed._deleteSel(); ok((m.elevation[7][7] | 0) === 0 && m.ground[7][7] === 'grass', 'deleting a selected block clears that cell');
