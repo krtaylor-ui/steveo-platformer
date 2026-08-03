@@ -337,6 +337,8 @@
         <button id="oh-settings">⚙ Settings</button>
         <button id="oh-test">▶ Test</button>
         <button id="oh-save" class="primary">💾 Save</button>
+        <button id="oh-export" title="Download this world as a .json file (exports what's on screen, saved or not)">⬇ Export</button>
+        <button id="oh-import" title="Load a world .json file into the editor (replaces what's open)">⬆ Import</button>
         <button id="oh-exit">✕ Exit</button>
         <span style="margin-left:12px;display:flex;gap:10px;align-items:center;font-size:12px">
           <label><input type="checkbox" id="oh-v-buildings" ${this.view.buildings ? 'checked' : ''}> Buildings</label>
@@ -434,6 +436,7 @@
       g('oh-undo').onclick = () => this.undo(); g('oh-redo').onclick = () => this.redo();
       g('oh-zin').onclick = () => OH_GRID.zoomBy(this.grid, 1.15); g('oh-zout').onclick = () => OH_GRID.zoomBy(this.grid, 0.87);
       g('oh-test').onclick = () => this._test(); g('oh-save').onclick = () => this._save(); g('oh-exit').onclick = () => this.close();
+      g('oh-export').onclick = () => this._export(); g('oh-import').onclick = () => this._import();
       g('oh-settings').onclick = () => { if (typeof OH_WORLD_SETTINGS !== 'undefined') OH_WORLD_SETTINGS.open(this.world, () => { this._renderBar(); this._pushHistory('settings change'); }); };
       ['buildings', 'mobs', 'items', 'elev', 'hideAbove', 'focusLayer', 'airGhosts', 'perf'].forEach((k) => { const el = g('oh-v-' + k); if (el) el.onchange = () => { this.view[k] = el.checked; }; });
       { const zr = g('oh-zoom'); if (zr) zr.oninput = () => OH_GRID.setZoom(this.grid, +zr.value); }
@@ -1205,8 +1208,56 @@
       this._bindCanvas(); this._renderBar(); this._running = true; requestAnimationFrame(this._loop);
     },
 
+    // The exact object Save writes and Export downloads — one helper so the two can't
+    // drift (an exported file must be loadable by the same migrator that reads a save).
+    _worldPayload() {
+      return Object.assign({}, this.world, { viewMode: 'overhead', gameModeDefault: 'NRM', schemaVersion: (typeof OH_SETTINGS !== 'undefined' && OH_SETTINGS.SCHEMA) || 1 });
+    },
+
+    // ⬇ Export — download the OPEN world (in-memory, so unsaved edits are included)
+    // as a .json file. Built client-side, so it works offline and signed-in alike and
+    // never needs a save first.
+    _export() {
+      if (typeof WORLD_TRANSFER === 'undefined') { this._flash('Export unavailable'); return; }
+      const worldData = this._worldPayload();
+      const name = this.world.name || 'Overhead World';
+      const payload = WORLD_TRANSFER.wrap(worldData, { name, exportedAt: new Date().toISOString() });
+      const ok = WORLD_TRANSFER.download(payload, WORLD_TRANSFER.filename(name, WORLD_TRANSFER.today()));
+      this._flash(ok ? 'Exported ✓' : 'Export failed');
+    },
+
+    // ⬆ Import — replace the open world with one from a .json file. Runs the same
+    // migrator as a normal load, so pre-345 files upgrade on the way in. Refuses
+    // side-scroll files rather than half-loading them.
+    _import() {
+      if (typeof WORLD_TRANSFER === 'undefined') { this._flash('Import unavailable'); return; }
+      WORLD_TRANSFER.pickJsonFile((err, parsed, fileName) => {
+        if (err) { this._flash('Import failed: ' + err.message); return; }
+        if (!parsed) return;                                    // picker cancelled
+        const res = WORLD_TRANSFER.unwrap(parsed, fileName);
+        if (!res.ok) { this._flash('Import failed: ' + res.error); return; }
+        const check = WORLD_TRANSFER.validateOverhead(res.worldData);
+        if (!check.ok) {
+          this._flash('Not an overhead world: ' + check.errors[0]);
+          alert('That file is not an overhead world:\n\n• ' + check.errors.join('\n• ') +
+                '\n\nSide-scroll worlds import from the Sandbox list ("Import from File"), not here.');
+          return;
+        }
+        if (!confirm('Import "' + res.name + '"?\n\nThis REPLACES the world open in the editor. Unsaved changes are lost (undo will not bring them back).')) return;
+        this.world = JSON.parse(JSON.stringify(res.worldData));
+        this.world.name = res.name;
+        this.worldId = null;                                    // imported = a new world until saved
+        if (typeof OH_SETTINGS !== 'undefined' && OH_SETTINGS.migrate) OH_SETTINGS.migrate(this.world);
+        this._setupWorld();
+        this._hist = []; this._histPos = -1; this._pushHistory();   // fresh undo stack for a new world
+        this._terrRev = (this._terrRev || 0) + 1;
+        this._renderBar();
+        this._flash('Imported ✓ — Save to keep it');
+      });
+    },
+
     async _save() {
-      const worldData = Object.assign({}, this.world, { viewMode: 'overhead', gameModeDefault: 'NRM', schemaVersion: (typeof OH_SETTINGS !== 'undefined' && OH_SETTINGS.SCHEMA) || 1 });
+      const worldData = this._worldPayload();
       const name = this.world.name || 'Overhead World';
       try {
         if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {

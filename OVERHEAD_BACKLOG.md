@@ -57,5 +57,48 @@ Plus: **selected Tx always sorted to the top** of `_txChecklist` (and/or a "Curr
 
 ---
 
+## 5. Export World — overhead editor  ✅ SHIPPED build 346 (2026-08-03)
+Built with Import as well (the tester needed it to restore the old fixtures through the
+real code path). Shipped: per-world **Export** on every Sandbox card, **⬇ Export / ⬆ Import**
+in the overhead editor command bar, and **Import from File** made overhead-aware. One shared
+module `js/world-transfer.js` owns the format — documented in `docs/world-file-format.md`,
+sample export at `sample-worlds/Overhead_QA_Test.export.json`, 39 assertions in
+`test/test-world-transfer.js`. Both open decisions below were answered YES. Original spec follows.
+
+### (original spec)
+The side-scroll side has export in **two** places — `SANDBOX_UI.exportWorld()`
+(`js/sandbox-ui.js:715`, the Sandbox card's `sb-export-btn`) and the canvas Load-menu
+per-world Export button (`MENU._exportWorldFromMenu`, `js/menu.js:613`). The **overhead
+editor has neither**: `js/overhead/overhead-editor.js` only has `_save()` (line 1208) →
+localStorage `steveo_overhead_worlds` when offline, or `PUT /api/worlds/sandbox/:id` when
+signed in. There is no way to get an overhead world out as a file.
+
+**Build:** an **Export** button on the overhead editor rail/toolbar beside Save / Test,
+downloading the open world as pretty-printed JSON. Reuse the sandbox payload shape so the
+two engines' files stay interchangeable:
+
+    { world_name, description, game_mode_default: 'NRM',
+      world_data: <this.world + viewMode:'overhead', schemaVersion>, exportedAt }
+
+- Export the **in-memory `this.world`** (same object `_save()` serializes), so an unsaved
+  edit exports what is on screen — not the last saved copy. Stamp `viewMode:'overhead'` and
+  the current `OH_SETTINGS.SCHEMA` exactly as `_save()` does, so the migrator can read it back.
+- Filename `<safe-world-name>-<YYYY-MM-DD>.json` (menu.js convention).
+- Works **offline and signed-in** — build the blob client-side from `this.world` rather than
+  hitting `/api/worlds/sandbox/:id/export`; that avoids needing a save first and is one code
+  path for both modes.
+- `_flash('Exported ✓')` for feedback, matching Save.
+
+**Open decisions:** (a) also add **Import** (file-picker → validate `viewMode==='overhead'` →
+run the migrator → load into the editor)? Kevin only asked for export, but import is the
+natural pair and the offline-import path has a known **lands-as-NRM** caveat to respect.
+(b) Should the Sandbox card's existing Export button also cover overhead worlds stored in
+`steveo_overhead_worlds` (a different store from `LOCAL_WORLDS`, so it does not today)?
+
+**Effort:** small — one button + ~20 lines lifted from `exportWorld()`, plus a headless test
+that the exported JSON round-trips through the migrator. Import (if taken) adds a modest pass.
+
+---
+
 ### Also confirmed this loop (already shipped, builds 307–312)
 debug HUD · lit lamps + cleaner shadows · dust-is-wire · sinks receive-only · click-coords fix · offline overhead list · live sprint HUD · drawbridge polarity toggle · weight threshold 1 · two-state lava · lock-keys fix · lava editor migration · world dates · QA regression fixtures.

@@ -310,6 +310,7 @@ const SANDBOX = {
           <button class="btn btn-primary edit-world-btn" data-world-id="${this._esc(w.id)}">Edit</button>
           <button class="btn btn-secondary rename-world-btn" data-world-id="${this._esc(w.id)}">Rename</button>
           <button class="btn btn-secondary copy-world-btn" data-world-id="${this._esc(w.id)}">Copy</button>
+          <button class="btn btn-secondary export-world-btn" data-world-id="${this._esc(w.id)}" title="Download this world as a .json file">Export</button>
           <button class="btn btn-danger delete-world-btn" data-world-id="${this._esc(w.id)}">Delete</button>
         </div>
       </div>`;
@@ -324,6 +325,8 @@ const SANDBOX = {
       btn.addEventListener('click', (e) => this.renameWorld(e.currentTarget.dataset.worldId)));
     list.querySelectorAll('.copy-world-btn').forEach(btn =>
       btn.addEventListener('click', (e) => this.copyWorld(e.currentTarget.dataset.worldId)));
+    list.querySelectorAll('.export-world-btn').forEach(btn =>
+      btn.addEventListener('click', (e) => this.exportWorldById(e.currentTarget.dataset.worldId)));
     list.querySelectorAll('.delete-world-btn').forEach(btn =>
       btn.addEventListener('click', (e) => {
         if (confirm('Delete this world? This cannot be undone.')) this.deleteWorld(e.currentTarget.dataset.worldId);
@@ -639,7 +642,59 @@ const SANDBOX = {
     return 'Imported World';
   },
 
+  // An OVERHEAD world can't go through the normal import path — that writes to
+  // LOCAL_WORLDS / the side-scroll rows and forces the mode to NRM, so the world would
+  // vanish from the Overhead view. Route it to the same places the overhead editor's
+  // Save uses (own offline store, or a sandbox row + PUT when signed in).
+  async _importOverheadWorld(worldData, name) {
+    const check = WORLD_TRANSFER.validateOverhead(worldData);
+    if (!check.ok) { alert('That overhead world file looks damaged:\n\n• ' + check.errors.join('\n• ')); return null; }
+    const wd = JSON.parse(JSON.stringify(worldData));
+    wd.name = name;
+    wd.viewMode = 'overhead';
+    wd.gameModeDefault = 'NRM';
+    if (typeof OH_SETTINGS !== 'undefined' && OH_SETTINGS.migrate) OH_SETTINGS.migrate(wd);   // upgrade old files on the way in
+    wd.created_at = wd.created_at || new Date().toISOString();
+
+    if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
+      const all = this._ohStore();
+      let key = 'oh-' + name, n = 2;
+      while (Object.prototype.hasOwnProperty.call(all, key)) key = 'oh-' + name + ' (' + (n++) + ')';   // never clobber an existing world
+      all[key] = wd;
+      try { localStorage.setItem('steveo_overhead_worlds', JSON.stringify(all)); }
+      catch (e) { alert('Could not save the imported world (browser storage full?)'); return null; }
+      return name;
+    }
+    const cr = await AUTH.authedFetch('/api/worlds/sandbox/create', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ worldName: name, description: wd.description || 'Overhead world', worldWidth: 25, worldHeight: 15, gameModeDefault: 'NRM' }) });
+    const row = await cr.json();
+    if (!cr.ok) { alert('Import failed: ' + (row.error || 'could not create the world')); return null; }
+    const put = await AUTH.authedFetch('/api/worlds/sandbox/' + row.id, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ worldData: wd, worldName: name }) });
+    if (!put.ok) { const e = await put.json().catch(() => ({})); alert('Import failed: ' + (e.error || 'could not store the world')); return null; }
+    return name;
+  },
+
   async importFile(fileData, requestedMode, fileName) {
+    // Overhead worlds branch first — same file format, different destination.
+    if (typeof WORLD_TRANSFER !== 'undefined') {
+      let pre;
+      try { pre = JSON.parse(fileData); } catch (e) { alert('Invalid JSON file'); return; }
+      const res = WORLD_TRANSFER.unwrap(pre, fileName);
+      if (res.ok && res.isOverhead) {
+        const imported = await this._importOverheadWorld(res.worldData, res.name);
+        if (!imported) return;
+        document.getElementById('file-import-section').style.display = 'none';
+        document.getElementById('import-success-section').style.display = 'block';
+        document.getElementById('imported-world-name').textContent = `Imported: ${imported} (🗺 Overhead)`;
+        this.pendingFileImport = null;
+        this.viewFilter = 'overhead'; this._syncViewToggle();     // show the view it landed in
+        setTimeout(() => { this.hideImportFileModal(); this.currentPage = 0; this.loadWorlds(); }, 1500);
+        return;
+      }
+    }
     if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
       let parsed;
       try { parsed = JSON.parse(fileData); } catch (e) { alert('Invalid JSON file'); return; }
@@ -712,27 +767,45 @@ const SANDBOX = {
   },
 
   // ── Export the open world as a downloadable JSON file ──────────
-  async exportWorld() {
-    if (!this.selectedWorldId) { alert('No world loaded'); return; }
-    if (this._isLocalWorld(this.selectedWorldId)) {
-      const w = LOCAL_WORLDS.get(this.selectedWorldId);
-      if (!w) { alert('No world loaded'); return; }
-      const payload = {
-        world_name: w.world_name, description: w.description,
-        game_mode_default: (w.world_data && w.world_data.gameModeDefault) || 'NRM',
-        world_data: w.world_data, exportedAt: new Date().toISOString(),
-      };
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = (w.world_name || 'world').replace(/[^a-z0-9_-]+/gi, '_') + '.json';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+  async exportWorld() { return this.exportWorldById(this.selectedWorldId); },
+
+  // Per-world Export (one button per card, both views). Resolves the world from
+  // whichever store it actually lives in — the OFFLINE OVERHEAD store included, which
+  // is why overhead worlds previously had no export path at all and the QA fixture had
+  // to be recovered by reading localStorage. Falls back to the server endpoint for a
+  // cloud world whose row isn't in the loaded page.
+  async exportWorldById(worldId) {
+    if (!worldId) { alert('No world loaded'); return; }
+    if (typeof WORLD_TRANSFER === 'undefined') { alert('Export unavailable'); return; }
+    const stamp = { exportedAt: new Date().toISOString() };
+    const send = (wd, name, description, mode) => {
+      const payload = WORLD_TRANSFER.wrap(wd, Object.assign({ name, description, mode }, stamp));
+      WORLD_TRANSFER.download(payload, WORLD_TRANSFER.filename(name, WORLD_TRANSFER.today()));
+    };
+
+    // 1. Overhead world saved offline (own store, keyed "oh-<name>").
+    const ohAll = this._ohStore();
+    if (Object.prototype.hasOwnProperty.call(ohAll, worldId)) {
+      const wd = ohAll[worldId] || {};
+      send(wd, wd.name || String(worldId).replace(/^oh-/, ''), wd.description || '', wd.gameModeDefault || 'NRM');
       return;
     }
+    // 2. Local (offline) side-scroll world.
+    if (this._isLocalWorld(worldId)) {
+      const w = LOCAL_WORLDS.get(worldId);
+      if (!w) { alert('World not found'); return; }
+      send(w.world_data, w.world_name, w.description, (w.world_data && w.world_data.gameModeDefault) || 'NRM');
+      return;
+    }
+    // 3. A cloud row already loaded in this page (has world_data) — no round trip.
+    const row = (this.worlds || []).find(w => w.id === worldId);
+    if (row && row.world_data) {
+      send(row.world_data, row.world_name, row.description, (row.world_data && row.world_data.gameModeDefault) || 'NRM');
+      return;
+    }
+    // 4. Cloud fallback — the server's export endpoint.
     try {
-      const res = await AUTH.authedFetch(`/api/worlds/sandbox/${this.selectedWorldId}/export`);
+      const res = await AUTH.authedFetch(`/api/worlds/sandbox/${worldId}/export`);
       if (!res.ok) { alert('Failed to export world'); return; }
 
       let filename = 'world.json';

@@ -1,4 +1,4 @@
-# Steveo Platformer — Tester Brief (MVP shakedown, builds 331–345)
+# Steveo Platformer — Tester Brief (MVP shakedown, builds 331–346)
 
 > **For the Chrome-enabled "tester" Claude.** You have READ access to this repo for context
 > (source + `FUTURE_ROADMAP.md` for what's planned vs. what's a known gap). Test the LIVE app;
@@ -6,7 +6,7 @@
 
 ## Setup
 1. Open **http://localhost:8000** (the human starts the server). Hard-refresh (Ctrl+Shift+R).
-   Confirm the version reads **v3 build 345**. If not, refresh again (stale service worker).
+   Confirm the version reads **v3 build 346**. If not, refresh again (stale service worker).
 2. If a login screen appears, pause for the human.
 3. Two engines are covered: the **side-scroll (2D)** engine for jump-attack, and the
    **overhead (top-down)** editor + engine for everything else (Sandbox → 🗺 Overhead).
@@ -14,9 +14,32 @@
    **known, intentional gaps** (e.g. pistons don't push loose terrain blocks yet; gates are
    45°-snapped; no extra Mario enemies beyond Goomba/Koopa/Shell). Report those as "matches
    roadmap", not failures.
+5. **Allow automatic downloads for localhost:8000** before section M (export writes files).
 
 For EACH item report **PASS / FAIL / BLOCKED**, one line of what you saw, and a screenshot when
 visual. End with a compact table + any red DevTools console errors (should be zero).
+
+## Already covered — don't redo these
+Confirmed on build 345 by the previous session; treat as done unless something nearby looks off.
+
+| Item | Verdict | Note |
+|---|---|---|
+| D1 | PASS | Fly-out overlaps the button by 8px (DOM-measured), 📌 pin present top-right |
+| I4 | PASS | 🔎 filter box present atop the Terrain palette |
+| D6 | **PARTIAL — finish this** | Grass tooltip appeared on terrain hover; still needs buildings / mobs / items / devices |
+
+Two exploratory findings were logged and are **already known — don't re-report**:
+- **X1** World-card titles wrap mid-word ("Overh / ead / QA / Test"). Card-title CSS, every card, both views. Cosmetic, open.
+- **X2** No per-world Export for overhead worlds — **FIXED in build 346**; now section M below.
+
+## Method notes (two traps that produced wrong answers)
+- **Coordinate scaling.** The window is 1920×1009 CSS px but screenshots came back 1529×804 —
+  a **1.2557× factor**. `getBoundingClientRect()` returns CSS px while the click tool takes
+  screenshot px. Convert before clicking. This is very likely the real cause of the old
+  "hotbar mis-targets" observation, so **don't** file coordinate-drift bugs without checking scale first.
+- **Measure, don't eyeball.** A zoomed screenshot made D1 look like a FAIL; measuring the DOM
+  showed an 8px overlap — what looked like the gap was the panel border. For geometry items,
+  read the DOM.
 
 ---
 
@@ -102,14 +125,70 @@ visual. End with a compact table + any red DevTools console errors (should be ze
 - I2 Press Enter → captured + appears in the Templates list (with 🧩 Tree, the system template). Esc cancels.
 - I3 Place your captured template → it stamps ADDITIVELY (ground under it preserved, no black void).
   Undo/redo the placement.
-- I4 The 🔎 filter box atop the Terrain palette narrows the block list as you type.
+- I4 The 🔎 filter box atop the Terrain palette narrows the block list as you type. *(PASS on 345)*
 - I5 Enter Test then re-open the editor → placed + custom templates persist.
+- I6 **Tree = additive template (no void).** Buildings tab → place a **Tree**. Under/around the canopy
+  you see **grass (real ground), NOT black**. The **trunk blocks** movement; you can walk **under the
+  canopy**. Screenshot.
+- I7 **Tree shadow.** With Day/Night + shadows on, the tree casts a **cell-accurate** shadow (canopy
+  blob + trunk) tracking the sun (or fixed if that style is set). Screenshot at a **low sun angle**,
+  where the trunk and canopy shadows separate. The old hard black blob should be gone.
+
+**Templates — NOT in scope** (designed, not built; see `TEMPLATE_CREATOR_SPEC.md` round 2 — don't file
+these): placement overlap options (Overwrite / Merge / Refuse) + ghost preview; template libraries
+(System vs Player, account-wide vs world-specific, "Browse my templates"); export/import-all +
+duplicate checksums; thumbnails; "Apply to all placed instances"; density / player-height scale
+warnings. By decision templates carry **terrain + elevation only** — no mobs / items / redstone.
 
 ## J. OLD-WORLD LOAD (build 345 migrator)
 - J1 Open a PRE-EXISTING overhead world (saved before this batch) → it loads without errors and plays
-  normally (the schema migrator should upgrade it silently).
+  normally (the schema migrator should upgrade it silently). Keep one pristine pre-345 world for this —
+  do placement testing (D5) in a scratch world instead.
+
+## M. WORLD EXPORT / IMPORT (build 346 — new, was X2)
+Format + a ready sample file: `docs/world-file-format.md` and
+**`sample-worlds/Overhead_QA_Test.export.json`** (the QA board as a real export). This unblocks
+restoring fixtures through the real code path instead of writing localStorage by hand.
+Needs automatic downloads allowed for localhost:8000 (Setup step 5).
+
+- M1 **Card export (overhead).** Sandbox → 🗺 Overhead view → any world card now has an **Export**
+  button next to Copy. Click it → a `.json` downloads, named `<World_Name>-<YYYY-MM-DD>.json`.
+- M2 **Card export (side-scroll).** Same button on a side-scroll card → downloads too.
+- M3 **File shape.** Open the downloaded file: top level has `steveoExport: 1`, `world_name`,
+  `game_mode_default`, `view_mode` (`"overhead"` or `"side"`), `exportedAt`, and `world_data`.
+  For an overhead world, `world_data.viewMode === "overhead"` and a `schemaVersion` is present.
+- M4 **Editor export includes UNSAVED edits.** Open an overhead world → place a few blocks but do
+  **NOT** save → **⬇ Export** in the command bar → the file contains the new blocks, and the
+  flash reads "Exported ✓". (This is the point: export reflects what's on screen.)
+- M5 **Round trip.** Import the file you just exported (Sandbox → **Import from File**) → it lands
+  in the **🗺 Overhead** view (the view auto-switches), opens in the editor, and the world matches —
+  terrain, redstone, bridges, keys, spawn. It must NOT appear in the side-scroll list as a Normal world.
+- M6 **Import the sample fixture.** Import `sample-worlds/Overhead_QA_Test.export.json` → a 40×26
+  board with glass wall, pit, bridges, AND/NOT/NOR gates, keys and P1 spawn. Status line should read
+  `40×26 @ density 1 · platformer`. Play it — the redstone board still works.
+- M7 **Editor ⬆ Import replaces the open world.** In the overhead editor, ⬆ Import → confirm the
+  "this REPLACES the world open in the editor" prompt → the imported world loads, flash reads
+  "Imported ✓ — Save to keep it". Undo must NOT resurrect the previous world (fresh undo stack).
+  Cancelling the prompt leaves the open world untouched.
+- M8 **Wrong-engine file is REFUSED, not half-loaded.** Export a SIDE-SCROLL world, then try to
+  ⬆ Import it in the overhead editor → a clear "not an overhead world" message pointing you at the
+  Sandbox list. The editor must keep the world it had, with no console error.
+- M9 **Damaged file.** Hand-edit a copy: delete the `mapSnapshot` key → import → refused with a
+  reason. Then try a non-JSON file (e.g. a .txt renamed .json) → "Invalid JSON file". No crash.
+- M10 **Legacy file.** Take an export and delete its `schemaVersion` (simulating a pre-345 world)
+  → import → loads fine (the migrator upgrades it).
+- M11 **No clobber.** Import the same file twice offline → the second lands as a separate world
+  (e.g. "… (2)"), it must not overwrite the first.
+
+## Suggested order
+1. **M** (export/import) first — it's brand new in 346, and M6 gives you the fixture to test everything
+   else against through the real code path.
+2. **D2–D5** — the pins, the ▐▶ right-panel reveal, the palette drag, and D5's post-resize click
+   accuracy (the riskiest part of the dual-rail build). Do D5's placement test in a **scratch** world.
+3. **D6** finish (buildings / mobs / items / devices tooltips), then **E/F** (pistons, gates), then the rest.
+4. **J1 last**, against a world you have not touched.
 
 ## Report
 Table: `Item | PASS / FAIL / BLOCKED | note`. Screenshots inline. List any red console errors. Call out
-anything visually broken even if not listed — especially in D (dual-rail geometry) and E/F (pistons/gates),
-which are the newest.
+anything visually broken even if not listed — especially in M (new this build), D (dual-rail geometry)
+and E/F (pistons/gates). Don't re-report X1/X2 or the items marked PASS above.

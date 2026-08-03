@@ -1,4 +1,36 @@
-## CURRENT STATE (2026-07-30) — builds 279–297 SHIPPED to `main` ✅; `overhead-redstone-bridge` branch at build 306 — NOT merged, browser-UNTESTED
+## CURRENT STATE (2026-08-03) — build 346: WORLD EXPORT / IMPORT (both engines) — on `main`, suite green, UNCOMMITTED
+
+Closes the tester's **X2** ("a world built in the app can't be backed up through the UI at all") and the
+`OVERHEAD_BACKLOG.md` item 5. Import was built alongside export so the QA fixtures restore through the
+real code path instead of a hand-written localStorage entry.
+
+- **`js/world-transfer.js` (new)** — the ONE owner of the file format. v1 wrapper
+  `{ steveoExport, world_name, description, game_mode_default, view_mode, exportedAt, world_data }`;
+  `unwrap()` also accepts a RAW world object so hand-made fixtures + pre-346 files still import.
+  `validateOverhead()` refuses a side-scroll / truncated file instead of half-loading it.
+- **Per-world Export** on every Sandbox card (both views) — resolves cloud rows, `LOCAL_WORLDS`, AND the
+  offline overhead store (`steveo_overhead_worlds`), which is the one that had no export path at all.
+  The old play-HUD `exportWorld()` now delegates to the same resolver.
+- **Overhead editor `⬇ Export` / `⬆ Import`** in the command bar. Export writes the OPEN in-memory world
+  (unsaved edits included) and is built client-side, so offline and signed-in behave identically. Import
+  runs `OH_SETTINGS.migrate()`, clears `worldId` (imported = new until saved) and resets the undo stack.
+- **`Import from File` is overhead-aware** — an overhead file used to land in the side-scroll store forced
+  to NRM (so it vanished from the Overhead view); it now routes to the overhead store / a sandbox row +
+  PUT, never clobbering an existing world (dedupes to "name (2)").
+- **Docs + fixture for the tester:** `docs/world-file-format.md`, sample export
+  `sample-worlds/Overhead_QA_Test.export.json` (generated from `test/fixtures/overhead-qa-test-world.json`).
+- **Tests:** `test/test-world-transfer.js` — 39 assertions (format, wrapper+raw unwrap, filename,
+  validation refusals, and a full export→import→`OverheadGame` round trip incl. a legacy no-`schemaVersion`
+  file). Registered in `test/run.js`; **full suite green**.
+- `TESTER_BRIEF.md` rebuilt for build 346: prior results folded in (D1/I4 PASS, D6 partial, X1/X2), the
+  tester's two method traps (screenshot-vs-CSS px 1.2557× scaling; measure the DOM, don't eyeball),
+  new section **M** (M1–M11), template items I6/I7, and a suggested order. Also published as an Artifact.
+
+**NOT committed / not browser-tested.** Cache-busters + `sw.js` are bumped to b346.
+
+---
+
+## PRIOR STATE (2026-07-30) — builds 279–297 SHIPPED to `main` ✅; `overhead-redstone-bridge` branch at build 306 — NOT merged, browser-UNTESTED
 
 **SHIPPED to `main` (live):** Overhead builds 279–297 + Campaign MVP.
 
