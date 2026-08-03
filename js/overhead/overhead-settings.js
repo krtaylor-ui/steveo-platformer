@@ -78,6 +78,8 @@
       drawbridgeStyle:  'vanishing',// 'vanishing' (deck appears/disappears) | 'animated' (raises ~80° with perspective)
       // Interaction animations (pipe climb-in now; portal/lever/chest to follow).
       pipeClimbAnim:    true,       // play the pull-up climb when entering a pipe (off = instant)
+      portalStepAnim:   true,       // play a step-in + spin-warp when entering a portal (off = instant)
+      leverReachAnim:   true,       // the player reaches an arm out when flipping a lever / using a lock
       interactionZoom:  1.25,       // camera zoom during an interaction animation (overrides game zoom)
       interactionSpeed: 1,          // interaction-animation speed multiplier
     };
@@ -216,6 +218,8 @@
             </div>
             <div class="ohws-grp"><h3>Interaction animations</h3>
               ${toggle('pipeClimbAnim', 'Pipe climb-in (pull-up) — off = instant')}
+              ${toggle('portalStepAnim', 'Portal step-through (spin-warp) — off = instant')}
+              ${toggle('leverReachAnim', 'Reach out to flip levers / use locks')}
               ${range('interactionZoom', 'Interaction zoom (overrides game zoom)', 1, 2, 0.05)}
               ${range('interactionSpeed', 'Interaction animation speed', 0.5, 2, 0.1)}
             </div>

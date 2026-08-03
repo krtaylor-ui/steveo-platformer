@@ -188,8 +188,14 @@
         if (d._phase < 0.002) d._phase = 0; else if (d._phase > 0.998) d._phase = 1;
         const reach = Math.max(1, d.reach || 2), ext = d._phase * reach, dir = d.dir;
         if (dir === 'up') { if (ext > 0.001) boost[d.col + ',' + d.row] = ext; }
-        else { const dc = dir === 'e' ? 1 : dir === 'w' ? -1 : 0, dr = dir === 's' ? 1 : dir === 'n' ? -1 : 0, n = Math.round(ext);
-          for (let i = 1; i <= n; i++) { const hc = d.col + dc * i, hr = d.row + dr * i; if (hc >= 0 && hr >= 0 && hc < this.grid.gridW && hr < this.grid.gridH) heads.set(hc + ',' + hr, d); } }
+        else { const dc = dir === 'e' ? 1 : dir === 'w' ? -1 : 0, dr = dir === 's' ? 1 : dir === 'n' ? -1 : 0, n = Math.round(ext), cell = this.grid.cell;
+          for (let i = 1; i <= n; i++) { const hc = d.col + dc * i, hr = d.row + dr * i; if (hc >= 0 && hr >= 0 && hc < this.grid.gridW && hr < this.grid.gridH) heads.set(hc + ',' + hr, d); }
+          // The moving head SHOVES entities ahead of it (so nothing is trapped in the solid head);
+          // a STICKY piston DRAGS the entity at the tip back with it when it retracts.
+          const prev = d._extCells || 0, ents = [this.player].concat(this.mobs || []);
+          if (n > prev) { for (const e of ents) { if (!e || e.dead) continue; const c = this._cellOf(e.x, e.y); for (let i = prev + 1; i <= n; i++) if (c.col === d.col + dc * i && c.row === d.row + dr * i) { e.x += dc * (n - i + 1) * cell; e.y += dr * (n - i + 1) * cell; break; } } }
+          else if (n < prev && d.sticky) { for (const e of ents) { if (!e || e.dead) continue; const c = this._cellOf(e.x, e.y); if (c.col === d.col + dc * (prev + 1) && c.row === d.row + dr * (prev + 1)) { e.x -= dc * (prev - n) * cell; e.y -= dr * (prev - n) * cell; } } }
+          d._extCells = n; }
       }
       this._pistonBoostMap = Object.keys(boost).length ? boost : null;
       this._pistonHeadSet = heads.size ? heads : null;
@@ -280,6 +286,7 @@
       // Weapons / melee.
       this._updateWeapons(intent, mouseWorld);
       if (p._swingT > 0) p._swingT--;   // advance the melee swing animation
+      if (this._reachT > 0) this._reachT--;   // lever/lock reach pose
       // Item pickup.
       this._pickups(p);
       // Mobs + projectiles.
@@ -309,6 +316,7 @@
             const dest = { px, py, key: db.col + ',' + db.row };
             // A PIPE plays the climb-in animation, THEN teleports; a portal is instant.
             if (near.typeId === 'pipe' && this.settings.pipeClimbAnim !== false) { this._startPipeClimb(near, dest); }
+            else if (near.typeId === 'portal' && this.settings.portalStepAnim !== false) { this._startPortalStep(near, dest); }
             else { const c = this._cellOf(px, py); p.x = px; p.y = py; p.elev = this._elev(c.col, c.row); this._portalCd = true; this._portalGlow = { keys: [nk, dest.key], t: 42 }; }
           } else {
             // In range + pressed E, but this end has no destination — tell the player
@@ -478,7 +486,7 @@
       let near = null, nd = this.unit * 1.6;
       for (const d of this._redstone) if (d.kind === 'lever' || d.kind === 'button') { const dx = (d.col + 0.5) * this.grid.cell - p.x, dy = (d.row + 0.5) * this.grid.cell - p.y; const dd = Math.hypot(dx, dy); if (dd < nd) { nd = dd; near = d; } }
       if (!near) return false;
-      near.on = !near.on; this._rs = OH_REDSTONE.evaluate(this._redstone); this._notify('Lever ' + (near.on ? 'ON' : 'OFF'), 40); return true;
+      near.on = !near.on; this._rs = OH_REDSTONE.evaluate(this._redstone); this._notify('Lever ' + (near.on ? 'ON' : 'OFF'), 40); if (this.settings.leverReachAnim !== false) this._reachT = 16; return true;
     }
     // A LOCK block: insert a matching key (E nearby) to power it. Consumes the key /
     // stays locked-in / can toggle off, per config.
@@ -509,6 +517,20 @@
       cl.total = cl.timeline.reduce((a, ph) => a + ph.dur, 0);
       this._climb = cl;
       this.player.dist = 0;   // freeze the walk cycle
+    }
+    // PORTAL step-through — the same _climb driver as the pipe, with a shorter step-in + spin-warp
+    // timeline (walk into the portal, shrink + spin + fade, then teleport).
+    _startPortalStep(portal, dest) {
+      const fpp = OH_BUILDINGS.footprintOf(portal.typeId, this._density), fw = fpp.w, fh = fpp.h, cell = this.grid.cell;
+      const cx = (portal.col + fw / 2) * cell, cy = (portal.row + fh / 2) * cell;
+      const eo = (t) => 1 - Math.pow(1 - t, 3), ei = (t) => t * t * t, L = (a, b, t) => a + (b - a) * t, P = this.player;
+      const cl = { pipe: portal, dest, t: 0, sx: P.x, sy: P.y, cx, cy, face: -Math.PI / 2, scale: 1, alpha: 1, grab: 0, mantleLeg: 0, crouch: 0, spin: 0, zoomFrom: this.grid.masterZoom };
+      cl.timeline = [
+        { name: 'step', dur: 0.3, fn: (t) => { P.x = L(cl.sx, cx, eo(t)); P.y = L(cl.sy, cy, eo(t)); cl.scale = L(1, 0.55, eo(t)); cl.alpha = L(1, 0.65, t); } },
+        { name: 'warp', dur: 0.26, fn: (t) => { P.x = cx; P.y = cy; cl.spin = t * Math.PI * 3; cl.scale = L(0.55, 0.08, ei(t)); cl.alpha = L(0.65, 0.05, t); } },
+      ];
+      cl.total = cl.timeline.reduce((a, ph) => a + ph.dur, 0);
+      this._climb = cl; P.dist = 0;
     }
     _pipeClimbTimeline(cl) {
       const eo = (t) => 1 - Math.pow(1 - t, 3), ei = (t) => t * t * t, eio = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2, L = (a, b, t) => a + (b - a) * t;
@@ -890,10 +912,12 @@
       // Double-jump flourish: 'somersault' (head-over-heels y-foreshorten) or 'spin'.
       let spin = 0, somersault = null;
       if (p.jump && p.jump.jumping && p.jump.doubleUsed) { const prog = Math.min(1, p.jump.t / p.jump.dur); if ((this.settings.doubleJumpStyle || 'somersault') === 'spin') spin = prog * Math.PI * 3; else somersault = prog; }
+      if (cl && cl.spin) spin = cl.spin;   // portal step-through spin
+      const reach = (!cl && (this._reachT | 0) > 0) ? Math.sin((1 - this._reachT / 16) * Math.PI) * 0.9 : 0;   // brief arm-reach when flipping a lever / using a lock
       const aimA = cl ? cl.face : OH_CONTROLS.angleOf(p.aim);
       OVERHEAD.drawOverheadPlayer(ctx, cx, cy, cl ? rr * cl.scale : rr, p.dist, cl ? false : moving, aimA,
         { rotate: true, weapon: inFlight ? null : (p.weapon || 'pickaxe'), moveAngle: (cl ? cl.face : (p.moveAngle != null ? p.moveAngle : OH_CONTROLS.angleOf(p.aim))), spin, somersault, facing: aimA,
-          grab: cl ? cl.grab : 0, mantleLeg: cl ? cl.mantleLeg : 0, crouch: cl ? cl.crouch : 0 });
+          grab: cl ? cl.grab : reach, mantleLeg: cl ? cl.mantleLeg : 0, crouch: cl ? cl.crouch : 0 });
       ctx.globalAlpha = 1;
       if (p.iFrames > 0 && ((p.iFrames >> 2) & 1)) { ctx.globalAlpha = 0.4; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
       // Aim reticle.
@@ -936,10 +960,12 @@
       for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const e = this._elev(c, r); if (e <= 0) continue;
         const base = S(c * cell, r * cell); this._castShadowCell(sx, base.x, base.y, e, this._key(c, r) === 'leaves', sh.x * e * cs, sh.y * e * cs, cs, Q); }
       for (const v of this._templateVoxels) { const base = S(v.col * cell, v.row * cell); this._castShadowCell(sx, base.x, base.y, v.elev, v.isLeaves, sh.x * v.elev * cs, sh.y * v.elev * cs, cs, Q); }   // template overlay voxels cast too
+      if (this._gates) for (const gt of this._gates) { const h = Math.max(1, gt.height || 2); for (const c of (gt._cells || [])) { const base = S(c.col * cell, c.row * cell); this._castShadowCell(sx, base.x, base.y, h, false, sh.x * h * cs, sh.y * h * cs, cs, Q); } }   // swinging gates cast too
       sx.globalCompositeOperation = 'destination-out'; sx.fillStyle = '#000';
       for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const e = this._elev(c, r); if (e <= 0) continue;
         const base = S(c * cell, r * cell); this._eraseShadowCell(sx, base.x, base.y, e, this._key(c, r) === 'leaves', cs, Q); }
       for (const v of this._templateVoxels) { const base = S(v.col * cell, v.row * cell); this._eraseShadowCell(sx, base.x, base.y, v.elev, v.isLeaves, cs, Q); }
+      if (this._gates) for (const gt of this._gates) { const h = Math.max(1, gt.height || 2); for (const c of (gt._cells || [])) { const base = S(c.col * cell, c.row * cell); this._eraseShadowCell(sx, base.x, base.y, h, false, cs, Q); } }
       sx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = sh.alpha;
       if ('filter' in ctx) ctx.filter = `blur(${Math.max(0.6, cs * 0.05)}px)`;

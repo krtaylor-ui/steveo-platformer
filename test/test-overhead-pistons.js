@@ -40,5 +40,27 @@ ok(Math.abs(g._elev(5,5)) < 0.2, 'the cell returns to its base elevation');
 ok(g._pistonSolidAt(10,5)===false, 'the horizontal head retracts (no longer solid)');
 // render smoke
 let threw=false; try{ g._render ? g._render() : null; }catch(e){ threw=true; console.log('render throw', e.message); }
+// Horizontal piston SHOVES an entity ahead of its extending head; sticky drags it back.
+{
+  const w2=JSON.parse(JSON.stringify(world)); w2.redstone=[{kind:'lever',col:1,row:1,on:true,channel:'gate',txId:1},{kind:'piston',col:5,row:10,dir:'e',reach:2,sticky:true,rxChannel:'gate'}];
+  const g2=new OG(w2,{testMode:true},()=>{});
+  g2.player.x=6.5*32; g2.player.y=10.5*32; g2.player.elev=0;   // sitting where the head will extend (cell 6,10)
+  const x0=g2.player.x;
+  for(let i=0;i<40;i++){ g2._rs=OH_REDSTONE.evaluate(g2._redstone); g2._updatePistons(); }
+  ok(g2.player.x > x0 + 16, 'a horizontal piston shoves the player ahead of its extending head');
+  g2._redstone[0].on=false; g2._pistonList=null; const xExt=g2.player.x;
+  for(let i=0;i<60;i++){ g2._rs=OH_REDSTONE.evaluate(g2._redstone); g2._updatePistons(); }
+  ok(g2.player.x < xExt - 1, 'a STICKY piston drags the player back as it retracts');
+}
+// Portal step-through animation reuses the climb driver.
+{
+  const w3=JSON.parse(JSON.stringify(world)); w3.buildings=[{typeId:'portal',col:3,row:3,level:0,config:{dest:'8,8'}},{typeId:'portal',col:8,row:8,level:0,config:{}}];
+  const g3=new OG(w3,{testMode:true},()=>{});
+  g3._startPortalStep(g3.buildings[0], {px:8.5*32,py:9.5*32,key:'8,8'});
+  ok(!!g3._climb && g3._climb.timeline.length===2, 'entering a portal starts a 2-phase step-through animation');
+  let f=0; while(g3._climb && f<200){ g3._updatePipeClimb(); f++; }
+  ok(!g3._climb, 'the portal step completes + teleports');
+}
+
 console.log(`\npiston: ${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);
