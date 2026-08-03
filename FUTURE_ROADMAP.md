@@ -1421,3 +1421,52 @@ overhead game AFTER terrain/entities (respecting the LEFT/TOP/RIGHT viewport ins
 editor gets a world setting (Fog of war: off / radius / line-of-sight) + a Test-mode toggle.
 Cost is low (one grid + one overlay pass). Pairs naturally with the elevation model (taller
 terrain could block sight later). Not started.
+
+## ⚠ SAVE-FILE FORMAT & MIGRATION (read before adding any world field) — noted 2026-08
+World-building is starting, so old saves must keep loading. Current state + rules:
+
+### Current converters (keep these updated)
+- **Overhead settings:** `OH_SETTINGS.resolve(world)` (js/overhead/overhead-settings.js) is
+  the migrator. It merges `defaults()` over the saved `settings` and folds legacy fields
+  (controlScheme, angleLockDeg, showHiddenIndicator, lavaDeadly→lavaMode). It's called on
+  BOTH load paths — the editor (`open`) and the game constructor (overhead-game.js:30) — so
+  any NEW setting added to `defaults()` automatically reaches old worlds. ✅ up to date
+  (elevOffset, lockZoom, portalStepAnim, leverReachAnim all flow through).
+- **Non-settings structure** (buildings/mobs/items/redstone/bridges/GATES/templates) has NO
+  central converter — old worlds survive only because each load site defaults gracefully
+  (`worldData.gates || []`, `near.config || {}`, pistons with no `dir` = legacy barrier, etc.).
+- **2D worlds:** same pattern — ad-hoc legacy handling in the load path (spawnEggs/EGG_TO_MOB,
+  worldAdvSettings merged over defaults). No version stamp.
+
+### ⚠ There is NO world `schemaVersion` anywhere
+Migrations are ad-hoc + field-by-field. Recommend (before the format grows further): add a
+`schemaVersion` int to saved worlds + a single `migrateWorld(world)` that runs versioned
+steps, so future format changes are safe + centralized. Until then, follow the RULE below.
+
+### RULE when adding a world field
+1. It MUST default gracefully when absent (old saves won't have it).
+2. If it's a SETTING → add it to `OH_SETTINGS.defaults()` (it then flows through `resolve()`).
+   If it's world STRUCTURE → default it at every load site (`|| []` / `|| {}` / legacy branch).
+3. NOTE it in this section + update the converter/migrator.
+
+### Recent changes that touch existing saves (audit)
+- `world.gates[]` — additive; old worlds default to []. Safe. Now in undo/redo snapshot too.
+- Piston `dir`/`reach`/`sticky` on redstone devices — a piston with no `dir` = legacy on/off
+  barrier (back-compat branch in `_pistonSolidAt`). Safe.
+- `world.buildings[].config.dest` (portal/pipe links) — defaulted to {} on read. Safe.
+- New settings elevOffset / lockZoom / portalStepAnim / leverReachAnim — via defaults(). Safe.
+- **⚠ Pipe/portal density-scaling (build 341) is RETROACTIVE:** `footprintOf()` grows a 2×2
+  pipe to `max(2, density)` cells, so EXISTING worlds at density 3–4 will suddenly have LARGER
+  pipes/portals (collision + render). This can overlap neighbours or block a path that used to
+  be clear. Decide: accept it, gate it behind a per-world flag, or bake the old size into a
+  migration for worlds saved before build 341. (New worlds are fine.)
+- Building auto-snap (build 341) only changes NEW placements; saved buildings keep their `level`.
+
+## Additional Mario-style jump enemies (roadmap, requested 2026-08 — non-critical)
+Beyond Goomba/Koopa/Shell (built): a SPINY / un-stompable enemy (hurts you if stomped — needs
+`stompable:false`, already supported by the stomp pass), a flying/paratroopa (bobs; first stomp
+grounds it, second squishes), a hopper, a piranha (rises from a pipe on a timer). All reuse the
+existing Mob base + stomp hooks (_isStomp/onStomp/squish). Not started.
+
+## Water block + world (roadmap) — already captured in WATER_AND_HYBRID_ROADMAP.md
+Water terrain (swim/float/drown) + the overhead↔2D hybrid vision. See that doc. Not started.
