@@ -999,7 +999,12 @@
         this._staticShadowCanvas = cv; this._staticShadowPad = pad;
       }
       const cv = this._staticShadowCanvas, pad = this._staticShadowPad;
-      ctx.globalAlpha = this._shadowDarkness;
+      // With a day/night cycle running, a baked shadow fades out at dusk and is GONE at
+      // night (nothing is casting it) — see OH_DAYNIGHT.staticShadowFactor. With the
+      // cycle off there is no time of day, so it stays at full strength as before.
+      const lit = (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') ? OH_DAYNIGHT.staticShadowFactor(this._tod) : 1;
+      if (lit <= 0.01) return;
+      ctx.globalAlpha = this._shadowDarkness * lit;
       if ('filter' in ctx) ctx.filter = `blur(${Math.max(0.6, cs * 0.05)}px)`;
       ctx.drawImage(cv, this.camera.x + pad, this.camera.y + pad, CANVAS_W / z, CANVAS_H / z, 0, 0, CANVAS_W, CANVAS_H);
       if ('filter' in ctx) ctx.filter = 'none';

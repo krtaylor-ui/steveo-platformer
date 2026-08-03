@@ -70,6 +70,21 @@
       return { x, y, alpha, fade, isDay: b.isDay, lit };
     },
 
+    // How strongly a FIXED (baked) shadow should show at time `t`, 0..1.
+    //
+    // A fixed shadow is baked from a chosen direction and has no sun/moon concept, so it
+    // used to sit at full strength all night — a hard shadow with nothing casting it.
+    // It now behaves like real daylight: full through the day, fading out across dusk,
+    // ZERO at night, fading back in at dawn. Boundaries match label(): night below 0.22
+    // and from 0.80, dawn ramp 0.22→0.30, dusk ramp 0.70→0.80. (Kevin, build 347.)
+    staticShadowFactor(t) {
+      const x = ((t % 1) + 1) % 1;                     // wrap, so 1.05 and -0.95 behave
+      if (x < 0.22 || x >= 0.80) return 0;             // night — no shadows at all
+      if (x < 0.30) return (x - 0.22) / 0.08;          // dawn — fade in
+      if (x < 0.70) return 1;                          // full day
+      return 1 - (x - 0.70) / 0.10;                    // dusk — fade out
+    },
+
     // A short label for the on-screen clock.
     label(t) {
       if (t < 0.22 || t >= 0.80) return 'Night';

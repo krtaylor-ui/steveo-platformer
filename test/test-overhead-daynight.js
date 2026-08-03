@@ -61,6 +61,18 @@ console.log('Sun/moon body + shadow vector:');
   ok(OH_DAYNIGHT.shadow(0.0, 0).alpha === 0, 'moon scale 0 removes night shadows entirely');
   ok(OH_DAYNIGHT.shadow(0.0, 1).alpha === OH_DAYNIGHT.shadow(0.5).alpha, 'moon scale 1 restores parity with the sun');
   ok(OH_DAYNIGHT.shadow(0.0, 5).alpha === OH_DAYNIGHT.shadow(0.0, 1).alpha, 'out-of-range moon scale is clamped');
+
+  // Build 347 — FIXED (baked) shadows: full by day, fade across dusk, none at night.
+  const F = (t) => OH_DAYNIGHT.staticShadowFactor(t);
+  ok(F(0.5) === 1 && F(0.35) === 1 && F(0.69) === 1, 'full strength through the day');
+  ok(F(0.0) === 0 && F(0.1) === 0 && F(0.9) === 0 && F(0.85) === 0, 'ZERO at night — nothing is casting them');
+  ok(F(0.75) > 0 && F(0.75) < 1, 'mid-dusk is partial (' + F(0.75).toFixed(2) + ')');
+  ok(F(0.26) > 0 && F(0.26) < 1, 'mid-dawn is partial (' + F(0.26).toFixed(2) + ')');
+  ok(F(0.72) > F(0.78), 'dusk fades DOWN as night approaches');
+  ok(F(0.24) < F(0.29), 'dawn fades UP toward day');
+  ok(near(F(0.22), 0, 1e-9) && near(F(0.80), 0, 1e-9), 'the ramps meet night at exactly 0 (no snap)');
+  ok(near(F(0.30), 1, 1e-9) && near(F(0.70), 1, 1e-9), 'the ramps meet day at exactly 1 (no snap)');
+  ok(F(1.05) === F(0.05) && F(-0.95) === F(0.05), 'the factor wraps for out-of-range times');
 }
 
 console.log('Label + detection multiplier:');
