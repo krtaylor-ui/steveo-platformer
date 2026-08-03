@@ -460,7 +460,7 @@
         else if (e.code === K.redo && (e.ctrlKey || e.metaKey)) { this.redo(); }
         // Selection / clipboard.
         else if (e.code === 'KeyC' && (e.ctrlKey || e.metaKey)) { this._copySelection(); }
-        else if ((e.code === 'Delete' || e.code === 'Backspace') && (this._sel || this._selEnt)) { e.preventDefault(); if (this._selEnt) { this._deleteObj(this._selEnt.ref); } else this._deleteSelection(); }
+        else if ((e.code === 'Delete' || e.code === 'Backspace') && (this._sel || this._selEnt)) { e.preventDefault(); if (this._selEnt) this._deleteSel(); else this._deleteSelection(); }
         // Clipboard transforms (X/Y flip · T rotate).
         else if ((e.code === 'KeyX' || e.code === 'KeyY') && this._clip && !e.ctrlKey && !e.metaKey) { this._flipClip(e.code === 'KeyX'); }
         else if (e.code === 'KeyT' && this._clip && !e.ctrlKey && !e.metaKey) { this._rotateClip(); }
@@ -474,9 +474,11 @@
         else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyO') { this.shape = 'circle'; this._renderBar(); }
         else if (!e.ctrlKey && !e.metaKey && e.code === 'KeyG') { this.shape = 'fill'; this.tool = 'terrain'; this._renderBar(); }
         // Escape: clear paste/selection first, then return to Hand, then offer quit.
-        else if (e.code === 'Escape' || e.code === 'Enter') { if (this._pickTx) { this._endPickTx(); } else if (e.code !== 'Escape') { /* Enter only finishes pick mode */ } else if (this._bridgeStart) { this._bridgeStart = null; this._flash('Bridge cancelled'); } else if (this._gateStart) { this._gateStart = null; this._flash('Gate cancelled'); } else if (this._pasting || this._clip) { this._pasting = false; this._clip = null; this._flash('Paste cancelled'); } else if (this._sel) { this._sel = null; this._selBox = null; } else if (this.tool !== 'hand') { this.tool = 'hand'; this._selEnt = null; this._renderBar(); } else this._quitModal(); }
+        else if (e.code === 'Escape' || e.code === 'Enter') { if (this._pickTx) { this._endPickTx(); } else if (e.code !== 'Escape') { /* Enter only finishes pick mode */ } else if (this._bridgeStart) { this._bridgeStart = null; this._flash('Bridge cancelled'); } else if (this._gateStart) { this._gateStart = null; this._flash('Gate cancelled'); } else if (this._selEnt) { this._selEnt = null; this._hideSelBar(); } else if (this._pasting || this._clip) { this._pasting = false; this._clip = null; this._flash('Paste cancelled'); } else if (this._sel) { this._sel = null; this._selBox = null; } else if (this.tool !== 'hand') { this.tool = 'hand'; this._selEnt = null; this._renderBar(); } else this._quitModal(); }
       };
-      this._dbl = (e) => { const cel = this._cellFromEvent(e); this._selectConnected(cel.col, cel.row); };
+      this._dbl = (e) => { const cel = this._cellFromEvent(e);
+        if (this.tool === 'hand') { this._selectObjAt(cel.col, cel.row); if (this._selHasSettings(this._selEnt)) return this._openSettingsFor(this._selEnt); }   // double-click = open its settings
+        this._selectConnected(cel.col, cel.row); };
       cv.addEventListener('mousedown', this._md); cv.addEventListener('mousemove', this._mm);
       cv.addEventListener('dblclick', this._dbl);
       cv.addEventListener('mouseleave', this._ml);
@@ -837,22 +839,79 @@
     // (clicking the same one again just unselects).
     _handClick(col, row) {
       if (this._pickTx) { this._pickTxClick(col, row); return; }   // click-to-connect: toggle a transmitter
-      if (this._selEnt) { const s = this._selEnt.ref;
-        if (s.from) { const dc = col - s.from.col, dr = row - s.from.row; s.from = { col, row }; s.to = { col: s.to.col + dc, row: s.to.row + dr }; }   // move a bridge SPAN (translate both ends)
-        else if (s.col === col && s.row === row) { this._selEnt = null; return; }
+      // An object armed to MOVE: this click is its destination.
+      if (this._selEnt && this._selEnt.moving) {
+        const s = this._selEnt.ref;
+        if (this._selEnt.kind === 'terrain') { const m = this.world.mapSnapshot, oc = this._selEnt.col, or0 = this._selEnt.row;
+          if (m.ground[row] && m.ground[or0]) { this._markDirty(oc, or0); this._markDirty(col, row); m.ground[row][col] = m.ground[or0][oc]; m.elevation[row][col] = m.elevation[or0][oc] | 0; m.ground[or0][oc] = 'grass'; m.elevation[or0][oc] = 0; } }
+        else if (s.from) { const dc = col - s.from.col, dr = row - s.from.row; s.from = { col, row }; s.to = { col: s.to.col + dc, row: s.to.row + dr }; }   // bridge/gate span → translate
         else { s.col = col; s.row = row; }
-        this._selEnt = null; this._pushHistory(); return;
+        this._selEnt = null; this._hideSelBar(); this._pushHistory('move'); return;
       }
-      const mob = (this.world.mobs || []).find((m) => m.col === col && m.row === row);
-      if (mob) { this._selEnt = { kind: 'mob', ref: mob }; return; }
-      const item = (this.world.items || []).find((it) => it.col === col && it.row === row);
-      if (item) { this._selEnt = { kind: 'item', ref: item }; return; }
-      const dev = (this.world.redstone || []).find((d) => d.col === col && d.row === row);
-      if (dev) { if (dev.kind === 'dust') { this._selEnt = { kind: 'obj', ref: dev }; this._flash('Redstone dust — click to move'); } else this._deviceModal(dev); return; }
-      const span = (this.world.bridges || []).find((b) => OVERHEAD.bridgeSpanCells(b).some((cc) => cc.col === col && cc.row === row));
-      if (span) return this._bridgeModal(span);
-      this._openConfigAt(col, row);
+      this._selectObjAt(col, row);
     },
+    // Select whatever is at a cell (top-most entity, else the terrain block) + show the action bar.
+    _selectObjAt(col, row) {
+      const b = this._buildingAt(col, row);
+      const gt = (this.world.gates || []).find((x) => x.col === col && x.row === row);
+      const dev = (this.world.redstone || []).find((d) => d.col === col && d.row === row);
+      const span = (this.world.bridges || []).find((x) => OVERHEAD.bridgeSpanCells(x).some((cc) => cc.col === col && cc.row === row));
+      const mob = (this.world.mobs || []).find((m) => m.col === col && m.row === row);
+      const item = (this.world.items || []).find((it) => it.col === col && it.row === row);
+      const goal = (this.world.goal && this.world.goal.col === col && this.world.goal.row === row) ? this.world.goal : null;
+      const spawn = (this.world.spawns || []).find((s) => s.col === col && s.row === row);
+      let sel = null;
+      if (b) sel = { kind: 'building', ref: b, col, row };
+      else if (gt) sel = { kind: 'gate', ref: gt, col, row };
+      else if (dev) sel = { kind: 'device', ref: dev, col, row };
+      else if (span) sel = { kind: 'bridge', ref: span, col, row };
+      else if (mob) sel = { kind: 'mob', ref: mob, col, row };
+      else if (item) sel = { kind: 'item', ref: item, col, row };
+      else if (goal) sel = { kind: 'goal', ref: goal, col, row };
+      else if (spawn) sel = { kind: 'spawn', ref: spawn, col, row };
+      else { const m = this.world.mapSnapshot; if (m.ground[row]) sel = { kind: 'terrain', col, row }; }
+      this._selEnt = sel; this._renderSelBar();
+    },
+    _selHasSettings(sel) { return !!(sel && (sel.kind === 'device' || sel.kind === 'gate' || sel.kind === 'bridge' || sel.kind === 'goal' || sel.kind === 'spawn' || (sel.kind === 'building' && (sel.ref.typeId === 'portal' || sel.ref.typeId === 'pipe')))); },
+    _selMovable(sel) { return !!(sel && (sel.kind === 'building' || sel.kind === 'mob' || sel.kind === 'item' || sel.kind === 'device' || sel.kind === 'bridge' || sel.kind === 'terrain')); },
+    _openSettingsFor(sel) {
+      if (!sel) return;
+      if (sel.kind === 'device') return this._deviceModal(sel.ref);
+      if (sel.kind === 'gate') return this._gateModal(sel.ref);
+      if (sel.kind === 'bridge') return this._bridgeModal(sel.ref);
+      if (sel.kind === 'goal') return this._goalModal();
+      if (sel.kind === 'spawn') return this._spawnModal(sel.ref);
+      if (sel.kind === 'building' && (sel.ref.typeId === 'portal' || sel.ref.typeId === 'pipe')) return this._portalModal(sel.ref);
+      this._flash('No settings for this ' + sel.kind);
+    },
+    _deleteSel() {
+      const sel = this._selEnt; if (!sel) return;
+      if (sel.kind === 'terrain') { const m = this.world.mapSnapshot; this._markDirty(sel.col, sel.row); if (m.ground[sel.row]) { m.ground[sel.row][sel.col] = 'grass'; m.elevation[sel.row][sel.col] = 0; } this._selEnt = null; this._hideSelBar(); this._pushHistory('delete block'); this._flash('🗑 Deleted block'); }
+      else { this._hideSelBar(); this._deleteObj(sel.ref); }   // _deleteObj clears _selEnt + pushes history + flashes
+    },
+    _renderSelBar() {
+      let bar = document.getElementById('oh-selbar');
+      if (!this._selEnt) { if (bar) bar.style.display = 'none'; return; }
+      if (!bar) { bar = document.createElement('div'); bar.id = 'oh-selbar'; bar.style.cssText = 'position:fixed;z-index:9200;display:flex;gap:4px;align-items:center;background:#1a2233;border:1px solid #46557a;border-radius:8px;padding:4px 5px;box-shadow:0 4px 14px rgba(0,0,0,.55);font:12px sans-serif'; document.body.appendChild(bar); }
+      const sel = this._selEnt, name = this._hoverName(sel.col, sel.row);
+      const btn = (id, txt, bg) => `<button data-sb="${id}" style="background:${bg || '#2b3548'};border:1px solid #46557a;color:#dfe7f5;border-radius:6px;padding:5px 9px;cursor:pointer;white-space:nowrap">${txt}</button>`;
+      bar.innerHTML = `<span style="color:#9fb0cc;padding:0 6px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>`
+        + (this._selMovable(sel) ? btn('move', '✥ Move') : '')
+        + (this._selHasSettings(sel) ? btn('settings', '⚙') : '')
+        + btn('delete', '🗑', '#7a2b2b');
+      bar.style.display = 'flex';
+      bar.querySelectorAll('[data-sb]').forEach((b) => b.onclick = () => { const a = b.dataset.sb; if (a === 'move') { this._selEnt.moving = true; this._flash('Click a new cell to move it (Esc to cancel)'); this._hideSelBar(); } else if (a === 'settings') this._openSettingsFor(this._selEnt); else if (a === 'delete') this._deleteSel(); });
+      this._positionSelBar();
+    },
+    _positionSelBar() {
+      const bar = document.getElementById('oh-selbar'); if (!bar || !this._selEnt || bar.style.display === 'none') return;
+      const cv = document.getElementById('gameCanvas'); if (!cv) return; const rect = cv.getBoundingClientRect();
+      const sp = OH_GRID.worldToScreen(this.grid, this.cam, (this._selEnt.col + 0.5) * this.grid.cell, this._selEnt.row * this.grid.cell);
+      const e = (this.world.mapSnapshot.elevation[this._selEnt.row] ? (this.world.mapSnapshot.elevation[this._selEnt.row][this._selEnt.col] | 0) : 0) * OVERHEAD.elevOffset(this.grid.cell * this.grid.masterZoom);
+      const cx = rect.left + (sp.x - e) * (rect.width / CANVAS_W), cy = rect.top + (sp.y + (this._topInset || 0) - e) * (rect.height / CANVAS_H);
+      bar.style.left = Math.max(4, cx - bar.offsetWidth / 2) + 'px'; bar.style.top = Math.max(52, cy - 40) + 'px';
+    },
+    _hideSelBar() { const bar = document.getElementById('oh-selbar'); if (bar) bar.style.display = 'none'; },
     _nextTxId() { let mx = 0; for (const d of (this.world.redstone || [])) if (typeof d.txId === 'number' && d.txId > mx) mx = d.txId; return mx + 1; },
     // Multi-select checklist of every OTHER device's Tx number (labelled by name) to
     // listen to — the side-scroll Tx/Rx model.
@@ -1189,6 +1248,9 @@
       // Placement GHOST of the selected tool at the hovered cell (red-X if a building
       // won't fit). Not shown in hand mode or while dragging/shaping.
       this._drawGhost(ctx, S, cs, Q);
+      if (this._selEnt && !this._selEnt.moving && this.tool === 'hand') { const sc = this._selEnt; const sp2 = S(sc.col * g.cell, sc.row * g.cell), eo2 = (m.elevation[sc.row] ? (m.elevation[sc.row][sc.col] | 0) : 0) * Q;   // selection outline + keep the action bar positioned
+        ctx.save(); ctx.strokeStyle = '#6ad0ff'; ctx.lineWidth = 2; ctx.setLineDash([5, 3]); ctx.strokeRect(sp2.x - eo2 + 1, sp2.y - eo2 + 1, cs - 2, cs - 2); ctx.setLineDash([]); ctx.restore(); this._positionSelBar(); }
+      else if (document.getElementById('oh-selbar')) this._hideSelBar();
       // Hover tooltip — name of whatever is under the cursor (cheap: one lookup + a text box).
       if (this._hover && !this._pan && !this._dragging) { const nm = this._hoverName(this._hover.col, this._hover.row);
         if (nm) { const e = (m.elevation[this._hover.row] ? (m.elevation[this._hover.row][this._hover.col] | 0) : 0), sp = S((this._hover.col + 0.5) * g.cell, this._hover.row * g.cell), tx = sp.x - e * Q, ty = sp.y - e * Q;
