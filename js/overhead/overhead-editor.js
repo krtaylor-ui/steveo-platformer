@@ -153,7 +153,7 @@
     },
 
     // ── History (undo/redo) ─────────────────────────────────────────────────
-    _snapshot() { return JSON.stringify({ map: this.world.mapSnapshot, b: this.world.buildings, m: this.world.mobs, i: this.world.items, s: this.world.spawns, g: this.world.goal, r: this.world.ramps, br: this.world.bridges, rs: this.world.redstone, set: this.world.settings, ts: this.world.templateStamps, tpl: this.world.templates }); },
+    _snapshot() { return JSON.stringify({ map: this.world.mapSnapshot, b: this.world.buildings, m: this.world.mobs, i: this.world.items, s: this.world.spawns, g: this.world.goal, r: this.world.ramps, br: this.world.bridges, ga: this.world.gates, rs: this.world.redstone, set: this.world.settings, ts: this.world.templateStamps, tpl: this.world.templates }); },
     // History captures CONTENT + SETTINGS only (never zoom/scroll — those don't
     // snapshot). Each entry carries a description for the undo/redo notification.
     _pushHistory(desc) {
@@ -231,7 +231,7 @@
       }
       this._terrCache = cv; this._terrCachePad = pad; this._terrCacheMaxE = padMax;
     },
-    _restore(snap) { const d = JSON.parse(snap); const cam = this.cam, mz = this.grid && this.grid.masterZoom; this.world.mapSnapshot = d.map; this.world.buildings = d.b; this.world.mobs = d.m; this.world.items = d.i; this.world.spawns = d.s; this.world.goal = d.g; if (d.r !== undefined) this.world.ramps = d.r; if (d.br !== undefined) this.world.bridges = d.br; if (d.rs !== undefined) this.world.redstone = d.rs; if (d.set !== undefined) this.world.settings = d.set; if (d.ts !== undefined) this.world.templateStamps = d.ts; if (d.tpl !== undefined) this.world.templates = d.tpl; this._setupWorld(); this.cam = cam; if (mz) this.grid.masterZoom = mz; this._terrRev = (this._terrRev || 0) + 1; },   // keep the camera + zoom put (undo/redo must not jump the view)
+    _restore(snap) { const d = JSON.parse(snap); const cam = this.cam, mz = this.grid && this.grid.masterZoom; this.world.mapSnapshot = d.map; this.world.buildings = d.b; this.world.mobs = d.m; this.world.items = d.i; this.world.spawns = d.s; this.world.goal = d.g; if (d.r !== undefined) this.world.ramps = d.r; if (d.br !== undefined) this.world.bridges = d.br; if (d.ga !== undefined) this.world.gates = d.ga; if (d.rs !== undefined) this.world.redstone = d.rs; if (d.set !== undefined) this.world.settings = d.set; if (d.ts !== undefined) this.world.templateStamps = d.ts; if (d.tpl !== undefined) this.world.templates = d.tpl; this._setupWorld(); this.cam = cam; if (mz) this.grid.masterZoom = mz; this._terrRev = (this._terrRev || 0) + 1; },   // keep the camera + zoom put (undo/redo must not jump the view)
     _paintDesc() { const t = this._shift ? 'erase' : this.tool;
       if (t === 'terrain') return 'paint ' + this.terrainKey; if (t === 'building') return 'place ' + this.buildingType;
       if (t === 'mob') return 'place ' + this.mobKey; if (t === 'item') return 'place ' + this.itemKey;
@@ -1053,7 +1053,7 @@
       const g = this.grid, m = this.world.mapSnapshot, z = g.masterZoom, cs = g.cell * z;
       { const zr = document.getElementById('oh-zoom'); if (zr && document.activeElement !== zr && +zr.value !== z) zr.value = z; }   // keep the zoom slider in sync with wheel/buttons/keys
       // Match the play-time elevation scale to the world's player height (see elevOffset).
-      if (typeof OVERHEAD !== 'undefined') OVERHEAD._elevScale = 1 / Math.max(1, (this.world.settings && this.world.settings.playerHeight) || 1);
+      if (typeof OVERHEAD !== 'undefined') { OVERHEAD._elevScale = 1 / Math.max(1, (this.world.settings && this.world.settings.playerHeight) || 1); OVERHEAD._elevBase = Math.min(0.5, Math.max(0.1, (this.world.settings && this.world.settings.elevOffset) || 0.22)); }
       // Reserve a top strip so the fixed 40px command bar never covers the map (incl.
       // its top edge indicator). Bar is 40px SCREEN → convert to canvas-logical px via
       // the current display scale so the map content starts just below it.
@@ -1073,7 +1073,7 @@
       // of cubes). Committed edits PATCH just the touched region into the cache (no full
       // rebuild); an in-progress brush stroke repaints only its edited region live on top of
       // the blit (_editBox). A full rebuild happens only on view change / undo / redo.
-      const key = (this.view.elev ? 1 : 0) + '|' + (this.view.hideAbove ? this.elevLevel : '-') + '|' + ((this.world.settings && this.world.settings.playerHeight) || 1) + '|' + (this._terrRev || 0) + '|' + m.gridW + 'x' + m.gridH;
+      const key = (this.view.elev ? 1 : 0) + '|' + (this.view.hideAbove ? this.elevLevel : '-') + '|' + ((this.world.settings && this.world.settings.playerHeight) || 1) + '|' + ((this.world.settings && this.world.settings.elevOffset) || 0.22) + '|' + (this._terrRev || 0) + '|' + m.gridW + 'x' + m.gridH;
       if (!this._terrCache || this._terrCacheKey !== key) { this._buildTerrCache(m, g, maxE); this._terrCacheKey = key; }
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(this._terrCache, this.cam.x + this._terrCachePad, this.cam.y + this._terrCachePad, CANVAS_W / z, (CANVAS_H - TOP) / z, 0, TOP, CANVAS_W, CANVAS_H - TOP);
@@ -1158,7 +1158,7 @@
       // NOT a block look.
       this._drawMapEdge(ctx, S, m.gridW * g.cell, m.gridH * g.cell);
       // Live shape preview while dragging.
-      if (this._shapeAnchor && this._shapeEnd) { ctx.fillStyle = 'rgba(120,180,255,.4)'; for (const p of this._shapeCells(this._shapeAnchor, this._shapeEnd)) { const sp = S(p.c * g.cell, p.r * g.cell); ctx.fillRect(sp.x, sp.y, cs, cs); } }
+      if (this._shapeAnchor && this._shapeEnd) { const so = this.elevLevel * Q; ctx.fillStyle = 'rgba(120,180,255,.4)'; ctx.strokeStyle = 'rgba(150,210,255,.85)'; ctx.lineWidth = 1; for (const p of this._shapeCells(this._shapeAnchor, this._shapeEnd)) { const sp = S(p.c * g.cell, p.r * g.cell); ctx.fillRect(sp.x - so, sp.y - so, cs, cs); ctx.strokeRect(sp.x - so + .5, sp.y - so + .5, cs - 1, cs - 1); } }
       // Placement GHOST of the selected tool at the hovered cell (red-X if a building
       // won't fit). Not shown in hand mode or while dragging/shaping.
       this._drawGhost(ctx, S, cs, Q);

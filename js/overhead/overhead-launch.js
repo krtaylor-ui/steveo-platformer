@@ -107,7 +107,8 @@
     // from the world's PLAYER HEIGHT) shrinks each level so a taller player spans more
     // levels: player height 2 → a level renders at 1/2 the height, etc. Default 1.
     _elevScale: 1,
-    elevOffset(cs) { return cs * 0.22 * (this._elevScale || 1); },
+    _elevBase: 0.22,   // fraction of a cell each elevation level shifts up-left (user-configurable, capped at 0.5)
+    elevOffset(cs) { return cs * (this._elevBase || 0.22) * (this._elevScale || 1); },
     // A stacked-cube tile: top shifted up-left by elev×Q, with darker SOUTH + EAST
     // faces exposed toward lower/absent neighbours (east darkest). fx,fy = the
     // FOOTPRINT (elev-0) top-left. Draw cells back→front (by r+c then elev).

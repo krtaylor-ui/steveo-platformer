@@ -49,7 +49,7 @@
       this.playerH = cfg.playerHeight != null ? cfg.playerHeight : 1;
       // A taller player makes each elevation LEVEL render smaller (height 2 → ½ a level),
       // so structures scale to the sprite. Set before the terrain cache bakes so it agrees.
-      if (typeof OVERHEAD !== 'undefined') OVERHEAD._elevScale = 1 / Math.max(1, this.playerH || 1);
+      if (typeof OVERHEAD !== 'undefined') { OVERHEAD._elevScale = 1 / Math.max(1, this.playerH || 1); OVERHEAD._elevBase = Math.min(0.5, Math.max(0.1, (worldData.settings && worldData.settings.elevOffset) || 0.22)); }
       this.attackBlock = cfg.attackBlockHeight != null ? cfg.attackBlockHeight : 2;
       this.showHidden = !!cfg.showHiddenIndicator;
       // "Always show player" reveal window: a circle of revealRadius blocks around the

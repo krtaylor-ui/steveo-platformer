@@ -13,6 +13,7 @@
       moveSpeed:        0.11,
       climbLevels:      0,          // how many elevation levels a WALK can step up (0 = none; use ramps/ladders)
       playerHeight:     1,          // player height in levels — a block this-many-or-fewer levels above BLOCKS; taller = an overhang you pass under
+      elevOffset:       0.22,       // 2.5D vertical offset per elevation level (fraction of a cell up-left); higher = taller-looking stacks. Capped at 0.5
       // Jump (impression-of-height): small float + a scale-up.
       jumpFloat:        0.4,
       jumpScale:        0.22,
@@ -151,6 +152,7 @@
               ${range('moveSpeed', 'Player speed (× cell/frame)', 0.04, 0.28, 0.01)}
               ${sel('climbLevels', 'Levels a walk can climb', [['0', 'None (use ramps/ladders)'], ['1', '1 level'], ['2', '2 levels'], ['99', 'Unlimited']])}
               ${sel('playerHeight', 'Player height (levels — scales elevation)', [['1', '1 (a level = full height)'], ['2', '2 (a level = ½ height)'], ['3', '3 (a level = ⅓ height)'], ['4', '4']])}
+              ${range('elevOffset', '3D height offset per level (taller-looking stacks)', 0.1, 0.5, 0.02)}
               ${range('jumpFloat', 'Jump float (up)', 0, 1, 0.05)}
               ${range('jumpScale', 'Jump scale (grow)', 0, 0.5, 0.02)}
               ${sel('jumpClear', 'Blocks a jump can clear', [['0', '0 (no vault)'], ['1', '1 block'], ['2', '2 blocks'], ['3', '3 blocks']])}
