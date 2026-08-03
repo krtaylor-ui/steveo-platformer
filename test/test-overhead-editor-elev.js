@@ -3,6 +3,7 @@
 // plain (drawbridge is a config toggle). Exercises OH_EDITOR methods on a fake context.
 //   node test/test-overhead-editor-elev.js
 global.window = global; global.CANVAS_W = 800; global.CANVAS_H = 500; global.GAME_VERSION = 'v3 build 328 (elev test)';
+global.localStorage = { _d: {}, getItem(k) { return this._d[k] || null; }, setItem(k, v) { this._d[k] = v; } };
 const cls = { add() {}, remove() {}, toggle() {}, contains() { return false; } };
 function mkEl() { return { style: {}, classList: cls, appendChild() {}, addEventListener() {}, getContext: () => ({}), getBoundingClientRect: () => ({ width: 800, height: 500, left: 0, top: 0 }) }; }
 global.document = { getElementById: () => mkEl(), head: { appendChild() {} }, createElement: () => mkEl(), body: { appendChild() {}, classList: cls }, addEventListener() {} };
@@ -86,6 +87,24 @@ console.log('Unified selection + action bar logic:');
   ed._deleteSel(); ok((m.elevation[7][7] | 0) === 0 && m.ground[7][7] === 'grass', 'deleting a selected block clears that cell');
   ed._selectObjAt(2, 2); ed._deleteSel(); ok(ed.world.mobs.length === 0, 'deleting a selected mob removes it');
   ed._selectObjAt(9, 9); ok(ed._selEnt && ed._selEnt.kind === 'terrain', 'empty ground still selects as terrain (grass)');
+}
+
+console.log('Customizable dual menu bars — layout model:');
+{
+  const ed = { _ALL_GROUPS: OH_EDITOR._ALL_GROUPS, _defaultLayout: OH_EDITOR._defaultLayout, _loadLayout: OH_EDITOR._loadLayout, _saveLayout: OH_EDITOR._saveLayout, _moveGroup: OH_EDITOR._moveGroup, _moveGroupToRail: OH_EDITOR._moveGroupToRail, _renderBar() {} };
+  global.localStorage._d = {};
+  ed._loadLayout();
+  ok(ed._railLayout.left.length === ed._ALL_GROUPS.length && ed._railLayout.right.length === 0, 'default layout puts every palette on the LEFT rail');
+  ed._moveGroupToRail('Redstone', 'right');
+  ok(ed._railLayout.right.indexOf('Redstone') === 0 && ed._railLayout.left.indexOf('Redstone') < 0, 'a palette can move to the RIGHT rail');
+  ok(ed._railLayout.rightWidth > 0, 'moving to the right rail gives it a width');
+  ed._moveGroup('Mobs', 'Terrain');   // put Mobs just before Terrain
+  ok(ed._railLayout.left.indexOf('Mobs') === ed._railLayout.left.indexOf('Terrain') - 1, 'a palette can be reordered within a rail');
+  ed._saveLayout();
+  const ed2 = { _ALL_GROUPS: OH_EDITOR._ALL_GROUPS, _defaultLayout: OH_EDITOR._defaultLayout, _loadLayout: OH_EDITOR._loadLayout };
+  ed2._loadLayout();
+  ok(ed2._railLayout.right.indexOf('Redstone') === 0, 'the layout persists (reloads from storage)');
+  global.localStorage._d = {};
 }
 
 console.log('Hide-above slice caps tall cells (no black holes):');

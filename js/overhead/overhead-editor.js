@@ -32,6 +32,34 @@
     _selBox: null, _marquee: null, _selecting: false,   // marquee drag state
     _clip: null, _pasting: false,   // clipboard pattern + paste mode
     view: { mobs: true, items: true, buildings: true, elev: false, hideAbove: false, focusLayer: true, airGhosts: false },   // top-bar view filters
+    // Customizable menu bars: which palette groups sit on the LEFT vs RIGHT rail (+ order),
+    // each rail's width, and which groups are pinned open. Persisted per-user in localStorage.
+    _ALL_GROUPS: ['Elevation', 'Brush', 'Shape', 'Terrain', 'Mobs', 'Items', 'Buildings', 'Templates', 'Redstone'],
+    _defaultLayout() { return { left: this._ALL_GROUPS.slice(), right: [], leftWidth: 120, rightWidth: 0, pinned: {} }; },
+    _loadLayout() {
+      let L = this._defaultLayout();
+      try { const s = JSON.parse(localStorage.getItem('steveo_oh_rail_layout') || 'null'); if (s && s.left && s.right) { L = Object.assign(L, s); L.pinned = s.pinned || {}; } } catch (e) {}
+      // make sure every known group appears exactly once (add new ones to the left)
+      const seen = new Set([...L.left, ...L.right]); for (const gp of this._ALL_GROUPS) if (!seen.has(gp)) L.left.push(gp);
+      L.left = L.left.filter((gp) => this._ALL_GROUPS.indexOf(gp) >= 0); L.right = L.right.filter((gp) => this._ALL_GROUPS.indexOf(gp) >= 0);
+      this._railLayout = L;
+    },
+    _saveLayout() { try { localStorage.setItem('steveo_oh_rail_layout', JSON.stringify(this._railLayout)); } catch (e) {} },
+    _moveGroup(src, target) {   // drop `src` before `target` (in target's rail)
+      if (!src || src === target) return; const L = this._railLayout;
+      L.left = L.left.filter((x) => x !== src); L.right = L.right.filter((x) => x !== src);
+      const side = L.right.indexOf(target) >= 0 ? 'right' : 'left', arr = L[side], idx = arr.indexOf(target);
+      arr.splice(idx >= 0 ? idx : arr.length, 0, src);
+      if (side === 'right' && !L.rightWidth) L.rightWidth = 160;
+      this._saveLayout(); this._renderBar();
+    },
+    _moveGroupToRail(src, side) {   // drop onto a rail's pad → append to that rail
+      if (!src) return; const L = this._railLayout;
+      L.left = L.left.filter((x) => x !== src); L.right = L.right.filter((x) => x !== src);
+      (side === 'right' ? L.right : L.left).push(src);
+      if (side === 'right' && !L.rightWidth) L.rightWidth = 160;
+      this._saveLayout(); this._renderBar();
+    },
     _running: false, _dragging: false, _shift: false, _shapeAnchor: null, _shapeEnd: null,
     _hist: [], _histPos: -1,
 
@@ -252,6 +280,13 @@
           #oh-top .oh-status{margin-left:auto;color:#8fa0bd;font-size:12px;font-family:ui-monospace,monospace}
           #oh-top .oh-flash{color:#8fe0a0;font-size:12px;margin-left:10px}
           #oh-rail{position:fixed;top:48px;left:8px;z-index:9000;display:none;flex-direction:column;gap:6px;width:120px;font:12px sans-serif;color:#dbe4f3}
+          #oh-rail-right{position:fixed;top:48px;right:8px;z-index:9000;display:none;flex-direction:column;gap:6px;width:0;font:12px sans-serif;color:#dbe4f3}
+          #oh-rail-right .oh-fly{left:auto;right:112px}
+          #oh-rail .grp[draggable=true] .hd,#oh-rail-right .grp[draggable=true] .hd{cursor:grab}
+          .grp.oh-drag{opacity:.4} .grp.oh-over{outline:2px dashed #6ad0ff;outline-offset:1px}
+          .oh-railhdr{display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#8fa0bd;padding:0 2px}
+          .oh-railhdr .rw{cursor:pointer;padding:0 4px;opacity:.7} .oh-railhdr .rw:hover{opacity:1}
+          .oh-droppad{min-height:22px;border:1px dashed rgba(120,150,190,.28);border-radius:6px;margin-top:5px;font-size:10px;color:#7a879c;text-align:center;padding:5px 3px}
           #oh-rail .grp{position:relative}
           #oh-rail .hd{background:#243049;border:1px solid #3a4a6b;border-radius:7px;padding:7px 9px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:6px}
           #oh-rail .hd.on{background:#3a5a8c;border-color:#5573ad}
@@ -283,8 +318,10 @@
       }
       if (!document.getElementById('oh-top')) { const t = document.createElement('div'); t.id = 'oh-top'; document.body.appendChild(t); }
       if (!document.getElementById('oh-rail')) { const r = document.createElement('div'); r.id = 'oh-rail'; document.body.appendChild(r); }
+      if (!document.getElementById('oh-rail-right')) { const r = document.createElement('div'); r.id = 'oh-rail-right'; document.body.appendChild(r); }
+      if (!this._railLayout) this._loadLayout();
     },
-    _showChrome(on) { ['oh-top', 'oh-rail'].forEach((id, i) => { const el = document.getElementById(id); if (el) el.style.display = on ? (i ? 'flex' : 'flex') : 'none'; }); },
+    _showChrome(on) { ['oh-top', 'oh-rail', 'oh-rail-right'].forEach((id) => { const el = document.getElementById(id); if (el) el.style.display = on ? 'flex' : 'none'; }); if (on) this._selEnt || this._hideSelBar(); },
 
     _renderBar() {
       const top = document.getElementById('oh-top'), rail = document.getElementById('oh-rail');
@@ -345,8 +382,8 @@
         + `<div class="opt ${this.tool === 'lock' ? 'sel' : ''}" data-rs="lock">🔒 Lock (key → signal)</div>`
         + `<div class="opt small" style="color:#8fa0bd">Hand-click a device to set its transmit / receive channel. Lever/plate + Drawbridge share "gate" by default.</div>`;
       const grp = (label, cur, opts, active, sw) => {
-        if (this._pinnedGrp === label) return `<div class="grp pinned"><div class="hd on"><b>${label}</b><span class="pinx" data-unpin="1" title="Unpin">✕</span></div><div class="oh-pinned">${opts}</div></div>`;
-        return `<div class="grp"><div class="hd ${active ? 'on' : ''}"><b>${label} ▸</b><span class="cur">${sw || ''}${cur}</span></div><div class="oh-fly"><span class="pin" data-pin="${label}" title="Pin this palette open">📌</span>${opts}</div></div>`;
+        if (this._railLayout.pinned[label]) return `<div class="grp pinned" draggable="true" data-grp="${label}"><div class="hd on"><b>${label}</b><span class="pinx" data-unpin="${label}" title="Unpin">✕</span></div><div class="oh-pinned">${opts}</div></div>`;
+        return `<div class="grp" draggable="true" data-grp="${label}"><div class="hd ${active ? 'on' : ''}"><b>${label} ▸</b><span class="cur">${sw || ''}${cur}</span></div><div class="oh-fly"><span class="pin" data-pin="${label}" title="Pin this palette open">📌</span>${opts}</div></div>`;
       };
       const shapeOpts = [['freehand', 'Freehand (B)'], ['line', 'Line (L)'], ['rect', 'Rectangle (R)'], ['circle', 'Circle / Oval (O)'], ['fill', '🪣 Fill / bucket (G)']].map(([k, n]) => `<div class="opt small ${this.shape === k ? 'sel' : ''}" data-shape="${k}">${n}</div>`).join('')
         + `<div class="opt small ${this.shapeFill ? 'sel' : ''}" data-fill="1">${this.shapeFill ? '☑' : '☐'} Solid (else outline = brush width)</div>`
@@ -358,28 +395,41 @@
       const rsActive = ['lever', 'dust', 'lamp', 'plate', 'weight', 'piston', 'and', 'not', 'nor', 'lock'].indexOf(this.tool) >= 0;
       const terrCur = this.tool === 'terrain' ? P().OH_TERRAIN_BY_KEY[this.terrainKey].name : '';
       const terrSw = this.tool === 'terrain' ? blockSw(this.terrainKey) : '';
-      rail.style.width = this._pinnedGrp ? '240px' : '120px';   // widen for a pinned two-column palette
+      // Build each palette group's HTML, then lay them out across the LEFT + RIGHT rails per
+      // the (draggable, persisted) layout.
+      const groups = {
+        Elevation: grp('Elevation', 'Lvl ' + this.elevLevel, [0, 1, 2, 3, 4, 5, 6, 7, 8].map((l) => `<div class="opt small ${l === this.elevLevel ? 'sel' : ''}" data-elev="${l}">Level ${l}</div>`).join('')),
+        Brush: grp('Brush', this.brush + '×' + this.brush + (this._scatter ? ' · ' + (this._scatter * 100 | 0) + '%' : ''),
+          [1, 2, 3, 5, 8].map((b) => `<div class="opt small ${b === this.brush ? 'sel' : ''}" data-brush="${b}">${b}×${b}</div>`).join('')
+          + `<div class="opt small" style="color:#8fa0bd;margin-top:2px">Scatter (natural fill):</div>`
+          + [['0', 'Solid'], ['0.25', '25%'], ['0.5', '50%'], ['0.75', '75%']].map(([v, n]) => `<div class="opt small ${+v === this._scatter ? 'sel' : ''}" data-scatter="${v}">${n}</div>`).join(''), brushActive),
+        Shape: grp('Shape', this.shape === 'freehand' ? 'Freehand' : (this.shape + (this.shapeFill ? ' fill' : '')), shapeOpts, shapeActive),
+        Terrain: grp('Terrain', terrCur, terrOpts, terrActive, terrSw),
+        Mobs: grp('Mobs', this.tool === 'mob' ? P().OH_MOB_BY_KEY[this.mobKey].name : '', mobOpts, this.tool === 'mob'),
+        Items: grp('Items', this.tool === 'item' ? P().OH_ITEM_BY_KEY[this.itemKey].name : '', itemOpts, this.tool === 'item'),
+        Buildings: grp('Buildings', (this.tool === 'building' ? this.buildingType : this.tool === 'spawn' ? 'Spawn' : this.tool === 'goal' ? 'Goal' : this.tool === 'ramp' ? 'Ramp' : this.tool === 'ladder' ? 'Ladder' : this.tool === 'tree' ? 'Tree' : this.tool === 'bridge' ? 'Bridge' : ''), buildOpts, buildActive),
+        Templates: grp('Templates', this.tool === 'template' && this._templateId ? (tplList.find((t) => t.id === this._templateId) || {}).name || '' : '', tplOpts, this.tool === 'template'),
+        Redstone: grp('Redstone', rsActive ? this.tool : '', rsOpts, rsActive),
+      };
+      const L = this._railLayout, railRight = document.getElementById('oh-rail-right');
+      if (L.right.length && !L.rightWidth) L.rightWidth = 160;
+      rail.style.width = (L.leftWidth || 120) + 'px';
       rail.innerHTML =
         `<div class="oh-top3">
            <div class="btn ${mode === 'hand' ? 'on' : ''}" id="oh-hand" title="Pan · click to configure/move">✋ Hand</div>
            <div class="btn ${mode === 'draw' ? 'on' : ''}" id="oh-draw" title="Draw with the last terrain + brush/shape">✏ Draw</div>
            <div class="btn ${mode === 'erase' ? 'on' : ''}" id="oh-erase" title="Erase everything the brush touches (⇧-click too)">⌫ Erase</div>
-         </div>` +
-        grp('Elevation', 'Lvl ' + this.elevLevel, [0, 1, 2, 3, 4, 5, 6, 7, 8].map((l) => `<div class="opt small ${l === this.elevLevel ? 'sel' : ''}" data-elev="${l}">Level ${l}</div>`).join('')) +
-        grp('Brush', this.brush + '×' + this.brush + (this._scatter ? ' · ' + (this._scatter * 100 | 0) + '%' : ''),
-          [1, 2, 3, 5, 8].map((b) => `<div class="opt small ${b === this.brush ? 'sel' : ''}" data-brush="${b}">${b}×${b}</div>`).join('')
-          + `<div class="opt small" style="color:#8fa0bd;margin-top:2px">Scatter (natural fill):</div>`
-          + [['0', 'Solid'], ['0.25', '25%'], ['0.5', '50%'], ['0.75', '75%']].map(([v, n]) => `<div class="opt small ${+v === this._scatter ? 'sel' : ''}" data-scatter="${v}">${n}</div>`).join(''), brushActive) +
-        grp('Shape', this.shape === 'freehand' ? 'Freehand' : (this.shape + (this.shapeFill ? ' fill' : '')), shapeOpts, shapeActive) +
-        `<div class="oh-gap"></div>` +
-        grp('Terrain', terrCur, terrOpts, terrActive, terrSw) +
-        grp('Mobs', this.tool === 'mob' ? P().OH_MOB_BY_KEY[this.mobKey].name : '', mobOpts, this.tool === 'mob') +
-        grp('Items', this.tool === 'item' ? P().OH_ITEM_BY_KEY[this.itemKey].name : '', itemOpts, this.tool === 'item') +
-        grp('Buildings', (this.tool === 'building' ? this.buildingType : this.tool === 'spawn' ? 'Spawn' : this.tool === 'goal' ? 'Goal' : this.tool === 'ramp' ? 'Ramp' : this.tool === 'ladder' ? 'Ladder' : this.tool === 'tree' ? 'Tree' : this.tool === 'bridge' ? 'Bridge' : ''), buildOpts, buildActive) +
-        grp('Templates', this.tool === 'template' && this._templateId ? (tplList.find((t) => t.id === this._templateId) || {}).name || '' : '', tplOpts, this.tool === 'template') +
-        `<div class="oh-gap"></div>` +
-        grp('Redstone', rsActive ? this.tool : '', rsOpts, rsActive);
+         </div>
+         <div class="oh-railhdr"><span>◧ LEFT</span><span><span class="rw" data-rw="left--">◀</span><span class="rw" data-rw="left++">▶</span></span></div>` +
+        L.left.map((t) => groups[t] || '').join('') + `<div class="oh-droppad" data-drop="left"></div>`;
+      railRight.style.display = (L.right.length || L.rightWidth) ? 'flex' : 'none';
+      railRight.style.width = (L.rightWidth || 0) + 'px';
+      railRight.innerHTML = L.right.length || L.rightWidth
+        ? `<div class="oh-railhdr"><span><span class="rw" data-rw="right--">◀</span><span class="rw" data-rw="right++">▶</span></span><span>RIGHT ◨</span></div>`
+          + L.right.map((t) => groups[t] || '').join('') + `<div class="oh-droppad" data-drop="right">drag palettes here →</div>`
+        : '';
       const g = (id) => document.getElementById(id);
+      const qAll = (sel) => [].slice.call(rail.querySelectorAll(sel)).concat([].slice.call(railRight.querySelectorAll(sel)));
       g('oh-undo').onclick = () => this.undo(); g('oh-redo').onclick = () => this.redo();
       g('oh-zin').onclick = () => OH_GRID.zoomBy(this.grid, 1.15); g('oh-zout').onclick = () => OH_GRID.zoomBy(this.grid, 0.87);
       g('oh-test').onclick = () => this._test(); g('oh-save').onclick = () => this._save(); g('oh-exit').onclick = () => this.close();
@@ -389,27 +439,41 @@
       g('oh-erase').onclick = () => { this.tool = 'erase'; this._renderBar(); this._updateCursor(); };
       g('oh-hand').onclick = () => { this.tool = 'hand'; this._selEnt = null; this._renderBar(); this._updateCursor(); };
       g('oh-draw').onclick = () => { this.tool = 'terrain'; this._renderBar(); this._updateCursor(); };   // restore drawing with the last terrain + brush/shape (all persist)
-      rail.querySelectorAll('[data-pin]').forEach((el) => el.onclick = (ev) => { ev.stopPropagation(); this._pinnedGrp = el.dataset.pin; this._renderBar(); });
-      rail.querySelectorAll('[data-unpin]').forEach((el) => el.onclick = (ev) => { ev.stopPropagation(); this._pinnedGrp = null; this._renderBar(); });
-      rail.querySelectorAll('[data-brush]').forEach((el) => el.onclick = () => { this.brush = +el.dataset.brush; this._renderBar(); });
-      rail.querySelectorAll('[data-scatter]').forEach((el) => el.onclick = () => { this._scatter = +el.dataset.scatter; this._renderBar(); });
-      rail.querySelectorAll('[data-shape]').forEach((el) => el.onclick = () => { this.shape = el.dataset.shape; this._renderBar(); });
-      rail.querySelectorAll('[data-fill]').forEach((el) => el.onclick = () => { this.shapeFill = !this.shapeFill; this._renderBar(); });
-      rail.querySelectorAll('[data-elev]').forEach((el) => el.onclick = () => { this.elevLevel = +el.dataset.elev; this._renderBar(); });
-      rail.querySelectorAll('[data-terr]').forEach((el) => el.onclick = () => { this.tool = 'terrain'; this.terrainKey = el.dataset.terr; this._renderBar(); });
-      rail.querySelectorAll('[data-build]').forEach((el) => el.onclick = () => { this.tool = 'building'; this.buildingType = el.dataset.build; this._renderBar(); });
-      rail.querySelectorAll('[data-spawn]').forEach((el) => el.onclick = () => { this.tool = 'spawn'; this._renderBar(); });
-      rail.querySelectorAll('[data-goal]').forEach((el) => el.onclick = () => { this.tool = 'goal'; this._renderBar(); });
-      rail.querySelectorAll('[data-ramp]').forEach((el) => el.onclick = () => { this.tool = el.dataset.ramp; this._renderBar(); });
-      rail.querySelectorAll('[data-tree]').forEach((el) => el.onclick = () => { this.tool = 'tree'; this._renderBar(); });
-      rail.querySelectorAll('[data-template]').forEach((el) => el.onclick = () => { this.tool = 'template'; this._templateId = el.dataset.template; this._renderBar(); this._updateCursor(); });
-      rail.querySelectorAll('[data-newtemplate]').forEach((el) => el.onclick = () => this._newTemplateModal());
-      { const tf = g('oh-terr-filter'); if (tf) { const doFilter = () => { const q = tf.value.toLowerCase(); this._terrFilter = tf.value; rail.querySelectorAll('[data-terr]').forEach((el) => { el.style.display = (!q || el.textContent.toLowerCase().indexOf(q) >= 0 || (el.dataset.terr || '').indexOf(q) >= 0) ? '' : 'none'; }); }; tf.oninput = doFilter; tf.onclick = (ev) => ev.stopPropagation(); if (this._terrFilter) doFilter(); } }
-      rail.querySelectorAll('[data-mob]').forEach((el) => el.onclick = () => { this.tool = 'mob'; this.mobKey = el.dataset.mob; this._renderBar(); });
-      rail.querySelectorAll('[data-item]').forEach((el) => el.onclick = () => { this.tool = 'item'; this.itemKey = el.dataset.item; this._renderBar(); });
-      rail.querySelectorAll('[data-bspan]').forEach((el) => el.onclick = () => { this.tool = 'bridge'; this._bridgeStart = null; this._renderBar(); });
-      rail.querySelectorAll('[data-gate]').forEach((el) => el.onclick = () => { this.tool = 'gate'; this._gateStart = null; this._renderBar(); });
-      rail.querySelectorAll('[data-rs]').forEach((el) => el.onclick = () => { this.tool = el.dataset.rs; this._renderBar(); });
+      qAll('[data-pin]').forEach((el) => el.onclick = (ev) => { ev.stopPropagation(); this._railLayout.pinned[el.dataset.pin] = 1; this._saveLayout(); this._renderBar(); });
+      qAll('[data-unpin]').forEach((el) => el.onclick = (ev) => { ev.stopPropagation(); delete this._railLayout.pinned[el.dataset.unpin]; this._saveLayout(); this._renderBar(); });
+      // Rail width steppers (◀▶) + drag-and-drop to move a palette between / within the rails.
+      qAll('[data-rw]').forEach((el) => el.onclick = () => { const v = el.dataset.rw, side = v.indexOf('left') === 0 ? 'left' : 'right', key = side + 'Width'; const inc = v.indexOf('++') >= 0 ? 28 : -28; this._railLayout[key] = Math.max(0, Math.min(400, (this._railLayout[key] || (side === 'left' ? 120 : 0)) + inc)); this._saveLayout(); this._renderBar(); });
+      qAll('.grp[draggable=true]').forEach((el) => {
+        el.addEventListener('dragstart', (ev) => { this._dragGrp = el.dataset.grp; el.classList.add('oh-drag'); if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move'; });
+        el.addEventListener('dragend', () => { el.classList.remove('oh-drag'); qAll('.oh-over').forEach((x) => x.classList.remove('oh-over')); });
+        el.addEventListener('dragover', (ev) => { ev.preventDefault(); el.classList.add('oh-over'); });
+        el.addEventListener('dragleave', () => el.classList.remove('oh-over'));
+        el.addEventListener('drop', (ev) => { ev.preventDefault(); el.classList.remove('oh-over'); this._moveGroup(this._dragGrp, el.dataset.grp); });
+      });
+      qAll('.oh-droppad').forEach((el) => {
+        el.addEventListener('dragover', (ev) => { ev.preventDefault(); el.classList.add('oh-over'); });
+        el.addEventListener('dragleave', () => el.classList.remove('oh-over'));
+        el.addEventListener('drop', (ev) => { ev.preventDefault(); el.classList.remove('oh-over'); this._moveGroupToRail(this._dragGrp, el.dataset.drop); });
+      });
+      qAll('[data-brush]').forEach((el) => el.onclick = () => { this.brush = +el.dataset.brush; this._renderBar(); });
+      qAll('[data-scatter]').forEach((el) => el.onclick = () => { this._scatter = +el.dataset.scatter; this._renderBar(); });
+      qAll('[data-shape]').forEach((el) => el.onclick = () => { this.shape = el.dataset.shape; this._renderBar(); });
+      qAll('[data-fill]').forEach((el) => el.onclick = () => { this.shapeFill = !this.shapeFill; this._renderBar(); });
+      qAll('[data-elev]').forEach((el) => el.onclick = () => { this.elevLevel = +el.dataset.elev; this._renderBar(); });
+      qAll('[data-terr]').forEach((el) => el.onclick = () => { this.tool = 'terrain'; this.terrainKey = el.dataset.terr; this._renderBar(); });
+      qAll('[data-build]').forEach((el) => el.onclick = () => { this.tool = 'building'; this.buildingType = el.dataset.build; this._renderBar(); });
+      qAll('[data-spawn]').forEach((el) => el.onclick = () => { this.tool = 'spawn'; this._renderBar(); });
+      qAll('[data-goal]').forEach((el) => el.onclick = () => { this.tool = 'goal'; this._renderBar(); });
+      qAll('[data-ramp]').forEach((el) => el.onclick = () => { this.tool = el.dataset.ramp; this._renderBar(); });
+      qAll('[data-tree]').forEach((el) => el.onclick = () => { this.tool = 'tree'; this._renderBar(); });
+      qAll('[data-template]').forEach((el) => el.onclick = () => { this.tool = 'template'; this._templateId = el.dataset.template; this._renderBar(); this._updateCursor(); });
+      qAll('[data-newtemplate]').forEach((el) => el.onclick = () => this._newTemplateModal());
+      { const tf = g('oh-terr-filter'); if (tf) { const doFilter = () => { const q = tf.value.toLowerCase(); this._terrFilter = tf.value; qAll('[data-terr]').forEach((el) => { el.style.display = (!q || el.textContent.toLowerCase().indexOf(q) >= 0 || (el.dataset.terr || '').indexOf(q) >= 0) ? '' : 'none'; }); }; tf.oninput = doFilter; tf.onclick = (ev) => ev.stopPropagation(); if (this._terrFilter) doFilter(); } }
+      qAll('[data-mob]').forEach((el) => el.onclick = () => { this.tool = 'mob'; this.mobKey = el.dataset.mob; this._renderBar(); });
+      qAll('[data-item]').forEach((el) => el.onclick = () => { this.tool = 'item'; this.itemKey = el.dataset.item; this._renderBar(); });
+      qAll('[data-bspan]').forEach((el) => el.onclick = () => { this.tool = 'bridge'; this._bridgeStart = null; this._renderBar(); });
+      qAll('[data-gate]').forEach((el) => el.onclick = () => { this.tool = 'gate'; this._gateStart = null; this._renderBar(); });
+      qAll('[data-rs]').forEach((el) => el.onclick = () => { this.tool = el.dataset.rs; this._renderBar(); });
       this._updateCursor();
     },
     _esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); },
@@ -507,14 +571,14 @@
     _cellFromEvent(e) {
       const cv = document.getElementById('gameCanvas'); const rect = cv.getBoundingClientRect();
       const sx = (e.clientX - rect.left) * (CANVAS_W / rect.width), sy = (e.clientY - rect.top) * (CANVAS_H / rect.height);
-      const w = OH_GRID.screenToWorld(this.grid, this.cam, sx, sy - (this._topInset || 0));   // account for the top-bar inset
+      const w = OH_GRID.screenToWorld(this.grid, this.cam, sx - (this._leftInset || 0), sy - (this._topInset || 0));   // account for the top + left-rail insets
       return OH_GRID.cellAt(this.grid, w.x, w.y);
     },
     // Zoom toward the mouse: keep the world point under the cursor fixed on screen.
     _zoomAt(factor, e) {
       const g = this.grid, cv = document.getElementById('gameCanvas'); if (!cv) { OH_GRID.zoomBy(g, factor); return; }
-      const rect = cv.getBoundingClientRect(), TOP = this._topInset || 0;
-      const sx = (e.clientX - rect.left) * (CANVAS_W / rect.width), sy = (e.clientY - rect.top) * (CANVAS_H / rect.height) - TOP;
+      const rect = cv.getBoundingClientRect(), TOP = this._topInset || 0, LEFT = this._leftInset || 0;
+      const sx = (e.clientX - rect.left) * (CANVAS_W / rect.width) - LEFT, sy = (e.clientY - rect.top) * (CANVAS_H / rect.height) - TOP;
       const z0 = g.masterZoom, wx = this.cam.x + sx / z0, wy = this.cam.y + sy / z0;   // world point under the cursor
       const z1 = OH_GRID.setZoom(g, z0 * factor);
       this.cam.x = wx - sx / z1; this.cam.y = wy - sy / z1;                            // re-anchor so it stays put (clamped in _render)
@@ -942,7 +1006,7 @@
       const cv = document.getElementById('gameCanvas'); if (!cv) return; const rect = cv.getBoundingClientRect();
       const sp = OH_GRID.worldToScreen(this.grid, this.cam, (this._selEnt.col + 0.5) * this.grid.cell, this._selEnt.row * this.grid.cell);
       const e = (this.world.mapSnapshot.elevation[this._selEnt.row] ? (this.world.mapSnapshot.elevation[this._selEnt.row][this._selEnt.col] | 0) : 0) * OVERHEAD.elevOffset(this.grid.cell * this.grid.masterZoom);
-      const cx = rect.left + (sp.x - e) * (rect.width / CANVAS_W), cy = rect.top + (sp.y + (this._topInset || 0) - e) * (rect.height / CANVAS_H);
+      const cx = rect.left + (sp.x + (this._leftInset || 0) - e) * (rect.width / CANVAS_W), cy = rect.top + (sp.y + (this._topInset || 0) - e) * (rect.height / CANVAS_H);
       bar.style.left = Math.max(4, cx - bar.offsetWidth / 2) + 'px'; bar.style.top = Math.max(52, cy - 40) + 'px';
     },
     _hideSelBar() { const bar = document.getElementById('oh-selbar'); if (bar) bar.style.display = 'none'; },
@@ -1180,15 +1244,20 @@
       // Reserve a top strip so the fixed 40px command bar never covers the map (incl.
       // its top edge indicator). Bar is 40px SCREEN → convert to canvas-logical px via
       // the current display scale so the map content starts just below it.
-      const rectH = cv.getBoundingClientRect().height || CANVAS_H;
+      const rectC = cv.getBoundingClientRect(), rectH = rectC.height || CANVAS_H, rectW = rectC.width || CANVAS_W;
       const TOP = Math.max(0, Math.min(140, Math.round(46 * (CANVAS_H / rectH))));
-      this._topInset = TOP;
-      this.cam = OH_GRID.clampCamera(g, this.cam, CANVAS_W, CANVAS_H - TOP);
+      // The editable area fills everything NOT covered by the top / left / right fixed rails —
+      // insets convert the DOM rail widths to canvas-logical px (like TOP for the command bar).
+      const LO = this._railLayout || this._defaultLayout();
+      const LEFT = Math.round(((LO.leftWidth || 120) + 16) * (CANVAS_W / rectW));
+      const RIGHT = (LO.right && LO.right.length) || LO.rightWidth ? Math.round(((LO.rightWidth || 0) + 16) * (CANVAS_W / rectW)) : 0;
+      this._topInset = TOP; this._leftInset = LEFT; this._rightInset = RIGHT;
+      const VW = CANVAS_W - LEFT - RIGHT, VH = CANVAS_H - TOP;   // visible content area
+      this.cam = OH_GRID.clampCamera(g, this.cam, VW, VH);
       ctx.fillStyle = '#0c0f16'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-      const S = (wx, wy) => { const p = OH_GRID.worldToScreen(g, this.cam, wx, wy); return { x: p.x, y: p.y + TOP }; };
-      const tl = OH_GRID.screenToWorld(g, this.cam, 0, -TOP), br = OH_GRID.screenToWorld(g, this.cam, CANVAS_W, CANVAS_H - TOP);
-      const c0 = Math.max(0, (tl.x / g.cell | 0) - 1), c1 = Math.min(m.gridW - 1, (br.x / g.cell | 0) + 1);
-      const r0 = Math.max(0, (tl.y / g.cell | 0) - 1), r1 = Math.min(m.gridH - 1, (br.y / g.cell | 0) + 1);
+      const S = (wx, wy) => { const p = OH_GRID.worldToScreen(g, this.cam, wx, wy); return { x: p.x + LEFT, y: p.y + TOP }; };
+      const c0 = Math.max(0, (this.cam.x / g.cell | 0) - 1), c1 = Math.min(m.gridW - 1, ((this.cam.x + VW / z) / g.cell | 0) + 1);
+      const r0 = Math.max(0, (this.cam.y / g.cell | 0) - 1), r1 = Math.min(m.gridH - 1, ((this.cam.y + VH / z) / g.cell | 0) + 1);
       const Q = OVERHEAD.elevOffset(cs);
       const maxE = this._mapMaxElev();
       const hiAbove = (e) => this.view.hideAbove && (e | 0) > this.elevLevel;   // "see inside mountains" filter
@@ -1199,7 +1268,7 @@
       const key = (this.view.elev ? 1 : 0) + '|' + (this.view.hideAbove ? this.elevLevel : '-') + '|' + ((this.world.settings && this.world.settings.playerHeight) || 1) + '|' + ((this.world.settings && this.world.settings.elevOffset) || 0.22) + '|' + (this._terrRev || 0) + '|' + m.gridW + 'x' + m.gridH;
       if (!this._terrCache || this._terrCacheKey !== key) { this._buildTerrCache(m, g, maxE); this._terrCacheKey = key; }
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(this._terrCache, this.cam.x + this._terrCachePad, this.cam.y + this._terrCachePad, CANVAS_W / z, (CANVAS_H - TOP) / z, 0, TOP, CANVAS_W, CANVAS_H - TOP);
+      ctx.drawImage(this._terrCache, this.cam.x + this._terrCachePad, this.cam.y + this._terrCachePad, VW / z, VH / z, LEFT, TOP, VW, VH);
       if (this._editBox) this._drawEditRegion(ctx, S, cs, Q, maxE, hiAbove);   // in-progress brush stroke, live
       // ELEVATION-CLARITY overlay: the ACTIVE-elevation cells stay bright + outlined; every cell
       // NOT at the active elevation is greyed (a distinct artifact + faint hatch) so the layer
@@ -1320,13 +1389,13 @@
       ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.textAlign = 'left'; ctx.font = '12px sans-serif';
       ctx.fillText(`${this.world.name} · ${m.baseW || m.gridW}×${m.baseH || m.gridH} @ density ${m.density} (${m.gridW}×${m.gridH} cells) · ${this.world.mode} · tool: ${this._shift ? 'erase' : this.tool} @ elev ${this.elevLevel}`, 158, CANVAS_H - 10);
       // SCROLLBARS — a position indicator so creators know where they are in a big map.
-      { const worldW = m.gridW * g.cell, worldH = m.gridH * g.cell, viewW = CANVAS_W / z, viewH = (CANVAS_H - TOP) / z, RAIL = 150;
+      { const worldW = m.gridW * g.cell, worldH = m.gridH * g.cell, viewW = VW / z, viewH = VH / z;
         ctx.save();
-        const hx0 = RAIL + 8, hx1 = CANVAS_W - 14, htrk = hx1 - hx0, hsy = CANVAS_H - 6;
+        const hx0 = LEFT + 8, hx1 = CANVAS_W - RIGHT - 14, htrk = hx1 - hx0, hsy = CANVAS_H - 6;
         if (htrk > 20) { ctx.fillStyle = 'rgba(255,255,255,.10)'; ctx.fillRect(hx0, hsy, htrk, 4);
           const tw = Math.max(20, htrk * Math.min(1, viewW / worldW)), fx = hx0 + Math.max(0, Math.min(htrk - tw, (this.cam.x / worldW) * htrk));
           ctx.fillStyle = 'rgba(120,180,255,.65)'; ctx.fillRect(fx, hsy, tw, 4); }
-        const vy0 = TOP + 8, vy1 = CANVAS_H - 14, vtrk = vy1 - vy0, vsx = CANVAS_W - 6;
+        const vy0 = TOP + 8, vy1 = CANVAS_H - 14, vtrk = vy1 - vy0, vsx = CANVAS_W - RIGHT - 6;
         if (vtrk > 20) { ctx.fillStyle = 'rgba(255,255,255,.10)'; ctx.fillRect(vsx, vy0, 4, vtrk);
           const th = Math.max(20, vtrk * Math.min(1, viewH / worldH)), fy = vy0 + Math.max(0, Math.min(vtrk - th, (this.cam.y / worldH) * vtrk));
           ctx.fillStyle = 'rgba(120,180,255,.65)'; ctx.fillRect(vsx, fy, 4, th); }

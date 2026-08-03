@@ -1411,3 +1411,13 @@ in the prefab creator and **rotated** on placement (see 39.5).
    home for detailed structures + doors/chests.
 4. **Mining + grid-lock** (if/when normal-mode-in-overhead ships): block-mine → subcell-yield; grid-lock paint;
    snap toggle.
+
+## Overhead — Fog of War (roadmap, requested 2026-08)
+Feasible. A per-cell visibility mask around the player (+ optional line-of-sight),
+revealed as the player moves; unseen cells drawn dark, previously-seen cells dimmed
+("explored" memory). Implementation sketch: a Uint8 visibility grid updated each frame
+from the player cell within a radius (world setting), rendered as a dark overlay in the
+overhead game AFTER terrain/entities (respecting the LEFT/TOP/RIGHT viewport insets); the
+editor gets a world setting (Fog of war: off / radius / line-of-sight) + a Test-mode toggle.
+Cost is low (one grid + one overlay pass). Pairs naturally with the elevation model (taller
+terrain could block sight later). Not started.
