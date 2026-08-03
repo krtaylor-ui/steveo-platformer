@@ -152,13 +152,16 @@ warnings. By decision templates carry **terrain + elevation only** — no mobs /
 | Was | Now |
 |---|---|
 | **M3 FAIL** — card export omitted `schemaVersion` (F1) | the card path migrates a copy, so both export routes agree |
-| **M7 inert** — ⬆ Import opened a native picker that may never appear (F5) | ⬆ Import is an **in-page modal** with a visible file input — fully drivable |
+| **M7 NOT RUN** — ⬆ Import used a native picker automation can't open (F5, withdrawn as a defect) | ⬆ Import is an **in-page modal** with a visible file input — now drivable, no human needed |
 | **M9 renderer parked** — failures were `alert()` (F4) | failures report **in-page**, in the modal; nothing blocks |
 | **M11 indistinguishable** — duplicates shared one title + date (F2) | display name suffixed "(2)", "(3)" … and each import gets its own date |
 | **M6 FAIL** — sample promised a glass wall it never had (F3) | description now generated from the real block tally; `pitMode`/`lavaMode` flagged |
+| **M8 wording** — refusal led with "missing mapSnapshot" for a perfectly good side-scroll file (F6) | rejections phrased by kind: wrong-engine says so, "damaged" reserved for malformed data |
 
-M7, M8 and M9 no longer need a human present — that scheduling note in your `HANDOFF.md` §4
-can drop for the import path. World-card **Delete** still uses a native confirm.
+M7 and M9 no longer need a human present — the whole import path is in-page now, so that
+`HANDOFF.md` §4 batch can drop for imports. World-card **Delete** still uses a native confirm,
+so that one stays. Your `hasFocus:true` tell for a suppressed native picker is a good one — worth
+keeping in the handoff regardless.
 
 
 Format + a ready sample file: `docs/world-file-format.md` and

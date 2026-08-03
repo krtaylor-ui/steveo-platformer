@@ -121,6 +121,27 @@ Promise.all(names).then((labels) => {
   ok(OH_EDITOR._hist.length === 1 && OH_EDITOR._histPos === 0, 'undo stack reset — undo cannot resurrect the previous world');
   ok(OH_EDITOR.grid && OH_EDITOR.grid.gridW === sres.worldData.mapSnapshot.gridW, 'the grid was rebuilt for the new map');
 
+  console.log('F6 — a wrong-engine file must not be described as damaged:');
+  const sideWorld = { viewMode: 'side', blocks: [], gameModeDefault: 'PLT' };
+  const wrongEngine = WT.validateOverhead(sideWorld);
+  ok(!wrongEngine.ok && wrongEngine.kind === 'wrong-engine', "a side-scroll world is kind 'wrong-engine'");
+  ok(!/mapSnapshot/.test(wrongEngine.errors.join(' ')), 'its errors do NOT mention mapSnapshot (that read as corruption)');
+  const wrongMsg = WT.rejectionMessage(wrongEngine);
+  ok(/side-scroll world/.test(wrongMsg), 'the message names it as a side-scroll world');
+  ok(/Sandbox list/.test(wrongMsg), 'the message still points at the Sandbox list (what M8 asks for)');
+  ok(!/damaged/i.test(wrongMsg), 'the message does not call it damaged');
+
+  // A genuinely malformed OVERHEAD world keeps the damaged wording.
+  const broken = WT.validateOverhead({ viewMode: 'overhead', mode: 'platformer' });
+  ok(!broken.ok && broken.kind === 'malformed', "a real overhead world with no map is kind 'malformed'");
+  const brokenMsg = WT.rejectionMessage(broken);
+  ok(/damaged/i.test(brokenMsg) && /mapSnapshot/.test(brokenMsg), 'the damaged case still names the missing key');
+  ok(!/side-scroll/.test(brokenMsg), 'the damaged case does not mention side-scroll');
+  ok(WT.validateOverhead(fixture).kind === 'ok', "a good world is kind 'ok'");
+  // An overhead file with no viewMode at all is wrong-engine, not damaged.
+  const noView = WT.validateOverhead({ mapSnapshot: fixture.mapSnapshot });
+  ok(noView.kind === 'wrong-engine' && !/mapSnapshot/.test(noView.errors.join(' ')), 'a file with no viewMode is wrong-engine, not damaged');
+
   console.log('F4 — the import path must not reach a blocking dialog:');
   // global.alert/confirm throw, so a damaged file reaching one would fail here.
   let threw = null;

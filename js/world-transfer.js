@@ -79,10 +79,21 @@
   // Structural check for an OVERHEAD world before we hand it to the editor/runtime.
   // Cheap on purpose: enough to catch "that's a side-scroll file" and truncated saves,
   // not a full schema validation (the migrator backfills the rest).
+  //
+  // `kind` separates the two reasons a file gets rejected, because they need different
+  // words: 'wrong-engine' is a perfectly good file of the other kind (the user just needs
+  // pointing at the Sandbox list), while 'malformed' means genuinely broken data. Build
+  // 346 reported both as "missing mapSnapshot", which told someone who had simply picked
+  // a side-scroll export that their file was damaged. (QA build 346, F6.)
   function validateOverhead(wd) {
+    if (!wd || typeof wd !== 'object') return { ok: false, kind: 'malformed', errors: ['not an object'] };
+    if (wd.viewMode !== 'overhead') {
+      // Don't also list the map problems — a side-scroll world has no mapSnapshot by
+      // design, so those errors are noise that reads as corruption.
+      const what = wd.viewMode === 'side' || Array.isArray(wd.blocks) ? 'a side-scroll world' : 'not an overhead world';
+      return { ok: false, kind: 'wrong-engine', errors: [what] };
+    }
     const errors = [];
-    if (!wd || typeof wd !== 'object') { return { ok: false, errors: ['not an object'] }; }
-    if (wd.viewMode !== 'overhead') errors.push("not an overhead world (viewMode is not 'overhead')");
     const map = wd.mapSnapshot;
     if (!map || typeof map !== 'object') errors.push('missing mapSnapshot');
     else {
@@ -92,7 +103,18 @@
         errors.push('mapSnapshot.ground has ' + map.ground.length + ' rows, expected ' + map.gridH);
       }
     }
-    return { ok: errors.length === 0, errors };
+    return { ok: errors.length === 0, kind: errors.length ? 'malformed' : 'ok', errors };
+  }
+
+  // The message to SHOW for a rejected overhead import, phrased by kind.
+  function rejectionMessage(check) {
+    if (!check || check.ok) return '';
+    if (check.kind === 'wrong-engine') {
+      const what = (check.errors && check.errors[0]) || 'not an overhead world';
+      return 'That file is ' + what + ', so it cannot open in the overhead editor.\n' +
+             'Import side-scroll worlds from the Sandbox list ("Import from File") instead.';
+    }
+    return 'That overhead world file looks damaged:\n\u2022 ' + (check.errors || []).join('\n\u2022 ');
   }
 
   // Trigger a browser download of `payload` as pretty JSON. No-op outside a browser.
@@ -113,11 +135,11 @@
 
   // Open a NATIVE file picker and hand back the parsed JSON. `cb(err, parsed, fileName)`.
   //
-  // DEPRECATED — kept only so nothing external breaks. Do NOT use it for new UI: a
-  // programmatic input.click() needs user activation, so it can silently do nothing
-  // (the build-346 editor import looked like a dead button, QA F5), and an automated
-  // session can neither drive nor see the OS dialog. Use an in-page modal with a
-  // visible <input type="file"> instead, the way OH_EDITOR._import() now does.
+  // DEPRECATED — kept only so nothing external breaks. Do NOT use it for new UI. It works
+  // for a real human click, but an automated session cannot open, see or dismiss a native
+  // OS picker, and a synthesised click does not supply the user activation Chrome requires
+  // (the picker is then suppressed silently and the control looks dead — QA F5). Use an
+  // in-page modal with a visible <input type="file">, as OH_EDITOR._import() does.
   function pickJsonFile(cb) {
     if (typeof document === 'undefined') { cb(new Error('no DOM')); return; }
     const input = document.createElement('input');
@@ -142,7 +164,7 @@
   }
 
   const WORLD_TRANSFER = {
-    WRAPPER_VERSION, wrap, unwrap, validateOverhead, isOverheadData,
+    WRAPPER_VERSION, wrap, unwrap, validateOverhead, rejectionMessage, isOverheadData,
     nameFrom, safeName, filename, download, pickJsonFile, today,
   };
 

@@ -66,7 +66,10 @@ ok(WT.filename('', '') === 'world.json', 'falls back to world.json');
 console.log('validateOverhead() — refuse, do not half-load:');
 ok(WT.validateOverhead(fixture).ok, 'the real fixture validates');
 const sideErr = WT.validateOverhead({ blocks: [], gameModeDefault: 'PLT' });
-ok(!sideErr.ok && /viewMode/.test(sideErr.errors.join(' ')), 'a side-scroll world is refused (viewMode)');
+// Build 347 (QA F6) re-phrased this: a wrong-ENGINE file is refused as such, and must NOT
+// be described with schema internals — that read as "your file is corrupt".
+ok(!sideErr.ok && sideErr.kind === 'wrong-engine', 'a side-scroll world is refused as wrong-engine');
+ok(!/mapSnapshot|viewMode/.test(sideErr.errors.join(' ')), 'the refusal avoids schema internals');
 ok(!WT.validateOverhead({ viewMode: 'overhead' }).ok, 'a world with no mapSnapshot is refused');
 const truncated = JSON.parse(JSON.stringify(fixture));
 truncated.mapSnapshot.ground = truncated.mapSnapshot.ground.slice(0, 3);

@@ -1230,11 +1230,15 @@
     // migrator as a normal load, so pre-345 files upgrade on the way in. Refuses
     // side-scroll files rather than half-loading them.
     //
-    // This is an IN-PAGE modal with a visible file input, deliberately: the first cut
-    // opened a native OS picker via input.click(), which (a) needs user activation so it
-    // could read as an inert button, and (b) can't be driven or even seen by an automated
-    // session. Same reason every message below is in-page, not alert()/confirm() — a
-    // native dialog parks the whole renderer until a human clicks it. (QA build 346, F4/F5.)
+    // This is an IN-PAGE modal with a visible file input, deliberately. The first cut
+    // opened a native OS picker via input.click(); that WORKED for a human (QA first read
+    // it as an inert button, then withdrew that — a CDP-synthesised click does not supply
+    // the user activation Chrome needs, so the picker was suppressed silently). The reason
+    // to move off it is testability: an automated session cannot open, see or dismiss a
+    // native picker at all, so M7 needed a human present. An in-page input can be
+    // populated and have `change` dispatched. Same reason every message below is in-page
+    // rather than alert()/confirm() — a native dialog parks the whole renderer until
+    // someone clicks it. (QA build 346: F4 defect, F5 testability.)
     _import() {
       if (typeof WORLD_TRANSFER === 'undefined') { this._flash('Import unavailable'); return; }
       let ov = document.getElementById('oh-import-modal');
@@ -1267,11 +1271,7 @@
           const res = WORLD_TRANSFER.unwrap(parsed, file.name);
           if (!res.ok) { err('Import failed: ' + res.error); return; }
           const check = WORLD_TRANSFER.validateOverhead(res.worldData);
-          if (!check.ok) {
-            err('That file is not an overhead world:\n• ' + check.errors.join('\n• ') +
-                '\n\nSide-scroll worlds import from the Sandbox list ("Import from File"), not here.');
-            return;
-          }
+          if (!check.ok) { err(WORLD_TRANSFER.rejectionMessage(check)); return; }
           close();
           this._applyImportedWorld(res.worldData, res.name);
         };
