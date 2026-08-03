@@ -89,6 +89,19 @@ console.log('Unified selection + action bar logic:');
   ed._selectObjAt(9, 9); ok(ed._selEnt && ed._selEnt.kind === 'terrain', 'empty ground still selects as terrain (grass)');
 }
 
+console.log('World schema migrator:');
+{
+  const S = require(require('path').join(__dirname, '..', 'js', 'overhead', 'overhead-settings.js')) && global.OH_SETTINGS;
+  const old = { settings: {} }; global.OH_SETTINGS.migrate(old);
+  ok(old.schemaVersion === global.OH_SETTINGS.SCHEMA, 'an old (unversioned) world is stamped to the current schema');
+  ok(Array.isArray(old.gates) && Array.isArray(old.redstone), 'structure arrays (gates/redstone) are guaranteed after migrate');
+  ok(old.settings.elevOffset === 0.22 && old.settings.lockZoom === false, 'new settings defaults reach an old world via migrate→resolve');
+  const fut = { schemaVersion: 99, settings: {} }; global.OH_SETTINGS.migrate(fut);
+  ok(fut.schemaVersion === 99, 'a world from a NEWER build is loaded as-is (not downgraded)');
+  const w = { settings: {} }; global.OH_SETTINGS.migrate(w); const v = w.schemaVersion; global.OH_SETTINGS.migrate(w);
+  ok(w.schemaVersion === v, 'migrate is idempotent');
+}
+
 console.log('Customizable dual menu bars — layout model:');
 {
   const ed = { _ALL_GROUPS: OH_EDITOR._ALL_GROUPS, _defaultLayout: OH_EDITOR._defaultLayout, _loadLayout: OH_EDITOR._loadLayout, _saveLayout: OH_EDITOR._saveLayout, _moveGroup: OH_EDITOR._moveGroup, _moveGroupToRail: OH_EDITOR._moveGroupToRail, _renderBar() {} };

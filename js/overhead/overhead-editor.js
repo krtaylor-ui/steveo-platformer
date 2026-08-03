@@ -80,7 +80,8 @@
         // Normalise settings on load so the editor menu + Save reflect migrations the
         // runtime already applies (e.g. legacy lavaDeadly → lavaMode) — otherwise the
         // menu shows the raw default and re-saving would silently drop the old value.
-        if (typeof OH_SETTINGS !== 'undefined' && OH_SETTINGS.resolve) this.world.settings = OH_SETTINGS.resolve(this.world);
+        if (typeof OH_SETTINGS !== 'undefined' && OH_SETTINGS.migrate) OH_SETTINGS.migrate(this.world);   // upgrade old saves to the current schema (settings + structure)
+        else if (typeof OH_SETTINGS !== 'undefined' && OH_SETTINGS.resolve) this.world.settings = OH_SETTINGS.resolve(this.world);
       } else {
         const made = await this._newWorldModal();
         if (!made) return;   // cancelled
@@ -1205,7 +1206,7 @@
     },
 
     async _save() {
-      const worldData = Object.assign({}, this.world, { viewMode: 'overhead', gameModeDefault: 'NRM' });
+      const worldData = Object.assign({}, this.world, { viewMode: 'overhead', gameModeDefault: 'NRM', schemaVersion: (typeof OH_SETTINGS !== 'undefined' && OH_SETTINGS.SCHEMA) || 1 });
       const name = this.world.name || 'Overhead World';
       try {
         if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {

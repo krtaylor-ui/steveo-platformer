@@ -106,7 +106,33 @@
     return out;
   }
 
-  const OH_SETTINGS = { defaults, resolve };
+  // Current overhead world-save schema version. BUMP this whenever the save FORMAT changes in a
+  // way old worlds need upgrading for, and add a matching `if (v < N) { …; v = N; }` step in
+  // migrate(). See FUTURE_ROADMAP "SAVE-FILE FORMAT & MIGRATION".
+  const SCHEMA = 1;
+  // Bring a loaded world up to the current schema: run each versioned upgrade step in order,
+  // then stamp the version + resolve settings. Steps must be small, idempotent, and never
+  // destructive. A world saved by a NEWER build (v > SCHEMA) is loaded as-is (not downgraded).
+  function migrate(world) {
+    if (!world) return world;
+    let v = world.schemaVersion | 0;
+    if (v < 1) {
+      // v0 (unversioned, everything before this migrator) → v1: guarantee the structure arrays
+      // exist so every load site can rely on them (gates/redstone/bridges are newer additions).
+      world.buildings = world.buildings || [];
+      world.mobs = world.mobs || []; world.items = world.items || [];
+      world.redstone = world.redstone || []; world.bridges = world.bridges || []; world.gates = world.gates || [];
+      v = 1;
+    }
+    // Future format changes go here, e.g.:
+    //   if (v < 2) { /* worlds < v2 keep the pre-341 2×2 pipe size, etc. */ v = 2; }
+    if (v > SCHEMA) v = world.schemaVersion | 0;   // future world — don't invent steps; keep its stamp
+    else world.schemaVersion = v;
+    world.settings = resolve(world);
+    return world;
+  }
+
+  const OH_SETTINGS = { defaults, resolve, migrate, SCHEMA };
 
   // ── Editor overlay (its own menu) ───────────────────────────────────────────
   const OH_WORLD_SETTINGS = {

@@ -26,8 +26,10 @@
 
       const map = worldData.mapSnapshot || worldData;
       this.map = map;
-      // §Overhead world settings — the runtime's tunables (separate from side-view).
-      this.settings = (typeof OH_SETTINGS !== 'undefined') ? OH_SETTINGS.resolve(worldData) : {};
+      // §Overhead world settings — the runtime's tunables (separate from side-view). migrate()
+      // upgrades old saves to the current schema (defaults structure arrays + resolves settings).
+      if (typeof OH_SETTINGS !== 'undefined' && OH_SETTINGS.migrate) OH_SETTINGS.migrate(worldData);
+      this.settings = (worldData && worldData.settings) || {};
       const cfg = this.settings;
       this.grid = OH_GRID.make({ gridW: map.gridW, gridH: map.gridH, density: map.density,
         objectScaleMode: map.objectScaleMode, cell: map.cell || (32 / (map.density || 1)), masterZoom: cfg.masterZoom || 1 });
