@@ -74,7 +74,7 @@ console.log('Click-selected entity delete (_deleteObj):');
 console.log('Unified selection + action bar logic:');
 {
   const m = mkMap(16, 16), ed = mkEd(m);
-  Object.assign(ed, { _buildingAt: OH_EDITOR._buildingAt, _selectObjAt: OH_EDITOR._selectObjAt, _selHasSettings: OH_EDITOR._selHasSettings, _selMovable: OH_EDITOR._selMovable, _deleteSel: OH_EDITOR._deleteSel, _selName: OH_EDITOR._selName, _hoverName: OH_EDITOR._hoverName, _renderSelBar() {}, _hideSelBar() {} });
+  Object.assign(ed, { _buildingAt: OH_EDITOR._buildingAt, _selectObjAt: OH_EDITOR._selectObjAt, _selHasSettings: OH_EDITOR._selHasSettings, _selMovable: OH_EDITOR._selMovable, _deleteSel: OH_EDITOR._deleteSel, _selName: OH_EDITOR._selName, _hoverName: OH_EDITOR._hoverName, _deviceAt: OH_EDITOR._deviceAt, _deviceLabel: OH_EDITOR._deviceLabel, _renderSelBar() {}, _hideSelBar() {} });
   ed.world.gates = [{ col: 5, row: 5, len: 2, rest: 0, angle: 90 }];
   ed.world.mobs.push({ col: 2, row: 2, type: 'goomba' });
   m.elevation[7][7] = 3; m.ground[7][7] = 'stone';
@@ -87,6 +87,36 @@ console.log('Unified selection + action bar logic:');
   ed._deleteSel(); ok((m.elevation[7][7] | 0) === 0 && m.ground[7][7] === 'grass', 'deleting a selected block clears that cell');
   ed._selectObjAt(2, 2); ed._deleteSel(); ok(ed.world.mobs.length === 0, 'deleting a selected mob removes it');
   ed._selectObjAt(9, 9); ok(ed._selEnt && ed._selEnt.kind === 'terrain', 'empty ground still selects as terrain (grass)');
+}
+
+console.log('Tall redstone devices are selectable from where they LOOK (build 347):');
+{
+  const m = mkMap(16, 16), ed = mkEd(m);
+  Object.assign(ed, { _buildingAt: OH_EDITOR._buildingAt, _selectObjAt: OH_EDITOR._selectObjAt, _selName: OH_EDITOR._selName,
+    _selHasSettings: OH_EDITOR._selHasSettings, _hoverName: OH_EDITOR._hoverName, _deviceAt: OH_EDITOR._deviceAt,
+    _deviceLabel: OH_EDITOR._deviceLabel, _renderSelBar() {}, _hideSelBar() {} });
+  ed.world.redstone = [{ kind: 'lever', col: 6, row: 9, txId: 3, on: false }, { kind: 'lamp', col: 2, row: 2 }];
+
+  ed._selectObjAt(6, 9);
+  ok(ed._selEnt && ed._selEnt.kind === 'device', 'an exact click still selects the lever');
+  ed._selEnt = null;
+  // A lever draws ~2 blocks tall, so its sprite covers the cell ABOVE its anchor — which is
+  // where you actually click. That used to select the terrain instead.
+  ed._selectObjAt(6, 8);
+  ok(ed._selEnt && ed._selEnt.kind === 'device' && ed._selEnt.ref.txId === 3, 'clicking one row ABOVE the anchor selects the lever (the reported bug)');
+  ok(ed._selHasSettings(ed._selEnt), 'so the settings / move / delete bar is reachable from that click');
+  ok(ed._selName(ed._selEnt) === 'lever \u00b7 Tx #3', 'the action bar names the transmitter channel');
+  ok(ed._hoverName(6, 8) === 'lever \u00b7 Tx #3', 'hovering the sprite shows "lever \u00b7 Tx #3" too');
+  ok(ed._hoverName(6, 9) === 'lever \u00b7 Tx #3', 'and hovering the anchor cell agrees');
+  // Two rows up only counts when the device is raised (extra 2.5D lift).
+  ed._selEnt = null; ed._selectObjAt(6, 7);
+  ok(!ed._selEnt || ed._selEnt.kind !== 'device', 'two rows above a GROUND-level device does not select it');
+  m.elevation[9][6] = 2;
+  ed._selEnt = null; ed._selectObjAt(6, 7);
+  ok(ed._selEnt && ed._selEnt.kind === 'device', 'but it does once the device is raised');
+  // Sinks are receive-only and must not claim a Tx number.
+  ok(ed._deviceLabel({ kind: 'lamp' }) === 'lamp \u00b7 Rx', 'a lamp reads "lamp \u00b7 Rx", not a Tx number');
+  ok(ed._deviceLabel({ kind: 'dust', txId: 7 }) === 'dust', 'dust is plain wire — no channel, even with a legacy txId');
 }
 
 console.log('World schema migrator:');

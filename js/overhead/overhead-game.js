@@ -759,6 +759,9 @@
       const tl = OH_GRID.screenToWorld(g, this.camera, 0, 0), br = OH_GRID.screenToWorld(g, this.camera, CANVAS_W, CANVAS_H);
       const c0 = Math.max(0, (tl.x / g.cell | 0) - 1), c1 = Math.min(g.gridW - 1, (br.x / g.cell | 0) + 1);
       const r0 = Math.max(0, (tl.y / g.cell | 0) - 1), r1 = Math.min(g.gridH - 1, (br.y / g.cell | 0) + 1);
+      // Cells on screen — the number that explains zoom-dependent slowdown, since it grows
+      // as zoom^-2 and most per-frame work is per visible cell. Shown in the debug HUD.
+      this._visibleCells = (c1 - c0 + 1) * (r1 - r0 + 1);
       const LIFT = cs * 0.25;   // one elevation level = 1/4 of a block (§)
       // PERF: terrain is STATIC during play — it's pre-rendered ONCE to an offscreen
       // canvas (world-px, elevation baked in) and blitted here, so runtime terrain
@@ -1138,6 +1141,27 @@
     // Test-critical state readout (top-right) — mirrors the side-view perf HUD style.
     // Prioritises what a browser tester needs to VERIFY from a screenshot: player
     // elevation, keys held, live redstone channels, time-of-day, mode. ` toggles it.
+    // Rolling frame-time window for the HUD. Only sampled while the HUD is up, so it
+    // costs nothing in normal play. Reports the WORST recent frame as well as the average,
+    // because a stutter that shows as "58 fps average" is still a stutter. (Kevin, build 347.)
+    _sampleFrame() {
+      const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      if (this._fpsLast != null) {
+        const dt = now - this._fpsLast;
+        if (!this._fpsBuf) this._fpsBuf = [];
+        this._fpsBuf.push(dt);
+        if (this._fpsBuf.length > 60) this._fpsBuf.shift();
+      }
+      this._fpsLast = now;
+    }
+    _frameStats() {
+      const b = this._fpsBuf;
+      if (!b || b.length < 2) return null;
+      let sum = 0, worst = 0;
+      for (const d of b) { sum += d; if (d > worst) worst = d; }
+      const avg = sum / b.length;
+      return { fps: 1000 / avg, ms: avg, worstMs: worst, cells: this._visibleCells || 0 };
+    }
     _drawDebugHUD(ctx) {
       const p = this.player, c = this._cellOf(p.x, p.y);
       const chans = (this._rs && this._rs.channels) ? Object.keys(this._rs.channels) : [];
@@ -1151,6 +1175,12 @@
         'jumpClear ' + this._jumpClear + '+' + this._doubleJumpClear + '  day/night: ' + tod,
         'channels ON: ' + (chans.length ? chans.join(' ') : '—'),
       ];
+      // Frame timing. Worst-frame matters as much as the average here: the reported
+      // symptom was intermittent, and cells-on-screen is the number that explains it
+      // (it grows as zoom^-2, so zooming out multiplies per-cell work).
+      const fs = this._frameStats();
+      if (fs) lines.push('fps ' + fs.fps.toFixed(0) + '  frame ' + fs.ms.toFixed(1) + 'ms  worst ' + fs.worstMs.toFixed(1) + 'ms'
+        + (fs.cells ? '  cells ' + fs.cells : ''));
       ctx.save(); ctx.font = '11px ui-monospace,monospace'; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
       let w = 0; for (const l of lines) w = Math.max(w, ctx.measureText(l).width);
       const x = CANVAS_W - w - 12, y = 40;
@@ -1161,7 +1191,7 @@
     }
     _drawHUD(ctx) {
       ctx.textAlign = 'left';
-      if (this._debug) this._drawDebugHUD(ctx);
+      if (this._debug) { this._sampleFrame(); this._drawDebugHUD(ctx); }
       // Day/night clock (top-right): a sun (day) or moon (night) disc + a label.
       if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') {
         const t = this._tod, lab = OH_DAYNIGHT.label(t), night = OH_DAYNIGHT.darkness(t) > 0.5, cx = CANVAS_W - 96;

@@ -902,7 +902,7 @@
       if (!sel) return '';
       if (sel.kind === 'gate') return 'Gate';
       if (sel.kind === 'bridge') return sel.ref.draw ? 'Drawbridge' : 'Bridge';
-      if (sel.kind === 'device') { const d = sel.ref; const isTx = d.txId != null && d.kind !== 'dust' && ['lamp', 'piston', 'rx'].indexOf(d.kind) < 0; return d.kind + (isTx ? ' · Tx #' + d.txId : ''); }   // reveal the transmit channel number
+      if (sel.kind === 'device') return this._deviceLabel(sel.ref);
       if (sel.kind === 'building') { const t = OH_BUILDINGS.get(sel.ref.typeId); return (t && (t.name || t.label)) || sel.ref.typeId; }
       if (sel.kind === 'mob') { const d = P().OH_MOB_BY_KEY[sel.ref.type]; return (d && d.name) || sel.ref.type; }
       if (sel.kind === 'item') { const d = P().OH_ITEM_BY_KEY[sel.ref.itemKey]; return (d && d.name) || sel.ref.itemKey; }
@@ -916,7 +916,8 @@
       const b = this._buildingAt(col, row); if (b) { const t = OH_BUILDINGS.get(b.typeId); return (t && (t.name || t.label)) || b.typeId; }
       const mob = (this.world.mobs || []).find((x) => x.col === col && x.row === row); if (mob) { const d = P().OH_MOB_BY_KEY[mob.type]; return (d && d.name) || mob.type; }
       const it = (this.world.items || []).find((x) => x.col === col && x.row === row); if (it) { const d = P().OH_ITEM_BY_KEY[it.itemKey]; return (d && d.name) || it.itemKey; }
-      const dev = (this.world.redstone || []).find((x) => x.col === col && x.row === row); if (dev) return dev.kind;
+      const dev = this._deviceAt(col, row);
+      if (dev) return this._deviceLabel(dev);                     // the Tx channel, on hover
       if ((this.world.gates || []).some((x) => (x.col === col && x.row === row) || OVERHEAD.gateCells(x, x.rest || 0, m.gridW, m.gridH).some((cc) => cc.col === col && cc.row === row))) return 'gate';
       if ((this.world.bridges || []).some((x) => OVERHEAD.bridgeSpanCells(x).some((cc) => cc.col === col && cc.row === row))) return 'bridge';
       const e = m.elevation[row] ? (m.elevation[row][col] | 0) : 0, key = m.ground[row][col] || 'grass';
@@ -959,7 +960,7 @@
       const b = this._buildingAt(col, row);
       const m0 = this.world.mapSnapshot;
       const gt = (this.world.gates || []).find((x) => (x.col === col && x.row === row) || OVERHEAD.gateCells(x, x.rest || 0, m0.gridW, m0.gridH).some((cc) => cc.col === col && cc.row === row));   // hinge OR any panel cell
-      const dev = (this.world.redstone || []).find((d) => d.col === col && d.row === row);
+      const dev = this._deviceAt(col, row);                      // forgiving: tall sprites reach above their cell
       const span = (this.world.bridges || []).find((x) => OVERHEAD.bridgeSpanCells(x).some((cc) => cc.col === col && cc.row === row));
       const mob = (this.world.mobs || []).find((m) => m.col === col && m.row === row);
       const item = (this.world.items || []).find((it) => it.col === col && it.row === row);
@@ -977,6 +978,36 @@
       else { const m = this.world.mapSnapshot; if (m.ground[row]) sel = { kind: 'terrain', col, row }; }
       this._selEnt = sel; this._renderSelBar();
     },
+    // How a redstone device is named EVERYWHERE (hover tooltip and the action bar), so a
+    // player can see which channel a transmitter broadcasts on without opening it. Sinks are
+    // receive-only (build 310) and get no Tx number — they say so instead.
+    _deviceLabel(d) {
+      if (!d) return '';
+      const isSink = d.kind === 'dust' || ['lamp', 'piston', 'rx'].indexOf(d.kind) >= 0;
+      if (isSink) return d.kind + (d.kind === 'dust' ? '' : ' · Rx');
+      return d.kind + (d.txId != null ? ' · Tx #' + d.txId : '');
+    },
+
+    // Devices draw at CHARACTER scale (~2 blocks tall, build 299) and are lifted by the 2.5D
+    // elevation offset, so a lever's SPRITE sits well above the cell it belongs to. An
+    // exact-cell hit test missed it: you click the lever you can see and hit the empty cell
+    // above its anchor, so levers looked unselectable in Hand mode. Ramps got the same
+    // forgiveness in build 293. Prefer an exact hit, then look DOWN for a tall device whose
+    // sprite covers the clicked cell. (Kevin, build 347.)
+    _deviceAt(col, row) {
+      const list = this.world.redstone || [];
+      const exact = list.find((d) => d.col === col && d.row === row);
+      if (exact) return exact;
+      const elevAt = (r, c) => { const el = this.world.mapSnapshot.elevation; return (el && el[r]) ? (el[r][c] | 0) : 0; };
+      for (let dr = 1; dr <= 2; dr++) {
+        const d = list.find((x) => x.col === col && x.row === row + dr);
+        // One row up is always covered by a 2-block sprite; two rows needs the extra lift
+        // that being raised gives it.
+        if (d && (dr === 1 || elevAt(d.row, d.col) > 0)) return d;
+      }
+      return null;
+    },
+
     _selHasSettings(sel) { return !!(sel && (sel.kind === 'device' || sel.kind === 'gate' || sel.kind === 'bridge' || sel.kind === 'goal' || sel.kind === 'spawn' || (sel.kind === 'building' && (sel.ref.typeId === 'portal' || sel.ref.typeId === 'pipe')))); },
     _selMovable(sel) { return !!(sel && (sel.kind === 'building' || sel.kind === 'mob' || sel.kind === 'item' || sel.kind === 'device' || sel.kind === 'bridge' || sel.kind === 'terrain')); },
     _openSettingsFor(sel) {
@@ -1370,8 +1401,15 @@
       // you're editing pops. Heights are labelled when zoomed in. Cheap per-visible-cell fills.
       if (!this.view.elev) {
         const focus = this.view.focusLayer !== false, below = this.elevLevel - 1;   // the layer you BUILD ON — kept full colour
+        // PERF: this loop runs per VISIBLE CELL every frame, and the visible-cell count grows
+        // as zoom^-2, so a big dense map zoomed out was doing tens of thousands of fills and
+        // strokes per frame — the "sometimes fast, sometimes crawling, seems zoom-related"
+        // report. Below ~7px a cell the grey wash, hatch and height labels are sub-pixel mush
+        // anyway, so keep only the active-level highlight. (Kevin, build 347.)
+        const skipFocus = cs < 7;
         for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
           const e0 = m.elevation[r][c] | 0, e = this._capE(e0), sp = S(c * g.cell, r * g.cell), tx = sp.x - e * Q, ty = sp.y - e * Q;
+          if (skipFocus) { if (e === this.elevLevel) { ctx.fillStyle = 'rgba(255,236,110,.22)'; ctx.fillRect(tx, ty, cs, cs); } continue; }
           if (e === this.elevLevel) { ctx.fillStyle = 'rgba(255,236,110,.22)'; ctx.fillRect(tx, ty, cs, cs); ctx.strokeStyle = 'rgba(255,226,80,.92)'; ctx.lineWidth = Math.max(1, cs * 0.06); ctx.strokeRect(tx + .5, ty + .5, cs - 1, cs - 1); }
           else if (focus && e0 !== below) { ctx.fillStyle = 'rgba(64,70,86,.36)'; ctx.fillRect(tx, ty, cs, cs);   // grey everything except the active level + the surface directly below it
             if (cs > 10) { ctx.strokeStyle = 'rgba(200,208,224,.28)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(tx, ty + cs); ctx.lineTo(tx + cs, ty); ctx.moveTo(tx + cs * 0.5, ty + cs); ctx.lineTo(tx + cs, ty + cs * 0.5); ctx.stroke(); } }
