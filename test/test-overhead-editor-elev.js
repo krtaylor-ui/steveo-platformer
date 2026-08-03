@@ -36,18 +36,25 @@ console.log('Erase removes the top level, keeps blocks below:');
   ok(m.elevation[8][8] === 0 && m.ground[8][8] === 'grass', 'erasing at level 0 clears the cell to grass');
 }
 
-console.log('Building corner support:');
+console.log('Building auto-snap (rests on flat ground under it, any elevation):');
 {
-  const m = mkMap(20, 20), ed = mkEd(m);
-  const twoByTwo = OH_BUILDINGS.list ? (OH_BUILDINGS.list().find((b) => { const t = OH_BUILDINGS.get(b); return t && t.footprint.w >= 2; }) || OH_BUILDINGS.list()[0]) : 'house';
-  ok(ed._buildingFits.call(ed, twoByTwo, 3, 3, 0) === true, 'a ground-level building (level 0) needs no support');
-  ok(ed._buildingFits.call(ed, twoByTwo, 3, 3, 2) === false, 'a raised building over flat ground is rejected (no corner support)');
-  const t = OH_BUILDINGS.get(twoByTwo), fw = t ? t.footprint.w : 1, fh = t ? t.footprint.h : 1;
-  for (const [cc, rr] of [[3, 3], [3 + fw - 1, 3], [3, 3 + fh - 1], [3 + fw - 1, 3 + fh - 1]]) m.elevation[rr][cc] = 2;
-  ok(ed._buildingFits.call(ed, twoByTwo, 3, 3, 2) === true, 'raising all four corners to the level lets it fit');
+  const m = mkMap(20, 20), ed = mkEd(m); ed._bFootprint = OH_EDITOR._bFootprint;
+  const all = (OH_BUILDINGS.all ? OH_BUILDINGS.all() : []).map((b) => b.id || b);
+  const twoByTwo = all.find((id) => { const t = OH_BUILDINGS.get(id); return t && !t.scaleWithDensity; }) || all[0];
+  const fp = ed._bFootprint.call(ed, twoByTwo), fw = fp.w, fh = fp.h;
+  ok(ed._buildingFits.call(ed, twoByTwo, 3, 3) === 0, 'on flat grass it snaps to level 0');
+  for (let r = 3; r < 3 + fh; r++) for (let c = 3; c < 3 + fw; c++) m.elevation[r][c] = 2;
+  ok(ed._buildingFits.call(ed, twoByTwo, 3, 3) === 2, 'on a flat height-2 platform it snaps to level 2 (no elevLevel matching)');
+  m.elevation[3][3] = 1;   // make one corner uneven
+  ok(ed._buildingFits.call(ed, twoByTwo, 3, 3) === false, 'uneven ground under the footprint is rejected (needs flat)');
+  for (let r = 3; r < 3 + fh; r++) for (let c = 3; c < 3 + fw; c++) m.elevation[r][c] = 0;
   ed.world.buildings.push({ typeId: twoByTwo, col: 3, row: 3 });
-  ok(ed._buildingFits.call(ed, twoByTwo, 3, 3, 2) === false, 'it will not place overlapping another building');
-  ok(ed._buildingFits.call(ed, twoByTwo, 20, 20, 0) === false, 'a footprint running off the map is rejected');
+  ok(ed._buildingFits.call(ed, twoByTwo, 3, 3) === false, 'it will not place overlapping another building');
+  ok(ed._buildingFits.call(ed, twoByTwo, 20, 20) === false, 'a footprint running off the map is rejected');
+  // pipes/portals scale their footprint with density (stay proportional to the player)
+  ok(OH_BUILDINGS.footprintOf('pipe', 1).w === 2, 'a pipe is 2×2 at density 1');
+  ok(OH_BUILDINGS.footprintOf('pipe', 4).w === 4, 'a pipe becomes 4×4 at density 4');
+  ok(OH_BUILDINGS.footprintOf(twoByTwo, 4).w === fw, 'a normal building does NOT scale with density');
 }
 
 console.log('Click-selected entity delete (_deleteObj):');

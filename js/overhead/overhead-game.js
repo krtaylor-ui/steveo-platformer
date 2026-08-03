@@ -34,7 +34,7 @@
       // UNIT = base-cell world px (cell × density). Gameplay sizing/speed is in
       // UNITS so it's DENSITY-INDEPENDENT — a denser grid has smaller cells but the
       // player/mobs/weapons keep the same real size + speed (the density bug fix).
-      this.unit = this.grid.cell * (map.density || 1);
+      this.unit = this.grid.cell * (map.density || 1); this._density = map.density || 1;
       this._testMode = !!opts.testMode;
       this._debug = !!opts.testMode;   // test-critical state HUD (top-right); ` toggles
       this.ground = map.ground || []; this.elevation = map.elevation || [];
@@ -140,7 +140,7 @@
       this._portalCells = new Map(); this._portalCenter = new Map(); this._portalIndex = new Map(); this._portalByKey = new Map(); this._portalCd = false; this._portalGlow = null; this._portalPrompt = null;
       let pIdx = 0;
       for (const b of this.buildings) if (b.typeId === 'portal' || b.typeId === 'pipe') {
-        const t = OH_BUILDINGS.get(b.typeId), fw = t ? t.footprint.w : 1, fh = t ? t.footprint.h : 1;
+        const fpB = OH_BUILDINGS.footprintOf(b.typeId, this._density), fw = fpB.w, fh = fpB.h;
         const key = b.col + ',' + b.row;
         this._portalCenter.set(key, { x: (b.col + fw / 2) * this.grid.cell, y: (b.row + fh / 2) * this.grid.cell });
         this._portalIndex.set(key, ++pIdx); this._portalByKey.set(key, b);
@@ -203,8 +203,8 @@
     // All buildings are SOLID — you can't walk through any of them (portals
     // included; you use those by standing NEXT to them + E).
     _buildingSolidAt(col, row) {
-      for (const b of this.buildings) { const t = OH_BUILDINGS.get(b.typeId); if (!t) continue;
-        if (col >= b.col && col < b.col + t.footprint.w && row >= b.row && row < b.row + t.footprint.h) return true; }
+      for (const b of this.buildings) { const fp = OH_BUILDINGS.footprintOf(b.typeId, this._density);
+        if (col >= b.col && col < b.col + fp.w && row >= b.row && row < b.row + fp.h) return true; }
       return false;
     }
 
@@ -220,7 +220,7 @@
       if (this._gates.length) this._updateGates();
       // In a Sandbox playtest, Esc returns straight to the designer (not a pause menu).
       if (inp.isJustDown && inp.isJustDown('Escape')) { if (this._testMode) { this._exit(); return; } if (this.state === 'playing') this.state = 'paused'; else if (this.state === 'paused') this.state = 'playing'; else { this._exit(); return; } }
-      if (inp.scrollDelta) { OH_GRID.zoomBy(this.grid, inp.scrollDelta < 0 ? 1.08 : 0.92); inp.scrollDelta = 0; }
+      if (inp.scrollDelta) { if (!(this.settings && this.settings.lockZoom)) OH_GRID.zoomBy(this.grid, inp.scrollDelta < 0 ? 1.08 : 0.92); inp.scrollDelta = 0; }   // creator can LOCK the zoom in play
       // Test-mode buttons (top-left): "◀ Designer" (return) + "God" (invincible) toggle.
       if (this._testMode && inp.mouse.clicked) {
         if (inp.mouse.x <= 150 && inp.mouse.y <= 30) { this._exit(); return; }
@@ -304,7 +304,7 @@
             // Resolve the destination by its anchor OR ANY footprint cell (a pipe is 2×2, so a
             // dest pointing at a non-anchor cell must still link — the earlier bug).
             actionUsed = true;
-            const db = this._portalByKey.get(cfg.dest) || this._portalCells.get(cfg.dest), dt = OH_BUILDINGS.get(db.typeId), dw = dt ? dt.footprint.w : 1, dh = dt ? dt.footprint.h : 1;
+            const db = this._portalByKey.get(cfg.dest) || this._portalCells.get(cfg.dest), dfp = OH_BUILDINGS.footprintOf(db.typeId, this._density), dw = dfp.w, dh = dfp.h;
             const px = (db.col + dw / 2) * this.grid.cell, py = (db.row + dh + 0.5) * this.grid.cell;
             const dest = { px, py, key: db.col + ',' + db.row };
             // A PIPE plays the climb-in animation, THEN teleports; a portal is instant.
@@ -501,7 +501,7 @@
     // Grab the rim → pull the body up to the hands → a leg lifts (foot on the pipe) → the
     // body rises to the foot → move to the opening → shrink into the tube → teleport.
     _startPipeClimb(pipe, dest) {
-      const t = OH_BUILDINGS.get(pipe.typeId), fw = t ? t.footprint.w : 1, fh = t ? t.footprint.h : 1, cell = this.grid.cell;
+      const fpp = OH_BUILDINGS.footprintOf(pipe.typeId, this._density), fw = fpp.w, fh = fpp.h, cell = this.grid.cell;
       const cx = (pipe.col + fw / 2) * cell, cy = (pipe.row + fh / 2) * cell;
       const cl = { pipe, dest, t: 0, sx: this.player.x, sy: this.player.y, cx, cy, edgeY: cy + cell * 0.45,
         face: -Math.PI / 2, scale: 1, alpha: 1, grab: 0, mantleLeg: 0, crouch: 0, zoomFrom: this.grid.masterZoom };
@@ -779,12 +779,12 @@
         } }
       // Portal/pipe # badges + a purple glow on the ends of an active teleport.
       for (const b of this.buildings) if (b.typeId === 'portal' || b.typeId === 'pipe') {
-        const t = OH_BUILDINGS.get(b.typeId), fw = (t ? t.footprint.w : 1), fh = (t ? t.footprint.h : 1);
+        const fpr = OH_BUILDINGS.footprintOf(b.typeId, this._density), fw = fpr.w, fh = fpr.h;
         const key = b.col + ',' + b.row, sp = S((b.col + fw / 2) * g.cell, (b.row + fh / 2) * g.cell);
         if (this._portalGlow && this._portalGlow.keys.indexOf(key) >= 0) { const a = 0.35 + 0.35 * Math.sin(this._portalGlow.t * 0.5); ctx.fillStyle = `rgba(180,90,230,${a})`; ctx.beginPath(); ctx.ellipse(sp.x, sp.y, fw * cs * 0.5, fh * cs * 0.5, 0, 0, 7); ctx.fill(); }
         // "Press E" prompt + glow when the player is in range of this one.
         if (key === this._portalPrompt) { const a = 0.4 + 0.3 * Math.sin((this._frame || 0) * 0.15); ctx.fillStyle = `rgba(180,90,230,${a})`; ctx.beginPath(); ctx.ellipse(sp.x, sp.y, fw * cs * 0.55, fh * cs * 0.55, 0, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(0,0,0,.75)'; const py = sp.y - fh * cs * 0.62; ctx.fillRect(sp.x - cs * 0.9, py - cs * 0.5, cs * 1.8, cs * 0.7); ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(11, cs * 0.5) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('Press E', sp.x, py - cs * 0.15); ctx.textBaseline = 'alphabetic'; }
-        { const n = this._portalIndex.get(key); const br = Math.max(11, cs * 0.55), by = sp.y - fh * cs * 0.45; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.beginPath(); ctx.arc(sp.x, by, br, 0, 7); ctx.fill(); ctx.strokeStyle = '#b56bde'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(12, cs * 0.6) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('#' + n, sp.x, by); ctx.textBaseline = 'alphabetic'; }
+        if (this._testMode) { const n = this._portalIndex.get(key); const br = Math.max(11, cs * 0.55), by = sp.y - fh * cs * 0.45; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.beginPath(); ctx.arc(sp.x, by, br, 0, 7); ctx.fill(); ctx.strokeStyle = '#b56bde'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(12, cs * 0.6) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('#' + n, sp.x, by); ctx.textBaseline = 'alphabetic'; }   // designer aid — Test mode only, hidden in normal play
       }
       // Projectiles.
       ctx.fillStyle = '#eee'; for (const b of this._bolts) { const s = S(b.x, b.y); ctx.fillRect(s.x - 2, s.y - 2, 4, 4); }
@@ -846,7 +846,7 @@
 
     _drawEntity(e, S, z, cs) {
       const ctx = this.ctx, g = this.grid;
-      if (e.kind === 'b') { const b = e.ref, t = OH_BUILDINGS.get(b.typeId); const sp = S(b.col * g.cell, b.row * g.cell); const w = (t ? t.footprint.w : 1) * cs, h = (t ? t.footprint.h : 1) * cs; const Q = OVERHEAD.elevOffset(cs), lv = (b.level || 0); OVERHEAD.drawBuilding(ctx, b.typeId, sp.x - lv * Q, sp.y - lv * Q, w, h, Math.min(1, cs / 28), b.skin || 'default'); }
+      if (e.kind === 'b') { const b = e.ref; const fpe = OH_BUILDINGS.footprintOf(b.typeId, this._density); const sp = S(b.col * g.cell, b.row * g.cell); const w = fpe.w * cs, h = fpe.h * cs; const Q = OVERHEAD.elevOffset(cs), lv = (b.level || 0); OVERHEAD.drawBuilding(ctx, b.typeId, sp.x - lv * Q, sp.y - lv * Q, w, h, Math.min(1, cs / 28), b.skin || 'default'); }
       else if (e.kind === 'i') { const it = e.ref; const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); OVERHEAD.drawItemSprite(ctx, it.itemKey, sp.x, sp.y, this.unit * z * 0.8); }
       else if (e.kind === 'm') { this._drawMob(e.ref, S, z, cs); }
       else if (e.kind === 'tv') {   // template overlay voxel: a 1-level cube floating at its elevation

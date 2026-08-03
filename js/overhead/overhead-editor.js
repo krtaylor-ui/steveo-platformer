@@ -569,7 +569,7 @@
       if (this.tool === 'template') { if (this._templateId) this._placeTemplate(this._templateId, col, row); return; }
       if (this.tool === 'goal') { this.world.goal = { col, row }; return; }
       if (this.tool === 'spawn') { this.world.spawns = [{ col, row }]; return; }
-      if (this.tool === 'building') { if (this._buildingFits(this.buildingType, col, row, this.elevLevel)) this.world.buildings.push(OH_BUILDINGS.place(this.buildingType, col, row, { level: this.elevLevel })); else this._flash('Cannot place there — needs blocks under the corners (or overlaps)'); return; }
+      if (this.tool === 'building') { const fit = this._buildingFits(this.buildingType, col, row); if (fit !== false) this.world.buildings.push(OH_BUILDINGS.place(this.buildingType, col, row, { level: fit })); else this._flash('Cannot place there — needs FLAT ground under the whole footprint (or overlaps another building)'); return; }
       if (this.tool === 'mob') { const d = P().OH_MOB_BY_KEY[this.mobKey]; this.world.mobs.push({ col, row, type: this.mobKey, hp: d.hp, speed: d.speed, detect: d.detect }); return; }
       if (this.tool === 'item') { this.world.items.push({ col, row, kind: P().OH_ITEM_BY_KEY[this.itemKey].kind, weapon: P().OH_ITEM_BY_KEY[this.itemKey].weapon, itemKey: this.itemKey }); return; }
       this._placeAt(this.tool, col, row);   // ramp / ladder / bridge / lever / dust / lamp (line-able)
@@ -831,7 +831,7 @@
       if (!sel) return '';
       if (sel.kind === 'gate') return 'Gate';
       if (sel.kind === 'bridge') return sel.ref.draw ? 'Drawbridge' : 'Bridge';
-      if (sel.kind === 'device') return sel.ref.kind;
+      if (sel.kind === 'device') { const d = sel.ref; const isTx = d.txId != null && d.kind !== 'dust' && ['lamp', 'piston', 'rx'].indexOf(d.kind) < 0; return d.kind + (isTx ? ' · Tx #' + d.txId : ''); }   // reveal the transmit channel number
       if (sel.kind === 'building') { const t = OH_BUILDINGS.get(sel.ref.typeId); return (t && (t.name || t.label)) || sel.ref.typeId; }
       if (sel.kind === 'mob') { const d = P().OH_MOB_BY_KEY[sel.ref.type]; return (d && d.name) || sel.ref.type; }
       if (sel.kind === 'item') { const d = P().OH_ITEM_BY_KEY[sel.ref.itemKey]; return (d && d.name) || sel.ref.itemKey; }
@@ -852,15 +852,20 @@
       const td = P().OH_TERRAIN_BY_KEY && P().OH_TERRAIN_BY_KEY[key];
       return ((td && (td.name || td.label)) || key) + (e > 0 ? ' · lvl ' + e : '');
     },
-    _buildingAt(col, row) { return (this.world.buildings || []).find((b) => { const t = OH_BUILDINGS.get(b.typeId); const w = t ? t.footprint.w : 1, h = t ? t.footprint.h : 1; return col >= b.col && col < b.col + w && row >= b.row && row < b.row + h; }); },
+    _bFootprint(typeId) { return OH_BUILDINGS.footprintOf(typeId, this.world.mapSnapshot && this.world.mapSnapshot.density); },   // density-scaled (pipes/portals grow with density)
+    _buildingAt(col, row) { return (this.world.buildings || []).find((b) => { const fp = this._bFootprint(b.typeId); return col >= b.col && col < b.col + fp.w && row >= b.row && row < b.row + fp.h; }); },
     // A building must be on the map, not overlap another, and (if raised) have blocks under
     // all four footprint corners to rest on. Shared by the placement ghost + actual placement.
-    _buildingFits(typeId, col, row, level) {
-      const m = this.world.mapSnapshot, t = OH_BUILDINGS.get(typeId), fw = t ? t.footprint.w : 1, fh = t ? t.footprint.h : 1;
+    // Returns the ELEVATION a building would rest at (0 = ground) if it fits, or `false`.
+    // A building auto-snaps onto whatever FLAT terrain is under its whole footprint — so you
+    // don't have to match the active elevation, you just need level ground under it.
+    _buildingFits(typeId, col, row) {
+      const m = this.world.mapSnapshot, fp = this._bFootprint(typeId), fw = fp.w, fh = fp.h;
       if (col < 0 || row < 0 || col + fw > m.gridW || row + fh > m.gridH) return false;
-      for (const b of (this.world.buildings || [])) { const bt = OH_BUILDINGS.get(b.typeId), bw = bt ? bt.footprint.w : 1, bh = bt ? bt.footprint.h : 1; if (col < b.col + bw && col + fw > b.col && row < b.row + bh && row + fh > b.row) return false; }
-      if ((level | 0) > 0) { const corners = [[col, row], [col + fw - 1, row], [col, row + fh - 1], [col + fw - 1, row + fh - 1]]; if (!corners.every(([cc, rr]) => (m.elevation[rr] && (m.elevation[rr][cc] | 0)) >= (level | 0))) return false; }
-      return true;
+      for (const b of (this.world.buildings || [])) { const bf = this._bFootprint(b.typeId); if (col < b.col + bf.w && col + fw > b.col && row < b.row + bf.h && row + fh > b.row) return false; }
+      const h = m.elevation[row] ? (m.elevation[row][col] | 0) : 0;   // anchor-corner height = the rest level
+      for (let r = row; r < row + fh; r++) for (let c = col; c < col + fw; c++) if (!(m.elevation[r] && (m.elevation[r][c] | 0) === h)) return false;   // whole footprint must be FLAT at that height
+      return h;
     },
     // Hand click: move a selected mob/item, else select one, else configure a
     // portal/goal/spawn. Selecting highlights; a second click moves + unselects
@@ -1211,7 +1216,7 @@
       }
       // Entities.
       const unitPx = g.cell * (g.density || 1) * g.masterZoom;   // player-scale in editor px
-      if (this.view.buildings) for (const b of this.world.buildings) { if (hiAbove(b.level || 0)) continue; const t = OH_BUILDINGS.get(b.typeId); const w = (t ? t.footprint.w : 1) * cs, h = (t ? t.footprint.h : 1) * cs; const lv = (b.level || 0); const sp = S(b.col * g.cell, b.row * g.cell); const bx = sp.x - lv * Q, by = sp.y - lv * Q; OVERHEAD.drawBuilding(ctx, b.typeId, bx, by, w, h, Math.min(1, cs / 28), b.skin || 'default');
+      if (this.view.buildings) for (const b of this.world.buildings) { if (hiAbove(b.level || 0)) continue; const fp = this._bFootprint(b.typeId); const w = fp.w * cs, h = fp.h * cs; const lv = (b.level || 0); const sp = S(b.col * g.cell, b.row * g.cell); const bx = sp.x - lv * Q, by = sp.y - lv * Q; OVERHEAD.drawBuilding(ctx, b.typeId, bx, by, w, h, Math.min(1, cs / 28), b.skin || 'default');
         if (b.typeId === 'portal' || b.typeId === 'pipe') { const br = Math.max(11, cs * 0.5), cyN = by + cs * 0.4; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.beginPath(); ctx.arc(bx + w / 2, cyN, br, 0, 7); ctx.fill(); ctx.strokeStyle = '#b56bde'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(12, cs * 0.55) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('#' + this._portalNum(b), bx + w / 2, cyN); ctx.textBaseline = 'alphabetic'; } }
       if (this.view.mobs) for (const mo of this.world.mobs) { if (hiAbove(m.elevation[mo.row] ? m.elevation[mo.row][mo.col] : 0)) continue; const d = P().OH_MOB_BY_KEY[mo.type] || P().OH_MOBS[0]; const sp = S((mo.col + 0.5) * g.cell, (mo.row + 0.5) * g.cell); ctx.strokeStyle = 'rgba(150,150,160,.9)'; ctx.lineWidth = 2; ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(sp.x, sp.y, unitPx * 0.34, 0, 7); ctx.fill(); ctx.stroke(); }
       if (this.view.items) for (const it of this.world.items) { if (hiAbove(m.elevation[it.row] ? m.elevation[it.row][it.col] : 0)) continue; const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); OVERHEAD.drawItemSprite(ctx, it.itemKey, sp.x, sp.y, unitPx * 0.8); }
@@ -1367,8 +1372,8 @@
       const air = eLvl - hBelow;
       if (air > 0 && tool !== 'erase' && this.view.airGhosts) {
         ctx.save();
-        const fwA = (tool === 'building' && OH_BUILDINGS.get(this.buildingType)) ? OH_BUILDINGS.get(this.buildingType).footprint.w : 1;
-        const fhA = (tool === 'building' && OH_BUILDINGS.get(this.buildingType)) ? OH_BUILDINGS.get(this.buildingType).footprint.h : 1;
+        const fwA = tool === 'building' ? this._bFootprint(this.buildingType).w : 1;
+        const fhA = tool === 'building' ? this._bFootprint(this.buildingType).h : 1;
         for (let L = hBelow + 1; L < eLvl; L++) {
           const ax = sp0.x - L * Q, ay = sp0.y - L * Q, w = fwA * cs, h = fhA * cs;
           ctx.globalAlpha = 0.9; ctx.fillStyle = 'rgba(120,200,255,.10)'; ctx.fillRect(ax, ay, w, h);
@@ -1378,14 +1383,17 @@
         ctx.setLineDash([]); ctx.restore();
       }
       if (tool === 'building') {
-        const t = OH_BUILDINGS.get(this.buildingType), fw = t ? t.footprint.w : 1, fh = t ? t.footprint.h : 1;
-        let fits = (col + fw <= m.gridW && row + fh <= m.gridH), reason = '';
-        if (fits) for (const b of this.world.buildings) { const bt = OH_BUILDINGS.get(b.typeId), bw = bt ? bt.footprint.w : 1, bh = bt ? bt.footprint.h : 1; if (col < b.col + bw && col + fw > b.col && row < b.row + bh && row + fh > b.row) { fits = false; reason = 'overlaps a building'; break; } }
-        // A raised building needs solid blocks under all four footprint corners to rest on.
-        if (fits && eLvl > 0) { const corners = [[col, row], [col + fw - 1, row], [col, row + fh - 1], [col + fw - 1, row + fh - 1]]; if (!corners.every(([cc, rr]) => (m.elevation[rr] && (m.elevation[rr][cc] | 0)) >= eLvl)) { fits = false; reason = 'needs blocks under the corners'; } }
-        if (fits) { OVERHEAD.drawBuilding(ctx, this.buildingType, sp.x, sp.y, fw * cs, fh * cs, Math.min(1, cs / 28), 'default'); }
-        else { ctx.fillStyle = 'rgba(200,48,58,.55)'; ctx.fillRect(sp.x, sp.y, fw * cs, fh * cs); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(sp.x + fw * cs, sp.y + fh * cs); ctx.moveTo(sp.x + fw * cs, sp.y); ctx.lineTo(sp.x, sp.y + fh * cs); ctx.stroke();
-          if (reason && cs > 10) { ctx.globalAlpha = 1; ctx.fillStyle = '#ffd23a'; ctx.font = `${Math.max(9, cs * 0.32) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText(reason, sp.x + fw * cs / 2, sp.y - 5); ctx.globalAlpha = 0.5; } }
+        const fp = this._bFootprint(this.buildingType), fw = fp.w, fh = fp.h;
+        const fit = this._buildingFits(this.buildingType, col, row);   // rest level (0+) or false
+        const lvl = fit === false ? eLvl : fit, bx = sp0.x - lvl * Q, by = sp0.y - lvl * Q;   // preview at the snap level
+        if (fit !== false) { OVERHEAD.drawBuilding(ctx, this.buildingType, bx, by, fw * cs, fh * cs, Math.min(1, cs / 28), 'default'); }
+        else {
+          let reason = 'needs flat ground';
+          if (col + fw > m.gridW || row + fh > m.gridH) reason = 'off the map';
+          else if ((this.world.buildings || []).some((b) => { const bf = this._bFootprint(b.typeId); return col < b.col + bf.w && col + fw > b.col && row < b.row + bf.h && row + fh > b.row; })) reason = 'overlaps a building';
+          ctx.fillStyle = 'rgba(200,48,58,.55)'; ctx.fillRect(bx, by, fw * cs, fh * cs); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + fw * cs, by + fh * cs); ctx.moveTo(bx + fw * cs, by); ctx.lineTo(bx, by + fh * cs); ctx.stroke();
+          if (cs > 10) { ctx.globalAlpha = 1; ctx.fillStyle = '#ffd23a'; ctx.font = `${Math.max(9, cs * 0.32) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText(reason, bx + fw * cs / 2, by - 5); ctx.globalAlpha = 0.5; }
+        }
       } else if (tool === 'mob') { const d = P().OH_MOB_BY_KEY[this.mobKey] || P().OH_MOBS[0]; ctx.fillStyle = d.color; ctx.strokeStyle = 'rgba(150,150,160,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(ctr.x, ctr.y, unitPx * 0.34, 0, 7); ctx.fill(); ctx.stroke(); }
       else if (tool === 'item') { OVERHEAD.drawItemSprite(ctx, this.itemKey, ctr.x, ctr.y, unitPx * 0.8); }
       else if (tool === 'ramp' || tool === 'ladder') { OVERHEAD.drawRampIcon(ctx, tool, ctr.x, ctr.y, cs, 0); }

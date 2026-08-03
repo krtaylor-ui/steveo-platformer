@@ -31,6 +31,7 @@
       interactionType: INTERACTIONS.includes(opts.interactionType) ? opts.interactionType : 'passive-visual',
       skinVariants:    Array.isArray(opts.skinVariants) && opts.skinVariants.length ? opts.skinVariants : ['default'],
       elevationOffset: opts.elevationOffset || 0,
+      scaleWithDensity: !!opts.scaleWithDensity,   // footprint grows with map density (pipes/portals)
       onInteract:      opts.onInteract || null,   // string hook id, resolved by the runtime
       color:           opts.color || '#8a7fb0',
     };
@@ -41,8 +42,8 @@
   const register = (d) => { REGISTRY[d.id] = d; return d; };
 
   // Footprints (w × h in grid cells) per Kevin's dimensions.
-  register(def('portal',      'Portal',   { footprint: { w: 4, h: 1 }, interactionType: 'enter', skinVariants: ['default', 'nether', 'end'], onInteract: 'teleport', color: '#7b3fb0' }));
-  register(def('pipe',        'Portal',   { footprint: { w: 2, h: 2 }, interactionType: 'enter', skinVariants: ['default'], onInteract: 'teleport', color: '#3fae66' }));
+  register(def('portal',      'Portal',   { footprint: { w: 4, h: 1 }, scaleWithDensity: true, interactionType: 'enter', skinVariants: ['default', 'nether', 'end'], onInteract: 'teleport', color: '#7b3fb0' }));
+  register(def('pipe',        'Portal',   { footprint: { w: 2, h: 2 }, scaleWithDensity: true, interactionType: 'enter', skinVariants: ['default'], onInteract: 'teleport', color: '#3fae66' }));
   register(def('healer',      'Healer',   { footprint: { w: 4, h: 4 }, interactionType: 'interact-on-approach', onInteract: 'heal', color: '#3fb07b' }));
   register(def('shop',        'Shop',     { footprint: { w: 4, h: 4 }, interactionType: 'enter', onInteract: 'shop', color: '#b0923f' }));
   register(def('savepoint',   'SavePoint',{ footprint: { w: 2, h: 2 }, blocksMovement: false, interactionType: 'interact-on-approach', onInteract: 'save', color: '#3f8cb0' }));
@@ -76,18 +77,25 @@
     return inst;
   }
   // Cells a placed building occupies (for collision / overlap checks).
-  function footprintCells(inst) {
-    const t = get(inst.typeId); if (!t) return [];
-    const out = [];
-    for (let dy = 0; dy < t.footprint.h; dy++)
-      for (let dx = 0; dx < t.footprint.w; dx++) out.push({ col: inst.col + dx, row: inst.row + dy });
+  // Effective footprint. Portals/pipes (scaleWithDensity) grow with the map DENSITY so they
+  // stay proportional to the player at any density (a 2×2 pipe becomes 4×4 at density 4).
+  function footprintOf(typeId, density) {
+    const t = get(typeId); if (!t) return { w: 1, h: 1 };
+    const fp = t.footprint;
+    if (t.scaleWithDensity) { const d = Math.max(1, Math.round(density || 1)); return { w: Math.max(fp.w, d), h: Math.max(fp.h, d) }; }
+    return { w: fp.w, h: fp.h };
+  }
+  function footprintCells(inst, density) {
+    const fp = footprintOf(inst.typeId, density), out = [];
+    for (let dy = 0; dy < fp.h; dy++)
+      for (let dx = 0; dx < fp.w; dx++) out.push({ col: inst.col + dx, row: inst.row + dy });
     return out;
   }
 
   const OH_BUILDINGS = {
     CATEGORIES, INTERACTIONS, REGISTRY,
     def, register, get, all, byCategory,
-    place, cycleSkin, footprintCells,
+    place, cycleSkin, footprintCells, footprintOf,
   };
 
   if (typeof window !== 'undefined') window.OH_BUILDINGS = OH_BUILDINGS;

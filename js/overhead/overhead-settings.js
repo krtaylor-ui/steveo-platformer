@@ -14,6 +14,7 @@
       climbLevels:      0,          // how many elevation levels a WALK can step up (0 = none; use ramps/ladders)
       playerHeight:     1,          // player height in levels — a block this-many-or-fewer levels above BLOCKS; taller = an overhang you pass under
       elevOffset:       0.22,       // 2.5D vertical offset per elevation level (fraction of a cell up-left); higher = taller-looking stacks. Capped at 0.5
+      lockZoom:         false,      // lock the camera zoom in play (creators who tuned a specific zoom can prevent the player changing it)
       // Jump (impression-of-height): small float + a scale-up.
       jumpFloat:        0.4,
       jumpScale:        0.22,
@@ -182,6 +183,7 @@
               ${sel('controlScheme', 'Control scheme', [['free-aim', 'Free-Aim (mouse)'], ['move-to-aim', 'Move-to-Aim'], ['twin-stick', 'Twin-Stick']])}
               ${sel('angleLockDeg', 'Aim lock', [['0', 'Smooth'], ['45', '8-way (45°)'], ['90', '4-way (90°)']])}
               ${range('masterZoom', 'Default zoom', 0.4, 2, 0.1)}
+              ${toggle('lockZoom', 'Lock zoom in play (players cannot change it)')}
               ${toggle('showHiddenIndicator', 'Show a ring when hidden under an overhang')}
               ${toggle('revealPlayer', 'Always show player (reveal window under canopy)')}
               ${range('revealRadius', 'Reveal-window radius (blocks)', 2, 10, 1)}
