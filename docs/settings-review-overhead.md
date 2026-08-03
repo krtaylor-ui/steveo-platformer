@@ -9,7 +9,7 @@ There is **no advanced tier in overhead yet** — the `Rec` column is a proposal
 adopting it means converting this panel to a schema like the 2D one (which also gives it
 per-setting help text, and makes the user guide generatable).
 
-**Totals:** 58 settings in 7 groups · recommended advanced **25**, basic **33**.
+**Totals:** 59 settings in 7 groups · recommended advanced **26**, basic **33**.
 
 
 ## Movement & Elevation (14)
@@ -63,7 +63,7 @@ per-setting help text, and makes the user guide generatable).
 | Always show player (reveal window under canopy) | `revealPlayer` | toggle | basic | a feature switch a designer decides deliberately | | |
 | Reveal-window radius (blocks) | `revealRadius` | range | **ADV** | slider fine-tuning behind a working default | | |
 
-## Atmosphere — Day / Night (13)
+## Atmosphere — Day / Night (14)
 
 | Setting | Key | Control | Rec | Why | Your call | Move to |
 |---|---|---|---|---|---|---|
@@ -77,6 +77,7 @@ per-setting help text, and makes the user guide generatable).
 | Shadow style | `shadowStyle` | sel | basic | picks a mode/behaviour rather than tuning it | | |
 | Fixed shadow falls | `shadowDir` | sel | basic | picks a mode/behaviour rather than tuning it | | |
 | Fixed shadow darkness | `shadowDarkness` | range | **ADV** | numeric tuning of a working default | | |
+| Moon shadow strength (vs sun) | `moonShadowScale` | range | **ADV** | slider fine-tuning behind a working default | | |
 | Light reach per brightness (blocks) | `lightRange` | range | **ADV** | slider fine-tuning behind a working default | | |
 | Lava brightness | `lavaBrightness` | range | **ADV** | slider fine-tuning behind a working default | | |
 | Glowstone brightness | `glowstoneBrightness` | range | **ADV** | slider fine-tuning behind a working default | | |

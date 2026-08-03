@@ -70,6 +70,7 @@
       this._shadowStyle = cfg.shadowStyle || 'live';   // 'live' (follow sun/moon) | 'fixed' (baked once)
       this._shadowDir = cfg.shadowDir || 'dr';         // fixed-shadow direction (dr/d/dl/r/l)
       this._shadowDarkness = (cfg.shadowDarkness != null ? cfg.shadowDarkness : 0.32);   // fixed-shadow alpha
+      this._moonShadowScale = (cfg.moonShadowScale != null ? cfg.moonShadowScale : 0.45);   // moonlit shadows are weaker than sunlit ones
       // Universal light REACH per unit brightness (blocks) + per-object brightness.
       this._lightRange = (cfg.lightRange != null ? cfg.lightRange : 5);
       const briOf = { lava: (cfg.lavaBrightness != null ? cfg.lavaBrightness : 0.7),
@@ -954,7 +955,7 @@
     _fixedSh() { const D = { dr: [0.7, 0.7], d: [0, 1], dl: [-0.7, 0.7], r: [1, 0.25], l: [-1, 0.25] }; const v = D[this._shadowDir] || D.dr; return { x: v[0] * 0.9, y: v[1] * 0.9 }; }
     // LIVE shadows — recomputed each frame from the moving sun/moon (day/night worlds).
     _drawShadows(ctx, S, cs, c0, c1, r0, r1) {
-      const sh = OH_DAYNIGHT.shadow(this._tod); if (sh.alpha <= 0.01) return;
+      const sh = OH_DAYNIGHT.shadow(this._tod, this._moonShadowScale); if (sh.alpha <= 0.01) return;
       const sc = this._shadowCanvas || (this._shadowCanvas = document.createElement('canvas'));
       if (sc.width !== CANVAS_W || sc.height !== CANVAS_H) { sc.width = CANVAS_W; sc.height = CANVAS_H; }
       const sx = sc.getContext('2d'); sx.clearRect(0, 0, CANVAS_W, CANVAS_H); sx.fillStyle = '#000';

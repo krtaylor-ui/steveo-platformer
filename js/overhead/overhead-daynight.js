@@ -50,7 +50,12 @@
     // (the runtime multiplies by cell × elevation). Long + sideways when the body is
     // low (dawn/dusk/deep night), short + straight-down near peak. Independent of
     // whether the disc is drawn. Returns {x,y,alpha}.
-    shadow(t) {
+    // `moonScale` (0..1) is how strong a MOONLIT shadow is relative to a sunlit one at
+    // the same altitude. The old comment here claimed "crisper by day, softer at night",
+    // but altitude is computed identically for both arcs (a sine over each half-cycle),
+    // so a peak moon cast exactly as hard a shadow as a peak sun. Moonlight is far
+    // dimmer than sunlight, so it now scales down. Default 0.45. (Kevin, build 347.)
+    shadow(t, moonScale) {
       const b = this.body(t);
       const len = 0.35 + (1 - b.altitude) * 1.5;      // long at low altitude
       const x = (0.5 - b.p) * 2 * len;                // + toward +x early, − late (body sweeps L→R)
@@ -59,8 +64,10 @@
       // when the sun/moon swaps — a quick fade-out of the old, fade-in of the new.
       const edge = Math.min(b.p, 1 - b.p);            // 0 at the arc ends, 0.5 at peak
       const fade = Math.max(0, Math.min(1, edge / 0.07));
-      const alpha = (0.18 + 0.22 * b.altitude) * fade;   // crisper by day, softer at night, 0 at the swap
-      return { x, y, alpha, fade };
+      const ms = (moonScale == null ? 0.45 : Math.max(0, Math.min(1, moonScale)));
+      const lit = b.isDay ? 1 : ms;                   // the moon is a much weaker light
+      const alpha = (0.18 + 0.22 * b.altitude) * fade * lit;
+      return { x, y, alpha, fade, isDay: b.isDay, lit };
     },
 
     // A short label for the on-screen clock.

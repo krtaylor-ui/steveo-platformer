@@ -40,6 +40,7 @@ group,label,key,control,recommended_tier,why,your_call,move_to
 "Atmosphere — Day / Night","Shadow style","shadowStyle","sel","basic","picks a mode/behaviour rather than tuning it","",""
 "Atmosphere — Day / Night","Fixed shadow falls","shadowDir","sel","basic","picks a mode/behaviour rather than tuning it","",""
 "Atmosphere — Day / Night","Fixed shadow darkness","shadowDarkness","range","advanced","numeric tuning of a working default","",""
+"Atmosphere — Day / Night","Moon shadow strength (vs sun)","moonShadowScale","range","advanced","slider fine-tuning behind a working default","",""
 "Atmosphere — Day / Night","Light reach per brightness (blocks)","lightRange","range","advanced","slider fine-tuning behind a working default","",""
 "Atmosphere — Day / Night","Lava brightness","lavaBrightness","range","advanced","slider fine-tuning behind a working default","",""
 "Atmosphere — Day / Night","Glowstone brightness","glowstoneBrightness","range","advanced","slider fine-tuning behind a working default","",""

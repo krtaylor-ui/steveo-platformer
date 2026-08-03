@@ -63,6 +63,7 @@
       shadowStyle:      'live',     // 'live' (follow sun/moon, dynamic) | 'fixed' (baked once, cheap)
       shadowDir:        'dr',       // fixed-shadow direction: dr/d/dl/r/l (down-right default)
       shadowDarkness:   0.32,       // fixed-shadow strength (0..1)
+      moonShadowScale:  0.45,       // moonlit shadow strength relative to sunlit (0..1)
       lightRange:       5,          // UNIVERSAL reach in blocks per unit of brightness
       lavaBrightness:   0.7,        // per-object light strength (0..1)
       glowstoneBrightness: 0.95,    // per-object light strength (0..1)
@@ -227,6 +228,7 @@
               ${sel('shadowStyle', 'Shadow style', [['live', 'Live (follows sun/moon)'], ['fixed', 'Fixed (baked once — cheaper)']])}
               ${sel('shadowDir', 'Fixed shadow falls', [['dr', 'Down-right'], ['d', 'Down'], ['dl', 'Down-left'], ['r', 'Right'], ['l', 'Left']])}
               ${range('shadowDarkness', 'Fixed shadow darkness', 0.1, 0.7, 0.05)}
+              ${range('moonShadowScale', 'Moon shadow strength (vs sun)', 0, 1, 0.05)}
               ${range('lightRange', 'Light reach per brightness (blocks)', 1, 12, 1)}
               ${range('lavaBrightness', 'Lava brightness', 0.1, 1, 0.05)}
               ${range('glowstoneBrightness', 'Glowstone brightness', 0.1, 1, 0.05)}

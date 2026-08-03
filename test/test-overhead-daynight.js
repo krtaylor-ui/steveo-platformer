@@ -48,6 +48,19 @@ console.log('Sun/moon body + shadow vector:');
   ok(OH_DAYNIGHT.shadow(0.3).x > 0 && OH_DAYNIGHT.shadow(0.7).x < 0, 'shadow flips horizontal direction across the arc');
   ok(near(OH_DAYNIGHT.shadow(0.25).alpha, 0, 1e-9), 'shadow fades to 0 at the dawn swap (no snap)');
   ok(OH_DAYNIGHT.shadow(0.4).alpha > OH_DAYNIGHT.shadow(0.255).alpha, 'shadow fades IN after the swap');
+
+  // Build 347 — moonlit shadows must read weaker than sunlit ones. Altitude alone is
+  // symmetric across the two arcs, so before this a peak moon cast as hard a shadow as
+  // a peak sun.
+  const shNoon2 = OH_DAYNIGHT.shadow(0.5), shMid = OH_DAYNIGHT.shadow(0.0);
+  ok(shNoon2.isDay === true && shMid.isDay === false, 'noon is day, midnight is night');
+  ok(shMid.alpha < shNoon2.alpha, `a peak moon shadow is fainter than a peak sun shadow (${shMid.alpha.toFixed(3)} < ${shNoon2.alpha.toFixed(3)})`);
+  ok(near(shMid.alpha / shNoon2.alpha, 0.45, 0.02), 'the ratio matches the default moon scale (0.45)');
+  ok(OH_DAYNIGHT.shadow(0.5, 0.1).alpha === shNoon2.alpha, 'moonScale does not affect DAY shadows');
+  ok(OH_DAYNIGHT.shadow(0.0, 1).alpha > OH_DAYNIGHT.shadow(0.0, 0.2).alpha, 'a higher moon scale gives a stronger night shadow');
+  ok(OH_DAYNIGHT.shadow(0.0, 0).alpha === 0, 'moon scale 0 removes night shadows entirely');
+  ok(OH_DAYNIGHT.shadow(0.0, 1).alpha === OH_DAYNIGHT.shadow(0.5).alpha, 'moon scale 1 restores parity with the sun');
+  ok(OH_DAYNIGHT.shadow(0.0, 5).alpha === OH_DAYNIGHT.shadow(0.0, 1).alpha, 'out-of-range moon scale is clamped');
 }
 
 console.log('Label + detection multiplier:');
