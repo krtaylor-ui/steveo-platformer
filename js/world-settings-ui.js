@@ -63,7 +63,8 @@ const WORLD_SETTINGS = {
     { id: 'arena',    label: 'Arena' },
     { id: 'combat',   label: 'Combat' },
     { id: 'mobs',     label: 'Mob Settings' },  // mob behavior (schema rows) + the special drops table (sandbox)
-    { id: 'debug',    label: 'Debug' },         // dev overlays: perf HUD, bot paths, nav-grid (may be hidden later)
+    { id: 'multi',    label: 'Multiplayer' },   // companion / shared-player / boss scaling — playing together
+    { id: 'debug',    label: 'Debug' },         // dev overlays: every row advanced, so the TAB hides unless Advanced is on
   ],
 
   // Arena game types (which modes an arena world supports) → arenaEnabledTypes[].
@@ -104,26 +105,26 @@ const WORLD_SETTINGS = {
     const pct1 = (v) => v.toFixed(2), x1 = (v) => v.toFixed(1) + 'x', xf = (v) => v + 'x';
     return [
       // ── WORLD ───────────────────────────────────────────────
-      { key: 'backgroundTheme', tab: 'world', group: 'Look', modes: M.display, type: 'cycle', opts: ['auto', 'sky', 'day', 'night', 'cave', 'nether', 'end'], dflt: 'auto', label: 'Background', fmt: this._cap, hint: 'force a backdrop everywhere (Day/Night pin a static sun/moon top-right), or Auto (by position)' },
+      { key: 'backgroundTheme', tab: 'world', group: 'Display', modes: M.display, type: 'cycle', opts: ['auto', 'sky', 'day', 'night', 'cave', 'nether', 'end'], dflt: 'auto', label: 'Background', fmt: this._cap, hint: 'force a backdrop everywhere (Day/Night pin a static sun/moon top-right), or Auto (by position)' },
       { key: 'dayCycleMinutes', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'cycle', opts: O.day, dflt: 10, label: 'Day Length', fmt: (v) => v + ' min', hint: 'length of a full day+night cycle' },
       { key: 'nightSpawnBoost', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'toggle', dflt: false, label: 'Night Spawn Boost', hint: 'more mobs spawn at night' },
       { key: 'nightSpawnRate', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'cycle', opts: [1.5, 2, 3, 4], dflt: 2, label: 'Night Spawn Rate', fmt: (v) => v.toFixed(1) + 'x', sub: true, dependsOn: 'nightSpawnBoost', advanced: true, hint: 'how many more mobs at night' },
       { key: 'fullMoonHpBoost', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'toggle', dflt: false, label: 'Full-Moon Mob HP', hint: 'tougher mobs on full-moon nights' },
       { key: 'fullMoonHpAmount', tab: 'world', group: 'Day / Night', modes: M.adventure, type: 'cycle', opts: [1.25, 1.5, 2, 3], dflt: 1.5, label: 'Full-Moon HP Boost', fmt: (v) => v.toFixed(2) + 'x', sub: true, dependsOn: 'fullMoonHpBoost', advanced: true, hint: 'mob HP multiplier on a full moon' },
-      { key: 'jumpAttack', tab: 'world', group: 'Enemies', modes: M.adventure, type: 'toggle', dflt: true, label: 'Jump Attack (stomp)', hint: 'jump onto an enemy from above to squish/hit it and bounce off (Mario-style); Goombas squish in one stomp, Koopas lose their shell first — side contact still hurts you' },
+      { key: 'jumpAttack', tab: 'combat', group: 'Special Moves', modes: M.adventure, type: 'toggle', dflt: true, label: 'Jump Attack (stomp)', hint: 'jump onto an enemy from above to squish/hit it and bounce off (Mario-style); Goombas squish in one stomp, Koopas lose their shell first — side contact still hurts you' },
       // ── Debug tab — dev overlays (kept for diagnosing perf + navigation; may be hidden later) ──
-      { key: 'perfHud', tab: 'debug', group: 'Overlays', modes: M.all, type: 'toggle', dflt: false, label: 'Performance HUD', hint: 'show a live frame-time breakdown (FPS, update/render, mobs/bot/redstone, A* calls) — also auto-appears when frames run slow' },
-      { key: 'showBotPaths', tab: 'debug', group: 'Overlays', modes: M.all, type: 'toggle', dflt: false, label: 'Show Bot / Mob Paths', hint: 'draw each AI’s planned route (green), goal (magenta ring), and a red ✕ when it has no path — for debugging navigation' },
-      { key: 'showNavGrid', tab: 'debug', group: 'Overlays', modes: M.all, type: 'toggle', dflt: false, label: 'Show Nav Grid (solid cells)', hint: 'outline every cell the pathfinder treats as SOLID (orange) around each bot — if a wall has no outline, the planner isn’t seeing it' },
+      { key: 'perfHud', tab: 'debug', group: 'Overlays', modes: M.all, type: 'toggle', dflt: false, label: 'Performance HUD', advanced: true, hint: 'show a live frame-time breakdown (FPS, update/render, mobs/bot/redstone, A* calls) — also auto-appears when frames run slow' },
+      { key: 'showBotPaths', tab: 'debug', group: 'Overlays', modes: M.all, type: 'toggle', dflt: false, label: 'Show Bot / Mob Paths', advanced: true, hint: 'draw each AI’s planned route (green), goal (magenta ring), and a red ✕ when it has no path — for debugging navigation' },
+      { key: 'showNavGrid', tab: 'debug', group: 'Overlays', modes: M.all, type: 'toggle', dflt: false, label: 'Show Nav Grid (solid cells)', advanced: true, hint: 'outline every cell the pathfinder treats as SOLID (orange) around each bot — if a wall has no outline, the planner isn’t seeing it' },
       { key: 'worldZoom', tab: 'world', group: 'Display', modes: M.display, type: 'cycle', opts: O.zoom, dflt: 1.0, label: 'Default Zoom', fmt: (v) => v.toFixed(2) + 'x' },
       // (§1c) Companion ON/OFF + which-character is now a PER-SESSION choice made on the
       // Platformer/Normal start screen (game-config-startup splash), not a world property —
       // so the `companionBot` cycle was removed from here. The advanced companion tuning
       // knobs below stay in World Settings (they apply whenever a companion is active).
-      { key: 'companionTeleport', tab: 'world', group: 'Players', modes: M.adventure, type: 'toggle', get: (a) => a.companionTeleport !== false, set: (a, v) => { a.companionTeleport = v; }, label: 'Companion Summon (press C)', hint: 'when the companion gets too far it shows a yellow “!” — press C to warp it to you (it never auto-teleports). Turn OFF to stress-test navigation with the stuck behaviour below. (Enable a companion on the start screen.)' },
-      { key: 'companionTeleportRange', tab: 'world', group: 'Players', modes: M.adventure, type: 'cycle', opts: [12, 16, 20, 24, 30, 40], dflt: 20, label: 'Summon Distance', fmt: (v) => v + ' blocks', sub: true, advanced: true, hint: 'direct distance (counts vertical) before the “!” appears and you can summon the companion with C' },
-      { key: 'companionStuckBehavior', tab: 'world', group: 'Players', modes: M.adventure, type: 'cycle', opts: ['none', 'teleport', 'follow'], dflt: 'follow', label: 'If Companion Gets Stuck', fmt: (v) => ({ none: 'Do nothing', teleport: 'Teleport to you', follow: 'Follow mode' }[v] || v), sub: true, advanced: true, hint: 'used when Teleport is OFF: Follow mode shows a “!”, waits for you to come near, then mirrors your moves through the spot' },
-      { key: 'playersPassThrough', tab: 'world', group: 'Players', modes: M.adventure, type: 'toggle', dflt: false, label: 'Players Pass Through', hint: 'players (and the companion) don’t push each other — they overlap / share a spot instead of colliding' },
+      { key: 'companionTeleport', tab: 'multi', group: 'Companion', modes: M.adventure, type: 'toggle', get: (a) => a.companionTeleport !== false, set: (a, v) => { a.companionTeleport = v; }, label: 'Bot Companion Summon (press C)', hint: 'when the companion gets too far it shows a yellow “!” — press C to warp it to you (it never auto-teleports). Turn OFF to stress-test navigation with the stuck behaviour below. (Enable a companion on the start screen.)' },
+      { key: 'companionTeleportRange', tab: 'multi', group: 'Companion', modes: M.adventure, type: 'cycle', opts: [12, 16, 20, 24, 30, 40], dflt: 20, label: 'Summon Distance', fmt: (v) => v + ' blocks', sub: true, advanced: true, hint: 'direct distance (counts vertical) before the “!” appears and you can summon the companion with C' },
+      { key: 'companionStuckBehavior', tab: 'multi', group: 'Companion', modes: M.adventure, type: 'cycle', opts: ['none', 'teleport', 'follow'], dflt: 'teleport', label: 'If Companion Gets Stuck', fmt: (v) => ({ none: 'Do nothing', teleport: 'Teleport to you', follow: 'Follow mode' }[v] || v), sub: true, advanced: true, hint: 'used when Teleport is OFF: Follow mode shows a “!”, waits for you to come near, then mirrors your moves through the spot' },
+      { key: 'playersPassThrough', tab: 'multi', group: 'Players', modes: M.adventure, type: 'toggle', dflt: false, label: 'Players Pass Through', hint: 'players (and the companion) don’t push each other — they overlap / share a spot instead of colliding' },
       { key: 'platformerEmeralds', tab: 'world', group: 'Scoring', modes: M.platformer, type: 'toggle', dflt: false, label: 'Collect Emeralds', hint: 'placed emeralds can be picked up and counted' },
       { key: 'platformerScore', tab: 'world', group: 'Scoring', modes: M.platformer, type: 'toggle', dflt: false, label: 'Score / Points', hint: 'track a running score (emeralds + level-clear bonus)' },
       { key: 'emeraldPoints', tab: 'world', group: 'Scoring', modes: M.platformer, type: 'cycle', opts: [50, 100, 200, 500], dflt: 100, label: 'Points / Emerald', fmt: (v) => v + ' pts', sub: true, dependsOn: 'platformerScore', advanced: true, hint: 'score awarded per emerald' },
@@ -143,6 +144,10 @@ const WORLD_SETTINGS = {
       { key: 'autoStepUp', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Auto-Climb', hint: 'walk up 1-block ledges' },
       { key: 'airJumpEnabled', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Double Jump', hint: 'one mid-air jump (adds an air-roll)' },
       { key: 'doubleJumpStyle', tab: 'movement', group: 'Moves', modes: M.physics, type: 'cycle', opts: ['nospin', 'simple', 'natural'], dflt: 'simple', label: 'Double Jump Style', fmt: (v) => ({ nospin: 'No Spin', simple: 'Simple Spin', natural: 'Natural Spin' }[v] || v), sub: true, dependsOn: 'airJumpEnabled', advanced: true, hint: 'No Spin = like a normal jump; Simple Spin = tucked 360; Natural Spin = 360 keeping weapons + a hip bend' },
+      { key: 'slideEnabled', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Ground Slide', hint: 'jump + down to slide' },
+      { key: 'slideInvincible', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Slide Invincible', sub: true, dependsOn: 'slideEnabled', advanced: true },
+      { key: 'slideDurationFrames', tab: 'movement', group: 'Moves', modes: M.physics, type: 'cycle', opts: O.slideDur, dflt: 30, label: 'Slide Length', fmt: (v) => v + 'f', sub: true, dependsOn: 'slideEnabled', advanced: true },
+      { key: 'slideSpeedMult', tab: 'movement', group: 'Moves', modes: M.physics, type: 'cycle', opts: O.slideMult, dflt: 1.6, label: 'Slide Speed', fmt: x1, sub: true, dependsOn: 'slideEnabled', advanced: true },
       { key: 'wallSlideEnabled', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Wall Slide', hint: 'slow-slide down a wall you press into' },
       { key: 'wallJumpLockAway', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Wall-Jump Lock-Away', sub: true, dependsOn: 'wallSlideEnabled', advanced: true, hint: 'jump forces away, no steering till you land' },
       { key: 'ledgeHangEnabled', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Ledge Hang', hint: 'grab & climb block edges' },
@@ -152,19 +157,15 @@ const WORLD_SETTINGS = {
       { key: 'barRequireGrab', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Bar: Press Up to Grab', hint: 'off = you grip a monkey-Bar automatically when your hands reach it; on = you only grab while holding Up (pass under/through it otherwise). From a Bar: ← → traverse, Jump = flip off, Down+Jump = drop straight down' },
       { key: 'barMoveSpeed', tab: 'movement', group: 'Moves', modes: M.physics, type: 'cycle', opts: [1.5, 2.4, 3.5, 5], dflt: 2.4, label: 'Bar: Traverse Speed', fmt: (v) => v.toFixed(1).replace(/\.0$/, '') + ' px', sub: true, advanced: true, hint: 'how fast you swing hand-over-hand along a row of Bars (2.4 = default)' },
       { key: 'barTraverseStyle', tab: 'movement', group: 'Moves', modes: M.physics, type: 'cycle', opts: ['compactlunge', 'compactswing', 'smooth', 'brachiation', 'bigswing', 'lunge'], dflt: 'compactlunge', label: 'Bar: Traverse Style', fmt: (v) => ({ smooth: 'Smooth', brachiation: 'Brachiation', bigswing: 'Big Swing', lunge: 'Lunge', compactswing: 'Compact Swing', compactlunge: 'Compact Lunge' }[v] || v), sub: true, advanced: true, hint: 'the hand-over-hand animation. Compact Lunge (default) = Lunge’s leg kick with tight handholds; Compact Swing = Big Swing’s body/leg motion with tight handholds; plus Smooth · Brachiation · Big Swing · Lunge' },
-      { key: 'crumbleSeconds', tab: 'movement', group: 'Moves', modes: M.physics, type: 'cycle', opts: [1, 2, 3, 4, 5], dflt: 2, label: 'Crumble Block Time', fmt: (v) => v + 's', hint: 'seconds of cumulative standing before a Crumbling Block falls (timer pauses when you step off, resumes when you return)' },
-      { key: 'conveyorSpeed', tab: 'movement', group: 'Moves', modes: M.physics, type: 'cycle', opts: [1, 2, 3, 4], dflt: 2, label: 'Conveyor Speed', fmt: (v) => v + 'x', hint: 'how fast Conveyor blocks push (2 = default). Per-block / per-run speed is a planned follow-up' },
-      { key: 'tubeDefaultSpeed', tab: 'movement', group: 'Moves', modes: M.physics, type: 'cycle', opts: [5, 7, 10, 14], dflt: 7, label: 'Travel Tube Speed', fmt: (v) => v + ' px', advanced: true, hint: 'default fly-through speed for NEW Travel Tubes (px/frame). Per-tube overrides are a planned follow-up' },
-      { key: 'tubeRoundedCorners', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Travel Tube: Rounded Bends', hint: 'smooth the bends of Travel Tubes (and round the mouth ends). Off = square corners. Works in both the smooth and Block-style looks' },
-      { key: 'tubeBlockStyle', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Travel Tube: Block Style', hint: 'draw tubes as classic per-cell glass BLOCKS (the original look) instead of the smooth continuous pipe. Mouth lips + rounded bends still apply' },
+      { key: 'crumbleSeconds', tab: 'world', group: 'Blocks', modes: M.physics, type: 'cycle', opts: [1, 2, 3, 4, 5], dflt: 2, label: 'Crumble Block Time', fmt: (v) => v + 's', hint: 'seconds of cumulative standing before a Crumbling Block falls (timer pauses when you step off, resumes when you return)' },
+      { key: 'conveyorSpeed', tab: 'movement', group: 'Transport', modes: M.physics, type: 'cycle', opts: [1, 2, 3, 4], dflt: 2, label: 'Conveyor Speed', fmt: (v) => v + 'x', hint: 'how fast Conveyor blocks push (2 = default). Per-block / per-run speed is a planned follow-up' },
+      { key: 'tubeDefaultSpeed', tab: 'movement', group: 'Transport', modes: M.physics, type: 'cycle', opts: [5, 7, 10, 14], dflt: 7, label: 'Travel Tube Speed', fmt: (v) => v + ' px', advanced: true, hint: 'default fly-through speed for NEW Travel Tubes (px/frame). Per-tube overrides are a planned follow-up' },
+      { key: 'tubeRoundedCorners', tab: 'movement', group: 'Transport', modes: M.physics, type: 'toggle', dflt: false, label: 'Travel Tube: Rounded Bends', hint: 'smooth the bends of Travel Tubes (and round the mouth ends). Off = square corners. Works in both the smooth and Block-style looks' },
+      { key: 'tubeBlockStyle', tab: 'movement', group: 'Transport', modes: M.physics, type: 'toggle', dflt: false, label: 'Travel Tube: Block Style', hint: 'draw tubes as classic per-cell glass BLOCKS (the original look) instead of the smooth continuous pipe. Mouth lips + rounded bends still apply' },
       { key: 'trampJumpBoost', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Trampoline: Jump to Boost', hint: 'time a fresh Jump press with the upward bounce for an extra boost (release + re-press near the top of the launch)' },
       { key: 'trampEarlyPenalty', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Trampoline: Early-Jump Penalty', sub: true, dependsOn: 'trampJumpBoost', advanced: true, hint: 'holding Jump at the instant you land on the trampoline (jumping too soon) saps the spring — a weaker launch. Rewards timing over mashing' },
-      { key: 'questionContents', tab: 'movement', group: 'Moves', modes: M.physics, type: 'cycle', opts: ['coin', 'apple', 'arrow', 'glowstone'], dflt: 'coin', label: 'Block Contents', fmt: this._cap, hint: 'the DEFAULT item a Question / Breakable block yields. Blocks you set individually in the editor (Contents) override this — so it only applies to blocks left on “world default”.' },
-      { key: 'glassShatter', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: true, label: 'Glass Shatters', hint: 'Glass blocks shatter into shards when hit by a melee swing, an arrow, an explosion, or a hard fall onto them (still minable in Normal). Off = indestructible except mining.' },
-      { key: 'slideEnabled', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Ground Slide', hint: 'jump + down to slide' },
-      { key: 'slideInvincible', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Slide Invincible', sub: true, dependsOn: 'slideEnabled', advanced: true },
-      { key: 'slideDurationFrames', tab: 'movement', group: 'Moves', modes: M.physics, type: 'cycle', opts: O.slideDur, dflt: 30, label: 'Slide Length', fmt: (v) => v + 'f', sub: true, dependsOn: 'slideEnabled', advanced: true },
-      { key: 'slideSpeedMult', tab: 'movement', group: 'Moves', modes: M.physics, type: 'cycle', opts: O.slideMult, dflt: 1.6, label: 'Slide Speed', fmt: x1, sub: true, dependsOn: 'slideEnabled', advanced: true },
+      { key: 'questionContents', tab: 'world', group: 'Blocks', modes: M.physics, type: 'cycle', opts: ['coin', 'apple', 'arrow', 'glowstone'], dflt: 'coin', label: 'Block Contents', fmt: this._cap, hint: 'the DEFAULT item a Question / Breakable block yields. Blocks you set individually in the editor (Contents) override this — so it only applies to blocks left on “world default”.' },
+      { key: 'glassShatter', tab: 'world', group: 'Blocks', modes: M.physics, type: 'toggle', dflt: true, label: 'Glass Shatters', hint: 'Glass blocks shatter into shards when hit by a melee swing, an arrow, an explosion, or a hard fall onto them (still minable in Normal). Off = indestructible except mining.' },
       // §Phase 5b — Look-Up Aim: hold Up/W to aim ranged weapons (and the grapple) straight
       // up; jump moves to J. Its own toggle (also auto-on when the grappling hook is enabled).
       // The rebind panel's "Legacy Jump" preset is the one-click way back to Up/W = jump.
@@ -202,10 +203,10 @@ const WORLD_SETTINGS = {
       })),
 
       // ── COMBAT ──────────────────────────────────────────────
-      { key: 'bossHealthMultiplier', tab: 'combat', group: 'Multiplayer Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Health', fmt: x1, advanced: true },
-      { key: 'bossDamageMultiplier', tab: 'combat', group: 'Multiplayer Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Damage', fmt: x1, advanced: true },
-      { key: 'bossAttackRateMultiplier', tab: 'combat', group: 'Multiplayer Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Attack Rate', fmt: x1, advanced: true },
-      { key: 'disableDragonHealing', tab: 'combat', group: 'Multiplayer Boss Scaling', modes: M.adventure, type: 'toggle', dflt: false, label: 'Disable Dragon Healing', advanced: true },
+      { key: 'bossHealthMultiplier', tab: 'multi', group: 'Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Health', fmt: x1, advanced: true },
+      { key: 'bossDamageMultiplier', tab: 'multi', group: 'Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Damage', fmt: x1, advanced: true },
+      { key: 'bossAttackRateMultiplier', tab: 'multi', group: 'Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Attack Rate', fmt: x1, advanced: true },
+      { key: 'disableDragonHealing', tab: 'multi', group: 'Boss Scaling', modes: M.adventure, type: 'toggle', dflt: false, label: 'Disable Dragon Healing', advanced: true },
       // §Phase E — Unlimited Arrows moved from a standalone "Combat" heading to "Ranged"
       // (with the arrow flight/charge settings). Recoverable Arrows moved with it — both are
       // arrow settings and belong together; that empties "Combat", so the heading is gone.
@@ -319,8 +320,8 @@ const WORLD_SETTINGS = {
       }
       // Trident-specific throw behaviour lives under its own weapon group (Smart Mobs §6).
       if (cls === 'trident') {
-        rows.push({ key: 'tridentAutoReturn', tab: 'combat', group: g, modes, type: 'toggle', dflt: false, label: 'Recall (right-click)', advanced: true });
-        rows.push({ key: 'guidedTrident',     tab: 'combat', group: g, modes, type: 'toggle', dflt: false, label: 'Guided (steer to cursor)', advanced: true });
+        rows.push({ key: 'tridentAutoReturn', tab: 'combat', group: g, modes, type: 'toggle', dflt: true, label: 'Recall (right-click)', advanced: true });
+        rows.push({ key: 'guidedTrident',     tab: 'combat', group: g, modes, type: 'toggle', dflt: true, label: 'Guided (steer to cursor)', advanced: true });
         rows.push({ key: 'tridentTurn',        tab: 'combat', group: g, modes, type: 'slider', dflt: 30, label: 'Guided Turn Speed', advanced: true, dependsOn: 'guidedTrident' });
       }
     }
@@ -477,7 +478,11 @@ const WORLD_SETTINGS = {
     // Mob Settings shows if it has any mob-behavior rows for this mode OR (in sandbox)
     // the special mob-drops table.
     if (tabId === 'mobs' && this._game.gameMode === 'sandbox') return true;
-    return this.SETTINGS.some((s) => s.tab === tabId && this._modeOK(s) && (!s.showWhen || s.showWhen(this._game)));
+    // _visible, NOT _modeOK: a tab whose every row is advanced (or locked) used to show
+    // with an EMPTY body — which is why Debug appeared to players. A tab now appears only
+    // when it actually has something in it, so Debug follows the Advanced toggle for free
+    // and any future all-advanced tab behaves the same. (Kevin's call, build 347.)
+    return this.SETTINGS.some((s) => s.tab === tabId && this._visible(s));
   },
 
   // ── Value access ────────────────────────────────────────────

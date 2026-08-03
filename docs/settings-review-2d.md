@@ -11,17 +11,18 @@ Advanced is now **sandbox-only** — players never see an ADV row, so anything m
 invisible outside the world editor. That raises the stakes on wrongly marking something ADV.
 
 
-**Totals:** 164 settings · advanced today **94** → recommended **107** · 17 rows would change (⚠).
+**Totals:** 164 settings · advanced today **97** → recommended **105** · 16 rows would change (⚠).
 
 
-## World `world` — 19 settings
+## World `world` — 17 settings
 
 
-### Look (1)
+### Display (2)
 
 | Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
 |---|---|---|---|---|:-:|---|---|---|
 | Background | `backgroundTheme` | NRM PLT ARN SBX | basic | basic |  | feature on/off or an up-front design choice | | |
+| Default Zoom | `worldZoom` | NRM PLT ARN SBX | basic | basic |  | feature on/off or an up-front design choice | | |
 
 ### Day / Night (5)
 
@@ -32,27 +33,6 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 | Night Spawn Rate ·sub | `nightSpawnRate` | NRM PLT SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
 | Full-Moon Mob HP | `fullMoonHpBoost` | NRM PLT SBX | basic | basic |  | feature on/off or an up-front design choice | | |
 | Full-Moon HP Boost ·sub | `fullMoonHpAmount` | NRM PLT SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
-
-### Enemies (1)
-
-| Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
-|---|---|---|---|---|:-:|---|---|---|
-| Jump Attack (stomp) | `jumpAttack` | NRM PLT SBX | basic | basic |  | feature on/off or an up-front design choice | | |
-
-### Display (1)
-
-| Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
-|---|---|---|---|---|:-:|---|---|---|
-| Default Zoom | `worldZoom` | NRM PLT ARN SBX | basic | basic |  | feature on/off or an up-front design choice | | |
-
-### Players (4)
-
-| Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
-|---|---|---|---|---|:-:|---|---|---|
-| Companion Summon (press C) | `companionTeleport` | NRM PLT SBX | basic | basic |  | feature on/off or an up-front design choice | | |
-| Summon Distance ·sub | `companionTeleportRange` | NRM PLT SBX | **ADV** | **ADV** |  | numeric tuning of an already-working default | | |
-| If Companion Gets Stuck ·sub | `companionStuckBehavior` | NRM PLT SBX | **ADV** | basic | ⚠ | picks a mode/behaviour rather than tuning it | | |
-| Players Pass Through | `playersPassThrough` | NRM PLT SBX | basic | basic |  | feature on/off or an up-front design choice | | |
 
 ### Scoring (4)
 
@@ -76,7 +56,15 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 |---|---|---|---|---|:-:|---|---|---|
 | Redstone Speed | `redstoneSpeed` | NRM PLT ARN SBX | **ADV** | **ADV** |  | numeric tuning of an already-working default | | |
 
-## Movement `movement` — 43 settings
+### Blocks (3)
+
+| Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
+|---|---|---|---|---|:-:|---|---|---|
+| Crumble Block Time | `crumbleSeconds` | NRM PLT ARN SBX | basic | basic |  | picks a mode/behaviour rather than tuning it | | |
+| Block Contents | `questionContents` | NRM PLT ARN SBX | basic | basic |  | picks a mode/behaviour rather than tuning it | | |
+| Glass Shatters | `glassShatter` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
+
+## Movement `movement` — 40 settings
 
 
 ### Physics (6)
@@ -90,7 +78,7 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 | Platform Launch Lift | `platformLaunchLift` | NRM PLT ARN SBX | **ADV** | **ADV** |  | numeric tuning of an already-working default | | |
 | Disable XP Speed Boost | `disableXpSpeedBoost` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
 
-### Moves (27)
+### Moves (20)
 
 | Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
 |---|---|---|---|---|:-:|---|---|---|
@@ -98,6 +86,10 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 | Auto-Climb | `autoStepUp` | NRM PLT ARN SBX | basic | basic |  | feature on/off or an up-front design choice | | |
 | Double Jump | `airJumpEnabled` | NRM PLT ARN SBX | basic | basic |  | feature on/off or an up-front design choice | | |
 | Double Jump Style ·sub | `doubleJumpStyle` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
+| Ground Slide | `slideEnabled` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
+| Slide Invincible ·sub | `slideInvincible` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
+| Slide Length ·sub | `slideDurationFrames` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
+| Slide Speed ·sub | `slideSpeedMult` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
 | Wall Slide | `wallSlideEnabled` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
 | Wall-Jump Lock-Away ·sub | `wallJumpLockAway` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
 | Ledge Hang | `ledgeHangEnabled` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
@@ -107,20 +99,18 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 | Bar: Press Up to Grab | `barRequireGrab` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
 | Bar: Traverse Speed ·sub | `barMoveSpeed` | NRM PLT ARN SBX | **ADV** | **ADV** |  | numeric tuning of an already-working default | | |
 | Bar: Traverse Style ·sub | `barTraverseStyle` | NRM PLT ARN SBX | **ADV** | basic | ⚠ | picks a mode/behaviour rather than tuning it | | |
-| Crumble Block Time | `crumbleSeconds` | NRM PLT ARN SBX | basic | basic |  | picks a mode/behaviour rather than tuning it | | |
+| Trampoline: Jump to Boost | `trampJumpBoost` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
+| Trampoline: Early-Jump Penalty ·sub | `trampEarlyPenalty` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
+| Look-Up Aim (Up/W) | `aimUpEnabled` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
+
+### Transport (4)
+
+| Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
+|---|---|---|---|---|:-:|---|---|---|
 | Conveyor Speed | `conveyorSpeed` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | numeric tuning of an already-working default | | |
 | Travel Tube Speed | `tubeDefaultSpeed` | NRM PLT ARN SBX | **ADV** | **ADV** |  | numeric tuning of an already-working default | | |
 | Travel Tube: Rounded Bends | `tubeRoundedCorners` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
 | Travel Tube: Block Style | `tubeBlockStyle` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
-| Trampoline: Jump to Boost | `trampJumpBoost` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
-| Trampoline: Early-Jump Penalty ·sub | `trampEarlyPenalty` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
-| Block Contents | `questionContents` | NRM PLT ARN SBX | basic | basic |  | picks a mode/behaviour rather than tuning it | | |
-| Glass Shatters | `glassShatter` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
-| Ground Slide | `slideEnabled` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
-| Slide Invincible ·sub | `slideInvincible` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
-| Slide Length ·sub | `slideDurationFrames` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
-| Slide Speed ·sub | `slideSpeedMult` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
-| Look-Up Aim (Up/W) | `aimUpEnabled` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
 
 ### Grappling Hook (10)
 
@@ -197,17 +187,17 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 | Capture the Flag | `arenaType_CAPTURE_FLAG` | ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
 | Defend the Tower | `arenaType_DEFEND_TOWER` | ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
 
-## Combat `combat` — 45 settings
+## Combat `combat` — 42 settings
 
 
-### Multiplayer Boss Scaling (4)
+### Special Moves (4)
 
 | Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
 |---|---|---|---|---|:-:|---|---|---|
-| Boss Health | `bossHealthMultiplier` | NRM PLT SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
-| Boss Damage | `bossDamageMultiplier` | NRM PLT SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
-| Boss Attack Rate | `bossAttackRateMultiplier` | NRM PLT SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
-| Disable Dragon Healing | `disableDragonHealing` | NRM PLT SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
+| Jump Attack (stomp) | `jumpAttack` | NRM PLT SBX | basic | basic |  | feature on/off or an up-front design choice | | |
+| Slide Attack (Spear) | `slideAttack` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
+| Slide Attack Damage | `slideAttackDmg` | NRM PLT ARN SBX | **ADV** | **ADV** |  | numeric tuning of an already-working default | | |
+| Advanced Attacks (directional) | `advancedAttacks` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
 
 ### Ranged (7)
 
@@ -220,14 +210,6 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 | Charged Shots (charge → damage) | `chargeDamage` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
 | Max Charge Damage ·sub | `chargeDamageMax` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
 | Charge Speed ·sub | `chargeSpeedMult` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
-
-### Special Moves (3)
-
-| Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
-|---|---|---|---|---|:-:|---|---|---|
-| Slide Attack (Spear) | `slideAttack` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
-| Slide Attack Damage | `slideAttackDmg` | NRM PLT ARN SBX | **ADV** | **ADV** |  | numeric tuning of an already-working default | | |
-| Advanced Attacks (directional) | `advancedAttacks` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
 
 ### Weapons (2)
 
@@ -363,6 +345,32 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 | Duration ·sub | `webDurationSec` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Stacking ·sub | `webStacking` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 
+## Multiplayer `multi` — 8 settings
+
+
+### Companion (3)
+
+| Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
+|---|---|---|---|---|:-:|---|---|---|
+| Bot Companion Summon (press C) | `companionTeleport` | NRM PLT SBX | basic | basic |  | feature on/off or an up-front design choice | | |
+| Summon Distance ·sub | `companionTeleportRange` | NRM PLT SBX | **ADV** | **ADV** |  | numeric tuning of an already-working default | | |
+| If Companion Gets Stuck ·sub | `companionStuckBehavior` | NRM PLT SBX | **ADV** | basic | ⚠ | picks a mode/behaviour rather than tuning it | | |
+
+### Players (1)
+
+| Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
+|---|---|---|---|---|:-:|---|---|---|
+| Players Pass Through | `playersPassThrough` | NRM PLT SBX | basic | basic |  | feature on/off or an up-front design choice | | |
+
+### Boss Scaling (4)
+
+| Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
+|---|---|---|---|---|:-:|---|---|---|
+| Boss Health | `bossHealthMultiplier` | NRM PLT SBX | **ADV** | basic | ⚠ | picks a mode/behaviour rather than tuning it | | |
+| Boss Damage | `bossDamageMultiplier` | NRM PLT SBX | **ADV** | **ADV** |  | numeric tuning of an already-working default | | |
+| Boss Attack Rate | `bossAttackRateMultiplier` | NRM PLT SBX | **ADV** | **ADV** |  | numeric tuning of an already-working default | | |
+| Disable Dragon Healing | `disableDragonHealing` | NRM PLT SBX | **ADV** | basic | ⚠ | a feature switch a designer decides deliberately | | |
+
 ## Debug `debug` — 3 settings
 
 
@@ -370,6 +378,6 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 
 | Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
 |---|---|---|---|---|:-:|---|---|---|
-| Performance HUD | `perfHud` | NRM PLT RUN ARN SBX | basic | **ADV** | ⚠ | developer overlay — not player-facing | | |
-| Show Bot / Mob Paths | `showBotPaths` | NRM PLT RUN ARN SBX | basic | **ADV** | ⚠ | developer overlay — not player-facing | | |
-| Show Nav Grid (solid cells) | `showNavGrid` | NRM PLT RUN ARN SBX | basic | **ADV** | ⚠ | developer overlay — not player-facing | | |
+| Performance HUD | `perfHud` | NRM PLT RUN ARN SBX | **ADV** | **ADV** |  | developer overlay — not player-facing | | |
+| Show Bot / Mob Paths | `showBotPaths` | NRM PLT RUN ARN SBX | **ADV** | **ADV** |  | developer overlay — not player-facing | | |
+| Show Nav Grid (solid cells) | `showNavGrid` | NRM PLT RUN ARN SBX | **ADV** | **ADV** |  | developer overlay — not player-facing | | |

@@ -1527,3 +1527,31 @@ What genuinely helps, in increasing order of cost:
 **Recommendation:** build 40.1, and describe it accurately in the UI — something like
 "Hide from export" rather than "Protect"/"Encrypt". Revisit 2–3 only if copying actually
 happens. Explicitly do **not** ship a decorative encryption layer.
+
+---
+
+## §41 — Which settings belong to PLAYERS at all (+ a cheat mode)
+
+**Status:** open question, deliberately deferred. Kevin, 2026-08-03.
+
+Build 347 made the Advanced tier sandbox-only and enforced Lock Physics, which exposed a
+bigger question: **most of these settings arguably belong to the world CREATOR, not the
+player.** A player in Normal or Platformer can currently still reach ~60 basic rows, many
+of which are level-design choices rather than preferences.
+
+The decision to make later, per mode:
+
+1. **What should a player legitimately change mid-game?** Likely: input, audio, zoom,
+   accessibility/comfort switches (sprint, auto-climb, ladder behaviour). Probably not:
+   mob detection, drops, day length, scoring — those change the level the creator built.
+2. **What moves behind the designer wall** (sandbox-only, like Advanced is now)?
+3. **What belongs in a CHEAT MODE instead** — an explicit, labelled "I am changing the
+   rules" surface (god mode, unlimited arrows, boss scaling down, gravity), rather than
+   settings that quietly alter a level's difficulty. A cheat mode is also the honest home
+   for anything that would invalidate a leaderboard or speed-run time — which means it
+   probably needs to *flag the run* when enabled.
+
+Not a refactor: the machinery already exists (`modes:` gating, `advanced`, `_lockedOut`).
+This is a classification pass plus a new surface for the cheat set. Do it after the
+settings review lands, and before the user guide is generated — the guide's "what players
+can change" chapter depends entirely on this answer.

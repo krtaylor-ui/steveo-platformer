@@ -72,6 +72,37 @@ ok(lockedRows.length === S.filter((r) => r.tab === 'movement' && r.group === 'Ph
 WS._game = mkGame('sandbox', { physicsLocked: true });
 ok(S.every((r) => !WS._lockedOut(r)), 'nothing is locked out in sandbox');
 
+console.log('Tab visibility — a tab with no VISIBLE rows must hide (build 347):');
+const tabHas = (game, tabId, advOn) => { WS._game = game; WS._advanced = !!advOn; return WS._tabHasRows(tabId); };
+ok(tabHas(mkGame('platformer', {}), 'debug') === false, 'Debug is hidden from a player (all rows advanced)');
+ok(tabHas(mkGame('normal', {}), 'debug') === false, 'Debug is hidden in Normal too');
+ok(tabHas(mkGame('sandbox', {}), 'debug', false) === false, 'Debug is hidden in sandbox with Advanced OFF');
+ok(tabHas(mkGame('sandbox', {}), 'debug', true) === true, 'Debug appears in sandbox with Advanced ON');
+ok(tabHas(mkGame('platformer', {}), 'world') === true, 'World still shows for a player');
+ok(tabHas(mkGame('sandbox', {}), 'mobs', false) === true, 'Mob Settings keeps its sandbox drops-table exemption');
+
+console.log('The Multiplayer tab collects the companion / shared-player / boss rows:');
+const multi = S.filter((r) => r.tab === 'multi');
+ok(multi.length === 8, `8 rows moved to the Multiplayer tab (${multi.length})`);
+ok(new Set(multi.map((r) => r.group)).size === 3, 'in three groups: Companion, Players, Boss Scaling');
+ok(!S.some((r) => /Multiplayer Boss Scaling/.test(r.group || '')), 'the old Combat > Multiplayer Boss Scaling group is gone');
+ok(!S.some((r) => r.tab === 'world' && r.group === 'Players'), 'World > Players is emptied');
+ok(S.filter((r) => r.tab === 'arena').length > 0, 'Arena-specific settings stayed in the Arena tab');
+ok(tabHas(mkGame('platformer', {}), 'multi') === true, 'the Multiplayer tab shows in Platformer (companion rows are basic)');
+ok(tabHas(mkGame('speedrunner', {}), 'multi') === false, 'and hides in Speed Run, which has no companion or boss rows');
+
+console.log('Confirmed defaults:');
+ok(row('guidedTrident').dflt === true, 'Guided Trident defaults ON');
+ok(row('tridentAutoReturn').dflt === true, 'Trident Recall (right-click) defaults ON');
+ok(row('wpn_trident_throwable').dflt === true, 'Trident Throwable was already ON');
+ok(row('companionStuckBehavior').dflt === 'teleport', 'If Companion Gets Stuck defaults to Teleport');
+
+console.log('Ground Slide sits between Double Jump and Wall Slide:');
+const moves = S.filter((r) => r.tab === 'movement' && r.group === 'Moves').map((r) => r.key);
+ok(moves.indexOf('slideEnabled') > moves.indexOf('airJumpEnabled'), 'after Double Jump');
+ok(moves.indexOf('slideEnabled') < moves.indexOf('wallSlideEnabled'), 'before Wall Slide');
+ok(moves.indexOf('slideSpeedMult') < moves.indexOf('wallSlideEnabled'), 'its three knobs came with it');
+
 WS._game = null;
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
