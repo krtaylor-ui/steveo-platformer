@@ -11,7 +11,7 @@ Advanced is now **sandbox-only** — players never see an ADV row, so anything m
 invisible outside the world editor. That raises the stakes on wrongly marking something ADV.
 
 
-**Totals:** 164 settings · advanced today **84** → recommended **107** · 37 rows would change (⚠).
+**Totals:** 164 settings · advanced today **94** → recommended **107** · 17 rows would change (⚠).
 
 
 ## World `world` — 19 settings
@@ -50,8 +50,8 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 | Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
 |---|---|---|---|---|:-:|---|---|---|
 | Companion Summon (press C) | `companionTeleport` | NRM PLT SBX | basic | basic |  | feature on/off or an up-front design choice | | |
-| Summon Distance ·sub | `companionTeleportRange` | NRM PLT SBX | basic | **ADV** | ⚠ | numeric tuning of an already-working default | | |
-| If Companion Gets Stuck ·sub | `companionStuckBehavior` | NRM PLT SBX | basic | basic |  | picks a mode/behaviour rather than tuning it | | |
+| Summon Distance ·sub | `companionTeleportRange` | NRM PLT SBX | **ADV** | **ADV** |  | numeric tuning of an already-working default | | |
+| If Companion Gets Stuck ·sub | `companionStuckBehavior` | NRM PLT SBX | **ADV** | basic | ⚠ | picks a mode/behaviour rather than tuning it | | |
 | Players Pass Through | `playersPassThrough` | NRM PLT SBX | basic | basic |  | feature on/off or an up-front design choice | | |
 
 ### Scoring (4)
@@ -88,7 +88,7 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 | Jump-Pad Force | `jumpPadVForce` | NRM PLT ARN SBX | **ADV** | **ADV** |  | numeric tuning of an already-working default | | |
 | Platform Launch Accel | `platformLaunchAccel` | NRM PLT ARN SBX | **ADV** | **ADV** |  | numeric tuning of an already-working default | | |
 | Platform Launch Lift | `platformLaunchLift` | NRM PLT ARN SBX | **ADV** | **ADV** |  | numeric tuning of an already-working default | | |
-| Disable XP Speed Boost | `disableXpSpeedBoost` | NRM PLT ARN SBX | **ADV** | basic | ⚠ | a feature switch a designer decides deliberately | | |
+| Disable XP Speed Boost | `disableXpSpeedBoost` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
 
 ### Moves (27)
 
@@ -130,10 +130,10 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 | Range ·sub | `grappleRange` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
 | Hook Damage ·sub | `grappleDamage` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
 | Attach To ·sub | `grappleAttach` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
-| Grapple Enemies ·sub | `grappleEnemies` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
-| Grapple Collectibles ·sub | `grappleCollectibles` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
-| Release Momentum · Horizontal ·sub | `grappleReleaseBoostH` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | child knob of a toggle above it | | |
-| Release Momentum · Vertical ·sub | `grappleReleaseBoostV` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | child knob of a toggle above it | | |
+| Grapple Enemies ·sub | `grappleEnemies` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | child knob of a toggle above it | | |
+| Grapple Collectibles ·sub | `grappleCollectibles` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | child knob of a toggle above it | | |
+| Release Momentum · Horizontal ·sub | `grappleReleaseBoostH` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
+| Release Momentum · Vertical ·sub | `grappleReleaseBoostV` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
 | Swing Assist ·sub | `grappleSwingAssist` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | child knob of a toggle above it | | |
 | Swing Assist Strength ·sub | `grappleSwingStrength` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
 
@@ -147,7 +147,7 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 | Base Speed | `srBaseSpeed` | RUN SBX | basic | **ADV** | ⚠ | numeric tuning of an already-working default | | |
 | Max Speed | `srMaxMultiplier` | RUN SBX | basic | **ADV** | ⚠ | numeric tuning of an already-working default | | |
 | Acceleration | `srAccel` | RUN SBX | basic | **ADV** | ⚠ | numeric tuning of an already-working default | | |
-| Deceleration | `srDecel` | RUN SBX | **ADV** | basic | ⚠ | picks a mode/behaviour rather than tuning it | | |
+| Deceleration | `srDecel` | RUN SBX | basic | basic |  | picks a mode/behaviour rather than tuning it | | |
 
 ### Boosts (5)
 
@@ -163,8 +163,8 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 
 | Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
 |---|---|---|---|---|:-:|---|---|---|
-| Zoom-Out Start | `srMinZoomSpeed` | RUN SBX | **ADV** | basic | ⚠ | picks a mode/behaviour rather than tuning it | | |
-| Zoom-Out Max | `srMaxZoomSpeed` | RUN SBX | **ADV** | basic | ⚠ | picks a mode/behaviour rather than tuning it | | |
+| Zoom-Out Start | `srMinZoomSpeed` | RUN SBX | basic | basic |  | picks a mode/behaviour rather than tuning it | | |
+| Zoom-Out Max | `srMaxZoomSpeed` | RUN SBX | basic | basic |  | picks a mode/behaviour rather than tuning it | | |
 
 ## Arena `arena` — 13 settings
 
@@ -183,7 +183,7 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 |---|---|---|---|---|:-:|---|---|---|
 | Player Health | `arenaPlayerMaxHealth` | ARN SBX | basic | basic |  | picks a mode/behaviour rather than tuning it | | |
 | Mob Difficulty | `arenaMobHealth` | ARN SBX | basic | basic |  | picks a mode/behaviour rather than tuning it | | |
-| Respawn Delay | `arenaRespawnTime` | ARN SBX | basic | **ADV** | ⚠ | numeric tuning of an already-working default | | |
+| Respawn Delay | `arenaRespawnTime` | ARN SBX | **ADV** | **ADV** |  | numeric tuning of an already-working default | | |
 
 ### Game Types (7)
 
@@ -204,8 +204,8 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 
 | Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
 |---|---|---|---|---|:-:|---|---|---|
-| Boss Health | `bossHealthMultiplier` | NRM PLT SBX | basic | **ADV** | ⚠ | fine-tuning group behind a working default | | |
-| Boss Damage | `bossDamageMultiplier` | NRM PLT SBX | basic | **ADV** | ⚠ | fine-tuning group behind a working default | | |
+| Boss Health | `bossHealthMultiplier` | NRM PLT SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
+| Boss Damage | `bossDamageMultiplier` | NRM PLT SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Boss Attack Rate | `bossAttackRateMultiplier` | NRM PLT SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Disable Dragon Healing | `disableDragonHealing` | NRM PLT SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 
@@ -213,8 +213,8 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 
 | Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
 |---|---|---|---|---|:-:|---|---|---|
-| Unlimited Arrows | `unlimitedArrows` | NRM PLT SBX | **ADV** | basic | ⚠ | a feature switch a designer decides deliberately | | |
-| Recoverable Arrows | `recoverableArrows` | NRM PLT SBX | **ADV** | basic | ⚠ | a feature switch a designer decides deliberately | | |
+| Unlimited Arrows | `unlimitedArrows` | NRM PLT SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
+| Recoverable Arrows | `recoverableArrows` | NRM PLT SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
 | Straight Arrow Flight | `arrowStraight` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
 | Arrow Speed | `arrowSpeedMult` | NRM PLT ARN SBX | **ADV** | **ADV** |  | numeric tuning of an already-working default | | |
 | Charged Shots (charge → damage) | `chargeDamage` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
@@ -267,7 +267,7 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 | Damage | `wpn_trident_dmgMult` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Attack Speed | `wpn_trident_atkSpeed` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Throwable | `wpn_trident_throwable` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
-| Recall (right-click) | `tridentAutoReturn` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | fine-tuning group behind a working default | | |
+| Recall (right-click) | `tridentAutoReturn` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Guided (steer to cursor) | `guidedTrident` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Guided Turn Speed | `tridentTurn` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 
@@ -290,7 +290,7 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 | Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
 |---|---|---|---|---|:-:|---|---|---|
 | Configure Boomerang | `weaponBoomerang` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | fine-tuning group behind a working default | | |
-| Look ·sub | `boomerangLook` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | fine-tuning group behind a working default | | |
+| Look ·sub | `boomerangLook` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Range ·sub | `boomerangRange` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Speed ·sub | `boomerangSpeed` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Deceleration Point ·sub | `boomerangDecel` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
@@ -311,7 +311,7 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 | Axis · Line of Sight ·sub | `detectSight` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
 | Axis · Sound ·sub | `detectSound` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
 | Axis · Attacks/Jumps ·sub | `detectAction` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
-| Sight Range ·sub | `detectSightRange` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | child knob of a toggle above it | | |
+| Sight Range ·sub | `detectSightRange` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
 | Sight Cone ·sub | `detectSightArc` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
 | Walk Sound ·sub | `detectSoundWalk` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
 | Run Sound ·sub | `detectSoundRun` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
@@ -322,7 +322,7 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 
 | Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
 |---|---|---|---|---|:-:|---|---|---|
-| Pack Behavior | `packAlert` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | fine-tuning group behind a working default | | |
+| Pack Behavior | `packAlert` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Alert Spread Range ·sub | `packRadius` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 
 ### Sprint (1)
@@ -335,7 +335,7 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 
 | Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
 |---|---|---|---|---|:-:|---|---|---|
-| Path-Aware Mobs | `pathAwareMobs` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | fine-tuning group behind a working default | | |
+| Path-Aware Mobs | `pathAwareMobs` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Path Range ·sub | `pathSearchRadius` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Path Update ·sub | `pathRecomputeFrames` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 
@@ -343,22 +343,22 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 
 | Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
 |---|---|---|---|---|:-:|---|---|---|
-| Zombie | `lowHpAction_zombie` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | fine-tuning group behind a working default | | |
+| Zombie | `lowHpAction_zombie` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Zombie · Flee Below ·sub | `lowHpThreshold_zombie` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
-| Skeleton | `lowHpAction_skeleton` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | fine-tuning group behind a working default | | |
+| Skeleton | `lowHpAction_skeleton` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Skeleton · Flee Below ·sub | `lowHpThreshold_skeleton` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
-| Cave Spider | `lowHpAction_cave_spider` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | fine-tuning group behind a working default | | |
+| Cave Spider | `lowHpAction_cave_spider` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Cave Spider · Flee Below ·sub | `lowHpThreshold_cave_spider` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
-| Piglin | `lowHpAction_piglin` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | fine-tuning group behind a working default | | |
+| Piglin | `lowHpAction_piglin` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Piglin · Flee Below ·sub | `lowHpThreshold_piglin` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
-| Wither Skel. | `lowHpAction_wither_skeleton` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | fine-tuning group behind a working default | | |
+| Wither Skel. | `lowHpAction_wither_skeleton` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Wither Skel. · Flee Below ·sub | `lowHpThreshold_wither_skeleton` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 
 ### Spider Webs (4)
 
 | Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
 |---|---|---|---|---|:-:|---|---|---|
-| Spider Webs | `spiderWebs` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | fine-tuning group behind a working default | | |
+| Spider Webs | `spiderWebs` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Slowness ·sub | `webSlowPct` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Duration ·sub | `webDurationSec` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Stacking ·sub | `webStacking` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |

@@ -121,8 +121,8 @@ const WORLD_SETTINGS = {
       // so the `companionBot` cycle was removed from here. The advanced companion tuning
       // knobs below stay in World Settings (they apply whenever a companion is active).
       { key: 'companionTeleport', tab: 'world', group: 'Players', modes: M.adventure, type: 'toggle', get: (a) => a.companionTeleport !== false, set: (a, v) => { a.companionTeleport = v; }, label: 'Companion Summon (press C)', hint: 'when the companion gets too far it shows a yellow “!” — press C to warp it to you (it never auto-teleports). Turn OFF to stress-test navigation with the stuck behaviour below. (Enable a companion on the start screen.)' },
-      { key: 'companionTeleportRange', tab: 'world', group: 'Players', modes: M.adventure, type: 'cycle', opts: [12, 16, 20, 24, 30, 40], dflt: 20, label: 'Summon Distance', fmt: (v) => v + ' blocks', sub: true, hint: 'direct distance (counts vertical) before the “!” appears and you can summon the companion with C' },
-      { key: 'companionStuckBehavior', tab: 'world', group: 'Players', modes: M.adventure, type: 'cycle', opts: ['none', 'teleport', 'follow'], dflt: 'follow', label: 'If Companion Gets Stuck', fmt: (v) => ({ none: 'Do nothing', teleport: 'Teleport to you', follow: 'Follow mode' }[v] || v), sub: true, hint: 'used when Teleport is OFF: Follow mode shows a “!”, waits for you to come near, then mirrors your moves through the spot' },
+      { key: 'companionTeleportRange', tab: 'world', group: 'Players', modes: M.adventure, type: 'cycle', opts: [12, 16, 20, 24, 30, 40], dflt: 20, label: 'Summon Distance', fmt: (v) => v + ' blocks', sub: true, advanced: true, hint: 'direct distance (counts vertical) before the “!” appears and you can summon the companion with C' },
+      { key: 'companionStuckBehavior', tab: 'world', group: 'Players', modes: M.adventure, type: 'cycle', opts: ['none', 'teleport', 'follow'], dflt: 'follow', label: 'If Companion Gets Stuck', fmt: (v) => ({ none: 'Do nothing', teleport: 'Teleport to you', follow: 'Follow mode' }[v] || v), sub: true, advanced: true, hint: 'used when Teleport is OFF: Follow mode shows a “!”, waits for you to come near, then mirrors your moves through the spot' },
       { key: 'playersPassThrough', tab: 'world', group: 'Players', modes: M.adventure, type: 'toggle', dflt: false, label: 'Players Pass Through', hint: 'players (and the companion) don’t push each other — they overlap / share a spot instead of colliding' },
       { key: 'platformerEmeralds', tab: 'world', group: 'Scoring', modes: M.platformer, type: 'toggle', dflt: false, label: 'Collect Emeralds', hint: 'placed emeralds can be picked up and counted' },
       { key: 'platformerScore', tab: 'world', group: 'Scoring', modes: M.platformer, type: 'toggle', dflt: false, label: 'Score / Points', hint: 'track a running score (emeralds + level-clear bonus)' },
@@ -138,7 +138,7 @@ const WORLD_SETTINGS = {
       { key: 'platformLaunchAccel', tab: 'movement', group: 'Physics', modes: M.physics, type: 'cycle', opts: [1, 1.5, 2, 3, 4, 5, 6], dflt: 3, label: 'Platform Launch Accel', fmt: (v) => v.toFixed(1) + 'x', advanced: true, hint: 'horizontal punch / distance when a moving platform hits a Launch Ramp' },
       { key: 'platformLaunchLift', tab: 'movement', group: 'Physics', modes: M.physics, type: 'cycle', opts: [1, 1.5, 2, 2.5, 3, 4], dflt: 2, label: 'Platform Launch Lift', fmt: (v) => v.toFixed(1) + 'x', advanced: true, hint: 'vertical “jump intensity” of a Launch-Ramp fling' },
       { key: 'redstoneSpeed', tab: 'world', group: 'Redstone', modes: M.physics, type: 'cycle', opts: O.redstone, dflt: 1.0, label: 'Redstone Speed', fmt: (v) => v === 'instant' ? 'Instant' : xf(v), advanced: true, hint: 'propagation speed of dust / pistons / traps — Instant = same-frame' },
-      { key: 'disableXpSpeedBoost', tab: 'movement', group: 'Physics', modes: M.physics, type: 'toggle', dflt: false, label: 'Disable XP Speed Boost', advanced: true },
+      { key: 'disableXpSpeedBoost', tab: 'movement', group: 'Physics', modes: M.physics, type: 'toggle', dflt: false, label: 'Disable XP Speed Boost' },
       { key: 'sprintEnabled', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', label: 'Sprint', get: (a) => a.sprintEnabled !== false, set: (a, v) => { a.sprintEnabled = v; }, hint: 'hold Shift for 2× speed' },
       { key: 'autoStepUp', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Auto-Climb', hint: 'walk up 1-block ledges' },
       { key: 'airJumpEnabled', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Double Jump', hint: 'one mid-air jump (adds an air-roll)' },
@@ -159,7 +159,7 @@ const WORLD_SETTINGS = {
       { key: 'tubeBlockStyle', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Travel Tube: Block Style', hint: 'draw tubes as classic per-cell glass BLOCKS (the original look) instead of the smooth continuous pipe. Mouth lips + rounded bends still apply' },
       { key: 'trampJumpBoost', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Trampoline: Jump to Boost', hint: 'time a fresh Jump press with the upward bounce for an extra boost (release + re-press near the top of the launch)' },
       { key: 'trampEarlyPenalty', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Trampoline: Early-Jump Penalty', sub: true, dependsOn: 'trampJumpBoost', advanced: true, hint: 'holding Jump at the instant you land on the trampoline (jumping too soon) saps the spring — a weaker launch. Rewards timing over mashing' },
-      { key: 'questionContents', tab: 'movement', group: 'Moves', modes: M.physics, type: 'cycle', opts: ['coin', 'apple', 'arrow', 'glowstone'], dflt: 'coin', label: 'Block Contents', fmt: this._cap, hint: 'what Question / Breakable blocks yield when hit (global default; a per-block picker is a planned follow-up)' },
+      { key: 'questionContents', tab: 'movement', group: 'Moves', modes: M.physics, type: 'cycle', opts: ['coin', 'apple', 'arrow', 'glowstone'], dflt: 'coin', label: 'Block Contents', fmt: this._cap, hint: 'the DEFAULT item a Question / Breakable block yields. Blocks you set individually in the editor (Contents) override this — so it only applies to blocks left on “world default”.' },
       { key: 'glassShatter', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: true, label: 'Glass Shatters', hint: 'Glass blocks shatter into shards when hit by a melee swing, an arrow, an explosion, or a hard fall onto them (still minable in Normal). Off = indestructible except mining.' },
       { key: 'slideEnabled', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Ground Slide', hint: 'jump + down to slide' },
       { key: 'slideInvincible', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Slide Invincible', sub: true, dependsOn: 'slideEnabled', advanced: true },
@@ -174,14 +174,14 @@ const WORLD_SETTINGS = {
       { key: 'srBaseSpeed', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'cycle', opts: O.srBase, dflt: 1.0, label: 'Base Speed', fmt: x1 },
       { key: 'srMaxMultiplier', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'cycle', opts: O.srMax, dflt: 2.0, label: 'Max Speed', fmt: x1 },
       { key: 'srAccel', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'cycle', opts: O.srAccel, dflt: 0.5, label: 'Acceleration', fmt: (v) => v.toFixed(2) + '/f' },
-      { key: 'srDecel', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'cycle', opts: O.srDecel, dflt: 2, label: 'Deceleration', fmt: (v) => v + '× accel', advanced: true },
+      { key: 'srDecel', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'cycle', opts: O.srDecel, dflt: 2, label: 'Deceleration', fmt: (v) => v + '× accel' },
       { key: 'srBoostPct', tab: 'speedrun', group: 'Boosts', modes: M.speedrun, type: 'cycle', opts: O.srPct, dflt: 0.05, label: 'Boost Amount', fmt: (v) => Math.round(v * 100) + '%', advanced: true },
       { key: 'srTimeBoostEnabled', tab: 'speedrun', group: 'Boosts', modes: M.speedrun, type: 'toggle', get: (a) => a.srTimeBoostEnabled !== false, set: (a, v) => { a.srTimeBoostEnabled = v; }, label: 'Time Boost' },
       { key: 'srTimeBoostIntervalSec', tab: 'speedrun', group: 'Boosts', modes: M.speedrun, type: 'cycle', opts: O.srSec, dflt: 5, label: 'Time Boost Every', fmt: (v) => v + 's', sub: true, dependsOn: 'srTimeBoostEnabled', advanced: true },
       { key: 'srDistBoostEnabled', tab: 'speedrun', group: 'Boosts', modes: M.speedrun, type: 'toggle', dflt: false, label: 'Distance Boost' },
       { key: 'srDistBoostIntervalBlocks', tab: 'speedrun', group: 'Boosts', modes: M.speedrun, type: 'cycle', opts: O.srBlocks, dflt: 5, label: 'Distance Boost Every', fmt: (v) => v + ' bl', sub: true, dependsOn: 'srDistBoostEnabled', advanced: true },
-      { key: 'srMinZoomSpeed', tab: 'speedrun', group: 'Camera', modes: M.speedrun, type: 'cycle', opts: O.srZoom, dflt: 1.0, label: 'Zoom-Out Start', fmt: x1, advanced: true },
-      { key: 'srMaxZoomSpeed', tab: 'speedrun', group: 'Camera', modes: M.speedrun, type: 'cycle', opts: O.srZoom, dflt: 2.0, label: 'Zoom-Out Max', fmt: x1, advanced: true },
+      { key: 'srMinZoomSpeed', tab: 'speedrun', group: 'Camera', modes: M.speedrun, type: 'cycle', opts: O.srZoom, dflt: 1.0, label: 'Zoom-Out Start', fmt: x1 },
+      { key: 'srMaxZoomSpeed', tab: 'speedrun', group: 'Camera', modes: M.speedrun, type: 'cycle', opts: O.srZoom, dflt: 2.0, label: 'Zoom-Out Max', fmt: x1 },
 
       // ── ARENA ───────────────────────────────────────────────
       { key: 'arenaViewType', tab: 'arena', group: 'Camera', modes: M.arena, type: 'cycle', opts: O.arenaView, dflt: 'single', label: 'World View', fmt: this._cap },
@@ -189,7 +189,7 @@ const WORLD_SETTINGS = {
       { key: 'arenaPresetZoom', tab: 'arena', group: 'Camera', modes: M.arena, type: 'cycle', opts: O.presetZoom, dflt: 1.0, label: 'Preset Zoom', fmt: (v) => v.toFixed(2) + 'x', sub: true, dependsOn: (a) => a.arenaZoomMode === 'PRESET' },
       { key: 'arenaPlayerMaxHealth', tab: 'arena', group: 'Match', modes: M.arena, type: 'cycle', opts: O.arenaHp, dflt: 20, label: 'Player Health', fmt: (v) => (v / 2) + ' ♥' },
       { key: 'arenaMobHealth', tab: 'arena', group: 'Match', modes: M.arena, type: 'cycle', opts: O.arenaMob, dflt: 'MEDIUM', label: 'Mob Difficulty', fmt: this._cap },
-      { key: 'arenaRespawnTime', tab: 'arena', group: 'Match', modes: M.arena, type: 'cycle', opts: O.arenaResp, dflt: 2, label: 'Respawn Delay', fmt: (v) => v + 's' },
+      { key: 'arenaRespawnTime', tab: 'arena', group: 'Match', modes: M.arena, type: 'cycle', opts: O.arenaResp, dflt: 2, label: 'Respawn Delay', fmt: (v) => v + 's', advanced: true },
       // Game types this arena world supports (→ arenaEnabledTypes[]).
       ...this.ARENA_TYPES.map(([k, label]) => ({
         key: 'arenaType_' + k, tab: 'arena', group: 'Game Types', modes: M.arena, type: 'toggle', label,
@@ -202,18 +202,18 @@ const WORLD_SETTINGS = {
       })),
 
       // ── COMBAT ──────────────────────────────────────────────
-      { key: 'bossHealthMultiplier', tab: 'combat', group: 'Multiplayer Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Health', fmt: x1 },
-      { key: 'bossDamageMultiplier', tab: 'combat', group: 'Multiplayer Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Damage', fmt: x1 },
+      { key: 'bossHealthMultiplier', tab: 'combat', group: 'Multiplayer Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Health', fmt: x1, advanced: true },
+      { key: 'bossDamageMultiplier', tab: 'combat', group: 'Multiplayer Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Damage', fmt: x1, advanced: true },
       { key: 'bossAttackRateMultiplier', tab: 'combat', group: 'Multiplayer Boss Scaling', modes: M.adventure, type: 'cycle', opts: O.boss, dflt: 1.0, label: 'Boss Attack Rate', fmt: x1, advanced: true },
       { key: 'disableDragonHealing', tab: 'combat', group: 'Multiplayer Boss Scaling', modes: M.adventure, type: 'toggle', dflt: false, label: 'Disable Dragon Healing', advanced: true },
       // §Phase E — Unlimited Arrows moved from a standalone "Combat" heading to "Ranged"
       // (with the arrow flight/charge settings). Recoverable Arrows moved with it — both are
       // arrow settings and belong together; that empties "Combat", so the heading is gone.
-      { key: 'unlimitedArrows', tab: 'combat', group: 'Ranged', modes: M.adventure, type: 'toggle', dflt: false, label: 'Unlimited Arrows', advanced: true },
+      { key: 'unlimitedArrows', tab: 'combat', group: 'Ranged', modes: M.adventure, type: 'toggle', dflt: false, label: 'Unlimited Arrows' },
       // Smart Mobs §6 — arrows that miss every mob stick where they land and can be
       // walked over to recover. Only meaningful when arrows are finite (hidden when
       // Unlimited Arrows is on).
-      { key: 'recoverableArrows', tab: 'combat', group: 'Ranged', modes: M.adventure, type: 'toggle', dflt: false, label: 'Recoverable Arrows', advanced: true, showWhen: (g) => !g._worldAdvSettings.unlimitedArrows },
+      { key: 'recoverableArrows', tab: 'combat', group: 'Ranged', modes: M.adventure, type: 'toggle', dflt: false, label: 'Recoverable Arrows', showWhen: (g) => !g._worldAdvSettings.unlimitedArrows },
       // ── §Phase 4 — Bow/Crossbow flight + charged shots. Each is an INDEPENDENT opt-in:
       //    Straight Flight (no gravity arc) and Charged Shots (charge → damage ×) are
       //    separate, independently-testable changes. Apply to all ranged users (M.physics).
@@ -231,7 +231,7 @@ const WORLD_SETTINGS = {
       { key: 'detectSight',  tab: 'mobs', group: 'Detection', modes: M.physics, type: 'toggle', get: (a) => a.detectSight  !== false, set: (a, v) => { a.detectSight  = v; }, label: 'Axis · Line of Sight', sub: true, dependsOn: 'smartDetection', advanced: true, hint: 'see the player in a frontal cone (blocked by walls & bushes)' },
       { key: 'detectSound',  tab: 'mobs', group: 'Detection', modes: M.physics, type: 'toggle', get: (a) => a.detectSound  !== false, set: (a, v) => { a.detectSound  = v; }, label: 'Axis · Sound', sub: true, dependsOn: 'smartDetection', advanced: true, hint: 'hear footsteps/landings (gravel = loud, grass = silent)' },
       { key: 'detectAction', tab: 'mobs', group: 'Detection', modes: M.physics, type: 'toggle', get: (a) => a.detectAction !== false, set: (a, v) => { a.detectAction = v; }, label: 'Axis · Attacks/Jumps', sub: true, dependsOn: 'smartDetection', advanced: true, hint: 'attacking or jumping is heard' },
-      { key: 'detectSightRange',  tab: 'mobs', group: 'Detection', modes: M.physics, type: 'cycle', opts: [6, 9, 12, 16], dflt: DETECT_SIGHT_RANGE_DEF, label: 'Sight Range', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection' },
+      { key: 'detectSightRange',  tab: 'mobs', group: 'Detection', modes: M.physics, type: 'cycle', opts: [6, 9, 12, 16], dflt: DETECT_SIGHT_RANGE_DEF, label: 'Sight Range', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection', advanced: true },
       { key: 'detectSightArc',    tab: 'mobs', group: 'Detection', modes: M.physics, type: 'cycle', opts: [90, 120, 160, 220, 360], dflt: DETECT_SIGHT_ARC_DEF, label: 'Sight Cone', fmt: (v) => v + '°', sub: true, dependsOn: 'smartDetection', advanced: true, hint: '360° = eyes in the back of the head' },
       { key: 'detectSoundWalk',   tab: 'mobs', group: 'Detection', modes: M.physics, type: 'cycle', opts: [3, 5, 7, 10], dflt: DETECT_SOUND_WALK_DEF, label: 'Walk Sound', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection', advanced: true },
       { key: 'detectSoundRun',    tab: 'mobs', group: 'Detection', modes: M.physics, type: 'cycle', opts: [6, 9, 12, 16], dflt: DETECT_SOUND_RUN_DEF, label: 'Run Sound', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection', advanced: true },
@@ -239,7 +239,7 @@ const WORLD_SETTINGS = {
       { key: 'detectActionRange', tab: 'mobs', group: 'Detection', modes: M.physics, type: 'cycle', opts: [5, 8, 12, 16], dflt: DETECT_ACTION_RANGE_DEF, label: 'Attack/Jump Sound', fmt: (v) => v + ' bl', sub: true, dependsOn: 'smartDetection', advanced: true },
       // ── Pack behavior (Smart Mobs §5) — one toggle: alerted mobs rouse nearby mobs,
       //    and melee attackers flank to opposite sides instead of stacking. ──
-      { key: 'packAlert',  tab: 'mobs', group: 'Pack', modes: M.physics, type: 'toggle', dflt: false, label: 'Pack Behavior', hint: 'one mob spotting you alerts nearby mobs; attackers surround from both sides' },
+      { key: 'packAlert',  tab: 'mobs', group: 'Pack', modes: M.physics, type: 'toggle', dflt: false, label: 'Pack Behavior', advanced: true, hint: 'one mob spotting you alerts nearby mobs; attackers surround from both sides' },
       { key: 'packRadius', tab: 'mobs', group: 'Pack', modes: M.physics, type: 'cycle', opts: [4, 7, 10, 14], dflt: DETECT_PACK_RADIUS_DEF, label: 'Alert Spread Range', fmt: (v) => v + ' bl', sub: true, dependsOn: 'packAlert', advanced: true },
       // ── Sprint (Smart Mobs §7) — melee mobs occasionally sprint to close distance;
       //    always telegraphed (a wind-up cue precedes the burst). Own opt-in toggle. ──
@@ -248,7 +248,7 @@ const WORLD_SETTINGS = {
       //    terrain (drop off ledges, route around walls/wide gaps) instead of a
       //    straight-line beeline. Own opt-in toggle, independent of Smart Detection
       //    (it also improves classic-aggro worlds). Radius/cadence = feel/perf levers. ──
-      { key: 'pathAwareMobs', tab: 'mobs', group: 'Wayfinding', modes: M.physics, type: 'toggle', dflt: false, label: 'Path-Aware Mobs', hint: 'chasing mobs navigate terrain (jump gaps, drop off ledges, route around walls) instead of beelining you' },
+      { key: 'pathAwareMobs', tab: 'mobs', group: 'Wayfinding', modes: M.physics, type: 'toggle', dflt: false, label: 'Path-Aware Mobs', advanced: true, hint: 'chasing mobs navigate terrain (jump gaps, drop off ledges, route around walls) instead of beelining you' },
       { key: 'pathSearchRadius', tab: 'mobs', group: 'Wayfinding', modes: M.physics, type: 'cycle', opts: [16, 24, 32], dflt: PATH_SEARCH_RADIUS, label: 'Path Range', fmt: (v) => v + ' bl', sub: true, dependsOn: 'pathAwareMobs', advanced: true, hint: 'how far a mob will pathfind; farther = it reverts to simple chase' },
       { key: 'pathRecomputeFrames', tab: 'mobs', group: 'Wayfinding', modes: M.physics, type: 'cycle', opts: [8, 12, 20], dflt: PATH_RECOMPUTE_FRAMES, label: 'Path Update', fmt: (v) => 'every ' + v + 'f', sub: true, dependsOn: 'pathAwareMobs', advanced: true, hint: 'how often the route recomputes (lower = snappier, costlier)' },
       // ── Retreating mobs (Smart Mobs §8) — per mob type: flee at low HP (+ advanced
@@ -256,7 +256,7 @@ const WORLD_SETTINGS = {
       ...this._fleeRows(M),
       // ── Spider webs (Smart Mobs §9) — Cave Spiders spit slowing webs. Opt-in;
       //    slowness / duration / stacking are advanced. ──
-      { key: 'spiderWebs',     tab: 'mobs', group: 'Spider Webs', modes: M.physics, type: 'toggle', dflt: false, label: 'Spider Webs', hint: 'Cave Spiders spit webs that slow you (webbing shows while slowed)' },
+      { key: 'spiderWebs',     tab: 'mobs', group: 'Spider Webs', modes: M.physics, type: 'toggle', dflt: false, label: 'Spider Webs', advanced: true, hint: 'Cave Spiders spit webs that slow you (webbing shows while slowed)' },
       { key: 'webSlowPct',     tab: 'mobs', group: 'Spider Webs', modes: M.physics, type: 'cycle', opts: [20, 33, 50, 67], dflt: 33, label: 'Slowness', fmt: (v) => v + '%', sub: true, dependsOn: 'spiderWebs', advanced: true, hint: 'speed removed per web (33% → 67% speed)' },
       { key: 'webDurationSec', tab: 'mobs', group: 'Spider Webs', modes: M.physics, type: 'cycle', opts: [2, 3, 5, 8], dflt: 3, label: 'Duration', fmt: (v) => v + 's', sub: true, dependsOn: 'spiderWebs', advanced: true },
       { key: 'webStacking',    tab: 'mobs', group: 'Spider Webs', modes: M.physics, type: 'toggle', dflt: false, label: 'Stacking', sub: true, dependsOn: 'spiderWebs', advanced: true, hint: 'a second web compounds the slow + resets the timer' },
@@ -319,7 +319,7 @@ const WORLD_SETTINGS = {
       }
       // Trident-specific throw behaviour lives under its own weapon group (Smart Mobs §6).
       if (cls === 'trident') {
-        rows.push({ key: 'tridentAutoReturn', tab: 'combat', group: g, modes, type: 'toggle', dflt: false, label: 'Recall (right-click)' });
+        rows.push({ key: 'tridentAutoReturn', tab: 'combat', group: g, modes, type: 'toggle', dflt: false, label: 'Recall (right-click)', advanced: true });
         rows.push({ key: 'guidedTrident',     tab: 'combat', group: g, modes, type: 'toggle', dflt: false, label: 'Guided (steer to cursor)', advanced: true });
         rows.push({ key: 'tridentTurn',        tab: 'combat', group: g, modes, type: 'slider', dflt: 30, label: 'Guided Turn Speed', advanced: true, dependsOn: 'guidedTrident' });
       }
@@ -329,7 +329,7 @@ const WORLD_SETTINGS = {
     // may prune later (steer intensity, return-speed mult) per the brief.
     const bg = 'Weapon · Boomerang';
     rows.push({ key: 'weaponBoomerang', tab: 'combat', group: bg, modes, type: 'toggle', dflt: false, label: 'Configure Boomerang', hint: 'the Boomerang is always available under Equipment in the Sandbox palette (place it / pick it up, or choose it as the Starting Melee weapon). Turn this ON to customize its behaviour (Look, Range, wall interaction, return trigger); OFF = sensible defaults.' });
-    rows.push({ key: 'boomerangLook', tab: 'combat', group: bg, modes, type: 'cycle', opts: ['2d', 'iso'], dflt: '2d', label: 'Look', fmt: (v) => v === 'iso' ? 'Isometric spin' : '2D top-down spin', sub: true, dependsOn: 'weaponBoomerang', hint: '2D = a flat spinning boomerang; Isometric = a pseudo-3D tumble (build-then-judge by eye)' });
+    rows.push({ key: 'boomerangLook', tab: 'combat', group: bg, modes, type: 'cycle', opts: ['2d', 'iso'], dflt: '2d', label: 'Look', fmt: (v) => v === 'iso' ? 'Isometric spin' : '2D top-down spin', sub: true, dependsOn: 'weaponBoomerang', advanced: true, hint: '2D = a flat spinning boomerang; Isometric = a pseudo-3D tumble (build-then-judge by eye)' });
     rows.push({ key: 'boomerangRange', tab: 'combat', group: bg, modes, type: 'cycle', opts: [6, 8, 10, 12, 16], dflt: 10, label: 'Range', fmt: (v) => v + ' bl', sub: true, dependsOn: 'weaponBoomerang', advanced: true });
     rows.push({ key: 'boomerangSpeed', tab: 'combat', group: bg, modes, type: 'cycle', opts: [12, 14, 17, 20, 24], dflt: 17, label: 'Speed', fmt: (v) => v + ' px/f', sub: true, dependsOn: 'weaponBoomerang', advanced: true });
     rows.push({ key: 'boomerangDecel', tab: 'combat', group: bg, modes, type: 'cycle', opts: [50, 60, 75, 90], dflt: 75, label: 'Deceleration Point', fmt: (v) => v + '% of range', sub: true, dependsOn: 'weaponBoomerang', advanced: true, hint: 'where in the outbound arc it starts slowing down' });
@@ -351,10 +351,10 @@ const WORLD_SETTINGS = {
     // §Controller pass — Grapple-Pull targets (used by the "Grapple — Pull In" controller
     // action, which reels you straight to the anchor). Enemies = yank a hooked mob toward you;
     // Collectibles = latch a gem and zip to it.
-    rows.push({ key: 'grappleEnemies', tab: 'movement', group: gh, modes, type: 'toggle', dflt: false, label: 'Grapple Enemies', sub: true, dependsOn: 'weaponGrapple', advanced: true, hint: 'Grapple-Pull can hook an enemy and YANK it toward you (instead of the default knockback)' });
-    rows.push({ key: 'grappleCollectibles', tab: 'movement', group: gh, modes, type: 'toggle', dflt: false, label: 'Grapple Collectibles', sub: true, dependsOn: 'weaponGrapple', advanced: true, hint: 'Grapple-Pull can latch an emerald and reel you to it' });
-    rows.push({ key: 'grappleReleaseBoostH', tab: 'movement', group: gh, modes, type: 'cycle', opts: [1.0, 1.5, 2.0, 2.5, 3.0, 4.0], dflt: 2.0, label: 'Release Momentum · Horizontal', fmt: (v) => v.toFixed(1) + 'x', sub: true, dependsOn: 'weaponGrapple', hint: 'amplifies the HORIZONTAL fling when you let go of a swing — crank it to cross bigger gaps (1x = raw physics)' });
-    rows.push({ key: 'grappleReleaseBoostV', tab: 'movement', group: gh, modes, type: 'cycle', opts: [1.0, 1.5, 2.0, 3.0, 4.0, 5.0], dflt: 3.0, label: 'Release Momentum · Vertical', fmt: (v) => v.toFixed(1) + 'x', sub: true, dependsOn: 'weaponGrapple', hint: 'amplifies the VERTICAL fling when you let go while rising — set higher than horizontal for a big pop upward (1x = raw physics)' });
+    rows.push({ key: 'grappleEnemies', tab: 'movement', group: gh, modes, type: 'toggle', dflt: false, label: 'Grapple Enemies', sub: true, dependsOn: 'weaponGrapple', hint: 'Grapple-Pull can hook an enemy and YANK it toward you (instead of the default knockback)' });
+    rows.push({ key: 'grappleCollectibles', tab: 'movement', group: gh, modes, type: 'toggle', dflt: false, label: 'Grapple Collectibles', sub: true, dependsOn: 'weaponGrapple', hint: 'Grapple-Pull can latch an emerald and reel you to it' });
+    rows.push({ key: 'grappleReleaseBoostH', tab: 'movement', group: gh, modes, type: 'cycle', opts: [1.0, 1.5, 2.0, 2.5, 3.0, 4.0], dflt: 2.0, label: 'Release Momentum · Horizontal', fmt: (v) => v.toFixed(1) + 'x', sub: true, dependsOn: 'weaponGrapple', advanced: true, hint: 'amplifies the HORIZONTAL fling when you let go of a swing — crank it to cross bigger gaps (1x = raw physics)' });
+    rows.push({ key: 'grappleReleaseBoostV', tab: 'movement', group: gh, modes, type: 'cycle', opts: [1.0, 1.5, 2.0, 3.0, 4.0, 5.0], dflt: 3.0, label: 'Release Momentum · Vertical', fmt: (v) => v.toFixed(1) + 'x', sub: true, dependsOn: 'weaponGrapple', advanced: true, hint: 'amplifies the VERTICAL fling when you let go while rising — set higher than horizontal for a big pop upward (1x = raw physics)' });
     // §follow-up — Swing Assist: build height/speed mid-swing by using Left/Right.
     //   None = raw pendulum; Lean = a steady push toward the held direction (forgiving);
     //   Pump = a bigger boost, but only when you press WITH the swing near the bottom of
@@ -389,7 +389,7 @@ const WORLD_SETTINGS = {
     const rows = [];
     for (const [key, name] of MOBS) {
       rows.push({ key: `lowHpAction_${key}`, tab: 'mobs', group: 'Retreating Mobs', modes, type: 'cycle',
-        opts: ['none', 'flee'], dflt: 'none', label: name, fmt: cap, hint: `what ${name} does at low HP` });
+        opts: ['none', 'flee'], dflt: 'none', label: name, fmt: cap, advanced: true, hint: `what ${name} does at low HP` });
       rows.push({ key: `lowHpThreshold_${key}`, tab: 'mobs', group: 'Retreating Mobs', modes, type: 'cycle',
         opts: [10, 20, 35, 50], dflt: 20, label: `${name} · Flee Below`, fmt: (v) => v + '%', sub: true, advanced: true,
         dependsOn: (a) => (a[`lowHpAction_${key}`] || 'none') !== 'none' });
