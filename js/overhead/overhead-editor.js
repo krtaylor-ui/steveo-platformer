@@ -266,6 +266,11 @@
           .oh-fly .opt:hover{background:#2a3852} .oh-fly .opt.sel{background:#3a5a8c}
           .oh-fly .opt.small{padding:4px 7px} .oh-sw{width:16px;height:16px;border-radius:3px;border:1px solid rgba(255,255,255,.3);flex:none}
           .oh-ic{width:20px;height:20px;flex:none;image-rendering:pixelated;filter:drop-shadow(0 1px 1px rgba(0,0,0,.4))}
+          #oh-rail .pin{opacity:.5;cursor:pointer;font-size:11px;margin-left:2px} #oh-rail .pin:hover{opacity:1}
+          #oh-rail .grp.pinned .hd{background:#2e6f4e;border-color:#3f9a6c} #oh-rail .pinx{cursor:pointer;color:#dbe4f3;font-weight:700;padding:0 4px}
+          .oh-pinned{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:6px 4px;max-height:56vh;overflow:auto;background:#1a2233;border:1px solid #3a4a6b;border-top:none;border-radius:0 0 8px 8px}
+          .oh-pinned .opt{display:flex;align-items:center;gap:5px;padding:5px 6px;border-radius:5px;cursor:pointer;font-size:11px;overflow:hidden}
+          .oh-pinned .opt:hover{background:#2a3852} .oh-pinned .opt.sel{background:#3a5a8c}
           #oh-create-modal{position:fixed;inset:0;z-index:9500;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.65)}
           .ohc-panel{background:#141a26;border:1px solid #2c3648;border-radius:12px;padding:20px 22px;min-width:320px;color:#e8eef7;font:14px sans-serif}
           .ohc-panel h2{margin:0 0 12px} .ohc-panel label{display:block;margin:8px 0;font-size:13px}
@@ -337,7 +342,10 @@
         + `<div class="opt ${this.tool === 'nor' ? 'sel' : ''}" data-rs="nor">⛔ NOR gate (1×1)</div>`
         + `<div class="opt ${this.tool === 'lock' ? 'sel' : ''}" data-rs="lock">🔒 Lock (key → signal)</div>`
         + `<div class="opt small" style="color:#8fa0bd">Hand-click a device to set its transmit / receive channel. Lever/plate + Drawbridge share "gate" by default.</div>`;
-      const grp = (label, cur, opts, active, sw) => `<div class="grp"><div class="hd ${active ? 'on' : ''}"><b>${label} ▸</b><span class="cur">${sw || ''}${cur}</span></div><div class="oh-fly">${opts}</div></div>`;
+      const grp = (label, cur, opts, active, sw) => {
+        if (this._pinnedGrp === label) return `<div class="grp pinned"><div class="hd on"><b>${label}</b><span class="pinx" data-unpin="1" title="Unpin">✕</span></div><div class="oh-pinned">${opts}</div></div>`;
+        return `<div class="grp"><div class="hd ${active ? 'on' : ''}"><b>${label} ▸</b><span class="cur">${sw || ''}${cur}<span class="pin" data-pin="${label}" title="Pin this palette open">📌</span></span></div><div class="oh-fly">${opts}</div></div>`;
+      };
       const shapeOpts = [['freehand', 'Freehand (B)'], ['line', 'Line (L)'], ['rect', 'Rectangle (R)'], ['circle', 'Circle / Oval (O)'], ['fill', '🪣 Fill / bucket (G)']].map(([k, n]) => `<div class="opt small ${this.shape === k ? 'sel' : ''}" data-shape="${k}">${n}</div>`).join('')
         + `<div class="opt small ${this.shapeFill ? 'sel' : ''}" data-fill="1">${this.shapeFill ? '☑' : '☐'} Solid (else outline = brush width)</div>`
         + `<div class="opt small" style="color:#8fa0bd">Alt-click = eyedropper · Shift-scroll = brush size</div>`;
@@ -348,6 +356,7 @@
       const rsActive = ['lever', 'dust', 'lamp', 'plate', 'weight', 'piston', 'and', 'not', 'nor', 'lock'].indexOf(this.tool) >= 0;
       const terrCur = this.tool === 'terrain' ? P().OH_TERRAIN_BY_KEY[this.terrainKey].name : '';
       const terrSw = this.tool === 'terrain' ? blockSw(this.terrainKey) : '';
+      rail.style.width = this._pinnedGrp ? '240px' : '120px';   // widen for a pinned two-column palette
       rail.innerHTML =
         `<div class="oh-top3">
            <div class="btn ${mode === 'hand' ? 'on' : ''}" id="oh-hand" title="Pan · click to configure/move">✋ Hand</div>
@@ -378,6 +387,8 @@
       g('oh-erase').onclick = () => { this.tool = 'erase'; this._renderBar(); this._updateCursor(); };
       g('oh-hand').onclick = () => { this.tool = 'hand'; this._selEnt = null; this._renderBar(); this._updateCursor(); };
       g('oh-draw').onclick = () => { this.tool = 'terrain'; this._renderBar(); this._updateCursor(); };   // restore drawing with the last terrain + brush/shape (all persist)
+      rail.querySelectorAll('[data-pin]').forEach((el) => el.onclick = (ev) => { ev.stopPropagation(); this._pinnedGrp = el.dataset.pin; this._renderBar(); });
+      rail.querySelectorAll('[data-unpin]').forEach((el) => el.onclick = (ev) => { ev.stopPropagation(); this._pinnedGrp = null; this._renderBar(); });
       rail.querySelectorAll('[data-brush]').forEach((el) => el.onclick = () => { this.brush = +el.dataset.brush; this._renderBar(); });
       rail.querySelectorAll('[data-scatter]').forEach((el) => el.onclick = () => { this._scatter = +el.dataset.scatter; this._renderBar(); });
       rail.querySelectorAll('[data-shape]').forEach((el) => el.onclick = () => { this.shape = el.dataset.shape; this._renderBar(); });
