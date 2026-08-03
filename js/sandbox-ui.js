@@ -566,8 +566,24 @@ const SANDBOX = {
     }
   },
 
+  // Report an import failure IN THE PAGE. Native alert()s park the renderer until a
+  // human dismisses them, so an automated session can't see, screenshot or clear one —
+  // and the success path was already in-page. Falls back to alert() only if the element
+  // is missing (e.g. an older cached index.html). (QA build 346, F4.)
+  _importError(msg) {
+    const el = document.getElementById('import-file-error');
+    if (!el) { alert(msg); return; }
+    el.textContent = msg;
+    el.style.display = 'block';
+  },
+  _clearImportError() {
+    const el = document.getElementById('import-file-error');
+    if (el) { el.textContent = ''; el.style.display = 'none'; }
+  },
+
   // ── Import from file ───────────────────────────────────────────
   showImportFileModal() {
+    this._clearImportError();
     document.getElementById('import-file-modal').style.display = 'flex';
     document.getElementById('file-import-section').style.display = 'block';
     document.getElementById('import-success-section').style.display = 'none';
@@ -584,6 +600,7 @@ const SANDBOX = {
   // Read the chosen file, stash its contents, and warn if its game mode won't
   // survive the import into Sandbox (which always lands on NRM by default).
   handleFileSelect(file) {
+    this._clearImportError();
     const reader = new FileReader();
     reader.onload = (e) => {
       const fileData = e.target.result;
@@ -591,7 +608,7 @@ const SANDBOX = {
       try {
         parsed = JSON.parse(fileData);
       } catch (err) {
-        alert('Invalid JSON file');
+        this._importError('Invalid JSON file \u2014 that is not a world export.');
         return;
       }
 
@@ -617,11 +634,11 @@ const SANDBOX = {
   // Triggered by the modal's Import button. Requires confirmation only when the
   // file's mode differs from the target (NRM).
   async confirmImport() {
-    if (!this.pendingFileImport) { alert('Select a file first'); return; }
+    if (!this.pendingFileImport) { this._importError('Choose a file first.'); return; }
     const { fileData, fileMode, requestedMode, fileName } = this.pendingFileImport;
 
     if (fileMode !== requestedMode && !document.getElementById('confirm-mode-override').checked) {
-      alert('Please confirm the mode conversion before importing');
+      this._importError('Please confirm the mode conversion before importing.');
       return;
     }
     await this.importFile(fileData, requestedMode, fileName);
@@ -646,34 +663,47 @@ const SANDBOX = {
   // LOCAL_WORLDS / the side-scroll rows and forces the mode to NRM, so the world would
   // vanish from the Overhead view. Route it to the same places the overhead editor's
   // Save uses (own offline store, or a sandbox row + PUT when signed in).
+  // Pick a display name not already taken in the offline overhead store, returning BOTH
+  // it and its storage key. The first cut suffixed only the KEY, so five imports produced
+  // five cards all reading "Overhead QA Test" with the same date — safe, but impossible to
+  // tell apart. (QA build 346, F2.)
+  _uniqueOverheadName(name) {
+    const all = this._ohStore();
+    let label = name, key = 'oh-' + name, n = 2;
+    while (Object.prototype.hasOwnProperty.call(all, key)) { label = name + ' (' + n + ')'; key = 'oh-' + label; n++; }
+    return { label, key };
+  },
+
   async _importOverheadWorld(worldData, name) {
     const check = WORLD_TRANSFER.validateOverhead(worldData);
-    if (!check.ok) { alert('That overhead world file looks damaged:\n\n• ' + check.errors.join('\n• ')); return null; }
+    if (!check.ok) { this._importError('That overhead world file looks damaged:\n• ' + check.errors.join('\n• ')); return null; }
     const wd = JSON.parse(JSON.stringify(worldData));
     wd.name = name;
     wd.viewMode = 'overhead';
     wd.gameModeDefault = 'NRM';
     if (typeof OH_SETTINGS !== 'undefined' && OH_SETTINGS.migrate) OH_SETTINGS.migrate(wd);   // upgrade old files on the way in
-    wd.created_at = wd.created_at || new Date().toISOString();
+    // An import is a NEW world, so it gets its OWN creation date instead of inheriting the
+    // source world's — otherwise every copy sorts identically under Newest. (F2.)
+    wd.created_at = new Date().toISOString();
 
     if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
       const all = this._ohStore();
-      let key = 'oh-' + name, n = 2;
-      while (Object.prototype.hasOwnProperty.call(all, key)) key = 'oh-' + name + ' (' + (n++) + ')';   // never clobber an existing world
-      all[key] = wd;
+      const uniq = this._uniqueOverheadName(name);
+      wd.name = uniq.label;                                     // the CARD title, not just the key
+      all[uniq.key] = wd;
       try { localStorage.setItem('steveo_overhead_worlds', JSON.stringify(all)); }
-      catch (e) { alert('Could not save the imported world (browser storage full?)'); return null; }
-      return name;
+      catch (e) { this._importError('Could not save the imported world — browser storage may be full.'); return null; }
+      return uniq.label;
     }
     const cr = await AUTH.authedFetch('/api/worlds/sandbox/create', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ worldName: name, description: wd.description || 'Overhead world', worldWidth: 25, worldHeight: 15, gameModeDefault: 'NRM' }) });
     const row = await cr.json();
-    if (!cr.ok) { alert('Import failed: ' + (row.error || 'could not create the world')); return null; }
+    if (!cr.ok) { this._importError('Import failed: ' + (row.error || 'could not create the world')); return null; }
     const put = await AUTH.authedFetch('/api/worlds/sandbox/' + row.id, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ worldData: wd, worldName: name }) });
-    if (!put.ok) { const e = await put.json().catch(() => ({})); alert('Import failed: ' + (e.error || 'could not store the world')); return null; }
+    if (!put.ok) { const e = await put.json().catch(() => ({})); this._importError('Import failed: ' + (e.error || 'could not store the world')); return null; }
     return name;
   },
 
@@ -681,7 +711,7 @@ const SANDBOX = {
     // Overhead worlds branch first — same file format, different destination.
     if (typeof WORLD_TRANSFER !== 'undefined') {
       let pre;
-      try { pre = JSON.parse(fileData); } catch (e) { alert('Invalid JSON file'); return; }
+      try { pre = JSON.parse(fileData); } catch (e) { this._importError('Invalid JSON file \u2014 that is not a world export.'); return; }
       const res = WORLD_TRANSFER.unwrap(pre, fileName);
       if (res.ok && res.isOverhead) {
         const imported = await this._importOverheadWorld(res.worldData, res.name);
@@ -697,7 +727,7 @@ const SANDBOX = {
     }
     if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
       let parsed;
-      try { parsed = JSON.parse(fileData); } catch (e) { alert('Invalid JSON file'); return; }
+      try { parsed = JSON.parse(fileData); } catch (e) { this._importError('Invalid JSON file \u2014 that is not a world export.'); return; }
       const wd = parsed.world_data || parsed;                    // export wrapper OR raw payload
       const name = this._worldNameFromImport(parsed, wd, fileName);
       const created = LOCAL_WORLDS.importWorld({ worldName: name, description: parsed.description || '', worldData: wd, mode: requestedMode });
@@ -769,6 +799,21 @@ const SANDBOX = {
   // ── Export the open world as a downloadable JSON file ──────────
   async exportWorld() { return this.exportWorldById(this.selectedWorldId); },
 
+  // Run an OVERHEAD world through the migrator before it goes into a file.
+  //
+  // The card export serialises the world as STORED, while the editor's ⬇ Export
+  // serialises the world it has already migrated in memory on load — so the same world
+  // exported the two ways disagreed, and a pre-345 world could round-trip through files
+  // forever without ever being stamped. Migrating a COPY here (never the stored object)
+  // makes both paths agree. (QA build 346, F1 / M3.)
+  _exportReady(wd) {
+    if (!wd || typeof wd !== 'object') return wd;
+    if (typeof WORLD_TRANSFER === 'undefined' || !WORLD_TRANSFER.isOverheadData(wd)) return wd;
+    const copy = JSON.parse(JSON.stringify(wd));
+    if (typeof OH_SETTINGS !== 'undefined' && OH_SETTINGS.migrate) OH_SETTINGS.migrate(copy);
+    return copy;
+  },
+
   // Per-world Export (one button per card, both views). Resolves the world from
   // whichever store it actually lives in — the OFFLINE OVERHEAD store included, which
   // is why overhead worlds previously had no export path at all and the QA fixture had
@@ -779,7 +824,7 @@ const SANDBOX = {
     if (typeof WORLD_TRANSFER === 'undefined') { alert('Export unavailable'); return; }
     const stamp = { exportedAt: new Date().toISOString() };
     const send = (wd, name, description, mode) => {
-      const payload = WORLD_TRANSFER.wrap(wd, Object.assign({ name, description, mode }, stamp));
+      const payload = WORLD_TRANSFER.wrap(this._exportReady(wd), Object.assign({ name, description, mode }, stamp));
       WORLD_TRANSFER.download(payload, WORLD_TRANSFER.filename(name, WORLD_TRANSFER.today()));
     };
 

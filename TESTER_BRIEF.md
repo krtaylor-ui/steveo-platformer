@@ -1,4 +1,4 @@
-# Steveo Platformer — Tester Brief (MVP shakedown, builds 331–346)
+# Steveo Platformer — Tester Brief (MVP shakedown, builds 331–347)
 
 > **For the Chrome-enabled "tester" Claude.** You have READ access to this repo for context
 > (source + `FUTURE_ROADMAP.md` for what's planned vs. what's a known gap). Test the LIVE app;
@@ -6,7 +6,7 @@
 
 ## Setup
 1. Open **http://localhost:8000** (the human starts the server). Hard-refresh (Ctrl+Shift+R).
-   Confirm the version reads **v3 build 346**. If not, refresh again (stale service worker).
+   Confirm the version reads **v3 build 347**. If not, refresh again (stale service worker).
 2. If a login screen appears, pause for the human.
 3. Two engines are covered: the **side-scroll (2D)** engine for jump-attack, and the
    **overhead (top-down)** editor + engine for everything else (Sandbox → 🗺 Overhead).
@@ -145,7 +145,22 @@ warnings. By decision templates carry **terrain + elevation only** — no mobs /
   normally (the schema migrator should upgrade it silently). Keep one pristine pre-345 world for this —
   do placement testing (D5) in a scratch world instead.
 
-## M. WORLD EXPORT / IMPORT (build 346 — new, was X2)
+## M. WORLD EXPORT / IMPORT (build 346, fixed in 347)
+
+**Retest these five — they were defects in 346 and are fixed in 347:**
+
+| Was | Now |
+|---|---|
+| **M3 FAIL** — card export omitted `schemaVersion` (F1) | the card path migrates a copy, so both export routes agree |
+| **M7 inert** — ⬆ Import opened a native picker that may never appear (F5) | ⬆ Import is an **in-page modal** with a visible file input — fully drivable |
+| **M9 renderer parked** — failures were `alert()` (F4) | failures report **in-page**, in the modal; nothing blocks |
+| **M11 indistinguishable** — duplicates shared one title + date (F2) | display name suffixed "(2)", "(3)" … and each import gets its own date |
+| **M6 FAIL** — sample promised a glass wall it never had (F3) | description now generated from the real block tally; `pitMode`/`lavaMode` flagged |
+
+M7, M8 and M9 no longer need a human present — that scheduling note in your `HANDOFF.md` §4
+can drop for the import path. World-card **Delete** still uses a native confirm.
+
+
 Format + a ready sample file: `docs/world-file-format.md` and
 **`sample-worlds/Overhead_QA_Test.export.json`** (the QA board as a real export). This unblocks
 restoring fixtures through the real code path instead of writing localStorage by hand.
@@ -156,16 +171,21 @@ Needs automatic downloads allowed for localhost:8000 (Setup step 5).
 - M2 **Card export (side-scroll).** Same button on a side-scroll card → downloads too.
 - M3 **File shape.** Open the downloaded file: top level has `steveoExport: 1`, `world_name`,
   `game_mode_default`, `view_mode` (`"overhead"` or `"side"`), `exportedAt`, and `world_data`.
-  For an overhead world, `world_data.viewMode === "overhead"` and a `schemaVersion` is present.
+  For an overhead world, `world_data.viewMode === "overhead"` and `schemaVersion` **is present** —
+  including for a world exported from the CARD without ever being opened (that was the 346 bug).
 - M4 **Editor export includes UNSAVED edits.** Open an overhead world → place a few blocks but do
   **NOT** save → **⬇ Export** in the command bar → the file contains the new blocks, and the
   flash reads "Exported ✓". (This is the point: export reflects what's on screen.)
 - M5 **Round trip.** Import the file you just exported (Sandbox → **Import from File**) → it lands
-  in the **🗺 Overhead** view (the view auto-switches), opens in the editor, and the world matches —
-  terrain, redstone, bridges, keys, spawn. It must NOT appear in the side-scroll list as a Normal world.
+  in the **🗺 Overhead** view (the view auto-switches) as a NEW card. It does not auto-open — click
+  Edit — and the world matches: terrain, redstone, bridges, keys, spawn. It must NOT appear in the
+  side-scroll list as a Normal world.
 - M6 **Import the sample fixture.** Import `sample-worlds/Overhead_QA_Test.export.json` → a 40×26
-  board with glass wall, pit, bridges, AND/NOT/NOR gates, keys and P1 spawn. Status line should read
-  `40×26 @ density 1 · platformer`. Play it — the redstone board still works.
+  board: 52 redstone devices (AND/NOT/NOR gates included), 3 bridges, 6 ramps, 3 key items, 1 spawn,
+  53 pit cells, 2 lava. Status line should read `40×26 @ density 1 · platformer`. Play it — the
+  redstone board still works. **It has NO glass** (glass lives in `test/test-overhead-glass.js`), and
+  it ships `pitMode: block` + `lavaMode: death` — so do NOT use it for G3 (which needs a pit you can
+  fall into) or for any glass/lava check. Use your own pristine board for those.
 - M7 **Editor ⬆ Import replaces the open world.** In the overhead editor, ⬆ Import → confirm the
   "this REPLACES the world open in the editor" prompt → the imported world loads, flash reads
   "Imported ✓ — Save to keep it". Undo must NOT resurrect the previous world (fresh undo stack).

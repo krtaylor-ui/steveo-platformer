@@ -51,10 +51,27 @@ a file from a *newer* build is left alone rather than downgraded.
 
 ## Sample file
 
-`sample-worlds/Overhead_QA_Test.export.json` — the QA board (40×26: glass wall, pit,
-bridges, AND/NOT/NOR gates, keys, P1 spawn) as a real export. Import it via **Sandbox →
-Import from File** or the overhead editor's **⬆ Import**. It is generated from
-`test/fixtures/overhead-qa-test-world.json`, so it stays in step with the regression test.
+`sample-worlds/Overhead_QA_Test.export.json` — the regression fixture as a real export.
+Import it via **Sandbox → Import from File** or the overhead editor's **⬆ Import**.
+
+Regenerate with `node tools/gen-sample-export.js`; it derives the file from
+`test/fixtures/overhead-qa-test-world.json` and writes a description from the world's
+actual contents, so the two can't drift.
+
+**What it actually contains** (40×26 @ density 1, mode platformer): 52 redstone devices
+including AND/NOT/NOR gates, 3 bridges, 6 ramps, 3 key items, 1 spawn, 53 pit cells,
+2 lava, 1 ice, 1 glowstone.
+
+**It has NO glass**, and its hazard settings differ from a hand-built QA board — so don't
+substitute it where those matter:
+
+| Setting | This sample | Note |
+|---|---|---|
+| glass cells | **0** | glass/shatter is covered by `test/test-overhead-glass.js`, not this fixture |
+| `pitMode` | **`block`** | pits are solid obstacles here — you **cannot** fall in, so it's wrong for any "fall into the pit" check |
+| `lavaMode` | **`death`** | insta-kill, not the damage-over-time variant |
+
+Build 346 shipped this file described as having a "glass wall" it never had. Corrected in 347.
 
 ## Where the buttons are
 

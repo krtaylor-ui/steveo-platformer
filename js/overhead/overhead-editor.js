@@ -1223,37 +1223,75 @@
       const name = this.world.name || 'Overhead World';
       const payload = WORLD_TRANSFER.wrap(worldData, { name, exportedAt: new Date().toISOString() });
       const ok = WORLD_TRANSFER.download(payload, WORLD_TRANSFER.filename(name, WORLD_TRANSFER.today()));
-      this._flash(ok ? 'Exported ✓' : 'Export failed');
+      this._flash(ok ? 'Exported ✓' : 'Export failed', 6000);
     },
 
     // ⬆ Import — replace the open world with one from a .json file. Runs the same
     // migrator as a normal load, so pre-345 files upgrade on the way in. Refuses
     // side-scroll files rather than half-loading them.
+    //
+    // This is an IN-PAGE modal with a visible file input, deliberately: the first cut
+    // opened a native OS picker via input.click(), which (a) needs user activation so it
+    // could read as an inert button, and (b) can't be driven or even seen by an automated
+    // session. Same reason every message below is in-page, not alert()/confirm() — a
+    // native dialog parks the whole renderer until a human clicks it. (QA build 346, F4/F5.)
     _import() {
       if (typeof WORLD_TRANSFER === 'undefined') { this._flash('Import unavailable'); return; }
-      WORLD_TRANSFER.pickJsonFile((err, parsed, fileName) => {
-        if (err) { this._flash('Import failed: ' + err.message); return; }
-        if (!parsed) return;                                    // picker cancelled
-        const res = WORLD_TRANSFER.unwrap(parsed, fileName);
-        if (!res.ok) { this._flash('Import failed: ' + res.error); return; }
-        const check = WORLD_TRANSFER.validateOverhead(res.worldData);
-        if (!check.ok) {
-          this._flash('Not an overhead world: ' + check.errors[0]);
-          alert('That file is not an overhead world:\n\n• ' + check.errors.join('\n• ') +
+      let ov = document.getElementById('oh-import-modal');
+      if (!ov) {
+        ov = document.createElement('div'); ov.id = 'oh-import-modal';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:9560;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6)';
+        document.body.appendChild(ov);
+      }
+      ov.style.display = 'flex';
+      ov.innerHTML = `<div class="ohc-panel"><h2>Import World</h2>
+        <p style="color:#8fa0bd;font-size:12px;margin:0 0 8px">Choose an exported world <code>.json</code> file.
+          This <strong>REPLACES</strong> the world open in the editor — unsaved changes are lost, and undo will not bring them back.</p>
+        <label>World file <input type="file" id="oh-import-file" accept=".json,application/json"></label>
+        <p id="oh-import-err" style="display:none;color:#ffb4a8;font-size:12px;margin:8px 0 0;white-space:pre-line"></p>
+        <div class="ohc-btns"><button id="oh-import-cancel">Cancel</button>
+          <button class="primary" id="oh-import-go">Import</button></div></div>`;
+      const close = () => { ov.style.display = 'none'; };
+      const err = (msg) => { const e = document.getElementById('oh-import-err'); if (e) { e.textContent = msg; e.style.display = 'block'; } };
+      document.getElementById('oh-import-cancel').onclick = close;
+      document.getElementById('oh-import-go').onclick = () => {
+        const input = document.getElementById('oh-import-file');
+        const file = input && input.files && input.files[0];
+        if (!file) { err('Choose a file first.'); return; }
+        const reader = new FileReader();
+        reader.onerror = () => err('Could not read that file.');
+        reader.onload = (ev) => {
+          let parsed;
+          try { parsed = JSON.parse(ev.target.result); }
+          catch (e) { err('Invalid JSON file — that is not a world export.'); return; }
+          const res = WORLD_TRANSFER.unwrap(parsed, file.name);
+          if (!res.ok) { err('Import failed: ' + res.error); return; }
+          const check = WORLD_TRANSFER.validateOverhead(res.worldData);
+          if (!check.ok) {
+            err('That file is not an overhead world:\n• ' + check.errors.join('\n• ') +
                 '\n\nSide-scroll worlds import from the Sandbox list ("Import from File"), not here.');
-          return;
-        }
-        if (!confirm('Import "' + res.name + '"?\n\nThis REPLACES the world open in the editor. Unsaved changes are lost (undo will not bring them back).')) return;
-        this.world = JSON.parse(JSON.stringify(res.worldData));
-        this.world.name = res.name;
-        this.worldId = null;                                    // imported = a new world until saved
-        if (typeof OH_SETTINGS !== 'undefined' && OH_SETTINGS.migrate) OH_SETTINGS.migrate(this.world);
-        this._setupWorld();
-        this._hist = []; this._histPos = -1; this._pushHistory();   // fresh undo stack for a new world
-        this._terrRev = (this._terrRev || 0) + 1;
-        this._renderBar();
-        this._flash('Imported ✓ — Save to keep it');
-      });
+            return;
+          }
+          close();
+          this._applyImportedWorld(res.worldData, res.name);
+        };
+        reader.readAsText(file);
+      };
+    },
+
+    // Swap the imported world in. Shared by the modal above so the apply step is
+    // testable on its own (no DOM, no file reading).
+    _applyImportedWorld(worldData, name) {
+      this.world = JSON.parse(JSON.stringify(worldData));
+      this.world.name = name;
+      this.worldId = null;                                      // imported = a new world until saved
+      if (typeof OH_SETTINGS !== 'undefined' && OH_SETTINGS.migrate) OH_SETTINGS.migrate(this.world);
+      this._setupWorld();
+      this._hist = []; this._histPos = -1; this._pushHistory();   // fresh undo stack for a new world
+      this._terrRev = (this._terrRev || 0) + 1;
+      this._renderBar();
+      this._flash('Imported ✓ — Save to keep it', 6000);
+      return this.world;
     },
 
     async _save() {
@@ -1285,7 +1323,9 @@
         this._flash('Saved ✓');
       } catch (e) { this._flash('Save failed: ' + e.message); }
     },
-    _flash(msg) { const f = document.getElementById('oh-flash'); if (f) { f.textContent = msg; setTimeout(() => { if (f) f.textContent = ''; }, 2600); } },
+    // ms is caller-tunable — the export/import confirmations had faded before a QA
+    // screenshot 3s later, so those pass a longer hold. (QA build 346, M4 caveat.)
+    _flash(msg, ms) { const f = document.getElementById('oh-flash'); if (f) { f.textContent = msg; const tok = (this._flashTok = (this._flashTok || 0) + 1); setTimeout(() => { if (f && this._flashTok === tok) f.textContent = ''; }, ms || 2600); } },
 
     // ── Render loop ─────────────────────────────────────────────────────────
     _loop() { if (!this._running) return; try { this._render(); } catch (e) { console.error('OH editor', e); } requestAnimationFrame(this._loop); },

@@ -1,7 +1,7 @@
 {
   "steveoExport": 1,
   "world_name": "Overhead QA Test",
-  "description": "QA fixture — 40x26 board: glass wall, pit, bridges, AND/NOT/NOR gates, keys, P1 spawn.",
+  "description": "QA fixture — 40×26 @ density 1, mode platformer. 52 redstone devices (incl. AND/NOT/NOR gates), 3 bridges, 6 ramps, 3 key items, 1 spawn. Contains: pit×53, lava×2, ice×1, glowstone×1. Settings of note: pitMode=block, lavaMode=death. No glass cells — use test-overhead-glass.js for glass/shatter coverage.",
   "game_mode_default": "NRM",
   "view_mode": "overhead",
   "exportedAt": "2026-08-03T00:00:00.000Z",
