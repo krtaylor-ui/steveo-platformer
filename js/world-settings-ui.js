@@ -438,10 +438,16 @@ const WORLD_SETTINGS = {
     if (typeof s.dependsOn === 'function') return !!s.dependsOn(a);
     return !!a[s.dependsOn] && a[s.dependsOn] !== false;
   },
+  // Advanced is a WORLD-CREATOR tier: it exists so a designer can hide complex,
+  // non-critical knobs while building a level. It is therefore SANDBOX-ONLY — a player
+  // in Normal/Platformer/Speed Run/Arena never sees advanced rows or the toggle, so the
+  // in-play panel stays short and safe. (Kevin's call, build 347.)
+  _advancedAllowed() { return !!(this._game && this._game.gameMode === 'sandbox'); },
+
   _visible(s) {
     if (!this._modeOK(s)) return false;
     if (s.showWhen && !s.showWhen(this._game)) return false;
-    if (s.advanced && !this._advanced) return false;
+    if (s.advanced && !(this._advanced && this._advancedAllowed())) return false;
     if (!this._depOK(s)) return false;
     return true;
   },
@@ -504,9 +510,9 @@ const WORLD_SETTINGS = {
       <div class="ws-panel" role="dialog" aria-label="World Settings">
         <div class="ws-head">
           <h2>World Settings</h2>
-          <label class="ws-adv" title="Show advanced / less-used settings">
+          ${this._advancedAllowed() ? `<label class="ws-adv" title="Show advanced / less-used settings — designer tools, hidden from players">
             <input type="checkbox" id="ws-adv"${this._advanced ? ' checked' : ''}> Advanced
-          </label>
+          </label>` : ''}
           <button class="ws-close" id="ws-close" aria-label="Close">✕</button>
         </div>
         <div class="ws-tabs">${tabBar}</div>
@@ -521,7 +527,8 @@ const WORLD_SETTINGS = {
     // Wire tab bar + header
     ov.querySelectorAll('.ws-tab').forEach((b) => b.onclick = () => { this._tab = b.dataset.tab; this._render(); });
     document.getElementById('ws-close').onclick = () => this.close();
-    document.getElementById('ws-adv').onchange = (e) => { this._advanced = e.target.checked; this._render(); };
+    const advEl = document.getElementById('ws-adv');          // absent outside sandbox
+    if (advEl) advEl.onchange = (e) => { this._advanced = e.target.checked; this._render(); };
 
     // Wire each schema control (both regular tabs and the Mob Settings behavior rows)
     for (const s of rows) {

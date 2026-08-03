@@ -53,12 +53,22 @@ than "one per mode" implies.
 
 ## Grouping problems worth fixing before the guide is written
 
-1. **"Advanced" means two different things in the product.** The design-time HTML panel
-   (`world-settings-ui.js`, opened from Sandbox) treats advanced as a **tier** spanning
-   every tab. The in-play canvas panel (`game.js`, `_wsTab`) has **"Advanced" as a tab
-   name**, alongside Drops / Time / Input / Audio / Multi / SR / Physics / BG / Arena.
-   A player who reads "see Advanced settings" will look for a tab in one place and a
-   hidden tier in the other. **Pick one meaning before the guide names it.**
+1. ~~**"Advanced" means two different things.**~~ **RESOLVED (Kevin, 2026-08-03).** The
+   canvas panel (`game.js`, `_wsTab`, with "Advanced" as a *tab* name) is reachable only
+   via the **Konami code** — `pause-menu.js` uses the HTML panel by default and falls back
+   to canvas solely under `_useClassicPause`. It is an intentional **Easter egg**, to be
+   made functional later as a legacy curiosity. So the terminology clash does not reach
+   players: **the guide documents the HTML panel only** and never mentions the canvas one.
+   "Advanced" therefore means exactly one thing in documented surface — a hidden tier.
+
+   Second decision the same day: **Advanced is now SANDBOX-ONLY.** It is a world-creator
+   tool for hiding complex, non-critical knobs during level design, so players in Normal /
+   Platformer / Speed Run / Arena see neither advanced rows nor the toggle. Implemented in
+   `world-settings-ui.js` via `_advancedAllowed()`.
+
+   Consequence worth holding onto: marking a setting advanced now **removes it from every
+   play mode**, not just from a default view. Anything a player legitimately needs to
+   change mid-game must stay basic.
 2. **Combat is 71% advanced** (32 of 45), almost entirely the 7 per-weapon groups. Right
    call, but it means the Combat chapter is a thin basic section plus a large annex.
 3. **Debug: 3 rows, none flagged advanced.** Perf HUD, bot paths, nav grid are developer
