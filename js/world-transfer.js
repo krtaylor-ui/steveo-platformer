@@ -111,7 +111,13 @@
     try { return new Date().toISOString().slice(0, 10); } catch (e) { return ''; }
   };
 
-  // Open a file picker and hand back the parsed JSON. `cb(err, parsed, fileName)`.
+  // Open a NATIVE file picker and hand back the parsed JSON. `cb(err, parsed, fileName)`.
+  //
+  // DEPRECATED — kept only so nothing external breaks. Do NOT use it for new UI: a
+  // programmatic input.click() needs user activation, so it can silently do nothing
+  // (the build-346 editor import looked like a dead button, QA F5), and an automated
+  // session can neither drive nor see the OS dialog. Use an in-page modal with a
+  // visible <input type="file"> instead, the way OH_EDITOR._import() now does.
   function pickJsonFile(cb) {
     if (typeof document === 'undefined') { cb(new Error('no DOM')); return; }
     const input = document.createElement('input');
