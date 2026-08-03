@@ -1059,9 +1059,16 @@ html[data-theme="retro"] {
 .world-card-header h3 {
   margin: 0;
   flex: 1;
+  min-width: 0;                 /* let the flex item shrink normally instead of overflowing */
   color: #333;
   font-size: 1.2rem;
-  word-break: break-word;
+  /* overflow-wrap, NOT `word-break: break-word` (QA X1). The legacy alias resolves to
+     `overflow-wrap: anywhere`, and `anywhere` counts every character as a wrap
+     opportunity when computing min-content width — so this flex:1 heading collapsed to
+     roughly one character wide and every title broke mid-word ("Overh / ead / QA /
+     Test"). `overflow-wrap: break-word` leaves intrinsic sizing alone, so titles wrap at
+     spaces and only a genuinely unbreakable long string is split. */
+  overflow-wrap: break-word;
 }
 
 /* Game-mode badge on a world card */

@@ -29,7 +29,12 @@ Confirmed on build 345 by the previous session; treat as done unless something n
 | D6 | **PARTIAL — finish this** | Grass tooltip appeared on terrain hover; still needs buildings / mobs / items / devices |
 
 Two exploratory findings were logged and are **already known — don't re-report**:
-- **X1** World-card titles wrap mid-word ("Overh / ead / QA / Test"). Card-title CSS, every card, both views. Cosmetic, open.
+- **X1** World-card titles wrap mid-word ("Overh / ead / QA / Test") — **FIXED in build 347**, worth one
+  look since it's a CSS fix I could not verify in a browser: card titles should now wrap at **spaces**,
+  and a long unbroken name should still wrap rather than overflow its card. Root cause was
+  `word-break: break-word` on `.world-card-header h3` — that legacy alias resolves to
+  `overflow-wrap: anywhere`, which counts every character as a wrap opportunity when computing
+  min-content width, collapsing the `flex: 1` heading to about one character wide.
 - **X2** No per-world Export for overhead worlds — **FIXED in build 346**; now section M below.
 
 ## Method notes (two traps that produced wrong answers)
