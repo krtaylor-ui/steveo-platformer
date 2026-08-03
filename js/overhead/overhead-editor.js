@@ -420,7 +420,7 @@
            <div class="btn ${mode === 'draw' ? 'on' : ''}" id="oh-draw" title="Draw with the last terrain + brush/shape">✏ Draw</div>
            <div class="btn ${mode === 'erase' ? 'on' : ''}" id="oh-erase" title="Erase everything the brush touches (⇧-click too)">⌫ Erase</div>
          </div>
-         <div class="oh-railhdr"><span>◧ LEFT</span><span><span class="rw" data-rw="left--">◀</span><span class="rw" data-rw="left++">▶</span></span></div>` +
+         <div class="oh-railhdr"><span>◧ LEFT</span><span><span class="rw" data-rw="left--" title="Narrower">◀</span><span class="rw" data-rw="left++" title="Wider">▶</span><span class="rw" data-rw="right-toggle" title="${L.rightWidth ? 'Hide the right panel' : 'Show a RIGHT panel — then drag palettes onto it'}">${L.rightWidth ? '▐✕' : '▐▶'}</span></span></div>` +
         L.left.map((t) => groups[t] || '').join('') + `<div class="oh-droppad" data-drop="left"></div>`;
       railRight.style.display = (L.right.length || L.rightWidth) ? 'flex' : 'none';
       railRight.style.width = (L.rightWidth || 0) + 'px';
@@ -442,7 +442,10 @@
       qAll('[data-pin]').forEach((el) => el.onclick = (ev) => { ev.stopPropagation(); this._railLayout.pinned[el.dataset.pin] = 1; this._saveLayout(); this._renderBar(); });
       qAll('[data-unpin]').forEach((el) => el.onclick = (ev) => { ev.stopPropagation(); delete this._railLayout.pinned[el.dataset.unpin]; this._saveLayout(); this._renderBar(); });
       // Rail width steppers (◀▶) + drag-and-drop to move a palette between / within the rails.
-      qAll('[data-rw]').forEach((el) => el.onclick = () => { const v = el.dataset.rw, side = v.indexOf('left') === 0 ? 'left' : 'right', key = side + 'Width'; const inc = v.indexOf('++') >= 0 ? 28 : -28; this._railLayout[key] = Math.max(0, Math.min(400, (this._railLayout[key] || (side === 'left' ? 120 : 0)) + inc)); this._saveLayout(); this._renderBar(); });
+      qAll('[data-rw]').forEach((el) => el.onclick = () => { const v = el.dataset.rw, L2 = this._railLayout;
+        if (v === 'right-toggle') { if (L2.rightWidth) { L2.left = L2.left.concat(L2.right); L2.right = []; L2.rightWidth = 0; } else { L2.rightWidth = 160; this._flash('Right panel on — drag a palette by its header onto it'); } }
+        else { const side = v.indexOf('left') === 0 ? 'left' : 'right', key = side + 'Width', inc = v.indexOf('++') >= 0 ? 28 : -28; L2[key] = Math.max(0, Math.min(400, (L2[key] || (side === 'left' ? 120 : 0)) + inc)); }
+        this._saveLayout(); this._renderBar(); });
       qAll('.grp[draggable=true]').forEach((el) => {
         el.addEventListener('dragstart', (ev) => { this._dragGrp = el.dataset.grp; el.classList.add('oh-drag'); if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move'; });
         el.addEventListener('dragend', () => { el.classList.remove('oh-drag'); qAll('.oh-over').forEach((x) => x.classList.remove('oh-over')); });
