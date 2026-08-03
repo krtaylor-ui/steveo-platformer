@@ -1470,3 +1470,60 @@ existing Mob base + stomp hooks (_isStomp/onStomp/squish). Not started.
 
 ## Water block + world (roadmap) — already captured in WATER_AND_HYBRID_ROADMAP.md
 Water terrain (swim/float/drown) + the overhead↔2D hybrid vision. See that doc. Not started.
+
+---
+
+## §40 — Non-exportable levels ("don't let people take my world")
+
+**Status:** roadmap, not built. Raised by Kevin 2026-08-03 alongside the build-346 export
+feature. Two separate asks, with very different feasibility — worth keeping them apart.
+
+### 40.1 Hide the Export option (feasible, honest)
+
+A per-world `allowExport` flag (default **on**, so nothing changes for existing worlds),
+set in World Settings ▸ Designer Locks next to Lock Physics. When off:
+
+- the Sandbox card's **Export** button is not rendered for that world;
+- the overhead editor's **⬇ Export** is not rendered;
+- the play-HUD Export is not rendered;
+- the server's `GET /api/worlds/sandbox/:id/export` returns 403 for a world flagged
+  non-exportable **unless the requester owns it** — otherwise the flag is trivially
+  bypassed by hitting the endpoint directly.
+
+The **owner must always be able to export their own world**, or the flag becomes a way to
+lose your own work. So this is "don't let *other people* take it", not "lock it away".
+
+Cost: small. One flag, four call sites, one server check. Reuses the `_advancedAllowed`
+/ lock pattern from build 347.
+
+### 40.2 Preventing the JSON being read at all (NOT achievable client-side)
+
+Kevin's observation is correct: the world data is in the browser, so it can be read. It
+is worth being straight about what is and isn't possible, because this is the kind of
+feature that is easy to *appear* to ship.
+
+**Encryption in the browser cannot solve this.** To render a level the client must hold
+the plaintext, which means it must also hold (or be able to fetch) the key. Anyone who
+can open DevTools can read the decrypted object out of memory, or just call the app's own
+loader. Shipping an encrypted blob plus the key to decrypt it is **obfuscation, not
+encryption** — it raises effort, it does not prevent copying. Claiming otherwise in the UI
+would be a promise the code can't keep.
+
+What genuinely helps, in increasing order of cost:
+
+1. **Remove the convenient path** (= 40.1). Most people who would casually grab a world
+   won't open DevTools. This is the bulk of the practical benefit.
+2. **Don't serve what isn't needed.** For play-only access, the server could send a
+   *reduced* payload — no editor-only metadata, no template/authoring data. The player
+   gets what renders; the creator's authoring artefacts stay server-side.
+3. **Server-authoritative play** for the parts worth protecting: the client asks for the
+   next chunk / room as the player reaches it rather than receiving the whole map up
+   front. Real protection, and a large architectural change — only worth it if
+   world-stealing becomes an actual problem.
+4. **Watermarking / provenance**: stamp an owner id into the world data and have Import
+   surface "created by …". Doesn't prevent copying but makes passing a copy off as your
+   own visible, which is usually the real concern.
+
+**Recommendation:** build 40.1, and describe it accurately in the UI — something like
+"Hide from export" rather than "Protect"/"Encrypt". Revisit 2–3 only if copying actually
+happens. Explicitly do **not** ship a decorative encryption layer.

@@ -175,7 +175,7 @@ class Game {
       // Sandbox designer locks: when true, the in-play pause menu greys these
       // sections ("Locked in World Settings") so players can't override the
       // designer's tuning. Toggled from the Sandbox World Settings panel.
-      physicsLocked:             false,
+      physicsLocked:             true,      // designer lock, ENFORCED since build 347: hides Movement ▸ Physics from players (sandbox exempt)
       bossScalingLocked:         false,
     };
     // Phase 3B — player-model refactor. `players[]` is the backing store for

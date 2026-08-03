@@ -128,7 +128,7 @@ const WORLD_SETTINGS = {
       { key: 'platformerScore', tab: 'world', group: 'Scoring', modes: M.platformer, type: 'toggle', dflt: false, label: 'Score / Points', hint: 'track a running score (emeralds + level-clear bonus)' },
       { key: 'emeraldPoints', tab: 'world', group: 'Scoring', modes: M.platformer, type: 'cycle', opts: [50, 100, 200, 500], dflt: 100, label: 'Points / Emerald', fmt: (v) => v + ' pts', sub: true, dependsOn: 'platformerScore', advanced: true, hint: 'score awarded per emerald' },
       { key: 'goalClearPoints', tab: 'world', group: 'Scoring', modes: M.platformer, type: 'cycle', opts: [0, 500, 1000, 2000], dflt: 1000, label: 'Level-Clear Bonus', fmt: (v) => v + ' pts', sub: true, dependsOn: 'platformerScore', advanced: true, hint: 'score awarded for reaching a Goal Star' },
-      { key: 'physicsLocked', tab: 'world', group: 'Designer Locks', modes: ['sandbox'], type: 'toggle', dflt: false, label: 'Lock Physics', advanced: true, hint: 'players can’t override movement/physics' },
+      { key: 'physicsLocked', tab: 'world', group: 'Designer Locks', modes: ['sandbox'], type: 'toggle', dflt: true, label: 'Lock Physics', advanced: true, hint: 'ON (default): players can’t change Gravity or Jump Height while playing your level, so its jumps stay as you tuned them. You can always change them here in Sandbox.' },
       { key: 'bossScalingLocked', tab: 'world', group: 'Designer Locks', modes: ['sandbox'], type: 'toggle', dflt: false, label: 'Lock Boss Scaling', advanced: true },
 
       // ── MOVEMENT (physics + moves) ──────────────────────────
@@ -444,10 +444,32 @@ const WORLD_SETTINGS = {
   // in-play panel stays short and safe. (Kevin's call, build 347.)
   _advancedAllowed() { return !!(this._game && this._game.gameMode === 'sandbox'); },
 
+  // DESIGNER LOCKS. `physicsLocked` existed since build ~11 but was never read by
+  // anything — platformer-defaults.js even set it true expecting enforcement, so a player
+  // could open the pause menu in a Platformer world and retune the gravity and jump height
+  // the level's jumps were built around. It is now enforced, and defaults ON.
+  //
+  // Scope: the Movement ▸ Physics group, which is what "override movement/physics" means —
+  // Gravity and Jump Height are the only rows in it a player can currently reach (the rest
+  // are advanced, hence already sandbox-only). Movement ▸ Moves is deliberately NOT locked:
+  // those are per-player comfort switches (sprint, auto-climb, ladder behaviour), not the
+  // numbers a level's jump distances depend on.
+  //
+  // Sandbox is always exempt — a designer testing their own level must still reach them.
+  _lockedOut(s) {
+    if (this._advancedAllowed()) return false;                  // sandbox = the designer
+    const a = this._game && this._game._worldAdvSettings;
+    if (!a) return false;
+    // Absent key = locked, so worlds saved before this defaulted safely.
+    if (s.tab === 'movement' && s.group === 'Physics' && a.physicsLocked !== false) return true;
+    return false;
+  },
+
   _visible(s) {
     if (!this._modeOK(s)) return false;
     if (s.showWhen && !s.showWhen(this._game)) return false;
     if (s.advanced && !(this._advanced && this._advancedAllowed())) return false;
+    if (this._lockedOut(s)) return false;
     if (!this._depOK(s)) return false;
     return true;
   },
