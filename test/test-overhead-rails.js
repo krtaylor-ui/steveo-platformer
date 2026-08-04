@@ -47,5 +47,24 @@ const stepper = src.slice(src.indexOf("qAll('[data-rw]')"), src.indexOf("qAll('.
 ok(/inc = v\.indexOf\('\+\+'\) >= 0 \? 28 : -28/.test(stepper), 'the ++ control widens and -- narrows');
 ok(/data-rw="right--"/.test(src) && /data-rw="right\+\+"/.test(src), 'the right rail exposes both directions');
 
+console.log('Right-rail arrows point the way the panel actually grows (build 358):');
+// A right-anchored panel grows LEFTWARD, so the left arrow must widen it. The left rail is
+// the mirror image and keeps > = wider, which already read correctly.
+const rightHdr = src.slice(src.indexOf('RIGHT \u25e8') - 400, src.indexOf('RIGHT \u25e8'));
+ok(/data-rw="right\+\+" title="Wider">\u25c0/.test(rightHdr), 'the LEFT arrow widens the right rail');
+ok(/data-rw="right--" title="Narrower">\u25b6/.test(rightHdr), 'the RIGHT arrow narrows it');
+ok(/title="Wider"/.test(rightHdr) && /title="Narrower"/.test(rightHdr), 'both carry a tooltip saying which is which');
+const leftHdr = src.slice(src.indexOf('\u25e7 LEFT'), src.indexOf('\u25e7 LEFT') + 400);
+ok(/data-rw="left--" title="Narrower">\u25c0/.test(leftHdr), 'the left rail is unchanged: its left arrow narrows');
+ok(/data-rw="left\+\+" title="Wider">\u25b6/.test(leftHdr), 'and its right arrow widens');
+
+console.log('Right-rail content is laid out from the anchored edge inward:');
+ok(/#oh-rail-right \.hd,#oh-rail-right \.oh-railhdr\{flex-direction:row-reverse\}/.test(css),
+   'headers run right-to-left, so a label hugs the right edge and stays readable');
+ok(/#oh-rail-right \.btn,#oh-rail-right \.oh-fly,#oh-rail-right \.oh-droppad\{text-align:right\}/.test(css),
+   'buttons, fly-outs and the drop-pad align right');
+ok(/#oh-rail-right \.hd \.cur\{flex-direction:row-reverse\}/.test(css), 'the current-value chip follows suit');
+ok(!/#oh-rail \.hd\{flex-direction:row-reverse\}/.test(css), 'the LEFT rail is untouched — it was already right');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

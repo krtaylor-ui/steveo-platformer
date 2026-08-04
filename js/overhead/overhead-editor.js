@@ -290,6 +290,14 @@
           .oh-railbox>*{max-width:100%}
           .oh-railbox .grp,.oh-railbox .btn,.oh-railbox .oh-droppad{width:100%;min-width:0}
           #oh-rail-right .oh-fly{left:auto;right:112px}
+          /* The right rail is anchored to the RIGHT edge, so its content is laid out from
+             that edge inward: labels hug the right, and a narrow rail clips from the left
+             instead of hiding the very text you need to read. (Kevin, build 358.) */
+          #oh-rail-right .hd,#oh-rail-right .oh-railhdr{flex-direction:row-reverse}
+          #oh-rail-right .btn,#oh-rail-right .oh-fly,#oh-rail-right .oh-droppad{text-align:right}
+          #oh-rail-right .hd .cur{flex-direction:row-reverse}
+          #oh-rail-right .oh-pinned{direction:rtl}
+          #oh-rail-right .oh-pinned>*{direction:ltr}
           .oh-railbox .grp[draggable=true] .hd{cursor:grab}
           .grp.oh-drag{opacity:.4} .grp.oh-over{outline:2px dashed #6ad0ff;outline-offset:1px}
           .oh-railhdr{display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#8fa0bd;padding:0 2px}
@@ -437,7 +445,7 @@
       railRight.style.display = (L.right.length || L.rightWidth) ? 'flex' : 'none';
       railRight.style.width = (L.rightWidth || 0) + 'px';
       railRight.innerHTML = L.right.length || L.rightWidth
-        ? `<div class="oh-railhdr"><span><span class="rw" data-rw="right--">◀</span><span class="rw" data-rw="right++">▶</span></span><span>RIGHT ◨</span></div>`
+        ? `<div class="oh-railhdr"><span><span class="rw" data-rw="right++" title="Wider">◀</span><span class="rw" data-rw="right--" title="Narrower">▶</span></span><span>RIGHT ◨</span></div>`
           + L.right.map((t) => groups[t] || '').join('') + `<div class="oh-droppad" data-drop="right">drag palettes here →</div>`
         : '';
       const g = (id) => document.getElementById(id);
