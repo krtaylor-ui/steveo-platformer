@@ -141,7 +141,12 @@ console.log('Build 350 — pit death: keep the trigger, STEP the sprite off the 
   // blocks back over it.
   ok(/this\._terrainCache = cv;/.test(ohSrc), 'terrain really is baked into one cached canvas');
   ok(/_redrawOccluders\(ctx, S, cs, pitCol, pitRow\)/.test(ohSrc), 'both death phases run the occluder pass');
-  ok((ohSrc.match(/this\._redrawOccluders\(/g) || []).length === 2, 'exactly the step and sink phases call it');
+  // 356 adds a third call: for a PIT death the burst pieces hide behind terrain too.
+  ok((ohSrc.match(/this\._redrawOccluders\(/g) || []).length === 3, 'step, sink AND the pit burst run the occluder pass');
+  ok(/if \(fx\.pit\) this\._redrawOccluders/.test(ohSrc), 'the burst pass is gated on a pit death');
+  ok(/phase: 'step', pit: true/.test(ohSrc), 'pit deaths are flagged, so other deaths keep their pieces on top');
+  ok(/const reach = Math\.max\(2, Math\.ceil\(1\.3 \* \(this\._density \|\| 1\)\) \+ 1\)/.test(ohSrc),
+     'the occluder window scales with DENSITY, since the body hangs 1.3*unit below its anchor');
   ok(!/ctx\.rect\(clipX, clipY, clipW, clipH\)/.test(ohSrc), 'the 351/352 clip that cropped the sprite is gone');
 
   const occ = ohSrc.slice(ohSrc.indexOf('_redrawOccluders(ctx, S, cs'), ohSrc.indexOf('_pitCentreNear(x, y)'));
@@ -156,8 +161,12 @@ console.log('Build 350 — pit death: keep the trigger, STEP the sprite off the 
   ok(/c < 0 \|\| r < 0 \|\| c >= g\.gridW \|\| r >= g\.gridH/.test(occ), 'map edges are bounds-checked');
   // The directional shift stays — it puts the body where there is open hole to see it in.
   ok(/DIRECTIONAL SHIFT/.test(ohSrc), 'the shift away from the entry edge is still applied');
-  ok(/const shiftX = sgn\(at\.x - p\.x\) \* SH, shiftY = sgn\(at\.y - p\.y\) \* SH;/.test(ohSrc), 'per-axis, away from where the player came from');
-  ok(/SH = cellPx \* 0\.55/.test(ohSrc), 'the shift is big enough to actually read (0.34 was not)');
+  ok(/const dirX = sgn\(at\.x - p\.x\), dirY = sgn\(at\.y - p\.y\);/.test(ohSrc), 'per-axis, away from where the player came from');
+  // 356: deeper than 0.55, but clamped to the pit that is actually there.
+  ok(/Math\.min\(0\.85, 0\.35 \+ runX \* 0\.5\)/.test(ohSrc) && /Math\.min\(0\.85, 0\.35 \+ runY \* 0\.5\)/.test(ohSrc),
+     'the shift grows with how far the pit continues, capped at 0.85 of a cell');
+  ok(/while \(runX < 2 && dirX && this\._pit\(pc \+ dirX \* \(runX \+ 1\), pr\)\)/.test(ohSrc),
+     'it measures the actual pit run, so a one-cell pit cannot fling the body out the far side');
   ok(/this\._debug\) \{ this\._deathSlow/.test(ohSrc), 'the debug HUD slows the death to quarter speed so it can be captured');
 }
 

@@ -677,10 +677,18 @@
         // pit: coming from below you must move up, from the right you must move left, and
         // from the bottom-right both. Clipping alone was correct but tucked the whole
         // animation under the ledge. (Kevin, build 352.)
-        const cellPx = this.grid.cell, SH = cellPx * 0.55, eps = cellPx * 0.05;   // 0.34 was imperceptible
+        // Shift deeper into the hole than 0.55 — the body still hugged the entry edge — but
+        // clamp it to the pit that is actually THERE, so a one-cell pit does not fling the
+        // body out the far side. (Kevin, build 356.)
+        const cellPx = this.grid.cell, eps = cellPx * 0.05;
         const sgn = (d) => (Math.abs(d) > eps ? Math.sign(d) : 0);
-        const shiftX = sgn(at.x - p.x) * SH, shiftY = sgn(at.y - p.y) * SH;
-        this._deathFx = { phase: 'step', t: 0, stepDur: 14, sinkDur: 60, parts: null,
+        const pc = Math.floor(at.x / cellPx), pr = Math.floor(at.y / cellPx);
+        const dirX = sgn(at.x - p.x), dirY = sgn(at.y - p.y);
+        let runX = 0; while (runX < 2 && dirX && this._pit(pc + dirX * (runX + 1), pr)) runX++;
+        let runY = 0; while (runY < 2 && dirY && this._pit(pc, pr + dirY * (runY + 1))) runY++;
+        const shiftX = dirX * cellPx * Math.min(0.85, 0.35 + runX * 0.5);
+        const shiftY = dirY * cellPx * Math.min(0.85, 0.35 + runY * 0.5);
+        this._deathFx = { phase: 'step', pit: true, t: 0, stepDur: 14, sinkDur: 60, parts: null,
           fromX: p.x, fromY: p.y, fromLift: Math.max(0, (p.elev | 0)),
           x: at.x + shiftX, y: at.y + shiftY, pitX: at.x, pitY: at.y, shiftX, shiftY,
           toLift: this._elev(c0.col, c0.row) | 0 };
@@ -702,7 +710,12 @@
     // it, and stays whole wherever nothing covers it. (Kevin's suggestion, build 353.)
     _redrawOccluders(ctx, S, cs, pitCol, pitRow) {
       const g = this.grid, cell = g.cell, depth = pitCol + pitRow, out = [];
-      for (let dr = -1; dr <= 2; dr++) for (let dc = -1; dc <= 2; dc++) {
+      // Reach far enough south/east to cover the whole body. The dying figure is about
+      // 1.3 * unit tall and unit = cell * DENSITY, so on a dense map its feet hang two or
+      // three cells below the anchor — a fixed 2-cell window left them sticking out over
+      // the blocks underneath. (Kevin, build 356.)
+      const reach = Math.max(2, Math.ceil(1.3 * (this._density || 1)) + 1);
+      for (let dr = -1; dr <= reach; dr++) for (let dc = -1; dc <= reach; dc++) {
         const c = pitCol + dc, r = pitRow + dr;
         if (c < 0 || r < 0 || c >= g.gridW || r >= g.gridH) continue;
         if (c + r <= depth) continue;                       // behind the body — leave it
@@ -971,6 +984,10 @@
             ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(q.rot); ctx.globalAlpha = Math.max(0, Math.min(1, q.life / 22));
             ctx.fillStyle = q.color; ctx.fillRect(-q.sz * z / 2, -q.sz * z / 2, q.sz * z, q.sz * z); ctx.restore(); }
           ctx.globalAlpha = 1;
+          // A body that burst INSIDE a pit should have its pieces hidden by the ground too.
+          // Only for pit deaths — every other death happens on top of the world and its
+          // pieces must stay visible. (Kevin, build 356.)
+          if (fx.pit) this._redrawOccluders(ctx, S, cs, pitCol, pitRow);
         }
       }
       // Day/night ambient overlay + light sources + sun/moon disc — drawn before the
