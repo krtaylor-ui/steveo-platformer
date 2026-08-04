@@ -1,8 +1,9 @@
-# Open items after build 350 (soak baseline)
+# Open items after build 358 (soak baseline)
 
-Build 348 is on `main` and pushed (`dc2ad1a..41e7337`, 15 commits). This is the list of
-what is **known-open** as the soak starts, so a second pass can target only what changed
-rather than re-running everything.
+Builds 348–358 are all on `main` and pushed; the deployed target is **v3 build 358**. This is
+the list of what is **known-open**, so a pass can target only what changed rather than
+re-running everything. The tester's own brief for the next run is `TESTER_BRIEF_SOAK.md`
+(Part A verification, Part B soak).
 
 ## Reported again after 348, fixed in 349 (browser-unverified)
 
@@ -35,7 +36,7 @@ should be cut off cleanly, not vanish early).
 
 | Item | What to do |
 |---|---|
-| **F8** — palette drag | Drag the "Mobs" header from the left rail onto the right panel's drop-pad. Does it land? Does ▐✕ return it left? A synthetic drag can't cross the mouse-move threshold, so this has never been exercised. |
+| ~~**F8** — palette drag~~ | **RESOLVED, build 357.** Kevin's screenshot showed the drag working all along — the palette moved correctly. It only *looked* broken because every palette style was scoped to the left rail's id, so anything dragged right rendered unstyled. Not a drag problem at all. |
 | **F5 follow-up** | The editor's ⬆ Import is now an in-page modal, so it *should* be automatable. Worth one confirmation that it no longer needs a human. |
 
 ## Known-open defects
@@ -82,3 +83,33 @@ behaves differently after first load — that migration is the reason.
 - **§41** which settings belong to players at all, per mode, plus a cheat mode that flags the run.
 - Overhead settings → schema conversion (adds a tier + help text, and makes the user guide generatable).
 - The settings review itself: `docs/settings-review-2d.md` / `.csv` + the overhead pair; Kevin's first pass is applied, ~16 rows still flagged.
+
+## Nine builds on one bug — worth not repeating
+
+The overhead pit death took builds 348–356 and five wrong diagnoses. The sequence, because the
+failure mode is generalisable:
+
+1. 348 moved the death **animation** onto the pit — trigger still fired on the cell boundary.
+2. 349 moved the **trigger** (penetration margin) — let you walk to the middle of the hole.
+3. 350 moved the **sprite** (step-off phase) — still drew over the ground.
+4. 351 **clipped** the sprite to the pit — occluded correctly, but cropped it.
+5. 352 **shifted** it inside that clip — invisible against the real error.
+6. 353 replaced the clip with an **occluder re-draw** — gated on elevation > 0.
+7. 354 removed that gate — a pit in flat ground has no raised neighbours, so 353 was dead code.
+8. **355 found it:** the sink offset was `size * 0.75` where `size = unit * zoom` and
+   `unit = cell * DENSITY`. On a dense map that is 2–3 *cells* of drift, so the body was never
+   near the pit. Every earlier symptom followed from that one line.
+9. 356 polished feet / depth / burst occlusion.
+
+Two lessons already applied, and worth applying again:
+
+- **`unit` is player-scale (cell × density), NOT a cell.** Any offset written in units of it
+  silently multiplies with density and is invisible on a density-1 test map. **The pipe
+  climb-in and the melee swing both use `unit`-based offsets** and should be audited at
+  density 4.
+- **Ask for a screenshot early.** One picture ended it after five inferential fixes. When a
+  report says "it looks wrong", inference is the expensive path.
+
+Same shape as the rail bug (357): something written correctly for one context, silently wrong
+in another. An id-scoped style, or a sprite-size offset, is a latent bug the moment the same
+code runs somewhere else.
