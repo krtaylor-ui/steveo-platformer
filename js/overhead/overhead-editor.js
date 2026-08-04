@@ -1384,12 +1384,34 @@
       // The editable area fills everything NOT covered by the top / left / right fixed rails —
       // insets convert the DOM rail widths to canvas-logical px (like TOP for the command bar).
       const LO = this._railLayout || this._defaultLayout();
-      const LEFT = Math.round(((LO.leftWidth || 120) + 16) * (CANVAS_W / rectW));
-      const RIGHT = (LO.right && LO.right.length) || LO.rightWidth ? Math.round(((LO.rightWidth || 0) + 16) * (CANVAS_W / rectW)) : 0;
+      // The rails are position:fixed against the WINDOW, while the canvas is a fixed-aspect
+      // box centred in it — so on a wide window each rail sits partly (or wholly) in the
+      // letterbox margin BESIDE the canvas. Insetting by the rail's full width regardless
+      // meant the map gave up space it never lost, which is the "dead area beside the map
+      // that never comes back, and widening the rail changes nothing" report. Measure the
+      // ACTUAL overlap of each rail with the canvas instead. (Kevin, build 349.)
+      const px2canvas = CANVAS_W / rectW;
+      const overlap = (id, side) => {
+        const el = document.getElementById(id);
+        if (!el || !el.getBoundingClientRect) return 0;
+        const r = el.getBoundingClientRect();
+        if (!r.width) return 0;
+        const cover = side === 'left' ? (r.right - rectC.left) : (rectC.right - r.left);
+        return Math.max(0, Math.round((cover + 8) * px2canvas));   // +8 = breathing room
+      };
+      const LEFT = Math.max(0, Math.min(CANVAS_W * 0.6, overlap('oh-rail', 'left')));
+      const RIGHT = ((LO.right && LO.right.length) || LO.rightWidth)
+        ? Math.max(0, Math.min(CANVAS_W * 0.6, overlap('oh-rail-right', 'right'))) : 0;
       this._topInset = TOP; this._leftInset = LEFT; this._rightInset = RIGHT;
       const VW = CANVAS_W - LEFT - RIGHT, VH = CANVAS_H - TOP;   // visible content area
       this.cam = OH_GRID.clampCamera(g, this.cam, VW, VH);
       ctx.fillStyle = '#0c0f16'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      // CLIP the world to the map viewport. Terrain is blitted into this rect, but entities
+      // (mobs / items / devices / buildings) were drawn unclipped, so on a scrolled map they
+      // spilled over the rail insets where there is no terrain — a lit strip of floating
+      // sprites over the dark background, reading as "bright in the middle, dark and glitchy
+      // at the edges, and the objects don't dim with it". (Kevin, build 349.)
+      ctx.save(); ctx.beginPath(); ctx.rect(LEFT, TOP, VW, VH); ctx.clip();
       const S = (wx, wy) => { const p = OH_GRID.worldToScreen(g, this.cam, wx, wy); return { x: p.x + LEFT, y: p.y + TOP }; };
       const c0 = Math.max(0, (this.cam.x / g.cell | 0) - 1), c1 = Math.min(m.gridW - 1, ((this.cam.x + VW / z) / g.cell | 0) + 1);
       const r0 = Math.max(0, (this.cam.y / g.cell | 0) - 1), r1 = Math.min(m.gridH - 1, ((this.cam.y + VH / z) / g.cell | 0) + 1);
@@ -1484,6 +1506,8 @@
         ctx.fillStyle = '#dbe4f3'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
         ctx.fillText('Click transmitters to toggle  ·  Esc / Enter when done', ctx.canvas.width / 2, 17);
       }
+      ctx.restore();   // end of the map clip — chrome (edge band, scrollbars, tooltip) draws in the insets
+
       // Distinct MAP-EDGE indicator (hazard stripes just outside the world bounds)
       // so the creator knows when they're looking at the real edge — deliberately
       // NOT a block look.

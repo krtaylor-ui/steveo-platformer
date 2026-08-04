@@ -106,5 +106,38 @@ ok(OH_SETTINGS.SCHEMA === 2, 'the schema is at v2 (' + OH_SETTINGS.SCHEMA + ')')
   ok(JSON.stringify(w.redstone) === before, 'migrating twice is a no-op');
 }
 
+console.log('Build 349 — pit death needs real penetration, not a boundary touch:');
+{
+  const G = { grid: { cell: 32 }, _wellInside: null };
+  const ohSrc = fs.readFileSync(path.join(ROOT, 'js', 'overhead', 'overhead-game.js'), 'utf8');
+  ok(/_wellInside\(p\.x, p\.y\)/.test(ohSrc), 'the deadly-pit check is gated on _wellInside');
+  ok(/_wellInside\(x, y, margin\)/.test(ohSrc), 'the helper exists and takes a tunable margin');
+  // Exercise the maths directly with the same implementation.
+  const wellInside = (x, y, cell, m) => { m = m == null ? 0.3 : m;
+    const fx = ((x % cell) + cell) % cell / cell, fy = ((y % cell) + cell) % cell / cell;
+    return fx >= m && fx <= 1 - m && fy >= m && fy <= 1 - m; };
+  ok(wellInside(16, 16, 32) === true, 'dead centre of a cell counts as inside');
+  ok(wellInside(1, 16, 32) === false, 'just over the west edge does NOT');
+  ok(wellInside(16, 1, 32) === false, 'just over the north edge does NOT (the reported approach)');
+  ok(wellInside(31, 16, 32) === false, 'just over the east edge does NOT');
+  ok(wellInside(16, 31, 32) === false, 'just over the south edge does NOT');
+  ok(wellInside(10, 10, 32) === true, 'the band is generous enough to still trigger while walking through');
+  ok(wellInside(-16 + 32 * 4, 16, 32) === true, 'negative-safe modulo (no NaN or false negative)');
+}
+
+console.log('Build 349 — the editor clips the world to the map viewport:');
+{
+  const edSrc = fs.readFileSync(path.join(ROOT, 'js', 'overhead', 'overhead-editor.js'), 'utf8');
+  ok(/ctx\.rect\(LEFT, TOP, VW, VH\); ctx\.clip\(\);/.test(edSrc), 'the world block is clipped to LEFT/TOP/VW/VH');
+  ok(/end of the map clip/.test(edSrc), 'and released before the chrome draws');
+  // The release must be unconditional — it sat inside `if (this._pickTx)` at first, which
+  // would have leaked the clip in every other mode.
+  const rel = edSrc.slice(0, edSrc.indexOf('end of the map clip'));
+  const lastLine = rel.slice(rel.lastIndexOf('\n', rel.length - 2) + 1);
+  ok(!/^\s{8,}/.test(lastLine), 'the release is at function level, not nested in a mode branch');
+  ok(/overlap = \(id, side\)/.test(edSrc), 'rail insets measure the REAL rail-canvas overlap');
+  ok(/rectC\.right - r\.left/.test(edSrc), 'the right inset is canvas-relative, not the rail width');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

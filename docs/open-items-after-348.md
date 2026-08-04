@@ -1,8 +1,29 @@
-# Open items after build 348 (soak baseline)
+# Open items after build 349 (soak baseline)
 
 Build 348 is on `main` and pushed (`dc2ad1a..41e7337`, 15 commits). This is the list of
 what is **known-open** as the soak starts, so a second pass can target only what changed
 rather than re-running everything.
+
+## Reported again after 348, fixed in 349 (browser-unverified)
+
+Kevin re-tested 348 and three things were still wrong. All three had a cause that 348's
+fix had not actually addressed:
+
+- **Editor dimming / "glitchy" edges** — entities were drawn UNCLIPPED while terrain is
+  blitted into the map viewport, so on a scrolled map mobs/items/devices/buildings spilled
+  over the rail insets as lit sprites on the dark background. The world block is now clipped.
+- **Right rail still felt broken** — 348 only added a message when the stepper capped. The
+  actual problem: the map inset was applied for the rail's full width whether or not the
+  rail covered the canvas. Insets now measure the real rail-to-canvas overlap.
+- **Pit death still fires outside the pit** (walking north into it) — a raised neighbour is
+  drawn shifted up-left, so a cliff cube visually covers the pit cell's south side while
+  the death fired on the cell boundary. Now needs real penetration (0.3-cell margin).
+
+**These three are the highest-value things to eyeball**, because each has now been "fixed"
+once already without resolving the symptom. Specifically worth checking: walking into a pit
+from every direction; widening the right rail and watching the map reclaim space; and that
+nothing is missing from the map area now that it is clipped (entities at the viewport edge
+should be cut off cleanly, not vanish early).
 
 ## Needs a HUMAN, cannot be automated
 

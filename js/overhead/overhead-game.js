@@ -280,7 +280,7 @@
       if (p.jump && p.jump.jumping && OH_MOVE.advanceJump(p.jump).landed) this._resolveLanding(p);
       if (!airborne) { const c = this._cellOf(p.x, p.y);
         if (this._bridgeClosedAt(c.col, c.row)) { /* standing on a solid bridge deck — no fall/hazard */ }
-        else if (this._pitsDeadly && this._pit(c.col, c.row)) this._die('Fell into a pit', 'pit');
+        else if (this._pitsDeadly && this._pit(c.col, c.row) && this._wellInside(p.x, p.y)) this._die('Fell into a pit', 'pit');
         else if (this._gap(c.col, c.row)) this._fall('Fell');
         else if (this._hazard(c.col, c.row)) { if (this._lavaMode === 'death') this._die('Fell in lava'); else if (p.iFrames === 0) this._hurt(this._lavaDamage, 'Lava'); } }
       // Hidden if standing under an overhang (a cell ≥ player.elev+2).
@@ -668,6 +668,19 @@
     }
     // The centre of the pit the player just fell into: their own cell if it is a pit, else
     // the nearest neighbouring pit cell. Falls back to the given point if neither.
+    // Is (x,y) properly INSIDE its cell, rather than just over the boundary?
+    //
+    // A deadly pit fired the instant the player's centre crossed the cell edge. Because a
+    // RAISED neighbour is drawn shifted up-left by its elevation, the cliff's cube visually
+    // covers the pit cell on its south side — so walking north into a pit killed you while
+    // you still appeared to be standing on the cliff. Requiring real penetration makes the
+    // death land where the hole actually looks like it is, and forgives clipping a corner.
+    // (Kevin, build 349.)
+    _wellInside(x, y, margin) {
+      const cell = this.grid.cell, m = margin == null ? 0.3 : margin;
+      const fx = ((x % cell) + cell) % cell / cell, fy = ((y % cell) + cell) % cell / cell;
+      return fx >= m && fx <= 1 - m && fy >= m && fy <= 1 - m;
+    }
     _pitCentreNear(x, y) {
       const cell = this.grid.cell, c = this._cellOf(x, y);
       const centre = (col, row) => ({ x: (col + 0.5) * cell, y: (row + 0.5) * cell });
