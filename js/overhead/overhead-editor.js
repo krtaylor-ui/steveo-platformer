@@ -282,28 +282,35 @@
           #oh-top .oh-flash{color:#8fe0a0;font-size:12px;margin-left:10px}
           #oh-rail{position:fixed;top:48px;left:8px;z-index:9000;display:none;flex-direction:column;gap:6px;width:120px;font:12px sans-serif;color:#dbe4f3}
           #oh-rail-right{position:fixed;top:48px;right:8px;z-index:9000;display:none;flex-direction:column;gap:6px;width:0;font:12px sans-serif;color:#dbe4f3}
+          /* Every palette style below used to be scoped to #oh-rail — the LEFT rail — so a
+             palette dragged to the RIGHT rail lost its group box, header bar, buttons, pin
+             and fly-out entirely and rendered as bare text ("MobsX"). The shared .oh-railbox
+             class is on both rails, so the two look identical. (Kevin's screenshots, build 357.) */
+          .oh-railbox,.oh-railbox *{box-sizing:border-box}
+          .oh-railbox>*{max-width:100%}
+          .oh-railbox .grp,.oh-railbox .btn,.oh-railbox .oh-droppad{width:100%;min-width:0}
           #oh-rail-right .oh-fly{left:auto;right:112px}
-          #oh-rail .grp[draggable=true] .hd,#oh-rail-right .grp[draggable=true] .hd{cursor:grab}
+          .oh-railbox .grp[draggable=true] .hd{cursor:grab}
           .grp.oh-drag{opacity:.4} .grp.oh-over{outline:2px dashed #6ad0ff;outline-offset:1px}
           .oh-railhdr{display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#8fa0bd;padding:0 2px}
           .oh-railhdr .rw{cursor:pointer;padding:0 4px;opacity:.7} .oh-railhdr .rw:hover{opacity:1}
           .oh-droppad{min-height:22px;border:1px dashed rgba(120,150,190,.28);border-radius:6px;margin-top:5px;font-size:10px;color:#7a879c;text-align:center;padding:5px 3px}
-          #oh-rail .grp{position:relative}
-          #oh-rail .hd{background:#243049;border:1px solid #3a4a6b;border-radius:7px;padding:7px 9px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:6px}
-          #oh-rail .hd.on{background:#3a5a8c;border-color:#5573ad}
-          #oh-rail .hd b{font-weight:600} #oh-rail .hd .cur{color:#cfe0ff;font-size:11px;max-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px}
-          #oh-rail .btn{background:#243049;border:1px solid #3a4a6b;border-radius:7px;padding:7px 9px;cursor:pointer;text-align:left}
-          #oh-rail .btn.on{background:#3a5a8c;border-color:#5573ad}
-          #oh-rail .oh-top3{display:flex;gap:6px} #oh-rail .oh-top3 .btn{flex:1;text-align:center;padding:8px 3px}
-          #oh-rail .oh-gap{height:8px}
+          .oh-railbox .grp{position:relative}
+          .oh-railbox .hd{background:#243049;border:1px solid #3a4a6b;border-radius:7px;padding:7px 9px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:6px}
+          .oh-railbox .hd.on{background:#3a5a8c;border-color:#5573ad}
+          .oh-railbox .hd b{font-weight:600} .oh-railbox .hd .cur{color:#cfe0ff;font-size:11px;max-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:4px}
+          .oh-railbox .btn{background:#243049;border:1px solid #3a4a6b;border-radius:7px;padding:7px 9px;cursor:pointer;text-align:left}
+          .oh-railbox .btn.on{background:#3a5a8c;border-color:#5573ad}
+          .oh-railbox .oh-top3{display:flex;gap:6px} .oh-railbox .oh-top3 .btn{flex:1;text-align:center;padding:8px 3px}
+          .oh-railbox .oh-gap{height:8px}
           .oh-fly{position:absolute;left:112px;top:-2px;min-width:172px;max-height:74vh;overflow:auto;background:#1a2233;border:1px solid #3a4a6b;border-radius:8px;padding:22px 6px 6px 12px;display:none;z-index:9100;box-shadow:5px 6px 20px rgba(0,0,0,.55)}
           .oh-fly .pin{position:absolute;top:4px;right:8px;opacity:.6;cursor:pointer;font-size:13px;z-index:2} .oh-fly .pin:hover{opacity:1}
-          #oh-rail .grp:hover>.oh-fly,.oh-fly:hover{display:block}
+          .oh-railbox .grp:hover>.oh-fly,.oh-fly:hover{display:block}
           .oh-fly .opt{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:5px;cursor:pointer}
           .oh-fly .opt:hover{background:#2a3852} .oh-fly .opt.sel{background:#3a5a8c}
           .oh-fly .opt.small{padding:4px 7px} .oh-sw{width:16px;height:16px;border-radius:3px;border:1px solid rgba(255,255,255,.3);flex:none}
           .oh-ic{width:20px;height:20px;flex:none;image-rendering:pixelated;filter:drop-shadow(0 1px 1px rgba(0,0,0,.4))}
-          #oh-rail .grp.pinned .hd{background:#2e6f4e;border-color:#3f9a6c;display:flex;justify-content:space-between} #oh-rail .pinx{cursor:pointer;color:#dbe4f3;font-weight:700;padding:0 4px}
+          .oh-railbox .grp.pinned .hd{background:#2e6f4e;border-color:#3f9a6c;display:flex;justify-content:space-between} .oh-railbox .pinx{cursor:pointer;color:#dbe4f3;font-weight:700;padding:0 4px}
           .oh-pinned{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:6px 4px;max-height:56vh;overflow:auto;background:#1a2233;border:1px solid #3a4a6b;border-top:none;border-radius:0 0 8px 8px}
           .oh-pinned .opt{display:flex;align-items:center;gap:5px;padding:5px 6px;border-radius:5px;cursor:pointer;font-size:11px;overflow:hidden}
           .oh-pinned .opt:hover{background:#2a3852} .oh-pinned .opt.sel{background:#3a5a8c}
@@ -318,8 +325,8 @@
         document.head.appendChild(s);
       }
       if (!document.getElementById('oh-top')) { const t = document.createElement('div'); t.id = 'oh-top'; document.body.appendChild(t); }
-      if (!document.getElementById('oh-rail')) { const r = document.createElement('div'); r.id = 'oh-rail'; document.body.appendChild(r); }
-      if (!document.getElementById('oh-rail-right')) { const r = document.createElement('div'); r.id = 'oh-rail-right'; document.body.appendChild(r); }
+      if (!document.getElementById('oh-rail')) { const r = document.createElement('div'); r.id = 'oh-rail'; r.className = 'oh-railbox'; document.body.appendChild(r); }
+      if (!document.getElementById('oh-rail-right')) { const r = document.createElement('div'); r.id = 'oh-rail-right'; r.className = 'oh-railbox'; document.body.appendChild(r); }
       if (!this._railLayout) this._loadLayout();
     },
     _showChrome(on) { ['oh-top', 'oh-rail', 'oh-rail-right'].forEach((id) => { const el = document.getElementById(id); if (el) el.style.display = on ? 'flex' : 'none'; }); if (on) this._selEnt || this._hideSelBar(); },
@@ -327,6 +334,8 @@
     _renderBar() {
       const top = document.getElementById('oh-top'), rail = document.getElementById('oh-rail');
       if (!top || !rail) return;
+      // Belt and braces: elements created before this build exist without the shared class.
+      ['oh-rail', 'oh-rail-right'].forEach((id) => { const el = document.getElementById(id); if (el && el.classList) el.classList.add('oh-railbox'); });
       const m = this.world.mapSnapshot;
       // TOP: commands (save/exit kept at the top, as before).
       top.innerHTML = `
