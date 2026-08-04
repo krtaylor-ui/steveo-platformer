@@ -671,8 +671,18 @@
         // stepping off the ledge into the hole. Then the existing shrink/flail takes over.
         // (Kevin, build 350.)
         const c0 = this._cellOf(p.x, p.y);
+        // DIRECTIONAL SHIFT — nudge the body AWAY from the edge it fell in through, so it
+        // lands in the part of the hole you can actually see. Terrain cubes are drawn
+        // shifted up-left, so it is the SOUTH and EAST neighbours whose cubes overlap the
+        // pit: coming from below you must move up, from the right you must move left, and
+        // from the bottom-right both. Clipping alone was correct but tucked the whole
+        // animation under the ledge. (Kevin, build 352.)
+        const cellPx = this.grid.cell, SH = cellPx * 0.34, eps = cellPx * 0.05;
+        const sgn = (d) => (Math.abs(d) > eps ? Math.sign(d) : 0);
+        const shiftX = sgn(at.x - p.x) * SH, shiftY = sgn(at.y - p.y) * SH;
         this._deathFx = { phase: 'step', t: 0, stepDur: 14, sinkDur: 60, parts: null,
-          fromX: p.x, fromY: p.y, fromLift: Math.max(0, (p.elev | 0)), x: at.x, y: at.y,
+          fromX: p.x, fromY: p.y, fromLift: Math.max(0, (p.elev | 0)),
+          x: at.x + shiftX, y: at.y + shiftY, pitX: at.x, pitY: at.y, shiftX, shiftY,
           toLift: this._elev(c0.col, c0.row) | 0 };
       }
       else this._deathFx = { phase: 'burst', t: 0, x: p.x, y: p.y, parts: this._burstParts(p.x, p.y) };
@@ -727,7 +737,7 @@
       const fx = this._deathFx; if (!fx) { this.state = 'dead'; return; }
       fx.t++;
       if (fx.phase === 'step') { if (fx.t >= fx.stepDur) { fx.phase = 'sink'; fx.t = 0; } return; }
-      if (fx.phase === 'sink') { if (fx.t >= fx.sinkDur) { fx.phase = 'burst'; fx.t = 0; fx.parts = this._burstParts(fx.x, fx.y); } return; }
+      if (fx.phase === 'sink') { if (fx.t >= fx.sinkDur) { fx.phase = 'burst'; fx.t = 0; fx.parts = this._burstParts(fx.x, fx.y); } return; }   // burst from where the body came to rest (shift included)
       let alive = 0;
       // Top-down: pieces scatter OUTWARD and settle in place (no gravity), then fade.
       for (const q of fx.parts) { if (q.life <= 0) continue; alive++; q.x += q.vx; q.y += q.vy; q.vx *= 0.9; q.vy *= 0.9; q.rot += q.vr; q.life--; }
@@ -884,7 +894,14 @@
         // not pop. (Kevin, build 351.)
         const Q = OVERHEAD.elevOffset(cs);
         const cellQuad = (wx, wy, lift) => { const q = S(wx, wy); return { x: q.x - lift, y: q.y - lift }; };
-        const pitTL = cellQuad(Math.floor(fx.x / this.grid.cell) * this.grid.cell, Math.floor(fx.y / this.grid.cell) * this.grid.cell, 0);
+        const cellW = this.grid.cell;
+        const pitTL = cellQuad(Math.floor((fx.pitX != null ? fx.pitX : fx.x) / cellW) * cellW,
+                               Math.floor((fx.pitY != null ? fx.pitY : fx.y) / cellW) * cellW, 0);
+        // Grow the clip ONLY on the side the body moves toward. The entry side keeps its
+        // hard edge, so raised terrain still hides what it should.
+        const gx = Math.abs(fx.shiftX || 0) * (cs / cellW), gy = Math.abs(fx.shiftY || 0) * (cs / cellW);
+        const clipX = pitTL.x - (fx.shiftX < 0 ? gx : 0), clipY = pitTL.y - (fx.shiftY < 0 ? gy : 0);
+        const clipW = cs + gx, clipH = cs + gy;
         if (fx.phase === 'step') {
           const k = Math.min(1, fx.t / fx.stepDur), e = k * k * (3 - 2 * k);   // ease-in-out
           const wx = fx.fromX + (fx.x - fx.fromX) * e, wy = fx.fromY + (fx.y - fx.fromY) * e;
@@ -892,7 +909,7 @@
           const s = S(wx, wy);
           const fromTL = cellQuad(Math.floor(fx.fromX / this.grid.cell) * this.grid.cell, Math.floor(fx.fromY / this.grid.cell) * this.grid.cell, fx.fromLift * Q);
           ctx.save(); ctx.beginPath();
-          ctx.rect(pitTL.x, pitTL.y, cs, cs);                    // the hole
+          ctx.rect(clipX, clipY, clipW, clipH);                  // the hole, opened up on the far side
           ctx.rect(fromTL.x, fromTL.y, cs, cs);                  // + the cell being left
           ctx.clip();
           this._drawDyingSprite(ctx, s.x - lift, s.y - lift, this.unit * z, 1, fx.t);
@@ -900,7 +917,7 @@
         }
         else if (fx.phase === 'sink') {
           const s = S(fx.x, fx.y);
-          ctx.save(); ctx.beginPath(); ctx.rect(pitTL.x, pitTL.y, cs, cs); ctx.clip();
+          ctx.save(); ctx.beginPath(); ctx.rect(clipX, clipY, clipW, clipH); ctx.clip();
           this._drawDyingSprite(ctx, s.x, s.y, this.unit * z, 1 - (fx.t / fx.sinkDur) * 0.85, fx.t);
           ctx.restore();
         }

@@ -134,8 +134,22 @@ console.log('Build 350 — pit death: keep the trigger, STEP the sprite off the 
   ok((fxDraw.match(/ctx\.clip\(\)/g) || []).length === 2, 'both step and sink clip the sprite');
   ok((fxDraw.match(/ctx\.save\(\)/g) || []).length === (fxDraw.match(/ctx\.restore\(\)/g) || []).length,
      'each clip is balanced (no leaked canvas state into later draws)');
-  ok(/ctx\.rect\(pitTL\.x, pitTL\.y, cs, cs\)/.test(fxDraw), 'the sink is confined to the pit cell');
+  // 351 confined the sink to exactly the pit cell; 352 anchors that rect on the pit but
+  // opens it on the far side (see the shift assertions below).
+  ok(/ctx\.rect\(clipX, clipY, clipW, clipH\)/.test(fxDraw), 'the sink is confined to the pit-anchored clip');
+  ok(/pitTL = cellQuad\(/.test(fxDraw), 'and that clip is still anchored on the pit cell');
   ok(/ctx\.rect\(fromTL\.x, fromTL\.y, cs, cs\)/.test(fxDraw), 'the step also allows the cell being left, so it does not pop');
+
+  // Build 352 — clipping alone hid the animation under the ledge. Shift the body away from
+  // the edge it fell through so it rests where it can be seen.
+  ok(/DIRECTIONAL SHIFT/.test(ohSrc), 'the shift and its reasoning are recorded');
+  ok(/const shiftX = sgn\(at\.x - p\.x\) \* SH, shiftY = sgn\(at\.y - p\.y\) \* SH;/.test(ohSrc),
+     'the shift is per-axis and points away from where the player came from');
+  ok(/Math\.abs\(d\) > eps \? Math\.sign\(d\) : 0/.test(ohSrc), 'a straight-on approach shifts on one axis only, a diagonal on both');
+  ok(/pitX: at\.x, pitY: at\.y/.test(ohSrc), 'the true pit centre is kept, so the clip still anchors to the hole');
+  ok(/fx\.shiftX < 0 \? gx : 0/.test(fxDraw) && /fx\.shiftY < 0 \? gy : 0/.test(fxDraw),
+     'the clip grows only on the side the body moves toward');
+  ok(/clipW = cs \+ gx, clipH = cs \+ gy/.test(fxDraw), 'so the ENTRY side keeps its hard edge and still occludes');
 }
 
 console.log('Build 349 — the editor clips the world to the map viewport:');
