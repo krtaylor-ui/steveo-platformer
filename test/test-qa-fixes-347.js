@@ -124,7 +124,15 @@ console.log('Build 350 — pit death: keep the trigger, STEP the sprite off the 
   // Phase order must be step -> sink -> burst, with burst still parted from the pit centre.
   const adv = ohSrc.slice(ohSrc.indexOf('_advanceDeath()'), ohSrc.indexOf('_drawDyingSprite(ctx, sx'));
   ok(adv.indexOf("'step'") < adv.indexOf("'sink'"), 'step is advanced before sink');
-  ok(/fx\.phase = 'burst'; fx\.t = 0; fx\.parts = this\._burstParts\(fx\.x, fx\.y\)/.test(adv), 'the burst still originates at the pit centre');
+  // Build 355: the burst spawns at the body's VISUAL rest point (drift included), which is
+  // what removes the offset between the explosion and the falling sprite.
+  ok(/_burstParts\(fx\.x, fx\.y \+ \(fx\.driftCells \|\| 0\) \* this\.grid\.cell\)/.test(adv),
+     'the burst spawns where the body visually came to rest, drift included');
+  ok(/drift = cs \* \(0\.15 \+ 0\.30 \* \(1 - scale\)\)/.test(ohSrc), 'the sink drift is CELL-relative (cs), not sprite-size');
+  ok(!/size \* 0\.2 \+ size \* 0\.55 \* \(1 - scale\)/.test(ohSrc),
+     'the old sprite-size drift is GONE — it was unit*density, i.e. whole cells on a dense map');
+  ok(/_drawDyingSprite\(ctx, sx, sy, size, scale, t, drift\)/.test(ohSrc), 'the drift is a caller-supplied parameter now');
+  ok(/Seven builds chased the consequences of this one line/.test(ohSrc), 'the root cause is recorded where it was');
 
   // Builds 351-353 — the ACTUAL cause: terrain is one flat cached layer, so any sprite
   // drawn after it paints over every block including raised cliffs. Position could never

@@ -773,18 +773,35 @@
       if (this._debug) { this._deathSlow = (this._deathSlow || 0) + 1; if (this._deathSlow % 4) return; }
       fx.t++;
       if (fx.phase === 'step') { if (fx.t >= fx.stepDur) { fx.phase = 'sink'; fx.t = 0; } return; }
-      if (fx.phase === 'sink') { if (fx.t >= fx.sinkDur) { fx.phase = 'burst'; fx.t = 0; fx.parts = this._burstParts(fx.x, fx.y); } return; }   // burst from where the body came to rest (shift included)
+      if (fx.phase === 'sink') {
+        if (fx.t >= fx.sinkDur) {
+          fx.phase = 'burst'; fx.t = 0;
+          // Spawn the pieces at the body's VISUAL resting point — its drift included —
+          // rather than its logical cell, which is what made the explosion appear offset
+          // from the falling sprite. (Kevin, build 355.)
+          fx.parts = this._burstParts(fx.x, fx.y + (fx.driftCells || 0) * this.grid.cell);
+        }
+        return;
+      }
       let alive = 0;
       // Top-down: pieces scatter OUTWARD and settle in place (no gravity), then fade.
       for (const q of fx.parts) { if (q.life <= 0) continue; alive++; q.x += q.vx; q.y += q.vy; q.vx *= 0.9; q.vy *= 0.9; q.rot += q.vr; q.life--; }
       if (alive === 0 || fx.t > 90) { this.state = 'dead'; this._notify(this._deathMsg, 240); }
     }
     // Front-facing figure with flailing limbs, used for the pit-death shrink phase.
-    _drawDyingSprite(ctx, sx, sy, size, scale, t) {
+    // `drift` is the downward sink offset in SCREEN px, supplied by the caller.
+    //
+    // It used to be computed here as size * (0.2 + 0.55 * (1 - scale)) — and `size` is
+    // this.unit * zoom, where unit = cell x DENSITY. On a dense map that is two or three
+    // whole CELLS of downward drift, so the dying body was drawn well south of the pit,
+    // out on the grass. That is why it looked like it was floating on top of the ground
+    // (it was over ground), why the occluder pass around the pit never covered it, why a
+    // half-cell shift was imperceptible, and why the burst appeared offset from the body.
+    // Seven builds chased the consequences of this one line. (Kevin's screenshots, build 355.)
+    _drawDyingSprite(ctx, sx, sy, size, scale, t, drift) {
       const sp = P().OH_SPRITE, u = size * 1.3 * Math.max(0.06, scale);
       const f1 = Math.sin(t * 0.6) * 0.6, f2 = Math.cos(t * 0.7) * 0.6;
-      // Sit the figure INSIDE the pit cell and sink it further as it shrinks.
-      ctx.save(); ctx.translate(sx, sy + size * 0.2 + size * 0.55 * (1 - scale)); ctx.lineCap = 'round';
+      ctx.save(); ctx.translate(sx, sy + (drift || 0)); ctx.lineCap = 'round';
       ctx.strokeStyle = sp.pants; ctx.lineWidth = Math.max(2, u * 0.16);
       ctx.beginPath(); ctx.moveTo(-u * 0.15, u * 0.2); ctx.lineTo(-u * 0.15 + f1 * u * 0.4, u * 0.6); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(u * 0.15, u * 0.2); ctx.lineTo(u * 0.15 - f2 * u * 0.4, u * 0.6); ctx.stroke();
@@ -938,12 +955,15 @@
           const wx = fx.fromX + (fx.x - fx.fromX) * e, wy = fx.fromY + (fx.y - fx.fromY) * e;
           const lift = (fx.fromLift + ((fx.toLift || 0) - fx.fromLift) * e) * Q;
           const s = S(wx, wy);
-          this._drawDyingSprite(ctx, s.x - lift, s.y - lift, this.unit * z, 1, fx.t);
+          this._drawDyingSprite(ctx, s.x - lift, s.y - lift, this.unit * z, 1, fx.t, cs * 0.15);
           this._redrawOccluders(ctx, S, cs, pitCol, pitRow);
         }
         else if (fx.phase === 'sink') {
           const s = S(fx.x, fx.y);
-          this._drawDyingSprite(ctx, s.x, s.y, this.unit * z, 1 - (fx.t / fx.sinkDur) * 0.85, fx.t);
+          const scale = 1 - (fx.t / fx.sinkDur) * 0.85;
+          const drift = cs * (0.15 + 0.30 * (1 - scale));         // at most ~0.4 of a CELL
+          fx.driftCells = drift / cs;                             // remembered for the burst
+          this._drawDyingSprite(ctx, s.x, s.y, this.unit * z, scale, fx.t, drift);
           this._redrawOccluders(ctx, S, cs, pitCol, pitRow);
         }
         else if (fx.parts) {
