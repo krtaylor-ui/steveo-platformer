@@ -874,15 +874,36 @@
       // into their own coloured sprite blocks that fly out, spin, fall and fade.
       if (this._deathFx && (this.state === 'dying' || this.state === 'dead')) {
         const fx = this._deathFx;
+        // OCCLUSION — the reason three position fixes did nothing. The whole terrain is
+        // baked into ONE cached canvas and blitted as a single flat layer, so every sprite
+        // drawn afterwards paints over ALL of it, raised cliffs included. A body falling
+        // into a hole therefore rendered on top of the ground blocks around it no matter
+        // where we put it. Clipping the dying sprite to the PIT's own cell means it can
+        // never paint onto neighbouring ground — it disappears into the hole instead.
+        // During the step-off it is also allowed over the cell it is leaving, so it does
+        // not pop. (Kevin, build 351.)
+        const Q = OVERHEAD.elevOffset(cs);
+        const cellQuad = (wx, wy, lift) => { const q = S(wx, wy); return { x: q.x - lift, y: q.y - lift }; };
+        const pitTL = cellQuad(Math.floor(fx.x / this.grid.cell) * this.grid.cell, Math.floor(fx.y / this.grid.cell) * this.grid.cell, 0);
         if (fx.phase === 'step') {
           const k = Math.min(1, fx.t / fx.stepDur), e = k * k * (3 - 2 * k);   // ease-in-out
-          const Q = OVERHEAD.elevOffset(cs);
           const wx = fx.fromX + (fx.x - fx.fromX) * e, wy = fx.fromY + (fx.y - fx.fromY) * e;
-          const lift = (fx.fromLift + ((fx.toLift || 0) - fx.fromLift) * e) * Q;   // lift falls away with the ledge
+          const lift = (fx.fromLift + ((fx.toLift || 0) - fx.fromLift) * e) * Q;
           const s = S(wx, wy);
+          const fromTL = cellQuad(Math.floor(fx.fromX / this.grid.cell) * this.grid.cell, Math.floor(fx.fromY / this.grid.cell) * this.grid.cell, fx.fromLift * Q);
+          ctx.save(); ctx.beginPath();
+          ctx.rect(pitTL.x, pitTL.y, cs, cs);                    // the hole
+          ctx.rect(fromTL.x, fromTL.y, cs, cs);                  // + the cell being left
+          ctx.clip();
           this._drawDyingSprite(ctx, s.x - lift, s.y - lift, this.unit * z, 1, fx.t);
+          ctx.restore();
         }
-        else if (fx.phase === 'sink') { const s = S(fx.x, fx.y); this._drawDyingSprite(ctx, s.x, s.y, this.unit * z, 1 - (fx.t / fx.sinkDur) * 0.85, fx.t); }
+        else if (fx.phase === 'sink') {
+          const s = S(fx.x, fx.y);
+          ctx.save(); ctx.beginPath(); ctx.rect(pitTL.x, pitTL.y, cs, cs); ctx.clip();
+          this._drawDyingSprite(ctx, s.x, s.y, this.unit * z, 1 - (fx.t / fx.sinkDur) * 0.85, fx.t);
+          ctx.restore();
+        }
         else if (fx.parts) {
           for (const q of fx.parts) { if (q.life <= 0) continue; const s = S(q.x, q.y);
             ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(q.rot); ctx.globalAlpha = Math.max(0, Math.min(1, q.life / 22));

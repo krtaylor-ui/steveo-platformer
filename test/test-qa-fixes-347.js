@@ -125,6 +125,17 @@ console.log('Build 350 — pit death: keep the trigger, STEP the sprite off the 
   const adv = ohSrc.slice(ohSrc.indexOf('_advanceDeath()'), ohSrc.indexOf('_drawDyingSprite(ctx, sx'));
   ok(adv.indexOf("'step'") < adv.indexOf("'sink'"), 'step is advanced before sink');
   ok(/fx\.phase = 'burst'; fx\.t = 0; fx\.parts = this\._burstParts\(fx\.x, fx\.y\)/.test(adv), 'the burst still originates at the pit centre');
+
+  // Build 351 — the ACTUAL cause: terrain is one flat cached layer, so any sprite drawn
+  // after it paints over every block including raised cliffs. Position could never fix that.
+  ok(/this\._terrainCache = cv;/.test(ohSrc), 'terrain really is baked into one cached canvas');
+  ok(/OCCLUSION/.test(ohSrc), 'the occlusion reasoning is recorded at the fix');
+  const fxDraw = ohSrc.slice(ohSrc.indexOf('const cellQuad ='), ohSrc.indexOf("else if (fx.parts)"));
+  ok((fxDraw.match(/ctx\.clip\(\)/g) || []).length === 2, 'both step and sink clip the sprite');
+  ok((fxDraw.match(/ctx\.save\(\)/g) || []).length === (fxDraw.match(/ctx\.restore\(\)/g) || []).length,
+     'each clip is balanced (no leaked canvas state into later draws)');
+  ok(/ctx\.rect\(pitTL\.x, pitTL\.y, cs, cs\)/.test(fxDraw), 'the sink is confined to the pit cell');
+  ok(/ctx\.rect\(fromTL\.x, fromTL\.y, cs, cs\)/.test(fxDraw), 'the step also allows the cell being left, so it does not pop');
 }
 
 console.log('Build 349 — the editor clips the world to the map viewport:');
