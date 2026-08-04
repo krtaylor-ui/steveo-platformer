@@ -106,23 +106,25 @@ ok(OH_SETTINGS.SCHEMA === 2, 'the schema is at v2 (' + OH_SETTINGS.SCHEMA + ')')
   ok(JSON.stringify(w.redstone) === before, 'migrating twice is a no-op');
 }
 
-console.log('Build 349 — pit death needs real penetration, not a boundary touch:');
+console.log('Build 350 — pit death: keep the trigger, STEP the sprite off the ledge:');
 {
-  const G = { grid: { cell: 32 }, _wellInside: null };
   const ohSrc = fs.readFileSync(path.join(ROOT, 'js', 'overhead', 'overhead-game.js'), 'utf8');
-  ok(/_wellInside\(p\.x, p\.y\)/.test(ohSrc), 'the deadly-pit check is gated on _wellInside');
-  ok(/_wellInside\(x, y, margin\)/.test(ohSrc), 'the helper exists and takes a tunable margin');
-  // Exercise the maths directly with the same implementation.
-  const wellInside = (x, y, cell, m) => { m = m == null ? 0.3 : m;
-    const fx = ((x % cell) + cell) % cell / cell, fy = ((y % cell) + cell) % cell / cell;
-    return fx >= m && fx <= 1 - m && fy >= m && fy <= 1 - m; };
-  ok(wellInside(16, 16, 32) === true, 'dead centre of a cell counts as inside');
-  ok(wellInside(1, 16, 32) === false, 'just over the west edge does NOT');
-  ok(wellInside(16, 1, 32) === false, 'just over the north edge does NOT (the reported approach)');
-  ok(wellInside(31, 16, 32) === false, 'just over the east edge does NOT');
-  ok(wellInside(16, 31, 32) === false, 'just over the south edge does NOT');
-  ok(wellInside(10, 10, 32) === true, 'the band is generous enough to still trigger while walking through');
-  ok(wellInside(-16 + 32 * 4, 16, 32) === true, 'negative-safe modulo (no NaN or false negative)');
+  // 349 delayed the trigger with a penetration margin; that let you walk to the MIDDLE of
+  // the pit before dying, which was worse. The trigger zone was right all along.
+  ok(!/_wellInside/.test(ohSrc), 'the 349 penetration margin is gone (trigger back on cell entry)');
+  ok(/this\._pitsDeadly && this\._pit\(c\.col, c\.row\)\) this\._die/.test(ohSrc), 'a deadly pit fires on entering the cell');
+  // The fix is now visual: slide the sprite off the land it was standing on, dropping the
+  // 2.5D lift to 0, before the shrink starts.
+  ok(/phase: 'step'/.test(ohSrc), 'the death FX starts in a step-off phase');
+  ok(/fx\.phase === 'step'\) \{ if \(fx\.t >= fx\.stepDur\) \{ fx\.phase = 'sink'/.test(ohSrc), 'step hands over to sink');
+  ok(/fromLift/.test(ohSrc) && /toLift/.test(ohSrc), 'it interpolates the elevation LIFT, not just x/y');
+  ok(/fromLift \+ \(\(fx\.toLift \|\| 0\) - fx\.fromLift\) \* e\)/.test(ohSrc), 'the lift falls away as the sprite moves into the hole');
+  ok(/k \* k \* \(3 - 2 \* k\)/.test(ohSrc), 'eased rather than linear, so it reads as a step not a slide');
+  ok(/QA/.test(ohSrc) || /Kevin, build 350/.test(ohSrc), 'the reasoning is recorded');
+  // Phase order must be step -> sink -> burst, with burst still parted from the pit centre.
+  const adv = ohSrc.slice(ohSrc.indexOf('_advanceDeath()'), ohSrc.indexOf('_drawDyingSprite(ctx, sx'));
+  ok(adv.indexOf("'step'") < adv.indexOf("'sink'"), 'step is advanced before sink');
+  ok(/fx\.phase = 'burst'; fx\.t = 0; fx\.parts = this\._burstParts\(fx\.x, fx\.y\)/.test(adv), 'the burst still originates at the pit centre');
 }
 
 console.log('Build 349 — the editor clips the world to the map viewport:');

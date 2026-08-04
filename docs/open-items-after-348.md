@@ -1,4 +1,4 @@
-# Open items after build 349 (soak baseline)
+# Open items after build 350 (soak baseline)
 
 Build 348 is on `main` and pushed (`dc2ad1a..41e7337`, 15 commits). This is the list of
 what is **known-open** as the soak starts, so a second pass can target only what changed
@@ -15,9 +15,15 @@ fix had not actually addressed:
 - **Right rail still felt broken** — 348 only added a message when the stepper capped. The
   actual problem: the map inset was applied for the rail's full width whether or not the
   rail covered the canvas. Insets now measure the real rail-to-canvas overlap.
-- **Pit death still fires outside the pit** (walking north into it) — a raised neighbour is
-  drawn shifted up-left, so a cliff cube visually covers the pit cell's south side while
-  the death fired on the cell boundary. Now needs real penetration (0.3-cell margin).
+- **Pit death** — took THREE goes, and the first two were wrong in opposite directions.
+  348 moved the animation onto the pit but left the trigger on the cell boundary (still died
+  looking like you were on solid ground). 349 delayed the trigger with a penetration margin,
+  which was worse — you could walk to the middle of the hole first. **350 leaves the trigger
+  alone** (it was correct all along) and moves the SPRITE: an eased step-off phase slides it
+  from where the player appears to the pit centre while the 2.5D lift drops to zero, so it
+  reads as stepping off the ledge. Then the existing shrink takes over.
+  **Check from all four directions**, especially north (up into the pit from below the cliff),
+  and confirm the sprite never appears to die on solid ground.
 
 **These three are the highest-value things to eyeball**, because each has now been "fixed"
 once already without resolving the symptom. Specifically worth checking: walking into a pit

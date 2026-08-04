@@ -280,7 +280,7 @@
       if (p.jump && p.jump.jumping && OH_MOVE.advanceJump(p.jump).landed) this._resolveLanding(p);
       if (!airborne) { const c = this._cellOf(p.x, p.y);
         if (this._bridgeClosedAt(c.col, c.row)) { /* standing on a solid bridge deck — no fall/hazard */ }
-        else if (this._pitsDeadly && this._pit(c.col, c.row) && this._wellInside(p.x, p.y)) this._die('Fell into a pit', 'pit');
+        else if (this._pitsDeadly && this._pit(c.col, c.row)) this._die('Fell into a pit', 'pit');
         else if (this._gap(c.col, c.row)) this._fall('Fell');
         else if (this._hazard(c.col, c.row)) { if (this._lavaMode === 'death') this._die('Fell in lava'); else if (p.iFrames === 0) this._hurt(this._lavaDamage, 'Lava'); } }
       // Hidden if standing under an overhang (a cell ≥ player.elev+2).
@@ -662,25 +662,23 @@
         // death can be over adjacent ground or a bridge, which made the sinking figure look
         // like it was falling through solid floor. (QA F16.)
         const at = this._pitCentreNear(p.x, p.y);
-        this._deathFx = { phase: 'sink', t: 0, sinkDur: 60, x: at.x, y: at.y, parts: null };
+        // STEP-OFF, then sink. The trigger fires correctly on entering the pit cell, but the
+        // player sprite is drawn LIFTED by the elevation it was standing on (2.5D up-left), so
+        // at that instant it still visually overlaps the land — it looked like dying on solid
+        // ground, and delaying the trigger instead just meant walking to the middle of the pit
+        // first. So keep the trigger where it is and move the SPRITE: slide from where the
+        // player actually appears to the pit centre while the lift drops to 0, which reads as
+        // stepping off the ledge into the hole. Then the existing shrink/flail takes over.
+        // (Kevin, build 350.)
+        const c0 = this._cellOf(p.x, p.y);
+        this._deathFx = { phase: 'step', t: 0, stepDur: 14, sinkDur: 60, parts: null,
+          fromX: p.x, fromY: p.y, fromLift: Math.max(0, (p.elev | 0)), x: at.x, y: at.y,
+          toLift: this._elev(c0.col, c0.row) | 0 };
       }
       else this._deathFx = { phase: 'burst', t: 0, x: p.x, y: p.y, parts: this._burstParts(p.x, p.y) };
     }
     // The centre of the pit the player just fell into: their own cell if it is a pit, else
     // the nearest neighbouring pit cell. Falls back to the given point if neither.
-    // Is (x,y) properly INSIDE its cell, rather than just over the boundary?
-    //
-    // A deadly pit fired the instant the player's centre crossed the cell edge. Because a
-    // RAISED neighbour is drawn shifted up-left by its elevation, the cliff's cube visually
-    // covers the pit cell on its south side — so walking north into a pit killed you while
-    // you still appeared to be standing on the cliff. Requiring real penetration makes the
-    // death land where the hole actually looks like it is, and forgives clipping a corner.
-    // (Kevin, build 349.)
-    _wellInside(x, y, margin) {
-      const cell = this.grid.cell, m = margin == null ? 0.3 : margin;
-      const fx = ((x % cell) + cell) % cell / cell, fy = ((y % cell) + cell) % cell / cell;
-      return fx >= m && fx <= 1 - m && fy >= m && fy <= 1 - m;
-    }
     _pitCentreNear(x, y) {
       const cell = this.grid.cell, c = this._cellOf(x, y);
       const centre = (col, row) => ({ x: (col + 0.5) * cell, y: (row + 0.5) * cell });
@@ -728,6 +726,7 @@
     _advanceDeath() {
       const fx = this._deathFx; if (!fx) { this.state = 'dead'; return; }
       fx.t++;
+      if (fx.phase === 'step') { if (fx.t >= fx.stepDur) { fx.phase = 'sink'; fx.t = 0; } return; }
       if (fx.phase === 'sink') { if (fx.t >= fx.sinkDur) { fx.phase = 'burst'; fx.t = 0; fx.parts = this._burstParts(fx.x, fx.y); } return; }
       let alive = 0;
       // Top-down: pieces scatter OUTWARD and settle in place (no gravity), then fade.
@@ -875,7 +874,15 @@
       // into their own coloured sprite blocks that fly out, spin, fall and fade.
       if (this._deathFx && (this.state === 'dying' || this.state === 'dead')) {
         const fx = this._deathFx;
-        if (fx.phase === 'sink') { const s = S(fx.x, fx.y); this._drawDyingSprite(ctx, s.x, s.y, this.unit * z, 1 - (fx.t / fx.sinkDur) * 0.85, fx.t); }
+        if (fx.phase === 'step') {
+          const k = Math.min(1, fx.t / fx.stepDur), e = k * k * (3 - 2 * k);   // ease-in-out
+          const Q = OVERHEAD.elevOffset(cs);
+          const wx = fx.fromX + (fx.x - fx.fromX) * e, wy = fx.fromY + (fx.y - fx.fromY) * e;
+          const lift = (fx.fromLift + ((fx.toLift || 0) - fx.fromLift) * e) * Q;   // lift falls away with the ledge
+          const s = S(wx, wy);
+          this._drawDyingSprite(ctx, s.x - lift, s.y - lift, this.unit * z, 1, fx.t);
+        }
+        else if (fx.phase === 'sink') { const s = S(fx.x, fx.y); this._drawDyingSprite(ctx, s.x, s.y, this.unit * z, 1 - (fx.t / fx.sinkDur) * 0.85, fx.t); }
         else if (fx.parts) {
           for (const q of fx.parts) { if (q.life <= 0) continue; const s = S(q.x, q.y);
             ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(q.rot); ctx.globalAlpha = Math.max(0, Math.min(1, q.life / 22));
