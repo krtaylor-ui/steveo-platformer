@@ -126,30 +126,25 @@ console.log('Build 350 — pit death: keep the trigger, STEP the sprite off the 
   ok(adv.indexOf("'step'") < adv.indexOf("'sink'"), 'step is advanced before sink');
   ok(/fx\.phase = 'burst'; fx\.t = 0; fx\.parts = this\._burstParts\(fx\.x, fx\.y\)/.test(adv), 'the burst still originates at the pit centre');
 
-  // Build 351 — the ACTUAL cause: terrain is one flat cached layer, so any sprite drawn
-  // after it paints over every block including raised cliffs. Position could never fix that.
+  // Builds 351-353 — the ACTUAL cause: terrain is one flat cached layer, so any sprite
+  // drawn after it paints over every block including raised cliffs. Position could never
+  // fix that (348-350), and clipping the sprite to the pit CROPPED it, because the dying
+  // figure is ~1.3 cells tall (351/352). 353 draws it full size then paints the occluding
+  // blocks back over it.
   ok(/this\._terrainCache = cv;/.test(ohSrc), 'terrain really is baked into one cached canvas');
-  ok(/OCCLUSION/.test(ohSrc), 'the occlusion reasoning is recorded at the fix');
-  const fxDraw = ohSrc.slice(ohSrc.indexOf('const cellQuad ='), ohSrc.indexOf("else if (fx.parts)"));
-  ok((fxDraw.match(/ctx\.clip\(\)/g) || []).length === 2, 'both step and sink clip the sprite');
-  ok((fxDraw.match(/ctx\.save\(\)/g) || []).length === (fxDraw.match(/ctx\.restore\(\)/g) || []).length,
-     'each clip is balanced (no leaked canvas state into later draws)');
-  // 351 confined the sink to exactly the pit cell; 352 anchors that rect on the pit but
-  // opens it on the far side (see the shift assertions below).
-  ok(/ctx\.rect\(clipX, clipY, clipW, clipH\)/.test(fxDraw), 'the sink is confined to the pit-anchored clip');
-  ok(/pitTL = cellQuad\(/.test(fxDraw), 'and that clip is still anchored on the pit cell');
-  ok(/ctx\.rect\(fromTL\.x, fromTL\.y, cs, cs\)/.test(fxDraw), 'the step also allows the cell being left, so it does not pop');
+  ok(/_redrawOccluders\(ctx, S, cs, pitCol, pitRow\)/.test(ohSrc), 'both death phases run the occluder pass');
+  ok((ohSrc.match(/this\._redrawOccluders\(/g) || []).length === 2, 'exactly the step and sink phases call it');
+  ok(!/ctx\.rect\(clipX, clipY, clipW, clipH\)/.test(ohSrc), 'the 351/352 clip that cropped the sprite is gone');
 
-  // Build 352 — clipping alone hid the animation under the ledge. Shift the body away from
-  // the edge it fell through so it rests where it can be seen.
-  ok(/DIRECTIONAL SHIFT/.test(ohSrc), 'the shift and its reasoning are recorded');
-  ok(/const shiftX = sgn\(at\.x - p\.x\) \* SH, shiftY = sgn\(at\.y - p\.y\) \* SH;/.test(ohSrc),
-     'the shift is per-axis and points away from where the player came from');
-  ok(/Math\.abs\(d\) > eps \? Math\.sign\(d\) : 0/.test(ohSrc), 'a straight-on approach shifts on one axis only, a diagonal on both');
-  ok(/pitX: at\.x, pitY: at\.y/.test(ohSrc), 'the true pit centre is kept, so the clip still anchors to the hole');
-  ok(/fx\.shiftX < 0 \? gx : 0/.test(fxDraw) && /fx\.shiftY < 0 \? gy : 0/.test(fxDraw),
-     'the clip grows only on the side the body moves toward');
-  ok(/clipW = cs \+ gx, clipH = cs \+ gy/.test(fxDraw), 'so the ENTRY side keeps its hard edge and still occludes');
+  const occ = ohSrc.slice(ohSrc.indexOf('_redrawOccluders(ctx, S, cs'), ohSrc.indexOf('_pitCentreNear(x, y)'));
+  ok(/if \(c \+ r <= depth\) continue;/.test(occ), 'only cells NEARER the camera than the body are redrawn');
+  ok(/if \(e <= 0\) continue;/.test(occ), 'flat ground is skipped — it cannot occlude anything');
+  ok(/out\.sort\(\(a, b\) => \(a\.r \+ a\.c\) - \(b\.r \+ b\.c\) \|\| a\.e - b\.e\)/.test(occ), 'occluders are drawn back-to-front, like the cache builds them');
+  ok(/sN < o\.e, eN < o\.e/.test(occ), 'and with the same exposed-face flags, so they match the baked terrain');
+  ok(/c < 0 \|\| r < 0 \|\| c >= g\.gridW \|\| r >= g\.gridH/.test(occ), 'map edges are bounds-checked');
+  // The directional shift stays — it puts the body where there is open hole to see it in.
+  ok(/DIRECTIONAL SHIFT/.test(ohSrc), 'the shift away from the entry edge is still applied');
+  ok(/const shiftX = sgn\(at\.x - p\.x\) \* SH, shiftY = sgn\(at\.y - p\.y\) \* SH;/.test(ohSrc), 'per-axis, away from where the player came from');
 }
 
 console.log('Build 349 — the editor clips the world to the map viewport:');

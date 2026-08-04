@@ -689,6 +689,35 @@
     }
     // The centre of the pit the player just fell into: their own cell if it is a pit, else
     // the nearest neighbouring pit cell. Falls back to the given point if neither.
+    // Paint the blocks that should be IN FRONT of the dying body back over it.
+    //
+    // Terrain is one flat cached layer, so a sprite drawn after it always paints over every
+    // block (builds 348-350 chased this as a positioning bug). Build 351 clipped the sprite
+    // to the pit cell instead, which occluded correctly but CROPPED it — the dying figure is
+    // ~1.3 cells tall, so a one-cell clip cut most of it off from every direction.
+    //
+    // So: draw the body full size, then re-draw the raised neighbours that are nearer to the
+    // camera (greater row+col) on top of it, back-to-front, exactly as the terrain cache
+    // builds them. The body genuinely falls BEHIND the ground instead of being trimmed to fit
+    // it, and stays whole wherever nothing covers it. (Kevin's suggestion, build 353.)
+    _redrawOccluders(ctx, S, cs, pitCol, pitRow) {
+      const g = this.grid, cell = g.cell, depth = pitCol + pitRow, out = [];
+      for (let dr = -1; dr <= 2; dr++) for (let dc = -1; dc <= 2; dc++) {
+        const c = pitCol + dc, r = pitRow + dr;
+        if (c < 0 || r < 0 || c >= g.gridW || r >= g.gridH) continue;
+        if (c + r <= depth) continue;                       // behind the body — leave it
+        const e = this._elev(c, r) | 0;
+        if (e <= 0) continue;                               // flat ground cannot occlude
+        out.push({ c, r, e, k: this._key(c, r) });
+      }
+      out.sort((a, b) => (a.r + a.c) - (b.r + b.c) || a.e - b.e);   // back-to-front
+      for (const o of out) {
+        const sp = S(o.c * cell, o.r * cell);
+        const sN = (o.r + 1 < g.gridH) ? this._elev(o.c, o.r + 1) : -1;
+        const eN = (o.c + 1 < g.gridW) ? this._elev(o.c + 1, o.r) : -1;
+        OVERHEAD.drawTerrainCube(ctx, o.k, sp.x, sp.y, cs, o.e, sN < o.e, eN < o.e);
+      }
+    }
     _pitCentreNear(x, y) {
       const cell = this.grid.cell, c = this._cellOf(x, y);
       const centre = (col, row) => ({ x: (col + 0.5) * cell, y: (row + 0.5) * cell });
@@ -895,31 +924,20 @@
         const Q = OVERHEAD.elevOffset(cs);
         const cellQuad = (wx, wy, lift) => { const q = S(wx, wy); return { x: q.x - lift, y: q.y - lift }; };
         const cellW = this.grid.cell;
-        const pitTL = cellQuad(Math.floor((fx.pitX != null ? fx.pitX : fx.x) / cellW) * cellW,
-                               Math.floor((fx.pitY != null ? fx.pitY : fx.y) / cellW) * cellW, 0);
-        // Grow the clip ONLY on the side the body moves toward. The entry side keeps its
-        // hard edge, so raised terrain still hides what it should.
-        const gx = Math.abs(fx.shiftX || 0) * (cs / cellW), gy = Math.abs(fx.shiftY || 0) * (cs / cellW);
-        const clipX = pitTL.x - (fx.shiftX < 0 ? gx : 0), clipY = pitTL.y - (fx.shiftY < 0 ? gy : 0);
-        const clipW = cs + gx, clipH = cs + gy;
+        const pitCol = Math.floor((fx.pitX != null ? fx.pitX : fx.x) / cellW);
+        const pitRow = Math.floor((fx.pitY != null ? fx.pitY : fx.y) / cellW);
         if (fx.phase === 'step') {
           const k = Math.min(1, fx.t / fx.stepDur), e = k * k * (3 - 2 * k);   // ease-in-out
           const wx = fx.fromX + (fx.x - fx.fromX) * e, wy = fx.fromY + (fx.y - fx.fromY) * e;
           const lift = (fx.fromLift + ((fx.toLift || 0) - fx.fromLift) * e) * Q;
           const s = S(wx, wy);
-          const fromTL = cellQuad(Math.floor(fx.fromX / this.grid.cell) * this.grid.cell, Math.floor(fx.fromY / this.grid.cell) * this.grid.cell, fx.fromLift * Q);
-          ctx.save(); ctx.beginPath();
-          ctx.rect(clipX, clipY, clipW, clipH);                  // the hole, opened up on the far side
-          ctx.rect(fromTL.x, fromTL.y, cs, cs);                  // + the cell being left
-          ctx.clip();
           this._drawDyingSprite(ctx, s.x - lift, s.y - lift, this.unit * z, 1, fx.t);
-          ctx.restore();
+          this._redrawOccluders(ctx, S, cs, pitCol, pitRow);
         }
         else if (fx.phase === 'sink') {
           const s = S(fx.x, fx.y);
-          ctx.save(); ctx.beginPath(); ctx.rect(clipX, clipY, clipW, clipH); ctx.clip();
           this._drawDyingSprite(ctx, s.x, s.y, this.unit * z, 1 - (fx.t / fx.sinkDur) * 0.85, fx.t);
-          ctx.restore();
+          this._redrawOccluders(ctx, S, cs, pitCol, pitRow);
         }
         else if (fx.parts) {
           for (const q of fx.parts) { if (q.life <= 0) continue; const s = S(q.x, q.y);
