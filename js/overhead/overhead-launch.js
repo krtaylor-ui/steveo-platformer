@@ -421,7 +421,16 @@
         const hx = x + dc * ext * cs, hy = y + dr * ext * cs; ctx.fillStyle = '#c3c7d2'; ctx.fillRect(hx + cs * 0.26, hy + cs * 0.26, cs * 0.48, cs * 0.48);
         return;
       }
-      ctx.fillStyle = extended ? '#c9ccd6' : '#8a8f9a'; ctx.fillRect(x + cs * 0.22, y + (extended ? cs * 0.02 : cs * 0.28), cs * 0.56, extended ? cs * 0.34 : cs * 0.2);   // legacy head
+      // Head at rest. It used to be drawn at the TOP of the cell whatever `dir` was, so an
+      // east-pushing piston read as pointing north and a builder could not tell which way it
+      // fired without opening its modal. Now it sits on the face it extends from. (QA F12.)
+      ctx.fillStyle = extended ? '#c9ccd6' : '#8a8f9a';
+      const th = extended ? cs * 0.34 : cs * 0.2, sp = extended ? cs * 0.02 : cs * 0.28;
+      if (dir === 'e')      ctx.fillRect(x + cs - sp - th, y + cs * 0.22, th, cs * 0.56);
+      else if (dir === 'w') ctx.fillRect(x + sp, y + cs * 0.22, th, cs * 0.56);
+      else if (dir === 's') ctx.fillRect(x + cs * 0.22, y + cs - sp - th, cs * 0.56, th);
+      else                  ctx.fillRect(x + cs * 0.22, y + sp, cs * 0.56, th);   // 'n' or legacy/undirected
+
     },
     // Logic gate — a DISCRETE 1×1 block filling its cell (x,y = cell top-left, cs =
     // cell px). Bright when its output is on; blue dots = input sides, green = outputs.

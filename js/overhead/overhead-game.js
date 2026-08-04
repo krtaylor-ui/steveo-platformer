@@ -290,6 +290,7 @@
       this._updateWeapons(intent, mouseWorld);
       if (p._swingT > 0) p._swingT--;   // advance the melee swing animation
       if (this._reachT > 0) this._reachT--;   // lever/lock reach pose
+      if (this._emerge) { this._emerge.t++; if (this._emerge.t >= this._emerge.dur) this._emerge = null; }   // pipe emerge (QA F14)
       // Item pickup.
       this._pickups(p);
       // Mobs + projectiles.
@@ -563,6 +564,11 @@
       const p = this.player, d = cl.dest, c = this._cellOf(d.px, d.py);
       p.x = d.px; p.y = d.py; p.elev = this._elev(c.col, c.row);
       this._portalCd = true; this._portalGlow = { keys: [cl.pipe.col + ',' + cl.pipe.row, d.key], t: 42 };
+      // EMERGE: the mirror of the shrink-into-the-tube entry. Without it the player simply
+      // appeared at full size, which made a working teleport feel broken — and it is the most
+      // visible moment of the whole pipe feature. The player sits on the pipe until they move
+      // (the arrival cooldown already holds them). (QA F14.)
+      if (this.settings.pipeClimbAnim !== false) this._emerge = { t: 0, dur: 18 };
       this.grid.masterZoom = cl.zoomFrom;   // restore the game zoom
       this.camera = OH_GRID.centerOn(this.grid, p.x, p.y, CANVAS_W, CANVAS_H);
     }
@@ -651,8 +657,24 @@
     _die(msg, cause) {
       if (this._god || this.state === 'dying' || this.state === 'dead') return;
       const p = this.player; p.hp = 0; this.state = 'dying'; this._deathMsg = msg || 'You died';
-      if (cause === 'pit') this._deathFx = { phase: 'sink', t: 0, sinkDur: 60, x: p.x, y: p.y, parts: null };
+      if (cause === 'pit') {
+        // Animate from the middle of the PIT. The player's own position at the moment of
+        // death can be over adjacent ground or a bridge, which made the sinking figure look
+        // like it was falling through solid floor. (QA F16.)
+        const at = this._pitCentreNear(p.x, p.y);
+        this._deathFx = { phase: 'sink', t: 0, sinkDur: 60, x: at.x, y: at.y, parts: null };
+      }
       else this._deathFx = { phase: 'burst', t: 0, x: p.x, y: p.y, parts: this._burstParts(p.x, p.y) };
+    }
+    // The centre of the pit the player just fell into: their own cell if it is a pit, else
+    // the nearest neighbouring pit cell. Falls back to the given point if neither.
+    _pitCentreNear(x, y) {
+      const cell = this.grid.cell, c = this._cellOf(x, y);
+      const centre = (col, row) => ({ x: (col + 0.5) * cell, y: (row + 0.5) * cell });
+      if (this._pit(c.col, c.row)) return centre(c.col, c.row);
+      const around = [[0, 1], [1, 0], [0, -1], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+      for (const [dc, dr] of around) if (this._pit(c.col + dc, c.row + dr)) return centre(c.col + dc, c.row + dr);
+      return { x, y };
     }
     _burstParts(x, y) {
       const sp = P().OH_SPRITE, cols = [sp.hair, sp.shirt, sp.shirt, sp.pants, sp.pants, sp.skin], parts = [], n = 16;
@@ -925,7 +947,9 @@
       if (cl && cl.spin) spin = cl.spin;   // portal step-through spin
       const reach = (!cl && (this._reachT | 0) > 0) ? Math.sin((1 - this._reachT / 16) * Math.PI) * 0.9 : 0;   // brief arm-reach when flipping a lever / using a lock
       const aimA = cl ? cl.face : OH_CONTROLS.angleOf(p.aim);
-      OVERHEAD.drawOverheadPlayer(ctx, cx, cy, cl ? rr * cl.scale : rr, p.dist, cl ? false : moving, aimA,
+      // Pipe EMERGE: grow from small back to full as the player climbs out (QA F14).
+      const em = this._emerge ? Math.max(0.25, Math.min(1, this._emerge.t / this._emerge.dur)) : 1;
+      OVERHEAD.drawOverheadPlayer(ctx, cx, cy, (cl ? rr * cl.scale : rr) * em, p.dist, cl ? false : moving, aimA,
         { rotate: true, weapon: inFlight ? null : (p.weapon || 'pickaxe'), moveAngle: (cl ? cl.face : (p.moveAngle != null ? p.moveAngle : OH_CONTROLS.angleOf(p.aim))), spin, somersault, facing: aimA,
           grab: cl ? cl.grab : reach, mantleLeg: cl ? cl.mantleLeg : 0, crouch: cl ? cl.crouch : 0 });
       ctx.globalAlpha = 1;

@@ -448,7 +448,12 @@
       // Rail width steppers (◀▶) + drag-and-drop to move a palette between / within the rails.
       qAll('[data-rw]').forEach((el) => el.onclick = () => { const v = el.dataset.rw, L2 = this._railLayout;
         if (v === 'right-toggle') { if (L2.rightWidth) { L2.left = L2.left.concat(L2.right); L2.right = []; L2.rightWidth = 0; } else { L2.rightWidth = 160; this._flash('Right panel on — drag a palette by its header onto it'); } }
-        else { const side = v.indexOf('left') === 0 ? 'left' : 'right', key = side + 'Width', inc = v.indexOf('++') >= 0 ? 28 : -28; L2[key] = Math.max(0, Math.min(400, (L2[key] || (side === 'left' ? 120 : 0)) + inc)); }
+        else { const side = v.indexOf('left') === 0 ? 'left' : 'right', key = side + 'Width', inc = v.indexOf('++') >= 0 ? 28 : -28;
+          const was = (L2[key] || (side === 'left' ? 120 : 0)), now = Math.max(0, Math.min(400, was + inc));
+          // Tell the user when a stepper stops doing anything. Six further clicks producing no
+          // change and no feedback reads as broken rather than capped. (QA F7.)
+          if (now === was) this._flash(inc > 0 ? 'Rail is at its maximum width (400px)' : 'Rail is already at its minimum');
+          L2[key] = now; }
         this._saveLayout(); this._renderBar(); });
       qAll('.grp[draggable=true]').forEach((el) => {
         el.addEventListener('dragstart', (ev) => { this._dragGrp = el.dataset.grp; el.classList.add('oh-drag'); if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move'; });

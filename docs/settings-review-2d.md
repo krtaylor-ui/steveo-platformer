@@ -11,10 +11,10 @@ Advanced is now **sandbox-only** — players never see an ADV row, so anything m
 invisible outside the world editor. That raises the stakes on wrongly marking something ADV.
 
 
-**Totals:** 164 settings · advanced today **97** → recommended **105** · 16 rows would change (⚠).
+**Totals:** 161 settings · advanced today **96** → recommended **96** · 16 rows would change (⚠).
 
 
-## World `world` — 17 settings
+## World `world` — 16 settings
 
 
 ### Display (2)
@@ -43,12 +43,11 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 | Points / Emerald ·sub | `emeraldPoints` | PLT SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
 | Level-Clear Bonus ·sub | `goalClearPoints` | PLT SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
 
-### Designer Locks (2)
+### Designer Locks (1)
 
 | Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
 |---|---|---|---|---|:-:|---|---|---|
 | Lock Physics | `physicsLocked` | SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
-| Lock Boss Scaling | `bossScalingLocked` | SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 
 ### Redstone (1)
 
@@ -64,7 +63,7 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 | Block Contents | `questionContents` | NRM PLT ARN SBX | basic | basic |  | picks a mode/behaviour rather than tuning it | | |
 | Glass Shatters | `glassShatter` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
 
-## Movement `movement` — 40 settings
+## Movement `movement` — 39 settings
 
 
 ### Physics (6)
@@ -112,20 +111,19 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 | Travel Tube: Rounded Bends | `tubeRoundedCorners` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
 | Travel Tube: Block Style | `tubeBlockStyle` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
 
-### Grappling Hook (10)
+### Grappling Hook (9)
 
 | Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
 |---|---|---|---|---|:-:|---|---|---|
-| Configure Grappling Hook | `weaponGrapple` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
-| Range ·sub | `grappleRange` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
-| Hook Damage ·sub | `grappleDamage` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
-| Attach To ·sub | `grappleAttach` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
-| Grapple Enemies ·sub | `grappleEnemies` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | child knob of a toggle above it | | |
-| Grapple Collectibles ·sub | `grappleCollectibles` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | child knob of a toggle above it | | |
-| Release Momentum · Horizontal ·sub | `grappleReleaseBoostH` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
-| Release Momentum · Vertical ·sub | `grappleReleaseBoostV` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
-| Swing Assist ·sub | `grappleSwingAssist` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | child knob of a toggle above it | | |
-| Swing Assist Strength ·sub | `grappleSwingStrength` | NRM PLT ARN SBX | **ADV** | **ADV** |  | child knob of a toggle above it | | |
+| Range ·sub | `grappleRange` | NRM PLT ARN SBX | **ADV** | **ADV** |  | numeric tuning of an already-working default | | |
+| Hook Damage ·sub | `grappleDamage` | NRM PLT ARN SBX | **ADV** | **ADV** |  | numeric tuning of an already-working default | | |
+| Attach To ·sub | `grappleAttach` | NRM PLT ARN SBX | **ADV** | basic | ⚠ | picks a mode/behaviour rather than tuning it | | |
+| Grapple Enemies ·sub | `grappleEnemies` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
+| Grapple Collectibles ·sub | `grappleCollectibles` | NRM PLT ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
+| Release Momentum · Horizontal ·sub | `grappleReleaseBoostH` | NRM PLT ARN SBX | **ADV** | basic | ⚠ | picks a mode/behaviour rather than tuning it | | |
+| Release Momentum · Vertical ·sub | `grappleReleaseBoostV` | NRM PLT ARN SBX | **ADV** | basic | ⚠ | picks a mode/behaviour rather than tuning it | | |
+| Swing Assist ·sub | `grappleSwingAssist` | NRM PLT ARN SBX | basic | basic |  | picks a mode/behaviour rather than tuning it | | |
+| Swing Assist Strength ·sub | `grappleSwingStrength` | NRM PLT ARN SBX | **ADV** | basic | ⚠ | picks a mode/behaviour rather than tuning it | | |
 
 ## Speed Run `speedrun` — 11 settings
 
@@ -187,7 +185,7 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 | Capture the Flag | `arenaType_CAPTURE_FLAG` | ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
 | Defend the Tower | `arenaType_DEFEND_TOWER` | ARN SBX | basic | basic |  | a feature switch a designer decides deliberately | | |
 
-## Combat `combat` — 42 settings
+## Combat `combat` — 41 settings
 
 
 ### Special Moves (4)
@@ -267,11 +265,10 @@ invisible outside the world editor. That raises the stakes on wrongly marking so
 | Damage | `wpn_crossbow_dmgMult` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Piercing | `wpn_crossbow_pierce` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 
-### Weapon · Boomerang (10)
+### Weapon · Boomerang (9)
 
 | Setting | Key | Modes | Now | Rec | Δ | Why | Your call | Move to |
 |---|---|---|---|---|:-:|---|---|---|
-| Configure Boomerang | `weaponBoomerang` | NRM PLT ARN SBX | basic | **ADV** | ⚠ | fine-tuning group behind a working default | | |
 | Look ·sub | `boomerangLook` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Range ·sub | `boomerangRange` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
 | Speed ·sub | `boomerangSpeed` | NRM PLT ARN SBX | **ADV** | **ADV** |  | fine-tuning group behind a working default | | |
