@@ -702,8 +702,12 @@
       let ov = document.getElementById('oh-cfg-modal');
       if (!ov) { ov = document.createElement('div'); ov.id = 'oh-cfg-modal'; ov.style.cssText = 'position:fixed;inset:0;z-index:9550;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6)'; document.body.appendChild(ov); }
       ov.style.display = 'flex';
-      ov.innerHTML = `<div class="ohc-panel"><h2>Leave the editor?</h2><p style="color:#8fa0bd;font-size:13px">Save your changes before quitting?</p><div class="ohc-btns"><button id="q-cancel">Cancel</button><button id="q-quit">Quit without saving</button><button class="primary" id="q-save">Save &amp; quit</button></div></div>`;
+      // Esc reaches here whenever nothing is selected, i.e. from a routine "cancel what I'm
+      // doing" reflex — so CANCEL is the primary/default action, not "Save & quit". A stray
+      // Esc-then-Enter must never commit or discard a session's edits. (QA F9.)
+      ov.innerHTML = `<div class="ohc-panel"><h2>Leave the editor?</h2><p style="color:#8fa0bd;font-size:13px">Nothing is selected, so Esc offers to leave. Save your changes before quitting?</p><div class="ohc-btns"><button id="q-quit">Quit without saving</button><button id="q-save">Save &amp; quit</button><button class="primary" id="q-cancel">Keep editing</button></div></div>`;
       document.getElementById('q-cancel').onclick = () => { ov.style.display = 'none'; };
+      const cancelBtn = document.getElementById('q-cancel'); if (cancelBtn && cancelBtn.focus) cancelBtn.focus();
       document.getElementById('q-quit').onclick = () => { ov.style.display = 'none'; this.close(); };
       document.getElementById('q-save').onclick = async () => { ov.style.display = 'none'; try { await this._save(); } catch (e) {} this.close(); };
     },

@@ -622,6 +622,10 @@
         if (!blocked) gt._phase = np;
         gt._curDeg = (gt.rest || 0) + swing * gt._phase; gt._cells = this._gateCells(gt, gt._curDeg);
         for (const c of gt._cells) solid.add(c.col + ',' + c.row);
+        // The HINGE post too. gateCells() starts at i=1 so it returns only the panel, while
+        // drawGates() adds the post explicitly — so the hinge was drawn as a solid log but
+        // stayed walkable, leaving a one-cell gap at the anchor of every gate. (QA F13.)
+        solid.add(gt.col + ',' + gt.row);
       }
       this._gateSolid = solid.size ? solid : null;
     }
@@ -966,12 +970,12 @@
       for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const e = this._elev(c, r); if (e <= 0) continue;
         const base = S(c * cell, r * cell); this._castShadowCell(sx, base.x, base.y, e, this._key(c, r) === 'leaves', sh.x * e * cs, sh.y * e * cs, cs, Q); }
       for (const v of this._templateVoxels) { const base = S(v.col * cell, v.row * cell); this._castShadowCell(sx, base.x, base.y, v.elev, v.isLeaves, sh.x * v.elev * cs, sh.y * v.elev * cs, cs, Q); }   // template overlay voxels cast too
-      if (this._gates) for (const gt of this._gates) { const h = Math.max(1, gt.height || 2); for (const c of (gt._cells || [])) { const base = S(c.col * cell, c.row * cell); this._castShadowCell(sx, base.x, base.y, h, false, sh.x * h * cs, sh.y * h * cs, cs, Q); } }   // swinging gates cast too
+      if (this._gates) for (const gt of this._gates) { const h = Math.max(1, gt.height || 2); for (const c of [{ col: gt.col, row: gt.row }].concat(gt._cells || [])) { const base = S(c.col * cell, c.row * cell); this._castShadowCell(sx, base.x, base.y, h, false, sh.x * h * cs, sh.y * h * cs, cs, Q); } }   // swinging gates cast too
       sx.globalCompositeOperation = 'destination-out'; sx.fillStyle = '#000';
       for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const e = this._elev(c, r); if (e <= 0) continue;
         const base = S(c * cell, r * cell); this._eraseShadowCell(sx, base.x, base.y, e, this._key(c, r) === 'leaves', cs, Q); }
       for (const v of this._templateVoxels) { const base = S(v.col * cell, v.row * cell); this._eraseShadowCell(sx, base.x, base.y, v.elev, v.isLeaves, cs, Q); }
-      if (this._gates) for (const gt of this._gates) { const h = Math.max(1, gt.height || 2); for (const c of (gt._cells || [])) { const base = S(c.col * cell, c.row * cell); this._eraseShadowCell(sx, base.x, base.y, h, false, cs, Q); } }
+      if (this._gates) for (const gt of this._gates) { const h = Math.max(1, gt.height || 2); for (const c of [{ col: gt.col, row: gt.row }].concat(gt._cells || [])) { const base = S(c.col * cell, c.row * cell); this._eraseShadowCell(sx, base.x, base.y, h, false, cs, Q); } }
       sx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = sh.alpha;
       if ('filter' in ctx) ctx.filter = `blur(${Math.max(0.6, cs * 0.05)}px)`;
@@ -1092,8 +1096,16 @@
     }
     _drawFlatSpan(ctx, S, cs, b, lv, Q, rails) {
       const g = this.grid, inSpan = (c, r) => this._bridgeAt.get(c + ',' + r) === b;
+      // Rails belong on the LONG SIDES only — the ends are where you walk on and off, and
+      // collision already allows that (G4 passes). Drawing an edge on every side with no
+      // bridge neighbour put rails across the open ends too, so the deck looked sealed.
+      // Zero the faces that lie ALONG the run. (QA F15.)
+      const fc = b.from ? b.from.col : b.col, fr = b.from ? b.from.row : b.row;
+      const tc = b.to ? b.to.col : fc, tr = b.to ? b.to.row : fr;
+      const horizontal = Math.abs(tc - fc) >= Math.abs(tr - fr);
       for (const cell of b._cells) { const sp = S(cell.col * g.cell, cell.row * g.cell), x = sp.x - lv * Q, y = sp.y - lv * Q;
         const edges = { n: !inSpan(cell.col, cell.row - 1), s: !inSpan(cell.col, cell.row + 1), w: !inSpan(cell.col - 1, cell.row), e: !inSpan(cell.col + 1, cell.row) };
+        if (horizontal) { edges.w = false; edges.e = false; } else { edges.n = false; edges.s = false; }
         OVERHEAD.drawBridgeCell(ctx, x, y, cs, { rail: rails, closed: true, edges });
       }
     }

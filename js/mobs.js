@@ -158,6 +158,12 @@ class Mob {
   // True when player `p` is DESCENDING (vy>0, Y-down) onto this mob's head.
   _isStomp(p) {
     if (p.vy <= 0 || !this.alive) return false;
+    // A stomp requires the player to be genuinely FALLING onto the mob. `vy > 0` alone was
+    // too loose: a grounded player can carry a small positive vy from the gravity tick before
+    // the ground clamp, so walking into a Goomba or a sliding Shell sometimes resolved as a
+    // stomp instead of damage (QA F17 — "stomp only when falling" is the documented rule).
+    // Also excludes the exact frame of landing, which must count as contact.
+    if (p.onGround || p.vy <= 1) return false;
     if (!this._touchesPlayer(p)) return false;
     return (p.y + p.height) - this.y <= this.height * 0.6 + Math.max(4, p.vy);   // feet in the upper part
   }
@@ -2023,7 +2029,12 @@ class Shell extends Mob {
     const px = this.x;
     if (this.slideState === 'idle') {
       this.vx = 0;
-      if (this._kickCd === 0 && this._touchesPlayer(player)) { this.slideState = 'sliding'; this.facing = (player.cx <= this.cx) ? 1 : -1; this._kickCd = 12; }
+      // Kick AWAY from the player, and set vx now: the wall-reverse test at the end of
+      // update() compares this frame's x against px, and on the transition frame vx was
+      // still 0 — so it read "didn't move" as "hit a wall" and flipped facing before the
+      // shell ever travelled. That is why a shell kicked from the left came back leftward.
+      // _slideStart suppresses the reverse test for that one frame. (QA F18.)
+      if (this._kickCd === 0 && this._touchesPlayer(player)) { this.slideState = 'sliding'; this.facing = (player.cx <= this.cx) ? 1 : -1; this.vx = this.facing * this.slideSpeed; this._slideStart = true; this._kickCd = 12; }
     } else {
       this.vx = this.facing * this.slideSpeed;
       if (this._mobManager) for (const mob of this._mobManager.mobs) {
@@ -2035,12 +2046,14 @@ class Shell extends Mob {
       if (this._kickCd === 0 && this._touchesPlayer(player)) { player.takeDamage(2, this.facing); this._kickCd = 22; }
     }
     _mobPhysics(this, level);
-    if (this.slideState === 'sliding' && Math.abs(this.x - px) < 0.8 && this.onGround) { this.facing *= -1; }   // hit a wall → reverse
+    // Wall bounce — but never on the frame the kick started (see above).
+    if (this.slideState === 'sliding' && !this._slideStart && Math.abs(this.x - px) < 0.8 && this.onGround) { this.facing *= -1; }
+    this._slideStart = false;
   }
   onStomp(mgr, p) {
     this._stompBounce(p);
     if (this.slideState === 'sliding') { this.slideState = 'idle'; this.vx = 0; this._kickCd = 12; }
-    else { this.slideState = 'sliding'; this.facing = (p.cx <= this.cx) ? 1 : -1; this._kickCd = 12; }
+    else { this.slideState = 'sliding'; this.facing = (p.cx <= this.cx) ? 1 : -1; this.vx = this.facing * this.slideSpeed; this._slideStart = true; this._kickCd = 12; }
   }
   draw(ctx, camera) {
     const sx = Math.floor(this.x - camera.x), sy = Math.floor(this.y - camera.y);

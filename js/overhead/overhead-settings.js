@@ -110,7 +110,7 @@
   // Current overhead world-save schema version. BUMP this whenever the save FORMAT changes in a
   // way old worlds need upgrading for, and add a matching `if (v < N) { …; v = N; }` step in
   // migrate(). See FUTURE_ROADMAP "SAVE-FILE FORMAT & MIGRATION".
-  const SCHEMA = 1;
+  const SCHEMA = 2;   // v2: legacy sink `channel` → rxChannel (QA F10)
   // Bring a loaded world up to the current schema: run each versioned upgrade step in order,
   // then stamp the version + resolve settings. Steps must be small, idempotent, and never
   // destructive. A world saved by a NEWER build (v > SCHEMA) is loaded as-is (not downgraded).
@@ -125,8 +125,23 @@
       world.redstone = world.redstone || []; world.bridges = world.bridges || []; world.gates = world.gates || [];
       v = 1;
     }
+    if (v < 2) {
+      // v1 → v2: legacy `channel` on a SINK meant "the bus I am attached to" — in the
+      // original model a lever and a drawbridge shared channel 'gate' and it drove both
+      // ends. The current model split that into txChannel (broadcast) / rxChannel +
+      // rxIds (listen), and evaluate() only ever reads rxChannel — so a pre-v2 piston or
+      // lamp wired by `channel` loaded INERT, with no error and nothing to see but
+      // "Not listening to any transmitter yet" buried in its modal. Copy the intent
+      // across. (QA F10.)
+      const SINK = { lamp: 1, piston: 1, rx: 1 };
+      for (const d of (world.redstone || [])) {
+        if (!SINK[d.kind]) continue;
+        if (d.channel && !d.rxChannel && !(Array.isArray(d.rxIds) && d.rxIds.length)) d.rxChannel = d.channel;
+      }
+      v = 2;
+    }
     // Future format changes go here, e.g.:
-    //   if (v < 2) { /* worlds < v2 keep the pre-341 2×2 pipe size, etc. */ v = 2; }
+    //   if (v < 3) { /* worlds < v3 keep the pre-341 2×2 pipe size, etc. */ v = 3; }
     if (v > SCHEMA) v = world.schemaVersion | 0;   // future world — don't invent steps; keep its stamp
     else world.schemaVersion = v;
     world.settings = resolve(world);
