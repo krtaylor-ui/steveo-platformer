@@ -677,7 +677,7 @@
         // pit: coming from below you must move up, from the right you must move left, and
         // from the bottom-right both. Clipping alone was correct but tucked the whole
         // animation under the ledge. (Kevin, build 352.)
-        const cellPx = this.grid.cell, SH = cellPx * 0.34, eps = cellPx * 0.05;
+        const cellPx = this.grid.cell, SH = cellPx * 0.55, eps = cellPx * 0.05;   // 0.34 was imperceptible
         const sgn = (d) => (Math.abs(d) > eps ? Math.sign(d) : 0);
         const shiftX = sgn(at.x - p.x) * SH, shiftY = sgn(at.y - p.y) * SH;
         this._deathFx = { phase: 'step', t: 0, stepDur: 14, sinkDur: 60, parts: null,
@@ -706,9 +706,13 @@
         const c = pitCol + dc, r = pitRow + dr;
         if (c < 0 || r < 0 || c >= g.gridW || r >= g.gridH) continue;
         if (c + r <= depth) continue;                       // behind the body — leave it
-        const e = this._elev(c, r) | 0;
-        if (e <= 0) continue;                               // flat ground cannot occlude
-        out.push({ c, r, e, k: this._key(c, r) });
+        const k = this._key(c, r);
+        if (k == null || k === 'pit') continue;             // no floor there to hide behind
+        // NOT gated on elevation. Build 353 skipped anything at elevation 0, which is the
+        // usual case — a pit in FLAT ground has no raised neighbours at all, so nothing was
+        // ever painted over the body and it kept floating on top. A body that has fallen
+        // below the floor is behind ANY ground nearer the camera, flat included.
+        out.push({ c, r, e: this._elev(c, r) | 0, k });
       }
       out.sort((a, b) => (a.r + a.c) - (b.r + b.c) || a.e - b.e);   // back-to-front
       for (const o of out) {
@@ -764,6 +768,9 @@
     }
     _advanceDeath() {
       const fx = this._deathFx; if (!fx) { this.state = 'dead'; return; }
+      // With the debug HUD up (` key), play the death at QUARTER speed. A screen-capture
+      // tool that waits for motion to settle never catches a 1.2s animation otherwise.
+      if (this._debug) { this._deathSlow = (this._deathSlow || 0) + 1; if (this._deathSlow % 4) return; }
       fx.t++;
       if (fx.phase === 'step') { if (fx.t >= fx.stepDur) { fx.phase = 'sink'; fx.t = 0; } return; }
       if (fx.phase === 'sink') { if (fx.t >= fx.sinkDur) { fx.phase = 'burst'; fx.t = 0; fx.parts = this._burstParts(fx.x, fx.y); } return; }   // burst from where the body came to rest (shift included)

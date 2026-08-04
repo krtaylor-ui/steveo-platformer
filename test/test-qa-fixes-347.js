@@ -138,13 +138,19 @@ console.log('Build 350 — pit death: keep the trigger, STEP the sprite off the 
 
   const occ = ohSrc.slice(ohSrc.indexOf('_redrawOccluders(ctx, S, cs'), ohSrc.indexOf('_pitCentreNear(x, y)'));
   ok(/if \(c \+ r <= depth\) continue;/.test(occ), 'only cells NEARER the camera than the body are redrawn');
-  ok(/if \(e <= 0\) continue;/.test(occ), 'flat ground is skipped — it cannot occlude anything');
+  // Build 354 — the 353 rule skipped anything at elevation 0, which is the COMMON case:
+  // a pit in flat ground has no raised neighbours, so nothing was ever drawn over the body.
+  ok(!/if \(e <= 0\) continue;/.test(occ), 'the elevation gate that excluded flat ground is gone');
+  ok(/k === 'pit'\) continue;/.test(occ), 'only pit cells are skipped — there is no floor there to hide behind');
+  ok(/NOT gated on elevation/.test(occ), 'and the reason is recorded');
   ok(/out\.sort\(\(a, b\) => \(a\.r \+ a\.c\) - \(b\.r \+ b\.c\) \|\| a\.e - b\.e\)/.test(occ), 'occluders are drawn back-to-front, like the cache builds them');
   ok(/sN < o\.e, eN < o\.e/.test(occ), 'and with the same exposed-face flags, so they match the baked terrain');
   ok(/c < 0 \|\| r < 0 \|\| c >= g\.gridW \|\| r >= g\.gridH/.test(occ), 'map edges are bounds-checked');
   // The directional shift stays — it puts the body where there is open hole to see it in.
   ok(/DIRECTIONAL SHIFT/.test(ohSrc), 'the shift away from the entry edge is still applied');
   ok(/const shiftX = sgn\(at\.x - p\.x\) \* SH, shiftY = sgn\(at\.y - p\.y\) \* SH;/.test(ohSrc), 'per-axis, away from where the player came from');
+  ok(/SH = cellPx \* 0\.55/.test(ohSrc), 'the shift is big enough to actually read (0.34 was not)');
+  ok(/this\._debug\) \{ this\._deathSlow/.test(ohSrc), 'the debug HUD slows the death to quarter speed so it can be captured');
 }
 
 console.log('Build 349 — the editor clips the world to the map viewport:');
