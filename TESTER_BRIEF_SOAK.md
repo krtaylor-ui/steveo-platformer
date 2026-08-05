@@ -308,6 +308,30 @@ Unattended, several hours. Start it when Part A is done.
    throttled by Chrome and the soak measures nothing.
 8. **Touch nothing that opens a native dialog** — world-card Delete in particular.
 
+## Before you stop it — the log lives in page memory
+
+**Collect the result BEFORE reloading or closing the tab.** `OH_SOAK` is an in-page object; a
+reload or a navigation destroys the entire run. In order:
+
+1. Run the **live checks first**, while the page is still up: input still responds, day/night
+   still cycling, a lever still drives its device, badge still reads the expected build.
+2. Then **`OH_SOAK.dump()`** and keep the output verbatim.
+3. Then **`OH_SOAK.csv()`** if you want the raw rows for a chart.
+4. Only then close or reload.
+
+A soak that ends with "I refreshed and lost it" has produced nothing, and no amount of elapsed
+time gets it back.
+
+## How long is enough
+
+**Six to eight hours is ample**, and most of the signal arrives in the first ninety minutes. A
+heap that is flat at two hours and flat at seven supports the same conclusion; the extra hours
+buy confidence, not new information. What a run of this length will *not* catch is anything
+with a very long period — an overflow after a day, a cache expiry — which is rare and low-value
+next to leaks, fps decay and accumulating errors, all of which show up early.
+
+Stop when it suits you. Just collect the log first.
+
 ## Morning checklist
 
 | Check | Pass | Investigate |

@@ -135,3 +135,29 @@ result — worth doing in the next build rather than mid-verification.
 
 **Deliberately not changed mid-run:** both of the above. Changing the build while it is being
 verified is how you end up unsure what was tested.
+
+## Outstanding after the build-361 Part A run (for the next session)
+
+Part A is otherwise **complete**. Staged fixes live on branch `card-title-362`, unmerged while
+the soak runs on 361.
+
+**Still open, needs a measurement rather than a guess:**
+- **A4.7 hit-area half.** Lever selection by *where it draws* still fails despite `_deviceAt`'s
+  forgiveness (exact cell, then one row down, two if raised). Needs the click point and the
+  lever's draw origin in the same units before anyone changes code — the pit bug is the
+  cautionary tale for guessing at offsets.
+- **A9.6 silently re-routes.** A wrong-engine file no longer says "damaged" (correct) but says
+  nothing at all (not correct). Wants the same explicit phrasing `rejectionMessage()` gives the
+  overhead editor.
+
+**Not bugs, decisions:**
+- **A5.1, A5.2, A6 player-context halves are untestable offline** — Platformer and Normal have
+  no offline provider, so those modes need a logged-in session. Either give the tester
+  credentials or accept the items as untested until local providers exist. The "freeze" that
+  appeared to block them was the native `alert()` in the offline guard, fixed in 362.
+
+**Staged on `card-title-362`, all awaiting a browser pass:**
+card-title full row · governor samples frame INTERVAL not render duration · leak flag needs an
+absolute rise too · soak-log listener accumulation · zeroth-sample fps 0 · editor piston faces
+its direction · offline guard is an in-page banner · non-world JSON refused · unreadable-file
+message names the file.
