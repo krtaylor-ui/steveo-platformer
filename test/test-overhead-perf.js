@@ -98,6 +98,19 @@ console.log('Frame cap actually paces frames:');
   ok(un.shouldRender(0) && un.shouldRender(1) && un.shouldRender(2), 'at 60 nothing is skipped');
 }
 
+console.log('A designer cap is a ceiling the governor never exceeds (build 360):');
+{
+  const g = P.makeGovernor({ cap: 30 });
+  for (let i = 0; i < 900; i++) g.sample(4);          // trivially cheap world
+  ok(g.cap === 30, 'a cheap world does NOT get raised above the designer cap of 30');
+  ok(g.tier === 0, 'and nothing is sacrificed, since 30fps is easily held');
+  const g2 = P.makeGovernor({ cap: 45 });
+  for (let i = 0; i < 400; i++) g2.sample(120);       // hopeless
+  ok(g2.cap <= 45, 'the governor may go BELOW the designer cap when it must');
+  for (let i = 0; i < 1500; i++) g2.sample(3);        // becomes cheap again
+  ok(g2.cap <= 45, 'and recovers only as far as the designer cap, never past it');
+}
+
 console.log('Tier table is ordered richest-to-cheapest:');
 for (let i = 1; i < P.TIERS.length; i++) {
   const a = P.frameCost(10000, P.TIERS[i - 1]), b = P.frameCost(10000, P.TIERS[i]);

@@ -124,6 +124,7 @@
       enabled: opts.enabled !== false,
       tier: 0,                     // index into TIERS
       cap: opts.cap || 60,         // frames per second we are aiming to hold
+      userCap: opts.cap || 60,     // the DESIGNER's cap — the governor may go below it, never above
       _win: [],                    // recent frame times (ms)
       _hold: 0,                    // frames to wait before changing anything again
       _drops: 0,
@@ -165,7 +166,7 @@
         } else if (p90 < target * 0.55) {
           // Recover visuals BEFORE speed: the look is what the designer chose.
           if (this.tier > 0) { this.tier--; this.reason = 'restored ' + this.tierLabel(); this._settle(); }
-          else if (this.cap < 60) { this.cap = (this.cap < 45) ? 45 : 60; this.reason = 'raised cap to ' + this.cap + 'fps'; this._settle(); }
+          else if (this.cap < (this.userCap || 60)) { this.cap = Math.min(this.userCap || 60, (this.cap < 45) ? 45 : 60); this.reason = 'raised cap to ' + this.cap + 'fps'; this._settle(); }
         }
       },
       _settle() { this._win.length = 0; this._hold = 90; },      // ~1.5s of calm before re-judging

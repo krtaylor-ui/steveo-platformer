@@ -29,7 +29,13 @@
       // §Overhead world settings — the runtime's tunables (separate from side-view). migrate()
       // upgrades old saves to the current schema (defaults structure arrays + resolves settings).
       if (typeof OH_SETTINGS !== 'undefined' && OH_SETTINGS.migrate) OH_SETTINGS.migrate(worldData);
-      this.settings = (worldData && worldData.settings) || {};
+      // Resolve against the defaults, don't trust what was stored: a world saved before a
+      // setting existed has no key for it, so reading it raw silently yields undefined and
+      // every call site falls back to its own literal. That is why a Frame-rate cap of 30 had
+      // no effect and never appeared in the HUD. (Kevin, build 360.)
+      this.settings = (typeof OH_SETTINGS !== 'undefined' && OH_SETTINGS.resolve)
+        ? OH_SETTINGS.resolve(worldData || {})
+        : ((worldData && worldData.settings) || {});
       const cfg = this.settings;
       this.grid = OH_GRID.make({ gridW: map.gridW, gridH: map.gridH, density: map.density,
         objectScaleMode: map.objectScaleMode, cell: map.cell || (32 / (map.density || 1)), masterZoom: cfg.masterZoom || 1 });
@@ -231,6 +237,13 @@
       if (!this._running) return;
       const now = (ts != null) ? ts : ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now());
       const gov = this._gov;
+      // Track the live setting, so changing the cap or turning adaptive quality off takes
+      // effect immediately instead of only on the next launch.
+      if (gov) {
+        const wantCap = +(this.settings.fpsCap || 60) || 60;
+        if (gov.userCap !== wantCap) { gov.userCap = wantCap; gov.cap = wantCap; gov.reason = wantCap < 60 ? 'capped to ' + wantCap + 'fps by the world setting' : ''; }
+        gov.enabled = this.settings.adaptiveQuality !== false;
+      }
       const render = !gov || gov.shouldRender(now);
       try {
         this._update();
@@ -1368,8 +1381,9 @@
       const fs = this._frameStats();
       if (fs) lines.push('fps ' + fs.fps.toFixed(0) + '  frame ' + fs.ms.toFixed(1) + 'ms  worst ' + fs.worstMs.toFixed(1) + 'ms'
         + (fs.cells ? '  cells ' + fs.cells : ''));
-      if (this._gov) lines.push('quality ' + this._gov.tierLabel() + '  cap ' + this._gov.cap + 'fps'
-        + (this._gov.reason ? '  (' + this._gov.reason + ')' : ''));
+      if (this._gov) lines.push('cap ' + this._gov.cap + 'fps  quality ' + this._gov.tierLabel()
+        + (this._gov.enabled ? '' : ' (adaptive OFF)')
+        + (this._gov.reason ? '  · ' + this._gov.reason : ''));
       if (this._perfEstimate) lines.push('estimate ' + this._perfEstimate.band + ' ~' + this._perfEstimate.fps + 'fps'
         + '  mobs ' + this._perfEstimate.mobs + '  dev ' + this._perfEstimate.devices);
       ctx.save(); ctx.font = '11px ui-monospace,monospace'; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
