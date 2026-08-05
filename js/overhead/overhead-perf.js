@@ -181,7 +181,83 @@
     };
   }
 
-  const OH_PERF = { COST, TIERS, BUDGET_60, frameCost, estimate, makeGovernor };
+  // ── Soak log ────────────────────────────────────────────────────────────────
+  // A rolling timeline so an all-day run produces a COPYABLE result instead of "I glanced at
+  // the HUD a few times". It records what a soak actually needs to distinguish a real leak
+  // from workload noise: heap over time (a monotonic climb is a leak regardless of load),
+  // worst-frame, and every governor decision with a timestamp — so a quality drop can be
+  // matched against whatever else the machine was doing at 14:12.
+  //
+  // Deliberately cheap: one sample every 15s, capped, and nothing per-frame beyond a compare.
+  function makeSoakLog(opts) {
+    opts = opts || {};
+    const every = opts.intervalMs || 15000;
+    const cap = opts.maxSamples || 2600;              // ~11 hours at 15s
+    const log = {
+      startedAt: null, samples: [], errors: 0, warnings: 0, events: [],
+      _next: 0, _lastTier: null, _lastCap: null,
+
+      // Count real page errors, so "zero console errors" is measured, not remembered.
+      hook() {
+        if (this._hooked || typeof window === 'undefined') return;
+        this._hooked = true;
+        window.addEventListener('error', () => { this.errors++; });
+        window.addEventListener('unhandledrejection', () => { this.errors++; });
+      },
+
+      // Called each frame; does nothing but a clock compare until a sample is due.
+      tick(now, stats, gov) {
+        if (this.startedAt == null) { this.startedAt = now; this._next = now; this.hook(); }
+        // Governor decisions are logged the MOMENT they happen, not at the next sample.
+        if (gov && (gov.tier !== this._lastTier || gov.cap !== this._lastCap)) {
+          if (this._lastTier != null) this.events.push({ at: Math.round((now - this.startedAt) / 1000), what: gov.reason || ('tier ' + gov.tier + ' cap ' + gov.cap) });
+          this._lastTier = gov.tier; this._lastCap = gov.cap;
+        }
+        if (now < this._next) return;
+        this._next = now + every;
+        if (this.samples.length >= cap) this.samples.shift();
+        let heap = 0;
+        try { if (typeof performance !== 'undefined' && performance.memory) heap = Math.round(performance.memory.usedJSHeapSize / 1048576); } catch (e) {}
+        this.samples.push({
+          s: Math.round((now - this.startedAt) / 1000),
+          fps: stats ? Math.round(stats.fps) : 0,
+          worst: stats ? Math.round(stats.worstMs) : 0,
+          cells: stats ? stats.cells : 0,
+          heap, tier: gov ? gov.tier : 0, cap: gov ? gov.cap : 60, err: this.errors,
+        });
+      },
+
+      // Human-readable summary — this is what gets pasted into a report.
+      summary() {
+        const n = this.samples.length;
+        if (!n) return 'soak: no samples yet';
+        const first = this.samples[0], last = this.samples[n - 1];
+        const fps = this.samples.map((x) => x.fps), heaps = this.samples.map((x) => x.heap);
+        const avg = (a) => Math.round(a.reduce((p, c) => p + c, 0) / a.length);
+        const worst = Math.max.apply(null, this.samples.map((x) => x.worst));
+        // Leak signal: compare the first and last thirds rather than endpoints, so one GC
+        // dip at the end cannot hide a climb.
+        const third = Math.max(1, Math.floor(n / 3));
+        const heapEarly = avg(heaps.slice(0, third)), heapLate = avg(heaps.slice(-third));
+        const drift = heapEarly ? Math.round((heapLate - heapEarly) / heapEarly * 100) : 0;
+        return [
+          'SOAK ' + Math.round(last.s / 60) + ' min, ' + n + ' samples',
+          'fps      first ' + first.fps + '  last ' + last.fps + '  avg ' + avg(fps) + '  min ' + Math.min.apply(null, fps),
+          'worst frame  ' + worst + 'ms',
+          'JS heap  early ' + heapEarly + 'MB  late ' + heapLate + 'MB  drift ' + (drift >= 0 ? '+' : '') + drift + '%'
+            + (drift > 25 ? '  <-- INVESTIGATE: looks like a leak' : ''),
+          'errors   ' + this.errors,
+          'quality  tier ' + last.tier + ' cap ' + last.cap + 'fps  (' + this.events.length + ' changes)',
+          this.events.length ? 'changes: ' + this.events.slice(-8).map((e) => e.at + 's ' + e.what).join(' | ') : 'changes: none',
+        ].join('\n');
+      },
+      dump() { const t = this.summary(); if (typeof console !== 'undefined') { console.log(t); console.table(this.samples.slice(-40)); } return t; },
+      csv() { return 'sec,fps,worstMs,cells,heapMB,tier,cap,errors\n' + this.samples.map((x) => [x.s, x.fps, x.worst, x.cells, x.heap, x.tier, x.cap, x.err].join(',')).join('\n'); },
+    };
+    return log;
+  }
+
+  const OH_PERF = { COST, TIERS, BUDGET_60, frameCost, estimate, makeGovernor, makeSoakLog };
   if (typeof window !== 'undefined') window.OH_PERF = OH_PERF;
   if (typeof module !== 'undefined' && module.exports) module.exports = OH_PERF;
 })();

@@ -1,4 +1,50 @@
-## CURRENT STATE (2026-08-03) — build 346: WORLD EXPORT / IMPORT (both engines) — on `main`, suite green, UNCOMMITTED
+## CURRENT STATE (2026-08-05) — builds 347–358 SHIPPED to `main` + pushed; 359–361 on branch `perf-occlusion-359`
+
+**Deployed (`origin/main`, Railway): build 358.** `main` and `origin/main` are level.
+
+**Branch `perf-occlusion-359` (builds 359–361, pushed, NOT merged):** frame budget + adaptive
+quality + pre-launch estimate + soak log. Awaiting Kevin's 5-minute confirmation, then merge +
+push so the soak runs against it.
+
+### Where to look
+| Need | File |
+|---|---|
+| Next tester run (Part A verify + Part B soak) | `TESTER_BRIEF_SOAK.md` |
+| What is known-open / not to re-report | `docs/open-items-after-348.md` |
+| Mega-session priorities + open DECIDEs | `docs/mega-session-candidates.md` |
+| Settings basic/advanced review (Kevin's pass applied, ~16 rows open) | `docs/settings-review-2d.md` / `.csv` |
+| World file format + sample export | `docs/world-file-format.md` |
+| Roadmap §40–43 (export-hiding, player-vs-creator, occlusion, gate rotation) | `FUTURE_ROADMAP.md` |
+
+### 347–358 in one line each
+- **347** QA fixes F1/F2/F4/F6 + physics-lock enforcement + Advanced becomes sandbox-only +
+  new Multiplayer tab + Debug tab hides + moon-shadow scale + fixed-shadow night fade.
+- **348** F12 piston sprite, F14 pipe emerge, F16 pit-fall position, F7 partial, wrapper cleanup.
+- **349** editor viewport clip, real rail↔canvas insets, pit-entry margin (later reverted).
+- **350–356** the pit-death hunt: nine builds, five wrong diagnoses. Root cause in **355** —
+  the sink offset was `size * 0.75` where `size = unit * zoom` and `unit = cell * DENSITY`, so
+  on a dense map the body drew 2–3 CELLS from the pit. **356** feet/depth/burst polish.
+- **357** the RIGHT rail was never styled (every palette rule scoped to `#oh-rail`).
+- **358** right rail reads from its own edge; its arrows mirror the left rail deliberately.
+
+### 359–361 (branch)
+- **359** `js/overhead/overhead-perf.js`: governor (tiers + cap, hysteresis, cheapest visual
+  first then a lower cap, never above the designer's cap) + pure pre-launch `estimate()`.
+- **360** the cap never reached the runtime: settings were read RAW, never resolved against
+  defaults, so any setting newer than the world was silently absent. **Fixed — this affected
+  every setting, not just the cap.**
+- **361** rolling soak log (`OH_SOAK.dump()` / `.csv()`), leak detection by thirds, timestamped
+  governor events.
+
+### Still open
+- **Part A has never run** — ~20 visual/behaviour items across 347–361 that no headless test
+  can see. This is the real verification gap, not the soak.
+- **F7 reflow** partial; **§42** occlusion designed not built; **§43** gate rotation parked.
+- Suite: 12 test files touched this round; all green.
+
+---
+
+## PRIOR STATE (2026-08-03) — build 346: WORLD EXPORT / IMPORT (both engines)
 
 Closes the tester's **X2** ("a world built in the app can't be backed up through the UI at all") and the
 `OVERHEAD_BACKLOG.md` item 5. Import was built alongside export so the QA fixtures restore through the

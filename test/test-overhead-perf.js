@@ -111,6 +111,44 @@ console.log('A designer cap is a ceiling the governor never exceeds (build 360):
   ok(g2.cap <= 45, 'and recovers only as far as the designer cap, never past it');
 }
 
+console.log('Soak log produces a copyable result, not a vibe (build 361):');
+{
+  const log = P.makeSoakLog({ intervalMs: 1000 });
+  const gov = P.makeGovernor({ cap: 60 });
+  let t = 0;
+  for (let i = 0; i < 200; i++) { t += 250; log.tick(t, { fps: 60, ms: 16, worstMs: 20, cells: 9000 }, gov); }
+  ok(log.samples.length === 50, `samples on the interval, not per frame (${log.samples.length} for 200 frames at 4x the interval)`);
+  ok(log.samples[0].s === 0 && log.samples[log.samples.length - 1].s > 0, 'samples carry elapsed seconds');
+  ok(/SOAK \d+ min, 50 samples/.test(log.summary()), 'the summary states duration and sample count');
+  ok(/fps\s+first 60/.test(log.summary()), 'and first/last/avg/min fps');
+  ok(/errors\s+0/.test(log.summary()), 'and a measured error count, not a remembered one');
+  ok(/sec,fps,worstMs,cells,heapMB,tier,cap,errors/.test(log.csv()), 'csv() gives raw rows for a spreadsheet');
+  ok(log.csv().split('\n').length === 51, 'one csv row per sample plus a header');
+}
+{
+  // Leak detection must compare thirds, not endpoints, so one GC dip cannot hide a climb.
+  const log = P.makeSoakLog({ intervalMs: 1000 });
+  let t = 0;
+  for (let i = 0; i < 90; i++) { t += 1000; log.samples.push({ s: i, fps: 60, worst: 20, cells: 100, heap: 100 + i * 3, tier: 0, cap: 60, err: 0 }); }
+  ok(/INVESTIGATE: looks like a leak/.test(log.summary()), 'a monotonic heap climb is called out');
+  const flat = P.makeSoakLog({ intervalMs: 1000 });
+  for (let i = 0; i < 90; i++) flat.samples.push({ s: i, fps: 60, worst: 20, cells: 100, heap: 100 + (i % 5), tier: 0, cap: 60, err: 0 });
+  ok(!/INVESTIGATE/.test(flat.summary()), 'a normal GC sawtooth is NOT called a leak');
+}
+{
+  // Governor decisions must be timestamped, so a quality drop can be matched against
+  // whatever else the machine was doing at that moment.
+  const log = P.makeSoakLog({ intervalMs: 1000 });
+  const gov = P.makeGovernor({ cap: 60 });
+  let t = 0;
+  for (let i = 0; i < 40; i++) { t += 1000; log.tick(t, { fps: 60, ms: 16, worstMs: 20, cells: 100 }, gov); }
+  const before = log.events.length;
+  for (let k = 0; k < 200; k++) gov.sample(120);
+  t += 1000; log.tick(t, { fps: 20, ms: 50, worstMs: 60, cells: 100 }, gov);
+  ok(log.events.length > before, 'a governor change is recorded as an event');
+  ok(typeof log.events[log.events.length - 1].at === 'number', 'with the second it happened at');
+}
+
 console.log('Tier table is ordered richest-to-cheapest:');
 for (let i = 1; i < P.TIERS.length; i++) {
   const a = P.frameCost(10000, P.TIERS[i - 1]), b = P.frameCost(10000, P.TIERS[i]);

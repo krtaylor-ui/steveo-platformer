@@ -1,4 +1,4 @@
-# Tester Brief — verify builds 347–358, then soak (target: v3 build 358)
+# Tester Brief — verify builds 347–361, then soak (target: v3 build 361)
 
 > **For the Chrome-enabled tester Claude.** Read access to this repo for context. Test the
 > **deployed** app, not localhost, so you exercise what players get. Don't edit game code.
@@ -15,8 +15,8 @@ Two parts, deliberately separated because they answer different questions:
 ## Setup
 
 1. Open **https://steveo-platformer-0001.up.railway.app** and hard-refresh (`Ctrl+Shift+R`).
-2. **Confirm the version badge reads `v3 build 358`.** If it reads lower, refresh again — a
-   new service worker (`steveo-shell-v358`) needs an activation cycle, and twice is normal.
+2. **Confirm the version badge reads `v3 build 361`.** If it reads lower, refresh again — a
+   new service worker (`steveo-shell-v361`) needs an activation cycle, and twice is normal.
    **If it still reads lower after three refreshes, stop and report that** — a stale shell
    would make every result below meaningless.
 3. Use a **density-4** overhead world (e.g. "Test 2", 100×70 @ d4). Density matters: several
@@ -156,19 +156,46 @@ Both deliberate; verify rather than report as bugs.
 - **A6.3 New Multiplayer tab** holds companion + boss-scaling rows. Absent in Speed Run.
 - **A6.4 Guided Trident defaults ON**, Trident Recall (right-click) defaults ON.
 
-## A7. Export / import (retest of your own FAILs)
+## A7. Performance controls (new in 359–361)
 
-- **A7.1** Card export of an overhead world **never opened since 345** now includes
+- **A7.0** Press `` ` `` for the HUD. It should show **`cap Nfps  quality <tier>`** plus an
+  `estimate` line. Set **World Settings → Frame-rate cap → 30** and confirm the HUD reads
+  `cap 30fps` **during the same session** (it used to require a relaunch, and before that it
+  never applied at all).
+- **A7.1** On the **density-4** world, zoom right out. Frame rate should stay usable, and the
+  HUD may report a quality drop (e.g. `No glass glare`) with a reason. Zoom right in and
+  confirm quality is **restored** — the recovery path is the half most likely to be broken.
+- **A7.2** With **Adaptive quality OFF**, nothing should be sacrificed no matter how bad the
+  frame rate gets: the HUD says `(adaptive OFF)` and the tier stays `Full`.
+- **A7.3** The console logs a **soak log armed** line. `OH_SOAK.dump()` returns a summary,
+  `OH_SOAK.csv()` raw rows. Used in Part B.
+
+## A8. Settings now actually resolve (359–361) — the sneaky one
+
+The runtime used to read a world's **stored** settings raw, so **any setting added after that
+world was last saved was simply absent at runtime** and every read fell back to its own
+default. That is fixed, which means **settings that were silently inert on older worlds now
+take effect**.
+
+- **A8.1** Open a world saved **before this batch** and confirm it still plays sanely. In
+  particular `moonShadowScale` (moon shadows weaker than sun) and the shadow fade at dusk
+  should now apply where they previously did nothing.
+- **A8.2** If an old world suddenly looks or behaves differently, **suspect this first** and
+  say which setting — it is the most likely cause of any "it changed and I didn't change it".
+
+## A9. Export / import (retest of your own FAILs)
+
+- **A9.1** Card export of an overhead world **never opened since 345** now includes
   `schemaVersion` (your M3 FAIL / F1).
-- **A7.2** `sample-worlds/Overhead_QA_Test.export.json` description now matches its contents —
+- **A9.2** `sample-worlds/Overhead_QA_Test.export.json` description now matches its contents —
   **no glass**, `pitMode: block`, `lavaMode: death` (your M6 FAIL / F3). Don't use it for pit,
   lava or glass checks.
-- **A7.3** Import failures report **in-page**, no native dialogs (your F4).
-- **A7.4** Editor **⬆ Import** is an in-page modal with a visible file input — drivable from
+- **A9.3** Import failures report **in-page**, no native dialogs (your F4).
+- **A9.4** Editor **⬆ Import** is an in-page modal with a visible file input — drivable from
   automation, no human needed (your F5).
-- **A7.5** Duplicate imports get distinct **card titles** "(2)", "(3)" and their own dates
+- **A9.5** Duplicate imports get distinct **card titles** "(2)", "(3)" and their own dates
   (your F2).
-- **A7.6** Offering a **side-scroll** export to the overhead importer says it's a side-scroll
+- **A9.6** Offering a **side-scroll** export to the overhead importer says it's a side-scroll
   world and points at the Sandbox list — it must **not** say "damaged" (your F6).
 
 ---
@@ -186,9 +213,18 @@ Unattended, several hours. Start it when Part A is done.
    cycling rather than sitting still.
 5. Record a **baseline**: fps, frame ms, worst-frame ms, cells-on-screen, DevTools memory
    (Performance monitor → JS heap), console error count, wall-clock time.
-6. Leave it running, **foregrounded**, on a machine set not to sleep. A backgrounded tab is
+   The game also keeps its own rolling timeline — **`OH_SOAK.dump()`** in the console gives a
+   copyable summary (fps first/last/avg/min, worst frame, heap drift with a leak flag, measured
+   error count, and every governor change with a timestamp). **`OH_SOAK.csv()`** gives raw rows.
+   Prefer that over eyeballing the HUD: it distinguishes a real leak (heap climbing across
+   thirds) from workload noise, and timestamps quality changes so they can be matched against
+   whatever else the machine was doing.
+6. Two zero-setup attribution tools, if a dip needs explaining: **Chrome's Task Manager**
+   (`Shift+Esc`) for per-tab CPU, and **DevTools → Performance monitor** for the JS-heap curve.
+   Ignore Game Bar's FPS overlay — it reports the browser compositor, not our render loop.
+7. Leave it running, **foregrounded**, on a machine set not to sleep. A backgrounded tab is
    throttled by Chrome and the soak measures nothing.
-7. **Touch nothing that opens a native dialog** — world-card Delete in particular.
+8. **Touch nothing that opens a native dialog** — world-card Delete in particular.
 
 ## Morning checklist
 
@@ -203,8 +239,15 @@ Unattended, several hours. Start it when Part A is done.
 | Redstone still live | lever still drives its device | dead = state drift |
 | Version badge | still 358 | changed = SW swapped mid-run |
 
-**Report the four numbers** (fps, worst-frame, heap, error count) at baseline and at the end,
-plus elapsed hours. A soak with no numbers isn't a result.
+**Report `OH_SOAK.dump()` verbatim** at the end, plus elapsed hours and roughly what else was
+running on the machine. A soak with no numbers isn't a result.
+
+**If the soak ran during a working day**, treat it as a stability test, not a performance
+measurement: your own workload contends for CPU and GPU, so an fps dip may be the machine
+rather than the game. A **monotonic heap climb is still meaningful** regardless of load. The one
+thing a busy-machine soak cannot settle is the governor, because contention is exactly what
+feeds it — so give it **30 quiet minutes** separately: watch the tier settle, zoom in and
+confirm quality is restored, zoom out and confirm it drops again and settles.
 
 ---
 

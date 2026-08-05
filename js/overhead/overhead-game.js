@@ -184,6 +184,10 @@
         this._perfEstimate = OH_PERF.estimate(this.map ? { mapSnapshot: this.map, settings: this.settings, mobs: this.mobs, redstone: this._redstone } : {},
           { viewW: CANVAS_W, viewH: CANVAS_H, zoom: this.grid.masterZoom });
         if (this._perfEstimate.band === 'heavy') console.info('[overhead] ' + this._perfEstimate.verdict, this._perfEstimate.warnings.join(' '));
+        // Soak log: a rolling timeline, dumpable from the console at any point with
+        // OH_SOAK.dump() (or OH_SOAK.csv()). Costs one clock compare per frame.
+        this._soak = OH_PERF.makeSoakLog();
+        if (typeof window !== 'undefined') { window.OH_SOAK = this._soak; console.info('[overhead] soak log armed — OH_SOAK.dump() for a summary, OH_SOAK.csv() for raw'); }
       }
       this._loop = this._loop.bind(this); requestAnimationFrame(this._loop);
     }
@@ -250,7 +254,12 @@
         if (render) {
           const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : now;
           this._render();
-          if (gov) { const t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : t0; gov.sample(t1 - t0); }
+          const t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : t0;
+          if (gov) gov.sample(t1 - t0);
+          // Frame stats feed both the HUD and the soak log, so sample them regardless of
+          // whether the HUD is up — a soak should not require the debug overlay to be open.
+          this._sampleFrame();
+          if (this._soak) this._soak.tick(now, this._frameStats(), gov);
         }
       } catch (e) { console.error('OverheadGame', e); }
       this.input.flush();
@@ -1396,7 +1405,7 @@
     }
     _drawHUD(ctx) {
       ctx.textAlign = 'left';
-      if (this._debug) { this._sampleFrame(); this._drawDebugHUD(ctx); }
+      if (this._debug) this._drawDebugHUD(ctx);   // frame sampling now happens in _loop, for the soak log
       // Day/night clock (top-right): a sun (day) or moon (night) disc + a label.
       if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') {
         const t = this._tod, lab = OH_DAYNIGHT.label(t), night = OH_DAYNIGHT.darkness(t) > 0.5, cx = CANVAS_W - 96;
