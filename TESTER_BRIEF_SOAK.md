@@ -25,8 +25,9 @@ Two parts, deliberately separated because they answer different questions:
    matters: several bugs fixed this round were invisible at density 1 and obvious at 4.
 
    **What to place in it, so Part A is actually coverable:**
-   - a **wide pit (3+ cells across)** with **raised ground on its south side** — A1.1–A1.4 need
-     you to walk in from below with a cliff behind you, and need blocks that can occlude;
+   - a **wide pit (3+ cells across)** with a **full rim ring of raised ground (N/W/E/S)** —
+     A1.2 compares all four approaches, so a rim on the south side alone makes three of them
+     untestable. Blocks on every side is what gives every direction something to occlude with;
    - a **single-cell pit** somewhere separate — A1.5 compares the two;
    - **lava or a mob** — A1.4 needs a NON-pit death to confirm its burst still draws on top;
    - a **gate**, a **bridge**, an **east-facing piston** and a **lever** — A4.1–A4.3, A4.7;
@@ -88,6 +89,33 @@ Use a **density-4** world with a pit next to raised ground.
 pre-355 bug); or the body vanishing too early as it sinks (occluder window too large — the
 opposite failure, introduced by 356's bigger window); or a straight-edge crop (the 351 clip
 somehow back).
+
+### Measure A1, don't interpret it
+
+`game._deathFx` exposes everything this item is about, so in-or-out is arithmetic rather than
+pixel-reading:
+
+```js
+game._deathFx    // {phase, pit:true, t, stepDur:14, sinkDur:60, parts:[{x,y,vx,vy,sz,rot,vr}]}
+game._deathMsg   // "Fell into a pit"
+game._deathSlow  // the quarter-speed counter behind A1.6
+```
+
+Take the **centroid of `parts`**, divide by cell size, and compare against the pit's cell
+bounds — a decisive answer with no screenshot needed. **`_deathFx.pit`** states directly whether
+the engine classified it as a pit death, which is the exact flag A1.4's occlusion branch keys
+off. Screenshots then become supporting evidence rather than the primary result.
+
+*(This is the measurement that would have collapsed a nine-build hunt into one reading. Prefer
+it, and use the filmstrip only for what the numbers can't show.)*
+
+### Two preconditions that waste runs if missed
+
+- **Exiting requires `state === 'dead'` FIRST, then the click.** Clicking Test while the Game
+  Over overlay is still up leaves the old game object alive, so every later reading describes
+  the *previous* death. That is the "starts already dead" false alarm.
+- **Clear the mobs** (`g.mobs.length = 0`) or a zombie kills the player between calls and you
+  measure a death you didn't stage.
 
 ## A2. Overhead editor rails
 
