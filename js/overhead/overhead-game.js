@@ -172,6 +172,13 @@
       this.camera = OH_GRID.centerOn(this.grid, this.player.x, this.player.y, CANVAS_W, CANVAS_H);
       this._notif = null; this._running = true;
       if (document.body) { document.body.classList.remove('pre-game'); document.body.classList.add('in-game'); window.dispatchEvent(new Event('resize')); }
+      // Adaptive quality + a designer-facing estimate of what this world costs to draw.
+      if (typeof OH_PERF !== 'undefined') {
+        this._gov = OH_PERF.makeGovernor({ enabled: this.settings.adaptiveQuality !== false, cap: this.settings.fpsCap || 60 });
+        this._perfEstimate = OH_PERF.estimate(this.map ? { mapSnapshot: this.map, settings: this.settings, mobs: this.mobs, redstone: this._redstone } : {},
+          { viewW: CANVAS_W, viewH: CANVAS_H, zoom: this.grid.masterZoom });
+        if (this._perfEstimate.band === 'heavy') console.info('[overhead] ' + this._perfEstimate.verdict, this._perfEstimate.warnings.join(' '));
+      }
       this._loop = this._loop.bind(this); requestAnimationFrame(this._loop);
     }
 
@@ -217,7 +224,25 @@
       return false;
     }
 
-    _loop() { if (!this._running) return; try { this._update(); this._render(); } catch (e) { console.error('OverheadGame', e); } this.input.flush(); requestAnimationFrame(this._loop); }
+    // Frame pacing. A steady 30 reads far better than swinging 8-to-60, so the governor
+    // settles on a quality tier and a cap it can actually hold, and we skip frames to keep
+    // that cap even. (Kevin, build 359.)
+    _loop(ts) {
+      if (!this._running) return;
+      const now = (ts != null) ? ts : ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now());
+      const gov = this._gov;
+      const render = !gov || gov.shouldRender(now);
+      try {
+        this._update();
+        if (render) {
+          const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : now;
+          this._render();
+          if (gov) { const t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : t0; gov.sample(t1 - t0); }
+        }
+      } catch (e) { console.error('OverheadGame', e); }
+      this.input.flush();
+      requestAnimationFrame(this._loop);
+    }
 
     _update() {
       const inp = this.input; this._frame = (this._frame || 0) + 1;
@@ -889,8 +914,14 @@
       ctx.drawImage(tc, sx, sy, sw, sh, 0, 0, CANVAS_W, CANVAS_H);
       // Dynamic elevation shadows (cast by the sun/moon; drawn on the ground under
       // entities). Independent of whether the sun/moon disc itself is shown.
-      if (this._shadows) {
-        if (this._shadowStyle === 'fixed') this._drawStaticShadows(ctx, cs);                                   // baked once, cheap
+      // Quality tier can only DOWNGRADE what the world settings asked for — a designer's
+      // choice is the ceiling, the governor just protects the frame rate under it.
+      const q = (this._gov && this._gov.enabled) ? this._gov.cfg() : null;
+      const wantShadows = q ? (this._shadowStyle === 'fixed' ? (q.shadows !== 'off' ? 'fixed' : 'off')
+                                                            : (q.shadows === 'live' ? 'live' : q.shadows))
+                            : (this._shadowStyle === 'fixed' ? 'fixed' : 'live');
+      if (this._shadows && wantShadows !== 'off') {
+        if (wantShadows === 'fixed') this._drawStaticShadows(ctx, cs);                                          // baked once, cheap
         else if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') this._drawShadows(ctx, S, cs, c0, c1, r0, r1);   // live, follows sun/moon
       }
       for (const rp of this._rampList) { const sp = S((rp.col + 0.5) * g.cell, (rp.row + 0.5) * g.cell); const dir = OVERHEAD.rampDir((c, r) => this._elev(c, r), rp.col, rp.row); OVERHEAD.drawRampIcon(ctx, rp.kind, sp.x, sp.y, cs, dir); }
@@ -992,8 +1023,8 @@
       }
       // Day/night ambient overlay + light sources + sun/moon disc — drawn before the
       // HUD so the HUD stays crisp.
-      if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') this._drawNight(ctx, S, cs);
-      if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') this._drawGlassGlare(ctx, S, cs, c0, c1, r0, r1);
+      if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined' && (!q || q.night)) this._drawNight(ctx, S, cs);
+      if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined' && (!q || q.glare)) this._drawGlassGlare(ctx, S, cs, c0, c1, r0, r1);
       this._drawShards(ctx, S, cs);
       this._drawHUD(ctx);
     }
@@ -1337,6 +1368,10 @@
       const fs = this._frameStats();
       if (fs) lines.push('fps ' + fs.fps.toFixed(0) + '  frame ' + fs.ms.toFixed(1) + 'ms  worst ' + fs.worstMs.toFixed(1) + 'ms'
         + (fs.cells ? '  cells ' + fs.cells : ''));
+      if (this._gov) lines.push('quality ' + this._gov.tierLabel() + '  cap ' + this._gov.cap + 'fps'
+        + (this._gov.reason ? '  (' + this._gov.reason + ')' : ''));
+      if (this._perfEstimate) lines.push('estimate ' + this._perfEstimate.band + ' ~' + this._perfEstimate.fps + 'fps'
+        + '  mobs ' + this._perfEstimate.mobs + '  dev ' + this._perfEstimate.devices);
       ctx.save(); ctx.font = '11px ui-monospace,monospace'; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
       let w = 0; for (const l of lines) w = Math.max(w, ctx.measureText(l).width);
       const x = CANVAS_W - w - 12, y = 40;

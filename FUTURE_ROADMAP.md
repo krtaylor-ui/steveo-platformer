@@ -1555,3 +1555,72 @@ Not a refactor: the machinery already exists (`modes:` gating, `advanced`, `_loc
 This is a classification pass plus a new surface for the cheat set. Do it after the
 settings review lands, and before the user guide is generated — the guide's "what players
 can change" chapter depends entirely on this answer.
+
+---
+
+## §42 — Depth-correct entity occlusion (walls hide mobs, items, gates)
+
+**Status:** designed, NOT built. Deferred deliberately from build 359. Kevin, 2026-08-05.
+
+Mobs, items, gates and devices render **on top of every wall**, whatever the elevations. Same
+root cause as the nine-build pit-death hunt: **terrain is one baked cache blitted with a single
+`drawImage`**, so everything drawn afterwards paints over all of it. Entities are depth-sorted
+among themselves (`drawKey = row * 1000 + level`) but never against terrain.
+
+### The design (option B, recommended)
+
+Blit the terrain cache in **horizontal row bands** instead of one rectangle, and emit entities
+between bands by the same depth key. Because a raised cube paints up-left, each band's source
+rect extends upward by `maxElev × elevOffset`; overlapping bands drawn in order then give
+correct occlusion for free.
+
+- Cost: ~50 `drawImage` calls per frame instead of 1 — negligible next to the per-cell passes.
+- Effort: about half a day including tests, contained to `_render` plus a **per-row
+  max-elevation table** computed alongside the cache.
+
+**The subtlety that decides whether this takes one build or three:** depth is `row + elevation`,
+but terrain bands are row-only, so a mob standing on a **tall wall** would be wrongly occluded
+by a **shorter** wall one row south. Fix by giving each band a depth of
+`row * 1000 + maxElevInRow` and merging bands and entities into one sorted list.
+
+Rejected: un-caching terrain and drawing per cell in depth order — correct but it reinstates
+the original performance disaster (112,000 cells at density 4 on a 100×70 map).
+
+**Why it was deferred:** it changes how *everything* layers, in both play and editor. That is
+the exact class of change that cost nine builds on the pit death, and it must not land
+untested hours before an unattended soak. Give it its own build and its own browser pass, and
+audit the **pipe climb-in** and **melee swing** `unit`-based offsets at density 4 in the same
+pass (see §41 note / build 355: `unit` is cell × density, not a cell).
+
+---
+
+## §43 — Gates that swing as solid objects (free rotation, off-grid)
+
+**Status:** parked at Kevin's suggestion, 2026-08-05.
+
+Today a gate is a **line of grid cells** snapped to 45°, and swinging re-derives which cells it
+occupies (`gateCells`). Kevin would like it to rotate **smoothly as one solid object** — open
+and closed — rather than stepping through cell sets.
+
+This is a genuine divergence from how the engine works, which is why it is parked rather than
+scheduled. Everything downstream of a gate assumes **cell occupancy**: collision (`solid` set),
+shadow casting, the editor hit-test, the redstone/obstruction check that stops a gate closing
+through a player.
+
+Sketch, if it is taken up:
+
+1. Keep the **authored** representation (hinge + length + angle) and add a continuous
+   `angleDeg` instead of a snapped one.
+2. Render as a rotated quad (`ctx.translate/rotate`), not stacked cell cubes — that part is
+   easy and is most of the visual win.
+3. **Collision is the real work.** Either (a) keep rasterising the swept line to cells each
+   frame at the continuous angle — cheap, and keeps every consumer working, with the panel
+   simply occupying a slightly different cell set as it turns; or (b) introduce a true
+   segment-vs-circle collision for the player and mobs, which is more correct and touches the
+   movement code that everything else depends on.
+4. (a) is the pragmatic path: continuous *visuals*, rasterised *collision*. It gets the look
+   Kevin wants without a physics divergence, and the cell set it rasterises is exactly what
+   shadows, the editor and the obstruction check already consume.
+
+**Recommendation:** do §42 first. §42 is the one players notice constantly; a smoothly swinging
+gate is a nice-to-have on top of it, and (a) becomes easier once bands/depth are sorted out.

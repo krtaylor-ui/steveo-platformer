@@ -64,6 +64,8 @@
       shadowDir:        'dr',       // fixed-shadow direction: dr/d/dl/r/l (down-right default)
       shadowDarkness:   0.32,       // fixed-shadow strength (0..1)
       moonShadowScale:  0.45,       // moonlit shadow strength relative to sunlit (0..1)
+      adaptiveQuality:  true,       // drop expensive passes to protect the frame rate
+      fpsCap:           60,         // hold a STEADY cap rather than swinging 8-to-60
       lightRange:       5,          // UNIVERSAL reach in blocks per unit of brightness
       lavaBrightness:   0.7,        // per-object light strength (0..1)
       glowstoneBrightness: 0.95,    // per-object light strength (0..1)
@@ -244,6 +246,8 @@
               ${sel('shadowDir', 'Fixed shadow falls', [['dr', 'Down-right'], ['d', 'Down'], ['dl', 'Down-left'], ['r', 'Right'], ['l', 'Left']])}
               ${range('shadowDarkness', 'Fixed shadow darkness', 0.1, 0.7, 0.05)}
               ${range('moonShadowScale', 'Moon shadow strength (vs sun)', 0, 1, 0.05)}
+              ${toggle('adaptiveQuality', 'Adaptive quality (protect frame rate)')}
+              ${sel('fpsCap', 'Frame-rate cap', [['60', '60 (uncapped)'], ['45', '45'], ['30', '30 (steadiest)']])}
               ${range('lightRange', 'Light reach per brightness (blocks)', 1, 12, 1)}
               ${range('lavaBrightness', 'Lava brightness', 0.1, 1, 0.05)}
               ${range('glowstoneBrightness', 'Glowstone brightness', 0.1, 1, 0.05)}
