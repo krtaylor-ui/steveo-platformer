@@ -66,5 +66,21 @@ ok(/#oh-rail-right \.btn,#oh-rail-right \.oh-fly,#oh-rail-right \.oh-droppad\{te
 ok(/#oh-rail-right \.hd \.cur\{flex-direction:row-reverse\}/.test(css), 'the current-value chip follows suit');
 ok(!/#oh-rail \.hd\{flex-direction:row-reverse\}/.test(css), 'the LEFT rail is untouched — it was already right');
 
+console.log('World-card titles get room, not just permission to wrap (build 362):');
+{
+  const css2 = fs.readFileSync(path.join(__dirname, '..', 'style.css'), 'utf8');
+  // Strip comments first: the rule carries prose explaining WHY it is not `word-break`,
+  // and an assertion that reads prose is testing documentation, not CSS.
+  const hdr = css2.slice(css2.indexOf('.world-card-header {'), css2.indexOf('/* Game-mode badge'))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  ok(/flex-wrap:\s*wrap/.test(hdr), 'the header wraps, so badges can drop to their own row');
+  ok(/flex:\s*1 1 100%/.test(hdr), 'the title claims a full row instead of competing with the badges');
+  ok(/overflow-wrap:\s*break-word/.test(hdr), 'break-word stays as the last resort for one long unbroken word');
+  ok(!/word-break:\s*break-word/.test(hdr), 'and the legacy alias that collapsed min-content width is still gone');
+  // The point of the fix: it must not depend on how long the words happen to be.
+  const hdrRaw = css2.slice(css2.indexOf('.world-card-header {'), css2.indexOf('/* Game-mode badge'));
+  ok(/DATA-DEPENDENT/.test(hdrRaw), 'the reason is recorded, since the first fix looked right and was not');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
