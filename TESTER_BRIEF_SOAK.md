@@ -286,6 +286,20 @@ worse, for the items that matter most:
 - Anything you truly cannot make durable: quote the temp path and the dev will copy that one
   file.
 
+**Capture loops are NOT free, and they invalidate the perf items.** Measured on this build:
+`toDataURL` per frame costs ~85ms/frame (dragging the HUD to fps 26, worst frame 1277ms); raw
+canvases ~23ms/frame (still 93 -> 73 fps). So **no capture loop may run during A3.4, A7.1, A7.2
+or Part B's baseline** — it manufactures the exact slowdown those items exist to measure.
+Capture for A1/A2, then stop capturing before touching anything performance-related.
+
+**Drive a whole timed sequence inside ONE tool call.** Tool-call latency (hundreds of ms) means
+a reactive recorder always misses a <300ms animation, and the player can die between calls.
+Walk, wait, capture and build the filmstrip in a single script with top-level await, so no
+call boundary can interleave.
+
+**Stale held keys.** Synthesised `keydown` without a matching `keyup` persists across sessions,
+so the player can walk off on their own in the next run. Clear `input.keys` between sessions.
+
 ## Don't report these
 
 Known-open, by decision — see `docs/open-items-after-348.md`:

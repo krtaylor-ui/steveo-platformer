@@ -113,3 +113,25 @@ Two lessons already applied, and worth applying again:
 Same shape as the rail bug (357): something written correctly for one context, silently wrong
 in another. An id-scoped style, or a sprite-size offset, is a latent bug the moment the same
 code runs somewhere else.
+
+## Raised during the build-361 Part A run (not defects, logged)
+
+**Burst pieces can draw over a pit rim — ambiguous BY DESIGN, not a bug.** Verified in code:
+`_burstParts` gives each piece `{x, y, vx, vy, sz, rot, vr}` and **no height or elevation** —
+build 297 made the top-down burst scatter outward and settle rather than fall, deliberately. So
+"a piece thrown upward should draw over the rim" has no representation in the data: a piece is
+always on the ground plane, and correctness reduces to cell depth. `_redrawOccluders` covers
+cells nearer the camera than the pit, so a piece over a rim block *behind* it is correctly on
+top, and pieces on the same depth diagonal are the residual case.
+
+*Improvement, if we want the ambiguity gone:* give each piece a small **decaying height**, so
+early frames legitimately fly over the rim and later frames settle behind it. That makes the
+occlusion test meaningful for pieces instead of arbitrary. Small; cosmetic; not urgent.
+
+**Stale held keys across sessions.** Synthesised `keydown` without `keyup` persists into the
+next session, so the player walks off unprompted. That is a test-harness artifact, but a
+defensive **input flush when a session starts** is cheap and would remove a class of confusing
+result — worth doing in the next build rather than mid-verification.
+
+**Deliberately not changed mid-run:** both of the above. Changing the build while it is being
+verified is how you end up unsure what was tested.
