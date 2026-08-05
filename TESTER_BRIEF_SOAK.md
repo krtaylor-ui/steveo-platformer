@@ -61,6 +61,45 @@ Two parts, deliberately separated because they answer different questions:
 
 Report **PASS / FAIL / BLOCKED**, one line of what you saw, screenshot when visual.
 
+## How to work: run to the end, don't ask permission
+
+**Do not stop between items to check in.** Work straight through Part A and report **once, at
+the end** (or at the three milestones below if it runs long). Nothing in this brief needs
+approval to proceed — a finding is a line in the report, not a reason to pause. A run that
+stops after each item costs more in round-trips than it does in testing.
+
+**Only stop for a genuine blocker**, meaning exactly one of:
+
+1. Something needs a **human hand** — a native dialog, an OS file picker, a login.
+2. A finding **changes what the rest of the run should test** (e.g. the build is the wrong
+   version, or a fixture is unusable).
+3. You would have to do something **destructive or irreversible** to continue.
+
+Anything else — an ambiguous result, a suspected defect, a workaround you'd like to use, a
+fixture you need to build — **just decide, do it, and record the decision in the report.** You
+have consistently made good calls on these; make them without waiting.
+
+**Optional milestones** if the run is long: after A1–A2, after A4–A6, after A9. One short
+status line each, then keep going without waiting for a reply.
+
+## If you are time-boxed, run in this order
+
+Highest value first, so a partial run still answers the questions that matter:
+
+1. **A5.1, A5.2** — the 2D stomp guard and shell direction. Core rules of a whole feature.
+2. **A6.1, A6.2** — Lock Physics enforced, Advanced sandbox-only. Player-visible behaviour
+   changes that ship to everyone; wrong here is worse than wrong anywhere else.
+3. **A9.1, A9.2, A9.3, A9.5, A9.6** — the import/export retests. These were **real defects you
+   found last round**, so they carry the highest prior of regressing.
+4. **A4.1, A4.4, A4.7, A4.8** — gate hinge solid, pipe emerge, lever select + Tx, Esc safety.
+   Quick, visual, independent.
+5. **A3.1–A3.5** — editor viewport and rails.
+6. **A1.5, A4.2, A4.6, A8.1** — lowest marginal value; A1 is already well covered.
+
+**Skip A7.1 and A7.2 on build 361.** The governor bug you found (it sampled our render duration
+rather than the frame interval, so it never reacted to zoom cost) is fixed in 362 — re-running
+them here only re-measures a known-broken governor.
+
 ## A1. Pit death (overhead) — the big one
 
 This took **nine builds** and five wrong diagnoses. The final cause: the sink offset was
