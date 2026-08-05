@@ -225,6 +225,10 @@
           this._lastTier = gov.tier; this._lastCap = gov.cap;
         }
         if (now < this._next) return;
+        // Skip a sample with no measured frame rate. The very first tick fires before any
+        // frame interval exists, so it recorded fps 0 and dragged min/avg down for the whole
+        // run. (QA A7.3, build 362.)
+        if (!stats || !(stats.fps > 0)) { this._next = now + Math.min(every, 1000); return; }
         this._next = now + every;
         if (this.samples.length >= cap) this.samples.shift();
         let heap = 0;

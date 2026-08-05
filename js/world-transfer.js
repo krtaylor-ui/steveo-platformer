@@ -65,6 +65,14 @@
       return { ok: false, error: 'World file has no usable world_data.' };
     }
     const overhead = isOverheadData(wd);
+    // Does this object actually LOOK like a world? unwrap() treats anything without a
+    // `world_data` key as a raw world, which meant an arbitrary JSON file was accepted,
+    // announced as "Imported: <filename>", and written into the world list under a name
+    // derived from its filename. A file has to carry a recognisable payload from one engine
+    // or the other. (QA A9, build 362.)
+    if (!overhead && !looksLikeSideScroll(wd)) {
+      return { ok: false, error: 'That JSON file is not a Steveo world — it has no map data for either engine.' };
+    }
     return {
       ok: true,
       worldData: wd,
@@ -74,6 +82,19 @@
       isOverhead: overhead,
       wrapped,
     };
+  }
+
+  // A side-scroll world is recognised by carrying SOME map payload. Deliberately broad: the
+  // side-scroll format has changed shape over the years and old exports must still import, so
+  // this rejects "not a world at all" rather than policing a schema.
+  function looksLikeSideScroll(wd) {
+    if (!wd || typeof wd !== 'object') return false;
+    if (Array.isArray(wd.blocks) || Array.isArray(wd.tiles) || Array.isArray(wd.grid)) return true;
+    if (wd.level && typeof wd.level === 'object') return true;
+    if (wd.mapSnapshot && typeof wd.mapSnapshot === 'object') return true;   // overhead-shaped but unflagged
+    // A world that was saved with settings + a size is still a world.
+    if ((wd.width || wd.worldWidth) && (wd.height || wd.worldHeight)) return true;
+    return false;
   }
 
   // Structural check for an OVERHEAD world before we hand it to the editor/runtime.
@@ -164,7 +185,7 @@
   }
 
   const WORLD_TRANSFER = {
-    WRAPPER_VERSION, wrap, unwrap, validateOverhead, rejectionMessage, isOverheadData,
+    WRAPPER_VERSION, wrap, unwrap, validateOverhead, rejectionMessage, isOverheadData, looksLikeSideScroll,
     nameFrom, safeName, filename, download, pickJsonFile, today,
   };
 

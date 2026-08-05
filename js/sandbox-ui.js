@@ -634,7 +634,17 @@ const SANDBOX = {
   // Triggered by the modal's Import button. Requires confirmation only when the
   // file's mode differs from the target (NRM).
   async confirmImport() {
-    if (!this.pendingFileImport) { this._importError('Choose a file first.'); return; }
+    if (!this.pendingFileImport) {
+      // Distinguish "no file chosen" from "the chosen file could not be read". Reporting
+      // "Choose a file first" while the filename is plainly visible in the picker is worse
+      // than useless — it sends the user looking for the wrong problem. (QA A9, build 362.)
+      const input = document.getElementById('world-file-input');
+      const chosen = input && input.files && input.files[0];
+      this._importError(chosen
+        ? 'Could not read “' + chosen.name + '”. It is not valid JSON, so there is nothing to import.'
+        : 'Choose a file first.');
+      return;
+    }
     const { fileData, fileMode, requestedMode, fileName } = this.pendingFileImport;
 
     if (fileMode !== requestedMode && !document.getElementById('confirm-mode-override').checked) {

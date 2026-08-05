@@ -58,6 +58,19 @@ ok(WT.unwrap(null).ok === false, 'refuses null');
 ok(WT.unwrap([1, 2, 3]).ok === false, 'refuses an array');
 ok(WT.unwrap({ world_data: 'nope' }).ok === false, 'refuses a wrapper whose world_data is not an object');
 
+// Build 362 (QA A9): an arbitrary JSON file used to be ACCEPTED as a raw world, announced as
+// "Imported: <filename>" and written into the world list under a name from its filename.
+console.log('A file has to actually be a world:');
+ok(WT.unwrap({ foo: 1, bar: [2, 3] }, 'notes.json').ok === false, 'a JSON file with no map data is refused');
+ok(/not a Steveo world/.test(WT.unwrap({ foo: 1 }, 'notes.json').error), 'and says so in those words');
+ok(WT.unwrap({ hello: 'world' }, 'x.json').ok === false, 'including one that merely mentions a world');
+// Every shape a real world can arrive in must still pass — old exports included.
+ok(WT.unwrap({ blocks: [] }, 'a.json').ok === true, 'a side-scroll world with blocks[] passes');
+ok(WT.unwrap({ level: {} }, 'b.json').ok === true, 'one with a level object passes');
+ok(WT.unwrap({ width: 40, height: 20 }, 'c.json').ok === true, 'one with only a size passes (old exports)');
+ok(WT.unwrap({ mapSnapshot: { gridW: 4 } }, 'd.json').ok === true, 'an overhead-shaped file with no viewMode flag passes');
+ok(WT.unwrap(fixture, 'e.json').ok === true, 'and the real overhead fixture still passes');
+
 console.log('filename():');
 ok(WT.filename('Overhead QA Test', '2026-08-03') === 'Overhead_QA_Test-2026-08-03.json', 'sanitises + dates the filename');
 ok(WT.filename('Starter · Platformer', '') === 'Starter_Platformer.json', 'strips punctuation, no date when none given');
