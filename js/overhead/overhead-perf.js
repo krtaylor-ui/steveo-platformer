@@ -198,11 +198,22 @@
       _next: 0, _lastTier: null, _lastCap: null,
 
       // Count real page errors, so "zero console errors" is measured, not remembered.
+      // Hook the page ONCE per page, not once per log. A new OverheadGame builds a new log,
+      // so re-entering Test repeatedly used to add a listener pair every time — an accumulation
+      // that also double-counted errors into whichever logs were still alive. The counter now
+      // lives on the window and every log reads from it. (QA F-A7.3.)
       hook() {
-        if (this._hooked || typeof window === 'undefined') return;
-        this._hooked = true;
-        window.addEventListener('error', () => { this.errors++; });
-        window.addEventListener('unhandledrejection', () => { this.errors++; });
+        if (typeof window === 'undefined') return;
+        if (!window.__ohErrCount) {
+          window.__ohErrCount = { n: 0 };
+          window.addEventListener('error', () => { window.__ohErrCount.n++; });
+          window.addEventListener('unhandledrejection', () => { window.__ohErrCount.n++; });
+        }
+        this._errBase = window.__ohErrCount.n;   // count errors since THIS log started
+      },
+      get errorCount() {
+        if (typeof window === 'undefined' || !window.__ohErrCount) return this.errors;
+        return Math.max(this.errors, window.__ohErrCount.n - (this._errBase || 0));
       },
 
       // Called each frame; does nothing but a clock compare until a sample is due.
@@ -223,7 +234,7 @@
           fps: stats ? Math.round(stats.fps) : 0,
           worst: stats ? Math.round(stats.worstMs) : 0,
           cells: stats ? stats.cells : 0,
-          heap, tier: gov ? gov.tier : 0, cap: gov ? gov.cap : 60, err: this.errors,
+          heap, tier: gov ? gov.tier : 0, cap: gov ? gov.cap : 60, err: this.errorCount,
         });
       },
 
@@ -240,13 +251,17 @@
         const third = Math.max(1, Math.floor(n / 3));
         const heapEarly = avg(heaps.slice(0, third)), heapLate = avg(heaps.slice(-third));
         const drift = heapEarly ? Math.round((heapLate - heapEarly) / heapEarly * 100) : 0;
+        // A percentage alone is far too eager on a small heap: +40% of 20MB is 8MB, which a
+        // handful of offscreen canvases produces. Require BOTH a relative and an absolute
+        // rise before calling it a leak. (QA F-A7.3.)
+        const leak = drift > 25 && (heapLate - heapEarly) >= 15;
         return [
           'SOAK ' + Math.round(last.s / 60) + ' min, ' + n + ' samples',
           'fps      first ' + first.fps + '  last ' + last.fps + '  avg ' + avg(fps) + '  min ' + Math.min.apply(null, fps),
           'worst frame  ' + worst + 'ms',
           'JS heap  early ' + heapEarly + 'MB  late ' + heapLate + 'MB  drift ' + (drift >= 0 ? '+' : '') + drift + '%'
-            + (drift > 25 ? '  <-- INVESTIGATE: looks like a leak' : ''),
-          'errors   ' + this.errors,
+            + (leak ? '  <-- INVESTIGATE: looks like a leak' : (drift > 25 ? '  (rise is small in absolute terms — likely noise)' : '')),
+          'errors   ' + this.errorCount,
           'quality  tier ' + last.tier + ' cap ' + last.cap + 'fps  (' + this.events.length + ' changes)',
           this.events.length ? 'changes: ' + this.events.slice(-8).map((e) => e.at + 's ' + e.what).join(' | ') : 'changes: none',
         ].join('\n');

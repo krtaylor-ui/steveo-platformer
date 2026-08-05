@@ -1501,7 +1501,7 @@
           else if (d.kind === 'dust') OVERHEAD.drawDust(ctx, tl.x, tl.y, cs, false);
           else if (d.kind === 'lamp') OVERHEAD.drawLamp(ctx, sp.x, sp.y, u * 0.8, false);
           else if (d.kind === 'plate' || d.kind === 'weight') OVERHEAD.drawPlate(ctx, sp.x, sp.y, u * 0.7, false, d.kind === 'weight');
-          else if (d.kind === 'piston') OVERHEAD.drawPiston(ctx, tl.x, tl.y, cs, false);
+          else if (d.kind === 'piston') OVERHEAD.drawPiston(ctx, tl.x, tl.y, cs, false, d.dir ? { dir: d.dir } : null);   // face the way it fires — the BUILDER is who needs this (QA A4.3)
           else if (d.kind === 'and' || d.kind === 'not' || d.kind === 'nor') OVERHEAD.drawGate(ctx, tl.x, tl.y, cs, d.kind, false, d.inputs, d.outputs); } }
       if (this.world.goal) { const gc = (typeof GOAL_COLORS !== 'undefined' && GOAL_COLORS[this.world.goal.color || 0]) || { hex: '#ffd700' }; const sp = S((this.world.goal.col + 1) * g.cell, (this.world.goal.row + 1) * g.cell); ctx.fillStyle = gc.hex; ctx.font = `${(cs * 1.8) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.6); }
       // Hand-selected mob/item highlight (moveable — click a new spot to move it).
