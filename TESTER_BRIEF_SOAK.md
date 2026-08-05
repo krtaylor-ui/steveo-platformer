@@ -19,8 +19,23 @@ Two parts, deliberately separated because they answer different questions:
    new service worker (`steveo-shell-v361`) needs an activation cycle, and twice is normal.
    **If it still reads lower after three refreshes, stop and report that** — a stale shell
    would make every result below meaningless.
-3. Use a **density-4** overhead world (e.g. "Test 2", 100×70 @ d4). Density matters: several
-   bugs fixed this round were invisible at density 1 and obvious at 4.
+3. **You will have to build the test world yourself.** localStorage is **per origin**, so
+   every fixture built against `localhost:8000` is invisible on the deployed site, and no
+   login is needed or wanted. Create a **Huge 100×70 @ density 4** overhead world. Density
+   matters: several bugs fixed this round were invisible at density 1 and obvious at 4.
+
+   **What to place in it, so Part A is actually coverable:**
+   - a **wide pit (3+ cells across)** with **raised ground on its south side** — A1.1–A1.4 need
+     you to walk in from below with a cliff behind you, and need blocks that can occlude;
+   - a **single-cell pit** somewhere separate — A1.5 compares the two;
+   - **lava or a mob** — A1.4 needs a NON-pit death to confirm its burst still draws on top;
+   - a **gate**, a **bridge**, an **east-facing piston** and a **lever** — A4.1–A4.3, A4.7;
+   - **two linked pipes** — A4.4;
+   - **Day/Night ON** with shadows — A4.6, and Part B wants those paths cycling.
+
+   For the **legacy** checks (A4.5 migration, A8.1 inert-settings-now-apply) import a world
+   saved before this batch — a file with **no `schemaVersion`** and a device wired by the old
+   shared `channel` rather than `rxIds` is exactly the case those items describe.
 4. Open DevTools → Console **before** you start, and leave it open so errors accumulate.
 
 ### Traps that produced wrong results last time
@@ -206,7 +221,7 @@ Unattended, several hours. Start it when Part A is done.
 
 ## Procedure
 
-1. Deployed URL, badge confirmed **358**, DevTools Console open.
+1. Deployed URL, badge confirmed **361**, DevTools Console open.
 2. Enter the **density-4** overhead world in **Test** mode (God off).
 3. Debug HUD on (`` ` ``) and **⏱ Perf** ticked, so fps / worst-frame / cells are on screen.
 4. Turn **Day/Night ON** with a short cycle, so the atmosphere, shadow and lamp paths keep
@@ -237,7 +252,7 @@ Unattended, several hours. Start it when Part A is done.
 | Input still responds | yes | frozen = hang, capture the stack |
 | Day/night phase | still cycling sanely | stuck or jumping |
 | Redstone still live | lever still drives its device | dead = state drift |
-| Version badge | still 358 | changed = SW swapped mid-run |
+| Version badge | still 361 | changed = SW swapped mid-run |
 
 **Report `OH_SOAK.dump()` verbatim** at the end, plus elapsed hours and roughly what else was
 running on the machine. A soak with no numbers isn't a result.
@@ -255,10 +270,21 @@ confirm quality is restored, zoom out and confirm it drops again and settles.
 
 Table of `Item | PASS / FAIL / BLOCKED | note`, screenshots inline, console errors listed.
 
-**Screenshots are worth more than description** — a single screenshot resolved the nine-build
-pit bug after five wrong diagnoses. Save to `reports/img/` and name them by item (`A1.1_below.png`).
-For anything positional, a shot **mid-animation** beats one after it settles; use the
-quarter-speed HUD trick.
+**Evidence is worth more than description** — a single screenshot resolved the nine-build pit
+bug after five wrong diagnoses. Save to `reports/img/` named by item (`A1.1_below.png`) where
+you can.
+
+If the sandbox blocks writing binaries into the repo, these substitutes are **better**, not
+worse, for the items that matter most:
+
+- **Canvas items (A1 pit death):** capture frames in-page as base64 and write them out as an
+  **HTML filmstrip**. Several mid-animation frames beat one settled screenshot for a positional
+  bug — pair it with the quarter-speed HUD (A1.6).
+- **Styling items (A2.1 "byte-identical" rails):** **diff `getComputedStyle`** between the same
+  palette in the left and right rails and list any differing properties. That tests the actual
+  fix (rules were scoped to the left rail's id) far more directly than comparing two images.
+- Anything you truly cannot make durable: quote the temp path and the dev will copy that one
+  file.
 
 ## Don't report these
 
