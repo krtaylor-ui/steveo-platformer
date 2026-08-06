@@ -49,5 +49,19 @@ console.log('Incremental terrain-cache patch:');
   ok(!t3, 'patching with hide-above-elev does not throw');
 }
 
+console.log('Cache patch snaps to whole pixels (build 362):');
+{
+  const src2 = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'overhead', 'overhead-editor.js'), 'utf8');
+  const fn = src2.slice(src2.indexOf('_paintTerrainRegion(cx, orig'), src2.indexOf('_drawEditRegion(ctx, S, cs'));
+  ok(/const rx = Math\.floor\(cr0\.x - up\), ry = Math\.floor\(cr0\.y - up\)/.test(fn),
+     'the cleared region starts on a whole pixel');
+  ok(/rw = Math\.ceil\(cr1\.x \+ 2\) - rx, rh = Math\.ceil\(cr1\.y \+ 2\) - ry/.test(fn),
+     'and ends on one, so repeated patches land on identical boundaries');
+  ok(/offPerLevel = unit \? \(qf \/ unit\) : 0\.22/.test(fn), 'reach follows the real elevation offset');
+  ok(/Math\.max\(0\.22, offPerLevel\)/.test(fn), 'and never shrinks below the old assumption');
+  ok(!/reach = Math\.ceil\(maxE \* 0\.22\) \+ 3;/.test(fn), 'the hardcoded 0.22 is gone (elevOffset goes to 0.5)');
+  ok(/id="oh-clean"/.test(src2) && /Map redrawn/.test(src2), 'a Clean button forces a full rebuild as an escape hatch');
+}
+
 console.log(`\noverhead editor perf: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

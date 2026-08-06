@@ -209,10 +209,23 @@
     // unchanged, so any clip-cut at the boundary lands on identical pixels — no stale tops/sides
     // (the "black shadow" left when lowering a tall block). Shared by the live overlay + cache patch.
     _paintTerrainRegion(cx, orig, unit, qf, maxE, box, opts) {
-      const m = this.world.mapSnapshot, reach = Math.ceil(maxE * 0.22) + 3;
+      // `reach` must follow the ACTUAL elevation offset, which is a world setting up to 0.5 —
+      // it was hardcoded to 0.22, so a tall map at the maximum offset had no margin at all.
+      const m = this.world.mapSnapshot, offPerLevel = unit ? (qf / unit) : 0.22;
+      const reach = Math.ceil(maxE * Math.max(0.22, offPerLevel)) + 3;
       const c0 = Math.max(0, box.c0 - reach), r0 = Math.max(0, box.r0 - reach), c1 = Math.min(m.gridW - 1, box.c1 + reach), r1 = Math.min(m.gridH - 1, box.r1 + reach);
       const up = maxE * qf + unit, cr0 = orig(c0, r0), cr1 = orig(c1 + 1, r1 + 1);
-      const rx = cr0.x - up, ry = cr0.y - up, rw = (cr1.x - cr0.x) + up + 2, rh = (cr1.y - cr0.y) + up + 2;
+      // SNAP the cleared/clipped rect to whole pixels.
+      //
+      // These bounds are fractional (`up` is maxE * elevOffset * cell, and the cell size itself
+      // is fractional at some densities). clearRect on a fractional rect clears PARTIAL pixels,
+      // leaving a one-pixel halo of stale colour at the boundary; the redraw then antialiases
+      // over it. Every edit repeats that on the persistent cache, so faint square outlines
+      // accumulate around everywhere you have edited and never go away. Snapping outward means
+      // each patch lands on identical pixel boundaries and fully clears what it redraws.
+      // (Kevin's "square pattern that compounds", build 362.)
+      const rx = Math.floor(cr0.x - up), ry = Math.floor(cr0.y - up);
+      const rw = Math.ceil(cr1.x + 2) - rx, rh = Math.ceil(cr1.y + 2) - ry;
       cx.save();
       cx.beginPath(); cx.rect(rx, ry, rw, rh); cx.clip();
       if (opts.clearStyle) { cx.fillStyle = opts.clearStyle; cx.fillRect(rx, ry, rw, rh); } else cx.clearRect(rx, ry, rw, rh);
@@ -356,6 +369,7 @@
         <button id="oh-save" class="primary">💾 Save</button>
         <button id="oh-export" title="Download this world as a .json file (exports what's on screen, saved or not)">⬇ Export</button>
         <button id="oh-import" title="Load a world .json file into the editor (replaces what's open)">⬆ Import</button>
+        <button id="oh-clean" title="Redraw the whole map from scratch — clears any leftover edit artefacts">🧹 Clean</button>
         <button id="oh-exit">✕ Exit</button>
         <span style="margin-left:12px;display:flex;gap:10px;align-items:center;font-size:12px">
           <label><input type="checkbox" id="oh-v-buildings" ${this.view.buildings ? 'checked' : ''}> Buildings</label>
@@ -454,6 +468,10 @@
       g('oh-zin').onclick = () => OH_GRID.zoomBy(this.grid, 1.15); g('oh-zout').onclick = () => OH_GRID.zoomBy(this.grid, 0.87);
       g('oh-test').onclick = () => this._test(); g('oh-save').onclick = () => this._save(); g('oh-exit').onclick = () => this.close();
       g('oh-export').onclick = () => this._export(); g('oh-import').onclick = () => this._import();
+      // Full terrain rebuild on demand. The incremental patch should leave nothing behind now
+      // that its region snaps to whole pixels, but a one-click way back to a clean picture is
+      // worth having regardless — and it costs nothing when unused. (Kevin, build 362.)
+      g('oh-clean').onclick = () => { this._terrRev = (this._terrRev || 0) + 1; this._editBox = null; this._flash('Map redrawn'); };
       g('oh-settings').onclick = () => { if (typeof OH_WORLD_SETTINGS !== 'undefined') OH_WORLD_SETTINGS.open(this.world, () => { this._renderBar(); this._pushHistory('settings change'); }); };
       ['buildings', 'mobs', 'items', 'elev', 'hideAbove', 'focusLayer', 'airGhosts', 'perf'].forEach((k) => { const el = g('oh-v-' + k); if (el) el.onchange = () => { this.view[k] = el.checked; }; });
       { const zr = g('oh-zoom'); if (zr) zr.oninput = () => OH_GRID.setZoom(this.grid, +zr.value); }
