@@ -13,7 +13,7 @@
       moveSpeed:        0.11,
       climbLevels:      0,          // how many elevation levels a WALK can step up (0 = none; use ramps/ladders)
       playerHeight:     1,          // player height in levels — a block this-many-or-fewer levels above BLOCKS; taller = an overhang you pass under
-      elevOffset:       0.22,       // 2.5D vertical offset per elevation level (fraction of a cell up-left); higher = taller-looking stacks. Capped at 0.5
+      elevOffset:       0.5,        // 2.5D vertical offset per elevation level (fraction of a cell up-left); higher = taller-looking stacks. 0.5 = the maximum. (Phase 2: default raised 0.22→0.5 per Kevin; existing worlds inherit via resolve unless they saved their own.)
       lockZoom:         false,      // lock the camera zoom in play (creators who tuned a specific zoom can prevent the player changing it)
       hideFromExport:   false,      // §40.1 — hide the Export buttons so others can't download a copy (owner can always turn it off + still export)
       // Jump (impression-of-height): small float + a scale-up.
@@ -72,8 +72,8 @@
       glowstoneBrightness: 0.95,    // per-object light strength (0..1)
       // Safety controls (falling / pits).
       blockCliffFall:   true,       // stop accidental walks off high platforms
-      maxStepDown:      1,          // levels a walk may drop (0 = none; further needs a ramp/bridge)
-      pitMode:          'deadly',   // 'deadly' (fall in → insta-death) | 'block' (impassable, even in GOD)
+      maxStepDown:      2,          // levels a walk may drop (0 = none; further needs a ramp/bridge). (Phase 2: default raised 1→2 per Kevin.)
+      pitMode:          'block',    // 'block' (impassable obstacle — the DEFAULT: pits are walls, not deaths) | 'deadly' (fall in → insta-death). (Phase 2: default flipped deadly→block per Kevin.)
       lavaMode:         'damage',   // 'damage' (hurts continuously while touching) | 'death' (insta-kill on touch)
       lavaDamage:       4,          // damage per hit in 'damage' mode (hit is gated by i-frames)
       glassShatter:     true,       // glass breaks (into falling shards) when hit by melee/ranged; always minable in Normal
@@ -154,8 +154,98 @@
   const OH_SETTINGS = { defaults, resolve, migrate, SCHEMA };
 
   // ── Editor overlay (its own menu) ───────────────────────────────────────────
+  // Declarative schema for the overhead World Settings panel (build 370). Same shape as
+  // world-settings-ui.js: { key, group, type, opts/min/max/step, label, advanced, hint }.
+  // Converting the hand-written HTML to a schema is what gives the panel an Advanced tier +
+  // help text, and makes the future user-guide generatable from data rather than by hand.
+  //
+  // Tier = Kevin's classification (Phase 2 brief). Named rows are pinned basic/advanced here;
+  // rows he did not name keep their prior tier, which was "always shown" = basic. `advanced`
+  // rows only render when the designer turns Advanced on (this panel is editor-only, so the
+  // sandbox/designer context is implicit — a player never opens it).
+  const R = (key, group, min, max, step, label, advanced, hint) => ({ key, group, type: 'range', min, max, step, label, advanced: !!advanced, hint });
+  const SEL = (key, group, opts, label, advanced, hint) => ({ key, group, type: 'sel', opts, label, advanced: !!advanced, hint });
+  const TOG = (key, group, label, advanced, hint) => ({ key, group, type: 'toggle', label, advanced: !!advanced, hint });
+  const G_MOVE = 'Movement & Elevation', G_WEP = 'Weapons', G_VIEW = 'View & Controls',
+        G_ATM = 'Atmosphere — Day / Night', G_THREAT = 'Threats', G_LOCK = 'Designer Locks', G_ANIM = 'Interaction animations';
+  const SETTINGS_SCHEMA = [
+    // ── Movement & Elevation ── (doubleJump/doubleJumpStyle moved ABOVE doubleJumpClear so
+    //    the switch precedes the knob that depends on it.)
+    R('moveSpeed', G_MOVE, 0.04, 0.28, 0.01, 'Player speed (× cell/frame)', false, 'how fast a walk moves — the core movement feel'),
+    SEL('climbLevels', G_MOVE, [['0', 'None (use ramps/ladders)'], ['1', '1 level'], ['2', '2 levels'], ['99', 'Unlimited']], 'Levels a walk can climb', false, 'how many elevation levels a plain walk can step straight up'),
+    SEL('playerHeight', G_MOVE, [['1', '1 (a level = full height)'], ['2', '2 (a level = ½ height)'], ['3', '3 (a level = ⅓ height)'], ['4', '4']], 'Player height (levels — scales elevation)', true, 'taller players pass UNDER lower overhangs; also scales how tall a level looks'),
+    R('elevOffset', G_MOVE, 0.1, 0.5, 0.02, '3D height offset per level (taller-looking stacks)', true, 'the 2.5D lift per elevation level; higher = taller-looking stacks (0.5 = max)'),
+    R('jumpFloat', G_MOVE, 0, 1, 0.05, 'Jump float (up)', true, 'how much a jump floats upward on screen'),
+    R('jumpScale', G_MOVE, 0, 0.5, 0.02, 'Jump scale (grow)', true, 'how much the sprite grows at the top of a jump (impression of height)'),
+    SEL('jumpClear', G_MOVE, [['0', '0 (no vault)'], ['1', '1 block'], ['2', '2 blocks'], ['3', '3 blocks']], 'Blocks a jump can clear', false, 'wall height a single jump can vault/mount'),
+    TOG('doubleJump', G_MOVE, 'Double jump', false, 'allow a mid-air second jump'),
+    SEL('doubleJumpStyle', G_MOVE, [['somersault', 'Somersault (flip)'], ['spin', 'Spin']], 'Double-jump style', false, 'the animation the second jump plays'),
+    SEL('doubleJumpClear', G_MOVE, [['0', '0'], ['1', '+1 block'], ['2', '+2 blocks']], 'Extra blocks the double jump adds', false, 'extra vault height the double jump adds on top of Blocks a jump can clear'),
+    TOG('sprint', G_MOVE, 'Sprint (hold Shift)', false, 'let the player hold Shift to run'),
+    R('sprintMultiplier', G_MOVE, 1.1, 2.5, 0.1, 'Sprint speed ×', true, 'how much faster sprinting is than walking'),
+    SEL('dodgeAttacks', G_MOVE, [['none', 'No'], ['single', 'Single jump'], ['double', 'Double jump only']], 'Jump to dodge attacks', false, 'a jump can dodge incoming ranged shots'),
+    SEL('dodgeMobs', G_MOVE, [['none', 'No'], ['single', 'Single jump'], ['double', 'Double jump only']], 'Jump to dodge mobs', false, 'a jump can dodge mob body-contact'),
+    // ── Weapons ── (entire group Advanced.)
+    R('crossbowSpeed', G_WEP, 4, 24, 1, 'Crossbow bolt speed', true),
+    R('tridentSpeed', G_WEP, 4, 24, 1, 'Trident throw speed', true),
+    R('tridentReturnSpeed', G_WEP, 4, 26, 1, 'Trident return speed', true),
+    R('boomerangSpeed', G_WEP, 4, 24, 1, 'Boomerang speed', true),
+    R('boomerangRange', G_WEP, 120, 600, 20, 'Boomerang range (px)', true),
+    R('boomerangWidth', G_WEP, 0.15, 0.7, 0.03, 'Boomerang arc width', true),
+    R('meleeReach', G_WEP, 1, 4, 0.2, 'Melee reach (× cell)', true, 'melee cone reach in player-blocks (density-independent)'),
+    R('meleeArc', G_WEP, 20, 160, 5, 'Melee arc (degrees)', true),
+    SEL('attackBlockHeight', G_WEP, [['1', '1 level'], ['2', '2 levels'], ['3', '3 levels'], ['99', 'Never blocked']], 'Wall height that blocks attacks', true, 'a wall this many levels above the attacker blocks the shot (attacking DOWN is always allowed)'),
+    // ── View & Controls ──
+    SEL('controlScheme', G_VIEW, [['free-aim', 'Free-Aim (mouse)'], ['move-to-aim', 'Move-to-Aim'], ['twin-stick', 'Twin-Stick']], 'Control scheme', false),
+    SEL('angleLockDeg', G_VIEW, [['0', 'Smooth'], ['45', '8-way (45°)'], ['90', '4-way (90°)']], 'Aim lock', false),
+    R('masterZoom', G_VIEW, 0.4, 2, 0.1, 'Default zoom', false, 'starting camera zoom (players can change it unless Lock zoom is on)'),
+    TOG('lockZoom', G_VIEW, 'Lock zoom in play (players cannot change it)', false),
+    TOG('showHiddenIndicator', G_VIEW, 'Show a ring when hidden under an overhang', false),
+    TOG('revealPlayer', G_VIEW, 'Always show player (reveal window under canopy)', false),
+    R('revealRadius', G_VIEW, 2, 10, 1, 'Reveal-window radius (blocks)', false),
+    // ── Atmosphere — Day / Night ──
+    TOG('dayNight', G_ATM, 'Enable day / night cycle', false),
+    R('dayLengthSec', G_ATM, 20, 600, 10, 'Full-cycle length (seconds)', false),
+    SEL('dayStart', G_ATM, [['0', 'Midnight'], ['0.25', 'Dawn'], ['0.5', 'Noon'], ['0.75', 'Dusk']], 'Start time of day', true),
+    R('nightDarkness', G_ATM, 0.2, 0.95, 0.05, 'Night darkness (→ near-black)', false),
+    TOG('showSunMoon', G_ATM, 'Show a faint sun / moon', false),
+    SEL('sunMoonShape', G_ATM, [['circle', 'Circle'], ['square', 'Square']], 'Sun / moon shape', false),
+    TOG('shadows', G_ATM, 'Cast shadows from raised terrain', false),
+    SEL('shadowStyle', G_ATM, [['live', 'Live (follows sun/moon)'], ['fixed', 'Fixed (baked once — cheaper)']], 'Shadow style', true, 'Live shadows track the sun/moon (prettier, costlier); Fixed bakes once and is cheaper'),
+    SEL('shadowDir', G_ATM, [['dr', 'Down-right'], ['d', 'Down'], ['dl', 'Down-left'], ['r', 'Right'], ['l', 'Left']], 'Fixed shadow falls', true),
+    R('shadowDarkness', G_ATM, 0.1, 0.7, 0.05, 'Fixed shadow darkness', false),
+    R('moonShadowScale', G_ATM, 0, 1, 0.05, 'Moon shadow strength (vs sun)', false),
+    TOG('adaptiveQuality', G_ATM, 'Adaptive quality (protect frame rate)', false),
+    SEL('fpsCap', G_ATM, [['60', '60 (uncapped)'], ['45', '45'], ['30', '30 (steadiest)']], 'Frame-rate cap', false),
+    R('lightRange', G_ATM, 1, 12, 1, 'Light reach per brightness (blocks)', false),
+    R('lavaBrightness', G_ATM, 0.1, 1, 0.05, 'Lava brightness', false),
+    R('glowstoneBrightness', G_ATM, 0.1, 1, 0.05, 'Glowstone brightness', false),
+    // ── Threats (was "Safety — Falling & Pits"; mobDetectBlocks moved in from Mobs) ──
+    TOG('blockCliffFall', G_THREAT, 'Stop players walking off cliffs', false, 'stop accidental walks off a high edge'),
+    SEL('maxStepDown', G_THREAT, [['0', '0 (none)'], ['1', '1 level'], ['2', '2 levels'], ['99', 'Any (no guard)']], 'Max walk-down without a ramp/bridge', true, 'how far a walk may drop without a ramp/bridge'),
+    SEL('pitMode', G_THREAT, [['deadly', 'Deadly (fall in → death)'], ['block', 'Solid obstacle (impassable)']], 'Pit blocks', true, 'default is a solid obstacle — pits are walls, not instant death'),
+    SEL('lavaMode', G_THREAT, [['damage', 'Damage (hurts while touching)'], ['death', 'Death (insta-kill on touch)']], 'Lava', true),
+    R('lavaDamage', G_THREAT, 1, 20, 1, 'Lava damage per hit', true),
+    TOG('glassShatter', G_THREAT, 'Glass can be shattered (melee / ranged break it)', true),
+    R('mobDetectBlocks', G_THREAT, 1, 30, 1, 'Mob detection range (blocks)', true, 'how far a mob can notice the player'),
+    SEL('redstoneVisibility', G_THREAT, [['always', 'Always shown'], ['active', 'Reveal when active'], ['hidden', 'Hidden (sources still show)']], 'Redstone wiring in play', false),
+    TOG('bridgeGuardrails', G_THREAT, 'Bridge guardrails (off = can fall off bridges)', false),
+    SEL('drawbridgeStyle', G_THREAT, [['vanishing', 'Vanishing (appears/disappears)'], ['animated', 'Animated (raises ~80°)']], 'Drawbridge style', false),
+    // ── Designer Locks ──
+    TOG('hideFromExport', G_LOCK, 'Hide from export (others can’t download a copy)', false, 'ON hides the Export buttons so others can’t grab a copy; you can always turn it off and still export your own world'),
+    // ── Interaction animations ──
+    TOG('pipeClimbAnim', G_ANIM, 'Pipe climb-in (pull-up) — off = instant', false),
+    TOG('portalStepAnim', G_ANIM, 'Portal step-through (spin-warp) — off = instant', false),
+    TOG('leverReachAnim', G_ANIM, 'Reach out to flip levers / use locks', false),
+    R('interactionZoom', G_ANIM, 1, 2, 0.05, 'Interaction zoom (overrides game zoom)', true),
+    R('interactionSpeed', G_ANIM, 0.5, 2, 0.1, 'Interaction animation speed', true),
+  ];
+  // Group render order (empty groups auto-hide, so the removed "Mobs" group just vanishes).
+  const GROUP_ORDER = [G_MOVE, G_WEP, G_VIEW, G_ATM, G_THREAT, G_LOCK, G_ANIM];
+
   const OH_WORLD_SETTINGS = {
-    _world: null, _onClose: null,
+    _world: null, _onClose: null, _advanced: false,
+    SETTINGS_SCHEMA, GROUP_ORDER,
     isOpen() { const o = document.getElementById('ohws-overlay'); return !!o && o.style.display === 'flex'; },
 
     open(world, onClose) {
@@ -175,6 +265,8 @@
         .ohws-panel{background:#141a26;border:1px solid #2c3648;border-radius:14px;padding:0;max-width:560px;width:94%;max-height:90vh;display:flex;flex-direction:column;color:#e8eef7;font:14px sans-serif}
         .ohws-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #2c3648}
         .ohws-head h2{margin:0;font-size:19px} .ohws-close{background:none;border:none;color:#9fb0cc;font-size:20px;cursor:pointer}
+        .ohws-adv{display:flex;align-items:center;gap:6px;font-size:12px;color:#9fb0cc;cursor:pointer} .ohws-adv input{accent-color:#4f86d8}
+        .ohws-row label[title]{cursor:help}
         .ohws-body{padding:8px 20px 20px;overflow:auto}
         .ohws-grp{margin-top:16px} .ohws-grp h3{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#6ea0e0;margin:0 0 6px}
         .ohws-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #1e2636}
@@ -189,104 +281,39 @@
     _render() {
       const ov = document.getElementById('ohws-overlay'); if (!ov || !this._world) return;
       const S = this._world.settings;
-      const range = (key, label, min, max, step) => `<div class="ohws-row"><label>${label}</label><input type="range" data-k="${key}" min="${min}" max="${max}" step="${step}" value="${S[key]}"><span class="val" id="ohws-v-${key}">${S[key]}</span></div>`;
-      const sel = (key, label, opts) => `<div class="ohws-row"><label>${label}</label><select data-k="${key}">${opts.map((o) => `<option value="${o[0]}" ${String(S[key]) === String(o[0]) ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div>`;
-      const toggle = (key, label) => `<div class="ohws-row"><label>${label}</label><input type="checkbox" data-k="${key}" ${S[key] ? 'checked' : ''}></div>`;
+      const esc = (x) => String(x).replace(/"/g, '&quot;');
+      const row = (f) => {
+        const t = f.hint ? ` title="${esc(f.hint)}"` : '';
+        if (f.type === 'range') return `<div class="ohws-row"><label${t}>${f.label}</label><input type="range" data-k="${f.key}" min="${f.min}" max="${f.max}" step="${f.step}" value="${S[f.key]}"><span class="val" id="ohws-v-${f.key}">${S[f.key]}</span></div>`;
+        if (f.type === 'sel') return `<div class="ohws-row"><label${t}>${f.label}</label><select data-k="${f.key}">${f.opts.map((o) => `<option value="${o[0]}" ${String(S[f.key]) === String(o[0]) ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></div>`;
+        return `<div class="ohws-row"><label${t}>${f.label}</label><input type="checkbox" data-k="${f.key}" ${S[f.key] ? 'checked' : ''}></div>`;
+      };
+      let body = '';
+      for (const g of GROUP_ORDER) {
+        const fields = SETTINGS_SCHEMA.filter((f) => f.group === g && this._visible(f));
+        if (!fields.length) continue;                                  // a group with no visible rows hides
+        body += `<div class="ohws-grp"><h3>${g}</h3>${fields.map(row).join('')}</div>`;
+      }
+      const advChk = `<label class="ohws-adv" title="Show advanced / less-used designer settings"><input type="checkbox" id="ohws-adv" ${this._advanced ? 'checked' : ''}> Advanced</label>`;
       ov.innerHTML = `
         <div class="ohws-panel" role="dialog" aria-label="Overhead World Settings">
-          <div class="ohws-head"><h2>🗺 Overhead World Settings</h2><button class="ohws-close" id="ohws-x">✕</button></div>
-          <div class="ohws-body">
-            <div class="ohws-grp"><h3>Movement &amp; Elevation</h3>
-              ${range('moveSpeed', 'Player speed (× cell/frame)', 0.04, 0.28, 0.01)}
-              ${sel('climbLevels', 'Levels a walk can climb', [['0', 'None (use ramps/ladders)'], ['1', '1 level'], ['2', '2 levels'], ['99', 'Unlimited']])}
-              ${sel('playerHeight', 'Player height (levels — scales elevation)', [['1', '1 (a level = full height)'], ['2', '2 (a level = ½ height)'], ['3', '3 (a level = ⅓ height)'], ['4', '4']])}
-              ${range('elevOffset', '3D height offset per level (taller-looking stacks)', 0.1, 0.5, 0.02)}
-              ${range('jumpFloat', 'Jump float (up)', 0, 1, 0.05)}
-              ${range('jumpScale', 'Jump scale (grow)', 0, 0.5, 0.02)}
-              ${sel('jumpClear', 'Blocks a jump can clear', [['0', '0 (no vault)'], ['1', '1 block'], ['2', '2 blocks'], ['3', '3 blocks']])}
-              ${sel('doubleJumpClear', 'Extra blocks the double jump adds', [['0', '0'], ['1', '+1 block'], ['2', '+2 blocks']])}
-              ${toggle('sprint', 'Sprint (hold Shift)')}
-              ${range('sprintMultiplier', 'Sprint speed ×', 1.1, 2.5, 0.1)}
-              ${sel('dodgeAttacks', 'Jump to dodge attacks', [['none', 'No'], ['single', 'Single jump'], ['double', 'Double jump only']])}
-              ${sel('dodgeMobs', 'Jump to dodge mobs', [['none', 'No'], ['single', 'Single jump'], ['double', 'Double jump only']])}
-              ${toggle('doubleJump', 'Double jump')}
-              ${sel('doubleJumpStyle', 'Double-jump style', [['somersault', 'Somersault (flip)'], ['spin', 'Spin']])}
-            </div>
-            <div class="ohws-grp"><h3>Weapons</h3>
-              ${range('crossbowSpeed', 'Crossbow bolt speed', 4, 24, 1)}
-              ${range('tridentSpeed', 'Trident throw speed', 4, 24, 1)}
-              ${range('tridentReturnSpeed', 'Trident return speed', 4, 26, 1)}
-              ${range('boomerangSpeed', 'Boomerang speed', 4, 24, 1)}
-              ${range('boomerangRange', 'Boomerang range (px)', 120, 600, 20)}
-              ${range('boomerangWidth', 'Boomerang arc width', 0.15, 0.7, 0.03)}
-              ${range('meleeReach', 'Melee reach (× cell)', 1, 4, 0.2)}
-              ${range('meleeArc', 'Melee arc (degrees)', 20, 160, 5)}
-              ${sel('attackBlockHeight', 'Wall height that blocks attacks', [['1', '1 level'], ['2', '2 levels'], ['3', '3 levels'], ['99', 'Never blocked']])}
-            </div>
-            <div class="ohws-grp"><h3>Mobs</h3>
-              ${range('mobDetectBlocks', 'Detection range (blocks)', 1, 30, 1)}
-            </div>
-            <div class="ohws-grp"><h3>Designer Locks</h3>
-              ${toggle('hideFromExport', 'Hide from export (others can\'t download a copy)')}
-            </div>
-            <div class="ohws-grp"><h3>View & Controls</h3>
-              ${sel('controlScheme', 'Control scheme', [['free-aim', 'Free-Aim (mouse)'], ['move-to-aim', 'Move-to-Aim'], ['twin-stick', 'Twin-Stick']])}
-              ${sel('angleLockDeg', 'Aim lock', [['0', 'Smooth'], ['45', '8-way (45°)'], ['90', '4-way (90°)']])}
-              ${range('masterZoom', 'Default zoom', 0.4, 2, 0.1)}
-              ${toggle('lockZoom', 'Lock zoom in play (players cannot change it)')}
-              ${toggle('showHiddenIndicator', 'Show a ring when hidden under an overhang')}
-              ${toggle('revealPlayer', 'Always show player (reveal window under canopy)')}
-              ${range('revealRadius', 'Reveal-window radius (blocks)', 2, 10, 1)}
-            </div>
-            <div class="ohws-grp"><h3>Atmosphere — Day / Night</h3>
-              ${toggle('dayNight', 'Enable day / night cycle')}
-              ${range('dayLengthSec', 'Full-cycle length (seconds)', 20, 600, 10)}
-              ${sel('dayStart', 'Start time of day', [['0', 'Midnight'], ['0.25', 'Dawn'], ['0.5', 'Noon'], ['0.75', 'Dusk']])}
-              ${range('nightDarkness', 'Night darkness (→ near-black)', 0.2, 0.95, 0.05)}
-              ${toggle('showSunMoon', 'Show a faint sun / moon')}
-              ${sel('sunMoonShape', 'Sun / moon shape', [['circle', 'Circle'], ['square', 'Square']])}
-              ${toggle('shadows', 'Cast shadows from raised terrain')}
-              ${sel('shadowStyle', 'Shadow style', [['live', 'Live (follows sun/moon)'], ['fixed', 'Fixed (baked once — cheaper)']])}
-              ${sel('shadowDir', 'Fixed shadow falls', [['dr', 'Down-right'], ['d', 'Down'], ['dl', 'Down-left'], ['r', 'Right'], ['l', 'Left']])}
-              ${range('shadowDarkness', 'Fixed shadow darkness', 0.1, 0.7, 0.05)}
-              ${range('moonShadowScale', 'Moon shadow strength (vs sun)', 0, 1, 0.05)}
-              ${toggle('adaptiveQuality', 'Adaptive quality (protect frame rate)')}
-              ${sel('fpsCap', 'Frame-rate cap', [['60', '60 (uncapped)'], ['45', '45'], ['30', '30 (steadiest)']])}
-              ${range('lightRange', 'Light reach per brightness (blocks)', 1, 12, 1)}
-              ${range('lavaBrightness', 'Lava brightness', 0.1, 1, 0.05)}
-              ${range('glowstoneBrightness', 'Glowstone brightness', 0.1, 1, 0.05)}
-            </div>
-            <div class="ohws-grp"><h3>Safety — Falling &amp; Pits</h3>
-              ${toggle('blockCliffFall', 'Stop players walking off cliffs')}
-              ${sel('maxStepDown', 'Max walk-down without a ramp/bridge', [['0', '0 (none)'], ['1', '1 level'], ['2', '2 levels'], ['99', 'Any (no guard)']])}
-              ${sel('pitMode', 'Pit blocks', [['deadly', 'Deadly (fall in → death)'], ['block', 'Solid obstacle (impassable)']])}
-              ${sel('lavaMode', 'Lava', [['damage', 'Damage (hurts while touching)'], ['death', 'Death (insta-kill on touch)']])}
-              ${range('lavaDamage', 'Lava damage per hit', 1, 20, 1)}
-              ${toggle('glassShatter', 'Glass can be shattered (melee / ranged break it)')}
-              ${sel('redstoneVisibility', 'Redstone wiring in play', [['always', 'Always shown'], ['active', 'Reveal when active'], ['hidden', 'Hidden (sources still show)']])}
-              ${toggle('bridgeGuardrails', 'Bridge guardrails (off = can fall off bridges)')}
-              ${sel('drawbridgeStyle', 'Drawbridge style', [['vanishing', 'Vanishing (appears/disappears)'], ['animated', 'Animated (raises ~80°)']])}
-            </div>
-            <div class="ohws-grp"><h3>Interaction animations</h3>
-              ${toggle('pipeClimbAnim', 'Pipe climb-in (pull-up) — off = instant')}
-              ${toggle('portalStepAnim', 'Portal step-through (spin-warp) — off = instant')}
-              ${toggle('leverReachAnim', 'Reach out to flip levers / use locks')}
-              ${range('interactionZoom', 'Interaction zoom (overrides game zoom)', 1, 2, 0.05)}
-              ${range('interactionSpeed', 'Interaction animation speed', 0.5, 2, 0.1)}
-            </div>
-          </div>
+          <div class="ohws-head"><h2>🗺 Overhead World Settings</h2><div style="display:flex;align-items:center;gap:14px">${advChk}<button class="ohws-close" id="ohws-x">✕</button></div></div>
+          <div class="ohws-body">${body}</div>
           <div class="ohws-foot"><button id="ohws-reset">Reset to defaults</button><button class="primary" id="ohws-done">Done</button></div>
         </div>`;
       const setV = (k, v) => { S[k] = v; const el = document.getElementById('ohws-v-' + k); if (el) el.textContent = v; };
       ov.querySelectorAll('input[type=range]').forEach((el) => el.oninput = () => setV(el.dataset.k, parseFloat(el.value)));
-      // Numeric-valued selects (angleLockDeg/climbLevels/playerHeight) store a
-      // number; string selects (controlScheme) store the string.
+      // Numeric-valued selects store a number; string selects store the string.
       ov.querySelectorAll('select').forEach((el) => el.onchange = () => { const n = parseFloat(el.value); S[el.dataset.k] = (/^-?\d+(\.\d+)?$/.test(el.value)) ? n : el.value; });
-      ov.querySelectorAll('input[type=checkbox]').forEach((el) => el.onchange = () => S[el.dataset.k] = el.checked);
+      ov.querySelectorAll('input[type=checkbox]').forEach((el) => { if (el.id === 'ohws-adv') return; el.onchange = () => S[el.dataset.k] = el.checked; });
+      const adv = document.getElementById('ohws-adv'); if (adv) adv.onchange = () => { this._advanced = adv.checked; this._render(); };
       document.getElementById('ohws-x').onclick = () => this.close();
       document.getElementById('ohws-done').onclick = () => this.close();
       document.getElementById('ohws-reset').onclick = () => { this._world.settings = OH_SETTINGS.defaults(); this._render(); };
     },
+    // The panel is opened only by the overhead EDITOR, i.e. always the designer — so Advanced
+    // is always ALLOWED here; the in-panel toggle is what gates whether advanced rows show.
+    _visible(f) { return !f.advanced || this._advanced; }
   };
 
   if (typeof window !== 'undefined') { window.OH_SETTINGS = OH_SETTINGS; window.OH_WORLD_SETTINGS = OH_WORLD_SETTINGS; }

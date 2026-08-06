@@ -139,7 +139,7 @@ console.log('World schema migrator:');
   const old = { settings: {} }; global.OH_SETTINGS.migrate(old);
   ok(old.schemaVersion === global.OH_SETTINGS.SCHEMA, 'an old (unversioned) world is stamped to the current schema');
   ok(Array.isArray(old.gates) && Array.isArray(old.redstone), 'structure arrays (gates/redstone) are guaranteed after migrate');
-  ok(old.settings.elevOffset === 0.22 && old.settings.lockZoom === false, 'new settings defaults reach an old world via migrate→resolve');
+  ok(old.settings.elevOffset === 0.5 && old.settings.lockZoom === false, 'new settings defaults reach an old world via migrate→resolve (elevOffset default is now 0.5 — Phase 2)');
   const fut = { schemaVersion: 99, settings: {} }; global.OH_SETTINGS.migrate(fut);
   ok(fut.schemaVersion === 99, 'a world from a NEWER build is loaded as-is (not downgraded)');
   const w = { settings: {} }; global.OH_SETTINGS.migrate(w); const v = w.schemaVersion; global.OH_SETTINGS.migrate(w);

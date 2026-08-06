@@ -184,7 +184,7 @@ console.log('§40.1 — exportHidden()/exportAllowed() and the server owner-exce
   ok(/const ex = g\('oh-export'\); if \(ex\)/.test(ed), 'and its click wiring is guarded so an absent button does not throw');
   // The toggle to SET the flag exists in BOTH settings surfaces, labelled per the brief.
   ok(/key: 'hideFromExport'[\s\S]*?label: 'Hide from export'/.test(strip('js/world-settings-ui.js')), 'side-scroll settings expose a "Hide from export" toggle');
-  ok(/toggle\('hideFromExport'/.test(strip('js/overhead/overhead-settings.js')), 'overhead settings expose a "Hide from export" toggle');
+  ok(/TOG\('hideFromExport'|key: 'hideFromExport'/.test(strip('js/overhead/overhead-settings.js')), 'overhead settings expose a "Hide from export" toggle (now a schema row)');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
