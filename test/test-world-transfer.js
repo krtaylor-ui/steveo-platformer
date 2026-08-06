@@ -133,5 +133,26 @@ ok(legacyWorld.schemaVersion === OH_SETTINGS.SCHEMA, 'the migrator upgrades it t
 try { const lg = new OverheadGame(JSON.parse(JSON.stringify(legacyWorld)), { testMode: true }, () => {}); lg._update(); ok(true, 'the migrated legacy world constructs + runs'); }
 catch (e) { ok(false, 'legacy world threw: ' + e.message); }
 
+// A9.6 — a wrong-engine / non-world file must be REPORTED, not silently re-routed.
+console.log('A9.6 — the sandbox importer surfaces unwrap()\'s rejection instead of falling through:');
+{
+  // unwrap() itself rejects a file that is neither engine's world.
+  const junk = WT.unwrap({ hello: 'world', numbers: [1, 2, 3] }, 'notes.json');
+  ok(!junk.ok, 'a plain JSON object that is neither engine unwraps as NOT ok');
+  ok(/not a Steveo world/i.test(junk.error || ''), 'and carries an explicit reason to show the user');
+  // A recognisable side-scroll world is still accepted (the sandbox takes both engines).
+  const ss = WT.unwrap({ blocks: [[0, 1]], width: 20, height: 10 }, 'level.json');
+  ok(ss.ok && !ss.isOverhead, 'a real side-scroll world still imports (not rejected as wrong-engine)');
+  // The importer must consult res.ok before its raw local/server fall-through. Assert the
+  // guard against CODE, not comments (lesson 5) — the previous bug was exactly that the
+  // fall-through ignored res.ok.
+  const sbSrc = fs.readFileSync(path.join(__dirname, '..', 'js', 'sandbox-ui.js'), 'utf8')
+    .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const importStart = sbSrc.indexOf('async importFile(');
+  const importFn = sbSrc.slice(importStart, sbSrc.indexOf('APP_MODE.isLocal()', importStart));
+  ok(/if \(!res\.ok\) \{ this\._importError\(res\.error/.test(importFn),
+     'importFile() reports res.error and returns BEFORE the raw local/server import');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

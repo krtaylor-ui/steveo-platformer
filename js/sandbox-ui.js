@@ -734,6 +734,13 @@ const SANDBOX = {
         setTimeout(() => { this.hideImportFileModal(); this.currentPage = 0; this.loadWorlds(); }, 1500);
         return;
       }
+      // A9.6: unwrap() rejects a file that is neither engine's world (the A9 non-world
+      // guard). The overhead editor SHOWS that rejection (rejectionMessage); this importer
+      // used to ignore res.ok and fall straight through to the raw local/server import — so
+      // a wrong-engine or junk file was silently re-routed and (in local mode) written to the
+      // list unvalidated. It now surfaces the same explicit reason and stops, in every mode,
+      // in-page (never a native alert — those park the renderer and are invisible to QA).
+      if (!res.ok) { this._importError(res.error || 'That file is not a Steveo world — there is nothing to import.'); return; }
     }
     if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
       let parsed;

@@ -26,7 +26,11 @@ const m = c.match(/const GAME_VERSION = '((?:[^'\\]|\\.)*)';/);
 if (!m) { console.error('constants.js: GAME_VERSION not found'); process.exit(1); }
 const oldValue = m[1];
 const oldBuild = parseInt((oldValue.match(/build (\d+)/) || [])[1], 10);
-const newValue = `v3 build ${newBuild}: ${note} — earlier notes follow. — ${oldValue}`;
+// Escape so an apostrophe in the note (e.g. "unwrap's") cannot terminate the single-quoted
+// string and turn constants.js into a syntax error. oldValue is already escaped (the capture
+// preserved its backslashes), so only the fresh note needs it.
+const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+const newValue = `v3 build ${newBuild}: ${esc(note)} — earlier notes follow. — ${oldValue}`;
 c = c.replace(m[0], `const GAME_VERSION = '${newValue}';`);
 fs.writeFileSync(cPath, c);
 
