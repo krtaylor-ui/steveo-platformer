@@ -181,7 +181,10 @@ class InputManager {
         // inventory). The D-pad itself is NOT an action — its 4 directions are plain buttons
         // (indices 12-15) available as bind TARGETS and read directly below for their built-in uses.
         rangedBtn: abtn('ranged', 7),    // RT-as-button (also read as an analog trigger below)
-        grappleBtn:    abtn('grapple', null),
+        // Grapple defaults to the LEFT TRIGGER (button 6) — symmetric with ranged-fire on RT.
+        // Was unbound (null) by default, so a controller could never fire the grapple. A custom
+        // GP binding still overrides. (LT is otherwise free in play — it's undo in Sandbox only.)
+        grappleBtn:    abtn('grapple', 6),
         grapplePullBtn:abtn('grapplePull', null),
         sprintBtn:     abtn('sprint', null),
         cycleSelBtn:   abtn('cycleSel', null),

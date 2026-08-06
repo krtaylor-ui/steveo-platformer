@@ -164,6 +164,15 @@ ok(climbs([
      'the real per-player adapter provides isDown / isStickUp / isLookUpHeld');
 }
 
+// Grapple fires from the controller by default: bound to the LEFT trigger (button 6),
+// symmetric with ranged-fire on RT (7). Was abtn('grapple', null) = unbound, so a controller
+// could never fire the grapple. (QA — grapple controller fix.)
+{
+  const inputSrc = require('fs').readFileSync(require('path').join(jsDir, 'input.js'), 'utf8');
+  ok(/grappleBtn:\s*abtn\('grapple', 6\)/.test(inputSrc), 'the grapple defaults to the left trigger (button 6), not unbound');
+  ok(/rangedBtn: abtn\('ranged', 7\)/.test(inputSrc), 'ranged-fire stays on the right trigger (7) — LT/RT are the symmetric pair');
+}
+
 // Guard: constants.js must parse (the fact this test reached here after run('constants.js')
 // already proves it) AND GAME_VERSION must be a non-empty string. A build-note with an
 // unescaped apostrophe once terminated the single-quoted string and made the WHOLE app a
