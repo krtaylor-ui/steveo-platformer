@@ -117,6 +117,14 @@ console.log('Arena: "Start with Grappling Hook" is a basic Arena setting that ar
   const gameSrc = fs.readFileSync(path.join(ROOT, 'js/game.js'), 'utf8').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
   const arm = gameSrc.slice(gameSrc.indexOf('_armArenaPlayer(p, spawn)'), gameSrc.indexOf('_zoomOverrideAllowed'));
   ok(/p\.hasGrapple = !!this\._worldAdvSettings\.arenaStartGrapple;/.test(arm), '_armArenaPlayer sets hasGrapple from the flag (granted per player, every respawn, cleared when off)');
+  // Keep Weapons on Death — basic arena toggle; the runtime skips the bow-reset when ON and the
+  // player has collected weapons.
+  const kw = row('arenaKeepWeaponsOnDeath');
+  ok(kw && kw.type === 'toggle' && kw.tab === 'arena' && kw.dflt === false && !kw.advanced, 'arenaKeepWeaponsOnDeath is a basic Arena toggle, default OFF');
+  ok(visible({ gameMode: 'arena', isArena: true, _worldAdvSettings: {} }, 'arenaKeepWeaponsOnDeath', false) === true, 'it shows in an Arena world');
+  ok(/const keepWeapons = !!this\._worldAdvSettings\.arenaKeepWeaponsOnDeath;/.test(arm)
+     && /if \(!\(keepWeapons && p\.rangedOwned && p\.rangedOwned\.length\)\) p\.bow = 'BOW';/.test(arm),
+     '_armArenaPlayer preserves collected ranged weapons on respawn when the flag is ON (else resets to bow)');
 }
 
 WS._game = null;

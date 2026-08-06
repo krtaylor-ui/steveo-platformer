@@ -1089,7 +1089,12 @@ class Game {
   }
 
   _armArenaPlayer(p, spawn) {
-    p.bow = 'BOW';
+    // Keep Weapons on Death (World Settings ▸ Arena): ON = a respawning player who has already
+    // collected ranged weapons keeps them; OFF (default) or a fresh first spawn (no weapons yet)
+    // gets the starting bow. respawnAt() doesn't clear the collection and arena doesn't drop
+    // weapons on death, so "keep" is simply skipping this reset.
+    const keepWeapons = !!this._worldAdvSettings.arenaKeepWeaponsOnDeath;
+    if (!(keepWeapons && p.rangedOwned && p.rangedOwned.length)) p.bow = 'BOW';
     // Arena loadout option: start every player with the grappling hook (World Settings ▸ Arena
     // ▸ "Start with Grappling Hook"). hasGrapple is the capability flag the grapple state machine
     // reads; set it explicitly so it's granted on setup AND every respawn, and cleared when the
