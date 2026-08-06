@@ -310,7 +310,7 @@ const SANDBOX = {
           <button class="btn btn-primary edit-world-btn" data-world-id="${this._esc(w.id)}">Edit</button>
           <button class="btn btn-secondary rename-world-btn" data-world-id="${this._esc(w.id)}">Rename</button>
           <button class="btn btn-secondary copy-world-btn" data-world-id="${this._esc(w.id)}">Copy</button>
-          <button class="btn btn-secondary export-world-btn" data-world-id="${this._esc(w.id)}" title="Download this world as a .json file">Export</button>
+          ${(typeof WORLD_TRANSFER !== 'undefined' && WORLD_TRANSFER.exportHidden(w.world_data)) ? '' : `<button class="btn btn-secondary export-world-btn" data-world-id="${this._esc(w.id)}" title="Download this world as a .json file">Export</button>`}
           <button class="btn btn-danger delete-world-btn" data-world-id="${this._esc(w.id)}">Delete</button>
         </div>
       </div>`;
@@ -1013,6 +1013,11 @@ const SANDBOX = {
       // Publishing is an online-only (community) action.
       const pubBtn = document.getElementById('sb-publish-btn');
       if (pubBtn) pubBtn.style.display = local ? 'none' : '';
+      // §40.1: hide the editor HUD Export for a world marked "Hide from export". The owner
+      // keeps control — they can turn the flag off in World Settings (only Sandbox can), and
+      // the server still lets the owner export their own world; this just removes the button.
+      const exBtn = document.getElementById('sb-export-btn');
+      if (exBtn) exBtn.style.display = (typeof WORLD_TRANSFER !== 'undefined' && WORLD_TRANSFER.exportHidden(world.world_data)) ? 'none' : '';
 
       // Tear down the legacy menu loop + any prior game before launching, so
       // nothing draws/handles input on top of the editor (mirrors GAME_PLAY).

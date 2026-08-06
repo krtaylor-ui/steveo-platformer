@@ -1,5 +1,6 @@
 const { supabaseAdmin } = require('./supabase-client');
 const { worldModeDefaults } = require('../js/platformer-defaults.js');
+const WORLD_TRANSFER = require('../js/world-transfer.js');   // shared export-flag predicate (§40.1)
 
 // Token verification — same contract as games-routes.js. Kept local so the two
 // route modules stay independently mountable.
@@ -351,14 +352,24 @@ module.exports = function setupWorldsRoutes(app) {
   // ── Export a world as a downloadable JSON file ─────────────────
   app.get('/api/worlds/sandbox/:worldId/export', verifyToken, async (req, res) => {
     try {
+      // Fetch WITHOUT the creator scope so we can tell an owner from a stranger and read the
+      // export flag off the real owner's world. §40.1: a world marked "Hide from export"
+      // returns 403 to anyone who is NOT its creator — otherwise the flag is trivially
+      // bypassed by hitting this URL directly. The OWNER can always export their own work.
       const { data: world, error } = await supabaseAdmin
         .from('worlds')
         .select('*')
         .eq('id', req.params.worldId)
-        .eq('creator_id', req.user.id)
         .single();
 
       if (error || !world) return res.status(404).json({ error: 'World not found' });
+
+      const isOwner = world.creator_id === req.user.id;
+      if (!isOwner && WORLD_TRANSFER.exportHidden(world.world_data)) {
+        return res.status(403).json({ error: 'The creator of this world has turned off export.' });
+      }
+      // Export otherwise stays owner-only (unchanged): a non-owner sees the same 404 as before.
+      if (!isOwner) return res.status(404).json({ error: 'World not found' });
 
       const wd = world.world_data || {};
       const mode = wd.gameModeDefault || 'NRM';

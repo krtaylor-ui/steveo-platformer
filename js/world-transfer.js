@@ -184,9 +184,23 @@
     input.click();
   }
 
+  // §40.1 — a creator can mark a world "Hide from export" (Designer Locks). The flag lives
+  // in the world's settings so it travels with the world; it is stored as `hideFromExport`
+  // (default absent = exportable) so it maps 1:1 to the label with no inverted-toggle trap.
+  // Both engines' settings objects are checked (side-scroll worldAdvSettings, overhead
+  // settings), plus a top-level fallback, so ONE predicate answers everywhere — client UI
+  // and the server 403 alike. The OWNER is always allowed to export regardless (enforced at
+  // the call sites / server); this predicate only reports the flag.
+  function exportHidden(wd) {
+    if (!wd || typeof wd !== 'object') return false;
+    const a = wd.worldAdvSettings || {}, s = wd.settings || {};
+    return wd.hideFromExport === true || a.hideFromExport === true || s.hideFromExport === true;
+  }
+  function exportAllowed(wd) { return !exportHidden(wd); }
+
   const WORLD_TRANSFER = {
     WRAPPER_VERSION, wrap, unwrap, validateOverhead, rejectionMessage, isOverheadData, looksLikeSideScroll,
-    nameFrom, safeName, filename, download, pickJsonFile, today,
+    nameFrom, safeName, filename, download, pickJsonFile, today, exportHidden, exportAllowed,
   };
 
   if (typeof window !== 'undefined') window.WORLD_TRANSFER = WORLD_TRANSFER;

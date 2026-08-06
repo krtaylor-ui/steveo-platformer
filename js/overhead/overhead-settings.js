@@ -15,6 +15,7 @@
       playerHeight:     1,          // player height in levels — a block this-many-or-fewer levels above BLOCKS; taller = an overhang you pass under
       elevOffset:       0.22,       // 2.5D vertical offset per elevation level (fraction of a cell up-left); higher = taller-looking stacks. Capped at 0.5
       lockZoom:         false,      // lock the camera zoom in play (creators who tuned a specific zoom can prevent the player changing it)
+      hideFromExport:   false,      // §40.1 — hide the Export buttons so others can't download a copy (owner can always turn it off + still export)
       // Jump (impression-of-height): small float + a scale-up.
       jumpFloat:        0.4,
       jumpScale:        0.22,
@@ -224,6 +225,9 @@
             </div>
             <div class="ohws-grp"><h3>Mobs</h3>
               ${range('mobDetectBlocks', 'Detection range (blocks)', 1, 30, 1)}
+            </div>
+            <div class="ohws-grp"><h3>Designer Locks</h3>
+              ${toggle('hideFromExport', 'Hide from export (others can\'t download a copy)')}
             </div>
             <div class="ohws-grp"><h3>View & Controls</h3>
               ${sel('controlScheme', 'Control scheme', [['free-aim', 'Free-Aim (mouse)'], ['move-to-aim', 'Move-to-Aim'], ['twin-stick', 'Twin-Stick']])}

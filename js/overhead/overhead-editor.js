@@ -367,7 +367,7 @@
         <button id="oh-settings">⚙ Settings</button>
         <button id="oh-test">▶ Test</button>
         <button id="oh-save" class="primary">💾 Save</button>
-        <button id="oh-export" title="Download this world as a .json file (exports what's on screen, saved or not)">⬇ Export</button>
+        ${(typeof WORLD_TRANSFER !== 'undefined' && WORLD_TRANSFER.exportHidden(this.world)) ? '' : `<button id="oh-export" title="Download this world as a .json file (exports what's on screen, saved or not)">⬇ Export</button>`}
         <button id="oh-import" title="Load a world .json file into the editor (replaces what's open)">⬆ Import</button>
         <button id="oh-clean" title="Redraw the whole map from scratch — clears any leftover edit artefacts">🧹 Clean</button>
         <button id="oh-exit">✕ Exit</button>
@@ -467,7 +467,8 @@
       g('oh-undo').onclick = () => this.undo(); g('oh-redo').onclick = () => this.redo();
       g('oh-zin').onclick = () => OH_GRID.zoomBy(this.grid, 1.15); g('oh-zout').onclick = () => OH_GRID.zoomBy(this.grid, 0.87);
       g('oh-test').onclick = () => this._test(); g('oh-save').onclick = () => this._save(); g('oh-exit').onclick = () => this.close();
-      g('oh-export').onclick = () => this._export(); g('oh-import').onclick = () => this._import();
+      { const ex = g('oh-export'); if (ex) ex.onclick = () => this._export(); }   // absent when the world is Hidden from export (§40.1)
+      g('oh-import').onclick = () => this._import();
       // Full terrain rebuild on demand. The incremental patch should leave nothing behind now
       // that its region snaps to whole pixels, but a one-click way back to a clean picture is
       // worth having regardless — and it costs nothing when unused. (Kevin, build 362.)

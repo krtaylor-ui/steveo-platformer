@@ -154,5 +154,38 @@ console.log('A9.6 — the sandbox importer surfaces unwrap()\'s rejection instea
      'importFile() reports res.error and returns BEFORE the raw local/server import');
 }
 
+// §40.1 — "Hide from export" flag: one predicate, honoured client + server.
+console.log('§40.1 — exportHidden()/exportAllowed() and the server owner-exception:');
+{
+  ok(WT.exportHidden({}) === false, 'a world with no flag is exportable by default');
+  ok(WT.exportAllowed({}) === true, 'exportAllowed is the inverse');
+  ok(WT.exportHidden({ hideFromExport: true }) === true, 'a top-level flag hides it');
+  ok(WT.exportHidden({ worldAdvSettings: { hideFromExport: true } }) === true, 'a side-scroll settings flag hides it');
+  ok(WT.exportHidden({ settings: { hideFromExport: true } }) === true, 'an overhead settings flag hides it');
+  ok(WT.exportHidden({ settings: { hideFromExport: false } }) === false, 'explicitly false stays exportable');
+  ok(WT.exportHidden(null) === false && WT.exportHidden(undefined) === false, 'a missing world is treated as exportable (no crash)');
+  // Server route: 403 for a NON-owner on a hidden world; the OWNER is always allowed; and
+  // export otherwise stays owner-only. Assert against comment-stripped source (lesson 5).
+  const routeSrc = fs.readFileSync(path.join(__dirname, '..', 'server', 'worlds-routes.js'), 'utf8')
+    .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const exp = routeSrc.slice(routeSrc.indexOf("'/api/worlds/sandbox/:worldId/export'"), routeSrc.indexOf("'/api/worlds/sandbox/:worldId'"));
+  ok(/const isOwner = world\.creator_id === req\.user\.id/.test(exp), 'the route computes ownership');
+  ok(/if \(!isOwner && WORLD_TRANSFER\.exportHidden\(world\.world_data\)\)[\s\S]*?status\(403\)/.test(exp), 'a NON-owner exporting a hidden world gets 403');
+  ok(exp.indexOf('status(403)') < exp.indexOf('if (!isOwner) return res.status(404)'), 'the owner-exception is checked BEFORE the owner-only 404, so the owner is never blocked');
+  ok(!/\.eq\('creator_id', req\.user\.id\)/.test(exp), 'the fetch is no longer creator-scoped (so it can tell owner from stranger)');
+
+  // Three client UI sites hide Export when the flag is set (comment-stripped source).
+  const strip = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const sb = strip('js/sandbox-ui.js');
+  ok(/WORLD_TRANSFER\.exportHidden\(w\.world_data\)\) \? '' :/.test(sb), 'site 1: the world-card Export button is not rendered when hidden');
+  ok(/exBtn\.style\.display = \(typeof WORLD_TRANSFER[\s\S]*?exportHidden\(world\.world_data\)\) \? 'none'/.test(sb), 'site 2: the editor/play-HUD Export button is hidden when the open world is hidden');
+  const ed = strip('js/overhead/overhead-editor.js');
+  ok(/WORLD_TRANSFER\.exportHidden\(this\.world\)\) \? '' :/.test(ed), 'site 3: the overhead editor ⬇ Export button is not rendered when hidden');
+  ok(/const ex = g\('oh-export'\); if \(ex\)/.test(ed), 'and its click wiring is guarded so an absent button does not throw');
+  // The toggle to SET the flag exists in BOTH settings surfaces, labelled per the brief.
+  ok(/key: 'hideFromExport'[\s\S]*?label: 'Hide from export'/.test(strip('js/world-settings-ui.js')), 'side-scroll settings expose a "Hide from export" toggle');
+  ok(/toggle\('hideFromExport'/.test(strip('js/overhead/overhead-settings.js')), 'overhead settings expose a "Hide from export" toggle');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
