@@ -137,6 +137,33 @@ ok(climbs([
   ok(/\(input\.isUp && input\.isUp\(\)\) \|\| \(input\.isJump && input\.isJump\(\)\)/.test(playerSrc), 'the bar-grab accepts per-player up OR jump (works for every player)');
 }
 
+// The 3-player-arena FREEZE: a secondary player stepping onto a ladder ran the UNGUARDED
+// input.isDown('KeyW') (player.js) — the per-player adapter had no isDown, so it threw and
+// froze the game. The adapter must cover everything player.js reads off `input`.
+{
+  const B = BLOCK_SIZE, W = 8, H = 8, LC = 3, LR = 3;
+  const level = {
+    width: W, height: H, pixelWidth: W * B, pixelHeight: H * B,
+    isSolid: (r) => r >= H - 1,
+    get: (r, c) => (c === LC && (r === LR || r === LR + 1)) ? BLOCK.LADDER : BLOCK.AIR,
+  };
+  const onLadder = () => { const p = new Player(LC * B, LR * B); p.x = LC * B; p.y = LR * B; p.onGround = false; return p; };
+  const base = { isLeft: () => false, isRight: () => false, isJump: () => false, isCrouch: () => false, isRun: () => false, isAttack: () => false, moveX: () => 0 };
+  // The OLD adapter shape (no isDown) reproduces the crash on a ladder.
+  let threw = false;
+  try { onLadder().update(Object.assign({}, base), level); } catch (e) { threw = /isDown is not a function/.test(String(e)); }
+  ok(threw, 'the pre-fix adapter (no isDown) THROWS on a ladder — this was the freeze');
+  // The FIXED adapter shape (isDown/isUp/isStickUp/isLookUpHeld) survives + can climb.
+  const fixed = Object.assign({}, base, {
+    isUp: () => true, isDown: (c) => (c === 'KeyW' || c === 'ArrowUp'), isStickUp: () => true, isLookUpHeld: () => false,
+  });
+  let ok2 = true; try { onLadder().update(fixed, level); } catch (e) { ok2 = false; }
+  ok(ok2, 'the fixed adapter (with isDown) does NOT throw on a ladder — freeze gone');
+  const gameSrc = require('fs').readFileSync(require('path').join(jsDir, 'game.js'), 'utf8');
+  ok(/isDown:\s*\(code\) =>/.test(gameSrc) && /isStickUp:\s*\(\) => this\.input\.pUp\(idx\)/.test(gameSrc) && /isLookUpHeld:/.test(gameSrc),
+     'the real per-player adapter provides isDown / isStickUp / isLookUpHeld');
+}
+
 // Guard: constants.js must parse (the fact this test reached here after run('constants.js')
 // already proves it) AND GAME_VERSION must be a non-empty string. A build-note with an
 // unescaped apostrophe once terminated the single-quoted string and made the WHOLE app a

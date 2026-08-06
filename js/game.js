@@ -2443,11 +2443,19 @@ class Game {
         isLeft:   () => this.input.pLeft(idx),
         isRight:  () => this.input.pRight(idx),
         isJump:   () => this.input.pJump(idx),
-        isUp:     () => this.input.pUp(idx),      // monkey-bar grab (up) — was missing for P2-P4
+        isUp:     () => this.input.pUp(idx),
         isCrouch: () => this.input.pCrouch(idx),
         isRun:    () => false,
         isAttack: () => this.input.pAttack(idx),
         moveX:    () => this.input.pMoveX(idx),
+        // The adapter MUST cover everything player.js reads off `input`, or a path only a
+        // secondary player hits throws and FREEZES the whole game. Stepping onto a ladder runs
+        // input.isDown('KeyW') UNGUARDED (player.js) — with no isDown on the adapter that was
+        // the 3-player-arena freeze. Controllers have no keyboard, so map the only queried keys
+        // (up) to this player's up; stick-up = up; look-up isn't a controller concept here.
+        isDown:   (code) => (code === 'KeyW' || code === 'ArrowUp') ? this.input.pUp(idx) : false,
+        isStickUp: () => this.input.pUp(idx),
+        isLookUpHeld: () => false,
       };
       this._applyMovementConfig(p);
       p.update(pInput, this.level);
