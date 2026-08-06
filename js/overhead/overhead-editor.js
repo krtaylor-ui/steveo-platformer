@@ -1446,7 +1446,13 @@
       // spilled over the rail insets where there is no terrain — a lit strip of floating
       // sprites over the dark background, reading as "bright in the middle, dark and glitchy
       // at the edges, and the objects don't dim with it". (Kevin, build 349.)
+      // If a previous frame threw between this save() and its restore(), we still owe a
+      // restore — pay it before saving again, or the canvas state stack grows by one per frame
+      // for as long as the fault lasts. That is what the dangling `editingLive` reference was
+      // quietly doing whenever the Perf overlay was on. (QA F-EDITOR-LOOP, build 362.)
+      if (this._clipOwed) { try { ctx.restore(); } catch (e) {} this._clipOwed = false; }
       ctx.save(); ctx.beginPath(); ctx.rect(LEFT, TOP, VW, VH); ctx.clip();
+      this._clipOwed = true;
       const S = (wx, wy) => { const p = OH_GRID.worldToScreen(g, this.cam, wx, wy); return { x: p.x + LEFT, y: p.y + TOP }; };
       const c0 = Math.max(0, (this.cam.x / g.cell | 0) - 1), c1 = Math.min(m.gridW - 1, ((this.cam.x + VW / z) / g.cell | 0) + 1);
       const r0 = Math.max(0, (this.cam.y / g.cell | 0) - 1), r1 = Math.min(m.gridH - 1, ((this.cam.y + VH / z) / g.cell | 0) + 1);
@@ -1541,7 +1547,7 @@
         ctx.fillStyle = '#dbe4f3'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
         ctx.fillText('Click transmitters to toggle  ·  Esc / Enter when done', ctx.canvas.width / 2, 17);
       }
-      ctx.restore();   // end of the map clip — chrome (edge band, scrollbars, tooltip) draws in the insets
+      ctx.restore(); this._clipOwed = false;   // end of the map clip — chrome draws in the insets
 
       // Distinct MAP-EDGE indicator (hazard stripes just outside the world bounds)
       // so the creator knows when they're looking at the real edge — deliberately
@@ -1609,7 +1615,7 @@
         const visCells = (c1 - c0 + 1) * (r1 - r0 + 1);
         const ms = (typeof performance !== 'undefined' && performance.now) ? (performance.now() - _pt0) : 0;
         const lines = [`${fps.toFixed(0)} fps · ${ms.toFixed(1)} ms render`,
-          `terrain: ${editingLive ? 'LIVE — ' + visCells + ' cells' : 'CACHED — 1 blit'}`,
+          `terrain: ${this._editBox ? 'CACHED + live patch — ' + visCells + ' cells' : 'CACHED — 1 blit'}`,
           `zoom ${z.toFixed(2)}× · cam ${this.cam.x | 0},${this.cam.y | 0}`,
           `map ${m.baseW || m.gridW}×${m.baseH || m.gridH} d${m.density} = ${m.gridW}×${m.gridH} cells`,
           `viewport ${visCells} cells`];

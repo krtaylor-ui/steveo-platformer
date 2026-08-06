@@ -63,5 +63,23 @@ console.log('Cache patch snaps to whole pixels (build 362):');
   ok(/id="oh-clean"/.test(src2) && /Map redrawn/.test(src2), 'a Clean button forces a full rebuild as an escape hatch');
 }
 
+console.log('The editor render must not throw, or leak canvas state (QA F-EDITOR-LOOP):');
+{
+  const src3 = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'overhead', 'overhead-editor.js'), 'utf8');
+  // Dangling since build 327, thrown ~138x/sec whenever the Perf overlay was on, aborting
+  // _render at that line so nothing after it drew.
+  ok(!/editingLive/.test(src3), 'the dangling `editingLive` reference is gone');
+  ok(/this\._editBox \? 'CACHED \+ live patch/.test(src3), 'the Perf overlay reports the real live-patch state instead');
+  // A throw between the clip's save() and restore() used to leak one canvas state per frame.
+  ok(/if \(this\._clipOwed\) \{ try \{ ctx\.restore\(\); \} catch \(e\) \{\} this\._clipOwed = false; \}/.test(src3),
+     'an unpaid restore from a faulted frame is settled before saving again');
+  ok(/this\._clipOwed = true;/.test(src3) && /ctx\.restore\(\); this\._clipOwed = false;/.test(src3),
+     'the flag is set on save and cleared on restore, so the stack cannot grow');
+  // Every remaining identifier in the Perf overlay block must actually exist in scope.
+  const perf = src3.slice(src3.indexOf('if (this.view.perf) {'), src3.indexOf('// Distinct MAP-EDGE indicator'));
+  ok(!/\$\{[a-zA-Z_][a-zA-Z0-9_]*\s*\?/.test(perf.replace(/\$\{this\.[^}]*/g, '')) || /this\._editBox/.test(perf),
+     'the overlay interpolates only in-scope values');
+}
+
 console.log(`\noverhead editor perf: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

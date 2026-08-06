@@ -194,7 +194,9 @@
     const every = opts.intervalMs || 15000;
     const cap = opts.maxSamples || 2600;              // ~11 hours at 15s
     const log = {
-      startedAt: null, samples: [], errors: 0, warnings: 0, events: [],
+      // startedAt is a MONOTONIC clock reading (performance.now), not an epoch time — printing
+      // it as a date gives 1970. startedAtEpoch is the wall-clock companion for reports.
+      startedAt: null, startedAtEpoch: null, samples: [], errors: 0, warnings: 0, events: [],
       _next: 0, _lastTier: null, _lastCap: null,
 
       // Count real page errors, so "zero console errors" is measured, not remembered.
@@ -218,7 +220,10 @@
 
       // Called each frame; does nothing but a clock compare until a sample is due.
       tick(now, stats, gov) {
-        if (this.startedAt == null) { this.startedAt = now; this._next = now; this.hook(); }
+        if (this.startedAt == null) {
+          this.startedAt = now; this._next = now; this.hook();
+          try { this.startedAtEpoch = Date.now(); } catch (e) { this.startedAtEpoch = null; }
+        }
         // Governor decisions are logged the MOMENT they happen, not at the next sample.
         if (gov && (gov.tier !== this._lastTier || gov.cap !== this._lastCap)) {
           if (this._lastTier != null) this.events.push({ at: Math.round((now - this.startedAt) / 1000), what: gov.reason || ('tier ' + gov.tier + ' cap ' + gov.cap) });
@@ -260,7 +265,8 @@
         // rise before calling it a leak. (QA F-A7.3.)
         const leak = drift > 25 && (heapLate - heapEarly) >= 15;
         return [
-          'SOAK ' + Math.round(last.s / 60) + ' min, ' + n + ' samples',
+          'SOAK ' + Math.round(last.s / 60) + ' min, ' + n + ' samples'
+            + (this.startedAtEpoch ? '  (started ' + new Date(this.startedAtEpoch).toLocaleString() + ')' : ''),
           'fps      first ' + first.fps + '  last ' + last.fps + '  avg ' + avg(fps) + '  min ' + Math.min.apply(null, fps),
           'worst frame  ' + worst + 'ms',
           'JS heap  early ' + heapEarly + 'MB  late ' + heapLate + 'MB  drift ' + (drift >= 0 ? '+' : '') + drift + '%'
@@ -271,6 +277,9 @@
         ].join('\n');
       },
       dump() { const t = this.summary(); if (typeof console !== 'undefined') { console.log(t); console.table(this.samples.slice(-40)); } return t; },
+      // NOTE for anyone reading the CSV: `tier` is sampled every 15s, so an excursion shorter
+      // than that is invisible in this column. `events` is the reliable record — the soak's two
+      // real drops each lasted 1-2s and left every tier cell reading 0. (QA, build 362.)
       csv() { return 'sec,fps,worstMs,cells,heapMB,tier,cap,errors\n' + this.samples.map((x) => [x.s, x.fps, x.worst, x.cells, x.heap, x.tier, x.cap, x.err].join(',')).join('\n'); },
     };
     return log;
