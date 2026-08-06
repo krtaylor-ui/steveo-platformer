@@ -1050,6 +1050,7 @@ html[data-theme="retro"] {
 
 .world-card-header {
   display: flex;
+  flex-wrap: wrap;               /* badges drop to their own row rather than starving the title */
   justify-content: space-between;
   align-items: flex-start;
   gap: 10px;
@@ -1058,7 +1059,13 @@ html[data-theme="retro"] {
 
 .world-card-header h3 {
   margin: 0;
-  flex: 1;
+  /* The title gets its OWN ROW. Build 347 fixed the wrapping rule but not the cause: the two
+     badges are `white-space: nowrap` with `min-width: auto`, so on a 235px card they took
+     96 + 60 + 20px of gaps = 176px and left the title 59px. "Overhead" needs 87px, so
+     overflow-wrap correctly broke it mid-word as a last resort. That made the bug
+     DATA-DEPENDENT — a short-worded title looked fine — which is how it survived both a fix
+     and a verification pass. A full row removes the dependence instead of re-tuning it. */
+  flex: 1 1 100%;
   min-width: 0;                 /* let the flex item shrink normally instead of overflowing */
   color: #333;
   font-size: 1.2rem;

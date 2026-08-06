@@ -49,5 +49,40 @@ console.log('Incremental terrain-cache patch:');
   ok(!t3, 'patching with hide-above-elev does not throw');
 }
 
+console.log('Cache patch snaps to whole pixels (build 362):');
+{
+  const src2 = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'overhead', 'overhead-editor.js'), 'utf8');
+  const fn = src2.slice(src2.indexOf('_paintTerrainRegion(cx, orig'), src2.indexOf('_drawEditRegion(ctx, S, cs'));
+  ok(/const rx = Math\.floor\(cr0\.x - up\), ry = Math\.floor\(cr0\.y - up\)/.test(fn),
+     'the cleared region starts on a whole pixel');
+  ok(/rw = Math\.ceil\(cr1\.x \+ 2\) - rx, rh = Math\.ceil\(cr1\.y \+ 2\) - ry/.test(fn),
+     'and ends on one, so repeated patches land on identical boundaries');
+  ok(/offPerLevel = unit \? \(qf \/ unit\) : 0\.22/.test(fn), 'reach follows the real elevation offset');
+  ok(/Math\.max\(0\.22, offPerLevel\)/.test(fn), 'and never shrinks below the old assumption');
+  ok(!/reach = Math\.ceil\(maxE \* 0\.22\) \+ 3;/.test(fn), 'the hardcoded 0.22 is gone (elevOffset goes to 0.5)');
+  ok(/id="oh-clean"/.test(src2) && /Map redrawn/.test(src2), 'a Clean button forces a full rebuild as an escape hatch');
+}
+
+console.log('The editor render must not throw, or leak canvas state (QA F-EDITOR-LOOP):');
+{
+  const src3 = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'overhead', 'overhead-editor.js'), 'utf8');
+  // Dangling since build 327, thrown ~138x/sec whenever the Perf overlay was on, aborting
+  // _render at that line so nothing after it drew.
+  // Strip comments first — the fix's own comment NAMES the dead identifier to explain it, and
+  // an assertion that reads prose is testing documentation, not code. (Second time today.)
+  const code3 = src3.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  ok(!/editingLive/.test(code3), 'the dangling `editingLive` reference is gone from the CODE');
+  ok(/this\._editBox \? 'CACHED \+ live patch/.test(src3), 'the Perf overlay reports the real live-patch state instead');
+  // A throw between the clip's save() and restore() used to leak one canvas state per frame.
+  ok(/if \(this\._clipOwed\) \{ try \{ ctx\.restore\(\); \} catch \(e\) \{\} this\._clipOwed = false; \}/.test(src3),
+     'an unpaid restore from a faulted frame is settled before saving again');
+  ok(/this\._clipOwed = true;/.test(src3) && /ctx\.restore\(\); this\._clipOwed = false;/.test(src3),
+     'the flag is set on save and cleared on restore, so the stack cannot grow');
+  // Every remaining identifier in the Perf overlay block must actually exist in scope.
+  const perf = src3.slice(src3.indexOf('if (this.view.perf) {'), src3.indexOf('// Distinct MAP-EDGE indicator'));
+  ok(!/\$\{[a-zA-Z_][a-zA-Z0-9_]*\s*\?/.test(perf.replace(/\$\{this\.[^}]*/g, '')) || /this\._editBox/.test(perf),
+     'the overlay interpolates only in-scope values');
+}
+
 console.log(`\noverhead editor perf: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

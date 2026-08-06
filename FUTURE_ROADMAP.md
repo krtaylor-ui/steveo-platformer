@@ -1624,3 +1624,35 @@ Sketch, if it is taken up:
 
 **Recommendation:** do §42 first. §42 is the one players notice constantly; a smoothly swinging
 gate is a nice-to-have on top of it, and (a) becomes easier once bands/depth are sorted out.
+
+---
+
+## §44 — Overhead worlds are only reachable through the builder's Test button
+
+**Status:** gap, raised by Kevin 2026-08-05. Not built.
+
+There is no way to PLAY an overhead world. The only route in is the editor's **▶ Test**, which
+is a designer aid — it launches with `testMode: true`, shows the Designer / God chrome, and
+returns to the editor on exit. A player who has not opened the builder cannot reach one at all.
+
+Everything needed already exists: `OVERHEAD.launchWorld(worldData, opts, onExit)` takes a plain
+`testMode: false`, overhead worlds already live in the Sandbox list with a 🗺 badge, and the
+runtime already handles win/lose, the Goal Star and the pause menu.
+
+What is missing is the **entry point and the exit contract**:
+
+1. **A launch route** from the world card (a Play button next to Edit) and/or from the mode
+   dashboard, for a world whose `world_data.viewMode === 'overhead'`.
+2. **Which mode owns it.** Kevin's steer is that overhead worlds should be playable from
+   **Platformer** mode alongside side-scroll levels. That means the Platformer mode's world list
+   must offer overhead worlds and dispatch to the overhead runtime rather than the 2D engine —
+   the two runtimes are separate, so the dispatch has to happen at launch, not inside the game.
+3. **Exit behaviour** — where does the player go on win, death or quit? Test returns to the
+   editor; a player needs the world list or the dashboard.
+4. **Campaign interaction (§12).** Campaign sequences *Platformer* worlds. If overhead worlds
+   become Platformer-playable, decide whether a Campaign zone may contain them, since the Goal
+   Star exit routing would need to work in the overhead runtime too (it already has Goal Stars).
+
+**Effort:** small-to-moderate for 1 and 3 (a launch button and an exit target). Moderate for 2,
+because it changes what "Platformer mode" means. Decide 4 before building 2, or it gets built
+twice.

@@ -149,6 +149,35 @@ console.log('Soak log produces a copyable result, not a vibe (build 361):');
   ok(typeof log.events[log.events.length - 1].at === 'number', 'with the second it happened at');
 }
 
+console.log('The governor must react to what the PLAYER sees (build 362, QA F-A7.1):');
+{
+  const g = P.makeGovernor({ cap: 60 });
+  // The exact reported case: our render call returns in 16ms while the browser takes 37ms per
+  // frame to rasterise a huge canvas. Sampling our own execution says "fine" forever.
+  for (let i = 0; i < 400; i++) g.sample(16);
+  ok(g.tier === 0, 'sampling only our JS render time never reacts — this was the bug');
+  const g2 = P.makeGovernor({ cap: 60 });
+  for (let i = 0; i < 400; i++) g2.sample(37);        // the interval the player actually gets
+  ok(g2.tier > 0 || g2.cap < 60, 'sampling the frame INTERVAL does react (fps 27 is not "fine")');
+  // And the fix must not make a capped, healthy run look like it is struggling.
+  const g3 = P.makeGovernor({ cap: 30 });
+  for (let i = 0; i < 600; i++) g3.sample(33.3);      // exactly the 30fps cadence it asked for
+  ok(g3.tier === 0, 'a run pacing itself at its own 30fps cap is NOT treated as a struggle');
+}
+
+console.log('Leak flag needs an absolute rise too (build 362, QA F-A7.3):');
+{
+  // +40% of a 20MB heap is 8MB — a handful of offscreen canvases. Not a leak.
+  const small = P.makeSoakLog({ intervalMs: 1000 });
+  for (let i = 0; i < 90; i++) small.samples.push({ s: i, fps: 60, worst: 20, cells: 100, heap: 20 + i * 0.09, tier: 0, cap: 60, err: 0 });
+  ok(!/INVESTIGATE/.test(small.summary()), 'a +40% rise on a SMALL heap is not called a leak');
+  ok(/likely noise/.test(small.summary()), 'but it is still reported, with the reason');
+  // A real one: big relative AND big absolute.
+  const big = P.makeSoakLog({ intervalMs: 1000 });
+  for (let i = 0; i < 90; i++) big.samples.push({ s: i, fps: 60, worst: 20, cells: 100, heap: 100 + i * 1.2, tier: 0, cap: 60, err: 0 });
+  ok(/INVESTIGATE: looks like a leak/.test(big.summary()), 'a large rise in BOTH terms still flags');
+}
+
 console.log('Tier table is ordered richest-to-cheapest:');
 for (let i = 1; i < P.TIERS.length; i++) {
   const a = P.frameCost(10000, P.TIERS[i - 1]), b = P.frameCost(10000, P.TIERS[i]);

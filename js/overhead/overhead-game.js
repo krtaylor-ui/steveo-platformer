@@ -255,7 +255,19 @@
           const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : now;
           this._render();
           const t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : t0;
-          if (gov) gov.sample(t1 - t0);
+          // Feed the governor the FRAME INTERVAL, not the JS render duration.
+          //
+          // QA F-A7.1: at full zoom-out the HUD read fps 27 with a 207ms worst frame while the
+          // governor sat at Full and never once dropped. The reason is that our render call can
+          // return quickly while the browser is still rasterising and compositing a very large
+          // canvas — that cost lands OUTSIDE this timer. Measuring our own execution therefore
+          // said "16ms, all is well" while the player was seeing 27fps. The interval between
+          // rendered frames is what the player actually experiences, so that is what the
+          // governor must react to. Intentional pacing is already accounted for, since the
+          // target is derived from the cap.
+          const interval = (this._govLast != null) ? (t1 - this._govLast) : null;
+          this._govLast = t1;
+          if (gov && interval != null) gov.sample(Math.max(interval, t1 - t0));
           // Frame stats feed both the HUD and the soak log, so sample them regardless of
           // whether the HUD is up — a soak should not require the debug overlay to be open.
           this._sampleFrame();

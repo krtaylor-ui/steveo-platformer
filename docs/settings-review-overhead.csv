@@ -1,60 +1,60 @@
 group,label,key,control,recommended_tier,why,your_call,move_to
-"Movement & Elevation","Player speed (× cell/frame)","moveSpeed","range","advanced","slider fine-tuning behind a working default","",""
-"Movement & Elevation","Levels a walk can climb","climbLevels","sel","basic","picks a mode/behaviour rather than tuning it","",""
-"Movement & Elevation","Player height (levels — scales elevation)","playerHeight","sel","basic","picks a mode/behaviour rather than tuning it","",""
-"Movement & Elevation","3D height offset per level (taller-looking stacks)","elevOffset","range","advanced","numeric tuning of a working default","",""
-"Movement & Elevation","Jump float (up)","jumpFloat","range","advanced","numeric tuning of a working default","",""
-"Movement & Elevation","Jump scale (grow)","jumpScale","range","advanced","numeric tuning of a working default","",""
-"Movement & Elevation","Blocks a jump can clear","jumpClear","sel","basic","picks a mode/behaviour rather than tuning it","",""
-"Movement & Elevation","Extra blocks the double jump adds","doubleJumpClear","sel","basic","picks a mode/behaviour rather than tuning it","",""
-"Movement & Elevation","Sprint (hold Shift)","sprint","toggle","basic","a feature switch a designer decides deliberately","",""
-"Movement & Elevation","Sprint speed ×","sprintMultiplier","range","advanced","numeric tuning of a working default","",""
-"Movement & Elevation","Jump to dodge attacks","dodgeAttacks","sel","basic","picks a mode/behaviour rather than tuning it","",""
-"Movement & Elevation","Jump to dodge mobs","dodgeMobs","sel","basic","picks a mode/behaviour rather than tuning it","",""
-"Movement & Elevation","Double jump","doubleJump","toggle","basic","a feature switch a designer decides deliberately","",""
-"Movement & Elevation","Double-jump style","doubleJumpStyle","sel","basic","picks a mode/behaviour rather than tuning it","",""
-"Weapons","Crossbow bolt speed","crossbowSpeed","range","advanced","numeric tuning of a working default","",""
-"Weapons","Trident throw speed","tridentSpeed","range","advanced","numeric tuning of a working default","",""
-"Weapons","Trident return speed","tridentReturnSpeed","range","advanced","numeric tuning of a working default","",""
-"Weapons","Boomerang speed","boomerangSpeed","range","advanced","numeric tuning of a working default","",""
-"Weapons","Boomerang range (px)","boomerangRange","range","advanced","numeric tuning of a working default","",""
-"Weapons","Boomerang arc width","boomerangWidth","range","advanced","numeric tuning of a working default","",""
-"Weapons","Melee reach (× cell)","meleeReach","range","advanced","numeric tuning of a working default","",""
-"Weapons","Melee arc (degrees)","meleeArc","range","advanced","slider fine-tuning behind a working default","",""
-"Weapons","Wall height that blocks attacks","attackBlockHeight","sel","basic","picks a mode/behaviour rather than tuning it","",""
-"Mobs","Detection range (blocks)","mobDetectBlocks","range","advanced","slider fine-tuning behind a working default","",""
-"View & Controls","Control scheme","controlScheme","sel","basic","picks a mode/behaviour rather than tuning it","",""
-"View & Controls","Aim lock","angleLockDeg","sel","basic","picks a mode/behaviour rather than tuning it","",""
-"View & Controls","Default zoom","masterZoom","range","advanced","slider fine-tuning behind a working default","",""
-"View & Controls","Lock zoom in play (players cannot change it)","lockZoom","toggle","basic","a feature switch a designer decides deliberately","",""
-"View & Controls","Show a ring when hidden under an overhang","showHiddenIndicator","toggle","basic","a feature switch a designer decides deliberately","",""
-"View & Controls","Always show player (reveal window under canopy)","revealPlayer","toggle","basic","a feature switch a designer decides deliberately","",""
-"View & Controls","Reveal-window radius (blocks)","revealRadius","range","advanced","slider fine-tuning behind a working default","",""
-"Atmosphere — Day / Night","Enable day / night cycle","dayNight","toggle","basic","a feature switch a designer decides deliberately","",""
-"Atmosphere — Day / Night","Full-cycle length (seconds)","dayLengthSec","range","advanced","slider fine-tuning behind a working default","",""
-"Atmosphere — Day / Night","Start time of day","dayStart","sel","basic","picks a mode/behaviour rather than tuning it","",""
-"Atmosphere — Day / Night","Night darkness (→ near-black)","nightDarkness","range","advanced","slider fine-tuning behind a working default","",""
-"Atmosphere — Day / Night","Show a faint sun / moon","showSunMoon","toggle","basic","a feature switch a designer decides deliberately","",""
-"Atmosphere — Day / Night","Sun / moon shape","sunMoonShape","sel","basic","picks a mode/behaviour rather than tuning it","",""
-"Atmosphere — Day / Night","Cast shadows from raised terrain","shadows","toggle","basic","a feature switch a designer decides deliberately","",""
-"Atmosphere — Day / Night","Shadow style","shadowStyle","sel","basic","picks a mode/behaviour rather than tuning it","",""
-"Atmosphere — Day / Night","Fixed shadow falls","shadowDir","sel","basic","picks a mode/behaviour rather than tuning it","",""
-"Atmosphere — Day / Night","Fixed shadow darkness","shadowDarkness","range","advanced","numeric tuning of a working default","",""
-"Atmosphere — Day / Night","Moon shadow strength (vs sun)","moonShadowScale","range","advanced","slider fine-tuning behind a working default","",""
-"Atmosphere — Day / Night","Light reach per brightness (blocks)","lightRange","range","advanced","slider fine-tuning behind a working default","",""
-"Atmosphere — Day / Night","Lava brightness","lavaBrightness","range","advanced","slider fine-tuning behind a working default","",""
-"Atmosphere — Day / Night","Glowstone brightness","glowstoneBrightness","range","advanced","slider fine-tuning behind a working default","",""
-"Safety — Falling & Pits","Stop players walking off cliffs","blockCliffFall","toggle","basic","a feature switch a designer decides deliberately","",""
-"Safety — Falling & Pits","Max walk-down without a ramp/bridge","maxStepDown","sel","basic","picks a mode/behaviour rather than tuning it","",""
-"Safety — Falling & Pits","Pit blocks","pitMode","sel","basic","picks a mode/behaviour rather than tuning it","",""
-"Safety — Falling & Pits","Lava","lavaMode","sel","basic","picks a mode/behaviour rather than tuning it","",""
-"Safety — Falling & Pits","Lava damage per hit","lavaDamage","range","advanced","numeric tuning of a working default","",""
-"Safety — Falling & Pits","Glass can be shattered (melee / ranged break it)","glassShatter","toggle","basic","a feature switch a designer decides deliberately","",""
-"Safety — Falling & Pits","Redstone wiring in play","redstoneVisibility","sel","basic","picks a mode/behaviour rather than tuning it","",""
-"Safety — Falling & Pits","Bridge guardrails (off = can fall off bridges)","bridgeGuardrails","toggle","basic","a feature switch a designer decides deliberately","",""
-"Safety — Falling & Pits","Drawbridge style","drawbridgeStyle","sel","basic","picks a mode/behaviour rather than tuning it","",""
-"Interaction animations","Pipe climb-in (pull-up) — off = instant","pipeClimbAnim","toggle","basic","a feature switch a designer decides deliberately","",""
-"Interaction animations","Portal step-through (spin-warp) — off = instant","portalStepAnim","toggle","basic","a feature switch a designer decides deliberately","",""
-"Interaction animations","Reach out to flip levers / use locks","leverReachAnim","toggle","basic","a feature switch a designer decides deliberately","",""
-"Interaction animations","Interaction zoom (overrides game zoom)","interactionZoom","range","advanced","numeric tuning of a working default","",""
-"Interaction animations","Interaction animation speed","interactionSpeed","range","advanced","numeric tuning of a working default","",""
+Movement & Elevation,Player speed (× cell/frame),moveSpeed,range,advanced,slider fine-tuning behind a working default,This is a core gaming mechanic of the level type - we may have presets for specific game modes but let's keep it basic,
+Movement & Elevation,Levels a walk can climb,climbLevels,sel,basic,picks a mode/behaviour rather than tuning it,agreed,
+Movement & Elevation,Player height (levels — scales elevation),playerHeight,sel,basic,picks a mode/behaviour rather than tuning it,This should be advanced and default to 1. Having player height 2 is a confusing idea and will complicate level designs if not used thoughtfully,
+Movement & Elevation,3D height offset per level (taller-looking stacks),elevOffset,range,advanced,numeric tuning of a working default,Agreed - defaul to the highest setting,
+Movement & Elevation,Jump float (up),jumpFloat,range,advanced,numeric tuning of a working default,Agreed,
+Movement & Elevation,Jump scale (grow),jumpScale,range,advanced,numeric tuning of a working default,Agreed,
+Movement & Elevation,Blocks a jump can clear,jumpClear,sel,basic,picks a mode/behaviour rather than tuning it,Agreed,
+Movement & Elevation,Extra blocks the double jump adds,doubleJumpClear,sel,basic,picks a mode/behaviour rather than tuning it,Agreed,
+Movement & Elevation,Sprint (hold Shift),sprint,toggle,basic,a feature switch a designer decides deliberately,Agreed,
+Movement & Elevation,Sprint speed ×,sprintMultiplier,range,advanced,numeric tuning of a working default,Agreed,
+Movement & Elevation,Jump to dodge attacks,dodgeAttacks,sel,basic,picks a mode/behaviour rather than tuning it,Agreed,
+Movement & Elevation,Jump to dodge mobs,dodgeMobs,sel,basic,picks a mode/behaviour rather than tuning it,Agreed,
+Movement & Elevation,Double jump,doubleJump,toggle,basic,a feature switch a designer decides deliberately,Agreed - move above Row 8,
+Movement & Elevation,Double-jump style,doubleJumpStyle,sel,basic,picks a mode/behaviour rather than tuning it,Agreed - move above Row 8,
+Weapons,Crossbow bolt speed,crossbowSpeed,range,advanced,numeric tuning of a working default,,
+Weapons,Trident throw speed,tridentSpeed,range,advanced,numeric tuning of a working default,,
+Weapons,Trident return speed,tridentReturnSpeed,range,advanced,numeric tuning of a working default,,
+Weapons,Boomerang speed,boomerangSpeed,range,advanced,numeric tuning of a working default,,
+Weapons,Boomerang range (px),boomerangRange,range,advanced,numeric tuning of a working default,,
+Weapons,Boomerang arc width,boomerangWidth,range,advanced,numeric tuning of a working default,,
+Weapons,Melee reach (× cell),meleeReach,range,advanced,numeric tuning of a working default,,
+Weapons,Melee arc (degrees),meleeArc,range,advanced,slider fine-tuning behind a working default,,
+Weapons,Wall height that blocks attacks,attackBlockHeight,sel,basic,picks a mode/behaviour rather than tuning it,Let's keep this all as advanced and default to 2. ,
+Mobs,Detection range (blocks),mobDetectBlocks,range,advanced,slider fine-tuning behind a working default,,Move this to Safety Falling and Pits (but I'll suggest a name change to that entire section below)
+View & Controls,Control scheme,controlScheme,sel,basic,picks a mode/behaviour rather than tuning it,,
+View & Controls,Aim lock,angleLockDeg,sel,basic,picks a mode/behaviour rather than tuning it,,
+View & Controls,Default zoom,masterZoom,range,advanced,slider fine-tuning behind a working default,This should be basic,
+View & Controls,Lock zoom in play (players cannot change it),lockZoom,toggle,basic,a feature switch a designer decides deliberately,,
+View & Controls,Show a ring when hidden under an overhang,showHiddenIndicator,toggle,basic,a feature switch a designer decides deliberately,,
+View & Controls,Always show player (reveal window under canopy),revealPlayer,toggle,basic,a feature switch a designer decides deliberately,,
+View & Controls,Reveal-window radius (blocks),revealRadius,range,advanced,slider fine-tuning behind a working default,,
+Atmosphere — Day / Night,Enable day / night cycle,dayNight,toggle,basic,a feature switch a designer decides deliberately,,
+Atmosphere — Day / Night,Full-cycle length (seconds),dayLengthSec,range,advanced,slider fine-tuning behind a working default,,
+Atmosphere — Day / Night,Start time of day,dayStart,sel,basic,picks a mode/behaviour rather than tuning it,Advanced,
+Atmosphere — Day / Night,Night darkness (→ near-black),nightDarkness,range,advanced,slider fine-tuning behind a working default,,
+Atmosphere — Day / Night,Show a faint sun / moon,showSunMoon,toggle,basic,a feature switch a designer decides deliberately,,
+Atmosphere — Day / Night,Sun / moon shape,sunMoonShape,sel,basic,picks a mode/behaviour rather than tuning it,,
+Atmosphere — Day / Night,Cast shadows from raised terrain,shadows,toggle,basic,a feature switch a designer decides deliberately,,
+Atmosphere — Day / Night,Shadow style,shadowStyle,sel,basic,picks a mode/behaviour rather than tuning it,Advanced,
+Atmosphere — Day / Night,Fixed shadow falls,shadowDir,sel,basic,picks a mode/behaviour rather than tuning it,Advanced,
+Atmosphere — Day / Night,Fixed shadow darkness,shadowDarkness,range,advanced,numeric tuning of a working default,,
+Atmosphere — Day / Night,Moon shadow strength (vs sun),moonShadowScale,range,advanced,slider fine-tuning behind a working default,,
+Atmosphere — Day / Night,Light reach per brightness (blocks),lightRange,range,advanced,slider fine-tuning behind a working default,,
+Atmosphere — Day / Night,Lava brightness,lavaBrightness,range,advanced,slider fine-tuning behind a working default,,
+Atmosphere — Day / Night,Glowstone brightness,glowstoneBrightness,range,advanced,slider fine-tuning behind a working default,,
+Safety — Falling & Pits,Stop players walking off cliffs,blockCliffFall,toggle,basic,a feature switch a designer decides deliberately,"Let's call this section ""Interactions"" or ""Threats"" ""Risks"" ""Dangers""",
+Safety — Falling & Pits,Max walk-down without a ramp/bridge,maxStepDown,sel,basic,picks a mode/behaviour rather than tuning it,Advanced - default 2,
+Safety — Falling & Pits,Pit blocks,pitMode,sel,basic,picks a mode/behaviour rather than tuning it,Advanced - default off,
+Safety — Falling & Pits,Lava,lavaMode,sel,basic,picks a mode/behaviour rather than tuning it,Advanced - default damage,
+Safety — Falling & Pits,Lava damage per hit,lavaDamage,range,advanced,numeric tuning of a working default,Agreed,
+Safety — Falling & Pits,Glass can be shattered (melee / ranged break it),glassShatter,toggle,basic,a feature switch a designer decides deliberately,Advanced  -default on,
+Safety — Falling & Pits,Redstone wiring in play,redstoneVisibility,sel,basic,picks a mode/behaviour rather than tuning it,,
+Safety — Falling & Pits,Bridge guardrails (off = can fall off bridges),bridgeGuardrails,toggle,basic,a feature switch a designer decides deliberately,,
+Safety — Falling & Pits,Drawbridge style,drawbridgeStyle,sel,basic,picks a mode/behaviour rather than tuning it,,
+Interaction animations,Pipe climb-in (pull-up) — off = instant,pipeClimbAnim,toggle,basic,a feature switch a designer decides deliberately,,
+Interaction animations,Portal step-through (spin-warp) — off = instant,portalStepAnim,toggle,basic,a feature switch a designer decides deliberately,,
+Interaction animations,Reach out to flip levers / use locks,leverReachAnim,toggle,basic,a feature switch a designer decides deliberately,,
+Interaction animations,Interaction zoom (overrides game zoom),interactionZoom,range,advanced,numeric tuning of a working default,,
+Interaction animations,Interaction animation speed,interactionSpeed,range,advanced,numeric tuning of a working default,,

@@ -194,26 +194,46 @@
     const every = opts.intervalMs || 15000;
     const cap = opts.maxSamples || 2600;              // ~11 hours at 15s
     const log = {
-      startedAt: null, samples: [], errors: 0, warnings: 0, events: [],
+      // startedAt is a MONOTONIC clock reading (performance.now), not an epoch time — printing
+      // it as a date gives 1970. startedAtEpoch is the wall-clock companion for reports.
+      startedAt: null, startedAtEpoch: null, samples: [], errors: 0, warnings: 0, events: [],
       _next: 0, _lastTier: null, _lastCap: null,
 
       // Count real page errors, so "zero console errors" is measured, not remembered.
+      // Hook the page ONCE per page, not once per log. A new OverheadGame builds a new log,
+      // so re-entering Test repeatedly used to add a listener pair every time — an accumulation
+      // that also double-counted errors into whichever logs were still alive. The counter now
+      // lives on the window and every log reads from it. (QA F-A7.3.)
       hook() {
-        if (this._hooked || typeof window === 'undefined') return;
-        this._hooked = true;
-        window.addEventListener('error', () => { this.errors++; });
-        window.addEventListener('unhandledrejection', () => { this.errors++; });
+        if (typeof window === 'undefined') return;
+        if (!window.__ohErrCount) {
+          window.__ohErrCount = { n: 0 };
+          window.addEventListener('error', () => { window.__ohErrCount.n++; });
+          window.addEventListener('unhandledrejection', () => { window.__ohErrCount.n++; });
+        }
+        this._errBase = window.__ohErrCount.n;   // count errors since THIS log started
+      },
+      get errorCount() {
+        if (typeof window === 'undefined' || !window.__ohErrCount) return this.errors;
+        return Math.max(this.errors, window.__ohErrCount.n - (this._errBase || 0));
       },
 
       // Called each frame; does nothing but a clock compare until a sample is due.
       tick(now, stats, gov) {
-        if (this.startedAt == null) { this.startedAt = now; this._next = now; this.hook(); }
+        if (this.startedAt == null) {
+          this.startedAt = now; this._next = now; this.hook();
+          try { this.startedAtEpoch = Date.now(); } catch (e) { this.startedAtEpoch = null; }
+        }
         // Governor decisions are logged the MOMENT they happen, not at the next sample.
         if (gov && (gov.tier !== this._lastTier || gov.cap !== this._lastCap)) {
           if (this._lastTier != null) this.events.push({ at: Math.round((now - this.startedAt) / 1000), what: gov.reason || ('tier ' + gov.tier + ' cap ' + gov.cap) });
           this._lastTier = gov.tier; this._lastCap = gov.cap;
         }
         if (now < this._next) return;
+        // Skip a sample with no measured frame rate. The very first tick fires before any
+        // frame interval exists, so it recorded fps 0 and dragged min/avg down for the whole
+        // run. (QA A7.3, build 362.)
+        if (!stats || !(stats.fps > 0)) { this._next = now + Math.min(every, 1000); return; }
         this._next = now + every;
         if (this.samples.length >= cap) this.samples.shift();
         let heap = 0;
@@ -223,7 +243,7 @@
           fps: stats ? Math.round(stats.fps) : 0,
           worst: stats ? Math.round(stats.worstMs) : 0,
           cells: stats ? stats.cells : 0,
-          heap, tier: gov ? gov.tier : 0, cap: gov ? gov.cap : 60, err: this.errors,
+          heap, tier: gov ? gov.tier : 0, cap: gov ? gov.cap : 60, err: this.errorCount,
         });
       },
 
@@ -240,18 +260,26 @@
         const third = Math.max(1, Math.floor(n / 3));
         const heapEarly = avg(heaps.slice(0, third)), heapLate = avg(heaps.slice(-third));
         const drift = heapEarly ? Math.round((heapLate - heapEarly) / heapEarly * 100) : 0;
+        // A percentage alone is far too eager on a small heap: +40% of 20MB is 8MB, which a
+        // handful of offscreen canvases produces. Require BOTH a relative and an absolute
+        // rise before calling it a leak. (QA F-A7.3.)
+        const leak = drift > 25 && (heapLate - heapEarly) >= 15;
         return [
-          'SOAK ' + Math.round(last.s / 60) + ' min, ' + n + ' samples',
+          'SOAK ' + Math.round(last.s / 60) + ' min, ' + n + ' samples'
+            + (this.startedAtEpoch ? '  (started ' + new Date(this.startedAtEpoch).toLocaleString() + ')' : ''),
           'fps      first ' + first.fps + '  last ' + last.fps + '  avg ' + avg(fps) + '  min ' + Math.min.apply(null, fps),
           'worst frame  ' + worst + 'ms',
           'JS heap  early ' + heapEarly + 'MB  late ' + heapLate + 'MB  drift ' + (drift >= 0 ? '+' : '') + drift + '%'
-            + (drift > 25 ? '  <-- INVESTIGATE: looks like a leak' : ''),
-          'errors   ' + this.errors,
+            + (leak ? '  <-- INVESTIGATE: looks like a leak' : (drift > 25 ? '  (rise is small in absolute terms — likely noise)' : '')),
+          'errors   ' + this.errorCount,
           'quality  tier ' + last.tier + ' cap ' + last.cap + 'fps  (' + this.events.length + ' changes)',
           this.events.length ? 'changes: ' + this.events.slice(-8).map((e) => e.at + 's ' + e.what).join(' | ') : 'changes: none',
         ].join('\n');
       },
       dump() { const t = this.summary(); if (typeof console !== 'undefined') { console.log(t); console.table(this.samples.slice(-40)); } return t; },
+      // NOTE for anyone reading the CSV: `tier` is sampled every 15s, so an excursion shorter
+      // than that is invisible in this column. `events` is the reliable record — the soak's two
+      // real drops each lasted 1-2s and left every tier cell reading 0. (QA, build 362.)
       csv() { return 'sec,fps,worstMs,cells,heapMB,tier,cap,errors\n' + this.samples.map((x) => [x.s, x.fps, x.worst, x.cells, x.heap, x.tier, x.cap, x.err].join(',')).join('\n'); },
     };
     return log;

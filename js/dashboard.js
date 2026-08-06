@@ -199,7 +199,12 @@ const DASHBOARD = {
     // Offline: Sandbox works locally (build/save worlds in localStorage). The
     // other modes' local providers land in later slices — guard them for now.
     if (APP_MODE.isLocal() && mode !== 'SANDBOX') {
-      alert('This mode isn’t available offline yet — coming in a later update.\n\nSandbox (build & save your own worlds) works offline now, or choose “☁ Go Online”.');
+      // IN-PAGE, not alert(). A native dialog parks the renderer until a human clicks it, and
+      // an automated session can neither see nor dismiss one — QA reported this as "clicking
+      // Platformer freezes the tab permanently, only a reload clears it", reproduced four
+      // times. It was never a hang: it was this modal, invisible to the harness. Same class as
+      // the import dialogs fixed in 347. (QA F-MODE-HANG, build 362.)
+      this._offlineNotice(mode);
       return;
     }
     if (mode === 'SANDBOX') {
@@ -211,6 +216,29 @@ const DASHBOARD = {
     } else {
       GAME_SELECTION.init(mode);
     }
+  },
+
+  // A dismissible banner on the dashboard, so the message is readable, screenshottable and
+  // never blocks the thread.
+  _offlineNotice(mode) {
+    const nice = { NORMAL: 'Normal', PLATFORMER: 'Platformer', SPEEDRUNNER: 'Speed Runner', ARENA: 'Arena', CAMPAIGN: 'Campaign' }[mode] || mode;
+    let el = document.getElementById('offline-mode-notice');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'offline-mode-notice';
+      el.style.cssText = 'position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:9800;max-width:min(560px,92vw);'
+        + 'background:#1e2a3d;border:1px solid #46557a;border-radius:10px;padding:14px 16px;color:#dfe7f5;'
+        + 'font:14px sans-serif;box-shadow:0 8px 26px rgba(0,0,0,.45)';
+      document.body.appendChild(el);
+    }
+    el.innerHTML = '<b>' + nice + ' isn\u2019t available offline yet.</b>'
+      + '<p style="margin:6px 0 0;color:#9fb0cc;font-size:13px">Sandbox (build &amp; save your own worlds) works offline now \u2014 '
+      + 'or choose \u201c\u2601 Go Online\u201d to play ' + nice + '.</p>'
+      + '<div style="text-align:right;margin-top:10px"><button id="offline-notice-ok" '
+      + 'style="background:#2b3548;border:1px solid #46557a;color:#dfe7f5;border-radius:7px;padding:6px 14px;cursor:pointer">OK</button></div>';
+    el.style.display = 'block';
+    const ok = document.getElementById('offline-notice-ok');
+    if (ok) ok.onclick = () => { el.style.display = 'none'; };
   },
 
   async _logout() {
