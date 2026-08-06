@@ -801,6 +801,40 @@
         OVERHEAD.drawTerrainCube(ctx, o.k, sp.x, sp.y, cs, o.e, sN < o.e, eN < o.e);
       }
     }
+    // §42 — which raised terrain cells occlude an entity standing at (col,row,level)? A cell
+    // occludes iff it is NEARER the camera (c+r greater than the entity's c+r) AND its terrain
+    // is TALLER than the entity's footing (elev > level) — so a wall hides a mob behind it, but
+    // a shorter wall one row south does NOT hide a mob standing high on a taller wall (the
+    // subtlety the design called out). Bounded to a small south/east window, back-to-front.
+    // Pure (no drawing) so the depth rule can be unit-tested.
+    _occluderCells(col, row, level) {
+      const g = this.grid, depth = col + row, out = [];
+      const reach = Math.max(2, Math.ceil(1.3 * (this._density || 1)) + 1);
+      for (let dr = -1; dr <= reach; dr++) for (let dc = -1; dc <= reach; dc++) {
+        const c = col + dc, r = row + dr;
+        if (c < 0 || r < 0 || c >= g.gridW || r >= g.gridH) continue;
+        if (c + r <= depth) continue;                       // behind (or level with) the entity — leave it
+        const e = this._elev(c, r) | 0;
+        if (e <= (level | 0)) continue;                     // only terrain TALLER than the entity's footing can hide it
+        const k = this._key(c, r);
+        if (k == null || k === 'pit') continue;
+        out.push({ c, r, e, k });
+      }
+      out.sort((a, b) => (a.r + a.c) - (b.r + b.c) || a.e - b.e);   // back-to-front, like the cache bake
+      return out;
+    }
+    _occludeEntity(ctx, S, cs, e) {
+      const col = (e.col != null) ? e.col : (e.ref && e.ref.col != null ? e.ref.col : 0);
+      const cells = this._occluderCells(col, e.row, e.level || 0);
+      if (!cells.length) return;
+      const g = this.grid, cell = g.cell;
+      for (const o of cells) {
+        const sp = S(o.c * cell, o.r * cell);
+        const sN = (o.r + 1 < g.gridH) ? this._elev(o.c, o.r + 1) : -1;
+        const eN = (o.c + 1 < g.gridW) ? this._elev(o.c + 1, o.r) : -1;
+        OVERHEAD.drawTerrainCube(ctx, o.k, sp.x, sp.y, cs, o.e, sN < o.e, eN < o.e);
+      }
+    }
     _pitCentreNear(x, y) {
       const cell = this.grid.cell, c = this._cellOf(x, y);
       const centre = (col, row) => ({ x: (col + 0.5) * cell, y: (row + 0.5) * cell });
@@ -1052,12 +1086,17 @@
       if (this.goal) { const gc = (typeof GOAL_COLORS !== 'undefined' && GOAL_COLORS[this.goal.color || 0]) || { hex: '#ffd700' }; const sp = S((this.goal.col + 1) * g.cell, (this.goal.row + 1) * g.cell); ctx.fillStyle = gc.hex; ctx.font = `${(cs * 1.8) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.62); }
       // Entities sorted by (row + elev).
       const ents = [];
-      for (const b of this.buildings) ents.push({ kind: 'b', row: b.row, level: b.level || 0, ref: b });
-      for (const it of this.items) if (!it.taken) ents.push({ kind: 'i', row: it.row, level: 0, ref: it });
-      for (const m of this.mobs) if (!m.dead) ents.push({ kind: 'm', row: (m.y / g.cell) | 0, level: m.elev || 0, ref: m });
-      for (const v of this._templateVoxels) ents.push({ kind: 'tv', row: v.row, level: v.elev, ref: v });   // template overlay voxels (interleave with terrain/entities)
-      ents.push({ kind: 'p', row: (this.player.y / g.cell) | 0, level: this.player.elev, ref: this.player });
-      OH_ELEV.sortForDraw(ents).forEach((e) => this._drawEntity(e, S, z, cs));
+      for (const b of this.buildings) ents.push({ kind: 'b', row: b.row, col: b.col, level: b.level || 0, ref: b });
+      for (const it of this.items) if (!it.taken) ents.push({ kind: 'i', row: it.row, col: it.col, level: 0, ref: it });
+      for (const m of this.mobs) if (!m.dead) ents.push({ kind: 'm', row: (m.y / g.cell) | 0, col: (m.x / g.cell) | 0, level: m.elev || 0, ref: m });
+      for (const v of this._templateVoxels) ents.push({ kind: 'tv', row: v.row, col: v.col, level: v.elev, ref: v });   // template overlay voxels (interleave with terrain/entities)
+      ents.push({ kind: 'p', row: (this.player.y / g.cell) | 0, col: (this.player.x / g.cell) | 0, level: this.player.elev, ref: this.player });
+      // §42 depth occlusion (build 374, default OFF): after each entity, repaint the raised
+      // terrain NEARER the camera and TALLER than the entity's footing back over it, so a wall
+      // hides a mob standing behind it. Gated so the deployed layering is unchanged until a
+      // browser pass turns it on; skipped during a perf measure.
+      const occl = this.settings.depthOcclusion === true && !this._measureCfg;
+      OH_ELEV.sortForDraw(ents).forEach((e) => { this._drawEntity(e, S, z, cs); if (occl) this._occludeEntity(ctx, S, cs, e); });
       // Melee swing — the ACTUAL held weapon sweeps through the attack cone. The
       // weapon is scaled to fill the arc (a wider arc → a bigger sweep).
       { const pl = this.player; if (pl._swingT > 0) {

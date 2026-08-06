@@ -53,6 +53,7 @@
       showHiddenIndicator: false,   // show a ring when the player is under an overhang
       revealPlayer:     false,      // punch a circle through canopy so the player stays visible
       revealRadius:     4,          // reveal-window radius in blocks
+      depthOcclusion:   false,      // §42 — raised walls NEARER the camera hide mobs/items/devices behind them (default OFF: a fundamental layering change, on for a browser pass)
       // Atmosphere — day/night cycle (visual tint + a small night mob-sight boost).
       dayNight:         false,      // off by default (worlds stay in daylight)
       dayLengthSec:     120,        // seconds for one full day→night→day
@@ -210,6 +211,7 @@
     TOG('showHiddenIndicator', G_VIEW, 'Show a ring when hidden under an overhang', false),
     TOG('revealPlayer', G_VIEW, 'Always show player (reveal window under canopy)', false),
     R('revealRadius', G_VIEW, 2, 10, 1, 'Reveal-window radius (blocks)', false),
+    TOG('depthOcclusion', G_VIEW, 'Walls hide things behind them (depth occlusion)', true, '§42 — a raised wall nearer the camera hides a mob/item/device standing behind it (a taller wall, not a shorter one). Default OFF: it changes how everything layers, so it wants a browser pass before it becomes the default.'),
     // ── Atmosphere — Day / Night ──
     TOG('dayNight', G_ATM, 'Enable day / night cycle', false),
     R('dayLengthSec', G_ATM, 20, 600, 10, 'Full-cycle length (seconds)', false),
