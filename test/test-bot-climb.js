@@ -184,6 +184,29 @@ ok(climbs([
   ok(/id="cu-stickaim"/.test(cuSrc) && /setOpt\('p1StickAim'/.test(cuSrc), 'Controls exposes a "Stick Aim (P1)" toggle');
 }
 
+// Per-player grapple: players 2-4 can fire their own grappling hook, not just P1. The three
+// grapple engine methods take a player param (state lives on p._grapple), and a P2-P4 fire loop
+// starts a hook on the bound button aimed along that player's stick. Regression guard against the
+// old P1-only `const p = this.player` coupling AND the freeze class (adapter must expose isAimUp).
+{
+  const fs4 = require('fs'), path4 = require('path');
+  const gameSrc = fs4.readFileSync(path4.join(jsDir, 'game.js'), 'utf8');
+  ok(/_startGrapple\(p, aim, mode\)/.test(gameSrc), '_startGrapple takes the firing player as a parameter');
+  ok(/_updateGrapple\(p, inp\)/.test(gameSrc), '_updateGrapple takes (player, input) — no hardcoded this.player/this.input');
+  ok(/_endGrapple\(p, preserveVel\)/.test(gameSrc), '_endGrapple takes the player it is releasing');
+  // _drawGrapple loops every active player so 1-4 cables render.
+  ok(/_drawGrapple\(ctx\) {[\s\S]*?for \(const p of this\.activePlayers\(\)\)/.test(gameSrc), '_drawGrapple loops over activePlayers()');
+  // The secondary adapter exposes isAimUp (read by _updateGrapple) — without it a grappling
+  // P2-P4 would throw and freeze, exactly like the isDown ladder bug.
+  ok(/isAimUp:\s*\(\) => this\.input\.pUp\(idx\)/.test(gameSrc), 'the per-player adapter provides isAimUp (grapple reel-in) — no freeze');
+  // Secondaries advance their hook and can fire it.
+  ok(/this\._updateGrapple\(p, pInput\)/.test(gameSrc), 'the secondary loop advances each P2-P4 grapple');
+  ok(/pJustDown\(i, 'grappleBtn'\)/.test(gameSrc) && /_startGrapple\(gp, aim/.test(gameSrc), 'P2-P4 fire their grapple on the bound button, aimed from their player');
+  ok(/_secondaryAimAngle\(gp, i\)/.test(gameSrc) && /_secondaryAimAngle\(p, i\)/.test(gameSrc), 'a secondary aim-angle helper drives the P2-P4 grapple direction');
+  // Grapple kills are credited to the firing player, not always p1.
+  ok(/onKill\(p\._ownerId \|\| 'p1', mob\)/.test(gameSrc), 'a grapple knockback kill is credited to the firing player');
+}
+
 // Guard: constants.js must parse (the fact this test reached here after run('constants.js')
 // already proves it) AND GAME_VERSION must be a non-empty string. A build-note with an
 // unescaped apostrophe once terminated the single-quoted string and made the WHOLE app a

@@ -2390,7 +2390,7 @@ class Game {
       }
     } else {
       this._applyMovementConfig(this.player);
-      this._updateGrapple();                 // §Phase 5 — advance hook/swing; may own the frame
+      this._updateGrapple(this.player, this.input);   // §Phase 5 — advance P1 hook/swing; may own the frame
       this.player._preVy = this.player.vy;   // §Classic Blocks — impact speed for force-driven trampoline
       this.player.update(this.input, this.level);
     }
@@ -2458,8 +2458,13 @@ class Game {
         isDown:   (code) => (code === 'KeyW' || code === 'ArrowUp') ? this.input.pUp(idx) : false,
         isStickUp: () => this.input.pUp(idx),
         isLookUpHeld: () => false,
+        // §Per-player grapple — _updateGrapple reads isAimUp() (reel-in / swing-rise). A controller
+        // has no look-up key, so map it to this player's up (stick-up). Without it the grapple
+        // update throws for a secondary player and freezes the game (same class as the ladder bug).
+        isAimUp:  () => this.input.pUp(idx),
       };
       this._applyMovementConfig(p);
+      this._updateGrapple(p, pInput);   // §Per-player grapple — advance P2-P4 hook/swing before their move
       p.update(pInput, this.level);
     }
     // Resolve pairwise collisions among all live players so they don't overlap.
@@ -2595,14 +2600,26 @@ class Game {
     const _grappleShift = this.player.hasGrapple &&
                           (this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight'));
     if (_grappleShift && this.input.mouse.rightClicked && !this.player._grapple) {
-      this._startGrapple(aimWorld);
+      this._startGrapple(this.player, aimWorld);
     }
     // §Controller pass — Grappling Hook + Grapple-Pull on bound gamepad buttons (aim = the
     // right-stick cursor, i.e. the same aimWorld the mouse uses). Default-unassigned, so this
     // is inert until the player binds it in Controls.
     if (this.player.hasGrapple && !this.player._grapple) {
-      if (this.input.p1JustDown('grappleBtn'))     this._startGrapple(aimWorld);
-      else if (this.input.p1JustDown('grapplePullBtn')) this._startGrapple(aimWorld, 'pull');
+      if (this.input.p1JustDown('grappleBtn'))     this._startGrapple(this.player, aimWorld);
+      else if (this.input.p1JustDown('grapplePullBtn')) this._startGrapple(this.player, aimWorld, 'pull');
+    }
+    // §Per-player grapple — P2-P4 fire their own hook on the bound button (LT default), aimed along
+    // their right-stick direction (or facing when centred). Mirrors P1's controller grapple.
+    for (let i = 1; i < this.players.length; i++) {
+      const gp = this.players[i];
+      if (!gp || this._respawnTimers[i] > 0 || !gp.hasGrapple || gp._grapple) continue;
+      const fireN = this.input.pJustDown(i, 'grappleBtn');
+      const pullN = this.input.pJustDown(i, 'grapplePullBtn');
+      if (!fireN && !pullN) continue;
+      const ang = this._secondaryAimAngle(gp, i);
+      const aim = { x: gp.cx + Math.cos(ang) * 4000, y: gp.cy + Math.sin(ang) * 4000 };
+      this._startGrapple(gp, aim, pullN ? 'pull' : null);
     }
     const rangedDown  = this.input.isRangedAttackDown();
     // Two-button combat: LEFT-click (or Space / gamepad X) = melee, RIGHT-click (or gamepad
@@ -9606,6 +9623,24 @@ class Game {
     return f > 0 ? 0 : Math.PI;                           // straight ahead
   }
 
+  // §Per-player grapple — the aim angle for a secondary player (P2-P4), identical to how their bow
+  // aims: free-aim atan2 of the right stick when deflected, else snap-aim (facing / jump-up /
+  // crouch-down). Also stores p._aimAngle so a grapple-only player still has a valid reticle angle.
+  _secondaryAimAngle(p, i) {
+    const gp = this.input.pGp(i);
+    const aimMag = Math.hypot(gp.aimX, gp.aimY);
+    let ang;
+    if (this.input.pGpSlot(i) >= 0 && aimMag > 0.15) {
+      ang = Math.atan2(gp.aimY, gp.aimX);
+    } else if (this.input.pGpSlot(i) >= 0) {
+      ang = (p._aimAngle != null) ? p._aimAngle : (p.facing > 0 ? 0 : Math.PI);
+    } else {
+      ang = this._snapAimAngle(p, this.input.pJump(i), this.input.pCrouch(i));
+    }
+    p._aimAngle = ang;
+    return ang;
+  }
+
   _exportAsTemplate() {
     // Build a save object identical to what SandboxSaves.save() would produce,
     // then trigger a browser download as JSON. Drop it in templates/ to use as
@@ -12373,9 +12408,10 @@ class Game {
   // exactly-1-block obstacle; Down disengages; Jump releases with velocity preserved.
   // mode: undefined = normal (swing/attach); 'pull' = reel the player straight to the anchor
   // (or yank a hooked enemy toward the player), for vertical traversal / crossing gaps.
-  _startGrapple(aim, mode) {
-    if (typeof GRAPPLE === 'undefined') return;
-    const p = this.player;
+  // §Per-player grapple — `p` is the firing player (P1 or a secondary P2-P4); the hook state
+  // lives on that player (p._grapple / p._grappleOwn), so 1-4 grapples can be in flight at once.
+  _startGrapple(p, aim, mode) {
+    if (typeof GRAPPLE === 'undefined' || !p) return;
     const dx = aim.x - p.cx, dy = aim.y - p.cy, d = Math.hypot(dx, dy) || 1;
     const rangeBl = this._worldAdvSettings.grappleRange ?? GRAPPLE.DEFAULT_RANGE_BLOCKS;
     p._grapple = { state: 'firing', mode: mode || null, dx: dx / d, dy: dy / d, hx: p.cx, hy: p.cy, traveled: 0, range: rangeBl * BLOCK_SIZE };
@@ -12395,16 +12431,18 @@ class Game {
   // §Controls pass — a hooked collectible flies BACK to the player (not the player to it).
   // Mark it _pull; _updatePulledEmeralds nudges it toward the player each frame, and the normal
   // proximity pickup (EMERALD_SYSTEM.checkPickup) collects it on arrival.
-  _startEmeraldPull(e) {
+  _startEmeraldPull(e, toPlayer) {
     if (!e) return;
     e._pull = true;
+    e._pullTo = toPlayer || null;   // §Per-player grapple — reel the gem to whoever grappled it
     this._playSound('sounds/bow-fire.mp3', 0.5);
   }
   _updatePulledEmeralds() {
     if (!this._emeraldsActive || typeof EMERALD_SYSTEM === 'undefined' || !EMERALD_SYSTEM._activeEmeralds) return;
-    const p = this.player; if (!p) return;
+    if (!this.player) return;
     for (const e of EMERALD_SYSTEM._activeEmeralds()) {
       if (!e._pull || e.collected) continue;
+      const p = e._pullTo || this.player;
       const dx = p.cx - e.wx, dy = p.cy - e.wy, d = Math.hypot(dx, dy) || 1;
       const SPD = 14;
       if (d <= SPD) { e.wx = p.cx; e.wy = p.cy; }        // arrived — next pickup pass collects it
@@ -12419,8 +12457,9 @@ class Game {
     while (this.level.isSolid(r, col) && h < 30) { h++; r++; }   // contiguous solid downward
     return h;
   }
-  _endGrapple(preserveVel) {
-    const p = this.player, g = p._grapple;
+  _endGrapple(p, preserveVel) {
+    const g = p && p._grapple;
+    if (!g && !p) return;
     if (g && g.swing && preserveVel) {
       const v = GRAPPLE.releaseVelocity(g.swing);
       // §follow-up — Release Momentum: amplify the release vector so a swing can fling the
@@ -12442,13 +12481,14 @@ class Game {
     } else if (!preserveVel) { p.vx = 0; p.vy = 0; }
     p._grapple = null; p._grappleOwn = false;
   }
-  _updateGrapple() {
-    const p = this.player;
+  // §Per-player grapple — `p` is the owning player, `inp` is that player's input (this.input for
+  // P1, the P2-P4 gamepad adapter for secondaries). `inp` MUST cover every method read below
+  // (isCrouch/isAimUp/isJump/isRight/isLeft) or a secondary-only path throws and freezes the game.
+  _updateGrapple(p, inp) {
     if (!p) return;
     const g = p._grapple;
     if (!g) { p._grappleOwn = false; return; }
     if (typeof GRAPPLE === 'undefined') { p._grapple = null; p._grappleOwn = false; return; }
-    const inp = this.input;
     const down = inp.isCrouch();     // disengage / drop
     const up   = inp.isAimUp() || inp.isJump();   // reel in (Up/W) — jump also releases below
 
@@ -12477,7 +12517,7 @@ class Game {
             if (mob.takeDamage) mob.takeDamage(dmg, dir, 1.8);
             this._notify('Grapple knockback!', '#C0A070', 60);
           }
-          if (!mob.alive && this.mobManager && this.mobManager.onKill) this.mobManager.onKill('p1', mob);
+          if (!mob.alive && this.mobManager && this.mobManager.onKill) this.mobManager.onKill(p._ownerId || 'p1', mob);
           p._grapple = null; p._grappleOwn = false;           // hook returns to the player
           return;
         }
@@ -12485,7 +12525,7 @@ class Game {
         // the player (world toggle "Grapple Collectibles"). Non-solid, so check before terrain.
         if (g.mode === 'pull' && this._worldAdvSettings.grappleCollectibles) {
           const em = this._grappleHitEmerald(g.hx, g.hy);
-          if (em) { this._startEmeraldPull(em); p._grapple = null; p._grappleOwn = false; return; }
+          if (em) { this._startEmeraldPull(em, p); p._grapple = null; p._grappleOwn = false; return; }
         }
         const hitRow = Math.floor(g.hy / BLOCK_SIZE), hitCol = Math.floor(g.hx / BLOCK_SIZE);
         // §Classic Blocks — the hook also grabs non-solid Jump-Through platforms (and grab Bars),
@@ -12519,13 +12559,13 @@ class Game {
     // arrival the grapple ends carrying a little momentum so you settle onto the ledge/gem.
     if (g.state === 'reeling') {
       p._grappleOwn = true;
-      if (down) { this._endGrapple(false); return; }
+      if (down) { this._endGrapple(p, false); return; }
       const REEL = 15;
       const dx = g.ax - p.cx, dy = g.ay - p.cy, dist = Math.hypot(dx, dy) || 1;
-      if (dist <= REEL + 2) { this._endGrapple(false); p.vy = -4; return; }   // arrived → tiny pop
+      if (dist <= REEL + 2) { this._endGrapple(p, false); p.vy = -4; return; }   // arrived → tiny pop
       const nx = dx / dist, ny = dy / dist;
       const stepX = nx * REEL, stepY = ny * REEL;
-      if (this._grappleBodyBlocked(p.x + stepX, p.y + stepY, p.width, p.height)) { this._endGrapple(true); return; }
+      if (this._grappleBodyBlocked(p.x + stepX, p.y + stepY, p.width, p.height)) { this._endGrapple(p, true); return; }
       p.x += stepX; p.y += stepY;
       p.vx = stepX; p.vy = stepY;     // carried onto release
       return;
@@ -12536,7 +12576,7 @@ class Game {
     // the momentum they had when they grabbed.
     if (g.state === 'attached') {
       p._grappleOwn = true; p.vx = 0; p.vy = 0;
-      if (down) { this._endGrapple(false); return; }
+      if (down) { this._endGrapple(p, false); return; }
       if (up) {
         g.swing = GRAPPLE.beginSwing(g.ax, g.ay, p.x, p.y, p.width, p.height, g.entryVx || 0, g.entryVy || 0);
         g.state = 'swinging';
@@ -12545,14 +12585,14 @@ class Game {
     }
 
     // swinging (reeling handled inline)
-    if (down) { this._endGrapple(true); return; }        // Down = disengage/drop (keep momentum)
+    if (down) { this._endGrapple(p, true); return; }        // Down = disengage/drop (keep momentum)
     if (inp.isAimUp()) {
       GRAPPLE.rise(g.swing);
       // §item4 — reeled to the top of a rope on a block with a CLEAR TOP → climb onto it
       // (even mid-face, not only at an edge). Hands off to the ledge-climb 'up' animation
       // so it shows the articulated climbing sprite, then stands on top.
       if (g.topClear && g.anchorCol != null && g.swing.len <= GRAPPLE.MIN_LEN + 6) {
-        this._grappleClimbHandoff(g);
+        this._grappleClimbHandoff(p, inp, g);
         return;
       }
     }
@@ -12580,22 +12620,22 @@ class Game {
     }
     p.vx = 0; p.vy = 0;
     p._grappleOwn = true;
-    if (inp.isJump()) this._endGrapple(true);   // release mid-swing, velocity preserved
+    if (inp.isJump()) this._endGrapple(p, true);   // release mid-swing, velocity preserved
   }
   // §item4 — hand the grapple climb off to the existing ledge-climb 'up' animation: set up
   // its hang→stand geometry + grip corner, flag `_hangState='up'`, then end the grapple so
   // player.update runs `_updateHang` (which drives the articulated climbing pose + the
   // rise-then-step motion and stands the player on top of the block).
-  _grappleClimbHandoff(g) {
-    const p = this.player, BS = BLOCK_SIZE;
+  _grappleClimbHandoff(p, inp, g) {
+    const BS = BLOCK_SIZE;
     const acol = g.anchorCol, arow = g.anchorRow;
     // §Classic Blocks — climbing the rope all the way to a BAR ends in a hang FROM the bar (you
     // don't stand on top of a bar / can't climb up onto a Bar-Platform). Hand off to the bar state.
     const _ab = this.level.get(arow, acol);
     if (_ab === BLOCK.BAR || _ab === BLOCK.BAR_PLATFORM) {
-      this._endGrapple(false);
+      this._endGrapple(p, false);
       p._barCooldown = 0;
-      p._grabBar(arow, acol, p._barLineY(arow), this.input);
+      p._grabBar(arow, acol, p._barLineY(arow), inp);
       return;
     }
     const blockTopY = arow * BS, blockCx = acol * BS + BS / 2;
@@ -12610,7 +12650,7 @@ class Game {
     p._climbDur = Math.max(6, Math.round(75 / (p._climbSpeed || 1)));
     p._climbProg = 0;
     p._hangState = 'up';                                        // _updateHang now owns the frame
-    this._endGrapple(false);                                    // release the hook; hang state takes over
+    this._endGrapple(p, false);                                 // release the hook; hang state takes over
   }
   // §item5 — the player's body box overlaps a solid block? (used to wall-block a swing)
   _grappleBodyBlocked(x, y, w, h) {
@@ -12629,17 +12669,20 @@ class Game {
     }
     return null;
   }
+  // §Per-player grapple — draw the cable + hook for every player (P1-P4) that has one in flight.
   _drawGrapple(ctx) {
-    const p = this.player, g = p && p._grapple;
-    if (!g) return;
     const cam = this.camera;
-    const px = p.cx - cam.x, py = p.cy - cam.y;
-    const hx = (g.ax != null ? g.ax : g.hx) - cam.x, hy = (g.ay != null ? g.ay : g.hy) - cam.y;
     ctx.save();
-    ctx.strokeStyle = '#6b5637'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(hx, hy); ctx.stroke();
-    ctx.fillStyle = '#cfcfcf';    // hook head
-    ctx.beginPath(); ctx.arc(hx, hy, 4, 0, Math.PI * 2); ctx.fill();
+    for (const p of this.activePlayers()) {
+      const g = p && p._grapple;
+      if (!g) continue;
+      const px = p.cx - cam.x, py = p.cy - cam.y;
+      const hx = (g.ax != null ? g.ax : g.hx) - cam.x, hy = (g.ay != null ? g.ay : g.hy) - cam.y;
+      ctx.strokeStyle = '#6b5637'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(hx, hy); ctx.stroke();
+      ctx.fillStyle = '#cfcfcf';    // hook head
+      ctx.beginPath(); ctx.arc(hx, hy, 4, 0, Math.PI * 2); ctx.fill();
+    }
     ctx.restore();
   }
 
@@ -18130,12 +18173,12 @@ class Game {
 
     // §Grapple + Crumble — a player hanging/swinging from a crumble block wears it down exactly as
     // if standing on it; the moment it crumbles away the anchor is gone, so the grapple lets go
-    // (momentum preserved). Grapple is single-player, so this only applies to this.player.
-    if (p === this.player && p._grapple && p._grappleOwn && p._grapple.anchorRow != null &&
+    // (momentum preserved). Per-player now — applies to whichever player (P1-P4) is grappling here.
+    if (p._grapple && p._grappleOwn && p._grapple.anchorRow != null &&
         (p._grapple.state === 'attached' || p._grapple.state === 'swinging' || p._grapple.state === 'reeling')) {
       const ar = p._grapple.anchorRow, ac = p._grapple.anchorCol, ab = L.get(ar, ac);
       if (ab === BLOCK.CRUMBLE_BLOCK) this._crumbleTouch(ar, ac);
-      else if (ab === BLOCK.AIR) this._endGrapple(true);
+      else if (ab === BLOCK.AIR) this._endGrapple(p, true);
     }
 
     // §Trampoline Jump-to-Boost — while the post-bounce window is open, a fresh Jump press timed
