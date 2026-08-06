@@ -919,7 +919,11 @@
     // Pre-render the whole static terrain (tops + 3D sides, elevation baked in) to
     // an offscreen canvas at 1:1 world px. `pad` is a top margin so raised tiles
     // (drawn UP) aren't clipped. Blitted each frame in _render.
-    _buildTerrainCache() {
+    // Set up an INCREMENTAL terrain bake (build 373). The opening ~8fps was one synchronous
+    // 112,000-cell bake blocking the main thread — which is also why a zoom animation couldn't
+    // play during it. This just prepares the canvas + the sorted cell list; _stepTerrainBake
+    // draws a chunk per frame so the thread yields and a Loading banner can animate.
+    _beginTerrainBake() {
       const g = this.grid, cell = g.cell;
       const worldW = g.gridW * cell, worldH = g.gridH * cell;
       const Q = OVERHEAD.elevOffset(cell);
@@ -927,23 +931,87 @@
       const pad = Math.ceil(maxE * Q + cell);   // up-left offset needs pad on BOTH axes
       this._cachePad = pad;
       const cv = document.createElement('canvas'); cv.width = Math.max(1, worldW + pad); cv.height = Math.max(1, worldH + pad);
-      const cx = cv.getContext('2d');
-      // Back-to-front: up-left = farther (drawn first), bottom-right = closer. Sort
-      // by (r+c) then elevation so cubes overlap correctly.
+      // Back-to-front: up-left = farther (drawn first), bottom-right = closer. Sort by (r+c)
+      // then elevation so cubes overlap correctly — done ONCE, up front.
       const cells = [];
       for (let r = 0; r < g.gridH; r++) for (let c = 0; c < g.gridW; c++) { const k = this._key(c, r); if (k == null) continue; cells.push({ c, r, k, e: this._elev(c, r) }); }
       cells.sort((a, b) => (a.r + a.c) - (b.r + b.c) || a.e - b.e);
-      for (const cl of cells) {
-        const fx = cl.c * cell + pad, fy = cl.r * cell + pad;
+      this._bake = { cv, cx: cv.getContext('2d'), cells, i: 0, pad, cell, total: cells.length };
+    }
+    // Draw up to `budget` cells; on completion publish the cache and clear the bake state.
+    _stepTerrainBake(budget) {
+      const b = this._bake; if (!b) return;
+      const g = this.grid, cell = b.cell, end = Math.min(b.cells.length, b.i + budget);
+      for (; b.i < end; b.i++) {
+        const cl = b.cells[b.i];
+        const fx = cl.c * cell + b.pad, fy = cl.r * cell + b.pad;
         const sN = (cl.r + 1 <= g.gridH - 1) ? this._elev(cl.c, cl.r + 1) : -1, eN = (cl.c + 1 <= g.gridW - 1) ? this._elev(cl.c + 1, cl.r) : -1;
-        OVERHEAD.drawTerrainCube(cx, cl.k, fx, fy, cell, cl.e, sN < cl.e, eN < cl.e);
+        OVERHEAD.drawTerrainCube(b.cx, cl.k, fx, fy, cell, cl.e, sN < cl.e, eN < cl.e);
       }
-      this._terrainCache = cv;
+      if (b.i >= b.cells.length) { this._terrainCache = b.cv; this._bake = null; }
+    }
+    bakeProgress() { return this._bake ? (this._bake.i / Math.max(1, this._bake.total)) : (this._terrainCache ? 1 : 0); }
+    // Synchronous full bake — for re-bakes mid-play and for the perf-measure path, which need
+    // the cache ready immediately (no Loading animation).
+    _bakeTerrainNow() { this._beginTerrainBake(); this._stepTerrainBake(Infinity); }
+    // Kept as the historical name; now a synchronous alias.
+    _buildTerrainCache() { this._bakeTerrainNow(); }
+
+    // Ease the opening zoom-OUT once the bake finishes: hold zoomed in on the player, then
+    // animate to the creator's default zoom (build 373). Reuses masterZoom; the per-frame
+    // camera-follow keeps the player centred. Skipped if Lock-zoom worlds still want the
+    // intro (the animation is the creator's, not player input, so it always plays).
+    _startLoadZoom() {
+      const def = +this.settings.masterZoom || this.grid.masterZoom || 1;
+      const maxZ = (OH_GRID && OH_GRID.MAX_ZOOM) || 3;
+      const start = Math.min(maxZ, Math.max(def * 2.2, 1.8));
+      if (start <= def + 0.01) { this._loadZoom = null; return; }   // already zoomed-in enough; nothing to animate
+      this._loadZoom = { from: start, to: def, t: 0, dur: 36 };
+      this.grid.masterZoom = start;
+      if (this.player) this.camera = OH_GRID.centerOn(this.grid, this.player.x, this.player.y, CANVAS_W, CANVAS_H);
+    }
+    _tickLoadZoom() {
+      const lz = this._loadZoom; if (!lz) return;
+      lz.t++;
+      const k = Math.min(1, lz.t / lz.dur), e = 1 - Math.pow(1 - k, 3);   // ease-out
+      this.grid.masterZoom = lz.from + (lz.to - lz.from) * e;
+      if (this.player) this.camera = OH_GRID.centerOn(this.grid, this.player.x, this.player.y, CANVAS_W, CANVAS_H);
+      if (k >= 1) { this.grid.masterZoom = lz.to; this._loadZoom = null; }
+    }
+    // The "Loading World" screen shown WHILE the bake runs — a plain backdrop, a banner, and a
+    // progress bar. Terrain isn't ready yet, so there is nothing else to draw; the point is
+    // that the thread is free and the user sees honest progress instead of an 8fps freeze.
+    _drawLoading(ctx) {
+      ctx.fillStyle = '#0c1119'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      const p = this.bakeProgress();
+      ctx.fillStyle = '#dfe7f5'; ctx.textAlign = 'center'; ctx.font = 'bold 22px sans-serif';
+      ctx.fillText('Loading World…', CANVAS_W / 2, CANVAS_H / 2 - 14);
+      const bw = Math.min(360, CANVAS_W * 0.5), bx = (CANVAS_W - bw) / 2, by = CANVAS_H / 2 + 8, bh = 10;
+      ctx.strokeStyle = '#46557a'; ctx.lineWidth = 1; ctx.strokeRect(bx, by, bw, bh);
+      ctx.fillStyle = '#4f86d8'; ctx.fillRect(bx + 1, by + 1, Math.max(0, (bw - 2) * p), bh - 2);
+      ctx.fillStyle = '#8fa0bd'; ctx.font = '12px sans-serif';
+      ctx.fillText(Math.round(p * 100) + '%', CANVAS_W / 2, by + bh + 18);
+      ctx.textAlign = 'left';
     }
 
     // ── Render ────────────────────────────────────────────────────────────
     _render() {
-      const ctx = this.ctx, g = this.grid, z = g.masterZoom, cs = g.cell * z;
+      const ctx = this.ctx, g = this.grid;
+      // Chunked terrain bake (build 373): the FIRST bake runs a chunk per frame behind a
+      // "Loading World" banner, then animates the zoom OUT to the creator's default. Mid-play
+      // re-bakes (e.g. a settings change nulled the cache) just bake synchronously — the world
+      // is already loaded, so no banner. The perf-measure path bakes synchronously up front.
+      if (!this._terrainCache && !this._measureCfg) {
+        if (this._didInitialLoad) { this._bakeTerrainNow(); }
+        else {
+          if (!this._bake) this._beginTerrainBake();
+          this._stepTerrainBake(this._bakeBudget || 4000);       // ~4k cells/frame → ~0.5s on a 112k map
+          if (!this._terrainCache) { this._drawLoading(ctx); return; }
+          this._didInitialLoad = true; this._startLoadZoom();
+        }
+      }
+      this._tickLoadZoom();
+      const z = g.masterZoom, cs = g.cell * z;
       ctx.fillStyle = '#0c1119'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
       const S = (wx, wy) => OH_GRID.worldToScreen(g, this.camera, wx, wy);
       const tl = OH_GRID.screenToWorld(g, this.camera, 0, 0), br = OH_GRID.screenToWorld(g, this.camera, CANVAS_W, CANVAS_H);
@@ -1484,6 +1552,8 @@
     // estimate() for side-by-side. Restores state and paints one clean frame on the way out.
     measurePerformance(opts) {
       opts = opts || {};
+      if (!this._terrainCache) this._bakeTerrainNow();   // measure the STEADY render, not the one-time chunked load
+      this._didInitialLoad = true; this._loadZoom = null;
       const saved = this._measureCfg || null;
       const renderOnce = (cfg) => { this._measureCfg = cfg; this._render(); };
       let result;

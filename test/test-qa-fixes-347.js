@@ -139,7 +139,7 @@ console.log('Build 350 — pit death: keep the trigger, STEP the sprite off the 
   // fix that (348-350), and clipping the sprite to the pit CROPPED it, because the dying
   // figure is ~1.3 cells tall (351/352). 353 draws it full size then paints the occluding
   // blocks back over it.
-  ok(/this\._terrainCache = cv;/.test(ohSrc), 'terrain really is baked into one cached canvas');
+  ok(/this\._terrainCache = b\.cv;/.test(ohSrc), 'terrain really is baked into one cached canvas (now published by the chunked bake, build 373)');
   ok(/_redrawOccluders\(ctx, S, cs, pitCol, pitRow\)/.test(ohSrc), 'both death phases run the occluder pass');
   // 356 adds a third call: for a PIT death the burst pieces hide behind terrain too.
   ok((ohSrc.match(/this\._redrawOccluders\(/g) || []).length === 3, 'step, sink AND the pit burst run the occluder pass');
