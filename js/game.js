@@ -86,6 +86,7 @@ class Game {
       window.dispatchEvent(new Event('resize'));
     }
     this.input           = new InputManager(this.canvas);
+    if (this.input.clearHeld) this.input.clearHeld();   // a session starts with NO carried-over held key (stale-key flush)
     this.gameMode        = mode;          // 'normal' | 'sandbox' | 'platformer' | 'speedrunner'
     this._onReturnToMenu = onReturnToMenu;
     this._testMode       = !!(options && options.testMode); // Universal Test World — no persistence
@@ -21109,6 +21110,7 @@ class Game {
     sr.showLeaderboard = false;
     sr.dead = false;
     this._srPausedAt = 0; // drop any pending pause-shift; a fresh run re-anchors the clock
+    if (this.input && this.input.clearHeld) this.input.clearHeld();   // a new run reuses this input — drop any held key from the last one
     this._srRespawn();
   }
 

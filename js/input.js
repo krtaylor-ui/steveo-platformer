@@ -380,6 +380,19 @@ class InputManager {
     this._justPressed       = {};
   }
 
+  // Drop every HELD key + button. flush() (per frame) deliberately keeps this.keys so a
+  // held movement key repeats; this is the opposite — a one-shot reset for the START of a
+  // session. A keydown with no matching keyup (a synthesised test input, or focus lost
+  // mid-press) otherwise persists into the next run and walks the player unprompted.
+  // (open-items-after-348: stale held keys across sessions.)
+  clearHeld() {
+    this.keys         = {};
+    this._justPressed = {};
+    this.mouse.down = false; this.mouse.rightDown = false;
+    this.mouse.clicked = false; this.mouse.rightClicked = false; this.mouse.altClicked = false;
+    this.scrollDelta  = 0;
+  }
+
   isDown(code)     { return !!this.keys[code]; }
   isJustDown(code) { return !!this._justPressed[code]; }
 

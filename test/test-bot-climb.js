@@ -31,7 +31,7 @@ const real = {
 const sandbox = new Proxy(real, { has: () => true, get: (t, k) => (k in t ? t[k] : (typeof k === 'symbol' ? undefined : 1)), set: (t, k, v) => { t[k] = v; return true; } });
 vm.createContext(sandbox);
 const run = (file, expose) => vm.runInContext(fs.readFileSync(`${jsDir}/${file}`, 'utf8') + '\n;' + expose, sandbox, { filename: file });
-run('constants.js', 'this.BLOCK_SIZE=BLOCK_SIZE;');
+run('constants.js', 'this.BLOCK_SIZE=BLOCK_SIZE; this.GAME_VERSION=GAME_VERSION;');
 run('blocks.js', 'this.BLOCK=BLOCK; this.BLOCK_DATA=BLOCK_DATA;');
 run('pathfinding.js', 'this.findMobPath=findMobPath;');
 run('input.js', 'this.InputManager=InputManager;');
@@ -102,6 +102,30 @@ ok(climbs([
   'XXXXXXX     ',                                    // lower floor c0-6 → standable r2
   'XXXXXXXXXXXX',
 ], [1, 2], [9, 1]), 'a 1-block step up is still climbed');
+
+// Stale-key flush (open-items-after-348): a keydown with no matching keyup must NOT
+// survive into the next session. flush() (per frame) keeps held keys on purpose; a new
+// session calls clearHeld(), which drops them. Assert the two differ so a regression that
+// merges them (and breaks held-key movement, or leaves keys stale) fails loudly.
+{
+  const im = new InputManager({ addEventListener: () => {}, getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }), width: 100, height: 100 });
+  im.keys['KeyD'] = true; im.mouse.down = true;          // a held key with no keyup, e.g. focus lost mid-press
+  im.flush();
+  ok(im.isDown('KeyD'), 'flush() KEEPS a held key (per-frame; held movement must repeat)');
+  im.clearHeld();
+  ok(!im.isDown('KeyD'), 'clearHeld() DROPS the held key so it cannot walk the player next run');
+  ok(im.mouse.down === false, 'clearHeld() also releases a held mouse button');
+}
+
+// Guard: constants.js must parse (the fact this test reached here after run('constants.js')
+// already proves it) AND GAME_VERSION must be a non-empty string. A build-note with an
+// unescaped apostrophe once terminated the single-quoted string and made the WHOLE app a
+// syntax error; tools/bump-build.js now escapes, and this pins that it stays parseable.
+{
+  const V = sandbox.GAME_VERSION;
+  ok(typeof V === 'string' && V.length > 0, 'GAME_VERSION eval\'d to a non-empty string');
+  ok(/build \d+/.test(V), 'GAME_VERSION carries a build number');
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

@@ -20,6 +20,7 @@
       this.canvas = document.getElementById('gameCanvas');
       this.ctx = this.canvas.getContext('2d');
       this.input = new InputManager(this.canvas);
+      if (this.input.clearHeld) this.input.clearHeld();   // a session starts with NO carried-over held key (stale-key flush)
       this._onExit = onExit || null;
       this.state = 'playing';
       this._wonExitColor = 0; this._onWin = opts.onWin || null;
