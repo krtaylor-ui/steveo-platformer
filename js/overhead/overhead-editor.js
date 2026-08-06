@@ -1032,24 +1032,42 @@
       return d.kind + (d.txId != null ? ' · Tx #' + d.txId : '');
     },
 
-    // Devices draw at CHARACTER scale (~2 blocks tall, build 299) and are lifted by the 2.5D
-    // elevation offset, so a lever's SPRITE sits well above the cell it belongs to. An
-    // exact-cell hit test missed it: you click the lever you can see and hit the empty cell
-    // above its anchor, so levers looked unselectable in Hand mode. Ramps got the same
-    // forgiveness in build 293. Prefer an exact hit, then look DOWN for a tall device whose
-    // sprite covers the clicked cell. (Kevin, build 347.)
+    // Character-scaled devices (lever/button/lamp/plate/weight) draw a sprite of radius
+    // r = u*0.9 where u = cell*DENSITY*zoom, CENTRED on the cell centre (not lifted by
+    // elevation — verified: neither engine lifts them). So the sprite's cell footprint grows
+    // with DENSITY, not elevation. A4.7: the old forgiveness (exact, then row+1, then row+2
+    // only if elevAt>0) was calibrated at density 1 and gated on the wrong quantity. Measured
+    // (tools measure-lever, drawLever proportions top 0.5r / bottom 0.7r / half-width 0.5r):
+    //   d1 rows[0..+1] col±0 · d2 rows[-1..+1] col±1 · d3 rows[-1..+2] col±1 · d4 rows[-2..+3] col±2
+    // so at density 4 the arm tip is 2 rows ABOVE the anchor and the base is 3 rows below —
+    // and the sprite is 2 cells wide either side. Lesson 1: an offset in `unit` multiplies
+    // with density and is invisible on a density-1 map. Cell-sized devices (lock/dust/piston/
+    // gates) draw inside their own cell, so they keep the exact-cell hit. Prefer an exact hit,
+    // else the nearest device whose measured sprite box contains the click.
+    _deviceReach(kind, density) {
+      const big = kind === 'lever' || kind === 'button' || kind === 'lamp' || kind === 'plate' || kind === 'weight';
+      if (!big) return { up: 0, down: 0, side: 0 };
+      const R = 0.9 * density;                        // sprite radius in CELLS (u*0.9 / cell)
+      return {
+        up: Math.max(0, Math.ceil(0.5 * R - 0.5)),    // rows above the anchor the arm tip reaches
+        down: Math.floor(0.5 + 0.7 * R),              // rows below the anchor the base reaches
+        side: Math.floor(0.5 + 0.5 * R),              // cols either side the sprite covers
+      };
+    },
     _deviceAt(col, row) {
       const list = this.world.redstone || [];
       const exact = list.find((d) => d.col === col && d.row === row);
       if (exact) return exact;
-      const elevAt = (r, c) => { const el = this.world.mapSnapshot.elevation; return (el && el[r]) ? (el[r][c] | 0) : 0; };
-      for (let dr = 1; dr <= 2; dr++) {
-        const d = list.find((x) => x.col === col && x.row === row + dr);
-        // One row up is always covered by a 2-block sprite; two rows needs the extra lift
-        // that being raised gives it.
-        if (d && (dr === 1 || elevAt(d.row, d.col) > 0)) return d;
+      const density = (this.grid && this.grid.density) || 1;
+      let best = null, bestDist = Infinity;
+      for (const d of list) {
+        const { up, down, side } = this._deviceReach(d.kind, density);
+        if (row >= d.row - up && row <= d.row + down && col >= d.col - side && col <= d.col + side) {
+          const dist = Math.abs(row - d.row) + Math.abs(col - d.col);
+          if (dist < bestDist) { bestDist = dist; best = d; }
+        }
       }
-      return null;
+      return best;
     },
 
     _selHasSettings(sel) { return !!(sel && (sel.kind === 'device' || sel.kind === 'gate' || sel.kind === 'bridge' || sel.kind === 'goal' || sel.kind === 'spawn' || (sel.kind === 'building' && (sel.ref.typeId === 'portal' || sel.ref.typeId === 'pipe')))); },

@@ -184,5 +184,38 @@ console.log('Build 349 — the editor clips the world to the map viewport:');
   ok(/rectC\.right - r\.left/.test(edSrc), 'the right inset is canvas-relative, not the rail width');
 }
 
+console.log('Build 362 — A4.7 lever hit-area scales with DENSITY, not elevation:');
+{
+  require(path.join(ROOT, 'js', 'overhead', 'overhead-editor.js'));   // singleton not loaded above
+  const OH_EDITOR = global.OH_EDITOR;
+  const reach = (kind, d) => OH_EDITOR._deviceReach(kind, d);
+  // The reach must grow with density (lesson 1: a unit-based sprite multiplies with density).
+  ok(reach('lever', 1).up === 0 && reach('lever', 1).down === 1 && reach('lever', 1).side === 0,
+     'density 1: sprite covers the anchor + one row below, no sideways spread');
+  ok(reach('lever', 4).up === 2 && reach('lever', 4).down === 3 && reach('lever', 4).side === 2,
+     'density 4: arm tip reaches 2 rows up, base 3 rows down, 2 cols either side (measured)');
+  ok(reach('lever', 4).up > reach('lever', 1).up, 'upward reach GROWS with density (the old code was fixed at 1)');
+  // Cell-sized devices keep the exact-cell hit — they draw inside their own cell.
+  ok(reach('piston', 4).up === 0 && reach('lock', 4).down === 0, 'cell-sized devices get no forgiveness');
+  // The actual selection: a lever on FLAT ground (elevation 0) at density 4, clicked at its
+  // arm tip 2 rows ABOVE the anchor, must still resolve. The old code gated the 2-row branch
+  // on elevAt>0, so a flat dense map made levers unselectable where they drew.
+  const stub = {
+    world: { redstone: [{ kind: 'lever', col: 10, row: 10 }], mapSnapshot: { elevation: [] } },
+    grid: { density: 4 },
+    _deviceReach: OH_EDITOR._deviceReach,
+  };
+  const hit = OH_EDITOR._deviceAt.call(stub, 10, 8);   // click 2 rows above anchor, flat ground
+  ok(hit && hit.col === 10 && hit.row === 10, 'clicking the arm tip (2 rows up, elevation 0) selects the lever');
+  ok(OH_EDITOR._deviceAt.call(stub, 10, 13), 'clicking the base (3 rows below anchor) selects it too');
+  ok(OH_EDITOR._deviceAt.call(stub, 12, 10), 'clicking 2 cols to the side selects it');
+  ok(!OH_EDITOR._deviceAt.call(stub, 10, 15), 'a click well outside the sprite selects nothing');
+  // The elevation gate must be GONE from the source (assert against code, not comments).
+  const edNoComments = fs.readFileSync(path.join(ROOT, 'js', 'overhead', 'overhead-editor.js'), 'utf8')
+    .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const deviceAt = edNoComments.slice(edNoComments.indexOf('_deviceReach(kind, density)'), edNoComments.indexOf('_selHasSettings'));
+  ok(!/elevAt/.test(deviceAt), 'the elevation gate is gone from _deviceAt (reach is density-driven now)');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
