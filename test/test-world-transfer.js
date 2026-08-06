@@ -185,6 +185,18 @@ console.log('§40.1 — exportHidden()/exportAllowed() and the server owner-exce
   // The toggle to SET the flag exists in BOTH settings surfaces, labelled per the brief.
   ok(/key: 'hideFromExport'[\s\S]*?label: 'Hide from export'/.test(strip('js/world-settings-ui.js')), 'side-scroll settings expose a "Hide from export" toggle');
   ok(/TOG\('hideFromExport'|key: 'hideFromExport'/.test(strip('js/overhead/overhead-settings.js')), 'overhead settings expose a "Hide from export" toggle (now a schema row)');
+  // QA 368: the full offline-overhead chain — a SAVED overhead world (settings.hideFromExport)
+  // reaches the world-card as world_data.settings and hides the card's Export button.
+  const savedOverhead = { viewMode: 'overhead', name: 'W', settings: { hideFromExport: true, moveSpeed: 0.11 } };
+  const listEntry = { id: 'oh-W', world_name: 'W', world_data: savedOverhead };   // shape SANDBOX._ohStore() maps to
+  ok(WT.exportHidden(listEntry.world_data) === true, '368: a saved overhead world hides Export at the card (world_data.settings.hideFromExport)');
+  ok(WT.exportHidden({ viewMode: 'overhead', settings: {} }) === false, '368: an overhead world without the flag still shows Export');
+  // QA 368: the LABEL must not make a protection/"can't download" claim (the brief: "Hide from
+  // export", never "Protect"). The over-claim was also literally false while the card bug lived.
+  const ohLabel = strip('js/overhead/overhead-settings.js');
+  ok(/'hideFromExport', G_LOCK, 'Hide from export'/.test(ohLabel), '368: the overhead label is exactly "Hide from export" (no parenthetical claim)');
+  ok(!/can.t download a copy|can.t grab a copy/.test(ohLabel), '368: no "can\'t download/grab a copy" protection claim in the overhead label/hint');
+  ok(!/can.t download a copy/.test(strip('js/world-settings-ui.js')), '368: the side-scroll hint drops the "can\'t download a copy" claim too');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

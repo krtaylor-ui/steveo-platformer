@@ -15,7 +15,7 @@
       playerHeight:     1,          // player height in levels — a block this-many-or-fewer levels above BLOCKS; taller = an overhang you pass under
       elevOffset:       0.5,        // 2.5D vertical offset per elevation level (fraction of a cell up-left); higher = taller-looking stacks. 0.5 = the maximum. (Phase 2: default raised 0.22→0.5 per Kevin; existing worlds inherit via resolve unless they saved their own.)
       lockZoom:         false,      // lock the camera zoom in play (creators who tuned a specific zoom can prevent the player changing it)
-      hideFromExport:   false,      // §40.1 — hide the Export buttons so others can't download a copy (owner can always turn it off + still export)
+      hideFromExport:   false,      // §40.1 — remove the Export buttons for this world (owner can always turn it off + still export). Not protection — the JSON is still readable in-browser.
       // Jump (impression-of-height): small float + a scale-up.
       jumpFloat:        0.4,
       jumpScale:        0.22,
@@ -244,7 +244,7 @@
     TOG('bridgeGuardrails', G_THREAT, 'Bridge guardrails (off = can fall off bridges)', false),
     SEL('drawbridgeStyle', G_THREAT, [['vanishing', 'Vanishing (appears/disappears)'], ['animated', 'Animated (raises ~80°)']], 'Drawbridge style', false),
     // ── Designer Locks ──
-    TOG('hideFromExport', G_LOCK, 'Hide from export (others can’t download a copy)', false, 'ON hides the Export buttons so others can’t grab a copy; you can always turn it off and still export your own world'),
+    TOG('hideFromExport', G_LOCK, 'Hide from export', false, 'ON removes the Export buttons for this world. NOT protection — anyone can still read the JSON in their browser; it only takes away the easy download. You can always turn it off and export your own world.'),
     // ── Interaction animations ──
     TOG('pipeClimbAnim', G_ANIM, 'Pipe climb-in (pull-up) — off = instant', false),
     TOG('portalStepAnim', G_ANIM, 'Portal step-through (spin-warp) — off = instant', false),
