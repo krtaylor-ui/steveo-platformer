@@ -108,7 +108,7 @@ const SANDBOX = {
     document.getElementById('sb-export-btn')?.addEventListener('click', () => this.exportWorld());
     document.getElementById('sb-copy-btn')?.addEventListener('click', () => this.copyWorld(this.selectedWorldId));
     document.getElementById('sb-delete-btn')?.addEventListener('click', () => {
-      if (confirm('Delete this world? This cannot be undone.')) this.deleteWorld(this.selectedWorldId);
+      this._confirmAction({ title: 'Delete this world?', body: 'This cannot be undone.', confirmLabel: 'Delete', danger: true, onConfirm: () => this.deleteWorld(this.selectedWorldId) });
     });
     document.getElementById('sb-test-arena-btn')?.addEventListener('click', () => { if (typeof TEST_WORLD !== 'undefined') TEST_WORLD.choose('arena'); });
     // Universal Test World (Phase 3A.3)
@@ -329,7 +329,8 @@ const SANDBOX = {
       btn.addEventListener('click', (e) => this.exportWorldById(e.currentTarget.dataset.worldId)));
     list.querySelectorAll('.delete-world-btn').forEach(btn =>
       btn.addEventListener('click', (e) => {
-        if (confirm('Delete this world? This cannot be undone.')) this.deleteWorld(e.currentTarget.dataset.worldId);
+        const id = e.currentTarget.dataset.worldId;
+        this._confirmAction({ title: 'Delete this world?', body: 'This cannot be undone.', confirmLabel: 'Delete', danger: true, onConfirm: () => this.deleteWorld(id) });
       }));
     list.querySelectorAll('.mode-select').forEach(sel =>
       sel.addEventListener('change', (e) => this.changeWorldMode(e.currentTarget.dataset.worldId, e.currentTarget.value)));
@@ -579,6 +580,37 @@ const SANDBOX = {
   _clearImportError() {
     const el = document.getElementById('import-file-error');
     if (el) { el.textContent = ''; el.style.display = 'none'; }
+  },
+
+  // In-page confirmation — NEVER a native confirm()/alert(). A native dialog parks the
+  // renderer until a human clicks it and is invisible to automation, so it blocks an
+  // unattended QA run; world-card Delete was the last one in this flow. Built dynamically so
+  // it does not depend on index.html markup (works on any cached shell) and is screenshottable.
+  // The CANCEL button is primary + focused, so a stray Enter never triggers the destructive
+  // action (the F9 lesson). Esc or a backdrop click cancels. `opts`: { title, body,
+  // confirmLabel, cancelLabel, danger, onConfirm }.
+  _confirmAction(opts) {
+    opts = opts || {};
+    const old = document.getElementById('sb-confirm-modal'); if (old && old.remove) old.remove();
+    const wrap = document.createElement('div'); wrap.id = 'sb-confirm-modal';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:9500;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)';
+    const btn = (id, txt, bg) => `<button id="${id}" style="background:${bg};border:1px solid #46557a;color:#fff;border-radius:7px;padding:8px 14px;cursor:pointer;font:14px sans-serif">${txt}</button>`;
+    wrap.innerHTML = `<div role="dialog" aria-modal="true" style="background:#1a2233;border:1px solid #46557a;border-radius:12px;padding:18px 20px;max-width:360px;box-shadow:0 8px 30px rgba(0,0,0,.6);color:#dfe7f5">`
+      + `<div style="font-weight:600;font-size:15px;margin-bottom:6px">${opts.title || 'Are you sure?'}</div>`
+      + `<div style="color:#b6c2da;font:13px sans-serif;margin-bottom:16px">${opts.body || ''}</div>`
+      + `<div style="display:flex;gap:8px;justify-content:flex-end">`
+      + btn('sb-confirm-cancel', opts.cancelLabel || 'Cancel', '#2b3548')
+      + btn('sb-confirm-ok', opts.confirmLabel || 'OK', opts.danger ? '#7a2b2b' : '#2f6f4f')
+      + `</div></div>`;
+    document.body.appendChild(wrap);
+    const close = () => { if (wrap.remove) wrap.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (e) => { if (e.key === 'Escape' || e.code === 'Escape') close(); };
+    wrap.querySelector('#sb-confirm-ok').onclick = () => { close(); if (opts.onConfirm) opts.onConfirm(); };
+    wrap.querySelector('#sb-confirm-cancel').onclick = close;
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+    document.addEventListener('keydown', onKey);
+    const cancel = wrap.querySelector('#sb-confirm-cancel'); if (cancel && cancel.focus) cancel.focus();
+    return wrap;
   },
 
   // ── Import from file ───────────────────────────────────────────
