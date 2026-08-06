@@ -69,6 +69,8 @@ console.log('Render honours the Advanced tier + hides empty groups:');
   ok(/data-k="mobDetectBlocks"/.test(advHtml) && advHtml.indexOf('>Threats<') < advHtml.indexOf('data-k="mobDetectBlocks"'), 'mobDetectBlocks renders under Threats');
   ok(/title="/.test(advHtml), 'hints render as tooltips (help text is now present)');
   ok(/id="ohws-adv"/.test(advHtml), 'the Advanced toggle is in the panel header');
+  ok(/id="ohws-measure"/.test(advHtml), 'the World Settings panel has a "Measure performance" button (P3.8)');
+  ok(typeof OWS.measure === 'function', 'OH_WORLD_SETTINGS.measure() exists (shared by the editor top-bar ⏱ Perf button)');
 }
 
 console.log(`\noverhead settings schema: ${pass} passed, ${fail} failed`);

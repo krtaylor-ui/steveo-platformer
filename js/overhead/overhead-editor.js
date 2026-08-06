@@ -365,6 +365,7 @@
         <button id="oh-zout" title="Zoom out (−)">－</button>
         <button id="oh-zin" title="Zoom in (=)">＋</button>
         <button id="oh-settings">⚙ Settings</button>
+        <button id="oh-perf" title="Measure the real fps of this world per quality tier on this machine">⏱ Perf</button>
         <button id="oh-test">▶ Test</button>
         <button id="oh-save" class="primary">💾 Save</button>
         ${(typeof WORLD_TRANSFER !== 'undefined' && WORLD_TRANSFER.exportHidden(this.world)) ? '' : `<button id="oh-export" title="Download this world as a .json file (exports what's on screen, saved or not)">⬇ Export</button>`}
@@ -474,6 +475,7 @@
       // worth having regardless — and it costs nothing when unused. (Kevin, build 362.)
       g('oh-clean').onclick = () => { this._terrRev = (this._terrRev || 0) + 1; this._editBox = null; this._flash('Map redrawn'); };
       g('oh-settings').onclick = () => { if (typeof OH_WORLD_SETTINGS !== 'undefined') OH_WORLD_SETTINGS.open(this.world, () => { this._renderBar(); this._pushHistory('settings change'); }); };
+      { const pb = g('oh-perf'); if (pb) pb.onclick = () => { if (typeof OH_WORLD_SETTINGS !== 'undefined' && OH_WORLD_SETTINGS.measure) OH_WORLD_SETTINGS.measure(this.world); }; }   // ⏱ measured perf (build 371)
       ['buildings', 'mobs', 'items', 'elev', 'hideAbove', 'focusLayer', 'airGhosts', 'perf'].forEach((k) => { const el = g('oh-v-' + k); if (el) el.onchange = () => { this.view[k] = el.checked; }; });
       { const zr = g('oh-zoom'); if (zr) zr.oninput = () => OH_GRID.setZoom(this.grid, +zr.value); }
       g('oh-erase').onclick = () => { this.tool = 'erase'; this._renderBar(); this._updateCursor(); };

@@ -285,7 +285,45 @@
     return log;
   }
 
-  const OH_PERF = { COST, TIERS, BUDGET_60, frameCost, estimate, makeGovernor, makeSoakLog };
+  // ── Measured assessment (build 371) ──────────────────────────────────────────
+  // estimate() PREDICTS from cell counts; assess() MEASURES. Given a function that renders
+  // ONE real frame of THIS world at a given quality cfg, it warms the caches, times ~60
+  // frames per quality tier, and isolates the cost of each expensive pass (live shadows /
+  // night / glare) on a flat baseline. The result is the honest number for this machine and
+  // this world — which is exactly what a designer can't get from a pure formula. estimate()
+  // stays for instant slider feedback; this is the "tell me the truth" button.
+  //
+  // `renderOnce(cfg)` must render a single frame with cfg = { shadows:'live'|'fixed'|'off',
+  // night, glare } and return nothing. `opts.now` is injectable so the harness is testable
+  // with a fake clock (real callers pass performance.now).
+  function assess(renderOnce, opts) {
+    opts = opts || {};
+    const now = opts.now || (() => (typeof performance !== 'undefined' ? performance.now() : Date.now()));
+    const frames = opts.frames || 60, warmup = opts.warmup || 8;
+    const timeCfg = (cfg) => {
+      for (let i = 0; i < warmup; i++) renderOnce(cfg);            // warm caches / JIT before timing
+      const t0 = now();
+      for (let i = 0; i < frames; i++) renderOnce(cfg);
+      return (now() - t0) / frames;                                // ms per frame
+    };
+    const tiers = (opts.tiers || TIERS).map((tt) => {
+      const ms = timeCfg({ shadows: tt.shadows, night: tt.night, glare: tt.glare });
+      return { id: tt.id, label: tt.label, msPerFrame: Math.round(ms * 100) / 100, fps: Math.max(1, Math.round(1000 / Math.max(0.01, ms))) };
+    });
+    // Per-pass cost = the marginal ms each pass adds over a flat baseline (shadows/night/glare
+    // all off), so the report can say WHERE the time goes, not just the totals.
+    const base = { shadows: 'off', night: false, glare: false };
+    const baseMs = timeCfg(base);
+    const passMs = (over) => Math.max(0, timeCfg(Object.assign({}, base, over)) - baseMs);
+    const passes = {
+      shadowsLive: Math.round(passMs({ shadows: 'live' }) * 100) / 100,
+      night: Math.round(passMs({ night: true }) * 100) / 100,
+      glare: Math.round(passMs({ glare: true }) * 100) / 100,
+    };
+    return { baselineMs: Math.round(baseMs * 100) / 100, tiers, passes };
+  }
+
+  const OH_PERF = { COST, TIERS, BUDGET_60, frameCost, estimate, assess, makeGovernor, makeSoakLog };
   if (typeof window !== 'undefined') window.OH_PERF = OH_PERF;
   if (typeof module !== 'undefined' && module.exports) module.exports = OH_PERF;
 })();

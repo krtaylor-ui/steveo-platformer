@@ -966,7 +966,9 @@
       // entities). Independent of whether the sun/moon disc itself is shown.
       // Quality tier can only DOWNGRADE what the world settings asked for — a designer's
       // choice is the ceiling, the governor just protects the frame rate under it.
-      const q = (this._gov && this._gov.enabled) ? this._gov.cfg() : null;
+      // _measureCfg forces a specific quality tier for the performance-assessment button
+      // (build 371) so assess() can time each tier on the real render. null in normal play.
+      const q = this._measureCfg || ((this._gov && this._gov.enabled) ? this._gov.cfg() : null);
       const wantShadows = q ? (this._shadowStyle === 'fixed' ? (q.shadows !== 'off' ? 'fixed' : 'off')
                                                             : (q.shadows === 'live' ? 'live' : q.shadows))
                             : (this._shadowStyle === 'fixed' ? 'fixed' : 'live');
@@ -1472,7 +1474,42 @@
       if (this._notif) { this._notif.t--; if (this._notif.t <= 0) this._notif = null; else { ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(CANVAS_W / 2 - 130, 34, 260, 26); ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = '13px sans-serif'; ctx.fillText(this._notif.text, CANVAS_W / 2, 51); } }
       if (this.state === 'won' || this.state === 'dead' || this.state === 'paused') { ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H); ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 30px sans-serif'; ctx.fillText(this.state === 'won' ? '★ Level Complete!' : this.state === 'dead' ? 'Game Over' : 'Paused', CANVAS_W / 2, CANVAS_H / 2 - 8); ctx.font = '15px sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText(this.state === 'paused' ? 'Esc to resume · click to exit' : 'Click / Enter to exit', CANVAS_W / 2, CANVAS_H / 2 + 24); }
     }
+
+    // MEASURED performance for THIS world on THIS machine (build 371). Renders the real frame
+    // ~N times per quality tier with the tier forced, timing each with performance.now, and
+    // isolates the per-pass cost. Draw-only (_render mutates no game state), so re-drawing the
+    // current frame many times is safe; the World Settings overlay covers the canvas so the
+    // measurement flicker is not seen. Returns OH_PERF.assess()'s result plus the pure
+    // estimate() for side-by-side. Restores state and paints one clean frame on the way out.
+    measurePerformance(opts) {
+      opts = opts || {};
+      const saved = this._measureCfg || null;
+      const renderOnce = (cfg) => { this._measureCfg = cfg; this._render(); };
+      let result;
+      try { result = OH_PERF.assess(renderOnce, { frames: opts.frames || 45, warmup: opts.warmup || 6 }); }
+      finally { this._measureCfg = saved; this._render(); }
+      try {
+        result.estimate = OH_PERF.estimate(
+          { mapSnapshot: this.map, settings: this.settings, mobs: this.mobs, redstone: this._redstone },
+          { zoom: this.grid.masterZoom, viewW: CANVAS_W, viewH: CANVAS_H });
+      } catch (e) { /* estimate is a bonus; never let it break the measurement */ }
+      return result;
+    }
   }
+
+  // Build a hidden, throwaway game just to measure a world's cost from the EDITOR (where no
+  // game is running). Constructs in testMode, measures, and tears down. Any failure returns
+  // null so the caller can fall back to the pure estimate — a measurement button must never
+  // break the editor. (build 371)
+  OverheadGame.measureWorld = function (world, opts) {
+    let g = null;
+    try {
+      g = new OverheadGame(JSON.parse(JSON.stringify(world)), { testMode: true }, () => {});
+      if (g._gov) g._gov.enabled = false;                        // don't let the governor move under us
+      return g.measurePerformance(opts);
+    } catch (e) { if (typeof console !== 'undefined') console.warn('measureWorld failed:', e); return null; }
+    finally { try { if (g && g.destroy) g.destroy(); } catch (e) {} }
+  };
 
   if (typeof window !== 'undefined') window.OverheadGame = OverheadGame;
 })();

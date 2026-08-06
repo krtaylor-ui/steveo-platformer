@@ -299,7 +299,7 @@
         <div class="ohws-panel" role="dialog" aria-label="Overhead World Settings">
           <div class="ohws-head"><h2>🗺 Overhead World Settings</h2><div style="display:flex;align-items:center;gap:14px">${advChk}<button class="ohws-close" id="ohws-x">✕</button></div></div>
           <div class="ohws-body">${body}</div>
-          <div class="ohws-foot"><button id="ohws-reset">Reset to defaults</button><button class="primary" id="ohws-done">Done</button></div>
+          <div class="ohws-foot"><button id="ohws-measure" title="Render this world off-screen and MEASURE the fps for each quality tier on this machine">⏱ Measure performance</button><button id="ohws-reset">Reset to defaults</button><button class="primary" id="ohws-done">Done</button></div>
         </div>`;
       const setV = (k, v) => { S[k] = v; const el = document.getElementById('ohws-v-' + k); if (el) el.textContent = v; };
       ov.querySelectorAll('input[type=range]').forEach((el) => el.oninput = () => setV(el.dataset.k, parseFloat(el.value)));
@@ -310,6 +310,48 @@
       document.getElementById('ohws-x').onclick = () => this.close();
       document.getElementById('ohws-done').onclick = () => this.close();
       document.getElementById('ohws-reset').onclick = () => { this._world.settings = OH_SETTINGS.defaults(); this._render(); };
+      const mb = document.getElementById('ohws-measure'); if (mb) mb.onclick = () => this.measure(this._world);
+    },
+
+    // ⏱ MEASURE — render THIS world off-screen and report the real per-tier fps + per-pass
+    // cost on this machine (OH_PERF.assess via OverheadGame). Prefers a live game (already
+    // baked + warm); otherwise builds a throwaway one. Falls back to the pure estimate() if
+    // measurement can't run. Shown in a small overlay. Shared by the editor's top-bar button.
+    measure(world) {
+      const w = world || this._world; if (!w) return;
+      let res = null;
+      try {
+        const live = (typeof window !== 'undefined' && window.game && window.game.map && typeof window.game.measurePerformance === 'function') ? window.game : null;
+        if (live) res = live.measurePerformance();
+        else if (typeof OverheadGame !== 'undefined' && OverheadGame.measureWorld) res = OverheadGame.measureWorld(w);
+      } catch (e) { res = null; }
+      let est = null; try { est = (typeof OH_PERF !== 'undefined') ? OH_PERF.estimate(w, {}) : null; } catch (e) {}
+      this._showMeasure(res, est);
+    },
+    _showMeasure(res, est) {
+      let ov = document.getElementById('ohws-measure-overlay');
+      if (!ov) { ov = document.createElement('div'); ov.id = 'ohws-measure-overlay'; ov.style.cssText = 'position:fixed;inset:0;z-index:9700;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6)'; document.body.appendChild(ov); }
+      const row = (l, r) => `<div style="display:flex;justify-content:space-between;gap:20px;padding:3px 0;border-bottom:1px solid #1e2636"><span>${l}</span><span style="font-family:ui-monospace,monospace;color:#9fdca0">${r}</span></div>`;
+      let body;
+      if (res && res.tiers) {
+        body = `<div style="font-size:12px;color:#8fa0bd;margin-bottom:8px">Measured on THIS machine — ${res.tiers[0].label ? '' : ''}~45 frames per tier.</div>`
+          + res.tiers.map((t) => row(t.label, t.fps + ' fps · ' + t.msPerFrame + ' ms')).join('')
+          + `<div style="margin-top:10px;color:#6ea0e0;font-size:11px;text-transform:uppercase;letter-spacing:.08em">Per-pass cost (ms/frame over a flat baseline)</div>`
+          + row('Live shadows', res.passes.shadowsLive + ' ms')
+          + row('Night lighting', res.passes.night + ' ms')
+          + row('Glass glare', res.passes.glare + ' ms')
+          + (est ? `<div style="margin-top:10px;color:#8fa0bd;font-size:12px">Prediction for reference: ${est.verdict}</div>` : '');
+      } else {
+        body = `<div style="color:#e6b96a">Couldn't render a measurement here.${est ? ' Showing the prediction instead:' : ''}</div>`
+          + (est ? `<div style="margin-top:8px">${est.verdict}</div>` : '');
+      }
+      ov.innerHTML = `<div style="background:#141a26;border:1px solid #2c3648;border-radius:14px;padding:18px 22px;max-width:420px;width:92%;color:#e8eef7;font:14px sans-serif">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><h2 style="margin:0;font-size:17px">⏱ Measured performance</h2><button id="ohws-m-x" style="background:none;border:none;color:#9fb0cc;font-size:20px;cursor:pointer">✕</button></div>
+        ${body}</div>`;
+      ov.style.display = 'flex';
+      const close = () => { ov.style.display = 'none'; };
+      document.getElementById('ohws-m-x').onclick = close;
+      ov.onclick = (e) => { if (e.target === ov) close(); };
     },
     // The panel is opened only by the overhead EDITOR, i.e. always the designer — so Advanced
     // is always ALLOWED here; the in-panel toggle is what gates whether advanced rows show.

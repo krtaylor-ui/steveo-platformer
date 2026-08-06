@@ -184,5 +184,32 @@ for (let i = 1; i < P.TIERS.length; i++) {
   ok(b <= a, `tier ${i} (${P.TIERS[i].label}) costs no more than tier ${i - 1}`);
 }
 
+console.log('assess() MEASURES with a real clock (fake clock here) — per-tier + per-pass:');
+{
+  // A fake render whose cost depends on the cfg, and a fake clock advanced by that cost, so
+  // the harness's timing/isolation logic is exercised without a real canvas.
+  let clock = 0;
+  const now = () => clock;
+  const renderOnce = (cfg) => {
+    let c = 1.0;                                   // baseline per-frame cost
+    if (cfg.shadows === 'live') c += 2.0; else if (cfg.shadows === 'fixed') c += 0.05;
+    if (cfg.night) c += 0.6;
+    if (cfg.glare) c += 0.25;
+    clock += c;
+  };
+  const r = P.assess(renderOnce, { now, frames: 10, warmup: 2 });
+  // Per-tier: 'full' (live shadows+night+glare) must be the slowest, 'flat' the fastest.
+  const byId = {}; r.tiers.forEach((t) => byId[t.id] = t);
+  ok(byId.full.msPerFrame > byId.flat.msPerFrame, 'the Full tier measures slower than Flat (warmup excluded from timing)');
+  ok(byId.flat.fps > byId.full.fps, 'and reports a higher fps for the cheaper tier');
+  ok(Math.abs(byId.full.msPerFrame - 3.85) < 0.02, 'Full = baseline 1 + shadows 2 + night 0.6 + glare 0.25 = 3.85ms/frame (measured, not predicted)');
+  // Per-pass isolation on a flat baseline.
+  ok(Math.abs(r.baselineMs - 1.0) < 0.02, 'the flat baseline is ~1ms');
+  ok(Math.abs(r.passes.shadowsLive - 2.0) < 0.02, 'live shadows isolated at ~2.0ms over baseline');
+  ok(Math.abs(r.passes.night - 0.6) < 0.02, 'night isolated at ~0.6ms');
+  ok(Math.abs(r.passes.glare - 0.25) < 0.02, 'glass glare isolated at ~0.25ms');
+  ok(r.passes.shadowsLive > r.passes.night && r.passes.night > r.passes.glare, 'the breakdown ranks the passes worst-first');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
