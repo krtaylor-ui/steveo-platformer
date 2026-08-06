@@ -89,34 +89,48 @@ console.log('Unified selection + action bar logic:');
   ed._selectObjAt(9, 9); ok(ed._selEnt && ed._selEnt.kind === 'terrain', 'empty ground still selects as terrain (grass)');
 }
 
-console.log('Tall redstone devices are selectable from where they LOOK (build 347):');
+console.log('Redstone devices are selectable from where they LOOK - density-scaled (A4.7, build 363):');
 {
-  const m = mkMap(16, 16), ed = mkEd(m);
-  Object.assign(ed, { _buildingAt: OH_EDITOR._buildingAt, _selectObjAt: OH_EDITOR._selectObjAt, _selName: OH_EDITOR._selName,
-    _selHasSettings: OH_EDITOR._selHasSettings, _hoverName: OH_EDITOR._hoverName, _deviceAt: OH_EDITOR._deviceAt,
-    _deviceLabel: OH_EDITOR._deviceLabel, _renderSelBar() {}, _hideSelBar() {} });
-  ed.world.redstone = [{ kind: 'lever', col: 6, row: 9, txId: 3, on: false }, { kind: 'lamp', col: 2, row: 2 }];
+  // A4.7 CORRECTION. The build-347 assertions here encoded a mental model the drawLever
+  // GEOMETRY contradicts, which is exactly why A4.7 stayed broken: the lever sprite is CENTRED
+  // on the cell centre (radius u*0.9, u = cell*DENSITY*zoom) and is NOT lifted by elevation.
+  // Measured footprint vs the anchor:  density 1 -> rows[0..+1] col0 ;  density 4 -> rows[-2..+3]
+  // col +/-2.  So at density 1 the arm tip only just pokes into the anchor cell (it does NOT
+  // reach a full row above), and elevation never changes the reach -- the old 'row+2 only if
+  // raised' gate measured the wrong quantity. See tools/measure-lever.
+  const mk = (density) => {
+    const m = mkMap(16, 16), ed = mkEd(m);
+    Object.assign(ed, { _buildingAt: OH_EDITOR._buildingAt, _selectObjAt: OH_EDITOR._selectObjAt, _selName: OH_EDITOR._selName,
+      _selHasSettings: OH_EDITOR._selHasSettings, _hoverName: OH_EDITOR._hoverName, _deviceAt: OH_EDITOR._deviceAt,
+      _deviceReach: OH_EDITOR._deviceReach, _deviceLabel: OH_EDITOR._deviceLabel, _renderSelBar() {}, _hideSelBar() {} });
+    ed.grid = { density };
+    ed.world.redstone = [{ kind: 'lever', col: 6, row: 9, txId: 3, on: false }, { kind: 'lamp', col: 2, row: 2 }];
+    return { m, ed };
+  };
 
-  ed._selectObjAt(6, 9);
-  ok(ed._selEnt && ed._selEnt.kind === 'device', 'an exact click still selects the lever');
-  ed._selEnt = null;
-  // A lever draws ~2 blocks tall, so its sprite covers the cell ABOVE its anchor — which is
-  // where you actually click. That used to select the terrain instead.
-  ed._selectObjAt(6, 8);
-  ok(ed._selEnt && ed._selEnt.kind === 'device' && ed._selEnt.ref.txId === 3, 'clicking one row ABOVE the anchor selects the lever (the reported bug)');
-  ok(ed._selHasSettings(ed._selEnt), 'so the settings / move / delete bar is reachable from that click');
-  ok(ed._selName(ed._selEnt) === 'lever \u00b7 Tx #3', 'the action bar names the transmitter channel');
-  ok(ed._hoverName(6, 8) === 'lever \u00b7 Tx #3', 'hovering the sprite shows "lever \u00b7 Tx #3" too');
-  ok(ed._hoverName(6, 9) === 'lever \u00b7 Tx #3', 'and hovering the anchor cell agrees');
-  // Two rows up only counts when the device is raised (extra 2.5D lift).
-  ed._selEnt = null; ed._selectObjAt(6, 7);
-  ok(!ed._selEnt || ed._selEnt.kind !== 'device', 'two rows above a GROUND-level device does not select it');
-  m.elevation[9][6] = 2;
-  ed._selEnt = null; ed._selectObjAt(6, 7);
-  ok(ed._selEnt && ed._selEnt.kind === 'device', 'but it does once the device is raised');
-  // Sinks are receive-only and must not claim a Tx number.
-  ok(ed._deviceLabel({ kind: 'lamp' }) === 'lamp \u00b7 Rx', 'a lamp reads "lamp \u00b7 Rx", not a Tx number');
-  ok(ed._deviceLabel({ kind: 'dust', txId: 7 }) === 'dust', 'dust is plain wire — no channel, even with a legacy txId');
+  const d1 = mk(1);
+  d1.ed._selectObjAt(6, 9);
+  ok(d1.ed._selEnt && d1.ed._selEnt.kind === 'device', 'density 1: an exact click selects the lever');
+  ok(d1.ed._selHasSettings(d1.ed._selEnt), 'so the settings / move / delete bar is reachable');
+  ok(d1.ed._selName(d1.ed._selEnt) === 'lever · Tx #3', 'the action bar names the transmitter channel');
+  d1.ed._selEnt = null; d1.ed._selectObjAt(6, 10);
+  ok(d1.ed._selEnt && d1.ed._selEnt.kind === 'device', 'density 1: clicking the base one row BELOW the anchor selects it');
+  d1.ed._selEnt = null; d1.ed._selectObjAt(6, 8);
+  ok(!d1.ed._selEnt || d1.ed._selEnt.kind !== 'device', 'density 1: one row ABOVE does NOT select (the sprite does not reach there)');
+  d1.m.elevation[9][6] = 2; d1.ed._selEnt = null; d1.ed._selectObjAt(6, 8);
+  ok(!d1.ed._selEnt || d1.ed._selEnt.kind !== 'device', 'density 1: raising the device does NOT extend the hit-area (density-driven, not elevation-gated)');
+
+  const d4 = mk(4);
+  d4.ed._selectObjAt(6, 7);
+  ok(d4.ed._selEnt && d4.ed._selEnt.kind === 'device' && d4.ed._selEnt.ref.txId === 3, 'density 4: clicking the arm tip 2 rows ABOVE the anchor selects the lever (the reported bug)');
+  ok(d4.ed._hoverName(6, 7) === 'lever · Tx #3', 'density 4: hovering the arm tip names the transmitter channel');
+  d4.ed._selEnt = null; d4.ed._selectObjAt(6, 12);
+  ok(d4.ed._selEnt && d4.ed._selEnt.kind === 'device', 'density 4: clicking the base 3 rows BELOW the anchor selects it');
+  d4.ed._selEnt = null; d4.ed._selectObjAt(8, 9);
+  ok(d4.ed._selEnt && d4.ed._selEnt.kind === 'device', 'density 4: clicking 2 cols to the side selects it');
+
+  ok(d1.ed._deviceLabel({ kind: 'lamp' }) === 'lamp · Rx', 'a lamp reads "lamp · Rx", not a Tx number');
+  ok(d1.ed._deviceLabel({ kind: 'dust', txId: 7 }) === 'dust', 'dust is plain wire - no channel, even with a legacy txId');
 }
 
 console.log('World schema migrator:');
