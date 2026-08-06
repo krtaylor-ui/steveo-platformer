@@ -802,6 +802,13 @@ class Game {
     this.camera.y = Math.max(0, Math.min(this.level.pixelHeight - CANVAS_H,
                              this.player.y - CANVAS_H * 0.55));
 
+    // Arena worlds skip the sandbox/normal LOAD path, so restore classic-block metadata here or
+    // it never runs for arena: Travel Tube paths (the visible band), pipe links, question-block
+    // contents, rails + moving platforms. Without this a placed Travel Tube's TUBE_WALL cells
+    // block but the tube draws nothing (invisible-but-solid). Other paths call this from their
+    // loaders; the arena path builds level data inline and needs it explicitly.
+    if (this.gameMode === 'arena') this._restoreClassicBlockData(data);
+
     // Phase 3A.1 — arena setup (fixed camera, bots, gear, scoring) on top of the built level
     if (this.gameMode === 'arena') this._setupArena(data);
   }

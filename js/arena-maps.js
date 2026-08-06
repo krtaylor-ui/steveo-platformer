@@ -149,6 +149,15 @@ function buildArenaWorldDataFromSave(save) {
     spawnPoints,
     bedPositions: [],
     portalData: _arenaEmptyPortalData(),
+    // Classic-block metadata must ride along, or the grid cells restore (blocking) while the
+    // higher-level objects don't. A Travel Tube's TUBE_WALL footprint is solid but the visible
+    // BAND is drawn from `travelTubes`; without it the tube is invisible-but-blocking in arena.
+    // Same shape _restoreClassicBlockData() reads (pipes/question-blocks/rails/platforms too).
+    travelTubes:   data.travelTubes,
+    pipeLinks:     data.pipeLinks,
+    pipeEntry:     data.pipeEntry,
+    blockContents: data.blockContents,
+    rails:         data.rails,
     // No _arena block → _setupArena uses level spawns + _arenaBotColumns.
   };
 }
