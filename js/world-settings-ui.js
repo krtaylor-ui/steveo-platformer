@@ -189,6 +189,7 @@ const WORLD_SETTINGS = {
       { key: 'arenaZoomMode', tab: 'arena', group: 'Camera', modes: M.arena, type: 'cycle', opts: O.arenaZoom, dflt: 'NONE', label: 'Zoom Mode', fmt: this._cap },
       { key: 'arenaPresetZoom', tab: 'arena', group: 'Camera', modes: M.arena, type: 'cycle', opts: O.presetZoom, dflt: 1.0, label: 'Preset Zoom', fmt: (v) => v.toFixed(2) + 'x', sub: true, dependsOn: (a) => a.arenaZoomMode === 'PRESET' },
       { key: 'arenaPlayerMaxHealth', tab: 'arena', group: 'Match', modes: M.arena, type: 'cycle', opts: O.arenaHp, dflt: 20, label: 'Player Health', fmt: (v) => (v / 2) + ' ♥' },
+      { key: 'arenaStartGrapple', tab: 'arena', group: 'Match', modes: M.arena, type: 'toggle', dflt: false, label: 'Start with Grappling Hook', hint: 'every player starts each life already carrying the grappling hook (Shift+RMB / bound controller button). Uses the Movement ▸ Grapple settings.' },
       { key: 'arenaMobHealth', tab: 'arena', group: 'Match', modes: M.arena, type: 'cycle', opts: O.arenaMob, dflt: 'MEDIUM', label: 'Mob Difficulty', fmt: this._cap },
       { key: 'arenaRespawnTime', tab: 'arena', group: 'Match', modes: M.arena, type: 'cycle', opts: O.arenaResp, dflt: 2, label: 'Respawn Delay', fmt: (v) => v + 's', advanced: true },
       // Game types this arena world supports (→ arenaEnabledTypes[]).

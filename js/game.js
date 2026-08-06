@@ -1083,6 +1083,11 @@ class Game {
 
   _armArenaPlayer(p, spawn) {
     p.bow = 'BOW';
+    // Arena loadout option: start every player with the grappling hook (World Settings ▸ Arena
+    // ▸ "Start with Grappling Hook"). hasGrapple is the capability flag the grapple state machine
+    // reads; set it explicitly so it's granted on setup AND every respawn, and cleared when the
+    // option is off. Aim-up auto-enables for a grapple owner (see _aimUpEnabled).
+    p.hasGrapple = !!this._worldAdvSettings.arenaStartGrapple;
     // Keep the weapon COLLECTIONS consistent with the directly-set bow. Setting p.bow
     // alone left rangedOwned empty, so a later _syncActiveWeapon('ranged') (weapon cycle /
     // pickup) would reset bow to null and silently kill right-click fire. normalizeWeapons

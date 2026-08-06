@@ -103,6 +103,22 @@ ok(moves.indexOf('slideEnabled') > moves.indexOf('airJumpEnabled'), 'after Doubl
 ok(moves.indexOf('slideEnabled') < moves.indexOf('wallSlideEnabled'), 'before Wall Slide');
 ok(moves.indexOf('slideSpeedMult') < moves.indexOf('wallSlideEnabled'), 'its three knobs came with it');
 
+console.log('Arena: "Start with Grappling Hook" is a basic Arena setting that arms every player:');
+{
+  const g = row('arenaStartGrapple');
+  ok(g && g.type === 'toggle' && g.tab === 'arena', 'arenaStartGrapple is an Arena-tab toggle');
+  ok(g.dflt === false, 'default OFF — existing arenas are unchanged');
+  ok(!g.advanced, 'it is a BASIC setting (shows without the Advanced tier)');
+  const arena = { gameMode: 'arena', isArena: true, _worldAdvSettings: {} };
+  ok(visible(arena, 'arenaStartGrapple', false) === true, 'it shows in an Arena world with Advanced OFF (basic)');
+  ok(visible(mkGame('sandbox', {}), 'arenaStartGrapple', false) === true, 'and in Sandbox');
+  ok(visible(mkGame('platformer', {}), 'arenaStartGrapple', false) === false, 'but NOT in a Platformer world (arena-only)');
+  // The runtime grants the capability to EVERY arena player from the flag, on setup + respawn.
+  const gameSrc = fs.readFileSync(path.join(ROOT, 'js/game.js'), 'utf8').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const arm = gameSrc.slice(gameSrc.indexOf('_armArenaPlayer(p, spawn)'), gameSrc.indexOf('_zoomOverrideAllowed'));
+  ok(/p\.hasGrapple = !!this\._worldAdvSettings\.arenaStartGrapple;/.test(arm), '_armArenaPlayer sets hasGrapple from the flag (granted per player, every respawn, cleared when off)');
+}
+
 WS._game = null;
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
