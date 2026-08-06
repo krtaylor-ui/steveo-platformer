@@ -346,12 +346,15 @@
       const row = (l, r) => `<div style="display:flex;justify-content:space-between;gap:20px;padding:3px 0;border-bottom:1px solid #1e2636"><span>${l}</span><span style="font-family:ui-monospace,monospace;color:#9fdca0">${r}</span></div>`;
       let body;
       if (res && res.tiers) {
-        body = `<div style="font-size:12px;color:#8fa0bd;margin-bottom:8px">Measured on THIS machine — ${res.tiers[0].label ? '' : ''}~45 frames per tier.</div>`
-          + res.tiers.map((t) => row(t.label, t.fps + ' fps · ' + t.msPerFrame + ' ms')).join('')
+        const fpsStr = (t) => t.fpsCapped ? (res.maxFps || 240) + '+ fps' : t.fps + ' fps';   // clamp — sub-4ms frames aren't a real fps
+        const passStr = (v) => v > 0 ? v + ' ms' : 'negligible';                                // below the noise floor = not measurable, not "cheap"
+        body = `<div style="font-size:12px;color:#8fa0bd;margin-bottom:8px">Measured on THIS machine — fastest of 5 rounds × 30 frames. ms/frame is the real number; fps is capped at ${(res.maxFps || 240)}.</div>`
+          + res.tiers.map((t) => row(t.label, t.msPerFrame + ' ms/frame · ' + fpsStr(t))).join('')
           + `<div style="margin-top:10px;color:#6ea0e0;font-size:11px;text-transform:uppercase;letter-spacing:.08em">Per-pass cost (ms/frame over a flat baseline)</div>`
-          + row('Live shadows', res.passes.shadowsLive + ' ms')
-          + row('Night lighting', res.passes.night + ' ms')
-          + row('Glass glare', res.passes.glare + ' ms')
+          + row('Live shadows', passStr(res.passes.shadowsLive))
+          + row('Night lighting', passStr(res.passes.night))
+          + row('Glass glare', passStr(res.passes.glare))
+          + `<div style="margin-top:8px;color:#8fa0bd;font-size:11px">"negligible" = below the ~${res.noiseFloorMs || 0.15} ms measurement floor (this world barely uses that pass).</div>`
           + (est ? `<div style="margin-top:10px;color:#8fa0bd;font-size:12px">Prediction for reference: ${est.verdict}</div>` : '');
       } else {
         body = `<div style="color:#e6b96a">Couldn't render a measurement here.${est ? ' Showing the prediction instead:' : ''}</div>`

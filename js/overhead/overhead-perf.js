@@ -326,28 +326,41 @@
   function assess(renderOnce, opts) {
     opts = opts || {};
     const now = opts.now || (() => (typeof performance !== 'undefined' ? performance.now() : Date.now()));
-    const frames = opts.frames || 60, warmup = opts.warmup || 8;
-    const timeCfg = (cfg) => {
-      for (let i = 0; i < warmup; i++) renderOnce(cfg);            // warm caches / JIT before timing
-      const t0 = now();
-      for (let i = 0; i < frames; i++) renderOnce(cfg);
-      return (now() - t0) / frames;                                // ms per frame
-    };
-    const tiers = (opts.tiers || TIERS).map((tt) => {
-      const ms = timeCfg({ shadows: tt.shadows, night: tt.night, glare: tt.glare });
-      return { id: tt.id, label: tt.label, msPerFrame: Math.round(ms * 100) / 100, fps: Math.max(1, Math.round(1000 / Math.max(0.01, ms))) };
-    });
-    // Per-pass cost = the marginal ms each pass adds over a flat baseline (shadows/night/glare
-    // all off), so the report can say WHERE the time goes, not just the totals.
+    const frames = opts.frames || 30, warmup = opts.warmup || 10, rounds = Math.max(1, opts.rounds || 5);
+    // fps is capped for DISPLAY: a sub-4ms frame is >240fps, which is meaningless jitter, not a
+    // real number — reporting "1117 fps" misleads. ms/frame is the honest primary metric.
+    const MAX_FPS = 240;
+    // A per-pass delta below the noise floor is measurement noise, not signal. Reporting it as
+    // a tiny number let a pass the map barely uses (e.g. glare) rank ABOVE a real cost (shadows)
+    // purely on jitter — the 371 bug. Below the floor we report 0 (negligible).
+    const NOISE = opts.noiseFloorMs != null ? opts.noiseFloorMs : 0.15;
+    const r2 = (x) => Math.round(x * 100) / 100;
+    const fpsOf = (ms) => { const f = Math.round(1000 / Math.max(0.01, ms)); return { fps: Math.min(MAX_FPS, f), capped: f > MAX_FPS }; };
+    const warm = (cfg) => { for (let i = 0; i < warmup; i++) renderOnce(cfg); };
+    const timeOnce = (cfg) => { const t0 = now(); for (let i = 0; i < frames; i++) renderOnce(cfg); return (now() - t0) / frames; };
+    // MEASURE THE MINIMUM OVER SEVERAL ROUNDS. The fastest round is the one least polluted by a
+    // GC pause or the scheduler, so it is the honest floor of what the render costs; averaging
+    // (or a single shot) lets one stray pause dominate on a fast render. Interleave the tiers
+    // within each round so no tier is systematically measured last — that ORDER BIAS is what
+    // made the cheapest tier (Flat, measured last) read as the slowest. (Fixes QA 371.)
+    const minOver = (cfg) => { warm(cfg); let mn = Infinity; for (let r = 0; r < rounds; r++) { const m = timeOnce(cfg); if (m < mn) mn = m; } return mn; };
+    const tierDefs = opts.tiers || TIERS;
+    const cfgOf = (tt) => ({ shadows: tt.shadows, night: tt.night, glare: tt.glare });
+    for (const tt of tierDefs) warm(cfgOf(tt));                     // warm every tier before any timing
+    const best = {};
+    for (let r = 0; r < rounds; r++) for (const tt of tierDefs) { const m = timeOnce(cfgOf(tt)); if (best[tt.id] == null || m < best[tt.id]) best[tt.id] = m; }
+    const tiers = tierDefs.map((tt) => { const ms = best[tt.id]; const f = fpsOf(ms); return { id: tt.id, label: tt.label, msPerFrame: r2(ms), fps: f.fps, fpsCapped: f.capped }; });
+    // Per-pass marginal cost over a flat baseline, same min-over-rounds, noise-floored.
     const base = { shadows: 'off', night: false, glare: false };
-    const baseMs = timeCfg(base);
-    const passMs = (over) => Math.max(0, timeCfg(Object.assign({}, base, over)) - baseMs);
+    const baseMin = minOver(base);
+    const passMin = (over) => Math.max(0, minOver(Object.assign({}, base, over)) - baseMin);
+    const passVal = (v) => (v < NOISE ? 0 : r2(v));
     const passes = {
-      shadowsLive: Math.round(passMs({ shadows: 'live' }) * 100) / 100,
-      night: Math.round(passMs({ night: true }) * 100) / 100,
-      glare: Math.round(passMs({ glare: true }) * 100) / 100,
+      shadowsLive: passVal(passMin({ shadows: 'live' })),
+      night: passVal(passMin({ night: true })),
+      glare: passVal(passMin({ glare: true })),
     };
-    return { baselineMs: Math.round(baseMs * 100) / 100, tiers, passes };
+    return { baselineMs: r2(baseMin), tiers, passes, noiseFloorMs: NOISE, maxFps: MAX_FPS };
   }
 
   const OH_PERF = { COST, TIERS, BUDGET_60, frameCost, estimate, assess, makeGovernor, makeSoakLog };

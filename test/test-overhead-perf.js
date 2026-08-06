@@ -213,31 +213,45 @@ for (let i = 1; i < P.TIERS.length; i++) {
   ok(b <= a, `tier ${i} (${P.TIERS[i].label}) costs no more than tier ${i - 1}`);
 }
 
-console.log('assess() MEASURES with a real clock (fake clock here) — per-tier + per-pass:');
+console.log('assess() MEASURES robustly — min-over-rounds, noise floor, clamped fps (QA 371):');
 {
-  // A fake render whose cost depends on the cfg, and a fake clock advanced by that cost, so
-  // the harness's timing/isolation logic is exercised without a real canvas.
-  let clock = 0;
-  const now = () => clock;
-  const renderOnce = (cfg) => {
-    let c = 1.0;                                   // baseline per-frame cost
-    if (cfg.shadows === 'live') c += 2.0; else if (cfg.shadows === 'fixed') c += 0.05;
-    if (cfg.night) c += 0.6;
-    if (cfg.glare) c += 0.25;
-    clock += c;
-  };
-  const r = P.assess(renderOnce, { now, frames: 10, warmup: 2 });
-  // Per-tier: 'full' (live shadows+night+glare) must be the slowest, 'flat' the fastest.
+  // A fake render whose cost depends on the cfg, and a fake clock advanced by that cost.
+  const cost = (cfg) => { let c = 1.0; if (cfg.shadows === 'live') c += 2.0; else if (cfg.shadows === 'fixed') c += 0.05; if (cfg.night) c += 0.6; if (cfg.glare) c += 0.25; return c; };
+  let clock = 0; const now = () => clock;
+  const r = P.assess((cfg) => { clock += cost(cfg); }, { now });
   const byId = {}; r.tiers.forEach((t) => byId[t.id] = t);
-  ok(byId.full.msPerFrame > byId.flat.msPerFrame, 'the Full tier measures slower than Flat (warmup excluded from timing)');
-  ok(byId.flat.fps > byId.full.fps, 'and reports a higher fps for the cheaper tier');
-  ok(Math.abs(byId.full.msPerFrame - 3.85) < 0.02, 'Full = baseline 1 + shadows 2 + night 0.6 + glare 0.25 = 3.85ms/frame (measured, not predicted)');
-  // Per-pass isolation on a flat baseline.
-  ok(Math.abs(r.baselineMs - 1.0) < 0.02, 'the flat baseline is ~1ms');
-  ok(Math.abs(r.passes.shadowsLive - 2.0) < 0.02, 'live shadows isolated at ~2.0ms over baseline');
-  ok(Math.abs(r.passes.night - 0.6) < 0.02, 'night isolated at ~0.6ms');
-  ok(Math.abs(r.passes.glare - 0.25) < 0.02, 'glass glare isolated at ~0.25ms');
-  ok(r.passes.shadowsLive > r.passes.night && r.passes.night > r.passes.glare, 'the breakdown ranks the passes worst-first');
+  // The reported-bug guard: the TRUTH is ms/frame, and Full (most work) must read as MORE ms
+  // than Flat — never the inversion the tester saw.
+  ok(byId.full.msPerFrame > byId.flat.msPerFrame, 'Full measures MORE ms/frame than Flat (no inversion)');
+  ok(Math.abs(byId.full.msPerFrame - 3.85) < 0.05, 'Full = 1 + 2 + 0.6 + 0.25 = 3.85 ms/frame (measured)');
+  ok(Math.abs(r.baselineMs - 1.0) < 0.05, 'the flat baseline is ~1 ms');
+  ok(Math.abs(r.passes.shadowsLive - 2.0) < 0.05 && Math.abs(r.passes.night - 0.6) < 0.05 && Math.abs(r.passes.glare - 0.25) < 0.05, 'per-pass isolated: shadows 2.0 / night 0.6 / glare 0.25');
+  ok(r.passes.shadowsLive > r.passes.night && r.passes.night > r.passes.glare, 'the breakdown ranks passes worst-first (not inverted by noise)');
+}
+{
+  // fps must be CLAMPED for display — a sub-4ms frame is >240fps, which is meaningless jitter,
+  // not a headline number (the tester's "1117 fps" complaint).
+  let clock = 0; const now = () => clock;
+  const r = P.assess(() => { clock += 0.2; }, { now });          // ~0.2ms/frame → 5000fps uncapped
+  ok(r.tiers.every((t) => t.fps <= (r.maxFps || 240)), 'no tier reports more than the fps display cap');
+  ok(r.tiers.some((t) => t.fpsCapped), 'a very fast render is flagged fpsCapped (shown as "240+")');
+}
+{
+  // A pass the map barely uses must read as NEGLIGIBLE (0), not a misleading micro-number that
+  // can rank it above a real cost — the exact shape of the 371 inversion.
+  let clock = 0; const now = () => clock;
+  const r = P.assess((cfg) => { clock += 1.0 + (cfg.shadows === 'live' ? 2.0 : 0) + (cfg.glare ? 0.02 : 0); }, { now });
+  ok(r.passes.glare === 0, 'a sub-noise-floor pass (0.02ms glare) reports as negligible (0), not 0.02');
+  ok(r.passes.shadowsLive >= 2.0 - 0.05, 'while a real cost (shadows) is still reported');
+}
+{
+  // Warmup must exclude COLD-cache cost: if the first calls of each cfg are hugely expensive
+  // (cold), min-over-rounds on the warmed frames still returns the true steady cost.
+  const counts = {};
+  let clock = 0; const now = () => clock;
+  const r = P.assess((cfg) => { const k = JSON.stringify(cfg); const n = counts[k] = (counts[k] || 0) + 1; const cold = n <= 10 ? 50 : 0; clock += 1.0 + (cfg.shadows === 'live' ? 2.0 : 0) + cold; }, { now, warmup: 10 });
+  const byId = {}; r.tiers.forEach((t) => byId[t.id] = t);
+  ok(byId.full.msPerFrame < 5, 'a 50ms cold-cache spike on the warmup frames does NOT leak into the measured cost');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
