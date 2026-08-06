@@ -68,7 +68,10 @@ console.log('The editor render must not throw, or leak canvas state (QA F-EDITOR
   const src3 = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'overhead', 'overhead-editor.js'), 'utf8');
   // Dangling since build 327, thrown ~138x/sec whenever the Perf overlay was on, aborting
   // _render at that line so nothing after it drew.
-  ok(!/editingLive/.test(src3), 'the dangling `editingLive` reference is gone');
+  // Strip comments first — the fix's own comment NAMES the dead identifier to explain it, and
+  // an assertion that reads prose is testing documentation, not code. (Second time today.)
+  const code3 = src3.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  ok(!/editingLive/.test(code3), 'the dangling `editingLive` reference is gone from the CODE');
   ok(/this\._editBox \? 'CACHED \+ live patch/.test(src3), 'the Perf overlay reports the real live-patch state instead');
   // A throw between the clip's save() and restore() used to leak one canvas state per frame.
   ok(/if \(this\._clipOwed\) \{ try \{ ctx\.restore\(\); \} catch \(e\) \{\} this\._clipOwed = false; \}/.test(src3),
