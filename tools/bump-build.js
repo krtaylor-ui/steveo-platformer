@@ -30,7 +30,11 @@ const oldBuild = parseInt((oldValue.match(/build (\d+)/) || [])[1], 10);
 // string and turn constants.js into a syntax error. oldValue is already escaped (the capture
 // preserved its backslashes), so only the fresh note needs it.
 const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-const newValue = `v3 build ${newBuild}: ${esc(note)} — earlier notes follow. — ${oldValue}`;
+// GAME_VERSION carries ONLY the current build's note. It used to PREPEND every prior note
+// cumulatively, which grew the string to ~80k chars and (a) flooded the in-canvas debug HUD,
+// (b) bloated constants.js parsed on every page load. The full changelog is the git log +
+// STEVEO_PLATFORMER_CONTEXT_SUMMARY.md; the badge only needs the current build. (QA, build 376.)
+const newValue = `v3 build ${newBuild}: ${esc(note)}`;
 c = c.replace(m[0], `const GAME_VERSION = '${newValue}';`);
 fs.writeFileSync(cPath, c);
 

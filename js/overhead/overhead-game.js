@@ -1523,7 +1523,11 @@
       const p = this.player, c = this._cellOf(p.x, p.y);
       const chans = (this._rs && this._rs.channels) ? Object.keys(this._rs.channels) : [];
       const tod = (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') ? OH_DAYNIGHT.label(this._tod) + ' ' + this._tod.toFixed(2) : 'off';
-      const ver = (typeof GAME_VERSION !== 'undefined') ? GAME_VERSION.split(' (')[0] : 'overhead';
+      // Show ONLY "v3 build NNN" — never the whole GAME_VERSION string. The old split(' (')
+      // assumed a "build N (note)" format; when the format changed AND the note grew to ~80k
+      // chars this drew the entire changelog and buried the fps/frame/cells readout. Robust to
+      // any format now. (QA, build 376.)
+      const ver = (typeof GAME_VERSION === 'string') ? ((GAME_VERSION.match(/^v3 build \d+/) || [GAME_VERSION.slice(0, 40)])[0]) : 'overhead';
       const lines = [
         ver + '  · ' + this.mode + '  · ' + this.state,
         'map ' + this.grid.gridW + '×' + this.grid.gridH + ' d' + (this.map.density || 1) + '  zoom ' + (this.grid.masterZoom || 1).toFixed(2),

@@ -125,6 +125,11 @@ ok(climbs([
   const V = sandbox.GAME_VERSION;
   ok(typeof V === 'string' && V.length > 0, 'GAME_VERSION eval\'d to a non-empty string');
   ok(/build \d+/.test(V), 'GAME_VERSION carries a build number');
+  // Guard against the ~80k-char unbounded-prepend regression that flooded the debug HUD
+  // (build 376): the string must stay short enough to print in a canvas HUD line.
+  ok(V.length < 2000, `GAME_VERSION stays bounded (${V.length} chars) — no cumulative-changelog bloat`);
+  // The HUD shows only the build tag, never the whole string.
+  ok((V.match(/^v3 build \d+/) || [''])[0].length < 40, 'a "v3 build NNN" tag can be extracted for the HUD');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
