@@ -806,7 +806,12 @@
     _burstParts(x, y) {
       const sp = P().OH_SPRITE, cols = [sp.hair, sp.shirt, sp.shirt, sp.pants, sp.pants, sp.skin], parts = [], n = 16;
       for (let i = 0; i < n; i++) { const ang = (i / n) * Math.PI * 2 + (i % 3) * 0.4, spd = this.unit * (0.06 + (i % 5) * 0.02);
-        parts.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, sz: this.unit * (0.16 + (i % 4) * 0.05), rot: ang, vr: (i % 2 ? 1 : -1) * 0.2, color: cols[i % cols.length], life: 46 + (i % 10) }); }
+        parts.push({ x, y, h: 0, vh: this.unit * (0.05 + (i % 3) * 0.015), vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, sz: this.unit * (0.16 + (i % 4) * 0.05), rot: ang, vr: (i % 2 ? 1 : -1) * 0.2, color: cols[i % cols.length], life: 46 + (i % 10) }); }
+      // Each piece gets a small DECAYING height (h, world px; vh integrates a light gravity in
+      // _update). This removes the A1.4 pit-rim ambiguity permanently: while a piece is airborne
+      // (h > a rim sliver) it legitimately flies OVER a pit rim and draws on top; once it settles
+      // (h -> 0) it draws behind the rim like any ground-plane piece. Before this, a burst piece
+      // had no height at all, so "should it be over the rim?" had no answer in the data.
       return parts;
     }
     // GLASS shatter: a raised glass wall struck by melee/ranged collapses to a walkable
@@ -857,8 +862,13 @@
         return;
       }
       let alive = 0;
-      // Top-down: pieces scatter OUTWARD and settle in place (no gravity), then fade.
-      for (const q of fx.parts) { if (q.life <= 0) continue; alive++; q.x += q.vx; q.y += q.vy; q.vx *= 0.9; q.vy *= 0.9; q.rot += q.vr; q.life--; }
+      // Top-down: pieces scatter OUTWARD and settle in place, then fade. The scatter (x/y) has
+      // no gravity; the small HEIGHT (h) does — it rises then falls back to the ground plane, so
+      // early frames read as flying up over a rim and later frames as settled. (A1.4.)
+      const grav = this.unit * 0.012;
+      for (const q of fx.parts) { if (q.life <= 0) continue; alive++; q.x += q.vx; q.y += q.vy; q.vx *= 0.9; q.vy *= 0.9; q.rot += q.vr;
+        q.vh -= grav; q.h += q.vh; if (q.h < 0) { q.h = 0; q.vh = 0; }
+        q.life--; }
       if (alive === 0 || fx.t > 90) { this.state = 'dead'; this._notify(this._deathMsg, 240); }
     }
     // Front-facing figure with flailing limbs, used for the pit-death shrink phase.
@@ -1046,14 +1056,24 @@
           this._redrawOccluders(ctx, S, cs, pitCol, pitRow);
         }
         else if (fx.parts) {
-          for (const q of fx.parts) { if (q.life <= 0) continue; const s = S(q.x, q.y);
-            ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(q.rot); ctx.globalAlpha = Math.max(0, Math.min(1, q.life / 22));
-            ctx.fillStyle = q.color; ctx.fillRect(-q.sz * z / 2, -q.sz * z / 2, q.sz * z, q.sz * z); ctx.restore(); }
+          // Lift each piece on screen by its height (world px -> screen px via z).
+          const drawPart = (q) => { if (q.life <= 0) return; const s = S(q.x, q.y);
+            ctx.save(); ctx.translate(s.x, s.y - (q.h || 0) * z); ctx.rotate(q.rot); ctx.globalAlpha = Math.max(0, Math.min(1, q.life / 22));
+            ctx.fillStyle = q.color; ctx.fillRect(-q.sz * z / 2, -q.sz * z / 2, q.sz * z, q.sz * z); ctx.restore(); };
+          if (fx.pit) {
+            // A body that burst INSIDE a pit: settled pieces sit on the pit floor and are hidden
+            // by the ground/rim; airborne pieces (still have height) legitimately fly OVER the
+            // rim, so they draw AFTER the occluder re-draw. A1.4: height decides, not draw order.
+            // (Extends Kevin's build-356 occluder pass with the decaying-height rule.)
+            const AIR = this.grid.cell * 0.05;   // world px — a rim sliver a piece must clear to be "over" it
+            for (const q of fx.parts) if ((q.h || 0) <= AIR) drawPart(q);
+            ctx.globalAlpha = 1;
+            this._redrawOccluders(ctx, S, cs, pitCol, pitRow);
+            for (const q of fx.parts) if ((q.h || 0) > AIR) drawPart(q);
+          } else {
+            for (const q of fx.parts) drawPart(q);
+          }
           ctx.globalAlpha = 1;
-          // A body that burst INSIDE a pit should have its pieces hidden by the ground too.
-          // Only for pit deaths — every other death happens on top of the world and its
-          // pieces must stay visible. (Kevin, build 356.)
-          if (fx.pit) this._redrawOccluders(ctx, S, cs, pitCol, pitRow);
         }
       }
       // Day/night ambient overlay + light sources + sun/moon disc — drawn before the

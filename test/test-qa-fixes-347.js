@@ -143,7 +143,7 @@ console.log('Build 350 — pit death: keep the trigger, STEP the sprite off the 
   ok(/_redrawOccluders\(ctx, S, cs, pitCol, pitRow\)/.test(ohSrc), 'both death phases run the occluder pass');
   // 356 adds a third call: for a PIT death the burst pieces hide behind terrain too.
   ok((ohSrc.match(/this\._redrawOccluders\(/g) || []).length === 3, 'step, sink AND the pit burst run the occluder pass');
-  ok(/if \(fx\.pit\) this\._redrawOccluders/.test(ohSrc), 'the burst pass is gated on a pit death');
+  ok(/if \(fx\.pit\) \{[\s\S]*?this\._redrawOccluders\(ctx, S, cs, pitCol, pitRow\)/.test(ohSrc), 'the burst occluder pass is gated on a pit death');
   ok(/phase: 'step', pit: true/.test(ohSrc), 'pit deaths are flagged, so other deaths keep their pieces on top');
   ok(/const reach = Math\.max\(2, Math\.ceil\(1\.3 \* \(this\._density \|\| 1\)\) \+ 1\)/.test(ohSrc),
      'the occluder window scales with DENSITY, since the body hangs 1.3*unit below its anchor');
@@ -168,6 +168,34 @@ console.log('Build 350 — pit death: keep the trigger, STEP the sprite off the 
   ok(/while \(runX < 2 && dirX && this\._pit\(pc \+ dirX \* \(runX \+ 1\), pr\)\)/.test(ohSrc),
      'it measures the actual pit run, so a one-cell pit cannot fling the body out the far side');
   ok(/this\._debug\) \{ this\._deathSlow/.test(ohSrc), 'the debug HUD slows the death to quarter speed so it can be captured');
+}
+
+console.log('Build 366 — A1.4: burst pieces have a decaying HEIGHT (airborne over the rim, then settle):');
+{
+  const ohSrc = fs.readFileSync(path.join(ROOT, 'js', 'overhead', 'overhead-game.js'), 'utf8');
+  // Behavioural: _burstParts must now give every piece a height dimension it never had.
+  const OverheadGame = global.OverheadGame;
+  const parts = OverheadGame.prototype._burstParts.call({ unit: 4 }, 100, 100);
+  ok(parts.length > 0 && parts.every((q) => q.h === 0 && q.vh > 0),
+     'every piece starts at h=0 with an upward launch (vh>0) — the height dimension exists');
+  // Simulate the documented integration (grav = unit*0.012) and confirm the arc: early frames
+  // rise ABOVE a rim sliver, later frames settle back to the ground plane (h===0).
+  const unit = 4, grav = unit * 0.012, AIR = /*cell*/ 1 * 0.05;   // world px; cell≈1 here for the test
+  const q = parts[0]; let peak = 0, settledFrame = -1;
+  for (let f = 0; f < 60; f++) { q.vh -= grav; q.h += q.vh; if (q.h < 0) { q.h = 0; q.vh = 0; if (settledFrame < 0 && f > 0) settledFrame = f; } peak = Math.max(peak, q.h); }
+  ok(peak > AIR, 'a piece rises clearly above the rim sliver in its early frames (airborne)');
+  ok(settledFrame > 0, 'and comes back down to the ground plane (h returns to 0) — it settles');
+  // Source: the pit branch draws SETTLED pieces before the occluder pass and AIRBORNE ones
+  // after, so height (not draw order) decides whether a piece is over the rim. Strip comments
+  // first (lesson 5) — the prose mentions "over the rim" and would false-match.
+  const ohNoComments = ohSrc.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const burst = ohNoComments.slice(ohNoComments.indexOf('else if (fx.parts) {'), ohNoComments.indexOf('Day/night ambient'));
+  ok(/q\.vh -= grav; q\.h \+= q\.vh; if \(q\.h < 0\)/.test(ohNoComments), 'the update integrates a light gravity on the height');
+  ok(/\(q\.h \|\| 0\) <= AIR\) drawPart/.test(burst) && /\(q\.h \|\| 0\) > AIR\) drawPart/.test(burst),
+     'settled pieces draw before the occluder pass, airborne pieces after');
+  ok(burst.indexOf('(q.h || 0) <= AIR') < burst.indexOf('_redrawOccluders') && burst.indexOf('_redrawOccluders') < burst.indexOf('(q.h || 0) > AIR'),
+     'the occluder re-draw sits BETWEEN the settled and airborne draws');
+  ok(/s\.y - \(q\.h \|\| 0\) \* z/.test(burst), 'a piece is lifted on screen by its height');
 }
 
 console.log('Build 349 — the editor clips the world to the map viewport:');
