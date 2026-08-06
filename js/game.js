@@ -2443,6 +2443,7 @@ class Game {
         isLeft:   () => this.input.pLeft(idx),
         isRight:  () => this.input.pRight(idx),
         isJump:   () => this.input.pJump(idx),
+        isUp:     () => this.input.pUp(idx),      // monkey-bar grab (up) — was missing for P2-P4
         isCrouch: () => this.input.pCrouch(idx),
         isRun:    () => false,
         isAttack: () => this.input.pAttack(idx),

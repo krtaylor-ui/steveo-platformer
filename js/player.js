@@ -738,7 +738,11 @@ class Player {
       if (b !== BLOCK.BAR && b !== BLOCK.BAR_PLATFORM) continue;
       const barY = this._barLineY(row);
       if (handY >= barY - 10 && handY <= barY + 12) {
-        const upHeld = (input.isDown && (input.isDown('KeyW') || input.isDown('ArrowUp'))) || (input.isStickUp && input.isStickUp());
+        // Up OR jump grabs the bar, for EVERY player. P2-P4 get a per-player adapter (isUp/
+        // isJump) with no keyboard/isStickUp; the old check read only P1's keyboard + isStickUp,
+        // so secondary controller players could never grab a bar. (QA — controller mapping fix.)
+        const upHeld = (input.isUp && input.isUp()) || (input.isJump && input.isJump())
+          || (input.isDown && (input.isDown('KeyW') || input.isDown('ArrowUp'))) || (input.isStickUp && input.isStickUp());
         if (this._barRequireGrab && !upHeld) return;
         this._grabBar(row, Math.floor(cx / BS), barY, input);
         return;

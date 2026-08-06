@@ -117,6 +117,26 @@ ok(climbs([
   ok(im.mouse.down === false, 'clearHeld() also releases a held mouse button');
 }
 
+// Per-player UP (pUp) — the monkey-bar grab read P1-only keyboard + isStickUp(), so P2-P4
+// (who get a limited per-player adapter) could never grab a bar. pUp reads each player's own
+// left-stick-up / d-pad-up. (QA — controller mapping fix.)
+{
+  const fs2 = require('fs'), path2 = require('path');
+  const im = new InputManager({ addEventListener: () => {}, getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }), width: 100, height: 100 });
+  im.p3GpSlot = 2;
+  im.gamepads[2] = { connected: true, moveY: -1, dpad0: false };   // P3 pushes the left stick UP
+  ok(im.pUp(2) === true, 'P3 up via the left stick reads through pUp(2)');
+  im.gamepads[2] = { connected: true, moveY: 0, dpad0: true };     // or the d-pad up
+  ok(im.pUp(2) === true, 'P3 up via the d-pad reads through pUp(2)');
+  im.gamepads[2] = { connected: true, moveY: 0, dpad0: false };
+  ok(im.pUp(2) === false, 'no up held = pUp(2) false');
+  // The runtime wiring: the per-player adapter exposes isUp, and the bar-grab accepts up OR jump.
+  const gameSrc = fs2.readFileSync(path2.join(jsDir, 'game.js'), 'utf8');
+  ok(/isUp:\s*\(\) => this\.input\.pUp\(idx\)/.test(gameSrc), 'the per-player input adapter exposes isUp (was missing → P2-P4 could not grab bars)');
+  const playerSrc = fs2.readFileSync(path2.join(jsDir, 'player.js'), 'utf8');
+  ok(/\(input\.isUp && input\.isUp\(\)\) \|\| \(input\.isJump && input\.isJump\(\)\)/.test(playerSrc), 'the bar-grab accepts per-player up OR jump (works for every player)');
+}
+
 // Guard: constants.js must parse (the fact this test reached here after run('constants.js')
 // already proves it) AND GAME_VERSION must be a non-empty string. A build-note with an
 // unescaped apostrophe once terminated the single-quoted string and made the WHOLE app a

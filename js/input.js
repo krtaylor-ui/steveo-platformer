@@ -596,6 +596,12 @@ class InputManager {
   pLeft(i)   { const b = this.botInput[i]; if (b) return b.moveX < -0.15; return i === 0 ? this.isLeft()   : i === 1 ? this.isP2Left()   : this._slotGp(this._pSlot(i)).moveX < 0; }
   pRight(i)  { const b = this.botInput[i]; if (b) return b.moveX >  0.15; return i === 0 ? this.isRight()  : i === 1 ? this.isP2Right()  : this._slotGp(this._pSlot(i)).moveX > 0; }
   pJump(i)   { const b = this.botInput[i]; if (b) return !!b.jump;        return i === 0 ? this.isJump()   : i === 1 ? this.isP2Jump()   : this._slotGp(this._pSlot(i)).jump; }
+  // Per-player UP (left-stick up / d-pad up / P1 keyboard up). Needed by the monkey-bar grab,
+  // which read P1-only keyboard keys + isStickUp() and so was dead for P2-P4 (they get the
+  // limited per-player adapter, not the full InputManager). (QA — controller mapping fix.)
+  pUp(i)     { const b = this.botInput[i]; if (b) return (b.moveY || 0) < -0.15;
+               if (i === 0) return this.isStickUp() || this.isDown('KeyW') || this.isDown('ArrowUp');
+               const gp = this._slotGp(this._pSlot(i)); return !!(gp && (gp.moveY < -InputManager.STICK_DIR || gp.dpad0)); }
   pCrouch(i) { const b = this.botInput[i]; if (b) return !!b.crouch;      return i === 0 ? this.isCrouch() : i === 1 ? this.isP2Crouch() : this._slotGp(this._pSlot(i)).crouch; }
   pAttack(i) {
     const b = this.botInput[i]; if (b) return !!b.attack;
