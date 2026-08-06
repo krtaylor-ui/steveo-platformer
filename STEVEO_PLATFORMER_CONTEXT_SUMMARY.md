@@ -1,4 +1,73 @@
-## CURRENT STATE (2026-08-05) — builds 347–358 SHIPPED to `main` + pushed; 359–361 on branch `perf-occlusion-359`
+## CURRENT STATE (2026-08-06) — MEGA SESSION builds 362–374 on branch `mega-20260806`, NOT pushed, NOT merged
+
+**Deployed (`origin/main`, Railway): still build 361.** The soak passed clean on 361 (7h31m,
+no leak, 0 errors) and a QA tester will do a browser pass on this branch. **Nothing here is
+pushed or merged** — per the brief, `main` was left untouched so the tester's target didn't move
+mid-run. A human merges `mega-20260806` → `main` and deploys after the browser pass.
+
+**20 commits, builds 362 → 374. Suite: `node test/run.js` → 1659 passed / 0 failed, exit 0.**
+Every commit bumps `GAME_VERSION` + the 88 `?v=bNNN` cache-busters + `sw.js CACHE_VERSION` in
+lockstep via `tools/bump-build.js` (added this session; escapes apostrophes so a build note can't
+break `constants.js`).
+
+### What landed (each = its own commit)
+- **362** merged `card-title-362` (14 staged Part-A QA fixes) as the base + the lockstep bump.
+- **363 A4.7** lever hit-area is DENSITY-scaled, not elevation-gated (measured with
+  `tools/measure-lever`; the old row+2 branch was gated on the wrong quantity).
+- **364 A9.6** the sandbox importer surfaces `unwrap()`'s rejection in-page instead of silently
+  re-routing a wrong-engine/non-world file.
+- **365** stale-key input flush (`InputManager.clearHeld()`) at every session start.
+- **366 A1.4** burst pieces get a small decaying HEIGHT → airborne-over-the-rim vs settled is
+  resolved by height, not draw order.
+- **367** world-card **Delete** is an in-page confirm (`SANDBOX._confirmAction`), the last native
+  dialog in the sandbox flow.
+- **368 §40.1** "Hide from export" flag (`hideFromExport`, default off) — hides Export at 3 UI
+  sites + server 403 for non-owners; owner always allowed. No §40.2 (browser encryption impossible).
+- **369 P1.7** unit-offset audit — fixed pipe climb-in (rim offsets were fixed-cell, buried in the
+  pipe at density 4; now unit-based); melee confirmed correct (block-relative, hit+draw share it).
+- **370 Phase 2** overhead World Settings converted to a **declarative schema** (Advanced tier +
+  help text + empty-group-hide) with Kevin's classification applied; Threats rename;
+  doubleJump/style above doubleJumpClear. **Default changes (player-visible): elevOffset 0.22→0.5,
+  maxStepDown 1→2, pitMode deadly→block.** Existing worlds inherit via `resolve()`.
+- **371 P3.8** MEASURED perf: `OH_PERF.assess()` times the real render per tier + isolates per-pass
+  cost; ⏱ buttons in World Settings + editor top bar. `estimate()` stays for instant feedback.
+- **372 P3.9** per-pass **Protected / Sacrificeable / Off** quality flags; governor sacrifices the
+  cheapest sacrificeable first, then lowers the cap, then a protected pass last. Replaces the tier
+  ladder. Defaults keep old behaviour (glare sacrificeable, shadows+night protected).
+- **373 P3.10** chunked terrain bake behind a "Loading World" banner + progress, then an eased
+  zoom-OUT to the creator's default (fixes the ~8fps synchronous-bake opening).
+- **374 §42** depth occlusion — a taller nearer wall hides an entity behind it (bounded per-entity
+  occluder repaint, reusing the pit-death technique). **Gated `depthOcclusion`, default OFF** — the
+  deployed layering is unchanged until a browser pass turns it on.
+
+### NEEDS A BROWSER (not headlessly verifiable — be explicit with the tester)
+- **363** levers selectable where drawn on a **density-4** map (from arm tip / base / side).
+- **366** burst pieces reading right over a pit rim.
+- **368** the server 403: a **second account** exporting a flagged world (source-verified only).
+- **369** the pipe climb-in animation at **density 4** (numbers proven proportional; feel unseen).
+- **370** the settings panel look / Advanced toggle / scroll; and the three changed defaults in play.
+- **371** the ⏱ measured fps numbers + the temp-game/off-screen render path.
+- **372** how a dropped pass looks mid-play.
+- **373** the Loading banner + per-frame bake smoothness + zoom-out feel on a big dense map.
+- **374 §42** the actual occlusion (flip `depthOcclusion` on): does a wall convincingly hide a mob,
+  are feet clipped, is the per-entity cost acceptable with many mobs on a dense map?
+
+### Assumptions made where the brief was silent (all in commit messages)
+- Phase 0 was **not a fast-forward** (main had 4 doc-only brief commits after `card-title-362`
+  branched); done as a clean disjoint merge on the mega branch, not on `main` (no-push rule).
+- §40.1 stored as **`hideFromExport`** (default off) not `allowExport`, to match the mandated
+  "Hide from export" label with no inverted-toggle trap; server export kept **owner-only**.
+- §42 done as a **per-entity occluder repaint** (not the roadmap's row-band blit) and **default
+  off** — lower risk for an unverifiable fundamental render change; abandon by flipping the setting
+  or reverting commit 374 alone.
+
+### Deliberately NOT done (out of scope per brief)
+§40.2 encryption (impossible) · §41 player-vs-creator split · §43 gate rotation · §44 overhead
+playability · the user-guide generator · glass/logic-gates/Tx-picker/§37/§38/§31/§39 · Konami panel.
+
+---
+
+## PRIOR STATE (2026-08-05) — builds 347–358 SHIPPED to `main` + pushed; 359–361 on branch `perf-occlusion-359`
 
 **Deployed (`origin/main`, Railway): build 358.** `main` and `origin/main` are level.
 

@@ -161,3 +161,29 @@ card-title full row · governor samples frame INTERVAL not render duration · le
 absolute rise too · soak-log listener accumulation · zeroth-sample fps 0 · editor piston faces
 its direction · offline guard is an in-page banner · non-world JSON refused · unreadable-file
 message names the file.
+
+## Resolved in the mega session (builds 362–374, branch `mega-20260806`, NOT pushed)
+
+`card-title-362` was merged as build 362; everything below is committed on `mega-20260806`,
+suite green (1659/0), and **awaits a browser pass then a human merge → `main` + deploy**.
+Full detail: the CURRENT STATE block in `STEVEO_PLATFORMER_CONTEXT_SUMMARY.md`.
+
+- **A4.7 lever hit-area** — FIXED (363). Measured with `tools/measure-lever`: the sprite is
+  centred on the cell and its footprint scales with DENSITY, not elevation. The old row+2 branch
+  was gated on `elevAt>0` (the wrong quantity), so a dense flat map made levers unselectable
+  where they drew. `_deviceReach()` now returns the measured up/down/side box per density.
+- **A9.6 wrong-engine import** — FIXED (364). `sandbox-ui.importFile()` now surfaces
+  `unwrap()`'s explicit rejection in-page and stops, instead of silently falling through to the
+  raw local/server import. (Used `unwrap`'s engine-neutral message, not `rejectionMessage()`,
+  which is overhead-editor-specific wording — see the commit.)
+- **A5.1/A5.2/A6 player-context** — unchanged: still need a logged-in session (no bug).
+
+**Still browser-only after this session** (each fix is headless-green but visually unseen):
+see the "NEEDS A BROWSER" list in the CONTEXT_SUMMARY — density-4 lever clicks, burst-over-rim,
+the §40.1 server 403 with a second account, the pipe-climb animation at density 4, the new
+settings-panel look + the three changed overhead defaults, the ⏱ measured fps, a dropped pass
+mid-play, the Loading banner + zoom-out, and §42 occlusion (flip `depthOcclusion` on).
+
+**Still genuinely open (deferred, not regressions):** F7 reflow (partial) · §41 player-vs-creator
+split · §43 gate rotation · §44 overhead playability · the user-guide generator (now unblocked by
+the Phase-2 schema).
