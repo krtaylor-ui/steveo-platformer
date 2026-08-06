@@ -60,5 +60,22 @@ console.log('Only NEARER-and-taller cells qualify (c+r > entity depth AND elev >
   ok(has(cells, 6, 6), 'a nearby nearer+taller wall qualifies');
 }
 
+console.log('_spawnMob places a supported, drawable mob at a chosen cell (build 377):');
+{
+  const g = mkGame(70, 70, (el) => { el[54][60] = 2; });   // a raised cell to stand on
+  const before = g.mobs.length;
+  const m = g._spawnMob('zombie', 60, 54, { stationary: true });
+  ok(g.mobs.length === before + 1 && g.mobs[g.mobs.length - 1] === m, 'the mob is added to the live this.mobs (the drawn collection)');
+  ok(m.type === 'zombie' && m.col === 60 && m.row === 54, 'it carries the requested type + cell');
+  const cell = g.grid.cell;
+  ok(Math.abs(m.x - (60 + 0.5) * cell) < 1e-6 && Math.abs(m.y - (54 + 0.5) * cell) < 1e-6, 'x/y are the cell centre (so it draws where asked)');
+  ok(m.elev === 2, 'elev auto-fills from the terrain (stands on the wall top)');
+  ok(m.speed === 0 && m.detect === 0 && !m.dead, 'stationary = speed 0 + detect 0, so it holds its cell for the occlusion visual instead of chasing');
+  ok(m.r > 0 && m.hp > 0 && m.state === 'path', 'it has the fields _drawMob/_updateMobs need');
+  // An unknown type falls back to a real mob key (never leaves an undraw­able type).
+  const f = g._spawnMob('nonexistent', 3, 3, {});
+  ok(global.OH_PALETTE.OH_MOB_BY_KEY[f.type], 'an unknown type falls back to a valid mob key');
+}
+
 console.log(`\noverhead occlusion: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

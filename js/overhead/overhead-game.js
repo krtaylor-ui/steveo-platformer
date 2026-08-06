@@ -642,6 +642,30 @@
     // Cycle the equipped weapon through the collected list (+ pickaxe fallback).
     _cycleWeapon() { const list = this.player.weapons.length ? this.player.weapons.slice() : []; if (!list.includes('pickaxe')) list.push('pickaxe'); if (list.length < 2) return; const i = Math.max(0, list.indexOf(this.player.weapon)); this.player.weapon = list[(i + 1) % list.length]; this._notify(this.player.weapon, 60); }
 
+    // Supported runtime mob spawn (build 377). Builds a mob with the SAME shape the
+    // constructor's worldData.mobs map produces (js/overhead/overhead-game.js:52-55) and adds
+    // it to the live this.mobs, so it draws + updates like any placed mob. Used for the §42
+    // occlusion visual (opts.stationary = speed 0 + detect 0, so it holds its cell instead of
+    // chasing the player), and it's the reusable primitive the overhead Survival-Waves work
+    // will spawn waves through. Returns the mob.
+    _spawnMob(type, col, row, opts) {
+      opts = opts || {};
+      const d = (P().OH_MOB_BY_KEY[type]) || P().OH_MOBS[0];
+      const cell = this.grid.cell, stationary = !!opts.stationary;
+      const detBlocks = (opts.detect != null) ? opts.detect
+        : (this.settings.mobDetectBlocks != null ? this.settings.mobDetectBlocks : 10);
+      const m = {
+        type: (P().OH_MOB_BY_KEY[type]) ? type : d.key, col, row,
+        x: (col + 0.5) * cell, y: (row + 0.5) * cell, r: this.unit * 0.34,
+        elev: this._elev(col, row),
+        hp: opts.hp || d.hp, maxHp: opts.hp || d.hp,
+        speed: stationary ? 0 : (opts.speed != null ? opts.speed : d.speed),
+        detect: stationary ? 0 : detBlocks * this.unit,
+        ranged: !!d.ranged, state: 'path', wp: 0, dead: false, cool: 0, _wc: stationary ? 1e9 : 0,
+      };
+      (this.mobs || (this.mobs = [])).push(m);
+      return m;
+    }
     _updateMobs() {
       const p = this.player;
       for (const m of this.mobs) { if (m.dead) continue; if (m.cool > 0) m.cool--;
@@ -1540,8 +1564,12 @@
       // symptom was intermittent, and cells-on-screen is the number that explains it
       // (it grows as zoom^-2, so zooming out multiplies per-cell work).
       const fs = this._frameStats();
+      // LIVE mob count (not the pre-launch estimate below): reflects runtime spawns, so a
+      // debug/console-spawned mob actually shows up here. The estimate line's "mobs" is a
+      // construction-time snapshot and does NOT update. (QA, build 377.)
+      const liveMobs = (this.mobs || []).reduce((n, m) => n + (m.dead ? 0 : 1), 0);
       if (fs) lines.push('fps ' + fs.fps.toFixed(0) + '  frame ' + fs.ms.toFixed(1) + 'ms  worst ' + fs.worstMs.toFixed(1) + 'ms'
-        + (fs.cells ? '  cells ' + fs.cells : ''));
+        + (fs.cells ? '  cells ' + fs.cells : '') + '  mobs ' + liveMobs);
       if (this._gov) lines.push('cap ' + this._gov.cap + 'fps  quality ' + this._gov.tierLabel()
         + (this._gov.enabled ? '' : ' (adaptive OFF)')
         + (this._gov.reason ? '  · ' + this._gov.reason : ''));
