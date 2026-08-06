@@ -50,24 +50,28 @@ ok(many.warnings.some((x) => /90 mobs/.test(x)), 'too many mobs is flagged');
 const busy = at(1, { redstone: new Array(200) });
 ok(busy.warnings.some((x) => /200 redstone devices/.test(x)), 'a huge redstone network is flagged');
 
-console.log('Governor: settles, and prefers a steady cap over stripping the look:');
+console.log('Governor (P3.9 flags): sacrificeable first, then cap, protects the chosen look:');
 {
-  const g = P.makeGovernor({ cap: 60 });
-  const cost = () => ({ full: 34, noglare: 28, baked: 15, noshadow: 12, flat: 9 })[g.cfg().id] || 10;
+  // A cost model driven by which passes are ACTIVE, so the governor's choices feed back into
+  // the frame time it measures — exactly what happens in the real loop.
+  const g = P.makeGovernor({ cap: 60 });   // default flags: glare sacrificeable, night + shadows protected
+  const cost = () => { const c = g.cfg(); let ms = 9; if (c.shadows !== 'off') ms += 19; if (c.night) ms += 6; if (c.glare) ms += 3; return ms; };
   const seen = [];
   for (let i = 0; i < 900; i++) { g.sample(cost()); if (g.reason && seen[seen.length - 1] !== g.reason) seen.push(g.reason); }
   ok(seen.length > 0, 'it reacts to a world it cannot hold at 60');
-  ok(/No glass glare/.test(seen[0]), 'the CHEAPEST visual goes first (glare), not shadows');
-  ok(seen.some((x) => /capped to \d+fps/.test(x)), 'then it lowers the cap rather than stripping more');
-  ok(!seen.some((x) => /No shadows/.test(x)), 'shadows survive when a lower cap is enough — the designer chose them');
+  ok(/glass glare/.test(seen[0]) && /dropped/.test(seen[0]), 'the CHEAPEST SACRIFICEABLE pass goes first (glare), not shadows');
+  ok(seen.some((x) => /capped to \d+fps/.test(x)), 'then it lowers the cap rather than stripping the protected look');
+  ok(!seen.some((x) => /shadows/.test(x)) && g.cfg().shadows !== 'off', 'the protected shadows survive when a lower cap is enough — the designer chose them');
   ok(g.cap <= 45, `it settled on a steady cap (${g.cap}fps)`);
   ok(seen.length <= 4, `and settled quickly rather than flapping (${seen.length} changes in 900 frames)`);
 }
 {
-  // A world so heavy that even 30fps cannot be held must end up at minimum quality.
+  // A world so heavy even 30fps cannot be held drops EVERYTHING — protected passes only as
+  // the last resort, after the cap is already at 30.
   const g = P.makeGovernor({ cap: 60 });
   for (let i = 0; i < 3000; i++) g.sample(200);
-  ok(g.tier === P.TIERS.length - 1, 'a hopeless world falls all the way to the flattest tier');
+  ok(g.tier === 3, 'a hopeless world sacrifices all three passes');
+  ok(g.cfg().shadows === 'off' && g.cfg().night === false && g.cfg().glare === false, 'so nothing expensive is drawn');
   ok(g.cap === 30, 'and holds 30fps');
   ok(/too heavy/.test(g.reason), 'and says so plainly, so a designer knows to change the world');
 }
@@ -86,6 +90,31 @@ console.log('Governor: settles, and prefers a steady cap over stripping the look
   const g = P.makeGovernor({ enabled: false, cap: 60 });
   for (let i = 0; i < 400; i++) g.sample(500);
   ok(g.tier === 0 && g.cap === 60, 'a designer who turns adaptive quality OFF is obeyed absolutely');
+}
+console.log('Per-pass Protected / Sacrificeable / Off (P3.9):');
+{
+  // "never take my shadows": shadows Protected, glare Sacrificeable. Under load glare goes,
+  // the cap drops, and shadows are only touched at the very end.
+  const g = P.makeGovernor({ cap: 60, flags: { shadows: 'protected', night: 'sacrificeable', glare: 'sacrificeable' } });
+  for (let i = 0; i < 3000; i++) g.sample(200);
+  const order = g._stack;   // drop order
+  ok(order.indexOf('shadows') === order.length - 1, 'the PROTECTED pass (shadows) is sacrificed LAST');
+  ok(order.indexOf('glare') < order.indexOf('shadows') && order.indexOf('night') < order.indexOf('shadows'), 'both sacrificeable passes go before the protected one');
+}
+{
+  // 'off' means the designer already disabled it — it never draws and is never "dropped".
+  const g = P.makeGovernor({ cap: 60, flags: { shadows: 'off', night: 'protected', glare: 'protected' } });
+  ok(g.cfg().shadows === 'off', 'an OFF pass is off from the first frame');
+  for (let i = 0; i < 3000; i++) g.sample(200);
+  ok(g._stack.indexOf('shadows') < 0, 'an OFF pass is never counted as a governor sacrifice');
+  ok(g.cfg().night === false && g.cfg().glare === false, 'the protected passes still fall as a last resort when even 30fps fails');
+}
+{
+  // Everything protected: the governor lowers the cap before touching any pass.
+  const g = P.makeGovernor({ cap: 60, flags: { shadows: 'protected', night: 'protected', glare: 'protected' } });
+  const seen = [];
+  for (let i = 0; i < 300; i++) { g.sample(40); if (g.reason && seen[seen.length - 1] !== g.reason) seen.push(g.reason); }
+  ok(/capped/.test(seen[0]), 'with nothing sacrificeable, the FIRST move is to lower the cap, not strip a pass');
 }
 
 console.log('Frame cap actually paces frames:');

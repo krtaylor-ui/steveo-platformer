@@ -49,6 +49,13 @@ console.log('Schema shape + classification:');
   ok(idx('doubleJump') < idx('doubleJumpClear') && idx('doubleJumpStyle') < idx('doubleJumpClear'), 'doubleJump + doubleJumpStyle sit above doubleJumpClear');
   // Help text exists (makes the user guide generatable).
   ok(OWS.SETTINGS_SCHEMA.some((f) => f.hint), 'the schema carries help text (hints) — the point of the conversion');
+  // P3.9 per-pass quality flags are advanced sel rows.
+  ['qualityShadows', 'qualityNight', 'qualityGlare'].forEach((k) => {
+    ok(byKey[k] && byKey[k].type === 'sel' && byKey[k].advanced, `${k} is an advanced Protected/Sacrificeable/Off selector`);
+    ok(byKey[k].opts.some((o) => o[0] === 'protected') && byKey[k].opts.some((o) => o[0] === 'sacrificeable') && byKey[k].opts.some((o) => o[0] === 'off'), `${k} offers all three policies`);
+  });
+  const d = OH_SETTINGS.defaults();
+  ok(d.qualityGlare === 'sacrificeable' && d.qualityShadows === 'protected' && d.qualityNight === 'protected', 'defaults keep the old behaviour: glare sacrificeable, shadows + night protected');
 }
 
 console.log('Render honours the Advanced tier + hides empty groups:');

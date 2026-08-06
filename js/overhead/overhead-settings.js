@@ -66,6 +66,13 @@
       shadowDarkness:   0.32,       // fixed-shadow strength (0..1)
       moonShadowScale:  0.45,       // moonlit shadow strength relative to sunlit (0..1)
       adaptiveQuality:  true,       // drop expensive passes to protect the frame rate
+      // Per-pass governor policy (P3.9): 'protected' (dropped only as a last resort) |
+      // 'sacrificeable' (dropped first, cheapest-first) | 'off' (never drawn). Defaults keep
+      // the old behaviour: glare goes first; shadows + night are protected ("never take my
+      // shadows"). The governor's order under load: sacrificeable → lower cap → protected.
+      qualityShadows:   'protected',
+      qualityNight:     'protected',
+      qualityGlare:     'sacrificeable',
       fpsCap:           60,         // hold a STEADY cap rather than swinging 8-to-60
       lightRange:       5,          // UNIVERSAL reach in blocks per unit of brightness
       lavaBrightness:   0.7,        // per-object light strength (0..1)
@@ -217,6 +224,9 @@
     R('moonShadowScale', G_ATM, 0, 1, 0.05, 'Moon shadow strength (vs sun)', false),
     TOG('adaptiveQuality', G_ATM, 'Adaptive quality (protect frame rate)', false),
     SEL('fpsCap', G_ATM, [['60', '60 (uncapped)'], ['45', '45'], ['30', '30 (steadiest)']], 'Frame-rate cap', false),
+    SEL('qualityShadows', G_ATM, [['protected', 'Protected (drop last)'], ['sacrificeable', 'Sacrificeable (drop early)'], ['off', 'Off (never draw)']], 'Shadows — when frames drop', true, 'how the frame-rate governor treats shadows under load: Protected = never take my shadows unless nothing else works; Sacrificeable = give them up early; Off = never draw them'),
+    SEL('qualityNight', G_ATM, [['protected', 'Protected (drop last)'], ['sacrificeable', 'Sacrificeable (drop early)'], ['off', 'Off (never draw)']], 'Night lighting — when frames drop', true, 'governor policy for the night darkness pass'),
+    SEL('qualityGlare', G_ATM, [['protected', 'Protected (drop last)'], ['sacrificeable', 'Sacrificeable (drop early)'], ['off', 'Off (never draw)']], 'Glass glare — when frames drop', true, 'governor policy for the glass-glare pass (cheapest; the default first to go)'),
     R('lightRange', G_ATM, 1, 12, 1, 'Light reach per brightness (blocks)', false),
     R('lavaBrightness', G_ATM, 0.1, 1, 0.05, 'Lava brightness', false),
     R('glowstoneBrightness', G_ATM, 0.1, 1, 0.05, 'Glowstone brightness', false),

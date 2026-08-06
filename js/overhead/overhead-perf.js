@@ -118,20 +118,53 @@
   // Watches real frame times and settles on a tier + a frame cap it can actually hold.
   // Hysteresis is the whole point: it must not flap between tiers every second, because a
   // picture that keeps changing is worse than one that is consistently plainer.
+  // The three expensive passes, cheapest → dearest (so "cheapest first" is array order).
+  const PASSES = [
+    { key: 'glare', cost: COST.glare, name: 'glass glare' },
+    { key: 'night', cost: COST.night, name: 'night lighting' },
+    { key: 'shadows', cost: COST.shadowsLive, name: 'shadows' },
+  ];
+  // Per-pass POLICY set by the designer (build 371, P3.9). This REPLACES tier drag-ordering:
+  // instead of ranking a fixed ladder, the designer marks each pass Protected / Sacrificeable
+  // / Off, which answers the real question ("never take my shadows"). Under sustained load
+  // the governor still follows the same order Kevin fixed: give up the cheapest SACRIFICEABLE
+  // pass first, then LOWER THE CAP, and only as a last resort touch a PROTECTED pass (cheapest
+  // first). 'off' means the designer already turned it off, so it never draws and the governor
+  // never has to. Recovery restores visuals before speed. Defaults keep the old behaviour
+  // (glare goes first, shadows + night are protected).
   function makeGovernor(opts) {
     opts = opts || {};
+    const flags = Object.assign({ shadows: 'protected', night: 'protected', glare: 'sacrificeable' }, opts.flags || {});
     return {
       enabled: opts.enabled !== false,
-      tier: 0,                     // index into TIERS
+      flags,
       cap: opts.cap || 60,         // frames per second we are aiming to hold
       userCap: opts.cap || 60,     // the DESIGNER's cap — the governor may go below it, never above
       _win: [],                    // recent frame times (ms)
       _hold: 0,                    // frames to wait before changing anything again
       _drops: 0,
+      _stack: [],                  // passes the governor has sacrificed, in drop order (LIFO restore)
+      _dropped: {},
       reason: '',
 
-      cfg() { return TIERS[Math.min(this.tier, TIERS.length - 1)]; },
-      tierLabel() { return this.cfg().label; },
+      // `tier` = how many passes are currently sacrificed — a small integer the soak log + HUD
+      // already read. 0 = the designer's full look.
+      get tier() { return this._stack.length; },
+      _active(k) { return this.flags[k] !== 'off' && !this._dropped[k]; },
+      cfg() {
+        return {
+          shadows: this._active('shadows') ? 'live' : 'off',     // draw applies shadowStyle (live vs baked)
+          night: this._active('night'),
+          glare: this._active('glare'),
+          id: this._stack.length ? ('drop:' + this._stack.join('+')) : 'full',
+          label: this.tierLabel(),
+        };
+      },
+      tierLabel() {
+        const off = PASSES.filter((p) => !this._active(p.key)).map((p) => p.name);
+        return off.length ? ('No ' + off.join(' / ')) : 'Full';
+      },
+      _next(flag) { return PASSES.find((p) => this.flags[p.key] === flag && !this._dropped[p.key]); },
 
       // Call once per frame with the measured frame time.
       sample(ms) {
@@ -143,32 +176,26 @@
         const sorted = this._win.slice().sort((a, b) => a - b);
         const p90 = sorted[Math.floor(sorted.length * 0.9)];
         const target = 1000 / this.cap;
-        // Missing the target at the 90th percentile = a visible stutter, not noise.
-        //
-        // POLICY (deliberate, from Kevin's brief that predictable beats fast): give up the
-        // cheapest visual first, then LOWER THE CAP rather than stripping the world's look,
-        // and only sacrifice shadows and night if a 30fps cap still cannot be held. A steady
-        // 30 with shadows beats a stuttering 60 without them.
-        if (p90 > target * 1.35) {
-          if (this.tier === 0) {
-            this.tier = 1; this._drops++;
-            this.reason = 'dropped to ' + this.tierLabel() + ' (p90 ' + p90.toFixed(1) + 'ms)';
-          } else if (this.cap > 30) {
-            this.cap = (this.cap > 45) ? 45 : 30;
-            this.reason = 'capped to ' + this.cap + 'fps for consistency';
-          } else if (this.tier < TIERS.length - 1) {
-            this.tier++; this._drops++;
-            this.reason = 'dropped to ' + this.tierLabel() + ' (p90 ' + p90.toFixed(1) + 'ms)';
+        if (p90 > target * 1.35) {                               // a visible stutter, not noise
+          const sac = this._next('sacrificeable');
+          if (sac) {                                             // 1. cheapest sacrificeable pass
+            this._drop(sac.key); this.reason = 'dropped ' + sac.name + ' (sacrificeable, p90 ' + p90.toFixed(1) + 'ms)';
+          } else if (this.cap > 30) {                            // 2. lower the cap for consistency
+            this.cap = (this.cap > 45) ? 45 : 30; this.reason = 'capped to ' + this.cap + 'fps for consistency';
           } else {
-            this.reason = 'at minimum quality and 30fps — this world is too heavy to draw';
+            const prot = this._next('protected');
+            if (prot) {                                          // 3. last resort: a protected pass
+              this._drop(prot.key); this.reason = 'dropped ' + prot.name + ' (protected — last resort, p90 ' + p90.toFixed(1) + 'ms)';
+            } else { this.reason = 'at minimum quality and 30fps — this world is too heavy to draw'; return; }
           }
           this._settle();
         } else if (p90 < target * 0.55) {
-          // Recover visuals BEFORE speed: the look is what the designer chose.
-          if (this.tier > 0) { this.tier--; this.reason = 'restored ' + this.tierLabel(); this._settle(); }
+          // Recover visuals BEFORE speed: restore the most-recently-sacrificed pass, then cap.
+          if (this._stack.length) { const k = this._stack.pop(); this._dropped[k] = false; this.reason = 'restored ' + (PASSES.find((p) => p.key === k) || {}).name; this._settle(); }
           else if (this.cap < (this.userCap || 60)) { this.cap = Math.min(this.userCap || 60, (this.cap < 45) ? 45 : 60); this.reason = 'raised cap to ' + this.cap + 'fps'; this._settle(); }
         }
       },
+      _drop(k) { this._dropped[k] = true; this._stack.push(k); this._drops++; },
       _settle() { this._win.length = 0; this._hold = 90; },      // ~1.5s of calm before re-judging
       // Should this frame be drawn, given the cap? Called with a timestamp.
       shouldRender(nowMs) {

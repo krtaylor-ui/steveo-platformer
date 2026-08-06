@@ -181,7 +181,8 @@
       if (document.body) { document.body.classList.remove('pre-game'); document.body.classList.add('in-game'); window.dispatchEvent(new Event('resize')); }
       // Adaptive quality + a designer-facing estimate of what this world costs to draw.
       if (typeof OH_PERF !== 'undefined') {
-        this._gov = OH_PERF.makeGovernor({ enabled: this.settings.adaptiveQuality !== false, cap: this.settings.fpsCap || 60 });
+        this._gov = OH_PERF.makeGovernor({ enabled: this.settings.adaptiveQuality !== false, cap: this.settings.fpsCap || 60,
+          flags: { shadows: this.settings.qualityShadows, night: this.settings.qualityNight, glare: this.settings.qualityGlare } });   // P3.9 per-pass policy
         this._perfEstimate = OH_PERF.estimate(this.map ? { mapSnapshot: this.map, settings: this.settings, mobs: this.mobs, redstone: this._redstone } : {},
           { viewW: CANVAS_W, viewH: CANVAS_H, zoom: this.grid.masterZoom });
         if (this._perfEstimate.band === 'heavy') console.info('[overhead] ' + this._perfEstimate.verdict, this._perfEstimate.warnings.join(' '));
