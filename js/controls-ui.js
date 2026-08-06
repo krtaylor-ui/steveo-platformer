@@ -106,7 +106,9 @@ const CONTROLS_UI = {
         <div class="ws-row"><div class="ws-label"><span class="ws-lbl">Config File</span></div>
           <span class="cu-bindwrap"><button class="cu-gpbind" id="cu-export">Export ⭳</button><button class="cu-gpbind" id="cu-import">Import ⭱</button></span></div>
         <div class="ws-row"><div class="ws-label"><span class="ws-lbl">Directional Aim</span><span class="ws-hint-inline"> — aim ranged by movement, no cursor</span></div>
-          <button class="cu-gpbind" id="cu-diraim">${(typeof KEY_BINDINGS !== 'undefined' && KEY_BINDINGS.getOpt('directionalAim', false)) ? 'On' : 'Off'}</button></div>`;
+          <button class="cu-gpbind" id="cu-diraim">${(typeof KEY_BINDINGS !== 'undefined' && KEY_BINDINGS.getOpt('directionalAim', false)) ? 'On' : 'Off'}</button></div>
+        <div class="ws-row"><div class="ws-label"><span class="ws-lbl">Stick Aim (P1)</span><span class="ws-hint-inline"> — P1 aims in the right-stick direction, like players 2-4 (no cursor)</span></div>
+          <button class="cu-gpbind" id="cu-stickaim">${(typeof KEY_BINDINGS !== 'undefined' && KEY_BINDINGS.getOpt('p1StickAim', false)) ? 'On' : 'Off'}</button></div>`;
     }
 
     // Preset row
@@ -227,6 +229,8 @@ const CONTROLS_UI = {
     if (cuImp) cuImp.onclick = () => this._importProfile();
     const cuDir = document.getElementById('cu-diraim');
     if (cuDir) cuDir.onclick = () => { if (typeof KEY_BINDINGS !== 'undefined') KEY_BINDINGS.setOpt('directionalAim', !KEY_BINDINGS.getOpt('directionalAim', false)); this._render(); };
+    const cuStick = document.getElementById('cu-stickaim');
+    if (cuStick) cuStick.onclick = () => { if (typeof KEY_BINDINGS !== 'undefined') KEY_BINDINGS.setOpt('p1StickAim', !KEY_BINDINGS.getOpt('p1StickAim', false)); this._render(); };
     // Restore the scroll position captured at the top of this render.
     const _nb = ov.querySelector('.ws-body'); if (_nb) _nb.scrollTop = _prevScroll;
   },

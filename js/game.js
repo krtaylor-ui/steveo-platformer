@@ -1528,7 +1528,9 @@ class Game {
     this.input.updateGamepad();
     // Right stick moves the cursor every frame — before any early returns so it works
     // in inventory, menus, popups, pause, etc. Speed: ~14px/frame ≈ 1 sec to cross screen.
-    this.input.applyStickCursor(14, CANVAS_W, CANVAS_H);
+    // UNLESS P1 Stick Aim is on: then the cursor is placed in the stick DIRECTION from the
+    // player (so P1 aims like players 2-4), and the free accumulator is skipped.
+    if (!this._updateP1StickAim()) this.input.applyStickCursor(14, CANVAS_W, CANVAS_H);
     // Controller A button → simulate mouse click when any menu/overlay is open.
     // Only applies to overlays (not gameplay) so A still jumps during normal play.
     const _p1GpConnected = this.input.p1GpSlot >= 0 && this.input.gamepads[this.input.p1GpSlot]?.connected;
@@ -12173,6 +12175,24 @@ class Game {
   // §Controls pass — Directional Aim: returns a far-off aim point derived from the P1 movement
   // inputs, or null when the option is off (then normal cursor/look-up aim applies). Enabled
   // per game-mode profile in the Controls panel ("Directional Aim").
+  // P1 STICK AIM (opt-in — Controls ▸ "Stick Aim"). Players 2-4 aim by the RIGHT-STICK
+  // DIRECTION (angular — it points where the stick points, straight down when pushed down);
+  // P1 normally uses a free-moving cursor. When this is on + P1 is on a controller, place the
+  // cursor in the stick direction from the player so P1 aims the same way (and the "cursor
+  // won't reach the bottom" problem disappears — there's no edge to fall short of). Gameplay
+  // only; when the stick is centred the cursor is left where it is (aim holds). Returns true
+  // when it placed the cursor, so the caller skips the free accumulator.
+  _updateP1StickAim() {
+    if (typeof KEY_BINDINGS === 'undefined' || !KEY_BINDINGS.getOpt('p1StickAim', false)) return false;
+    if (this.input.p1GpSlot < 0 || this.inventoryOpen || !this.player || !this.camera) return false;
+    const gp = this.input._p1gp(); if (!gp || !gp.connected) return false;
+    const mag = Math.hypot(gp.aimX || 0, gp.aimY || 0);
+    if (mag <= 0.2) return false;                          // centred → hold the last aim
+    const ang = Math.atan2(gp.aimY, gp.aimX), ps = this.camera.toScreen(this.player.cx, this.player.cy), R = 140;
+    this.input.mouse.x = Math.max(0, Math.min(CANVAS_W, ps.x + Math.cos(ang) * R));
+    this.input.mouse.y = Math.max(0, Math.min(CANVAS_H, ps.y + Math.sin(ang) * R));
+    return true;
+  }
   _directionalAimPoint() {
     if (typeof KEY_BINDINGS === 'undefined' || !KEY_BINDINGS.getOpt('directionalAim', false)) return null;
     const inp = this.input, p = this.player;

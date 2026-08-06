@@ -173,6 +173,17 @@ ok(climbs([
   ok(/rangedBtn: abtn\('ranged', 7\)/.test(inputSrc), 'ranged-fire stays on the right trigger (7) — LT/RT are the symmetric pair');
 }
 
+// P1 Stick Aim (opt-in): P1 aims by the right-stick DIRECTION like players 2-4 (no cursor).
+{
+  const fs3 = require('fs'), path3 = require('path');
+  const gameSrc = fs3.readFileSync(path3.join(jsDir, 'game.js'), 'utf8');
+  ok(/_updateP1StickAim\(\) {/.test(gameSrc) && /getOpt\('p1StickAim', false\)/.test(gameSrc), 'game has _updateP1StickAim gated on the p1StickAim option');
+  ok(/if \(!this\._updateP1StickAim\(\)\) this\.input\.applyStickCursor/.test(gameSrc), 'stick-aim REPLACES the free cursor accumulator when on');
+  ok(/this\.camera\.toScreen\(this\.player\.cx, this\.player\.cy\)/.test(gameSrc), 'it places the cursor in the stick direction from the player');
+  const cuSrc = fs3.readFileSync(path3.join(jsDir, 'controls-ui.js'), 'utf8');
+  ok(/id="cu-stickaim"/.test(cuSrc) && /setOpt\('p1StickAim'/.test(cuSrc), 'Controls exposes a "Stick Aim (P1)" toggle');
+}
+
 // Guard: constants.js must parse (the fact this test reached here after run('constants.js')
 // already proves it) AND GAME_VERSION must be a non-empty string. A build-note with an
 // unescaped apostrophe once terminated the single-quoted string and made the WHOLE app a
