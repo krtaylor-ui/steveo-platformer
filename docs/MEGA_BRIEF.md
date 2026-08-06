@@ -15,9 +15,15 @@ record the assumption in the commit, and keep going.
 | Suite | Green. `node test/run.js` — check the **exit code**, not the tail |
 | Soak | **PASS**, 7h31m: fps flat, heap sawtooth identical across thirds, 0 errors |
 
-**First task: merge `card-title-362` into `main`, run the suite, push.** It is a fast-forward.
+**First task: merge `card-title-362` into `main` locally, run the suite. It is a fast-forward.**
 That build becomes **362**; bump `GAME_VERSION`, the `?v=bNNN` cache-busters in `index.html`,
 and `CACHE_VERSION` in `sw.js` together — a badge that understates the build wrecks a QA run.
+
+> **DO NOT PUSH TO `origin/main` DURING THIS SESSION.** Railway deploys from `main`, and a QA
+> tester is running against the deployed build overnight. Pushing would move their target
+> mid-run and invalidate their results. Work on a branch (`mega-YYYYMMDD` is fine), commit
+> freely, push the BRANCH as often as you like, and leave the merge to `main` for a human.
+> Say clearly in your final summary that the work is unpushed and needs merging + deploying.
 
 Read first: `docs/open-items-after-348.md`, `docs/settings-review-overhead.csv`,
 `FUTURE_ROADMAP.md` §40–§44.
