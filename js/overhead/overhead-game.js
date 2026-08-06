@@ -575,7 +575,12 @@
     _startPipeClimb(pipe, dest) {
       const fpp = OH_BUILDINGS.footprintOf(pipe.typeId, this._density), fw = fpp.w, fh = fpp.h, cell = this.grid.cell;
       const cx = (pipe.col + fw / 2) * cell, cy = (pipe.row + fh / 2) * cell;
-      const cl = { pipe, dest, t: 0, sx: this.player.x, sy: this.player.y, cx, cy, edgeY: cy + cell * 0.45,
+      // P1.7 audit: rim/approach offsets are relative to the PIPE, which is block-scale
+      // (its footprint grows with density), so they must be in `unit` (= cell*density), not a
+      // fixed cell. A fixed 0.45 cell is 45% of the pipe at density 1 but only ~11% at density
+      // 4, so the "grab the rim" pose ended up buried at the pipe's centre on a dense map.
+      // unit == cell at density 1, so this is byte-identical there. (Lesson 1.)
+      const cl = { pipe, dest, t: 0, sx: this.player.x, sy: this.player.y, cx, cy, edgeY: cy + this.unit * 0.45,
         face: -Math.PI / 2, scale: 1, alpha: 1, grab: 0, mantleLeg: 0, crouch: 0, zoomFrom: this.grid.masterZoom };
       cl.timeline = this._pipeClimbTimeline(cl);
       cl.total = cl.timeline.reduce((a, ph) => a + ph.dur, 0);
@@ -598,13 +603,13 @@
     }
     _pipeClimbTimeline(cl) {
       const eo = (t) => 1 - Math.pow(1 - t, 3), ei = (t) => t * t * t, eio = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2, L = (a, b, t) => a + (b - a) * t;
-      const P = this.player, cell = this.grid.cell, cx = cl.cx, cy = cl.cy, edgeY = cl.edgeY, below = edgeY + cell * 0.5;
+      const P = this.player, cell = this.grid.cell, cx = cl.cx, cy = cl.cy, edgeY = cl.edgeY, below = edgeY + this.unit * 0.5;   // P1.7: pipe-relative → unit (see _startPipeClimb)
       return [
         { name: '1·grab', dur: 0.5, fn: (t) => { P.x = L(cl.sx, cx, eo(t)); P.y = L(cl.sy, below, eo(t)); cl.grab = eo(t); } },          // reach + grab the rim
         { name: '2·pull', dur: 0.45, fn: (t) => { P.x = cx; P.y = L(below, edgeY, eio(t)); cl.grab = 1 - eio(t); cl.scale = L(1, 1.03, eio(t)); } },   // body pulled to the hands
         { name: '3·leg', dur: 0.5, fn: (t) => { cl.mantleLeg = eio(t); cl.crouch = eio(t) * 0.5; } },                                    // a leg lifts, foot on the pipe
         { name: '4·rise', dur: 0.5, fn: (t) => { P.y = L(edgeY, cy, eio(t)); cl.mantleLeg = 1 - eio(t); cl.crouch = L(0.5, 0, t); cl.scale = L(1.03, 1.02, t); } },   // body rises to the foot
-        { name: '5·open', dur: 0.3, fn: (t) => { P.x = cx; P.y = L(cy, cy - cell * 0.14, eio(t)); } },                                   // move to the opening
+        { name: '5·open', dur: 0.3, fn: (t) => { P.x = cx; P.y = L(cy, cy - this.unit * 0.14, eio(t)); } },                              // move to the opening (P1.7: pipe-relative → unit)
         { name: '6·sink', dur: 0.55, fn: (t) => { cl.scale = L(1.02, 0.16, ei(t)); cl.alpha = L(1, 0.08, t); } }                          // shrink into the tube
       ];
     }

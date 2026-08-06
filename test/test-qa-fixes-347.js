@@ -198,6 +198,40 @@ console.log('Build 366 — A1.4: burst pieces have a decaying HEIGHT (airborne o
   ok(/s\.y - \(q\.h \|\| 0\) \* z/.test(burst), 'a piece is lifted on screen by its height');
 }
 
+console.log('Build 368 — P1.7 unit-offset audit: pipe-climb positions stay proportional at any density:');
+{
+  const OverheadGame = global.OverheadGame, OH_BUILDINGS = global.OH_BUILDINGS;
+  const ohSrc = fs.readFileSync(path.join(ROOT, 'js', 'overhead', 'overhead-game.js'), 'utf8');
+  // Drive _startPipeClimb on a stub `this` at density 1 and 4 with a 2x2-BLOCK pipe
+  // (footprint = 2*density cells). The rim/approach offsets must scale with the pipe, so
+  // "below" (where the body pulls up from) lands at the SAME fraction of the pipe height at
+  // any density — otherwise it sits buried at the pipe centre on a dense map (the bug).
+  const climbFor = (density) => {
+    const cell = 10, unit = cell * density;
+    const orig = OH_BUILDINGS.footprintOf;
+    OH_BUILDINGS.footprintOf = () => ({ w: 2 * density, h: 2 * density });   // 2x2 blocks
+    const self = { grid: { cell, masterZoom: 1 }, unit, player: { x: 0, y: 0 }, _density: density,
+      _pipeClimbTimeline: OverheadGame.prototype._pipeClimbTimeline };
+    try { OverheadGame.prototype._startPipeClimb.call(self, { typeId: 'pipe', col: 5, row: 5 }, {}); }
+    finally { OH_BUILDINGS.footprintOf = orig; }
+    // halfH = fh/2 cells * cell = density * cell (footprint is 2*density cells tall).
+    return { cell, cy: self._climb.cy, edgeY: self._climb.edgeY, halfH: density * cell };
+  };
+  const d1 = climbFor(1), d4 = climbFor(4);
+  const edgeFrac = (m) => (m.edgeY - m.cy) / m.halfH;   // rim offset as a fraction of the pipe half-height
+  ok(Math.abs(edgeFrac(d1) - edgeFrac(d4)) < 1e-9, 'the grab-rim offset is the SAME fraction of the pipe at density 1 and 4 (proportional, not buried)');
+  ok(Math.abs((d1.edgeY - d1.cy) - 0.45 * 10) < 1e-9, 'density 1 is unchanged (unit == cell there): edgeY = cy + 0.45 cell');
+  ok(Math.abs((d4.edgeY - d4.cy) - 0.45 * 40) < 1e-9, 'density 4 scales with unit: edgeY = cy + 0.45 * (4 cell)');
+  // Source: the pipe-relative offsets are now unit-based, and melee reach (hit AND draw) is
+  // the same unit-based value so they can never desync (comment-stripped, lesson 5).
+  const oh = ohSrc.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  ok(/edgeY: cy \+ this\.unit \* 0\.45/.test(oh), 'pipe rim offset is unit-based (block-relative)');
+  ok(/below = edgeY \+ this\.unit \* 0\.5/.test(oh), 'pipe approach offset is unit-based');
+  ok(/cy - this\.unit \* 0\.14/.test(oh), 'pipe opening offset is unit-based');
+  ok(/reach: this\.unit \* \(this\.settings\.meleeReach \|\| 2\.4\)/.test(oh), 'melee HIT cone reach is unit-based (block-relative — correct, not a bug)');
+  ok(/reach = this\.unit \* \(this\.settings\.meleeReach \|\| 2\.4\) \* z/.test(oh), 'melee DRAWN arc uses the SAME unit-based reach, so hit and draw cannot drift apart');
+}
+
 console.log('Build 349 — the editor clips the world to the map viewport:');
 {
   const edSrc = fs.readFileSync(path.join(ROOT, 'js', 'overhead', 'overhead-editor.js'), 'utf8');
