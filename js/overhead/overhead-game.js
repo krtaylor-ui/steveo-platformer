@@ -228,6 +228,12 @@
     set player(v) { if (!this.players) this.players = []; this.players[0] = v; }
     activePlayers() { return (this.players || []).filter((p) => p && !p._dead); }
     _isPlayer(ent) { return !!(this.players && this.players.indexOf(ent) >= 0); }   // §0e — any of the 1-4 players (for fall/cliff rules, vs mobs)
+    // §0f — the nearest ALIVE player to a world point (mobs chase/attack whoever is closest).
+    _nearestPlayer(x, y) {
+      const live = this.activePlayers(); let best = live[0] || this.player, bd = Infinity;
+      for (const pl of live) { const dx = pl.x - x, dy = pl.y - y, d = dx * dx + dy * dy; if (d < bd) { bd = d; best = pl; } }
+      return best;
+    }
     // §0e — advance each downed player's death burst + respawn timer; respawn at its OWN spawn.
     // Multiplayer only (single-player uses the global dying->dead flow). Runs every frame.
     _advancePlayerDeaths() {
@@ -667,7 +673,15 @@
         if (b.t < 0.5 && this._boltWalled(b)) b.t = 1 - b.t;   // wall on the way out → start coming back
         for (const m of live) { const id = m.col + ',' + m.row + ',' + (this.mobs.indexOf(m)); if (!b._hit[id] && this._canAttack(p.elev, m.elev || 0) && Math.hypot(m.x - b.x, m.y - b.y) < m.r + this.unit * 0.3) { m.hp -= 4; b._hit[id] = 1; if (m.hp <= 0) m.dead = true; } } if (b.dead) p._boom = null; }
       // Mob bolts (skeletons).
-      for (const mb of this._mobBolts) { OH_WEAPONS.stepBolt(mb); if (this._boltWalled(mb)) { mb.dead = true; continue; } if (!mb._dodged && this._canAttack(mb.elev || 0, p.elev) && Math.hypot(mb.x - p.x, mb.y - p.y) < p.r + this.unit * 0.25 && p.iFrames === 0) { if (this._dodging(this._dodgeAttacks)) { mb._dodged = true; this._notify('Dodged!', 30); } else { this._hurt(this.player, 3, 'Shot'); mb.dead = true; } } }   // a dodged bolt is flagged (not killed) so it flies on past
+      for (const mb of this._mobBolts) { OH_WEAPONS.stepBolt(mb); if (this._boltWalled(mb)) { mb.dead = true; continue; }
+        if (mb._dodged) continue;
+        // §0f — a mob bolt can hit ANY active player it overlaps (was P1 only).
+        for (const tp of this.activePlayers()) {
+          if (!this._canAttack(mb.elev || 0, tp.elev) || tp.iFrames !== 0) continue;
+          if (Math.hypot(mb.x - tp.x, mb.y - tp.y) >= tp.r + this.unit * 0.25) continue;
+          if (this._dodging(this._dodgeAttacks)) { mb._dodged = true; this._notify('Dodged!', 30); } else { this._hurt(tp, 3, 'Shot'); mb.dead = true; }
+          break;
+        } }   // a dodged bolt is flagged (not killed) so it flies on past
       this._mobBolts = this._mobBolts.filter((b) => !b.dead);
     }
 
@@ -797,8 +811,8 @@
       return m;
     }
     _updateMobs() {
-      const p = this.player;
       for (const m of this.mobs) { if (m.dead) continue; if (m.cool > 0) m.cool--;
+        const p = this._nearestPlayer(m.x, m.y);   // §0f — each mob chases/attacks the closest player
         const d = Math.hypot(p.x - m.x, p.y - m.y);
         const det = m.detect * (this._detectMult || 1);   // mobs see farther at night
         // On first detecting the player, seed a random initial cooldown so mobs
@@ -815,7 +829,7 @@
           if (m._wc <= 0) { m._wanderAngle = Math.random() * Math.PI * 2; m._wc = 50 + (Math.random() * 90 | 0); if (Math.random() < 0.3) m._wc = 30, m._wanderAngle = null; }
           if (m._wanderAngle != null) { const ws = (m.speed || 1) * 0.4; const bx = m.x, by = m.y; this._moveWithCollision(m, Math.cos(m._wanderAngle) * ws, Math.sin(m._wanderAngle) * ws, false); if (m.x === bx && m.y === by) m._wc = 0; else { m._dist = (m._dist || 0) + ws; m._moveAngle = m._wanderAngle; } }
         }
-        if (d < m.r + p.r && p.iFrames === 0 && !this._dodging(this._dodgeMobs)) this._hurt(this.player, 3, 'Hit by a mob');
+        if (d < m.r + p.r && p.iFrames === 0 && !this._dodging(this._dodgeMobs)) this._hurt(p, 3, 'Hit by a mob');   // §0f — hits the nearest player
       }
     }
 
@@ -823,7 +837,7 @@
     // Pressure plates / weight blocks activate when enough entities stand on them.
     _updatePlates() {
       for (const d of this._redstone) if (d.kind === 'plate' || d.kind === 'weight') {
-        let n = 0; const pc = this._cellOf(this.player.x, this.player.y); if (pc.col === d.col && pc.row === d.row) n++;
+        let n = 0; for (const pl of this.activePlayers()) { const pc = this._cellOf(pl.x, pl.y); if (pc.col === d.col && pc.row === d.row) n++; }   // §0f any player weighs a plate
         for (const m of this.mobs) if (!m.dead) { const mc = this._cellOf(m.x, m.y); if (mc.col === d.col && mc.row === d.row) n++; }
         d._active = n >= (d.kind === 'weight' ? (d.threshold || 1) : 1);
       }
@@ -833,7 +847,7 @@
       for (const d of this._redstone) if (d.kind === 'piston' && !d.dir && d.col === c && d.row === r) return OH_REDSTONE.cellPowered(this._rs, c, r); return false; }   // legacy piston (no dir) = solid on its own cell when powered
     // ── Swinging gates ──────────────────────────────────────────────────────────
     _gateCells(gt, deg) { return OVERHEAD.gateCells(gt, deg, this.grid.gridW, this.grid.gridH); }
-    _gateOccupied(cc, rr) { const pc = this._cellOf(this.player.x, this.player.y); if (pc.col === cc && pc.row === rr) return true;
+    _gateOccupied(cc, rr) { for (const pl of this.activePlayers()) { const pc = this._cellOf(pl.x, pl.y); if (pc.col === cc && pc.row === rr) return true; }
       if (this.mobs) for (const m of this.mobs) { if (!m.dead) { const mc = this._cellOf(m.x, m.y); if (mc.col === cc && mc.row === rr) return true; } } return false; }
     _updateGates() {
       if (!this._gates.length) { this._gateSolid = null; return; }

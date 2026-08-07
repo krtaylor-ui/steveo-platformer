@@ -287,5 +287,27 @@ console.log('Phase 0e — single-player death is unchanged (still ends the game 
   ok(g.state === 'dying' || g.state === 'dead', 'single-player death still ends the game globally (unchanged)');
 }
 
-console.log(`\noverhead multiplayer (0a-0e): ${pass} passed, ${fail} failed`);
+console.log('Phase 0f — mobs target the NEAREST player (and switch when someone else gets closer):');
+{
+  const g = new OverheadGame(mk({ mobs: [{ col: 10, row: 8, type: 'zombie', hp: 8, speed: 2, detect: 6 }], spawns: [{ col: 3, row: 8 }, { col: 16, row: 8 }] }), { testMode: true, numPlayers: 2 }, () => {});
+  ok(g.mobs.length === 1 && typeof g.mobs[0].x === 'number', 'the mob instantiated with a world position');
+  const m = g.mobs[0]; m.detect = 900; m.speed = 3;   // force detection + a clear step for the assert
+  g.input.isDown = () => false; g.input.isJustDown = () => false; g.input.pJustDown = () => false; g.input.pAttack = () => false;
+  g.input.pGp = () => ({ moveX: 0, moveY: 0, aimX: 0, aimY: 0 });
+  // P1 close on the LEFT, P2 far on the RIGHT.
+  g.players[0].x = 8.5 * 32; g.players[0].y = 8.5 * 32;
+  g.players[1].x = 18.5 * 32; g.players[1].y = 8.5 * 32;
+  ok(g._nearestPlayer(m.x, m.y) === g.players[0], 'nearest player to the mob is P1 (closer)');
+  const mx0 = m.x;
+  for (let f = 0; f < 20; f++) g._update();
+  ok(m.x < mx0 - 2, 'mob chased the nearer player P1 (moved left)');
+  // Now make P2 the closest — mob should switch and head right.
+  g.players[0].x = 2.5 * 32; g.players[1].x = m.x + 1.5 * 32; g.players[1].y = 8.5 * 32;
+  ok(g._nearestPlayer(m.x, m.y) === g.players[1], 'nearest player switched to P2');
+  const mx1 = m.x;
+  for (let f = 0; f < 20; f++) g._update();
+  ok(m.x > mx1 + 2, 'mob switched target and chased P2 (moved right)');
+}
+
+console.log(`\noverhead multiplayer (0a-0f FOUNDATION COMPLETE): ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
