@@ -148,5 +148,20 @@ console.log('Phase 0d — 2 players: zoom OUT to frame the group, centre on the 
   ok(g.grid.masterZoom <= base + 1e-6, 'zoom never exceeds the world base zoom');
 }
 
-console.log(`\noverhead multiplayer (0a+0b+0d): ${pass} passed, ${fail} failed`);
+console.log('Phase 0g (launch hook) — editor multi-spawn + Test launches N players (source):');
+{
+  const fs = require('fs');
+  const edSrc = fs.readFileSync(path.join(__dirname, '..', 'js', 'overhead', 'overhead-editor.js'), 'utf8');
+  // Multi-spawn: append up to 4, click-to-remove (no longer replaces the array with one).
+  ok(!/this\.tool === 'spawn'\) \{ this\.world\.spawns = \[\{ col, row \}\]; return; \}/.test(edSrc), 'the spawn tool no longer hard-replaces spawns with a single entry');
+  ok(/sps\.length < 4\) \{ sps\.push\(\{ col, row \}\)/.test(edSrc), 'the spawn tool appends up to 4 player spawns');
+  ok(/at >= 0\) \{ sps\.splice\(at, 1\)/.test(edSrc), 'clicking an existing spawn removes it');
+  // Markers are labelled per index P1..P4.
+  ok(/forEach\(\(spn, i\) =>/.test(edSrc) && /'P' \+ \(i \+ 1\)/.test(edSrc), 'spawn markers are labelled P1..P4 by index');
+  // Test launches numPlayers = spawn count (1-4).
+  ok(/const numPlayers = Math\.max\(1, Math\.min\(4, \(this\.world\.spawns \|\| \[\]\)\.length \|\| 1\)\)/.test(edSrc), 'Test derives numPlayers from the spawn count');
+  ok(/launchWorld\(draft, \{ testMode: true, numPlayers \}/.test(edSrc), 'Test passes numPlayers through to the overhead runtime');
+}
+
+console.log(`\noverhead multiplayer (0a+0b+0d+0g): ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

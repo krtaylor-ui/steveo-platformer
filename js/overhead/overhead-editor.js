@@ -395,7 +395,7 @@
         + P().OH_TERRAIN.map((t) => `<div class="opt ${this.tool === 'terrain' && this.terrainKey === t.key ? 'sel' : ''}" data-terr="${t.key}">${blockSw(t.key)}${t.name}</div>`).join('');
       const bTypes = (typeof OH_BUILDINGS !== 'undefined') ? OH_BUILDINGS.all().map((d) => d.id) : ['healer'];
       const buildOpts = bTypes.map((b) => `<div class="opt ${this.tool === 'building' && this.buildingType === b ? 'sel' : ''}" data-build="${b}">🏛 ${b}</div>`).join('')
-        + `<div class="opt ${this.tool === 'spawn' ? 'sel' : ''}" data-spawn="1">🚩 Player Spawn</div><div class="opt ${this.tool === 'goal' ? 'sel' : ''}" data-goal="1">★ Goal Star</div>`
+        + `<div class="opt ${this.tool === 'spawn' ? 'sel' : ''}" data-spawn="1">🚩 Player Spawns (1-4)</div><div class="opt ${this.tool === 'goal' ? 'sel' : ''}" data-goal="1">★ Goal Star</div>`
         + `<div class="opt ${this.tool === 'ramp' ? 'sel' : ''}" data-ramp="ramp">⟋ Ramp</div><div class="opt ${this.tool === 'ladder' ? 'sel' : ''}" data-ramp="ladder">🪜 Ladder</div>`
         + `<div class="opt ${this.tool === 'tree' ? 'sel' : ''}" data-tree="1">🌳 Tree (prefab)</div>`
         + `<div class="opt ${this.tool === 'bridge' ? 'sel' : ''}" data-bspan="0" title="Click two cliffs to span a gap. Make it a drawbridge (raises on a signal) in its config after placing.">🌉 Bridge — click 2 cliffs</div>`
@@ -682,7 +682,16 @@
       if (this.tool === 'tree') { this._placeTemplate('sys:tree', col, row); return; }   // the tree is now a SYSTEM template (additive overlay — no black void)
       if (this.tool === 'template') { if (this._templateId) this._placeTemplate(this._templateId, col, row); return; }
       if (this.tool === 'goal') { this.world.goal = { col, row }; return; }
-      if (this.tool === 'spawn') { this.world.spawns = [{ col, row }]; return; }
+      // §Overhead multiplayer — place up to 4 player spawns (P1..P4). Click an existing spawn to
+      // remove it. The number of spawns placed = how many players Test launches (1 = single-player).
+      if (this.tool === 'spawn') {
+        const sps = this.world.spawns = this.world.spawns || [];
+        const at = sps.findIndex((s) => s.col === col && s.row === row);
+        if (at >= 0) { sps.splice(at, 1); this._flash('Removed a player spawn (' + sps.length + ' left)'); }
+        else if (sps.length < 4) { sps.push({ col, row }); this._flash('Player spawn P' + sps.length + ' (Test launches ' + sps.length + (sps.length === 1 ? ' player)' : ' players)')); }
+        else this._flash('Max 4 player spawns — click one to remove it');
+        return;
+      }
       if (this.tool === 'building') { const fit = this._buildingFits(this.buildingType, col, row); if (fit !== false) this.world.buildings.push(OH_BUILDINGS.place(this.buildingType, col, row, { level: fit })); else this._flash('Cannot place there — needs FLAT ground under the whole footprint (or overlaps another building)'); return; }
       if (this.tool === 'mob') { const d = P().OH_MOB_BY_KEY[this.mobKey]; this.world.mobs.push({ col, row, type: this.mobKey, hp: d.hp, speed: d.speed, detect: d.detect }); return; }
       if (this.tool === 'item') { this.world.items.push({ col, row, kind: P().OH_ITEM_BY_KEY[this.itemKey].kind, weapon: P().OH_ITEM_BY_KEY[this.itemKey].weapon, itemKey: this.itemKey }); return; }
@@ -1296,7 +1305,9 @@
     _test() {
       this._running = false; this._unbindCanvas(); this._showChrome(false);
       const draft = JSON.parse(JSON.stringify(this.world));
-      OVERHEAD.launchWorld(draft, { testMode: true }, () => { if (window.game && window.game.destroy) window.game.destroy(); window.game = null; this._reopen(); });
+      // §Overhead multiplayer — Test with as many local players as there are spawn points (1-4).
+      const numPlayers = Math.max(1, Math.min(4, (this.world.spawns || []).length || 1));
+      OVERHEAD.launchWorld(draft, { testMode: true, numPlayers }, () => { if (window.game && window.game.destroy) window.game.destroy(); window.game = null; this._reopen(); });
     },
     _reopen() {
       this._showChrome(true);
@@ -1526,7 +1537,7 @@
       }
       // Template overlay voxels (placed models — trees/houses) — additive on top of terrain.
       for (const v of this._templateVoxels()) { if (hiAbove(v.elev)) continue; const sp = S(v.col * g.cell, v.row * g.cell); OVERHEAD.drawTerrainCube(ctx, v.block, sp.x - (v.elev - 1) * Q, sp.y - (v.elev - 1) * Q, cs, 1, true, true); }
-      for (const spn of (this.world.spawns || [])) { const sp = S((spn.col + 0.5) * g.cell, (spn.row + 0.5) * g.cell); ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; ctx.strokeRect(sp.x - cs * 0.42, sp.y - cs * 0.42, cs * 0.84, cs * 0.84); if (cs > 14) { ctx.fillStyle = '#4aa3ff'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('P1', sp.x, sp.y + 3); } }
+      (this.world.spawns || []).forEach((spn, i) => { const sp = S((spn.col + 0.5) * g.cell, (spn.row + 0.5) * g.cell); ctx.strokeStyle = '#4aa3ff'; ctx.lineWidth = 2; ctx.strokeRect(sp.x - cs * 0.42, sp.y - cs * 0.42, cs * 0.84, cs * 0.84); if (cs > 14) { ctx.fillStyle = '#4aa3ff'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('P' + (i + 1), sp.x, sp.y + 3); } });
       for (const rp of (this.world.ramps || [])) { if (hiAbove(m.elevation[rp.row] ? m.elevation[rp.row][rp.col] : 0)) continue; const sp = S((rp.col + 0.5) * g.cell, (rp.row + 0.5) * g.cell); const dir = OVERHEAD.rampDir((c, r) => (m.elevation[r] ? (m.elevation[r][c] | 0) : 0), rp.col, rp.row); OVERHEAD.drawRampIcon(ctx, rp.kind, sp.x, sp.y, cs, dir); }
       // Bridge SPANS (always shown as the deck in the editor; drawbridges get a ⚡ tag).
       const worldRail = !(this.world.settings && this.world.settings.bridgeGuardrails === false);
