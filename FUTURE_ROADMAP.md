@@ -1656,3 +1656,38 @@ What is missing is the **entry point and the exit contract**:
 **Effort:** small-to-moderate for 1 and 3 (a launch button and an exit target). Moderate for 2,
 because it changes what "Platformer mode" means. Decide 4 before building 2, or it gets built
 twice.
+
+---
+
+## Overhead Glass Tubes (point-to-point VISIBLE transport)  — requested 2026-08-07
+
+Kevin wants the overhead engine to have glass tubes like the side-scroll ones: point-to-point
+transport where you SEE the player(s) fly through the tube (not the pipe's enter-then-teleport).
+
+Distinction from what overhead already has:
+- **Pipe / portal** (exists): enter a building, a short climb/step animation, then teleport to the
+  linked end. No visible transit between the ends.
+- **Glass tube** (this item): a visible tube laid cell-to-cell between two points; entering it
+  sends the player ALONG the tube path, rendered inside the glass, arriving at the far end. In
+  co-op, several players can be in transit at once.
+
+Why it's cheap AFTER Phase 0c (per-player transport): 0c makes transit state per-player
+(`p._climb`/`p._transit`) and fixes the loop so one player in transit doesn't freeze the others.
+A glass tube is the same per-player transit state with (a) a path of cells instead of a single
+dest, (b) a "fly along the path" driver instead of the climb timeline, and (c) tube-segment
+rendering. The per-pipe "pull everyone / this player only" toggle (0c) applies to tubes too.
+
+Build sketch:
+- Data: a `tube` mechanism = an ordered list of cells (a drawn path) + two mouths; store on the
+  world like buildings/rails. Reuse the side-scroll model where sensible (`travelTubes` +
+  `pipeLinks` in js/game.js are the reference), adapted to the overhead grid.
+- Editor: a tube tool (drag a path between two mouths), mouth config (one-way/two-way, group vs
+  single travel — same toggle as pipes).
+- Runtime: on entering a mouth, set `p._transit = {path, t, ...}`; a per-frame driver advances the
+  player along the path (visible), releasing at the far mouth; render the glass segments + the
+  player tinted "inside glass" (mirror the side-scroll TUBE_WALL band look, top-down).
+- Camera: transit respects the shared auto-fit camera (0d); a "this player only" long tube uses
+  the same edge-hold rule as a solo pipe.
+
+Effort: moderate (its own phase, after the MP foundation + modes). Slots in as the natural
+extension of the transport pass — do NOT build mid-foundation.
