@@ -161,22 +161,27 @@
       this.angleLockDeg = cfg.angleLockDeg || 0;
       this._schemeOverlay = 0;
 
-      const sp = (worldData.spawns && worldData.spawns[0]) || { col: (map.gridW / 2) | 0, row: (map.gridH / 2) | 0 };
-      const cell = this.grid.cell;
-      this.player = { x: (sp.col + 0.5) * cell, y: (sp.row + 0.5) * cell, r: Math.max(9, this.unit * 0.4),
-        hp: 20, maxHp: 20, speed: this.unit * (cfg.moveSpeed || 0.11), elev: this._elev(sp.col, sp.row), aim: { x: 1, y: 0 }, lastAim: { x: 1, y: 0 },
-        dist: 0, jump: null, iFrames: 0, hidden: false,
-        // §Campaign pulls the weapon the player finished the prior level with
-        // (opts.playerWeapon); otherwise the world's start weapon, else unarmed
-        // (displayed as a pickaxe). A real ranged weapon changes fire behaviour;
-        // pickaxe/none = cone melee.
-        weapon: opts.playerWeapon || worldData.startWeapon || null, weapons: [], keys: [], _fireCd: 0, _trident: null, _boom: null };
-      if (this.player.weapon) this.player.weapons.push(this.player.weapon);
-      // A Player Spawn linked to a portal → emerge from that portal.
-      if (sp.fromPortal && this._portalCenter.has(sp.fromPortal)) { const d = this._portalCenter.get(sp.fromPortal); this.player.x = d.x; this.player.y = d.y; const c = this._cellOf(d.x, d.y); this.player.elev = this._elev(c.col, c.row); this._portalCd = true; this.camera = OH_GRID.centerOn(this.grid, d.x, d.y, CANVAS_W, CANVAS_H); }
-      this._spawn = { x: this.player.x, y: this.player.y };
+      // §Overhead multiplayer (Phase 0a) — build 1-4 local players. `opts.numPlayers` defaults to
+      // 1, so single-player is byte-for-byte unchanged. Each player spawns at world.spawns[i];
+      // when there are fewer spawn points than players the extras fan out one cell apart from the
+      // last one (the creator's multi-spawn tool, Phase 0g, gives real per-player spawns). The
+      // legacy `this.player` is a getter over players[0] (below), so the ~45 single-player
+      // call-sites keep working while the loop/camera/HUD migrate to iterate activePlayers().
+      const _spawns = (worldData.spawns && worldData.spawns.length) ? worldData.spawns
+        : [{ col: (map.gridW / 2) | 0, row: (map.gridH / 2) | 0 }];
+      const _nPlayers = Math.max(1, Math.min(4, opts.numPlayers || 1));
+      this._mpCfg = cfg; this._mpOpts = opts; this._mpWorld = worldData;   // kept for respawn/late-join
+      this.players = [];
+      for (let i = 0; i < _nPlayers; i++) {
+        const base = _spawns[i] || _spawns[_spawns.length - 1] || { col: 1, row: 1 };
+        const sp = _spawns[i] ? base : { col: base.col + i, row: base.row, fromPortal: base.fromPortal };
+        const p = this._makePlayer(sp, i, cfg, opts, worldData);
+        if (i === 0 && p._cameFromPortal) this._portalCd = true;   // (per-player portal state lands in 0c)
+        this.players.push(p);
+      }
+      this._spawn = { x: this.players[0]._spawn.x, y: this.players[0]._spawn.y };
       this._bolts = []; this._mobBolts = [];
-      this.camera = OH_GRID.centerOn(this.grid, this.player.x, this.player.y, CANVAS_W, CANVAS_H);
+      this.camera = OH_GRID.centerOn(this.grid, this.players[0].x, this.players[0].y, CANVAS_W, CANVAS_H);
       this._notif = null; this._running = true;
       if (document.body) { document.body.classList.remove('pre-game'); document.body.classList.add('in-game'); window.dispatchEvent(new Event('resize')); }
       // Adaptive quality + a designer-facing estimate of what this world costs to draw.
@@ -193,6 +198,34 @@
       }
       this._loop = this._loop.bind(this); requestAnimationFrame(this._loop);
     }
+
+    // §Overhead multiplayer (Phase 0a) — factory for one local player from a spawn cell.
+    // index 0 = P1 (may carry a campaign-carried weapon); 1-3 = P2-P4 (world start weapon).
+    _makePlayer(sp, index, cfg, opts, worldData) {
+      const cell = this.grid.cell;
+      const p = { x: (sp.col + 0.5) * cell, y: (sp.row + 0.5) * cell, r: Math.max(9, this.unit * 0.4),
+        hp: 20, maxHp: 20, speed: this.unit * (cfg.moveSpeed || 0.11), elev: this._elev(sp.col, sp.row),
+        aim: { x: 1, y: 0 }, lastAim: { x: 1, y: 0 }, dist: 0, jump: null, iFrames: 0, hidden: false,
+        // §Campaign pulls the weapon P1 finished the prior level with (opts.playerWeapon); otherwise
+        // the world's start weapon, else unarmed (drawn as a pickaxe). A real ranged weapon changes
+        // fire behaviour; pickaxe/none = cone melee.
+        weapon: ((index === 0 ? opts.playerWeapon : null) || worldData.startWeapon || null),
+        weapons: [], keys: [], _fireCd: 0, _trident: null, _boom: null,
+        _ownerId: 'p' + (index + 1), _index: index };
+      if (p.weapon) p.weapons.push(p.weapon);
+      // A Player Spawn linked to a portal → emerge from that portal.
+      if (sp.fromPortal && this._portalCenter.has(sp.fromPortal)) {
+        const d = this._portalCenter.get(sp.fromPortal); p.x = d.x; p.y = d.y;
+        const c = this._cellOf(d.x, d.y); p.elev = this._elev(c.col, c.row); p._cameFromPortal = true;
+      }
+      p._spawn = { x: p.x, y: p.y };
+      return p;
+    }
+    // Legacy single-player call-sites read `this.player`; keep it pointing at P1 (players[0])
+    // through the players[] migration. activePlayers() skips downed/absent slots.
+    get player() { return this.players ? this.players[0] : null; }
+    set player(v) { if (!this.players) this.players = []; this.players[0] = v; }
+    activePlayers() { return (this.players || []).filter((p) => p && !p._dead); }
 
     _key(c, r) { if (c < 0 || r < 0 || c >= this.grid.gridW || r >= this.grid.gridH) return null; const row = this.ground[r]; return row ? (row[c] || 'grass') : null; }
     _elev(c, r) { const row = this.elevation[r]; let e = row ? (row[c] | 0) : 0; if (this._pistonBoostMap) { const b = this._pistonBoostMap[c + ',' + r]; if (b) e += b; } return e; }   // + live vertical-piston lift
