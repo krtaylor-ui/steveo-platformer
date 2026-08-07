@@ -82,6 +82,24 @@ INSTRUMENT NOTES (learned this session - use these, they save time):
         const s=JSON.parse(localStorage.getItem('steveo_overhead_worlds')||'{}');
         s['oh-'+w.world_name]=w; localStorage.setItem('steveo_overhead_worlds',JSON.stringify(s));
       });   // then reload; it appears in the Overhead list. (This is NOT a test of Import.)
+- PIPE FOOTPRINT is one BLOCK = density x density cells (4x4 at d4, 1 block at d1). "Walk in
+  from below" means from SOUTH OF THE FOOTPRINT, not south of the stated anchor col,row - the
+  player is blocked about 2 cells short of the anchor at d4 (the footprint is solid).
+- If controllers WILL NOT enumerate (getGamepads stays empty even after a button press and
+  every page-level gate is open), it can be a per-Chrome-instance failure. Switch to a fresh
+  Chrome instance rather than debugging the page.
+- Perf subsystems RULED OUT as the frame-pacing loss (measured near-zero): mob AI update
+  (mobManager.update ~0.19 ms at 60 mobs), detection (detectCfg.enabled false), pathfinding
+  (pathCfg null). The loss is outside JS - profile with the browser Performance + Memory track.
+
+FIXTURE-STATE LANDMINE (tester's environment, 2026-08-07): "Mega Fixture (d4)" was left with
+pitMode: "deadly" (set to test 366). Re-running 370's default "solid pit" (block, not death)
+check on THAT world will kill instead of block - use a FRESH overhead world for the 370
+default. The repo d1 fixture (mega-fixture-d1.json) is non-deadly and safe.
+
+FULL INSTRUMENT SET (18 notes A-F) + the mob-count table live in the tester's
+BRIEF-INSERT-2026-08-07-ascii.md (below its CUT HERE line). Merge verbatim when transferred -
+the notes above are the highest-value subset already folded in.
 
 Portal FYIs from that run - both are NON-BUGS, confirmed in code, so future runs use the
 right instrument:
