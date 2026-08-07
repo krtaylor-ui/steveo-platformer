@@ -82,24 +82,11 @@ INSTRUMENT NOTES (learned this session - use these, they save time):
         const s=JSON.parse(localStorage.getItem('steveo_overhead_worlds')||'{}');
         s['oh-'+w.world_name]=w; localStorage.setItem('steveo_overhead_worlds',JSON.stringify(s));
       });   // then reload; it appears in the Overhead list. (This is NOT a test of Import.)
-- PIPE FOOTPRINT is one BLOCK = density x density cells (4x4 at d4, 1 block at d1). "Walk in
-  from below" means from SOUTH OF THE FOOTPRINT, not south of the stated anchor col,row - the
-  player is blocked about 2 cells short of the anchor at d4 (the footprint is solid).
-- If controllers WILL NOT enumerate (getGamepads stays empty even after a button press and
-  every page-level gate is open), it can be a per-Chrome-instance failure. Switch to a fresh
-  Chrome instance rather than debugging the page.
-- Perf subsystems RULED OUT as the frame-pacing loss (measured near-zero): mob AI update
-  (mobManager.update ~0.19 ms at 60 mobs), detection (detectCfg.enabled false), pathfinding
-  (pathCfg null). The loss is outside JS - profile with the browser Performance + Memory track.
 
-FIXTURE-STATE LANDMINE (tester's environment, 2026-08-07): "Mega Fixture (d4)" was left with
-pitMode: "deadly" (set to test 366). Re-running 370's default "solid pit" (block, not death)
-check on THAT world will kill instead of block - use a FRESH overhead world for the 370
-default. The repo d1 fixture (mega-fixture-d1.json) is non-deadly and safe.
-
-FULL INSTRUMENT SET (18 notes A-F) + the mob-count table live in the tester's
-BRIEF-INSERT-2026-08-07-ascii.md (below its CUT HERE line). Merge verbatim when transferred -
-the notes above are the highest-value subset already folded in.
+The AUTHORITATIVE, complete instrument set (18 notes A-F) + the measured mob-count table +
+the tester's open-items view are appended at the END of this file under
+"INSTRUMENT NOTES (added 2026-08-07 by the tester...)". The short bullets above are a subset;
+prefer the appended set where they overlap.
 
 Portal FYIs from that run - both are NON-BUGS, confirmed in code, so future runs use the
 right instrument:
@@ -285,3 +272,205 @@ dialog, and nothing imported. Needs the OS file picker.
     A9.6 file rejection ............ ...
 
     OVERALL: <ship / fix-then-ship / not-ready> - <one sentence>
+
+===================================================================================
+
+## INSTRUMENT NOTES (added 2026-08-07 by the tester; measured on builds 390 and 391)
+
+These cost real hours to find. Each one is a thing that produced a WRONG result before it was
+understood.
+
+### A. Measurement validity (read before trusting any perf number)
+
+1. game.state reads "playing" even when game.arenaState.phase === "ended". It is NOT a liveness
+   check in Arena mode. Gate Arena perf sampling on arenaState.phase === 'running', AND also
+   require that the mob subsystem actually consumed time during the sample interval, before
+   trusting a frame budget. Build 392 puts phase on every perf/stall line, so a sample tagged
+   phase=ended is now obvious.
+   How this bit: a whole frame budget was measured on the Game Over screen and published before
+   being retracted. The tell was entity arrays frozen for 37+ seconds (playerArrows 13, xpOrbs
+   42, damageNums 23) and mobManager.update costing EXACTLY 0.000 ms, i.e. never invoked.
+
+2. Frame-INTERVAL sampling cannot reveal headroom. Wall-clock frame deltas sat at p50 16.6 ms,
+   which is only the frame cap, so entity counts showed zero-to-negative correlation with it.
+   Time the work INSIDE the frame instead: wrap game._update, game._render and
+   game.mobManager.update and accumulate per frame.
+
+3. Record document.hasFocus() with every perf sample and DISCARD unfocused samples. Chrome
+   deprioritises rendering for an unfocused window. This one gate is what separated the
+   trustworthy numbers from the untrustworthy ones in this session. An unfocused run produced 11
+   frame gaps over 150 ms (worst 310 ms) that were artifacts, not stalls.
+
+4. Do not fit a cost slope over a narrow slice of the achievable range. A fit over 0-8 mobs, out
+   of an achievable 0-60, produced a slope with the WRONG SIGN (+0.43 ms/mob) and a bogus
+   "30-35 concurrent mob ceiling". Over the full 0-60 range the slope is -0.0095 ms/mob,
+   r = -0.169, i.e. no cost signal. Both of the earlier numbers are withdrawn.
+
+### B. Overhead editor
+
+5. OH_EDITOR._selEnt is the selection. OH_EDITOR._sel is ALWAYS null. Reading _sel gives a false
+   "nothing selected" even with an object plainly selected and its action bar on screen.
+   Shapes seen: {kind:"device", ref:{col,row,kind,channel,txId}, col, row} for a lever, and
+   {kind:"terrain", col, row} for bare ground.
+
+6. OH_EDITOR._hover is the reliable "which cell is under the cursor" readout. Verify every click
+   against it instead of trusting coordinate arithmetic. This is what made the 363 d1 result
+   unambiguous.
+
+7. Screenshot coordinates are NOT CSS pixels (about 0.795x in this session: the canvas rect was
+   1526x954 CSS but rendered about 1210x760 in the screenshot). Two consequences: do not feed
+   screenshot coordinates into _cellFromEvent, and do NOT calibrate with a synthetic event.
+   _cellFromEvent({clientX:340, clientY:703}) returned (1,10) where the real cursor at that same
+   screenshot point gave _hover (3,12).
+
+8. On a density-1 world the camera is FIXED, not player-centred: the map (768x512 world px) is
+   smaller than the 800x500 canvas, so nothing scrolls. When cropping canvas frames on a d1
+   world, crop around the OBJECT, not the canvas centre.
+
+### C. Portals and pipes
+
+9. _portalCells, _portalByKey and _portalIndex are Maps. JSON.stringify of a Map is "{}", which
+   is why they look empty while portals work perfectly. Correct usage, confirmed working:
+   game._portalByKey.size, [...game._portalByKey.keys()], and
+   game._portalByKey.get(building.config.dest) to confirm a link resolves.
+   Verified at d1: size 2, keys ["15,8","20,8"], both config.dest values resolve.
+
+10. _portalCd (portal cooldown) stays true while the player remains inside the destination pipe's
+    radius. It did NOT clear in 8 seconds of standing still; walking away cleared it immediately.
+    Two E presses looked like failures before this was understood. Both were tester error, not
+    defects.
+
+11. Pipe footprints are one BLOCK: 4x4 cells at density 4, 1x1 at density 1. Measured with
+    _buildingSolidAt - the pipe recorded at col 130, row 70 was solid across cols 130-133 x rows
+    70-73. So "walk into the pipe from below" means the row immediately south of the FOOTPRINT,
+    not of the stated col,row. At d4 the player is blocked about 2 cells short of the stated row.
+
+### D. Arena and gamepads
+
+12. _zoomOverride is gated in Arena mode. Setting it to 1.0 or to 0.4 left _resolveViewZoom() at
+    0.50, so a controlled zoom sweep is not possible from the console while in Arena.
+
+13. mobManager._createMob('Zombie', x, y) returns null and adds nothing - wrong signature, likely
+    grid cells or a spawn-point object. A working console spawn hook would enable controlled
+    entity sweeps (which is what would have caught note 4 immediately). The tester declined to
+    keep guessing at an internal API.
+
+14. mobManager.arenaMode read false during a live Arena Survival Waves match. Observation only,
+    no claim about whether it matters.
+
+### E. Gamepad enumeration (cost hours; nothing to do with the game code)
+
+15. The Gamepad API exposes a pad only AFTER a button press on that pad, and only to a page that
+    has FOCUS. The gate is PER PAGE: presses made in another browser, or another tab, do not
+    carry over. A connected but idle pad correctly reads as absent, so "0 pads" is NOT evidence
+    of a hardware, hub or USB fault.
+
+16. "Guide/Home button works but A does nothing" is the signature of the pads being fine while
+    the browser is not the FOREGROUND window. Windows handles Guide globally; A only reaches the
+    foreground app.
+
+17. Gamepad enumeration can fail per Chrome INSTANCE. In one automation-driven instance the pads
+    never enumerated while every page-level gate was open: isSecureContext true, getGamepads
+    present, top frame, Permissions-Policy allowing gamepad and hid, document.hasFocus() true,
+    and zero gamepadconnected events. The same four pads enumerated normally in the user's own
+    Chrome. If pads will not appear, switch browser instance rather than debugging the page.
+    Confirmed working pads: 4x "Xbox 360 Controller (XInput STANDARD GAMEPAD)", indices 0-3,
+    17 buttons, 4 axes, mapping "standard".
+
+### F. Stale build
+
+18. A Chrome instance served build 390 while the server was on 391, with no reload prompt: SPA
+    navigation does not re-fetch the bundle. Same trap that previously cost a whole 368
+    diagnosis. Check the badge, not the deploy.
+
+
+## ARENA MULTIPLAYER PERF - MEASURED RESULT (2026-08-07, build 391)
+
+Setup: Film Crew Arena, Survival Waves, 4 players (P1 human + 3 Medium Bots), waves set to 15,
+20-minute match, played to the final mob. 280 valid buckets after gating on phase === 'running',
+focused, and mob subsystem consumed time. 188 buckets rejected as not-live, 0 unfocused,
+0 sim-dead.
+
+  mobs    buckets  work ms  _update  _render  mobAI  fps
+  0       41       2.10     0.64     1.46     0.06   76
+  1-4     95       3.17     1.87     1.30     0.07   60
+  5-9     24       2.79     1.15     1.64     0.11   74
+  10-19   36       2.53     1.05     1.47     0.12   84
+  20-29   30       2.34     0.68     1.65     0.14   81
+  30-39   18       2.18     0.58     1.60     0.14   89
+  40-49   14       1.98     0.52     1.46     0.14   91
+  50-60   22       2.63     0.67     1.96     0.19   80
+
+Work goes DOWN as mobs go UP, and frame rate goes UP. At 40-60 mobs: about 2 ms of work at
+80-91 fps. Worst single bucket among all 40+-mob samples: 4.81 ms, under a third of a 16.6 ms
+budget. Overall about 2.4 ms of 16.6 ms, roughly 14 per cent utilisation. Frame rate across all
+valid buckets ranged 46-121 fps, so the loop is not hard-capped at 60.
+
+The 1-4 bin looks worst because it is dominated by early-wave active combat with the human
+fighting and four players spread apart. That is busy for reasons unrelated to mob count, and it
+is exactly the confound that produced the retracted 0.43 ms/mob figure.
+
+The only thing that scales with mobs is mob AI, and it is trivial: mobManager.update rose
+monotonically 0.06 -> 0.19 ms from 0 to 60 mobs. Extrapolated even to 300 mobs that stays under
+1 ms. playerArrows cost about 0.04 ms each. XP orbs and damage numbers showed NEGATIVE slopes,
+which are correlation artifacts from quiet post-wave periods, NOT savings.
+
+Confirmed not costing anything in this mode:
+  - mobManager.detectCfg.enabled === false. Mob sight/sound detection never runs here
+    (sightRange 288, sightArcDeg 120, packAlert false, sprintMobs false). Enabling it for arena
+    would add per-mob cost where there currently is none.
+  - pathCfg null and _activePathCount 0 throughout. Pathfinding inactive.
+  - explosions, webs, droppedItems, _particles, _platformDebris all stayed at 0 for the whole run
+    because Disable Mob Drops was on (the default). UNTESTED, NOT exonerated.
+
+Conclusions:
+  - Do NOT add a mob cap for performance reasons. 60 concurrent mobs cost nothing measurable. A
+    cap for design reasons (readability, difficulty pacing) is a separate and legitimate
+    argument, but it must not be justified on performance.
+  - Do not trim arrows, XP orbs, damage numbers or particles. All free.
+  - The optimisation target is FRAME PACING, not entity load. About 14 per cent CPU utilisation
+    while frame rate swings 46-121 fps means the loss is outside JS work. Candidates: GC from
+    per-frame allocation, vsync/compositor interaction, audio churn, OS contention. Highest-value
+    next step is a browser Performance trace with the Memory track during a busy wave; GC sawtooth
+    would show immediately. This is a human/browser task, not a code-reading task.
+  - The 4-player zoom-out to 0.50x is NOT hurting. _render held at 1.3-2.0 ms all run. The earlier
+    hypothesis that view area was the multiplayer cost is NOT supported.
+
+
+## OPEN ITEMS AS OF 2026-08-07 (tester view)
+
+Needs four hands - nothing else substitutes:
+  - Arena 4-controller freeze. Still unreproduced. Three runs today produced 0 [STALL] lines,
+    game._lastStall never set, and 0 pad dropouts. Needs 4 played controllers on a 10-20 minute
+    match so waves 4-5 arrive. Owner's own test of ONE pad driving all four players - firing,
+    jumping, climbing, killing - was completely smooth, which points away from 4-player load and
+    towards either four distinct XInput devices being polled, or system-level contention.
+
+Browser-runnable, not yet done:
+  - 367 destructive delete path: throwaway world -> Save -> Exit -> Delete.
+  - 371 window.game.measurePerformance() console call.
+  - 372 governor Off-never-draws plus drop order.
+  - S42 depth occlusion: feet clipping at high zoom, and many-mobs perf ON vs OFF measured with
+    game._gov._win or the live debug HUD, NOT the Perf overlay (it gates the pass off while
+    measuring).
+  - 368 UI-restore path via the Settings toggle (low priority; 368 otherwise closed on 390).
+  - Arena perf with mob drops ENABLED, to cover explosions / webs / droppedItems / particles,
+    which sat at 0 for the whole profiling run.
+  - A pit fixture with a raised block on a pit cell's SOUTH side, to finally test 366's
+    "settles behind the rim" sub-clause. Of the 49 pit cells in Mega Fixture (d4) (bbox cols
+    80-86 x rows 58-64), ZERO have a raised non-pit cell to the south, and the only tall geometry
+    (the elev-2 cliff) is to the NORTH, which is drawn further from camera and cannot occlude.
+    That sub-clause is NOT RUN, not failed.
+
+Needs a second account or the OS file picker:
+  - 368 server 403 with two accounts.
+  - A9.6 file-import rejection. NOTE: the d1 fixture reached the app by localStorage side-load
+    (GET /tools/overhead-worlds/mega-fixture-d1.json returned 200, written into
+    steveo_overhead_worlds), so the REAL import path is still genuinely untested.
+
+Fixture state left behind by the tester:
+  - Mega Fixture (d4) is saved with pitMode "deadly" (required by 366's setup). Re-running 370's
+    "solid pit" default check on that world will now kill the player instead of blocking. Use a
+    fresh world for the 370 default check.
+  - Mega Fixture (d1) unmodified: both levers on=false, pitMode "block", density 1.
+  - steveo_theme "modern", 9 overhead worlds. No native dialog appeared on 390 or 391.
