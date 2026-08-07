@@ -42,6 +42,30 @@ General:
 - "Mega Fixture (d1)": a density-1 copy of a similar layout, for the d1 comparisons.
 
 
+## STATUS (2026-08-07)
+
+DONE and verified on build 390: 366 (burst height over rim, PASS with a clean height arc),
+369 (pipe climb-in at d4, PASS - real translation, not a centre collapse), 373 (loading
+banner + zoom-out, PASS both halves). 368 closed both directions.
+
+Portal FYIs from that run - both are NON-BUGS, confirmed in code, so future runs use the
+right instrument:
+- _portalCells / _portalByKey are JavaScript Maps. JSON.stringify of a Map is "{}", which is
+  why they looked empty - the data is fine. Inspect with .size and [...map.keys()], NOT
+  JSON. To check "is this portal linked", read a building's config.dest and confirm
+  window.game._portalByKey.get(dest) resolves (and .size == number of pipes/portals).
+- _portalCd staying true while you STAND on the destination pipe is the intended re-trigger
+  guard (overhead-game.js:392 releases it once you step away, dist > useR*0.6). Not a stuck
+  state - step off and back on to trigger again.
+
+READY-TO-IMPORT d1 fixture (unblocks the d1 halves of 363 and 369 without hand-building):
+import tools/overhead-worlds/mega-fixture-d1.json via Sandbox -> "Import from file". It is a
+density-1 overhead world with a lever on flat ground, a lever on a raised (elev-2) block, two
+LINKED pipes (walk in from below), a small pit, a raised wall, a mob and a coin. Generated and
+engine-validated headlessly (node tools/gen-d1-fixture.js). Its pit is NON-deadly (pitMode
+default), so it will not kill you during the 369 climb test.
+
+
 ## PART A - run all, do not stop
 
 ### 363  Lever selectable where it draws - the d1 comparison
