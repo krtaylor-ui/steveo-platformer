@@ -714,6 +714,16 @@ class Game {
     this._initAudio();
 
     this._loop = this._loop.bind(this);
+    // §Freeze triage — the stall detector measures the gap between frames, but a BACKGROUNDED
+    // or UNFOCUSED tab throttles requestAnimationFrame (Chrome), so the first frame back shows a
+    // huge gap that is NOT a real freeze (tester note #3: discard unfocused samples). Flag any
+    // hide/blur so that one resume-gap is skipped rather than logged as a phantom [STALL].
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      this._stallThrottled = false;
+      this._onLoopThrottle = () => { this._stallThrottled = true; };
+      document.addEventListener('visibilitychange', this._onLoopThrottle, { passive: true });
+      if (typeof window !== 'undefined') window.addEventListener('blur', this._onLoopThrottle, { passive: true });
+    }
     requestAnimationFrame(this._loop);
   }
 
@@ -1447,7 +1457,11 @@ class Game {
     const _frameStart = _pnow();
     if (this._lastLoopEnd !== undefined) {
       const gap = _frameStart - this._lastLoopEnd;
-      if (gap > 400) {   // 400ms+ between frames = a real stall, never normal ~10ms idle pacing
+      // A gap that spanned a tab hide / window blur is rAF throttling, not a freeze — skip that
+      // one resume-gap (tester note #3). Also skip if we're plainly not focused right now.
+      const focused = (typeof document === 'undefined' || typeof document.hasFocus !== 'function') ? true : document.hasFocus();
+      if (gap > 400 && this._stallThrottled) { this._stallThrottled = false; }
+      else if (gap > 400 && focused) {   // 400ms+ between frames while focused = a real stall
         const priorWork = (this._profFrame && this._profFrame.tot) || 0;
         const external = priorWork < gap * 0.5;   // our last frame's work didn't account for the gap
         // §Freeze triage — carry the ENTITY LOAD + arena phase on every stall so a report can be
@@ -1459,7 +1473,7 @@ class Game {
         const arrows = mm ? ((mm.arrows || []).length + (mm.playerArrows || []).length) : 0;
         const players = this.activePlayers ? this.activePlayers().length : 0;
         const phase = this.arenaState ? this.arenaState.phase : null;
-        this._lastStall = { gap: Math.round(gap), priorWork: Math.round(priorWork), external, atFrame: this.frameCount, mobs, arrows, players, phase };
+        this._lastStall = { gap: Math.round(gap), priorWork: Math.round(priorWork), external, atFrame: this.frameCount, mobs, arrows, players, phase, focused };
         if (typeof console !== 'undefined') {
           console.warn(`[STALL] ${(gap / 1000).toFixed(1)}s gap between frames | prior in-frame work ${priorWork.toFixed(0)}ms | load: mobs=${mobs} arrows=${arrows} players=${players}${phase ? ' phase=' + phase : ''} → culprit: ${external ? 'EXTERNAL (GC / browser / HID — e.g. getGamepads on a flaky USB hub, or a GC storm from allocation churn)' : 'OUR CODE (a single frame ran long — read the [perf] line)'}`);
         }
@@ -1507,6 +1521,12 @@ class Game {
       this._closeSaveDialog();
       // Clean up AFK document event listeners
       if (this._afkListenerCleanup) { this._afkListenerCleanup(); this._afkListenerCleanup = null; }
+      // Stall-detector focus/visibility listeners (see constructor).
+      if (this._onLoopThrottle) {
+        if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this._onLoopThrottle);
+        if (typeof window !== 'undefined') window.removeEventListener('blur', this._onLoopThrottle);
+        this._onLoopThrottle = null;
+      }
       // Remove chat DOM overlay if present
       if (this._chatDomElement) { this._chatDomElement.remove(); this._chatDomElement = null; }
       // Fade out game audio so it doesn't bleed into the menu

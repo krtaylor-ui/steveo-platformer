@@ -50,8 +50,14 @@ const constSrc = strip(fs.readFileSync(path.join(jsDir, 'constants.js'), 'utf8')
   ok(/LAST STALL/.test(fs.readFileSync(path.join(jsDir, 'game.js'), 'utf8')), 'the perf HUD surfaces the last stall');
   // QA ask: a stall report must carry the ENTITY LOAD + arena phase so it can be correlated.
   ok(/load: mobs=\$\{mobs\} arrows=\$\{arrows\} players=\$\{players\}/.test(gameSrc), 'the [STALL] line carries mobs/arrows/players load');
-  ok(/mobs, arrows, players, phase \}/.test(gameSrc), '_lastStall stores mobs/arrows/players/phase');
+  ok(/mobs, arrows, players, phase, focused \}/.test(gameSrc), '_lastStall stores mobs/arrows/players/phase/focused');
   ok(/phase = this\.arenaState \? this\.arenaState\.phase/.test(gameSrc), 'the stall snapshot records the arena phase (liveness guard: ended != in-match)');
+  // Focus/visibility gating (tester note #3): a gap that spanned a hide/blur is rAF throttling,
+  // not a freeze, and must not log a phantom [STALL].
+  ok(/addEventListener\('visibilitychange', this\._onLoopThrottle/.test(gameSrc) && /window\.addEventListener\('blur', this\._onLoopThrottle/.test(gameSrc), 'a hide/blur sets the throttle flag');
+  ok(/if \(gap > 400 && this\._stallThrottled\) \{ this\._stallThrottled = false; \}/.test(gameSrc), 'a gap that spanned a hide/blur is skipped (not a phantom stall)');
+  ok(/else if \(gap > 400 && focused\)/.test(gameSrc), 'a stall is only logged when the window is focused');
+  ok(/removeEventListener\('visibilitychange', this\._onLoopThrottle\)/.test(gameSrc), 'the throttle listeners are cleaned up in destroy');
 }
 
 console.log(`\n  audio-perf + stall detector: ${passed} passed, ${failed} failed`);
