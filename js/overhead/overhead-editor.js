@@ -1549,8 +1549,23 @@
           else if (d.kind === 'piston') OVERHEAD.drawPiston(ctx, tl.x, tl.y, cs, false, d.dir ? { dir: d.dir } : null);   // face the way it fires — the BUILDER is who needs this (QA A4.3)
           else if (d.kind === 'and' || d.kind === 'not' || d.kind === 'nor') OVERHEAD.drawGate(ctx, tl.x, tl.y, cs, d.kind, false, d.inputs, d.outputs); } }
       if (this.world.goal) { const gc = (typeof GOAL_COLORS !== 'undefined' && GOAL_COLORS[this.world.goal.color || 0]) || { hex: '#ffd700' }; const sp = S((this.world.goal.col + 1) * g.cell, (this.world.goal.row + 1) * g.cell); ctx.fillStyle = gc.hex; ctx.font = `${(cs * 1.8) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★', sp.x, sp.y + cs * 0.6); }
-      // Hand-selected mob/item highlight (moveable — click a new spot to move it).
-      if (this._selEnt && this.tool === 'hand') { const s = this._selEnt.ref; const sp = S((s.col + 0.5) * g.cell, (s.row + 0.5) * g.cell); const pulse = 0.5 + 0.3 * Math.sin(Date.now() / 150); ctx.strokeStyle = `rgba(120,220,255,${pulse})`; ctx.lineWidth = 3; ctx.strokeRect(sp.x - cs * 0.5, sp.y - cs * 0.5, cs, cs); ctx.fillStyle = 'rgba(120,220,255,.85)'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('click to move', sp.x, sp.y - cs * 0.6); }
+      // ARMED-to-move highlight (after ✥ Move) — pulsing box + "click to move" on the entity's
+      // cell. Complements the static selection outline below (that one draws only when NOT moving).
+      // Gate on `.moving`: an un-armed click re-selects, not moves, so the prompt would lie — and,
+      // critically, an un-armed TERRAIN selection has no `.ref` and a BRIDGE span's ref has no
+      // `.col`, so the old blind `this._selEnt.ref.col` threw here EVERY FRAME (a ~10k-error flood
+      // in the render loop). Resolve the cell the same way the move handler does: span -> from,
+      // an object -> ref.col/row, terrain -> the selection's own col/row.
+      if (this._selEnt && this._selEnt.moving && this.tool === 'hand') {
+        const e = this._selEnt, ref = e.ref;
+        const hc = ref && ref.from ? ref.from.col : ref && ref.col != null ? ref.col : e.col;
+        const hr = ref && ref.from ? ref.from.row : ref && ref.row != null ? ref.row : e.row;
+        if (hc != null && hr != null) {
+          const sp = S((hc + 0.5) * g.cell, (hr + 0.5) * g.cell); const pulse = 0.5 + 0.3 * Math.sin(Date.now() / 150);
+          ctx.strokeStyle = `rgba(120,220,255,${pulse})`; ctx.lineWidth = 3; ctx.strokeRect(sp.x - cs * 0.5, sp.y - cs * 0.5, cs, cs);
+          ctx.fillStyle = 'rgba(120,220,255,.85)'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('click to move', sp.x, sp.y - cs * 0.6);
+        }
+      }
       // Click-to-connect (pick transmitters): ring + #N badge on every transmitter,
       // green if this receiver already listens to it, blue if available.
       if (this._pickTx) {
