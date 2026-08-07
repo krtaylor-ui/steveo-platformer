@@ -191,10 +191,18 @@
   // settings), plus a top-level fallback, so ONE predicate answers everywhere — client UI
   // and the server 403 alike. The OWNER is always allowed to export regardless (enforced at
   // the call sites / server); this predicate only reports the flag.
+  // Accepts ANY world shape and finds the flag: a raw side-scroll world_data
+  // ({worldAdvSettings}), a raw overhead world ({settings} at top level), OR a list-card
+  // wrapper ({world_data: <either of those>}). Checking the wrapper too means a caller that
+  // passes the whole card `w` (not `w.world_data`) still resolves correctly — the class of
+  // mismatch behind the "overhead card still shows Export" report (368). Truly one predicate.
   function exportHidden(wd) {
     if (!wd || typeof wd !== 'object') return false;
-    const a = wd.worldAdvSettings || {}, s = wd.settings || {};
-    return wd.hideFromExport === true || a.hideFromExport === true || s.hideFromExport === true;
+    const flagged = (o) => !!(o && typeof o === 'object' && (
+      o.hideFromExport === true ||
+      (o.worldAdvSettings && o.worldAdvSettings.hideFromExport === true) ||
+      (o.settings && o.settings.hideFromExport === true)));
+    return flagged(wd) || flagged(wd.world_data);
   }
   function exportAllowed(wd) { return !exportHidden(wd); }
 
