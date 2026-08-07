@@ -44,9 +44,38 @@ General:
 
 ## STATUS (2026-08-07)
 
-DONE and verified on build 390: 366 (burst height over rim, PASS with a clean height arc),
-369 (pipe climb-in at d4, PASS - real translation, not a centre collapse), 373 (loading
-banner + zoom-out, PASS both halves). 368 closed both directions.
+DONE and verified on build 390: 366 (burst height over rim, PASS - clean height arc),
+369 (pipe climb-in, PASS at BOTH d4 and d1 - real translation, not a centre collapse),
+373 (loading banner + zoom-out, PASS both halves), 363 (lever hit-area, PASS at BOTH d4 and
+d1 - at d1 the sprite selects but one full cell above does NOT, the intended contrast with
+d4). 368 closed both directions.
+
+Note on the 369 scale factor: NOT quoted. d4 and d1 climb profiles match in SHAPE, direction
+(pipe-relative), end state (inside the pipe), and 32 world px per block at both densities -
+but the raw pixel displacements (d4 ~35px, d1 ~50px from standing) both include the
+post-key-release approach slide, which was not isolated from the climb. Treat 369 as a
+qualitative PASS, not a measured ratio.
+
+Still genuinely untested: A9.6 IMPORT PATH. The d1 fixture was side-loaded (fetched from the
+served repo file and written into localStorage), which exercises _offlineOverheadWorlds + the
+card render but NOT the Import-from-File flow. A9.6 has not moved (still needs the OS picker,
+Part B).
+
+INSTRUMENT NOTES (learned this session - use these, they save time):
+- SELECTION is window.game._selEnt (or the editor's _selEnt). _sel is ALWAYS null - reading
+  it gives a false "nothing selected". Verify a click by comparing _hover (the cell) against
+  _selEnt (the picked entity: {kind:'device', txId:N} for a lever).
+- DO NOT calibrate clicks with synthetic events into _cellFromEvent - it disagreed with the
+  real hover (gave 1,10 where hover read 3,12). And screenshot coords are NOT CSS pixels here
+  (about 0.795x). Trust window.game._hover for "which cell is under the cursor".
+- On a SMALL world (map smaller than the canvas, e.g. the d1 fixture) the camera is FIXED,
+  not player-centred. That is correct, not a bug.
+- To load a repo fixture WITHOUT the OS file picker: it is served, so fetch it and write it
+  into the overhead store, e.g.
+      fetch('/tools/overhead-worlds/mega-fixture-d1.json').then(r=>r.json()).then(w=>{
+        const s=JSON.parse(localStorage.getItem('steveo_overhead_worlds')||'{}');
+        s['oh-'+w.world_name]=w; localStorage.setItem('steveo_overhead_worlds',JSON.stringify(s));
+      });   // then reload; it appears in the Overhead list. (This is NOT a test of Import.)
 
 Portal FYIs from that run - both are NON-BUGS, confirmed in code, so future runs use the
 right instrument:

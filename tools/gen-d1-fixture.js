@@ -55,6 +55,9 @@ const buildings = [
 
 const world = {
   name: 'Mega Fixture (d1)', mode: 'platformer', viewMode: 'overhead', gameModeDefault: 'NRM',
+  // Fixed (not Date.now) so re-running the tool is deterministic and doesn't churn the file.
+  // Without it the Sandbox card shows "Created: -" (the nit the tester flagged).
+  created_at: '2026-08-07T00:00:00.000Z',
   controlScheme: 'free-aim', angleLockDeg: 0, rules: {},
   mapSnapshot: { gridW: W, gridH: H, density: 1, baseW: W, baseH: H, cell: 32, objectScaleMode: 'independent', ground, elevation, decorations: [] },
   buildings,

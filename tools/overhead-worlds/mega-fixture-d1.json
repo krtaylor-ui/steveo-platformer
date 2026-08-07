@@ -3,6 +3,7 @@
   "mode": "platformer",
   "viewMode": "overhead",
   "gameModeDefault": "NRM",
+  "created_at": "2026-08-07T00:00:00.000Z",
   "controlScheme": "free-aim",
   "angleLockDeg": 0,
   "rules": {},
