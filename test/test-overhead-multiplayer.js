@@ -75,5 +75,41 @@ console.log('Phase 0a — clamp + update/render loop runs with N players present
   ok(g3.players.length === 3, 'still 3 players after frames');
 }
 
-console.log(`\noverhead multiplayer (0a): ${pass} passed, ${fail} failed`);
+console.log('Phase 0b — each player reads its own input and moves independently:');
+{
+  const spawns = [{ col: 3, row: 8 }, { col: 8, row: 8 }, { col: 13, row: 8 }];
+  const g = new OverheadGame(mk({ spawns }), { testMode: true, numPlayers: 3 }, () => {});
+  ok(typeof g._controlPlayer === 'function' && typeof g._rawFor === 'function' && typeof g._syncControllerSlots === 'function', '0b methods exist');
+  const before = g.players.map(p => ({ x: p.x, y: p.y }));
+  // P1 walks right on the keyboard; P2 walks DOWN on its pad; P3 idle.
+  g.input.isDown = (c) => c === 'KeyD';
+  g.input.pGp = (i) => i === 1 ? { moveX: 0, moveY: 1, aimX: 0, aimY: 0 } : { moveX: 0, moveY: 0, aimX: 0, aimY: 0 };
+  g.input.pJustDown = () => false; g.input.pAttack = () => false;
+  for (let f = 0; f < 10; f++) g._update();
+  ok(g.players[0].x - before[0].x > 4, 'P1 (keyboard) moved right');
+  ok(Math.abs(g.players[0].y - before[0].y) < 1, 'P1 did not drift vertically');
+  ok(g.players[1].y - before[1].y > 4, 'P2 (pad) moved down independently');
+  ok(Math.abs(g.players[1].x - before[1].x) < 1, 'P2 did not drift horizontally');
+  ok(Math.abs(g.players[2].x - before[2].x) < 1 && Math.abs(g.players[2].y - before[2].y) < 1, 'P3 (idle pad) stayed put');
+}
+
+console.log('Phase 0b — a secondary player is NOT killed by a pit yet (held out like a mob; death = 0e):');
+{
+  // A pit column between P2's spawn and where it walks; deadly pits on. P2 must not trigger _die
+  // (which would end the match for everyone) — it should be blocked by collision instead.
+  const W = 20, H = 16, ground = [], elevation = [];
+  for (let r = 0; r < H; r++) { ground.push(new Array(W).fill('grass')); elevation.push(new Array(W).fill(0)); }
+  for (let r = 6; r <= 10; r++) ground[r][10] = 'pit';   // a vertical pit wall at col 10
+  const world = mk({ mapSnapshot: { gridW: W, gridH: H, density: 1, baseW: W, baseH: H, cell: 32, objectScaleMode: 'independent', ground, elevation, decorations: [] },
+    spawns: [{ col: 2, row: 8 }, { col: 8, row: 8 }], settings: Object.assign(OH_SETTINGS.defaults(), { pitMode: 'deadly' }) });
+  const g = new OverheadGame(world, { testMode: true, numPlayers: 2 }, () => {});
+  g.input.isDown = () => false;
+  g.input.pGp = (i) => i === 1 ? { moveX: 1, moveY: 0, aimX: 0, aimY: 0 } : { moveX: 0, moveY: 0, aimX: 0, aimY: 0 };
+  g.input.pJustDown = () => false; g.input.pAttack = () => false;
+  for (let f = 0; f < 30; f++) g._update();   // P2 walks right into the pit wall
+  ok(g.state === 'playing', 'P2 walking into a pit did NOT end the match (no global death from a secondary)');
+  ok(g.players[1].x < (10 + 0.5) * 32, 'P2 was blocked before entering the pit column');
+}
+
+console.log(`\noverhead multiplayer (0a+0b): ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

@@ -227,6 +227,83 @@
     set player(v) { if (!this.players) this.players = []; this.players[0] = v; }
     activePlayers() { return (this.players || []).filter((p) => p && !p._dead); }
 
+    // §Overhead multiplayer (Phase 0b) — mirror the side-scroll slot assignment so pGp(i)/pJustDown(i,..)
+    // resolve each player's controller. No-op headless / when ControllerConfig isn't present.
+    _syncControllerSlots() {
+      if (typeof ControllerConfig === 'undefined' || !ControllerConfig.getAssignment) return;
+      const inp = this.input;
+      inp.p1GpSlot = ControllerConfig.getAssignment(1); inp.p2GpSlot = ControllerConfig.getAssignment(2);
+      inp.p3GpSlot = ControllerConfig.getAssignment(3); inp.p4GpSlot = ControllerConfig.getAssignment(4);
+    }
+
+    // §Overhead multiplayer (Phase 0b) — build one control snapshot for player `idx`. P1 (idx 0) keeps
+    // the exact keyboard+mouse+first-pad path (single-player unchanged); P2-P4 read their assigned pad
+    // (left stick = move, right stick = aim; A = jump, X = melee, RT = fire, RB = action). Every
+    // per-player accessor is called defensively so a partial InputManager (headless) yields idle input
+    // instead of throwing — the "adapter must be complete or it freezes" lesson from the side-scroll port.
+    _rawFor(p, idx) {
+      const inp = this.input;
+      if (idx === 0) {
+        const K = (c) => inp.isDown(c);
+        const gp = inp.gamepads && inp.gamepads[0];
+        const mv = { x: 0, y: 0 };
+        if (K('KeyA') || K('ArrowLeft')) mv.x -= 1; if (K('KeyD') || K('ArrowRight')) mv.x += 1;
+        if (K('KeyW') || K('ArrowUp')) mv.y -= 1; if (K('KeyS') || K('ArrowDown')) mv.y += 1;
+        if (gp && gp.connected) { if (Math.abs(gp.axes0) > 0.2) mv.x += gp.axes0; if (Math.abs(gp.axes1) > 0.2) mv.y += gp.axes1; }
+        const pscr = OH_GRID.worldToScreen(this.grid, this.camera, p.x, p.y);
+        let aimVec = { x: inp.mouse.x - pscr.x, y: inp.mouse.y - pscr.y }, aimStickMag = 0;
+        if (gp && gp.connected && (Math.abs(gp.axes2) > 0.2 || Math.abs(gp.axes3) > 0.2)) { aimVec = { x: gp.axes2, y: gp.axes3 }; aimStickMag = Math.hypot(gp.axes2, gp.axes3); }
+        return { moveVec: mv, aimVec, aimStickMag, fireBtn: inp.mouse.clicked, fireHeld: inp.mouse.down || (gp && gp.rt > 0.5),
+          meleeBtn: inp.mouse.clicked || K('KeyF'), jumpBtn: inp.isJustDown && inp.isJustDown('Space'),
+          actionBtn: inp.isJustDown && inp.isJustDown('KeyE'), recallBtn: inp.mouse.rightClicked, lastAim: p.lastAim };
+      }
+      const g = (inp.pGp ? inp.pGp(idx) : null) || {};
+      const jd = (btn) => (inp.pJustDown ? inp.pJustDown(idx, btn) : false);
+      const mv = { x: g.moveX || 0, y: g.moveY || 0 };
+      const aMag = Math.hypot(g.aimX || 0, g.aimY || 0);
+      const aimVec = aMag > 0.2 ? { x: g.aimX, y: g.aimY } : { x: 0, y: 0 };
+      return { moveVec: mv, aimVec, aimStickMag: aMag, fireBtn: jd('rangedBtn'), fireHeld: (inp.pAttack ? inp.pAttack(idx) : false),
+        meleeBtn: jd('attack'), jumpBtn: jd('jump'), actionBtn: jd('context'), recallBtn: jd('throwBtn'), lastAim: p.lastAim };
+    }
+
+    // §Overhead multiplayer (Phase 0b) — advance one player's locomotion for the frame; returns its
+    // resolved intent (P1's is reused for combat + the E-action until those go per-player).
+    _controlPlayer(p, idx) {
+      if (p.iFrames > 0) p.iFrames--; if (p._fireCd > 0) p._fireCd--;
+      if (p._swingT > 0) p._swingT--;   // advance the melee-swing animation
+      const raw = this._rawFor(p, idx);
+      const eff = OH_CONTROLS.effectiveScheme(this.baseScheme, p.weapon ? { forceTwinStick: false, autoFire: false } : {});
+      if (idx === 0) { if (eff.overridden) this._schemeOverlay = Math.min(60, this._schemeOverlay + 2); else this._schemeOverlay = Math.max(0, this._schemeOverlay - 2); }
+      const intent = OH_CONTROLS.resolve(eff.scheme, raw, { angleLockDeg: this.angleLockDeg });
+      if (OH_CONTROLS.norm(intent.aim).x || OH_CONTROLS.norm(intent.aim).y) { p.aim = intent.aim; p.lastAim = intent.aim; }
+      const mv = raw.moveVec, moving = mv.x !== 0 || mv.y !== 0;
+      const sprinting = idx === 0 && this._sprint && this.input.isDown && (this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight'));
+      if (idx === 0) this._sprinting = !!sprinting;
+      const spd = p.speed * (sprinting ? this._sprintMult : 1);
+      const airborneBefore = p.jump && p.jump.jumping;
+      if (raw.jumpBtn) {
+        if (!airborneBefore) { p.jump = OH_MOVE.startJump({ moveX: mv.x * spd, moveY: mv.y * spd, startElev: p.elev, maxElevationJump: this._jumpClear }); p._jumpFrom = { x: p.x, y: p.y }; }
+        else if (this.settings.doubleJump !== false && OH_MOVE.canDoubleJump(p.jump)) { OH_MOVE.doubleJump(p.jump); p.jump.maxElevationJump = (p.jump.maxElevationJump | 0) + this._doubleJumpClear; }
+      }
+      const airborne = p.jump && p.jump.jumping;
+      this._moveWithCollision(p, intent.move.x * spd, intent.move.y * spd, airborne);
+      if (moving) { p.dist += Math.hypot(intent.move.x, intent.move.y) * p.speed; p.moveAngle = Math.atan2(intent.move.y, intent.move.x); }
+      if (p.jump && p.jump.jumping && OH_MOVE.advanceJump(p.jump).landed) {
+        if (idx === 0) this._resolveLanding(p);
+        else { const c = this._cellOf(p.x, p.y); p.elev = this._elev(c.col, c.row); }   // secondary: land, no death yet (0e)
+      }
+      // Hazards / pits / gaps kill — P1 only until per-player death (0e). Secondary players are held
+      // out of pits/walls by _moveWithCollision (it treats non-P1 entities like a mob).
+      if (!airborne && idx === 0) { const c = this._cellOf(p.x, p.y);
+        if (this._bridgeClosedAt(c.col, c.row)) { /* solid bridge deck — no fall/hazard */ }
+        else if (this._pitsDeadly && this._pit(c.col, c.row)) this._die('Fell into a pit', 'pit');
+        else if (this._gap(c.col, c.row)) this._fall('Fell');
+        else if (this._hazard(c.col, c.row)) { if (this._lavaMode === 'death') this._die('Fell in lava'); else if (p.iFrames === 0) this._hurt(this._lavaDamage, 'Lava'); } }
+      { const c = this._cellOf(p.x, p.y); p.hidden = (this._key(c.col, c.row) === 'leaves' && this._elev(c.col, c.row) > p.elev); }
+      this._pickups(p);
+      return intent;
+    }
+
     _key(c, r) { if (c < 0 || r < 0 || c >= this.grid.gridW || r >= this.grid.gridH) return null; const row = this.ground[r]; return row ? (row[c] || 'grass') : null; }
     _elev(c, r) { const row = this.elevation[r]; let e = row ? (row[c] | 0) : 0; if (this._pistonBoostMap) { const b = this._pistonBoostMap[c + ',' + r]; if (b) e += b; } return e; }   // + live vertical-piston lift
     // Directional pistons: ease each piston's extension on its redstone signal. UP = raise the
@@ -336,58 +413,22 @@
       // alive (mobs/projectiles) but skip normal control until it finishes + teleports.
       if (this._climb) { this._updatePipeClimb(); this._updateMobs(); this._updateProjectiles(); this._updateShards(); return; }
 
-      const p = this.player;
-      if (p.iFrames > 0) p.iFrames--; if (p._fireCd > 0) p._fireCd--;
-      if (inp.isJustDown && (inp.isJustDown('KeyQ') || inp.isJustDown('Tab'))) this._cycleWeapon();   // switch weapon
-      const K = (c) => inp.isDown(c);
-      const gp = inp.gamepads && inp.gamepads[0];
-      let mv = { x: 0, y: 0 };
-      if (K('KeyA') || K('ArrowLeft')) mv.x -= 1; if (K('KeyD') || K('ArrowRight')) mv.x += 1;
-      if (K('KeyW') || K('ArrowUp')) mv.y -= 1; if (K('KeyS') || K('ArrowDown')) mv.y += 1;
-      if (gp && gp.connected) { if (Math.abs(gp.axes0) > 0.2) mv.x += gp.axes0; if (Math.abs(gp.axes1) > 0.2) mv.y += gp.axes1; }
-      const moving = mv.x !== 0 || mv.y !== 0;
-      const pscr = OH_GRID.worldToScreen(this.grid, this.camera, p.x, p.y);
+      // §Overhead multiplayer (Phase 0b) — per-player LOCOMOTION. Each active player reads its own
+      // input (P1 = keyboard/mouse + first pad; P2-P4 = their assigned pad) and moves/jumps/aims
+      // independently in the shared world. COMBAT, the E-action (pipes/portals/levers/locks) and the
+      // goal stay P1-only for now — they go per-player in the combat + Phase 0c passes. Secondary
+      // players can't die yet (0e): _moveWithCollision blocks them at pits/walls like a mob.
+      this._syncControllerSlots();
+      const p = this.player;   // P1 (legacy alias) — the combat/E/goal/camera below are still P1-only
+      if (inp.isJustDown && (inp.isJustDown('KeyQ') || inp.isJustDown('Tab'))) this._cycleWeapon();   // P1 weapon switch
       const mouseWorld = OH_GRID.screenToWorld(this.grid, this.camera, inp.mouse.x, inp.mouse.y);
-      let aimVec = { x: inp.mouse.x - pscr.x, y: inp.mouse.y - pscr.y }, aimStickMag = 0;
-      if (gp && gp.connected && (Math.abs(gp.axes2) > 0.2 || Math.abs(gp.axes3) > 0.2)) { aimVec = { x: gp.axes2, y: gp.axes3 }; aimStickMag = Math.hypot(gp.axes2, gp.axes3); }
-      const raw = { moveVec: mv, aimVec, aimStickMag, fireBtn: inp.mouse.clicked, fireHeld: inp.mouse.down || (gp && gp.rt > 0.5),
-        meleeBtn: inp.mouse.clicked || K('KeyF'), jumpBtn: inp.isJustDown && inp.isJustDown('Space'),
-        actionBtn: inp.isJustDown && inp.isJustDown('KeyE'), recallBtn: inp.mouse.rightClicked, lastAim: p.lastAim };
-      const eff = OH_CONTROLS.effectiveScheme(this.baseScheme, p.weapon ? { forceTwinStick: false, autoFire: false } : {});
-      if (eff.overridden) this._schemeOverlay = Math.min(60, this._schemeOverlay + 2); else this._schemeOverlay = Math.max(0, this._schemeOverlay - 2);
-      const intent = OH_CONTROLS.resolve(eff.scheme, raw, { angleLockDeg: this.angleLockDeg });
-      if (OH_CONTROLS.norm(intent.aim).x || OH_CONTROLS.norm(intent.aim).y) { p.aim = intent.aim; p.lastAim = intent.aim; }
-
-      // Sprint (Shift by default) — a speed multiplier, also carried into a jump.
-      const sprinting = this._sprint && inp.isDown && (inp.isDown('ShiftLeft') || inp.isDown('ShiftRight'));
-      this._sprinting = !!sprinting;   // live state for the debug HUD (vs the enabled setting)
-      const spd = p.speed * (sprinting ? this._sprintMult : 1);
-      // Jump. maxElevationJump = the jump's clearance (additive with the double jump).
-      const airborneBefore = p.jump && p.jump.jumping;
-      if (raw.jumpBtn) {
-        if (!airborneBefore) { p.jump = OH_MOVE.startJump({ moveX: mv.x * spd, moveY: mv.y * spd, startElev: p.elev, maxElevationJump: this._jumpClear }); p._jumpFrom = { x: p.x, y: p.y }; }
-        else if (this.settings.doubleJump !== false && OH_MOVE.canDoubleJump(p.jump)) { OH_MOVE.doubleJump(p.jump); p.jump.maxElevationJump = (p.jump.maxElevationJump | 0) + this._doubleJumpClear; }
-      }
-      const airborne = p.jump && p.jump.jumping;
-      this._moveWithCollision(p, intent.move.x * spd, intent.move.y * spd, airborne);
-      if (moving) { p.dist += Math.hypot(intent.move.x, intent.move.y) * p.speed; p.moveAngle = Math.atan2(intent.move.y, intent.move.x); }
-      if (p.jump && p.jump.jumping && OH_MOVE.advanceJump(p.jump).landed) this._resolveLanding(p);
-      if (!airborne) { const c = this._cellOf(p.x, p.y);
-        if (this._bridgeClosedAt(c.col, c.row)) { /* standing on a solid bridge deck — no fall/hazard */ }
-        else if (this._pitsDeadly && this._pit(c.col, c.row)) this._die('Fell into a pit', 'pit');
-        else if (this._gap(c.col, c.row)) this._fall('Fell');
-        else if (this._hazard(c.col, c.row)) { if (this._lavaMode === 'death') this._die('Fell in lava'); else if (p.iFrames === 0) this._hurt(this._lavaDamage, 'Lava'); } }
-      // Hidden if standing under an overhang (a cell ≥ player.elev+2).
-      { const c = this._cellOf(p.x, p.y); p.hidden = (this._key(c.col, c.row) === 'leaves' && this._elev(c.col, c.row) > p.elev); }
-
-      // Weapons / melee.
-      this._updateWeapons(intent, mouseWorld);
-      if (p._swingT > 0) p._swingT--;   // advance the melee swing animation
-      if (this._reachT > 0) this._reachT--;   // lever/lock reach pose
+      let intent = null;
+      for (const pl of this.activePlayers()) { const it = this._controlPlayer(pl, pl._index); if (pl._index === 0) intent = it; }
+      if (this._reachT > 0) this._reachT--;   // lever/lock reach pose (shared; per-player in 0c)
       if (this._emerge) { this._emerge.t++; if (this._emerge.t >= this._emerge.dur) this._emerge = null; }   // pipe emerge (QA F14)
-      // Item pickup.
-      this._pickups(p);
-      // Mobs + projectiles.
+      // Weapons / melee — P1 only for now (per-player combat is a follow-on step).
+      if (intent) this._updateWeapons(intent, mouseWorld);
+      // Mobs + projectiles (once).
       this._updateMobs(); this._updateProjectiles(); this._updateShards();
 
       // Portals / pipes take PRIORITY on the E button over the generic decoration
