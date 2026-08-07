@@ -1450,9 +1450,18 @@ class Game {
       if (gap > 400) {   // 400ms+ between frames = a real stall, never normal ~10ms idle pacing
         const priorWork = (this._profFrame && this._profFrame.tot) || 0;
         const external = priorWork < gap * 0.5;   // our last frame's work didn't account for the gap
-        this._lastStall = { gap: Math.round(gap), priorWork: Math.round(priorWork), external, atFrame: this.frameCount };
+        // §Freeze triage — carry the ENTITY LOAD + arena phase on every stall so a report can be
+        // correlated after the fact (QA ask: a bare gap number told us nothing). `phase` also
+        // guards the liveness gotcha (game.state stays 'playing' on the Game Over screen while
+        // arenaState.phase is already 'ended') — a stall tagged phase=ended isn't an in-match one.
+        const mm = this.mobManager;
+        const mobs = mm ? (mm.mobs || []).reduce((n, m) => n + (m.alive ? 1 : 0), 0) : 0;
+        const arrows = mm ? ((mm.arrows || []).length + (mm.playerArrows || []).length) : 0;
+        const players = this.activePlayers ? this.activePlayers().length : 0;
+        const phase = this.arenaState ? this.arenaState.phase : null;
+        this._lastStall = { gap: Math.round(gap), priorWork: Math.round(priorWork), external, atFrame: this.frameCount, mobs, arrows, players, phase };
         if (typeof console !== 'undefined') {
-          console.warn(`[STALL] ${(gap / 1000).toFixed(1)}s gap between frames | prior in-frame work ${priorWork.toFixed(0)}ms → culprit: ${external ? 'EXTERNAL (GC / browser / HID — e.g. getGamepads on a flaky USB hub, or a GC storm from allocation churn)' : 'OUR CODE (a single frame ran long — read the [perf] line)'}`);
+          console.warn(`[STALL] ${(gap / 1000).toFixed(1)}s gap between frames | prior in-frame work ${priorWork.toFixed(0)}ms | load: mobs=${mobs} arrows=${arrows} players=${players}${phase ? ' phase=' + phase : ''} → culprit: ${external ? 'EXTERNAL (GC / browser / HID — e.g. getGamepads on a flaky USB hub, or a GC storm from allocation churn)' : 'OUR CODE (a single frame ran long — read the [perf] line)'}`);
         }
       }
     }
@@ -1475,7 +1484,9 @@ class Game {
       if (this._profSlow % 15 === 1) {   // throttle the log so a sustained slowdown doesn't spam
         const n = this.mobManager ? this.mobManager.mobs.filter(m => m.alive).length : 0;
         const ps = (this.mobManager && this.mobManager._pathStats) || { calls: 0, ms: 0 };
-        console.warn(`[perf] frame ${tot.toFixed(1)}ms = update ${upd.toFixed(1)} (mobs ${this._prof.mobs.toFixed(1)} [A* ${ps.calls}call ${ps.ms.toFixed(1)}ms], bot ${this._prof.bot.toFixed(1)}, redstone ${this._prof.redstone.toFixed(1)}) + render ${ren.toFixed(1)} (mobDraw ${this._prof.mobDraw.toFixed(1)}) | mobs=${n} arrows=${this.mobManager ? (this.mobManager.arrows || []).length : '?'}`);
+        const arr = this.mobManager ? ((this.mobManager.arrows || []).length + (this.mobManager.playerArrows || []).length) : 0;
+        const phase = this.arenaState ? ` phase=${this.arenaState.phase}` : '';   // liveness: 'ended' != in-match
+        console.warn(`[perf] frame ${tot.toFixed(1)}ms = update ${upd.toFixed(1)} (mobs ${this._prof.mobs.toFixed(1)} [A* ${ps.calls}call ${ps.ms.toFixed(1)}ms], bot ${this._prof.bot.toFixed(1)}, redstone ${this._prof.redstone.toFixed(1)}) + render ${ren.toFixed(1)} (mobDraw ${this._prof.mobDraw.toFixed(1)}) | mobs=${n} arrows=${arr}${phase}`);
       }
     }
     this.input.flush();
@@ -6710,7 +6721,7 @@ class Game {
         this._dbgAim ? `aim mouse(${this._dbgAim.mx},${this._dbgAim.my}) world(${this._dbgAim.wx},${this._dbgAim.wy}) cell(${this._dbgAim.c},${this._dbgAim.r}) zoom:${(this.camera && this.camera._srZoom || 1).toFixed(2)} shots:${this._dbgShots || 0}${pl ? ` plr(${Math.round(pl.cx)},${Math.round(pl.cy)})` : ''}` : '',
         // Stall detector (freeze triage) — the last >400ms between-frames gap and whether it was
         // our code or something external (GC / browser / USB-HID). Persists so it's readable after.
-        this._lastStall ? `LAST STALL ${(this._lastStall.gap / 1000).toFixed(1)}s @f${this._lastStall.atFrame} (prior work ${this._lastStall.priorWork}ms) → ${this._lastStall.external ? 'EXTERNAL: GC/browser/USB-HID' : 'OUR CODE'}` : 'no stall yet',
+        this._lastStall ? `LAST STALL ${(this._lastStall.gap / 1000).toFixed(1)}s @f${this._lastStall.atFrame} (work ${this._lastStall.priorWork}ms, mobs ${this._lastStall.mobs ?? '?'} arr ${this._lastStall.arrows ?? '?'}${this._lastStall.phase ? ' ' + this._lastStall.phase : ''}) → ${this._lastStall.external ? 'EXTERNAL: GC/browser/USB-HID' : 'OUR CODE'}` : 'no stall yet',
       ];
       ctx.save();
       ctx.font = '11px monospace'; ctx.textBaseline = 'top';

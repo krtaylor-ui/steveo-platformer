@@ -48,6 +48,10 @@ const constSrc = strip(fs.readFileSync(path.join(jsDir, 'constants.js'), 'utf8')
   ok(/priorWork < gap \* 0\.5/.test(gameSrc), 'it classifies the stall as EXTERNAL vs OUR CODE by prior in-frame work');
   ok(/this\._lastStall\s*=\s*\{/.test(gameSrc), 'it records _lastStall for the perf HUD');
   ok(/LAST STALL/.test(fs.readFileSync(path.join(jsDir, 'game.js'), 'utf8')), 'the perf HUD surfaces the last stall');
+  // QA ask: a stall report must carry the ENTITY LOAD + arena phase so it can be correlated.
+  ok(/load: mobs=\$\{mobs\} arrows=\$\{arrows\} players=\$\{players\}/.test(gameSrc), 'the [STALL] line carries mobs/arrows/players load');
+  ok(/mobs, arrows, players, phase \}/.test(gameSrc), '_lastStall stores mobs/arrows/players/phase');
+  ok(/phase = this\.arenaState \? this\.arenaState\.phase/.test(gameSrc), 'the stall snapshot records the arena phase (liveness guard: ended != in-match)');
 }
 
 console.log(`\n  audio-perf + stall detector: ${passed} passed, ${failed} failed`);
