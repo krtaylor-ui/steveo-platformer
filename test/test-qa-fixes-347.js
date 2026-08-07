@@ -212,10 +212,10 @@ console.log('Build 368 — P1.7 unit-offset audit: pipe-climb positions stay pro
     OH_BUILDINGS.footprintOf = () => ({ w: 2 * density, h: 2 * density });   // 2x2 blocks
     const self = { grid: { cell, masterZoom: 1 }, unit, player: { x: 0, y: 0 }, _density: density,
       _pipeClimbTimeline: OverheadGame.prototype._pipeClimbTimeline };
-    try { OverheadGame.prototype._startPipeClimb.call(self, { typeId: 'pipe', col: 5, row: 5 }, {}); }
+    try { OverheadGame.prototype._startPipeClimb.call(self, self.player, { typeId: 'pipe', col: 5, row: 5 }, {}); }   // §0c signature: (p, pipe, dest)
     finally { OH_BUILDINGS.footprintOf = orig; }
     // halfH = fh/2 cells * cell = density * cell (footprint is 2*density cells tall).
-    return { cell, cy: self._climb.cy, edgeY: self._climb.edgeY, halfH: density * cell };
+    return { cell, cy: self.player._climb.cy, edgeY: self.player._climb.edgeY, halfH: density * cell };   // §0c per-player _climb
   };
   const d1 = climbFor(1), d4 = climbFor(4);
   const edgeFrac = (m) => (m.edgeY - m.cy) / m.halfH;   // rim offset as a fraction of the pipe half-height

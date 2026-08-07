@@ -176,7 +176,7 @@
         const base = _spawns[i] || _spawns[_spawns.length - 1] || { col: 1, row: 1 };
         const sp = _spawns[i] ? base : { col: base.col + i, row: base.row, fromPortal: base.fromPortal };
         const p = this._makePlayer(sp, i, cfg, opts, worldData);
-        if (i === 0 && p._cameFromPortal) this._portalCd = true;   // (per-player portal state lands in 0c)
+        if (p._cameFromPortal) p._portalCd = true;   // §0c per-player portal-spawn cooldown
         this.players.push(p);
       }
       this._spawn = { x: this.players[0]._spawn.x, y: this.players[0]._spawn.y };
@@ -270,6 +270,13 @@
     // §Overhead multiplayer (Phase 0b) — advance one player's locomotion for the frame; returns its
     // resolved intent (P1's is reused for combat + the E-action until those go per-player).
     _controlPlayer(p, idx) {
+      // §0c — per-player pipe/portal timers advance regardless of control.
+      if (p._portalGlow && --p._portalGlow.t <= 0) p._portalGlow = null;
+      if (p._reachT > 0) p._reachT--;                                   // lever/lock reach pose
+      if (p._emerge) { p._emerge.t++; if (p._emerge.t >= p._emerge.dur) p._emerge = null; }   // pipe emerge (QA F14)
+      // §0c — a player in pipe/portal transit is driven by its own animation; skip its control this
+      // frame but DO NOT freeze the others (the old global this._climb early-return did exactly that).
+      if (p._climb) { this._updatePipeClimb(p); p._moving = false; return null; }
       if (p.iFrames > 0) p.iFrames--; if (p._fireCd > 0) p._fireCd--;
       if (p._swingT > 0) p._swingT--;   // advance the melee-swing animation
       const raw = this._rawFor(p, idx);
@@ -278,6 +285,7 @@
       const intent = OH_CONTROLS.resolve(eff.scheme, raw, { angleLockDeg: this.angleLockDeg });
       if (OH_CONTROLS.norm(intent.aim).x || OH_CONTROLS.norm(intent.aim).y) { p.aim = intent.aim; p.lastAim = intent.aim; }
       const mv = raw.moveVec, moving = mv.x !== 0 || mv.y !== 0;
+      p._moving = moving;   // §0c — per-player, drives the walk-cycle limbs in _drawPlayer (was P1 keyboard-only)
       const sprinting = idx === 0 && this._sprint && this.input.isDown && (this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight'));
       if (idx === 0) this._sprinting = !!sprinting;
       const spd = p.speed * (sprinting ? this._sprintMult : 1);
@@ -410,9 +418,6 @@
       if (this.state === 'won' || this.state === 'dead') { if (inp.mouse.clicked || (inp.isJustDown && inp.isJustDown('Enter'))) this._exit(); return; }
       if (this.state === 'dying') { this._advanceDeath(); return; }   // play the death burst
       if (this.state === 'paused') return;
-      // Interaction animation (pipe climb-in) drives the player itself — keep the world
-      // alive (mobs/projectiles) but skip normal control until it finishes + teleports.
-      if (this._climb) { this._updatePipeClimb(); this._updateMobs(); this._updateProjectiles(); this._updateShards(); return; }
 
       // §Overhead multiplayer (Phase 0b) — per-player LOCOMOTION. Each active player reads its own
       // input (P1 = keyboard/mouse + first pad; P2-P4 = their assigned pad) and moves/jumps/aims
@@ -425,8 +430,6 @@
       const mouseWorld = OH_GRID.screenToWorld(this.grid, this.camera, inp.mouse.x, inp.mouse.y);
       let intent = null;
       for (const pl of this.activePlayers()) { const it = this._controlPlayer(pl, pl._index); if (pl._index === 0) intent = it; }
-      if (this._reachT > 0) this._reachT--;   // lever/lock reach pose (shared; per-player in 0c)
-      if (this._emerge) { this._emerge.t++; if (this._emerge.t >= this._emerge.dur) this._emerge = null; }   // pipe emerge (QA F14)
       // Weapons / melee — P1 only for now (per-player combat is a follow-on step).
       if (intent) this._updateWeapons(intent, mouseWorld);
       // Mobs + projectiles (once).
@@ -435,14 +438,16 @@
       // Portals / pipes take PRIORITY on the E button over the generic decoration
       // notice (a pipe next to a statue must still teleport). PROXIMITY + E (both
       // types — no accidental walk-through). The nearest in-range one glows; press E.
-      if (this._portalGlow && --this._portalGlow.t <= 0) this._portalGlow = null;
+      // §0c — pipe/portal STATE is per-player (p._portalCd/_portalGlow/_portalPrompt). The TRIGGER
+      // is still P1-only this step (per-player E-trigger + the pull-all/single toggle are next).
+      if (!intent) intent = { action: false };   // P1 in transit -> no action this frame
       let actionUsed = false;
       { const useR = this.unit * 1.6; let near = null, nk = null, nd = useR;
         // Proximity to the nearest FOOTPRINT CELL (so you can trigger a big portal
         // by standing adjacent — the buildings are solid, you can't stand on it).
         for (const [ck, b] of this._portalCells) { const [cc, rr] = ck.split(',').map(Number); const dx = (cc + 0.5) * this.grid.cell - p.x, dy = (rr + 0.5) * this.grid.cell - p.y; const dd = Math.hypot(dx, dy); if (dd < nd) { nd = dd; near = b; nk = b.col + ',' + b.row; } }
-        this._portalPrompt = near ? nk : null;
-        if (near && !this._portalCd && intent.action) {
+        p._portalPrompt = near ? nk : null;
+        if (near && !p._portalCd && intent.action) {
           const cfg = near.config || {}; const label = near.typeId === 'pipe' ? 'pipe' : 'portal';
           if (cfg.isGoal) { actionUsed = true; this._wonExitColor = (this.goal && this.goal.color) || 0; this._win(); }
           else if (cfg.dest && (this._portalByKey.get(cfg.dest) || this._portalCells.get(cfg.dest))) {
@@ -455,16 +460,16 @@
             const px = (db.col + dw / 2) * this.grid.cell, py = (db.row + dh + 0.5) * this.grid.cell;
             const dest = { px, py, key: db.col + ',' + db.row };
             // A PIPE plays the climb-in animation, THEN teleports; a portal is instant.
-            if (near.typeId === 'pipe' && this.settings.pipeClimbAnim !== false) { this._startPipeClimb(near, dest); }
-            else if (near.typeId === 'portal' && this.settings.portalStepAnim !== false) { this._startPortalStep(near, dest); }
-            else { const c = this._cellOf(px, py); p.x = px; p.y = py; p.elev = this._elev(c.col, c.row); this._portalCd = true; this._portalGlow = { keys: [nk, dest.key], t: 42 }; }
+            if (near.typeId === 'pipe' && this.settings.pipeClimbAnim !== false) { this._startPipeClimb(p, near, dest); }
+            else if (near.typeId === 'portal' && this.settings.portalStepAnim !== false) { this._startPortalStep(p, near, dest); }
+            else { const c = this._cellOf(px, py); p.x = px; p.y = py; p.elev = this._elev(c.col, c.row); p._portalCd = true; p._portalGlow = { keys: [nk, dest.key], t: 42 }; }
           } else {
             // In range + pressed E, but this end has no destination — tell the player
             // instead of silently doing nothing (and don't fall through to the statue).
             actionUsed = true; this._notify('This ' + label + ' is not linked to a destination yet.', 100);
           }
         }
-        if (!near || nd > useR * 0.6) this._portalCd = false;   // release the guard once clear of the destination
+        if (!near || nd > useR * 0.6) p._portalCd = false;   // release the guard once clear of the destination
       }
       // A nearby LOCK (insert key) or LEVER toggles on E (before the decoration notice).
       if (intent.action && !actionUsed && this._useNearbyLock(p)) actionUsed = true;
@@ -648,7 +653,7 @@
       let near = null, nd = this.unit * 1.6;
       for (const d of this._redstone) if (d.kind === 'lever' || d.kind === 'button') { const dx = (d.col + 0.5) * this.grid.cell - p.x, dy = (d.row + 0.5) * this.grid.cell - p.y; const dd = Math.hypot(dx, dy); if (dd < nd) { nd = dd; near = d; } }
       if (!near) return false;
-      near.on = !near.on; this._rs = OH_REDSTONE.evaluate(this._redstone); this._notify('Lever ' + (near.on ? 'ON' : 'OFF'), 40); if (this.settings.leverReachAnim !== false) this._reachT = 16; return true;
+      near.on = !near.on; this._rs = OH_REDSTONE.evaluate(this._redstone); this._notify('Lever ' + (near.on ? 'ON' : 'OFF'), 40); if (this.settings.leverReachAnim !== false) p._reachT = 16; return true;
     }
     // A LOCK block: insert a matching key (E nearby) to power it. Consumes the key /
     // stays locked-in / can toggle off, per config.
@@ -670,7 +675,10 @@
     // ── PIPE CLIMB-IN animation — the "pull-up (foreshortened leg)" from the mockup ──
     // Grab the rim → pull the body up to the hands → a leg lifts (foot on the pipe) → the
     // body rises to the foot → move to the opening → shrink into the tube → teleport.
-    _startPipeClimb(pipe, dest) {
+    // §Overhead multiplayer (Phase 0c) — pipe/portal transit is PER-PLAYER: the animation state
+    // lives on `p._climb` (not a shared this._climb), so 2-4 players can be in transit at once and
+    // one player using a pipe no longer freezes the others (the old global _climb early-return).
+    _startPipeClimb(p, pipe, dest) {
       const fpp = OH_BUILDINGS.footprintOf(pipe.typeId, this._density), fw = fpp.w, fh = fpp.h, cell = this.grid.cell;
       const cx = (pipe.col + fw / 2) * cell, cy = (pipe.row + fh / 2) * cell;
       // P1.7 audit: rim/approach offsets are relative to the PIPE, which is block-scale
@@ -678,30 +686,30 @@
       // fixed cell. A fixed 0.45 cell is 45% of the pipe at density 1 but only ~11% at density
       // 4, so the "grab the rim" pose ended up buried at the pipe's centre on a dense map.
       // unit == cell at density 1, so this is byte-identical there. (Lesson 1.)
-      const cl = { pipe, dest, t: 0, sx: this.player.x, sy: this.player.y, cx, cy, edgeY: cy + this.unit * 0.45,
+      const cl = { pipe, dest, t: 0, sx: p.x, sy: p.y, cx, cy, edgeY: cy + this.unit * 0.45,
         face: -Math.PI / 2, scale: 1, alpha: 1, grab: 0, mantleLeg: 0, crouch: 0, zoomFrom: this.grid.masterZoom };
-      cl.timeline = this._pipeClimbTimeline(cl);
+      cl.timeline = this._pipeClimbTimeline(p, cl);
       cl.total = cl.timeline.reduce((a, ph) => a + ph.dur, 0);
-      this._climb = cl;
-      this.player.dist = 0;   // freeze the walk cycle
+      p._climb = cl;
+      p.dist = 0;   // freeze this player's walk cycle
     }
     // PORTAL step-through — the same _climb driver as the pipe, with a shorter step-in + spin-warp
     // timeline (walk into the portal, shrink + spin + fade, then teleport).
-    _startPortalStep(portal, dest) {
+    _startPortalStep(p, portal, dest) {
       const fpp = OH_BUILDINGS.footprintOf(portal.typeId, this._density), fw = fpp.w, fh = fpp.h, cell = this.grid.cell;
       const cx = (portal.col + fw / 2) * cell, cy = (portal.row + fh / 2) * cell;
-      const eo = (t) => 1 - Math.pow(1 - t, 3), ei = (t) => t * t * t, L = (a, b, t) => a + (b - a) * t, P = this.player;
+      const eo = (t) => 1 - Math.pow(1 - t, 3), ei = (t) => t * t * t, L = (a, b, t) => a + (b - a) * t, P = p;
       const cl = { pipe: portal, dest, t: 0, sx: P.x, sy: P.y, cx, cy, face: -Math.PI / 2, scale: 1, alpha: 1, grab: 0, mantleLeg: 0, crouch: 0, spin: 0, zoomFrom: this.grid.masterZoom };
       cl.timeline = [
         { name: 'step', dur: 0.3, fn: (t) => { P.x = L(cl.sx, cx, eo(t)); P.y = L(cl.sy, cy, eo(t)); cl.scale = L(1, 0.55, eo(t)); cl.alpha = L(1, 0.65, t); } },
         { name: 'warp', dur: 0.26, fn: (t) => { P.x = cx; P.y = cy; cl.spin = t * Math.PI * 3; cl.scale = L(0.55, 0.08, ei(t)); cl.alpha = L(0.65, 0.05, t); } },
       ];
       cl.total = cl.timeline.reduce((a, ph) => a + ph.dur, 0);
-      this._climb = cl; P.dist = 0;
+      p._climb = cl; P.dist = 0;
     }
-    _pipeClimbTimeline(cl) {
+    _pipeClimbTimeline(p, cl) {
       const eo = (t) => 1 - Math.pow(1 - t, 3), ei = (t) => t * t * t, eio = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2, L = (a, b, t) => a + (b - a) * t;
-      const P = this.player, cell = this.grid.cell, cx = cl.cx, cy = cl.cy, edgeY = cl.edgeY, below = edgeY + this.unit * 0.5;   // P1.7: pipe-relative → unit (see _startPipeClimb)
+      const P = p, cell = this.grid.cell, cx = cl.cx, cy = cl.cy, edgeY = cl.edgeY, below = edgeY + this.unit * 0.5;   // P1.7: pipe-relative → unit (see _startPipeClimb)
       return [
         { name: '1·grab', dur: 0.5, fn: (t) => { P.x = L(cl.sx, cx, eo(t)); P.y = L(cl.sy, below, eo(t)); cl.grab = eo(t); } },          // reach + grab the rim
         { name: '2·pull', dur: 0.45, fn: (t) => { P.x = cx; P.y = L(below, edgeY, eio(t)); cl.grab = 1 - eio(t); cl.scale = L(1, 1.03, eio(t)); } },   // body pulled to the hands
@@ -711,28 +719,30 @@
         { name: '6·sink', dur: 0.55, fn: (t) => { cl.scale = L(1.02, 0.16, ei(t)); cl.alpha = L(1, 0.08, t); } }                          // shrink into the tube
       ];
     }
-    _updatePipeClimb() {
-      const cl = this._climb; if (!cl) return;
+    _updatePipeClimb(p) {
+      const cl = p._climb; if (!cl) return;
       cl.t += (1 / 60) * (this.settings.interactionSpeed || 1);
-      const iz = this.settings.interactionZoom || 1.25;
-      this.grid.masterZoom += (iz - this.grid.masterZoom) * 0.15;   // ease the camera in to appreciate it
+      // Solo play zooms the camera in to appreciate the climb + holds on the pipe. In multiplayer
+      // that would yank the shared view onto one player, so leave the shared auto-fit camera alone.
+      const solo = this.activePlayers().length <= 1;
+      if (solo) { const iz = this.settings.interactionZoom || 1.25; this.grid.masterZoom += (iz - this.grid.masterZoom) * 0.15; }
       let acc = 0, cur = null, ct = 0;
       for (const ph of cl.timeline) { if (cl.t <= acc + ph.dur) { cur = ph; ct = (cl.t - acc) / ph.dur; break; } acc += ph.dur; }
-      if (!cur) { cl.timeline[cl.timeline.length - 1].fn(1); this._finishPipeClimb(); return; }
+      if (!cur) { cl.timeline[cl.timeline.length - 1].fn(1); this._finishPipeClimb(p); return; }
       cur.fn(Math.max(0, Math.min(1, ct)));
-      this.camera = OH_GRID.centerOn(this.grid, cl.cx, cl.cy, CANVAS_W, CANVAS_H);   // hold on the pipe
+      if (solo) this.camera = OH_GRID.centerOn(this.grid, cl.cx, cl.cy, CANVAS_W, CANVAS_H);   // hold on the pipe (solo only)
     }
-    _finishPipeClimb() {
-      const cl = this._climb; this._climb = null;
-      const p = this.player, d = cl.dest, c = this._cellOf(d.px, d.py);
+    _finishPipeClimb(p) {
+      const cl = p._climb; p._climb = null;
+      const d = cl.dest, c = this._cellOf(d.px, d.py);
       p.x = d.px; p.y = d.py; p.elev = this._elev(c.col, c.row);
-      this._portalCd = true; this._portalGlow = { keys: [cl.pipe.col + ',' + cl.pipe.row, d.key], t: 42 };
+      p._portalCd = true; p._portalGlow = { keys: [cl.pipe.col + ',' + cl.pipe.row, d.key], t: 42 };
       // EMERGE: the mirror of the shrink-into-the-tube entry. Without it the player simply
       // appeared at full size, which made a working teleport feel broken — and it is the most
       // visible moment of the whole pipe feature. The player sits on the pipe until they move
       // (the arrival cooldown already holds them). (QA F14.)
-      if (this.settings.pipeClimbAnim !== false) this._emerge = { t: 0, dur: 18 };
-      this.grid.masterZoom = cl.zoomFrom;   // restore the game zoom
+      if (this.settings.pipeClimbAnim !== false) p._emerge = { t: 0, dur: 18 };
+      if (this.activePlayers().length <= 1) this.grid.masterZoom = cl.zoomFrom;   // restore the game zoom (solo)
       this.camera = OH_GRID.centerOn(this.grid, p.x, p.y, CANVAS_W, CANVAS_H);
     }
     _pickups(p) { for (const it of this.items) { if (it.taken) continue; const ix = (it.col + 0.5) * this.grid.cell, iy = (it.row + 0.5) * this.grid.cell; if (Math.hypot(ix - p.x, iy - p.y) < p.r + this.unit * 0.4) { it.taken = true; if (it.kind === 'weapon') { if (!p.weapons.includes(it.weapon)) p.weapons.push(it.weapon); p.weapon = it.weapon; this._notify('Equipped ' + it.weapon + ' (Q to switch)', 120); } else if (it.kind === 'key') { p.keys.push(it.keyId || it.itemKey); this._notify('Picked up ' + (it.keyId || 'key') + ' key', 90); } else this._notify('Coin!', 60); } } }
@@ -1211,7 +1221,9 @@
       for (const it of this.items) if (!it.taken) ents.push({ kind: 'i', row: it.row, col: it.col, level: 0, ref: it });
       for (const m of this.mobs) if (!m.dead) ents.push({ kind: 'm', row: (m.y / g.cell) | 0, col: (m.x / g.cell) | 0, level: m.elev || 0, ref: m });
       for (const v of this._templateVoxels) ents.push({ kind: 'tv', row: v.row, col: v.col, level: v.elev, ref: v });   // template overlay voxels (interleave with terrain/entities)
-      ents.push({ kind: 'p', row: (this.player.y / g.cell) | 0, col: (this.player.x / g.cell) | 0, level: this.player.elev, ref: this.player });
+      // §Overhead multiplayer (Phase 0c) — draw EVERY active player (was P1 only). Each is a
+      // depth-sorted entity, so a player higher on the map draws behind one lower down.
+      for (const pl of this.activePlayers()) ents.push({ kind: 'p', row: (pl.y / g.cell) | 0, col: (pl.x / g.cell) | 0, level: pl.elev, ref: pl });
       // §42 depth occlusion (build 374, default OFF): after each entity, repaint the raised
       // terrain NEARER the camera and TALLER than the entity's footing back over it, so a wall
       // hides a mob standing behind it. Gated so the deployed layering is unchanged until a
@@ -1235,9 +1247,11 @@
       for (const b of this.buildings) if (b.typeId === 'portal' || b.typeId === 'pipe') {
         const fpr = OH_BUILDINGS.footprintOf(b.typeId, this._density), fw = fpr.w, fh = fpr.h;
         const key = b.col + ',' + b.row, sp = S((b.col + fw / 2) * g.cell, (b.row + fh / 2) * g.cell);
-        if (this._portalGlow && this._portalGlow.keys.indexOf(key) >= 0) { const a = 0.35 + 0.35 * Math.sin(this._portalGlow.t * 0.5); ctx.fillStyle = `rgba(180,90,230,${a})`; ctx.beginPath(); ctx.ellipse(sp.x, sp.y, fw * cs * 0.5, fh * cs * 0.5, 0, 0, 7); ctx.fill(); }
-        // "Press E" prompt + glow when the player is in range of this one.
-        if (key === this._portalPrompt) { const a = 0.4 + 0.3 * Math.sin((this._frame || 0) * 0.15); ctx.fillStyle = `rgba(180,90,230,${a})`; ctx.beginPath(); ctx.ellipse(sp.x, sp.y, fw * cs * 0.55, fh * cs * 0.55, 0, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(0,0,0,.75)'; const py = sp.y - fh * cs * 0.62; ctx.fillRect(sp.x - cs * 0.9, py - cs * 0.5, cs * 1.8, cs * 0.7); ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(11, cs * 0.5) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('Press E', sp.x, py - cs * 0.15); ctx.textBaseline = 'alphabetic'; }
+        // §0c — glow/prompt are per-player; light a cell that ANY player just used / is near.
+        const _glow = this.activePlayers().map((pl) => pl._portalGlow).find((gm) => gm && gm.keys.indexOf(key) >= 0);
+        if (_glow) { const a = 0.35 + 0.35 * Math.sin(_glow.t * 0.5); ctx.fillStyle = `rgba(180,90,230,${a})`; ctx.beginPath(); ctx.ellipse(sp.x, sp.y, fw * cs * 0.5, fh * cs * 0.5, 0, 0, 7); ctx.fill(); }
+        // "Press E" prompt + glow when a player is in range of this one.
+        if (this.activePlayers().some((pl) => pl._portalPrompt === key)) { const a = 0.4 + 0.3 * Math.sin((this._frame || 0) * 0.15); ctx.fillStyle = `rgba(180,90,230,${a})`; ctx.beginPath(); ctx.ellipse(sp.x, sp.y, fw * cs * 0.55, fh * cs * 0.55, 0, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(0,0,0,.75)'; const py = sp.y - fh * cs * 0.62; ctx.fillRect(sp.x - cs * 0.9, py - cs * 0.5, cs * 1.8, cs * 0.7); ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(11, cs * 0.5) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('Press E', sp.x, py - cs * 0.15); ctx.textBaseline = 'alphabetic'; }
         if (this._testMode) { const n = this._portalIndex.get(key); const br = Math.max(11, cs * 0.55), by = sp.y - fh * cs * 0.45; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.beginPath(); ctx.arc(sp.x, by, br, 0, 7); ctx.fill(); ctx.strokeStyle = '#b56bde'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(12, cs * 0.6) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('#' + n, sp.x, by); ctx.textBaseline = 'alphabetic'; }   // designer aid — Test mode only, hidden in normal play
       }
       // Projectiles.
@@ -1349,7 +1363,7 @@
         const v = e.ref, Q = OVERHEAD.elevOffset(cs), base = S(v.col * g.cell, v.row * g.cell);
         OVERHEAD.drawTerrainCube(ctx, v.block, base.x - (v.elev - 1) * Q, base.y - (v.elev - 1) * Q, cs, 1, true, true);
       }
-      else if (e.kind === 'p') { if (this.state !== 'dying' && this.state !== 'dead') this._drawPlayer(S, z, cs); }
+      else if (e.kind === 'p') { if (this.state !== 'dying' && this.state !== 'dead') this._drawPlayer(e.ref, S, z, cs); }
     }
 
     _drawMob(m, S, z, cs) {
@@ -1364,8 +1378,8 @@
       if (m.hp < maxHp) { ctx.fillStyle = '#000'; ctx.fillRect(sp.x - rr, sp.y - rr * 1.9, rr * 2, 3); ctx.fillStyle = '#4f4'; ctx.fillRect(sp.x - rr, sp.y - rr * 1.9, rr * 2 * Math.max(0, m.hp / maxHp), 3); }
     }
 
-    _drawPlayer(S, z, cs) {
-      const ctx = this.ctx, p = this.player;
+    _drawPlayer(p, S, z, cs) {
+      const ctx = this.ctx;
       const eo = -p.elev * OVERHEAD.elevOffset(cs);              // elevation offset (up AND left)
       // Jump = a small UP float + a slight SCALE-UP ("getting closer"), not a dip.
       const jp = OH_MOVE.jumpLift(p.jump), maxH = (p.jump && p.jump.height) || 1;
@@ -1376,8 +1390,8 @@
       // Ground shadow stays at the surface and shrinks as the sprite "rises".
       const ss = 1 - jf * 0.35;
       ctx.fillStyle = `rgba(0,0,0,${0.32 * ss})`; ctx.beginPath(); ctx.ellipse(sp.x + eo, sp.y + eo, rr * 0.85 * ss, rr * 0.5 * ss, 0, 0, 7); ctx.fill();
-      const moving = (this.input.isDown('KeyW') || this.input.isDown('KeyA') || this.input.isDown('KeyS') || this.input.isDown('KeyD') || this.input.isDown('ArrowUp') || this.input.isDown('ArrowLeft') || this.input.isDown('ArrowRight') || this.input.isDown('ArrowDown'));
-      const cl = this._climb;
+      const moving = !!p._moving;   // §0c — per-player walk state (was P1 keyboard-only)
+      const cl = p._climb;
       const alpha = ((p.hidden && !this.showHidden) ? 0.9 : 1) * (cl ? cl.alpha : 1);
       ctx.globalAlpha = alpha;
       // Legs face movement; upper body + weapon face aim. Weapon hidden while a
@@ -1387,10 +1401,10 @@
       let spin = 0, somersault = null;
       if (p.jump && p.jump.jumping && p.jump.doubleUsed) { const prog = Math.min(1, p.jump.t / p.jump.dur); if ((this.settings.doubleJumpStyle || 'somersault') === 'spin') spin = prog * Math.PI * 3; else somersault = prog; }
       if (cl && cl.spin) spin = cl.spin;   // portal step-through spin
-      const reach = (!cl && (this._reachT | 0) > 0) ? Math.sin((1 - this._reachT / 16) * Math.PI) * 0.9 : 0;   // brief arm-reach when flipping a lever / using a lock
+      const reach = (!cl && (p._reachT | 0) > 0) ? Math.sin((1 - p._reachT / 16) * Math.PI) * 0.9 : 0;   // brief arm-reach when flipping a lever / using a lock
       const aimA = cl ? cl.face : OH_CONTROLS.angleOf(p.aim);
       // Pipe EMERGE: grow from small back to full as the player climbs out (QA F14).
-      const em = this._emerge ? Math.max(0.25, Math.min(1, this._emerge.t / this._emerge.dur)) : 1;
+      const em = p._emerge ? Math.max(0.25, Math.min(1, p._emerge.t / p._emerge.dur)) : 1;
       OVERHEAD.drawOverheadPlayer(ctx, cx, cy, (cl ? rr * cl.scale : rr) * em, p.dist, cl ? false : moving, aimA,
         { rotate: true, weapon: inFlight ? null : (p.weapon || 'pickaxe'), moveAngle: (cl ? cl.face : (p.moveAngle != null ? p.moveAngle : OH_CONTROLS.angleOf(p.aim))), spin, somersault, facing: aimA,
           grab: cl ? cl.grab : reach, mantleLeg: cl ? cl.mantleLeg : 0, crouch: cl ? cl.crouch : 0 });

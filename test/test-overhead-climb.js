@@ -37,16 +37,16 @@ console.log('Climb driver — runs the 6 phases then teleports, and restores zoo
 {
   const g = new OverheadGame(mk(true), { testMode: true }, () => {});
   const dest = { px: 10.5 * 32, py: 4.5 * 32, key: '10,3' };
-  g._startPipeClimb(g.buildings[0], dest);
-  ok(!!g._climb && g._climb.timeline.length === 6, 'the climb starts with 6 phases');
-  ok(g._climb.zoomFrom === g.grid.masterZoom, 'the pre-animation zoom is captured');
-  let f = 0; while (g._climb && f < 500) { g._updatePipeClimb(); f++; }
-  ok(!g._climb, 'the climb completes');
+  g._startPipeClimb(g.player, g.buildings[0], dest);
+  ok(!!g.player._climb && g.player._climb.timeline.length === 6, 'the climb starts with 6 phases');
+  ok(g.player._climb.zoomFrom === g.grid.masterZoom, 'the pre-animation zoom is captured');
+  let f = 0; while (g.player._climb && f < 500) { g._updatePipeClimb(g.player); f++; }
+  ok(!g.player._climb, 'the climb completes');
   ok(Math.abs(g.player.x - dest.px) < 1 && Math.abs(g.player.y - dest.py) < 1, 'the player teleports to the destination when it finishes');
   ok(Math.abs(g.grid.masterZoom - 1) < 0.02, 'the game zoom is restored after the climb');
   // the render path works mid-climb
-  g._startPipeClimb(g.buildings[0], dest); for (let i = 0; i < 70; i++) g._updatePipeClimb();
-  let threw = false; try { g._drawPlayer((x, y) => ({ x, y }), 1, 20); } catch (e) { threw = true; }
+  g._startPipeClimb(g.player, g.buildings[0], dest); for (let i = 0; i < 70; i++) g._updatePipeClimb(g.player);
+  let threw = false; try { g._drawPlayer(g.player, (x, y) => ({ x, y }), 1, 20); } catch (e) { threw = true; }
   ok(!threw, 'the player renders mid-climb (foreshortened leg pose)');
 }
 

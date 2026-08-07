@@ -56,10 +56,10 @@ let threw=false; try{ g._render ? g._render() : null; }catch(e){ threw=true; con
 {
   const w3=JSON.parse(JSON.stringify(world)); w3.buildings=[{typeId:'portal',col:3,row:3,level:0,config:{dest:'8,8'}},{typeId:'portal',col:8,row:8,level:0,config:{}}];
   const g3=new OG(w3,{testMode:true},()=>{});
-  g3._startPortalStep(g3.buildings[0], {px:8.5*32,py:9.5*32,key:'8,8'});
-  ok(!!g3._climb && g3._climb.timeline.length===2, 'entering a portal starts a 2-phase step-through animation');
-  let f=0; while(g3._climb && f<200){ g3._updatePipeClimb(); f++; }
-  ok(!g3._climb, 'the portal step completes + teleports');
+  g3._startPortalStep(g3.player, g3.buildings[0], {px:8.5*32,py:9.5*32,key:'8,8'});
+  ok(!!g3.player._climb && g3.player._climb.timeline.length===2, 'entering a portal starts a 2-phase step-through animation');
+  let f=0; while(g3.player._climb && f<200){ g3._updatePipeClimb(g3.player); f++; }
+  ok(!g3.player._climb, 'the portal step completes + teleports');
 }
 
 console.log(`\npiston: ${pass} passed, ${fail} failed`);

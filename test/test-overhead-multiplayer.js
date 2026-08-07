@@ -163,5 +163,35 @@ console.log('Phase 0g (launch hook) — editor multi-spawn + Test launches N pla
   ok(/launchWorld\(draft, \{ testMode: true, numPlayers \}/.test(edSrc), 'Test passes numPlayers through to the overhead runtime');
 }
 
-console.log(`\noverhead multiplayer (0a+0b+0d+0g): ${pass} passed, ${fail} failed`);
+console.log('Phase 0c — render draws EVERY active player (was P1 only):');
+{
+  const g = new OverheadGame(mk({ spawns: [{ col: 3, row: 8 }, { col: 6, row: 8 }, { col: 9, row: 8 }] }), { testMode: true, numPlayers: 3 }, () => {});
+  let drawn = 0; g._drawPlayer = () => { drawn++; };   // spy
+  g._render();
+  ok(drawn === 3, 'all 3 players are drawn (not just P1)');
+}
+
+console.log('Phase 0c — pipe transit is per-player: one player in a pipe does NOT freeze the others:');
+{
+  const W = 20, H = 16, ground = [], elevation = [];
+  for (let r = 0; r < H; r++) { ground.push(new Array(W).fill('grass')); elevation.push(new Array(W).fill(0)); }
+  const world = mk({ mapSnapshot: { gridW: W, gridH: H, density: 1, baseW: W, baseH: H, cell: 32, objectScaleMode: 'independent', ground, elevation, decorations: [] },
+    buildings: [{ typeId: 'pipe', col: 4, row: 4, config: { dest: '14,4' } }, { typeId: 'pipe', col: 14, row: 4, config: {} }],
+    spawns: [{ col: 3, row: 10 }, { col: 8, row: 10 }] });
+  const g = new OverheadGame(world, { testMode: true, numPlayers: 2 }, () => {});
+  // Put P1 into a pipe climb directly; state must live on P1, not globally.
+  g._startPipeClimb(g.players[0], g.buildings[0], { px: 14.5 * 32, py: 5.5 * 32, key: '14,4' });
+  ok(!!g.players[0]._climb && !g.players[1]._climb, 'the climb is on P1 only (per-player state)');
+  const p2x0 = g.players[1].x;
+  g.input.isDown = () => false; g.input.pJustDown = () => false; g.input.pAttack = () => false;
+  g.input.pGp = (i) => i === 1 ? { moveX: 1, moveY: 0, aimX: 0, aimY: 0 } : { moveX: 0, moveY: 0, aimX: 0, aimY: 0 };
+  for (let f = 0; f < 12; f++) g._update();
+  ok(g.players[1].x - p2x0 > 4, 'P2 keeps moving while P1 is mid-pipe (the old global freeze is gone)');
+  // P1 finishes its climb independently and teleports.
+  for (let f = 0; f < 200 && g.players[0]._climb; f++) g._update();
+  ok(!g.players[0]._climb, 'P1 climb completes on its own');
+  ok(Math.abs(g.players[0].x - 14.5 * 32) < 2, 'P1 teleported to the destination pipe');
+}
+
+console.log(`\noverhead multiplayer (0a+0b+0c+0d+0g): ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
