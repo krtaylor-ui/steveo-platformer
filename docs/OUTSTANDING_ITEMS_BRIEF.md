@@ -61,6 +61,12 @@ served repo file and written into localStorage), which exercises _offlineOverhea
 card render but NOT the Import-from-File flow. A9.6 has not moved (still needs the OS picker,
 Part B).
 
+FIXED 2026-08-07 (build 391): overhead-editor render-loop flood. Selecting a bare TERRAIN
+cell (or a bridge) with the Hand tool made the "click to move" highlight throw
+"reading 'col'" every frame (~10k console errors, caught by the loop try/catch so no hard
+freeze). Pre-existing editor bug, NOT the side-loaded fixture. No re-test needed beyond
+confirming a terrain click no longer floods the console.
+
 INSTRUMENT NOTES (learned this session - use these, they save time):
 - SELECTION is window.game._selEnt (or the editor's _selEnt). _sel is ALWAYS null - reading
   it gives a false "nothing selected". Verify a click by comparing _hover (the cell) against
@@ -188,13 +194,21 @@ These decide whether it ships default-on. Turn it OFF -> everything draws on top
 
 ## PART B - deferred (needs login / a second account / a file picker) - do last, together
 
-### Arena 4-player controller re-test  (the freeze)
+### Arena 4-player controller re-test  (the freeze)   -- STILL OPEN, real test pending
 needs build >= 389   (freeze fix 383, bar-grab 382, per-player grapple 386, controller Aim
 Style 388-389, and the stall detector 387 are all required)
-Blocker to clear first: this needs a logged-in session OR confirmation that
-Test World -> Arena -> Custom Rules now opens WITHOUT the expired-session bounce.
-Steps: 4 controllers, medium Arena, survival on. Play until it either stays smooth or
-freezes.
+Login blocker: CLEARED (2026-08-07). Arena lists server worlds, the mode modal opens in-page
+with Custom Rules, no expired-session bounce, and the end-of-match leaderboard works.
+Bots-only run (2026-08-07): a full 5-min Survival match with P1 keyboard + P2-P4 Medium BOTS
+came back clean - 0 [STALL] lines, 66-68 fps, 0 errors, adaptive zoom worked. But this does
+NOT close the item: (a) getGamepads() saw 0 pads the whole time, so the USB-HID / controller
+path was never exercised (do NOT fake pads - that removes EXTERNAL from the picture and makes
+a clean result meaningless); (b) it ended on the timer at Wave 2 with 1 mob killed, so the
+heavy wave-4/5 density that might trigger the O(n^2) mob scans was never reached.
+REAL TEST (tomorrow, hub + 4 controllers): press a button on EACH pad first (the Gamepad API
+only exposes a pad after a button press - that is why it read 0), confirm all four register,
+then run a 10-20 MINUTE match so waves 4-5 arrive. The stall detector is armed and proven
+quiet, so a real freeze will produce the culprit line.
 Instrument for the freeze: open the console BEFORE playing. On a freeze the loop prints
     [STALL] <n>s gap between frames | ... culprit: OUR CODE | EXTERNAL
 and window.game._lastStall holds the last one; the perf HUD shows "LAST STALL ...". Report
