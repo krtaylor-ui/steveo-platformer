@@ -209,6 +209,17 @@ REAL TEST (tomorrow, hub + 4 controllers): press a button on EACH pad first (the
 only exposes a pad after a button press - that is why it read 0), confirm all four register,
 then run a 10-20 MINUTE match so waves 4-5 arrive. The stall detector is armed and proven
 quiet, so a real freeze will produce the culprit line.
+NEW (build 392): the [STALL] line and window.game._lastStall now carry the ENTITY LOAD
+(mobs / arrows / players) and the arena PHASE, and the perf HUD shows them - so a freeze is
+self-correlating (no more bare gap number). The [perf] slow-frame line carries phase too.
+MOB CAP: NOT happening - the full-range data (per-frame work FALLS 3.17ms -> 1.98ms as mobs
+go 4 -> 49, fps up to ~91) disproves it; mob count is not the bottleneck. The loss is frame
+pacing / outside JS (~14% CPU util while fps swings 46-121). Highest-value next step is a
+browser Performance trace WITH the Memory track during a busy wave - that is a human/browser
+task. GATE any Arena perf sampling on arenaState.phase === 'running' (game.state stays
+'playing' on the Game Over screen - the liveness gotcha), and confirm the mob subsystem
+actually consumed time before trusting a budget.
+STILL untested (sat at zero all run, NOT cleared): drops / explosions / webs / particles.
 Instrument for the freeze: open the console BEFORE playing. On a freeze the loop prints
     [STALL] <n>s gap between frames | ... culprit: OUR CODE | EXTERNAL
 and window.game._lastStall holds the last one; the perf HUD shows "LAST STALL ...". Report
