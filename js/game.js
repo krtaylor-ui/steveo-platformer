@@ -1437,6 +1437,25 @@ class Game {
     // frame runs long, log the breakdown so a real slowdown can be located instead of
     // guessed. Near-zero cost when frames are fast. Toggle verbose with window._perfLog.
     const _pnow = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : () => Date.now();
+    // ── Stall detector (freeze triage). The in-frame profiler below only times our
+    // update+render; a GC storm, a memory-pressure teardown, or a browser HID stall behind
+    // navigator.getGamepads() happens BETWEEN frames and would never show up there. So measure
+    // the wall-clock GAP from the end of the last real frame to the start of this one: if that
+    // gap is large while the PRIOR frame's in-frame work was small, the freeze lives OUTSIDE our
+    // code (browser/GC/OS). If the prior in-frame work was itself large, it's OUR code. This is
+    // the discriminator for the "10-20s multiplayer freeze" report — it says where to look.
+    const _frameStart = _pnow();
+    if (this._lastLoopEnd !== undefined) {
+      const gap = _frameStart - this._lastLoopEnd;
+      if (gap > 400) {   // 400ms+ between frames = a real stall, never normal ~10ms idle pacing
+        const priorWork = (this._profFrame && this._profFrame.tot) || 0;
+        const external = priorWork < gap * 0.5;   // our last frame's work didn't account for the gap
+        this._lastStall = { gap: Math.round(gap), priorWork: Math.round(priorWork), external, atFrame: this.frameCount };
+        if (typeof console !== 'undefined') {
+          console.warn(`[STALL] ${(gap / 1000).toFixed(1)}s gap between frames | prior in-frame work ${priorWork.toFixed(0)}ms → culprit: ${external ? 'EXTERNAL (GC / browser / HID — e.g. getGamepads on a flaky USB hub, or a GC storm from allocation churn)' : 'OUR CODE (a single frame ran long — read the [perf] line)'}`);
+        }
+      }
+    }
     this._prof = { mobs: 0, mobDraw: 0, redstone: 0, bot: 0 };
     // §Combo Trainer — its on-canvas panel handles clicks + input lamps every frame; Slow-Mo
     // runs the SIM at 1/3 speed by skipping _update on 2 of every 3 frames (render still runs).
@@ -1460,6 +1479,7 @@ class Game {
       }
     }
     this.input.flush();
+    this._lastLoopEnd = _pnow();   // stall detector: mark end of real frame work (see top of _loop)
   }
 
   destroy() {
@@ -6693,6 +6713,9 @@ class Game {
         // Weapon-state diagnostic (helps pin the "switches to sword / can't fire bow" bug):
         pl ? `P1 slot${pl.selectedSlot} mode:${pl.weaponMode} bow:${pl.bow || '-'} rng:${pl.rangedOwned ? pl.rangedOwned.length : '?'} hand:${pl.activeHand} draw:${pl.bowDrawing ? 1 : 0} rDn:${this.input.isRangedAttackDown() ? 1 : 0} dual:${this.input.dualInput ? 1 : 0}` : 'no player',
         this._dbgAim ? `aim mouse(${this._dbgAim.mx},${this._dbgAim.my}) world(${this._dbgAim.wx},${this._dbgAim.wy}) cell(${this._dbgAim.c},${this._dbgAim.r}) zoom:${(this.camera && this.camera._srZoom || 1).toFixed(2)} shots:${this._dbgShots || 0}${pl ? ` plr(${Math.round(pl.cx)},${Math.round(pl.cy)})` : ''}` : '',
+        // Stall detector (freeze triage) — the last >400ms between-frames gap and whether it was
+        // our code or something external (GC / browser / USB-HID). Persists so it's readable after.
+        this._lastStall ? `LAST STALL ${(this._lastStall.gap / 1000).toFixed(1)}s @f${this._lastStall.atFrame} (prior work ${this._lastStall.priorWork}ms) → ${this._lastStall.external ? 'EXTERNAL: GC/browser/USB-HID' : 'OUR CODE'}` : 'no stall yet',
       ];
       ctx.save();
       ctx.font = '11px monospace'; ctx.textBaseline = 'top';
@@ -21949,7 +21972,7 @@ class Game {
         this._audioCache[file] = a;
       }
       if (!a.paused && a.currentTime > 0) {
-        const c = a.cloneNode(); c.volume = Math.min(1, vol); c.play().catch(() => {});
+        this._playPooled(a, vol);   // bounded pool (was clone-and-abandon → GC-storm leak)
       } else {
         a.currentTime = 0; a.volume = Math.min(1, vol);
         a.play().catch(() => { this._sfxMissing[file] = true; this._synthMoveSfx(kind, volMult); });
@@ -21982,17 +22005,37 @@ class Game {
     } catch (_) {}
   }
 
+  // Overlapping-sound player with a BOUNDED, self-recycling clone pool (perf: multiplayer freeze).
+  // Each distinct clip keeps a small pool of clones; an overlap reuses a finished (paused/ended)
+  // clone, or makes a new one only until AUDIO_MAX_OVERLAP is reached, then drops extra voices.
+  // This replaces the old `cloneNode()`-and-abandon, which leaked a detached HTMLAudioElement on
+  // every overlap and — under 4 kids mashing attack — piled up thousands until a GC storm froze
+  // the tab for seconds. `base` is the cached original for `file`; `vol` is the resolved volume.
+  _playPooled(base, vol) {
+    if (!base) return;
+    this._audioPool = this._audioPool || new Map();
+    let pool = this._audioPool.get(base);
+    if (!pool) { pool = []; this._audioPool.set(base, pool); }
+    let c = null;
+    for (const x of pool) { if (x.paused || x.ended) { c = x; break; } }   // reuse a free clone
+    if (!c) {
+      if (pool.length >= AUDIO_MAX_OVERLAP) return;   // at the concurrency cap → drop this extra voice
+      c = base.cloneNode();
+      pool.push(c);
+    }
+    try { c.currentTime = 0; } catch (_) {}
+    c.volume = Math.min(1, vol);
+    c.play().catch(() => {});
+  }
   _playSound(file, volMult = 1.0) {
     const vol = (this._worldAdvSettings.sfxVolume ?? DEFAULT_SFX_VOLUME) * MAX_AUDIO_VOLUME * Math.max(0, volMult);
     if (vol <= 0) return;
     try {
       let s = this._audioCache[file];
       if (s) {
-        // Clone if already playing so overlapping sounds work
+        // Already playing → overlap via the bounded pool (was: clone-and-abandon → GC-storm leak).
         if (!s.paused && s.currentTime > 0) {
-          s = s.cloneNode();
-          s.volume = Math.min(1, vol);
-          s.play().catch(() => {});
+          this._playPooled(s, vol);
           return;
         }
         s.currentTime = 0;

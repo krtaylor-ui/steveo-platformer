@@ -5,7 +5,7 @@
 // Single source of truth for the build version. BUMP THE BUILD NUMBER ON EVERY
 // COMMIT so the in-game badge (dashboard header + menu + pause screen) identifies
 // exactly which build is running. Shown via `.app-version` DOM badge + GAME_VERSION.
-const GAME_VERSION = 'v3 build 386: Per-player grapple: players 2-4 fire their own grappling hook (LT), aimed by right stick';
+const GAME_VERSION = 'v3 build 387: Fix audio clone leak (bounded pool) + between-frames stall detector for the 4-player freeze';
 // PRIOR: build 276 (platform wrap-up Tier 1 polish): (1) anchor + direction-block SKINS now render in the EDITOR too (a static frame overlaid on the cell — Wheel/Pointer/Steering/block skins), read live from the platform + direction-controller config so they update as you change them; previously skins only showed in Play. (2) A platform lamp now renders its on/colour from the CAPTURED lamp component reference (fallback: colour snapshot, then positional getAt) — so a lamp riding a moving platform keeps BOTH its colour AND its lit/unlit state stable, extending the build-275 colour fix to on-state. Headless-verified (20 block-skin assertions incl. captured-component drives colour+on). PRIOR: build 275 (fix: platform lamps turning red/off while moving): lamp colour on a moving platform was re-resolved via getAt at the moved cell; now snapshotted onto the platform cell at load.';
 // PRIOR: build 275: a redstone lamp that belongs to a MOVING platform is drawn by _platformCellState, which re-looked-up its colour via getAt at the CURRENT (moved) cell — so while the platform travelled (e.g. Super Mario 1-1, rail climbing toward row 49) each lamp cell resolved to a DIFFERENT lamp (colour 0 = red) or none (off), flipping White/Cyan lamps to red. Fix: _initPlatformsRuntime now snapshots each lamp cell authored colour onto the platform cell (lampColor) at load (redstone is restored before platform init, so the real colour is captured), and _platformCellState renders from that stable value, falling back to getAt only when unset. Colour is immutable at runtime, so this is safe and repairs existing saves on load with no rebuild. Headless-verified (19 block-skin assertions incl. the turns-red case).';
 // PRIOR: build 274 (sticky config now covers BRUSH + Shift-drag placement): the multi-place path (_sandboxBrushPlace, used by both N×N brush and Shift-drag strokes) previously only set grid blocks and never created the redstone component, so brush/shift-dragged weight sensors (etc.) came up with plain defaults. It now creates the component at placement via _ensureRsComponent and applies the same per-type sticky defaults as single-click placement — so a row of Shift-dragged weight sensors all inherit your last Wood+Conduct setup. Covers lever/trapdoor/plate/weight/tnt/target/lamp/piston/converter. Headless-verified (17 block-skin+sticky assertions incl. brush-place inherits defaults + no duplicate on re-place).';
@@ -182,6 +182,12 @@ const SUN_ARC_PEAK_ROW   =  5.0;  // world row at zenith (top of arc)
 
 // Phase 13.5 — Sound & Music System
 const MAX_AUDIO_VOLUME     = 0.10;  // hard ceiling: 100% slider = 10% actual browser volume
+// Max simultaneous overlapping plays of a SINGLE sound clip. Overlaps are served from a small
+// self-recycling pool of clones (freed clones are reused on the next play, not abandoned to GC).
+// Before this cap, heavy 4-player combat cloned a fresh HTMLAudioElement on every overlap and
+// never released it — thousands of detached media elements piled up until a stop-the-world GC /
+// media teardown froze the tab for seconds. 6 concurrent voices per clip is plenty; extras drop.
+const AUDIO_MAX_OVERLAP    = 6;
 const DEFAULT_MUSIC_VOLUME = 0.5;   // slider value (0–1); actual volume = this × MAX_AUDIO_VOLUME
 const DEFAULT_SFX_VOLUME   = 0.5;   // slider value (0–1); actual volume = this × MAX_AUDIO_VOLUME
 // Smart Mobs §4 — per-sound multipliers for the quiet movement SFX, tunable
