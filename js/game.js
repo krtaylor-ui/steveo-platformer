@@ -1550,7 +1550,7 @@ class Game {
     // in inventory, menus, popups, pause, etc. Speed: ~14px/frame ≈ 1 sec to cross screen.
     // UNLESS P1 Stick Aim is on: then the cursor is placed in the stick DIRECTION from the
     // player (so P1 aims like players 2-4), and the free accumulator is skipped.
-    if (!this._updateP1StickAim()) this.input.applyStickCursor(14, CANVAS_W, CANVAS_H);
+    if (!this._updateP1Aim()) this.input.applyStickCursor(14, CANVAS_W, CANVAS_H);
     // Controller A button → simulate mouse click when any menu/overlay is open.
     // Only applies to overlays (not gameplay) so A still jumps during normal play.
     const _p1GpConnected = this.input.p1GpSlot >= 0 && this.input.gamepads[this.input.p1GpSlot]?.connected;
@@ -2848,18 +2848,10 @@ class Game {
       const owner   = Game.ownerId(i);
       const attHeld = this.input.pAttack(i);
       if (p.bow) {
-        // Free-aim with the right stick (atan2 of the stick vector) when it's
-        // deflected; hold the last angle while it's centred so aim stays put
-        // during a draw. Keyboard P2 falls back to snap-aim. Angle is stored on
-        // the player so the on-screen reticle + the fired arrow match.
-        const gp     = this.input.pGp(i);
-        const aimMag = Math.hypot(gp.aimX, gp.aimY);
-        if (this.input.pGpSlot(i) >= 0) {
-          if (aimMag > 0.15) p._aimAngle = Math.atan2(gp.aimY, gp.aimX);
-          else if (p._aimAngle == null) p._aimAngle = p.facing > 0 ? 0 : Math.PI;
-        } else {
-          p._aimAngle = this._snapAimAngle(p, this.input.pJump(i), this.input.pCrouch(i));
-        }
+        // Aim per the Controls → Aim Style setting (dual = right stick; single360/single8 = left
+        // stick, 8-way snapped). _secondaryAimAngle stores p._aimAngle so the reticle + fired arrow
+        // + the grapple all share one angle. Keyboard P2 falls back to snap-aim inside the helper.
+        this._secondaryAimAngle(p, i);
         const hasArrows = this._worldAdvSettings.unlimitedArrows || p.countItem(BLOCK.ARROW) > 0;
         if (attHeld && hasArrows) {
           p.bowDrawing   = true;
@@ -5346,6 +5338,9 @@ class Game {
     p._jumpVelocityOverride = aws.jumpHeightBlocks
       ? -Math.sqrt(2 * g * aws.jumpHeightBlocks * BLOCK_SIZE)
       : null;
+    // Player Speed (World Settings → Movement) — a horizontal move-speed multiplier, mirroring the
+    // overhead-view move-speed knob. 1 = default; lower it so younger kids can keep up.
+    p._moveSpeedMult = aws.playerMoveSpeed ?? 1;
   }
 
   // Would player `p`'s body box overlap a solid block at x? (Body rows only — the floor
@@ -9650,15 +9645,26 @@ class Game {
   // aims: free-aim atan2 of the right stick when deflected, else snap-aim (facing / jump-up /
   // crouch-down). Also stores p._aimAngle so a grapple-only player still has a valid reticle angle.
   _secondaryAimAngle(p, i) {
+    const onGp = this.input.pGpSlot(i) >= 0;
+    if (!onGp) {   // keyboard secondary → snap-aim from movement keys (Aim Style is a controller concept)
+      const ang = this._snapAimAngle(p, this.input.pJump(i), this.input.pCrouch(i));
+      p._aimAngle = ang; return ang;
+    }
     const gp = this.input.pGp(i);
-    const aimMag = Math.hypot(gp.aimX, gp.aimY);
+    const style = this._aimStyle();
     let ang;
-    if (this.input.pGpSlot(i) >= 0 && aimMag > 0.15) {
-      ang = Math.atan2(gp.aimY, gp.aimX);
-    } else if (this.input.pGpSlot(i) >= 0) {
-      ang = (p._aimAngle != null) ? p._aimAngle : (p.facing > 0 ? 0 : Math.PI);
+    if (style === 'dual') {
+      // Advanced: aim with the RIGHT stick (360°); hold last / face when centred.
+      const aimMag = Math.hypot(gp.aimX, gp.aimY);
+      ang = aimMag > 0.15 ? Math.atan2(gp.aimY, gp.aimX)
+                          : (p._aimAngle != null ? p._aimAngle : (p.facing > 0 ? 0 : Math.PI));
     } else {
-      ang = this._snapAimAngle(p, this.input.pJump(i), this.input.pCrouch(i));
+      // Single-stick: aim follows the LEFT stick (movement) direction; hold last / face when centred.
+      const mx = gp.moveX || 0, my = gp.moveY || 0;
+      const mag = Math.hypot(mx, my);
+      ang = mag > 0.25 ? Math.atan2(my, mx)
+                       : (p._aimAngle != null ? p._aimAngle : (p.facing > 0 ? 0 : Math.PI));
+      if (style === 'single8') ang = this._snap8(ang);   // 8 compass points
     }
     p._aimAngle = ang;
     return ang;
@@ -12240,6 +12246,38 @@ class Game {
   // won't reach the bottom" problem disappears — there's no edge to fall short of). Gameplay
   // only; when the stick is centred the cursor is left where it is (aim holds). Returns true
   // when it placed the cursor, so the caller skips the free accumulator.
+  // ── Controller Aim Style (Controls → Aim Style; per the 3-level kid-friendly scheme) ─────────
+  //   'dual'      — Advanced: left stick moves, RIGHT stick aims (360°). The default; preserves
+  //                 the legacy behaviour (P1 honours the "Stick Aim (P1)" toggle; P2-P4 right-stick).
+  //   'single360' — one stick: aim follows the LEFT stick (movement) direction, full 360°.
+  //   'single8'   — one stick: aim follows the LEFT stick direction SNAPPED to 8 compass points
+  //                 (45° steps), so you always fire the way you're moving. Easiest for young kids.
+  _aimStyle() { return (typeof KEY_BINDINGS !== 'undefined' && KEY_BINDINGS.getOpt('aimStyle', 'dual')) || 'dual'; }
+  // Snap an angle (radians) to the nearest of 8 compass directions (45° steps).
+  _snap8(ang) { const s = Math.PI / 4; return Math.round(ang / s) * s; }
+
+  // P1 controller aim. Returns true when it placed the cursor (so the caller skips the free
+  // right-stick cursor accumulator). Only affects a P1 who is ON a gamepad — keyboard/mouse P1
+  // always aims with the precise mouse cursor (that IS "advanced"), unaffected by Aim Style.
+  _updateP1Aim() {
+    if (typeof KEY_BINDINGS === 'undefined') return false;
+    const style = this._aimStyle();
+    if (style === 'dual') return this._updateP1StickAim();   // legacy right-stick-direction toggle
+    // Single-stick modes: aim from the LEFT stick (same stick that moves P1).
+    if (this.input.p1GpSlot < 0 || this.inventoryOpen || !this.player || !this.camera) return false;
+    const gp = this.input._p1gp(); if (!gp || !gp.connected) return false;
+    const mx = gp.moveX || 0, my = gp.moveY || 0;
+    const mag = Math.hypot(mx, my);
+    if (mag <= 0.25) return true;                            // stick centred → HOLD last aim (don't fall back to the free cursor)
+    let ang = Math.atan2(my, mx);
+    if (style === 'single8') ang = this._snap8(ang);
+    const ps = this.camera.toScreen(this.player.cx, this.player.cy), R = 140;
+    this.input.mouse.x = Math.max(0, Math.min(CANVAS_W, ps.x + Math.cos(ang) * R));
+    this.input.mouse.y = Math.max(0, Math.min(CANVAS_H, ps.y + Math.sin(ang) * R));
+    return true;
+  }
+  // Legacy: P1 aims in the RIGHT-stick direction (the "Stick Aim (P1)" toggle). Kept so the
+  // toggle still works under Aim Style = Dual; the 3-level Aim Style supersedes it otherwise.
   _updateP1StickAim() {
     if (typeof KEY_BINDINGS === 'undefined' || !KEY_BINDINGS.getOpt('p1StickAim', false)) return false;
     if (this.input.p1GpSlot < 0 || this.inventoryOpen || !this.player || !this.camera) return false;

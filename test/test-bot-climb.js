@@ -178,7 +178,7 @@ ok(climbs([
   const fs3 = require('fs'), path3 = require('path');
   const gameSrc = fs3.readFileSync(path3.join(jsDir, 'game.js'), 'utf8');
   ok(/_updateP1StickAim\(\) {/.test(gameSrc) && /getOpt\('p1StickAim', false\)/.test(gameSrc), 'game has _updateP1StickAim gated on the p1StickAim option');
-  ok(/if \(!this\._updateP1StickAim\(\)\) this\.input\.applyStickCursor/.test(gameSrc), 'stick-aim REPLACES the free cursor accumulator when on');
+  ok(/if \(!this\._updateP1Aim\(\)\) this\.input\.applyStickCursor/.test(gameSrc), 'the aim-style-aware _updateP1Aim REPLACES the free cursor accumulator when it places the aim');
   ok(/this\.camera\.toScreen\(this\.player\.cx, this\.player\.cy\)/.test(gameSrc), 'it places the cursor in the stick direction from the player');
   const cuSrc = fs3.readFileSync(path3.join(jsDir, 'controls-ui.js'), 'utf8');
   ok(/id="cu-stickaim"/.test(cuSrc) && /setOpt\('p1StickAim'/.test(cuSrc), 'Controls exposes a "Stick Aim (P1)" toggle');

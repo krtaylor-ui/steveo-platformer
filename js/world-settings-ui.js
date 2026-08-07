@@ -133,6 +133,7 @@ const WORLD_SETTINGS = {
       { key: 'hideFromExport', tab: 'world', group: 'Designer Locks', modes: ['sandbox'], type: 'toggle', dflt: false, label: 'Hide from export', advanced: true, hint: '§40.1 — ON removes the Export buttons for this world (NOT encryption — anyone can still read the JSON in their browser; it only takes away the easy download). You can always turn it off here in Sandbox; the server still lets you, the owner, export your own world.' },
 
       // ── MOVEMENT (physics + moves) ──────────────────────────
+      { key: 'playerMoveSpeed', tab: 'movement', group: 'Physics', modes: M.physics, type: 'cycle', opts: [0.5, 0.6, 0.75, 0.85, 1, 1.25, 1.5, 2], dflt: 1, label: 'Player Speed', fmt: (v) => v.toFixed(2).replace(/\.?0+$/, '') + 'x', hint: 'how fast players run (1x = default) — lower it so younger kids can keep up, like the overhead-view speed knob' },
       { key: 'physicsGravity', tab: 'movement', group: 'Physics', modes: M.physics, type: 'cycle', opts: O.gravity, dflt: 0.66, label: 'Gravity', fmt: pct1 },
       { key: 'jumpHeightBlocks', tab: 'movement', group: 'Physics', modes: M.physics, type: 'cycle', opts: O.jumpH, dflt: null, label: 'Jump Height', fmt: (v) => v == null ? 'Default' : v + ' bl' },
       { key: 'jumpPadVForce', tab: 'movement', group: 'Physics', modes: M.physics, type: 'cycle', opts: O.jumpPad, dflt: -18, label: 'Jump-Pad Force', fmt: String, advanced: true },

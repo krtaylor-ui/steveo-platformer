@@ -12,6 +12,13 @@
 // clean + retro themes for free.
 // ============================================================
 
+// Aim Style button labels (the 3-level kid-friendly scheme; see Game._aimStyle).
+const CONTROLS_UI_AIM_LABEL = {
+  dual:      'Dual Stick (Advanced)',
+  single360: 'Single Stick (360°)',
+  single8:   'Single Stick (8-way)',
+};
+
 const CONTROLS_UI = {
   _game: null,
   _player: 0,          // which player's bindings are shown (0-3)
@@ -108,7 +115,9 @@ const CONTROLS_UI = {
         <div class="ws-row"><div class="ws-label"><span class="ws-lbl">Directional Aim</span><span class="ws-hint-inline"> — aim ranged by movement, no cursor</span></div>
           <button class="cu-gpbind" id="cu-diraim">${(typeof KEY_BINDINGS !== 'undefined' && KEY_BINDINGS.getOpt('directionalAim', false)) ? 'On' : 'Off'}</button></div>
         <div class="ws-row"><div class="ws-label"><span class="ws-lbl">Stick Aim (P1)</span><span class="ws-hint-inline"> — P1 aims in the right-stick direction, like players 2-4 (no cursor)</span></div>
-          <button class="cu-gpbind" id="cu-stickaim">${(typeof KEY_BINDINGS !== 'undefined' && KEY_BINDINGS.getOpt('p1StickAim', false)) ? 'On' : 'Off'}</button></div>`;
+          <button class="cu-gpbind" id="cu-stickaim">${(typeof KEY_BINDINGS !== 'undefined' && KEY_BINDINGS.getOpt('p1StickAim', false)) ? 'On' : 'Off'}</button></div>
+        <div class="ws-row"><div class="ws-label"><span class="ws-lbl">Aim Style</span><span class="ws-hint-inline"> — how controllers aim (all players)</span></div>
+          <button class="cu-gpbind" id="cu-aimstyle">${CONTROLS_UI_AIM_LABEL[(typeof KEY_BINDINGS !== 'undefined' && KEY_BINDINGS.getOpt('aimStyle', 'dual')) || 'dual']}</button></div>`;
     }
 
     // Preset row
@@ -231,6 +240,15 @@ const CONTROLS_UI = {
     if (cuDir) cuDir.onclick = () => { if (typeof KEY_BINDINGS !== 'undefined') KEY_BINDINGS.setOpt('directionalAim', !KEY_BINDINGS.getOpt('directionalAim', false)); this._render(); };
     const cuStick = document.getElementById('cu-stickaim');
     if (cuStick) cuStick.onclick = () => { if (typeof KEY_BINDINGS !== 'undefined') KEY_BINDINGS.setOpt('p1StickAim', !KEY_BINDINGS.getOpt('p1StickAim', false)); this._render(); };
+    // Aim Style — cycle Dual → Single 360° → Single 8-way (the 3-level kid-friendly scheme).
+    const cuAim = document.getElementById('cu-aimstyle');
+    if (cuAim) cuAim.onclick = () => {
+      if (typeof KEY_BINDINGS === 'undefined') return;
+      const order = ['dual', 'single360', 'single8'];
+      const cur = KEY_BINDINGS.getOpt('aimStyle', 'dual');
+      KEY_BINDINGS.setOpt('aimStyle', order[(order.indexOf(cur) + 1) % order.length]);
+      this._render();
+    };
     // Restore the scroll position captured at the top of this render.
     const _nb = ov.querySelector('.ws-body'); if (_nb) _nb.scrollTop = _prevScroll;
   },

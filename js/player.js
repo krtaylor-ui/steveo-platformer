@@ -284,8 +284,9 @@ class Player {
   // Speed scales linearly: ×1.0 at XP 0, ×2.0 at XP max (level 5); disabled by world setting
   get _xpMult()       { return this.xpSpeedDisabled ? 1 : 1 + this.xp / this.maxXp; }
   // _speedBoostMult is the arena SPEED power-up multiplier (Phase 3A.2); 1 when inactive.
-  get moveSpeed()     { return MOVE_SPEED   * this._xpMult * (this._speedBoostMult || 1); }
-  get crouchSpeed()   { return CROUCH_SPEED * this._xpMult * (this._speedBoostMult || 1); }
+  // _moveSpeedMult is the per-world Player Speed setting (World Settings → Movement); 1 = default.
+  get moveSpeed()     { return MOVE_SPEED   * this._xpMult * (this._speedBoostMult || 1) * (this._moveSpeedMult || 1); }
+  get crouchSpeed()   { return CROUCH_SPEED * this._xpMult * (this._speedBoostMult || 1) * (this._moveSpeedMult || 1); }
 
   gainXp(amount) {
     if (this.godMode) return; // no XP in sandbox mode
