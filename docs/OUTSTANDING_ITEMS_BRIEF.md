@@ -1,7 +1,7 @@
 # STEVEO PLATFORMER - OUTSTANDING BROWSER-TEST ITEMS
 
 Plain ASCII on purpose (this text has been garbled in transit five times; no special
-glyphs, no smart quotes, no box-drawing, no emoji). Current deploy = build 390.
+glyphs, no smart quotes, no box-drawing, no emoji). Current deploy = build 393.
 
 Notation: ">=" means "at least"; "->" means "then/leads to"; "S42" means the item the
 old notes wrote with a section sign. Editor top-bar buttons are referred to by word:
@@ -14,7 +14,7 @@ Settings, Perf, Test, Save, Import, Export, Exit.
    reads at least that item's "needs build". If it is lower you are on a stale deploy -
    that trap cost a whole 368 diagnosis. Console check:
        GAME_VERSION.match(/build \d+/)[0]
-   The current deploy should read "build 390" or higher.
+   The current deploy should read "build 393" or higher.
 
 2. USE THE NAMED INSTRUMENT, do not substitute. Where an item names a console value or a
    specific overlay, use exactly that. In particular for S42 perf: measure with
