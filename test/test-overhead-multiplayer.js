@@ -251,5 +251,41 @@ console.log('Phase 0c(2) — editor exposes the per-pipe travel toggle (source):
   ok(/id="cfg-group"/.test(edSrc) && /b\.config\.groupTravel = document\.getElementById\('cfg-group'\)\.checked/.test(edSrc), 'the pipe/portal dialog has a "pull all players" (groupTravel) toggle');
 }
 
-console.log(`\noverhead multiplayer (0a+0b+0c+0d+0g): ${pass} passed, ${fail} failed`);
+console.log('Phase 0e — multiplayer: a player DOWNS + respawns at its own spawn; the match does NOT freeze:');
+{
+  const W = 20, H = 16, ground = [], elevation = [];
+  for (let r = 0; r < H; r++) { ground.push(new Array(W).fill('grass')); elevation.push(new Array(W).fill(0)); }
+  for (let r = 6; r <= 8; r++) ground[r][8] = 'pit';   // a deadly pit column in P2's row
+  const world = mk({ mapSnapshot: { gridW: W, gridH: H, density: 1, baseW: W, baseH: H, cell: 32, objectScaleMode: 'independent', ground, elevation, decorations: [] },
+    spawns: [{ col: 3, row: 12 }, { col: 6, row: 7 }], settings: Object.assign(OH_SETTINGS.defaults(), { pitMode: 'deadly' }) });
+  const g = new OverheadGame(world, { testMode: true, numPlayers: 2 }, () => {});
+  const p2spawnX = g.players[1].x, p1x0 = g.players[0].x;
+  g.input.isJustDown = () => false; g.input.pJustDown = () => false; g.input.pAttack = () => false;
+  g.input.isDown = (c) => c === 'KeyD';                                   // P1 walks right on safe ground (row 12)
+  g.input.pGp = (i) => i === 1 ? { moveX: 1, moveY: 0, aimX: 0, aimY: 0 } : { moveX: 0, moveY: 0, aimX: 0, aimY: 0 };   // P2 walks into the pit
+  let sawP2Down = false;
+  for (let f = 0; f < 40; f++) { g._update(); if (g.players[1]._dead) sawP2Down = true; }
+  ok(sawP2Down, 'P2 went DOWN when it hit the deadly pit');
+  ok(g.state === 'playing', 'the match did NOT freeze/end when P2 died (per-player death)');
+  ok(g.players[0].x > p1x0 + 4, 'P1 kept moving/playing while P2 was down');
+  for (let f = 0; f < 150 && g.players[1]._dead; f++) g._update();
+  ok(!g.players[1]._dead, 'P2 respawned on its own');
+  ok(Math.abs(g.players[1].x - p2spawnX) < 40, 'P2 respawned at its OWN spawn');
+}
+
+console.log('Phase 0e — single-player death is unchanged (still ends the game globally):');
+{
+  const W = 20, H = 16, ground = [], elevation = [];
+  for (let r = 0; r < H; r++) { ground.push(new Array(W).fill('grass')); elevation.push(new Array(W).fill(0)); }
+  for (let r = 6; r <= 8; r++) ground[r][8] = 'pit';
+  const world = mk({ mapSnapshot: { gridW: W, gridH: H, density: 1, baseW: W, baseH: H, cell: 32, objectScaleMode: 'independent', ground, elevation, decorations: [] },
+    spawns: [{ col: 6, row: 7 }], settings: Object.assign(OH_SETTINGS.defaults(), { pitMode: 'deadly' }) });
+  const g = new OverheadGame(world, { testMode: true }, () => {});   // 1 player
+  ok(g.players.length === 1, 'single player');
+  g.input.isJustDown = () => false; g.input.isDown = (c) => c === 'KeyD';   // walk into the pit
+  for (let f = 0; f < 40 && g.state === 'playing'; f++) g._update();
+  ok(g.state === 'dying' || g.state === 'dead', 'single-player death still ends the game globally (unchanged)');
+}
+
+console.log(`\noverhead multiplayer (0a-0e): ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

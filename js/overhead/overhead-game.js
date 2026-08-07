@@ -227,6 +227,22 @@
     get player() { return this.players ? this.players[0] : null; }
     set player(v) { if (!this.players) this.players = []; this.players[0] = v; }
     activePlayers() { return (this.players || []).filter((p) => p && !p._dead); }
+    _isPlayer(ent) { return !!(this.players && this.players.indexOf(ent) >= 0); }   // §0e — any of the 1-4 players (for fall/cliff rules, vs mobs)
+    // §0e — advance each downed player's death burst + respawn timer; respawn at its OWN spawn.
+    // Multiplayer only (single-player uses the global dying->dead flow). Runs every frame.
+    _advancePlayerDeaths() {
+      const grav = this.unit * 0.012;
+      for (const p of (this.players || [])) {
+        if (!p || !p._dead) continue;
+        const fx = p._deathFx;
+        if (fx && fx.parts) { fx.t++; for (const q of fx.parts) { if (q.life <= 0) continue; q.x += q.vx; q.y += q.vy; q.vx *= 0.9; q.vy *= 0.9; q.rot += q.vr; q.vh -= grav; q.h += q.vh; if (q.h < 0) { q.h = 0; q.vh = 0; } q.life--; } }
+        if (p._respawnT > 0 && --p._respawnT <= 0) {
+          p._dead = false; p._deathFx = null; p.hp = p.maxHp; p.x = p._spawn.x; p.y = p._spawn.y; p.jump = null; p.iFrames = 90;
+          const c = this._cellOf(p.x, p.y); p.elev = this._elev(c.col, c.row);
+          this._notify('P' + ((p._index | 0) + 1) + ' respawned', 60);
+        }
+      }
+    }
 
     // §Overhead multiplayer (Phase 0b) — mirror the side-scroll slot assignment so pGp(i)/pJustDown(i,..)
     // resolve each player's controller. No-op headless / when ControllerConfig isn't present.
@@ -297,17 +313,13 @@
       const airborne = p.jump && p.jump.jumping;
       this._moveWithCollision(p, intent.move.x * spd, intent.move.y * spd, airborne);
       if (moving) { p.dist += Math.hypot(intent.move.x, intent.move.y) * p.speed; p.moveAngle = Math.atan2(intent.move.y, intent.move.x); }
-      if (p.jump && p.jump.jumping && OH_MOVE.advanceJump(p.jump).landed) {
-        if (idx === 0) this._resolveLanding(p);
-        else { const c = this._cellOf(p.x, p.y); p.elev = this._elev(c.col, c.row); }   // secondary: land, no death yet (0e)
-      }
-      // Hazards / pits / gaps kill — P1 only until per-player death (0e). Secondary players are held
-      // out of pits/walls by _moveWithCollision (it treats non-P1 entities like a mob).
-      if (!airborne && idx === 0) { const c = this._cellOf(p.x, p.y);
+      if (p.jump && p.jump.jumping && OH_MOVE.advanceJump(p.jump).landed) this._resolveLanding(p);   // §0e all players resolve landings (bad landing -> per-player death/respawn)
+      // §0e Hazards / pits / gaps kill EVERY player now (each downs + respawns independently).
+      if (!airborne) { const c = this._cellOf(p.x, p.y);
         if (this._bridgeClosedAt(c.col, c.row)) { /* solid bridge deck — no fall/hazard */ }
-        else if (this._pitsDeadly && this._pit(c.col, c.row)) this._die('Fell into a pit', 'pit');
-        else if (this._gap(c.col, c.row)) this._fall('Fell');
-        else if (this._hazard(c.col, c.row)) { if (this._lavaMode === 'death') this._die('Fell in lava'); else if (p.iFrames === 0) this._hurt(this._lavaDamage, 'Lava'); } }
+        else if (this._pitsDeadly && this._pit(c.col, c.row)) this._die(p, 'Fell into a pit', 'pit');
+        else if (this._gap(c.col, c.row)) this._fall(p, 'Fell');
+        else if (this._hazard(c.col, c.row)) { if (this._lavaMode === 'death') this._die(p, 'Fell in lava'); else if (p.iFrames === 0) this._hurt(p, this._lavaDamage, 'Lava'); } }
       { const c = this._cellOf(p.x, p.y); p.hidden = (this._key(c.col, c.row) === 'leaves' && this._elev(c.col, c.row) > p.elev); }
       this._pickups(p);
       p._intent = intent;   // §0c — stored so the per-player interaction pass (pipes/levers/goal) can use each player's E
@@ -430,6 +442,7 @@
       const mouseWorld = OH_GRID.screenToWorld(this.grid, this.camera, inp.mouse.x, inp.mouse.y);
       let intent = null;
       for (const pl of this.activePlayers()) { const it = this._controlPlayer(pl, pl._index); if (pl._index === 0) intent = it; }
+      this._advancePlayerDeaths();   // §0e — downed players (MP) burst + respawn at their own spawn, independently
       // Weapons / melee — P1 only for now (per-player combat is a follow-on step).
       if (intent) this._updateWeapons(intent, mouseWorld);
       // Mobs + projectiles (once).
@@ -568,13 +581,13 @@
         if (this._gateSolid && this._gateSolidAt(c.col, c.row)) return false;   // a closed/swinging gate panel blocks
         if (this._templateSolid && this._templateSolid.has(c.col + ',' + c.row)) return false;   // a template trunk/wall blocks (canopy is pass-under)
         if (key === 'leaves') return ent.elev;               // canopy — always pass under (keep elev)
-        if (key === 'pit') return (this._pitsDeadly && ent === this.player) ? ent.elev : false;   // player steps into a deadly pit (fatal); mobs/others are always BLOCKED (cross only at bridges)
+        if (key === 'pit') return (this._pitsDeadly && this._isPlayer(ent)) ? ent.elev : false;   // §0e ANY player steps into a deadly pit (fatal); mobs/others are always BLOCKED (cross only at bridges)
         const tE = this._elev(c.col, c.row), delta = tE - ent.elev;
         if (delta <= 0) {                                    // walk / step down
           // Cliff-fall guard (player only): don't let a WALK drop more than
           // maxStepDown levels — stops accidental falls off high platforms with no
           // way back. Ramps/bridges (nearby) are the intended way down.
-          if (ent === this.player && this._blockCliffFall && delta < -this._maxStepDown && !this._rampNear(cur.col, cur.row) && !this._rampNear(c.col, c.row)) return false;
+          if (this._isPlayer(ent) && this._blockCliffFall && delta < -this._maxStepDown && !this._rampNear(cur.col, cur.row) && !this._rampNear(c.col, c.row)) return false;
           return tE;
         }
         if (airborne) { const clear = (ent.jump && ent.jump.maxElevationJump) | 0; return delta <= clear ? tE : false; }   // a jump clears/mounts up to its clearance
@@ -600,12 +613,12 @@
     }
     _resolveLanding(p) {
       const c = this._cellOf(p.x, p.y);
-      if (this._pitsDeadly && this._pit(c.col, c.row)) { this._die('Fell into a pit'); return; }
+      if (this._pitsDeadly && this._pit(c.col, c.row)) { this._die(p, 'Fell into a pit'); return; }
       const res = OH_MOVE.landingValid(p.jump, { landingIsGap: this._gap(c.col, c.row), landingIsHazard: this._hazard(c.col, c.row),
         landingIsSolidGround: this._key(c.col, c.row) != null, elevDelta: this._elev(c.col, c.row) - p.jump.startElev });
       if (!res.valid) {
-        if (res.reason === 'hazard') { if (this._lavaMode === 'death') this._die('Fell in lava'); else this._hurt(this._lavaDamage, 'Lava'); }
-        else if (res.reason === 'gap') this._fall('Missed the jump');
+        if (res.reason === 'hazard') { if (this._lavaMode === 'death') this._die(p, 'Fell in lava'); else this._hurt(p, this._lavaDamage, 'Lava'); }
+        else if (res.reason === 'gap') this._fall(p, 'Missed the jump');
         else if (p._jumpFrom) { p.x = p._jumpFrom.x; p.y = p._jumpFrom.y; }   // couldn't clear the wall → bounce back
       } else { p.elev = this._elev(c.col, c.row); }   // landed within the jump's clearance
     }
@@ -654,7 +667,7 @@
         if (b.t < 0.5 && this._boltWalled(b)) b.t = 1 - b.t;   // wall on the way out → start coming back
         for (const m of live) { const id = m.col + ',' + m.row + ',' + (this.mobs.indexOf(m)); if (!b._hit[id] && this._canAttack(p.elev, m.elev || 0) && Math.hypot(m.x - b.x, m.y - b.y) < m.r + this.unit * 0.3) { m.hp -= 4; b._hit[id] = 1; if (m.hp <= 0) m.dead = true; } } if (b.dead) p._boom = null; }
       // Mob bolts (skeletons).
-      for (const mb of this._mobBolts) { OH_WEAPONS.stepBolt(mb); if (this._boltWalled(mb)) { mb.dead = true; continue; } if (!mb._dodged && this._canAttack(mb.elev || 0, p.elev) && Math.hypot(mb.x - p.x, mb.y - p.y) < p.r + this.unit * 0.25 && p.iFrames === 0) { if (this._dodging(this._dodgeAttacks)) { mb._dodged = true; this._notify('Dodged!', 30); } else { this._hurt(3, 'Shot'); mb.dead = true; } } }   // a dodged bolt is flagged (not killed) so it flies on past
+      for (const mb of this._mobBolts) { OH_WEAPONS.stepBolt(mb); if (this._boltWalled(mb)) { mb.dead = true; continue; } if (!mb._dodged && this._canAttack(mb.elev || 0, p.elev) && Math.hypot(mb.x - p.x, mb.y - p.y) < p.r + this.unit * 0.25 && p.iFrames === 0) { if (this._dodging(this._dodgeAttacks)) { mb._dodged = true; this._notify('Dodged!', 30); } else { this._hurt(this.player, 3, 'Shot'); mb.dead = true; } } }   // a dodged bolt is flagged (not killed) so it flies on past
       this._mobBolts = this._mobBolts.filter((b) => !b.dead);
     }
 
@@ -802,7 +815,7 @@
           if (m._wc <= 0) { m._wanderAngle = Math.random() * Math.PI * 2; m._wc = 50 + (Math.random() * 90 | 0); if (Math.random() < 0.3) m._wc = 30, m._wanderAngle = null; }
           if (m._wanderAngle != null) { const ws = (m.speed || 1) * 0.4; const bx = m.x, by = m.y; this._moveWithCollision(m, Math.cos(m._wanderAngle) * ws, Math.sin(m._wanderAngle) * ws, false); if (m.x === bx && m.y === by) m._wc = 0; else { m._dist = (m._dist || 0) + ws; m._moveAngle = m._wanderAngle; } }
         }
-        if (d < m.r + p.r && p.iFrames === 0 && !this._dodging(this._dodgeMobs)) this._hurt(3, 'Hit by a mob');
+        if (d < m.r + p.r && p.iFrames === 0 && !this._dodging(this._dodgeMobs)) this._hurt(this.player, 3, 'Hit by a mob');
       }
     }
 
@@ -856,14 +869,24 @@
       // default = deck rests RAISED (open gap), a signal LOWERS it to cross (puzzle gate).
       return b.startDown ? !powered : powered;
     }
-    _hurt(amt, why) { const p = this.player; if (this._god || p.iFrames > 0) return; p.hp -= amt; p.iFrames = 45; if (p.hp <= 0) this._die(why || 'Defeated'); }
-    _fall(msg) { const p = this.player; if (p.hp <= 0) { this._die(msg || 'You died'); return; } p.x = this._spawn.x; p.y = this._spawn.y; p.jump = null; p.iFrames = 60; const c = this._cellOf(p.x, p.y); p.elev = this._elev(c.col, c.row); }
+    // §0e — per-player. `p` is the player being hurt / soft-respawned (was always this.player).
+    _hurt(p, amt, why) { if (this._god || p.iFrames > 0 || p._dead) return; p.hp -= amt; p.iFrames = 45; if (p.hp <= 0) this._die(p, why || 'Defeated'); }
+    _fall(p, msg) { if (p.hp <= 0) { this._die(p, msg || 'You died'); return; } p.x = p._spawn.x; p.y = p._spawn.y; p.jump = null; p.iFrames = 60; const c = this._cellOf(p.x, p.y); p.elev = this._elev(c.col, c.row); }
     // Family-friendly death (no blood/gore). Default: the player bursts into its
     // own coloured sprite blocks. PIT deaths first show a front-facing figure with
     // flailing limbs SHRINKING for ~1s (falling in), THEN the burst.
-    _die(msg, cause) {
-      if (this._god || this.state === 'dying' || this.state === 'dead') return;
-      const p = this.player; p.hp = 0; this.state = 'dying'; this._deathMsg = msg || 'You died';
+    _die(p, msg, cause) {
+      if (this._god || p._dead) return;
+      // §0e Multiplayer: DOWN this player (burst) then respawn at its OWN spawn; the others keep
+      // playing (no global freeze). Single-player keeps the original dying->dead->exit flow below.
+      if (this.players.length > 1) {
+        p._dead = true; p.hp = 0; p._deathMsg = msg || 'Down'; p._respawnT = 70; p._climb = null; p.jump = null;
+        p._deathFx = { phase: 'burst', t: 0, x: p.x, y: p.y, parts: this._burstParts(p.x, p.y) };
+        this._notify('P' + ((p._index | 0) + 1) + ' down — respawning', 90);
+        return;
+      }
+      if (this.state === 'dying' || this.state === 'dead') return;
+      p.hp = 0; this.state = 'dying'; this._deathMsg = msg || 'You died';
       if (cause === 'pit') {
         // Animate from the middle of the PIT. The player's own position at the moment of
         // death can be over adjacent ground or a bridge, which made the sinking figure look
@@ -1336,6 +1359,12 @@
           ctx.globalAlpha = 1;
         }
       }
+      // §0e — per-player death bursts (multiplayer): draw each downed player's burst where it fell.
+      for (const dp of (this.players || [])) {
+        const dfx = dp._deathFx; if (!dfx || !dfx.parts || dp === this.player && (this.state === 'dying' || this.state === 'dead')) continue;
+        for (const q of dfx.parts) { if (q.life <= 0) continue; const s = S(q.x, q.y); ctx.save(); ctx.translate(s.x, s.y - (q.h || 0) * z); ctx.rotate(q.rot); ctx.globalAlpha = Math.max(0, Math.min(1, q.life / 22)); ctx.fillStyle = q.color; ctx.fillRect(-q.sz * z / 2, -q.sz * z / 2, q.sz * z, q.sz * z); ctx.restore(); }
+      }
+      ctx.globalAlpha = 1;
       // Day/night ambient overlay + light sources + sun/moon disc — drawn before the
       // HUD so the HUD stays crisp.
       if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined' && (!q || q.night)) this._drawNight(ctx, S, cs);
