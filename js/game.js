@@ -9651,7 +9651,7 @@ class Game {
       p._aimAngle = ang; return ang;
     }
     const gp = this.input.pGp(i);
-    const style = this._aimStyle();
+    const style = this._aimStyle(i);   // per-player (P2-P4)
     let ang;
     if (style === 'dual') {
       // Advanced: aim with the RIGHT stick (360°); hold last / face when centred.
@@ -12252,7 +12252,14 @@ class Game {
   //   'single360' — one stick: aim follows the LEFT stick (movement) direction, full 360°.
   //   'single8'   — one stick: aim follows the LEFT stick direction SNAPPED to 8 compass points
   //                 (45° steps), so you always fire the way you're moving. Easiest for young kids.
-  _aimStyle() { return (typeof KEY_BINDINGS !== 'undefined' && KEY_BINDINGS.getOpt('aimStyle', 'dual')) || 'dual'; }
+  // PER-PLAYER (idx 0=P1 … 3=P4). Falls back to any legacy global 'aimStyle', then 'dual', so a
+  // player who hasn't picked a style inherits the old single-switch value / the safe default.
+  _aimStyle(idx = 0) {
+    if (typeof KEY_BINDINGS === 'undefined') return 'dual';
+    const per = KEY_BINDINGS.getOpt('aimStyle:' + (idx | 0), null);
+    if (per) return per;
+    return KEY_BINDINGS.getOpt('aimStyle', 'dual') || 'dual';
+  }
   // Snap an angle (radians) to the nearest of 8 compass directions (45° steps).
   _snap8(ang) { const s = Math.PI / 4; return Math.round(ang / s) * s; }
 
@@ -12261,7 +12268,7 @@ class Game {
   // always aims with the precise mouse cursor (that IS "advanced"), unaffected by Aim Style.
   _updateP1Aim() {
     if (typeof KEY_BINDINGS === 'undefined') return false;
-    const style = this._aimStyle();
+    const style = this._aimStyle(0);   // P1
     if (style === 'dual') return this._updateP1StickAim();   // legacy right-stick-direction toggle
     // Single-stick modes: aim from the LEFT stick (same stick that moves P1).
     if (this.input.p1GpSlot < 0 || this.inventoryOpen || !this.player || !this.camera) return false;

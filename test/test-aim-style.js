@@ -23,7 +23,12 @@ const wsSrc    = strip(fs.readFileSync(path.join(jsDir, 'world-settings-ui.js'),
 
 // ── Aim Style: three levels, stored as an opt, default 'dual' (zero regression) ──
 {
-  ok(/_aimStyle\(\)\s*\{[^}]*getOpt\('aimStyle', 'dual'\)/.test(gameSrc), "_aimStyle() reads the 'aimStyle' opt, defaulting to 'dual'");
+  // PER-PLAYER: _aimStyle(idx) reads aimStyle:<idx>, falling back to the legacy global then 'dual'.
+  ok(/_aimStyle\(idx = 0\)\s*\{/.test(gameSrc), "_aimStyle(idx) is per-player");
+  ok(/getOpt\('aimStyle:' \+ \(idx \| 0\), null\)/.test(gameSrc), "_aimStyle reads the per-player 'aimStyle:<idx>' key");
+  ok(/getOpt\('aimStyle', 'dual'\)/.test(gameSrc), '_aimStyle falls back to the legacy global then dual');
+  ok(/this\._aimStyle\(0\)/.test(gameSrc), 'P1 aim resolves its own (index 0) style');
+  ok(/this\._aimStyle\(i\)/.test(gameSrc), 'P2-P4 aim resolves each player index');
   ok(/_snap8\(ang\)\s*\{[^}]*Math\.PI \/ 4/.test(gameSrc), '_snap8 snaps to 45° (PI/4) steps');
   // P1: single-stick modes aim from the LEFT stick; dual defers to the legacy right-stick toggle.
   ok(/_updateP1Aim\(\)\s*\{/.test(gameSrc), 'P1 has an aim-style-aware _updateP1Aim()');
@@ -31,7 +36,7 @@ const wsSrc    = strip(fs.readFileSync(path.join(jsDir, 'world-settings-ui.js'),
   ok(/if \(!this\._updateP1Aim\(\)\) this\.input\.applyStickCursor/.test(gameSrc), 'the loop calls _updateP1Aim (not the old _updateP1StickAim directly)');
   ok(/if \(style === 'single8'\) ang = this\._snap8\(ang\)/.test(gameSrc), 'single8 snaps the P1 aim angle to 8 directions');
   // P2-P4: dual = right stick; single = left stick (+snap for single8).
-  ok(/const style = this\._aimStyle\(\);/.test(gameSrc), '_secondaryAimAngle branches on the aim style');
+  ok(/const style = this\._aimStyle\(i\);/.test(gameSrc), '_secondaryAimAngle branches on the per-player aim style');
   ok(/gp\.moveX \|\| 0, my = gp\.moveY \|\| 0/.test(gameSrc), 'single-stick P2-P4 aim reads the LEFT stick (moveX/moveY)');
   ok(/if \(style === 'single8'\) ang = this\._snap8\(ang\);\s*\/\/|if \(style === 'single8'\) ang = this\._snap8\(ang\);/.test(fs.readFileSync(path.join(jsDir,'game.js'),'utf8')), 'single8 snaps the P2-P4 aim');
   // The bow now shares the one aim angle (was inline right-stick only).
@@ -39,12 +44,14 @@ const wsSrc    = strip(fs.readFileSync(path.join(jsDir, 'world-settings-ui.js'),
   ok(!/if \(aimMag > 0\.15\) p\._aimAngle = Math\.atan2\(gp\.aimY, gp\.aimX\)/.test(gameSrc), 'the old inline right-stick-only bow aim is removed');
 }
 
-// ── Controls UI exposes the 3-way selector ──
+// ── Controls UI exposes the 3-way selector, PER PLAYER ──
 {
   ok(/single360:/.test(cuSrc) && /single8:/.test(cuSrc) && /CONTROLS_UI_AIM_LABEL/.test(cuSrc), 'Controls UI defines the 3 aim-style labels');
   ok(/id="cu-aimstyle"/.test(cuSrc), 'Controls UI renders an Aim Style control');
+  ok(/Aim Style \(P\$\{this\._player \+ 1\}\)/.test(cuSrc), 'the Aim Style row is labelled with the selected player');
   ok(/\['dual', 'single360', 'single8'\]/.test(cuSrc), 'the Aim Style button cycles through all three levels');
-  ok(/setOpt\('aimStyle'/.test(cuSrc), 'clicking it persists the aimStyle opt');
+  ok(/setOpt\('aimStyle:' \+ this\._player/.test(cuSrc), 'clicking it persists the SELECTED player\'s aimStyle key');
+  ok(/_aimStyleFor\(player\)/.test(cuSrc) && /getOpt\('aimStyle:' \+ player/.test(cuSrc), 'UI resolves per-player style with the same fallback as the runtime');
 }
 
 // ── Player Speed: a move-speed multiplier, per world ──
