@@ -111,5 +111,42 @@ console.log('Phase 0b — a secondary player is NOT killed by a pit yet (held ou
   ok(g.players[1].x < (10 + 0.5) * 32, 'P2 was blocked before entering the pit column');
 }
 
-console.log(`\noverhead multiplayer (0a+0b): ${pass} passed, ${fail} failed`);
+console.log('Phase 0d — shared auto-fit camera: single-player unchanged:');
+{
+  const g = new OverheadGame(mk(), { testMode: true }, () => {});
+  const z0 = g.grid.masterZoom;
+  g.input.isDown = () => false;
+  for (let f = 0; f < 8; f++) g._update();
+  ok(Math.abs(g.grid.masterZoom - z0) < 1e-6, 'single player: zoom stays at base (no auto-fit)');
+  ok(g.camera && typeof g.camera.x === 'number', 'single player: camera still resolves (unchanged centerOn path)');
+}
+
+console.log('Phase 0d — 2 players: zoom OUT to frame the group, centre on the midpoint, zoom back on regroup:');
+{
+  // A wide world so spreading the pair actually exceeds one screen (forces zoom-out).
+  const W = 44, H = 16, ground = [], elevation = [];
+  for (let r = 0; r < H; r++) { ground.push(new Array(W).fill('grass')); elevation.push(new Array(W).fill(0)); }
+  const world = mk({ mapSnapshot: { gridW: W, gridH: H, density: 1, baseW: W, baseH: H, cell: 32, objectScaleMode: 'independent', ground, elevation, decorations: [] },
+    spawns: [{ col: 3, row: 8 }, { col: 5, row: 8 }] });
+  const g = new OverheadGame(world, { testMode: true, numPlayers: 2 }, () => {});
+  const base = g._baseZoom;
+  g.input.isDown = () => false; g.input.pJustDown = () => false; g.input.pAttack = () => false;
+  // Drive P2 far to the right — spread the pair well past one screen.
+  g.input.pGp = (i) => i === 1 ? { moveX: 1, moveY: 0, aimX: 0, aimY: 0 } : { moveX: 0, moveY: 0, aimX: 0, aimY: 0 };
+  for (let f = 0; f < 220; f++) g._update();
+  const spread = Math.abs(g.players[1].x - g.players[0].x);
+  ok(spread > 800, 'the two players spread more than one screen apart');
+  ok(g.grid.masterZoom < base - 0.05, 'camera zoomed OUT to keep both framed');
+  const midX = (g.players[0].x + g.players[1].x) / 2;
+  const camMidX = g.camera.x + (CANVAS_W / g.grid.masterZoom) / 2;
+  ok(Math.abs(camMidX - midX) < 40, 'camera centres on the group midpoint');
+  const zoomedOut = g.grid.masterZoom;
+  // Regroup: P2 walks back left toward P1.
+  g.input.pGp = (i) => i === 1 ? { moveX: -1, moveY: 0, aimX: 0, aimY: 0 } : { moveX: 0, moveY: 0, aimX: 0, aimY: 0 };
+  for (let f = 0; f < 220; f++) g._update();
+  ok(g.grid.masterZoom > zoomedOut + 0.05, 'camera zooms back IN as they regroup');
+  ok(g.grid.masterZoom <= base + 1e-6, 'zoom never exceeds the world base zoom');
+}
+
+console.log(`\noverhead multiplayer (0a+0b+0d): ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

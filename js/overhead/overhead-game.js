@@ -181,6 +181,7 @@
       }
       this._spawn = { x: this.players[0]._spawn.x, y: this.players[0]._spawn.y };
       this._bolts = []; this._mobBolts = [];
+      this._baseZoom = this.grid.masterZoom;   // §0d shared camera zooms out from here to frame the group, back toward it when they regroup
       this.camera = OH_GRID.centerOn(this.grid, this.players[0].x, this.players[0].y, CANVAS_W, CANVAS_H);
       this._notif = null; this._running = true;
       if (document.body) { document.body.classList.remove('pre-game'); document.body.classList.add('in-game'); window.dispatchEvent(new Event('resize')); }
@@ -475,7 +476,29 @@
         const c = this._cellOf(p.x, p.y); // goal is a 2×2 region from its anchor
         if (c.col >= this.goal.col && c.col < this.goal.col + 2 && c.row >= this.goal.row && c.row < this.goal.row + 2) { this._wonExitColor = this.goal.color || 0; this._win(); }
       }
-      this.camera = OH_GRID.centerOn(this.grid, p.x, p.y, CANVAS_W, CANVAS_H);
+      this._updateCamera();
+    }
+
+    // §Overhead multiplayer (Phase 0d) — shared auto-fit camera. Single-player: centre on the one
+    // player at the current zoom (unchanged). 2+ players: centre on the group's bounding-box midpoint
+    // and zoom OUT (toward the fit) so everyone stays framed, down to the grid's MIN_ZOOM; a player
+    // who would push past the fit is naturally held at the screen edge by clampCamera. When the group
+    // regroups the zoom eases back toward the world's base zoom (never zooms IN past it). Not
+    // split-screen — one shared view, per Kevin's decision.
+    _updateCamera() {
+      const live = this.activePlayers();
+      if (live.length <= 1) { const p = this.player; if (p) this.camera = OH_GRID.centerOn(this.grid, p.x, p.y, CANVAS_W, CANVAS_H); return; }
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, sx = 0, sy = 0;
+      for (const p of live) { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; sx += p.x; sy += p.y; }
+      const cx = sx / live.length, cy = sy / live.length;
+      const pad = this.unit * 3;   // keep players off the very edge of the screen
+      const spanX = (maxX - minX) + pad * 2, spanY = (maxY - minY) + pad * 2;
+      const fitZ = Math.min(CANVAS_W / Math.max(1, spanX), CANVAS_H / Math.max(1, spanY));
+      const base = this._baseZoom || 1;
+      const target = Math.min(base, fitZ);   // fit the group, but never zoom IN past the world's base zoom
+      const cur = this.grid.masterZoom;
+      OH_GRID.setZoom(this.grid, cur + (target - cur) * 0.12);   // smooth toward the fit (setZoom clamps to MIN/MAX)
+      this.camera = OH_GRID.centerOn(this.grid, cx, cy, CANVAS_W, CANVAS_H);
     }
 
     // Dodging: airborne cancels a hit when the dodge mode allows it. 'single' = any
