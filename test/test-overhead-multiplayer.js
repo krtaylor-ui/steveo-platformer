@@ -193,5 +193,63 @@ console.log('Phase 0c — pipe transit is per-player: one player in a pipe does 
   ok(Math.abs(g.players[0].x - 14.5 * 32) < 2, 'P1 teleported to the destination pipe');
 }
 
+function pipeWorld(over) {
+  const W = 20, H = 16, ground = [], elevation = [];
+  for (let r = 0; r < H; r++) { ground.push(new Array(W).fill('grass')); elevation.push(new Array(W).fill(0)); }
+  return mk(Object.assign({
+    mapSnapshot: { gridW: W, gridH: H, density: 1, baseW: W, baseH: H, cell: 32, objectScaleMode: 'independent', ground, elevation, decorations: [] },
+    buildings: [{ typeId: 'pipe', col: 4, row: 4, config: { dest: '14,4' } }, { typeId: 'pipe', col: 14, row: 4, config: {} }],
+    spawns: [{ col: 2, row: 12 }, { col: 5, row: 12 }],
+    settings: Object.assign(OH_SETTINGS.defaults(), { pipeClimbAnim: false, portalStepAnim: false }),   // instant teleport for deterministic asserts
+  }, over || {}));
+}
+
+console.log('Phase 0c(2) — a SECONDARY player uses a pipe on its OWN E press:');
+{
+  const g = new OverheadGame(pipeWorld(), { testMode: true, numPlayers: 2 }, () => {});
+  g.players[0].x = 2.5 * 32; g.players[0].y = 12.5 * 32;   // P1 far from any pipe
+  g.players[1].x = 4.5 * 32; g.players[1].y = 6.5 * 32;    // P2 just below the (4,4) pipe mouth
+  const p1x0 = g.players[0].x;
+  g.input.isDown = () => false; g.input.isJustDown = () => false; g.input.pAttack = () => false;
+  g.input.pGp = () => ({ moveX: 0, moveY: 0, aimX: 0, aimY: 0 });
+  g.input.pJustDown = (i, btn) => (i === 1 && btn === 'context');   // P2 presses E (RB=context)
+  g._update();
+  ok(Math.abs(g.players[1].x - 15 * 32) < 6 && Math.abs(g.players[1].y - 6.5 * 32) < 6, 'P2 teleported to the destination pipe on its own E');
+  ok(Math.abs(g.players[0].x - p1x0) < 1, 'P1 (not pressing E, far away) was unaffected');
+}
+
+console.log('Phase 0c(2) — per-pipe "pull everyone through" (groupTravel) brings nearby players along:');
+{
+  const g = new OverheadGame(pipeWorld({ buildings: [{ typeId: 'pipe', col: 4, row: 4, config: { dest: '14,4', groupTravel: true } }, { typeId: 'pipe', col: 14, row: 4, config: {} }] }), { testMode: true, numPlayers: 2 }, () => {});
+  g.players[0].x = 4.5 * 32; g.players[0].y = 6.5 * 32;    // P1 at the mouth
+  g.players[1].x = 5.2 * 32; g.players[1].y = 6.5 * 32;    // P2 also near the same mouth
+  g.input.pAttack = () => false; g.input.pJustDown = () => false;
+  g.input.pGp = () => ({ moveX: 0, moveY: 0, aimX: 0, aimY: 0 });
+  g.input.isDown = () => false; g.input.isJustDown = (c) => c === 'KeyE';   // P1 presses E
+  g._update();
+  ok(Math.abs(g.players[0].x - 15 * 32) < 6, 'P1 (the trigger) went through');
+  ok(Math.abs(g.players[1].x - 15 * 32) < 6, 'P2 was PULLED through together (Mario-3D-World style)');
+}
+
+console.log('Phase 0c(2) — WITHOUT groupTravel, only the triggering player travels:');
+{
+  const g = new OverheadGame(pipeWorld(), { testMode: true, numPlayers: 2 }, () => {});
+  g.players[0].x = 4.5 * 32; g.players[0].y = 6.5 * 32;
+  g.players[1].x = 5.2 * 32; g.players[1].y = 6.5 * 32;
+  const p2x0 = g.players[1].x;
+  g.input.pAttack = () => false; g.input.pJustDown = () => false;
+  g.input.pGp = () => ({ moveX: 0, moveY: 0, aimX: 0, aimY: 0 });
+  g.input.isDown = () => false; g.input.isJustDown = (c) => c === 'KeyE';   // P1 presses E
+  g._update();
+  ok(Math.abs(g.players[0].x - 15 * 32) < 6, 'P1 went through');
+  ok(Math.abs(g.players[1].x - p2x0) < 1, 'P2 stayed put (single-player pipe)');
+}
+
+console.log('Phase 0c(2) — editor exposes the per-pipe travel toggle (source):');
+{
+  const edSrc = require('fs').readFileSync(path.join(__dirname, '..', 'js', 'overhead', 'overhead-editor.js'), 'utf8');
+  ok(/id="cfg-group"/.test(edSrc) && /b\.config\.groupTravel = document\.getElementById\('cfg-group'\)\.checked/.test(edSrc), 'the pipe/portal dialog has a "pull all players" (groupTravel) toggle');
+}
+
 console.log(`\noverhead multiplayer (0a+0b+0c+0d+0g): ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

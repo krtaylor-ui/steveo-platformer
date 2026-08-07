@@ -276,7 +276,7 @@
       if (p._emerge) { p._emerge.t++; if (p._emerge.t >= p._emerge.dur) p._emerge = null; }   // pipe emerge (QA F14)
       // §0c — a player in pipe/portal transit is driven by its own animation; skip its control this
       // frame but DO NOT freeze the others (the old global this._climb early-return did exactly that).
-      if (p._climb) { this._updatePipeClimb(p); p._moving = false; return null; }
+      if (p._climb) { this._updatePipeClimb(p); p._moving = false; p._intent = null; return null; }
       if (p.iFrames > 0) p.iFrames--; if (p._fireCd > 0) p._fireCd--;
       if (p._swingT > 0) p._swingT--;   // advance the melee-swing animation
       const raw = this._rawFor(p, idx);
@@ -310,6 +310,7 @@
         else if (this._hazard(c.col, c.row)) { if (this._lavaMode === 'death') this._die('Fell in lava'); else if (p.iFrames === 0) this._hurt(this._lavaDamage, 'Lava'); } }
       { const c = this._cellOf(p.x, p.y); p.hidden = (this._key(c.col, c.row) === 'leaves' && this._elev(c.col, c.row) > p.elev); }
       this._pickups(p);
+      p._intent = intent;   // §0c — stored so the per-player interaction pass (pipes/levers/goal) can use each player's E
       return intent;
     }
 
@@ -425,8 +426,7 @@
       // goal stay P1-only for now — they go per-player in the combat + Phase 0c passes. Secondary
       // players can't die yet (0e): _moveWithCollision blocks them at pits/walls like a mob.
       this._syncControllerSlots();
-      const p = this.player;   // P1 (legacy alias) — the combat/E/goal/camera below are still P1-only
-      if (inp.isJustDown && (inp.isJustDown('KeyQ') || inp.isJustDown('Tab'))) this._cycleWeapon();   // P1 weapon switch
+      if (inp.isJustDown && (inp.isJustDown('KeyQ') || inp.isJustDown('Tab'))) this._cycleWeapon();   // P1 weapon switch (keyboard)
       const mouseWorld = OH_GRID.screenToWorld(this.grid, this.camera, inp.mouse.x, inp.mouse.y);
       let intent = null;
       for (const pl of this.activePlayers()) { const it = this._controlPlayer(pl, pl._index); if (pl._index === 0) intent = it; }
@@ -435,53 +435,63 @@
       // Mobs + projectiles (once).
       this._updateMobs(); this._updateProjectiles(); this._updateShards();
 
-      // Portals / pipes take PRIORITY on the E button over the generic decoration
-      // notice (a pipe next to a statue must still teleport). PROXIMITY + E (both
-      // types — no accidental walk-through). The nearest in-range one glows; press E.
-      // §0c — pipe/portal STATE is per-player (p._portalCd/_portalGlow/_portalPrompt). The TRIGGER
-      // is still P1-only this step (per-player E-trigger + the pull-all/single toggle are next).
-      if (!intent) intent = { action: false };   // P1 in transit -> no action this frame
+      // §0c — per-player INTERACTIONS: each active player triggers its OWN pipes/portals/levers/
+      // locks/goal from its own E-press (p._intent), so P2-P4 use them too, not just P1.
+      for (const pl of this.activePlayers()) this._playerInteract(pl);
+      this._updateCamera();
+    }
+
+    // §0c — one player's E-action for the frame: pipe/portal transit (priority), else lock, else
+    // lever, else the decoration notice; plus the walk-on goal. State is per-player. A player in
+    // transit has p._intent === null and is skipped.
+    _playerInteract(p) {
+      const intent = p._intent; if (!intent) return;
+      if (p._portalGlow) { /* glow ticked in _controlPlayer */ }
       let actionUsed = false;
-      { const useR = this.unit * 1.6; let near = null, nk = null, nd = useR;
-        // Proximity to the nearest FOOTPRINT CELL (so you can trigger a big portal
-        // by standing adjacent — the buildings are solid, you can't stand on it).
-        for (const [ck, b] of this._portalCells) { const [cc, rr] = ck.split(',').map(Number); const dx = (cc + 0.5) * this.grid.cell - p.x, dy = (rr + 0.5) * this.grid.cell - p.y; const dd = Math.hypot(dx, dy); if (dd < nd) { nd = dd; near = b; nk = b.col + ',' + b.row; } }
-        p._portalPrompt = near ? nk : null;
-        if (near && !p._portalCd && intent.action) {
-          const cfg = near.config || {}; const label = near.typeId === 'pipe' ? 'pipe' : 'portal';
-          if (cfg.isGoal) { actionUsed = true; this._wonExitColor = (this.goal && this.goal.color) || 0; this._win(); }
-          else if (cfg.dest && (this._portalByKey.get(cfg.dest) || this._portalCells.get(cfg.dest))) {
-            // Land just IN FRONT of (below) the destination portal — it's solid, so
-            // don't drop the player inside it. Guard against instant re-trigger.
-            // Resolve the destination by its anchor OR ANY footprint cell (a pipe is 2×2, so a
-            // dest pointing at a non-anchor cell must still link — the earlier bug).
-            actionUsed = true;
-            const db = this._portalByKey.get(cfg.dest) || this._portalCells.get(cfg.dest), dfp = OH_BUILDINGS.footprintOf(db.typeId, this._density), dw = dfp.w, dh = dfp.h;
-            const px = (db.col + dw / 2) * this.grid.cell, py = (db.row + dh + 0.5) * this.grid.cell;
-            const dest = { px, py, key: db.col + ',' + db.row };
-            // A PIPE plays the climb-in animation, THEN teleports; a portal is instant.
-            if (near.typeId === 'pipe' && this.settings.pipeClimbAnim !== false) { this._startPipeClimb(p, near, dest); }
-            else if (near.typeId === 'portal' && this.settings.portalStepAnim !== false) { this._startPortalStep(p, near, dest); }
-            else { const c = this._cellOf(px, py); p.x = px; p.y = py; p.elev = this._elev(c.col, c.row); p._portalCd = true; p._portalGlow = { keys: [nk, dest.key], t: 42 }; }
-          } else {
-            // In range + pressed E, but this end has no destination — tell the player
-            // instead of silently doing nothing (and don't fall through to the statue).
-            actionUsed = true; this._notify('This ' + label + ' is not linked to a destination yet.', 100);
-          }
-        }
-        if (!near || nd > useR * 0.6) p._portalCd = false;   // release the guard once clear of the destination
+      const useR = this.unit * 1.6; let near = null, nk = null, nd = useR;
+      for (const [ck, b] of this._portalCells) { const [cc, rr] = ck.split(',').map(Number); const dx = (cc + 0.5) * this.grid.cell - p.x, dy = (rr + 0.5) * this.grid.cell - p.y; const dd = Math.hypot(dx, dy); if (dd < nd) { nd = dd; near = b; nk = b.col + ',' + b.row; } }
+      p._portalPrompt = near ? nk : null;
+      if (near && !p._portalCd && intent.action) {
+        const cfg = near.config || {}; const label = near.typeId === 'pipe' ? 'pipe' : 'portal';
+        if (cfg.isGoal) { actionUsed = true; this._wonExitColor = (this.goal && this.goal.color) || 0; this._win(); }
+        else if (cfg.dest && (this._portalByKey.get(cfg.dest) || this._portalCells.get(cfg.dest))) {
+          actionUsed = true;
+          const db = this._portalByKey.get(cfg.dest) || this._portalCells.get(cfg.dest), dfp = OH_BUILDINGS.footprintOf(db.typeId, this._density), dw = dfp.w, dh = dfp.h;
+          const px = (db.col + dw / 2) * this.grid.cell, py = (db.row + dh + 0.5) * this.grid.cell;
+          this._triggerTransit(p, near, { px, py, key: db.col + ',' + db.row });
+        } else { actionUsed = true; this._notify('This ' + label + ' is not linked to a destination yet.', 100); }
       }
-      // A nearby LOCK (insert key) or LEVER toggles on E (before the decoration notice).
+      if (!near || nd > useR * 0.6) p._portalCd = false;   // release the guard once clear of the destination
       if (intent.action && !actionUsed && this._useNearbyLock(p)) actionUsed = true;
       if (intent.action && !actionUsed && this._toggleNearbyLever(p)) actionUsed = true;
-      // Universal action (decoration notice) — only if nothing else consumed E.
       if (intent.action && !actionUsed) this._doAction(p);
-
+      // Goal — ANY player reaching it wins (co-op any-one-reaches; the modes phase refines this).
       if ((this.mode === 'platformer' || this.mode === 'campaign') && this.goal) {
-        const c = this._cellOf(p.x, p.y); // goal is a 2×2 region from its anchor
+        const c = this._cellOf(p.x, p.y);
         if (c.col >= this.goal.col && c.col < this.goal.col + 2 && c.row >= this.goal.row && c.row < this.goal.row + 2) { this._wonExitColor = this.goal.color || 0; this._win(); }
       }
-      this._updateCamera();
+    }
+
+    // §0c — send a player into a pipe/portal (climb / step / instant). The per-pipe travel toggle
+    // `config.groupTravel` = "pull everyone through" (Mario-3D-World): every OTHER active player
+    // standing near this mouth is pulled along; otherwise only the triggering player travels.
+    _triggerTransit(p, b, dest) {
+      const cfg = b.config || {};
+      const send = (pl) => {
+        if (b.typeId === 'pipe' && this.settings.pipeClimbAnim !== false) this._startPipeClimb(pl, b, dest);
+        else if (b.typeId === 'portal' && this.settings.portalStepAnim !== false) this._startPortalStep(pl, b, dest);
+        else { const c = this._cellOf(dest.px, dest.py); pl.x = dest.px; pl.y = dest.py; pl.elev = this._elev(c.col, c.row); pl._portalCd = true; pl._portalGlow = { keys: [b.col + ',' + b.row, dest.key], t: 42 }; }
+      };
+      send(p);
+      if (cfg.groupTravel === true || cfg.groupTravel === 'all') {
+        const useR = this.unit * 2.0;
+        for (const other of this.activePlayers()) {
+          if (other === p || other._climb || other._portalCd) continue;
+          let nearMouth = false;
+          for (const [ck, bb] of this._portalCells) { if (bb !== b) continue; const [cc, rr] = ck.split(',').map(Number); if (Math.hypot((cc + 0.5) * this.grid.cell - other.x, (rr + 0.5) * this.grid.cell - other.y) < useR) { nearMouth = true; break; } }
+          if (nearMouth) send(other);
+        }
+      }
     }
 
     // §Overhead multiplayer (Phase 0d) — shared auto-fit camera. Single-player: centre on the one
