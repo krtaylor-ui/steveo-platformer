@@ -539,6 +539,13 @@
       else { ctx.fillStyle = S.shirt; ctx.fillRect(-r * 0.36, -span / 2, r * 0.72, span); }
       // Head (smaller, on top).
       const headR = r * 0.5;
+      // Girl sprite: longer hair — two strands flanking the head, extending down past the shoulders.
+      // Boy sprite: just the square head cap below. Colours still come from the palette either way.
+      if (opts.sprite === 'girl') {
+        ctx.fillStyle = S.hair;
+        ctx.fillRect(-headR * 1.15, -headR, headR * 0.4, headR * 2.6);   // left strand
+        ctx.fillRect(headR * 0.75, -headR, headR * 0.4, headR * 2.6);    // right strand
+      }
       ctx.fillStyle = S.hair; ctx.fillRect(-headR, -headR, headR * 2, headR * 2);
       if (opts.eyeSockets) { ctx.fillStyle = '#222'; ctx.fillRect(headR - headR * 0.5, -headR * 0.55, headR * 0.34, headR * 0.34); ctx.fillRect(headR - headR * 0.5, headR * 0.2, headR * 0.34, headR * 0.34); }
       else { ctx.fillStyle = 'rgba(255,255,255,.10)'; ctx.fillRect(-headR, -headR, headR * 2, headR * 0.4); }

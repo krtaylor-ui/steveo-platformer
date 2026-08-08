@@ -1565,9 +1565,15 @@
       const aimA = cl ? cl.face : OH_CONTROLS.angleOf(p.aim);
       // Pipe EMERGE: grow from small back to full as the player climbs out (QA F14).
       const em = p._emerge ? Math.max(0.25, Math.min(1, p._emerge.t / p._emerge.dur)) : 1;
+      // Per-player appearance (colours + Boy/Girl). Team play => shirt becomes the team colour.
+      const _pnum = (p._index | 0) + 1;
+      const _teamIdx = (this.settings && this.settings.versusTeams && this._versusOn()) ? p._team : null;
+      const _pal = (typeof PLAYER_LOOKS !== 'undefined') ? PLAYER_LOOKS.palette(_pnum, _teamIdx) : null;
+      const _spr = (typeof PLAYER_LOOKS !== 'undefined') ? PLAYER_LOOKS.sprite(_pnum) : 'boy';
       OVERHEAD.drawOverheadPlayer(ctx, cx, cy, (cl ? rr * cl.scale : rr) * em, p.dist, cl ? false : moving, aimA,
         { rotate: true, weapon: inFlight ? null : (p.weapon || 'pickaxe'), moveAngle: (cl ? cl.face : (p.moveAngle != null ? p.moveAngle : OH_CONTROLS.angleOf(p.aim))), spin, somersault, facing: aimA,
-          grab: cl ? cl.grab : reach, mantleLeg: cl ? cl.mantleLeg : 0, crouch: cl ? cl.crouch : 0 });
+          grab: cl ? cl.grab : reach, mantleLeg: cl ? cl.mantleLeg : 0, crouch: cl ? cl.crouch : 0,
+          palette: _pal, sprite: _spr });
       ctx.globalAlpha = 1;
       if (p.iFrames > 0 && ((p.iFrames >> 2) & 1)) { ctx.globalAlpha = 0.4; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
       // Aim reticle.
