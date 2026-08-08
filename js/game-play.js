@@ -37,8 +37,16 @@ const GAME_PLAY = {
       // Overhead worlds run on the top-down engine (OverheadGame), not the side-scroll
       // Game. Hand the whole session to OVERHEAD_PLAY, which has its own world-load,
       // controller-setup, pause and exit flow. Side-scroll continues below unchanged.
-      const isOverhead = (gameData.viewMode === 'overhead') ||
-        !!(gameData.world_data && gameData.world_data.viewMode === 'overhead');
+      // Detect overhead robustly: viewMode is the primary signal, but an overhead world
+      // ALWAYS has a mapSnapshot (grid/ground/elevation) that side-scroll worlds never carry —
+      // so fall back to that in case viewMode was dropped by an older save/copy path. Without
+      // this fallback an overhead world silently loads as a generic 2D adventure level
+      // (Kevin, build 411 — "picked an overhead world, a 2D world showed up").
+      const wd = (gameData && gameData.world_data) ? gameData.world_data : gameData;
+      const isOverhead = !!(wd && (wd.viewMode === 'overhead' || wd.mapSnapshot)) ||
+        gameData.viewMode === 'overhead' || !!gameData.mapSnapshot;
+      try { console.log('[GamePlay] engine dispatch →', isOverhead ? 'OVERHEAD' : 'side-scroll',
+        '(mode', this.gameMode + ', viewMode', (wd && wd.viewMode) + ', mapSnapshot', !!(wd && wd.mapSnapshot) + ')'); } catch (_) {}
       if (isOverhead) {
         if (typeof OVERHEAD_PLAY === 'undefined' || typeof OverheadGame === 'undefined') {
           alert('Overhead engine not loaded — please hard-reload.'); this._goBackToSelection(); return;

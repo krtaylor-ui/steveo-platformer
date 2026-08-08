@@ -283,12 +283,19 @@ const SANDBOX = {
     const origin = isLocal
       ? '<span class="origin-badge">💾 Local</span>'
       : '<span class="origin-badge origin-cloud">☁ Cloud</span>';
-    // Overhead worlds show their overhead mode + a 🗺 badge, and NO side-view
-    // mode dropdown (their mode is fixed to the overhead ruleset).
+    // Overhead worlds get a 🗺 badge, and (as of build 412) their OWN play-mode dropdown right
+    // on the card — set Platform / Speed Run / Arena here without opening the editor (Kevin).
+    // The dropdown drives the same gameModeDefault code the New Game world lists filter on.
     const badge = overhead
-      ? `<span class="mode-badge">🗺 ${this._esc((w.world_data && w.world_data.mode) || 'overhead')}</span>`
+      ? `<span class="mode-badge">🗺 ${this.getModeLabel(mode === 'NRM' ? 'PLT' : mode)}</span>`
       : `<span class="mode-badge mode-${mode}">${this.getModeLabel(mode)}</span>`;
-    const modeSelect = overhead ? '' : `
+    const ohModes = [['PLT', 'Platform'], ['RUN', 'Speed Run'], ['ARN', 'Arena']];
+    const modeSelect = overhead ? `
+          <label class="mode-select-label">Mode:
+            <select class="mode-select" data-world-id="${this._esc(w.id)}" data-overhead="1">
+              ${ohModes.map(([v, t]) => `<option value="${v}"${v === mode ? ' selected' : ''}>${t}</option>`).join('')}
+            </select>
+          </label>` : `
           <label class="mode-select-label">Mode:
             <select class="mode-select" data-world-id="${this._esc(w.id)}">
               ${['NRM', 'PLT', 'RUN', 'ARN'].map(m =>
@@ -446,9 +453,14 @@ const SANDBOX = {
       if (!res.ok) { alert('Failed to change game mode'); await this.loadWorlds(); return; }
       // Keep local cache in sync so a filter re-query stays consistent.
       const w = this.worlds.find(x => x.id === worldId);
-      if (w) { w.world_data = w.world_data || {}; w.world_data.gameModeDefault = gameModeDefault; }
-      // If a mode filter is active, the card may no longer belong — refresh.
+      if (w) {
+        w.world_data = w.world_data || {}; w.world_data.gameModeDefault = gameModeDefault;
+        if (w.world_data.viewMode === 'overhead') { w.world_data.mode = { NRM: 'platformer', PLT: 'platformer', RUN: 'speedrunner', ARN: 'arena' }[gameModeDefault] || w.world_data.mode; }
+      }
+      // If a mode filter is active, the card may no longer belong — refresh; otherwise
+      // re-render in place so the badge/dropdown reflect the new mode immediately.
       if (this.currentFilter !== 'all') await this.loadWorlds();
+      else if (typeof this.renderWorlds === 'function') this.renderWorlds(this.worlds);
     } catch (error) {
       console.error('Change mode error:', error);
       alert('Failed to change game mode');

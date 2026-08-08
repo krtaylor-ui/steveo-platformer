@@ -488,6 +488,12 @@ module.exports = function setupWorldsRoutes(app) {
       if (getErr || !prev) return res.status(404).json({ error: 'World not found' });
 
       const world_data = { ...(prev.world_data || {}), gameModeDefault };
+      // Overhead worlds also carry a RUNTIME ruleset (world_data.mode) that the OverheadGame
+      // engine reads — keep it in sync with the chosen play mode so a card mode change fully
+      // takes effect (Platform=platformer, Speed Run=speedrunner, Arena=arena).
+      if (world_data.viewMode === 'overhead') {
+        world_data.mode = { NRM: 'platformer', PLT: 'platformer', RUN: 'speedrunner', ARN: 'arena' }[gameModeDefault] || world_data.mode || 'platformer';
+      }
 
       const { data: world, error } = await supabaseAdmin
         .from('worlds')
