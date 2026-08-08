@@ -29,5 +29,15 @@ ok(OVERHEAD_PLAY._playerCount(many) === 4, 'player count clamps to 4 max');
 ok(OVERHEAD_PLAY._playerCount({}) === 1, 'no spawns -> 1 player (no throw)');
 ok(OVERHEAD_PLAY._resolveWorld(null) === null, 'null game_data -> null (handled)');
 
+console.log('OVERHEAD_PLAY — engine dispatch detection (isOverheadGameData):');
+const D = OVERHEAD_PLAY.isOverheadGameData.bind(OVERHEAD_PLAY);
+ok(D({ viewMode: 'overhead', mapSnapshot: {} }) === true, 'overhead viewMode -> true');
+ok(D({ viewMode: undefined, mapSnapshot: { gridW: 10 } }) === true, 'LEGACY: no viewMode but a mapSnapshot -> true (the fallback A5 could not reach live)');
+ok(D({ world_data: { viewMode: 'overhead' } }) === true, 'wrapped world_data.viewMode -> true');
+ok(D({ world_data: { mapSnapshot: {} } }) === true, 'wrapped world_data.mapSnapshot -> true (legacy wrapper)');
+ok(D({ grid: [[1]], gameModeDefault: 'PLT' }) === false, 'a 2D world (grid, no mapSnapshot) -> false');
+ok(D({}) === false, 'empty -> false');
+ok(D(null) === false, 'null -> false (no throw)');
+
 console.log(`\noverhead play: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

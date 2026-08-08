@@ -33,6 +33,18 @@
   }
   const optionHtml = (opts, sel) => opts.map((o) => `<option value="${o.v}"${o.v === sel ? ' selected' : ''}>${o.label}</option>`).join('');
 
+  function padConnected(slot) {
+    if (slot == null || slot < 0) return false;
+    try { const pads = (typeof navigator !== 'undefined' && navigator.getGamepads) ? (navigator.getGamepads() || []) : []; return !!pads[slot]; } catch (_) { return false; }
+  }
+  // The dropdown default for a player: their saved assignment, UNLESS it's a gamepad slot with no
+  // pad currently connected — then fall back to keyboard (-1) so a stale saved assignment doesn't
+  // leave P1 pointing at "Gamepad 1 (not detected)" and effectively unassigned (412 tester note).
+  function effectiveAssign(i) {
+    const c = cfg(); const raw = c ? c.getAssignment(i) : (i === 1 ? -1 : i - 1);
+    return (raw >= 0 && !padConnected(raw)) ? -1 : raw;
+  }
+
   const OVERHEAD_PLAY = {
     _ctx: null, _world: null, _watch: null, _pauseEl: null,
 
@@ -80,6 +92,16 @@
     },
     _playerCount(world) { return Math.max(1, Math.min(4, ((world && world.spawns || []).length) || 1)); },
 
+    // Is a game record's game_data an OVERHEAD world? viewMode is the primary signal, but an
+    // overhead world ALWAYS carries a mapSnapshot that side-scroll worlds never have — so we also
+    // accept that (and a nested world_data wrapper) as a fallback for records whose viewMode was
+    // dropped by an older save/copy path. Kept pure + here so GAME_PLAY dispatch stays testable.
+    isOverheadGameData(gd) {
+      if (!gd) return false;
+      const wd = gd.world_data ? gd.world_data : gd;
+      return !!(wd && (wd.viewMode === 'overhead' || wd.mapSnapshot)) || gd.viewMode === 'overhead' || !!gd.mapSnapshot;
+    },
+
     // ── Pre-launch controller setup ─────────────────────────────────────────
     _openSetup(world, gameMode, done) {
       const maxByWorld = this._playerCount(world);
@@ -87,10 +109,9 @@
       const opts = padOptions(), c = cfg();
       let rows = '';
       for (let i = 1; i <= 4; i++) {
-        const assigned = c ? c.getAssignment(i) : (i === 1 ? -1 : i - 1);
         rows += `<div class="ohs-row" data-p="${i}" style="display:flex;align-items:center;gap:10px;margin:6px 0">
           <span class="oh-pchip" style="background:${PLAYER_COLORS[i - 1]}">P${i}</span>
-          <select class="ohs-pad" style="flex:1;padding:6px">${optionHtml(opts, assigned)}</select></div>`;
+          <select class="ohs-pad" style="flex:1;padding:6px">${optionHtml(opts, effectiveAssign(i))}</select></div>`;
       }
       ov.innerHTML = `<div class="ohs-card">
         <h2 style="margin:0 0 4px">Set up controllers</h2>
@@ -133,7 +154,7 @@
       const opts = padOptions();
       let rows = '';
       for (let i = 1; i <= n; i++) {
-        const a = c ? c.getAssignment(i) : -1;
+        const a = effectiveAssign(i);
         const aim = c ? c.getAimSensitivity(i) : 1, dz = c ? c.getDeadzone(i) : 0.2;
         rows += `<div class="ohp-row" data-p="${i}">
           <div style="display:flex;align-items:center;gap:10px"><span class="oh-pchip" style="background:${PLAYER_COLORS[i - 1]}">P${i}</span>

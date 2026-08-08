@@ -43,8 +43,9 @@ const GAME_PLAY = {
       // this fallback an overhead world silently loads as a generic 2D adventure level
       // (Kevin, build 411 — "picked an overhead world, a 2D world showed up").
       const wd = (gameData && gameData.world_data) ? gameData.world_data : gameData;
-      const isOverhead = !!(wd && (wd.viewMode === 'overhead' || wd.mapSnapshot)) ||
-        gameData.viewMode === 'overhead' || !!gameData.mapSnapshot;
+      const isOverhead = (typeof OVERHEAD_PLAY !== 'undefined' && OVERHEAD_PLAY.isOverheadGameData)
+        ? OVERHEAD_PLAY.isOverheadGameData(gameData)
+        : (!!(wd && (wd.viewMode === 'overhead' || wd.mapSnapshot)) || gameData.viewMode === 'overhead' || !!gameData.mapSnapshot);
       try { console.log('[GamePlay] engine dispatch →', isOverhead ? 'OVERHEAD' : 'side-scroll',
         '(mode', this.gameMode + ', viewMode', (wd && wd.viewMode) + ', mapSnapshot', !!(wd && wd.mapSnapshot) + ')'); } catch (_) {}
       if (isOverhead) {
