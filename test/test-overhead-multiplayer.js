@@ -507,6 +507,20 @@ console.log('Phase versus(3) — scoring / win / HUD:');
   ok(gp.players[0]._out === false && gp.players[1]._out === false, 'living players have _out === false, not undefined');
   // (c) the versus HUD drops below the Designer/God button row in Test mode (no collision).
   ok(/const top = this\._testMode \? 36 : 8;/.test(gs), 'versus HUD offsets below the Test-mode button row');
+  // (d) boomerang PvP works for a NON-P1 thrower (no mouse) at a near foe — was arced around by
+  //     the fixed range; now auto-ranges to the target. (409 tester: boomerang PvP FAIL.)
+  [65, 136, 200].forEach((foeDist) => {
+    const gb = mkVs({ versusMode: 'deathmatch', versusTeams: false }, 2);
+    const P2 = gb.players[1], P1 = gb.players[0];
+    P2.x = 8 * 32; P2.y = 8 * 32; P2.aim = { x: 1, y: 0 }; P2.lastAim = { x: 1, y: 0 }; P2.weapon = 'boomerang'; P2._fireCd = 0;
+    P1.x = P2.x + foeDist; P1.y = P2.y; P1.hp = 20; P1.iFrames = 0;
+    P2._intent = { fire: true, move: { x: 0, y: 0 }, aim: { x: 1, y: 0 }, aimAngle: 0 }; P2._raw = {};
+    gb._updateWeapons(P2, null);   // non-P1 path -> _boomThrowDist auto-range
+    for (let f = 0; f < 160 && P2._boom; f++) gb._updateProjectiles();
+    ok(P1.hp < 20, 'boomerang PvP damages a non-P1 thrower\'s foe at ' + foeDist + 'px (auto-range)');
+  });
+  // (e) HUD pluralizes 1 life / 1 kill.
+  ok(/lv === 1 \? ' life' : ' lives'/.test(gs) && /k === 1 \? ' kill' : ' kills'/.test(gs), 'versus HUD pluralizes "1 life" / "1 kill"');
 }
 
 console.log(`\noverhead multiplayer (FULL: 0a-0f + combat + co-op lives + versus): ${pass} passed, ${fail} failed`);

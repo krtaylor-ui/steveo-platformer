@@ -709,8 +709,21 @@
         if (raw.recallBtn && p._trident) OH_WEAPONS.recallTrident(p._trident);
         else if (fire && !p._trident) { p._trident = OH_WEAPONS.startTrident(p.x, p.y, ang, wc); p._trident.elev = p.elev; p._fireCd = 10; }
       } else if (p.weapon === 'boomerang') {
-        if (fire && !p._boom) { const dist = (mouseWorld && p === this.player) ? Math.hypot(mouseWorld.x - p.x, mouseWorld.y - p.y) : (this.settings.boomerangRange || this.unit * 6); p._boom = OH_WEAPONS.startBoomerang(p.x, p.y, ang, dist, wc); p._boom._hit = {}; p._boom.elev = p.elev; p._fireCd = 10; }
+        if (fire && !p._boom) { const dist = (mouseWorld && p === this.player) ? Math.hypot(mouseWorld.x - p.x, mouseWorld.y - p.y) : this._boomThrowDist(p, ang); p._boom = OH_WEAPONS.startBoomerang(p.x, p.y, ang, dist, wc); p._boom._hit = {}; p._boom.elev = p.elev; p._fireCd = 10; }
       }
+    }
+    // Boomerang without a mouse (P2-P4 sticks, or P1 on a gamepad): the boomerang only sweeps back
+    // through the aim axis at its FAR apex, so a fixed range arcs AROUND a nearer foe (P2-P4 could
+    // never land a boomerang PvP hit — 409 tester finding). Auto-range the throw to the nearest
+    // target roughly in the aim direction (mobs, and enemy players in versus); else a sane default.
+    _boomThrowDist(p, ang) {
+      const maxR = (this.settings && this.settings.boomerangRange) || 340;
+      const def = (this.settings && this.settings.boomerangRange) || this.unit * 6;
+      const ax = Math.cos(ang), ay = Math.sin(ang); let best = Infinity;
+      const consider = (t) => { const dx = t.x - p.x, dy = t.y - p.y, d = Math.hypot(dx, dy); if (d < 1) return; if ((dx * ax + dy * ay) / d > 0.6 && d < best) best = d; };   // within ~53° of aim
+      for (const m of (this.mobs || [])) if (m && !m.dead) consider(m);
+      if (this._versusOn()) for (const foe of this._enemyPlayers(p)) consider(foe);
+      return best === Infinity ? def : Math.max(this.unit * 1.5, Math.min(maxR, best));
     }
     _weaponCfg() { const s = this.settings || {}; return { crossbowSpeed: s.crossbowSpeed, tridentSpeed: s.tridentSpeed, tridentReturnSpeed: s.tridentReturnSpeed, boomerangSpeed: s.boomerangSpeed, boomerangMaxRange: s.boomerangRange, boomerangWidth: s.boomerangWidth }; }
     _melee(p, ang, weapon) {
@@ -1849,7 +1862,8 @@
           ctx.fillStyle = 'rgba(10,14,24,.72)'; ctx.fillRect(8, y, 150, 16);
           ctx.fillStyle = cols[i] || '#fff';
           const tag = this.settings.versusTeams ? ('P' + (i + 1) + ' (T' + (p._team + 1) + ')') : ('P' + (i + 1));
-          const val = dm ? (p._score | 0) + ' kills' : (p._out ? 'OUT' : (p._lives | 0) + ' lives');
+          const k = p._score | 0, lv = p._lives | 0;
+          const val = dm ? (k + (k === 1 ? ' kill' : ' kills')) : (p._out ? 'OUT' : (lv + (lv === 1 ? ' life' : ' lives')));
           ctx.fillText(tag + '  ' + val, 12, y + 2);
         });
         if (dm) { ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillText('first to ' + (((this.settings.versusKillTarget) | 0) || 10), 12, top + (this.players.length) * 18 + 2); }
