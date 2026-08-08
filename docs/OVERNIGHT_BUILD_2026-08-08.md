@@ -25,7 +25,7 @@ call; LAST step = a big plain-ASCII tester test plan covering everything, then s
   `_drawFlyingTubeGlass` now loop activePlayers() (were P1-only). Enter/advance already per-p.
 
 ## REMAINING (do in this order; each = commit + build bump + green suite)
-- [ ] O3 (2D half): recolour the LIVE 2D player sprite per-player from PLAYER_LOOKS. The 2D sprite
+- [DONE 418] O3 (2D half): recolour the LIVE 2D player sprite per-player from PLAYER_LOOKS. The 2D sprite
   is drawn from hard-coded hex (shirt #4A8FD4, pants #2C5F8A, skin #F4C78A, hair #7D4E1A, shoes
   #3D1C02 — see death-scatter defs at game.js ~1138 for the region map). Find the LIVE player draw
   (NOT `_spawnDeathParts`), parameterize its region colours by `PLAYER_LOOKS.palette(pnum, teamIdx)`

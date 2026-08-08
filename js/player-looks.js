@@ -13,12 +13,13 @@
 
   const STORAGE_KEY = 'steveo_player_looks_v1';
 
-  // Distinct per-player defaults (P1 red, P2 blue, P3 green, P4 yellow).
+  // Distinct per-player defaults. P1 = the CLASSIC Steve look (blue) so single-player is unchanged;
+  // P2 red, P3 green, P4 yellow so multiplayer is always tellable apart with zero config.
   const DEFAULTS = [
-    { sprite: 'boy',  skin: '#e0b083', hair: '#3a2a1a', shirt: '#d64545', pants: '#7a2d2d' },
-    { sprite: 'boy',  skin: '#e0b083', hair: '#2a2a2a', shirt: '#3f74c4', pants: '#294a80' },
-    { sprite: 'girl', skin: '#c68642', hair: '#7d4e1a', shirt: '#4caf50', pants: '#2e7d32' },
-    { sprite: 'girl', skin: '#f4c78a', hair: '#c0870f', shirt: '#f0c419', pants: '#b58910' },
+    { sprite: 'boy',  skin: '#f4c78a', hair: '#7d4e1a', shirt: '#4a8fd4', pants: '#2c5f8a' },   // P1 classic Steve
+    { sprite: 'boy',  skin: '#e0b083', hair: '#2a2a2a', shirt: '#d64545', pants: '#7a2d2d' },   // P2 red
+    { sprite: 'girl', skin: '#c68642', hair: '#7d4e1a', shirt: '#4caf50', pants: '#2e7d32' },   // P3 green
+    { sprite: 'girl', skin: '#f4c78a', hair: '#c0870f', shirt: '#f0c419', pants: '#b58910' },   // P4 yellow
   ];
   // Team shirt colours (team 0 / team 1).
   const TEAM_COLORS = ['#d64545', '#3f74c4'];

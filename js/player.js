@@ -1550,7 +1550,7 @@ class Player {
   _drawPipePose(ctx, sx, sy) {
     // Same proportions as the normal sprite (_drawStanding): head 16×16 @ sx+2/sy, body 12×16
     // @ sx+4/sy+18, arms outside the body at sx & sx+16, legs to sy+52. Front view.
-    const SKIN = '#F4C78A', PANTS = '#2C5F8A', SHOE = '#3D1C02';
+    const SKIN = this._charSkin(), PANTS = this._charPants(), SHOE = '#3D1C02';
     const HAIR = this._charHair();
     const SHIRT = this.shirtColor || this._charShirt();
     // Head + hair (top + dropping down both sides).
@@ -1579,7 +1579,7 @@ class Player {
     // Normal-sprite proportions (head 16×16 @ sx+2, body 12×16 @ sx+4/sy+18), seen from behind.
     const cx = sx + this.width / 2;
     const HAIR = this._charHair(), SHIRT = this.shirtColor || this._charShirt();
-    const SKIN = '#F4C78A', PANTS = '#2C5F8A', EDGE = 'rgba(0,0,0,0.35)';
+    const SKIN = this._charSkin(), PANTS = this._charPants(), EDGE = 'rgba(0,0,0,0.35)';
     const ph = Math.sin(this._climbAnim || 0);            // -1..1 climb phase (arms/legs alternate)
     if (this._hasPonytail && this._hasPonytail()) { ctx.fillStyle = HAIR; ctx.fillRect(cx - 2, sy + 16, 4, 8); }
     // Torso — a touch wider than before.
@@ -1644,7 +1644,7 @@ class Player {
   // slides past it, then lifts + reaches to the next grip; the hip SHIFTS onto the weight-bearing
   // (planted) hand and the torso rocks — how much depends on the style. Idle → both hands grip.
   _drawBarFigure(ctx, sx, sy) {
-    const SKIN = '#F4C78A', HAIR = this._charHair(), SHIRT = this.shirtColor || this._charShirt(), PANTS = '#2C5F8A', SHOE = '#3D1C02';
+    const SKIN = this._charSkin(), HAIR = this._charHair(), SHIRT = this.shirtColor || this._charShirt(), PANTS = this._charPants(), SHOE = '#3D1C02';
     const EDGE = 'rgba(0,0,0,0.35)';
     const TL = 16, LL = 17, HEAD = 16;
     const facing = this.facing || 1;
@@ -1702,10 +1702,19 @@ class Player {
 
   // Draw the blocky figure from a hip point with a waist angle (torso+head) and a
   // hip angle (legs), arms running shoulder→hand. Angles in radians; +toward facing.
-  // ── Character skin palette (male = Steve, female = Alex-ish) ──
-  _charHair()   { return this.charType === 'female' ? '#A83A1E' : '#7D4E1A'; }  // ginger vs brown
-  _charShirt()  { return this.charType === 'female' ? '#3FA34D' : '#4A8FD4'; }  // green vs blue (default; team colour overrides)
-  _hasPonytail(){ return this.charType === 'female'; }
+  // ── Character skin palette (per-player via PLAYER_LOOKS; falls back to the classic
+  // male=Steve / female=Alex look). _ownerId is 'p1'..'p4'. In team play the arena/CTF code
+  // still sets this.shirtColor, which overrides _charShirt() in every draw method (§6).
+  _pnum() { const m = /^p([1-4])$/.exec(this._ownerId || ''); return m ? +m[1] : (((this._index | 0) + 1) || 1); }
+  _looksField(field, fallback) {
+    try { if (typeof PLAYER_LOOKS !== 'undefined') { const v = PLAYER_LOOKS.get(this._pnum())[field]; if (v) return v; } } catch (_) {}
+    return fallback;
+  }
+  _charHair()   { return this._looksField('hair',  this.charType === 'female' ? '#A83A1E' : '#7D4E1A'); }  // ginger vs brown
+  _charShirt()  { return this._looksField('shirt', this.charType === 'female' ? '#3FA34D' : '#4A8FD4'); }  // green vs blue (team colour overrides)
+  _charSkin()   { return this._looksField('skin',  '#F4C78A'); }
+  _charPants()  { return this._looksField('pants', '#2C5F8A'); }
+  _hasPonytail(){ try { if (typeof PLAYER_LOOKS !== 'undefined') return PLAYER_LOOKS.sprite(this._pnum()) === 'girl'; } catch (_) {} return this.charType === 'female'; }
   // Ponytail for the flat (standing/crouch) poses: a tuft off the BACK-lower head,
   // below where a helmet lip would sit. The head is a 16×16 box at (sx+2, sy); the
   // whole sprite is flipped for facing-left, so "back" = the local left edge.
@@ -1717,7 +1726,7 @@ class Player {
   }
 
   _drawFigureAt(ctx, hipX, hipY, torso, leg, handX, handY, facing) {
-    const SKIN='#F4C78A', HAIR=this._charHair(), SHIRT=this.shirtColor||this._charShirt(), PANTS='#2C5F8A', SHOE='#3D1C02';
+    const SKIN = this._charSkin(), HAIR=this._charHair(), SHIRT=this.shirtColor||this._charShirt(), PANTS = this._charPants(), SHOE='#3D1C02';
     const TL=16, LL=17, HEAD=16;
     const tA = torso * facing;
     const shX = hipX + TL*Math.sin(tA),  shY = hipY - TL*Math.cos(tA);          // shoulders
@@ -1773,10 +1782,10 @@ class Player {
 
   _drawStanding(ctx, sx, sy, swing, tuck = 0, armAngleL = null, armAngleR = null, hipBend = 0) {
     // ── Colors ──────────────────────────────────────────────
-    const SKIN    = '#F4C78A';
+    const SKIN = this._charSkin();
     const HAIR    = this._charHair();
     const SHIRT   = this.shirtColor || this._charShirt(); // CTF team shirt colour (§6) overrides
-    const PANTS   = '#2C5F8A';
+    const PANTS = this._charPants();
     const SHOE    = '#3D1C02';
     const SHADOW  = 'rgba(0,0,0,0.4)';
 
@@ -1880,10 +1889,10 @@ class Player {
   }
 
   _drawCrouch(ctx, sx, sy) {
-    const SKIN  = '#F4C78A';
+    const SKIN = this._charSkin();
     const HAIR  = this._charHair();
     const SHIRT = this.shirtColor || this._charShirt(); // CTF team shirt colour (§6) overrides
-    const PANTS = '#2C5F8A';
+    const PANTS = this._charPants();
     const SHOE  = '#3D1C02';
 
     // Legs bent
