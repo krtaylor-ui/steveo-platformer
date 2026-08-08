@@ -228,7 +228,7 @@ console.log('Build 368 — P1.7 unit-offset audit: pipe-climb positions stay pro
   ok(/edgeY: cy \+ this\.unit \* 0\.45/.test(oh), 'pipe rim offset is unit-based (block-relative)');
   ok(/below = edgeY \+ this\.unit \* 0\.5/.test(oh), 'pipe approach offset is unit-based');
   ok(/cy - this\.unit \* 0\.14/.test(oh), 'pipe opening offset is unit-based');
-  ok(/reach: this\.unit \* \(this\.settings\.meleeReach \|\| 2\.4\)/.test(oh), 'melee HIT cone reach is unit-based (block-relative — correct, not a bug)');
+  ok(/reachU = this\.unit \* \(this\.settings\.meleeReach \|\| 2\.4\)/.test(oh), 'melee HIT cone reach is unit-based (block-relative — correct, not a bug)');
   ok(/reach = this\.unit \* \(this\.settings\.meleeReach \|\| 2\.4\) \* z/.test(oh), 'melee DRAWN arc uses the SAME unit-based reach, so hit and draw cannot drift apart');
 }
 

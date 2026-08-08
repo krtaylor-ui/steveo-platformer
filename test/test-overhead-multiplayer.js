@@ -442,5 +442,36 @@ console.log('Phase versus(1) — settings + teams + FIXED arena camera:');
   ok(!gc._versusOn(), 'versusOff (co-op) reports versus inactive');
 }
 
-console.log(`\noverhead multiplayer (... + versus settings/teams/camera): ${pass} passed, ${fail} failed`);
+console.log('Phase versus(2) — PvP: player weapons damage enemy players (teams-aware); co-op has no friendly fire:');
+{
+  const mkVs = (settings, np) => new OverheadGame(mk({ spawns: [{ col: 3, row: 8 }, { col: 5, row: 8 }, { col: 7, row: 8 }, { col: 9, row: 8 }], settings: Object.assign(OH_SETTINGS.defaults(), settings) }), { testMode: true, numPlayers: np || 2 }, () => {});
+  // Deathmatch, no teams: P1 melees P2 -> P2 takes damage, and a KILL credits P1's score.
+  let g = mkVs({ versusMode: 'deathmatch', versusTeams: false }, 2);
+  g.players[0].x = 8 * 32; g.players[0].y = 8 * 32; g.players[0].aim = { x: 1, y: 0 };
+  g.players[1].x = 8.6 * 32; g.players[1].y = 8 * 32;   // P2 right in front of P1
+  const hp0 = g.players[1].hp;
+  g._melee(g.players[0], 0, 'sword');
+  ok(g.players[1].hp < hp0, 'PvP: P1 melee damaged enemy P2');
+  // Kill credit: drain P2 to 1hp then a lethal melee credits P1.
+  g.players[1].hp = 1; g.players[1].iFrames = 0; g.players[0]._fireCd = 0;   // clear the swing cooldown from the first melee
+  g._melee(g.players[0], 0, 'sword');
+  ok(g.players[0]._score === 1 && g.players[1]._dead, 'PvP: the kill credited P1 (_score 1) and downed P2');
+  // Teams ON: P1 and P3 are same team (index%2==... 0 and 0) -> no friendly fire.
+  g = mkVs({ versusMode: 'deathmatch', versusTeams: true }, 4);
+  ok(g.players[0]._team === g.players[2]._team, 'P1 and P3 are teammates');
+  g.players[0].x = 8 * 32; g.players[0].y = 8 * 32; g.players[0].aim = { x: 1, y: 0 };
+  g.players[2].x = 8.6 * 32; g.players[2].y = 8 * 32; g.players[2].iFrames = 0;   // teammate in front
+  const thp0 = g.players[2].hp;
+  g._melee(g.players[0], 0, 'sword');
+  ok(g.players[2].hp === thp0, 'teams: NO friendly fire (teammate unharmed)');
+  // Co-op (versus off): melee never hits other players.
+  g = mkVs({ versusMode: 'off' }, 2);
+  g.players[0].x = 8 * 32; g.players[0].y = 8 * 32; g.players[0].aim = { x: 1, y: 0 };
+  g.players[1].x = 8.6 * 32; g.players[1].y = 8 * 32; g.players[1].iFrames = 0;
+  const chp0 = g.players[1].hp;
+  g._melee(g.players[0], 0, 'sword');
+  ok(g.players[1].hp === chp0, 'co-op: NO friendly fire (players cannot damage each other)');
+}
+
+console.log(`\noverhead multiplayer (... + versus PvP): ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

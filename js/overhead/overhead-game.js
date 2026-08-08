@@ -239,6 +239,13 @@
       for (const pl of live) { const dx = pl.x - x, dy = pl.y - y, d = dx * dx + dy * dy; if (d < bd) { bd = d; best = pl; } }
       return best;
     }
+    // §modes versus — the players `attacker` may damage: everyone alive except itself and (when
+    // versusTeams) its own team. Empty in co-op/single-player (no friendly fire — PvP is gated).
+    _enemyPlayers(attacker) {
+      if (!this._versusOn()) return [];
+      const teams = !!(this.settings && this.settings.versusTeams);
+      return this.activePlayers().filter((o) => o !== attacker && !(teams && o._team === attacker._team));
+    }
     // §0e — advance each downed player's death burst + respawn timer; respawn at its OWN spawn.
     // Multiplayer only (single-player uses the global dying->dead flow). Runs every frame.
     _advancePlayerDeaths() {
@@ -677,7 +684,7 @@
       if (!p.weapon) { if (intent.melee) this._melee(p, ang, 'pickaxe'); return; }
       if (raw.meleeWeaponBtn) this._melee(p, ang, p.weapon);   // dedicated weapon-swing button (not the fire click)
       const wc = this._weaponCfg();
-      if (p.weapon === 'crossbow') { if (fire) { this._bolts.push(Object.assign(OH_WEAPONS.startBolt(p.x, p.y, ang, wc), { owner: 'p', elev: p.elev })); p._fireCd = 14; } }
+      if (p.weapon === 'crossbow') { if (fire) { this._bolts.push(Object.assign(OH_WEAPONS.startBolt(p.x, p.y, ang, wc), { owner: 'p', elev: p.elev, _by: p })); p._fireCd = 14; } }
       else if (p.weapon === 'trident') {
         if (raw.recallBtn && p._trident) OH_WEAPONS.recallTrident(p._trident);
         else if (fire && !p._trident) { p._trident = OH_WEAPONS.startTrident(p.x, p.y, ang, wc); p._trident.elev = p.elev; p._fireCd = 10; }
@@ -688,8 +695,11 @@
     _weaponCfg() { const s = this.settings || {}; return { crossbowSpeed: s.crossbowSpeed, tridentSpeed: s.tridentSpeed, tridentReturnSpeed: s.tridentReturnSpeed, boomerangSpeed: s.boomerangSpeed, boomerangMaxRange: s.boomerangRange, boomerangWidth: s.boomerangWidth }; }
     _melee(p, ang, weapon) {
       if (p._fireCd > 0) return; p._fireCd = 18; p._swingT = 14; p._swingDur = 14; p._swingAng = ang; p._swingWeapon = weapon || 'pickaxe';   // trigger the swing anim
-      const hits = OH_COMBAT.coneHit({ x: p.x, y: p.y }, ang, this.mobs.filter((m) => !m.dead && this._canAttack(p.elev, m.elev || 0)), { reach: this.unit * (this.settings.meleeReach || 2.4), halfAngle: this._meleeHalfAngle(), maxHits: 3 });
+      const reachU = this.unit * (this.settings.meleeReach || 2.4), half = this._meleeHalfAngle();
+      const hits = OH_COMBAT.coneHit({ x: p.x, y: p.y }, ang, this.mobs.filter((m) => !m.dead && this._canAttack(p.elev, m.elev || 0)), { reach: reachU, halfAngle: half, maxHits: 3 });
       for (const m of hits) { m.hp -= 4; if (m.hp <= 0) m.dead = true; }
+      // §modes versus — melee also hits enemy players in the cone (teams-aware; kill credit to p).
+      if (this._versusOn()) { const foes = this._enemyPlayers(p).filter((o) => this._canAttack(p.elev, o.elev || 0)); for (const t of OH_COMBAT.coneHit({ x: p.x, y: p.y }, ang, foes, { reach: reachU, halfAngle: half, maxHits: 4 })) this._hurt(t, 4, 'Melee', p); }
       // Shatter the first glass pane in the swing arc (within reach).
       if (this._glassShatter) {
         const reach = this.unit * (this.settings.meleeReach || 2.4), step = this.grid.cell * 0.5;
@@ -701,16 +711,22 @@
     _updateProjectiles() {
       const live = this.mobs.filter((m) => !m.dead);
       // Crossbow bolts (shared array; owner-tagged - any player's bolts hit mobs).
-      for (const b of this._bolts) { OH_WEAPONS.stepBolt(b); const bc = this._cellOf(b.x, b.y); const brokeGlass = this._shatterGlass(bc.col, bc.row); if (!brokeGlass && this._boltWalled(b)) { b.dead = true; continue; } const hit = OH_COMBAT.lineHit({ x: b.x - b.vx, y: b.y - b.vy }, { x: b.x, y: b.y }, live, this.unit * 0.3); if (hit && this._canAttack(b.elev || 0, hit.elev || 0)) { hit.hp -= 5; if (hit.hp <= 0) hit.dead = true; b.dead = true; } }
+      for (const b of this._bolts) { OH_WEAPONS.stepBolt(b); const bc = this._cellOf(b.x, b.y); const brokeGlass = this._shatterGlass(bc.col, bc.row); if (!brokeGlass && this._boltWalled(b)) { b.dead = true; continue; } const hit = OH_COMBAT.lineHit({ x: b.x - b.vx, y: b.y - b.vy }, { x: b.x, y: b.y }, live, this.unit * 0.3); if (hit && this._canAttack(b.elev || 0, hit.elev || 0)) { hit.hp -= 5; if (hit.hp <= 0) hit.dead = true; b.dead = true; }
+        // §modes versus — a bolt also hits enemy PLAYERS (credit the shooter b._by).
+        if (!b.dead && this._versusOn() && b._by) { for (const t of this._enemyPlayers(b._by)) { if (this._canAttack(b.elev || 0, t.elev) && Math.hypot(b.x - t.x, b.y - t.y) < t.r + this.unit * 0.3) { this._hurt(t, 5, 'Shot', b._by); b.dead = true; break; } } } }
       this._bolts = this._bolts.filter((b) => !b.dead);
       // §combat — Trident + Boomerang are PER-PLAYER (each on p._trident / p._boom).
       for (const p of this.activePlayers()) {
         if (p._trident) { OH_WEAPONS.stepTrident(p._trident, p); const t = p._trident;
           if (t.state === 'out') { const tc = this._cellOf(t.x, t.y); if (!this._shatterGlass(tc.col, tc.row) && this._boltWalled(t)) OH_WEAPONS.recallTrident(t); }   // shatter glass and fly on, else a too-high wall returns it
-          if (!t.caught) { for (const m of live) if (this._canAttack(p.elev, m.elev || 0) && Math.hypot(m.x - t.x, m.y - t.y) < m.r + this.unit * 0.3) { m.hp -= 6; if (m.hp <= 0) m.dead = true; if (t.state === 'out') t.state = 'return'; } } if (t.caught) p._trident = null; }
+          if (!t.caught) { for (const m of live) if (this._canAttack(p.elev, m.elev || 0) && Math.hypot(m.x - t.x, m.y - t.y) < m.r + this.unit * 0.3) { m.hp -= 6; if (m.hp <= 0) m.dead = true; if (t.state === 'out') t.state = 'return'; }
+            if (this._versusOn()) for (const foe of this._enemyPlayers(p)) if (this._canAttack(p.elev, foe.elev || 0) && Math.hypot(foe.x - t.x, foe.y - t.y) < foe.r + this.unit * 0.3) { this._hurt(foe, 6, 'Trident', p); if (t.state === 'out') t.state = 'return'; } }   // §modes versus PvP
+          if (t.caught) p._trident = null; }
         if (p._boom) { OH_WEAPONS.stepBoomerang(p._boom, p); const b = p._boom;
           if (b.t < 0.5 && this._boltWalled(b)) b.t = 1 - b.t;   // wall on the way out → start coming back
-          for (const m of live) { const id = m.col + ',' + m.row + ',' + (this.mobs.indexOf(m)); if (!b._hit[id] && this._canAttack(p.elev, m.elev || 0) && Math.hypot(m.x - b.x, m.y - b.y) < m.r + this.unit * 0.3) { m.hp -= 4; b._hit[id] = 1; if (m.hp <= 0) m.dead = true; } } if (b.dead) p._boom = null; }
+          for (const m of live) { const id = m.col + ',' + m.row + ',' + (this.mobs.indexOf(m)); if (!b._hit[id] && this._canAttack(p.elev, m.elev || 0) && Math.hypot(m.x - b.x, m.y - b.y) < m.r + this.unit * 0.3) { m.hp -= 4; b._hit[id] = 1; if (m.hp <= 0) m.dead = true; } }
+          if (this._versusOn()) for (const foe of this._enemyPlayers(p)) { const id = 'pl' + foe._index; if (!b._hit[id] && this._canAttack(p.elev, foe.elev || 0) && Math.hypot(foe.x - b.x, foe.y - b.y) < foe.r + this.unit * 0.3) { this._hurt(foe, 4, 'Boomerang', p); b._hit[id] = 1; } }   // §modes versus PvP
+          if (b.dead) p._boom = null; }
       }
       // Mob bolts (skeletons).
       for (const mb of this._mobBolts) { OH_WEAPONS.stepBolt(mb); if (this._boltWalled(mb)) { mb.dead = true; continue; }
@@ -924,7 +940,7 @@
       return b.startDown ? !powered : powered;
     }
     // §0e — per-player. `p` is the player being hurt / soft-respawned (was always this.player).
-    _hurt(p, amt, why) { if (this._god || p.iFrames > 0 || p._dead) return; p.hp -= amt; p.iFrames = 45; if (p.hp <= 0) this._die(p, why || 'Defeated'); }
+    _hurt(p, amt, why, attacker) { if (this._god || p.iFrames > 0 || p._dead) return; p.hp -= amt; p.iFrames = 45; if (p.hp <= 0) { if (attacker && attacker !== p) attacker._score = (attacker._score | 0) + 1; this._die(p, why || 'Defeated'); } }   // §modes versus: the killer gets kill credit
     _fall(p, msg) { if (p.hp <= 0) { this._die(p, msg || 'You died'); return; } p.x = p._spawn.x; p.y = p._spawn.y; p.jump = null; p.iFrames = 60; const c = this._cellOf(p.x, p.y); p.elev = this._elev(c.col, c.row); }
     // Family-friendly death (no blood/gore). Default: the player bursts into its
     // own coloured sprite blocks. PIT deaths first show a front-facing figure with
