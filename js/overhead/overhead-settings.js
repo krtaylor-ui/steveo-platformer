@@ -51,6 +51,12 @@
       // shared pool of coopLivesCount lives. Match ends when everyone is out. Single-player ignores this.
       coopLives:        'infinite',
       coopLivesCount:   3,
+      // Versus/arena (2-4 players). 'off' = co-op. 'deathmatch' = most kills / first to
+      // versusKillTarget. 'lastStanding' = last player (or team) not out wins (uses coopLives count).
+      // versusTeams pairs players into 2 teams (no friendly fire, shared team score/win).
+      versusMode:       'off',
+      versusTeams:      false,
+      versusKillTarget: 10,
       // View / controls.
       controlScheme:    'free-aim', // free-aim | move-to-aim | twin-stick
       angleLockDeg:     0,          // 0 = smooth aim
@@ -251,6 +257,9 @@
     // ── Multiplayer (2-4 players) ──
     SEL('coopLives', G_MP, [['infinite', 'Infinite respawn'], ['perPlayer', 'Per-player lives'], ['shared', 'Shared pool']], 'Co-op lives', false, 'with 2+ players: Infinite = always respawn at your own spawn; Per-player = each has N lives then stays out; Shared = one pool of N lives. Match ends when everyone is out.'),
     R('coopLivesCount', G_MP, 1, 9, 1, 'Lives (per-player or shared pool)', false, 'how many lives when co-op lives is not Infinite'),
+    SEL('versusMode', G_MP, [['off', 'Off (co-op)'], ['deathmatch', 'Deathmatch (most kills)'], ['lastStanding', 'Last standing']], 'Versus mode (PvP)', false, 'Off = players co-operate. Deathmatch = players damage each other, first to the kill target wins. Last standing = last player/team not out of lives wins. Versus uses a fixed whole-arena camera.'),
+    TOG('versusTeams', G_MP, 'Versus teams (pair into 2 teams)', false, 'in versus, split players into 2 teams - no friendly fire, shared team score/win'),
+    R('versusKillTarget', G_MP, 3, 30, 1, 'Deathmatch kill target', false, 'first to this many kills wins a Deathmatch'),
     // ── Designer Locks ──
     TOG('hideFromExport', G_LOCK, 'Hide from export', false, 'ON removes the Export buttons for this world. NOT protection — anyone can still read the JSON in their browser; it only takes away the easy download. You can always turn it off and export your own world.'),
     // ── Interaction animations ──

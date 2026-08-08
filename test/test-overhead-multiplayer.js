@@ -414,5 +414,33 @@ console.log('Phase modes — creator exposes the co-op lives setting (source):')
   ok(/SEL\('coopLives'/.test(ss) && /R\('coopLivesCount'/.test(ss), 'settings schema exposes the co-op lives controls');
 }
 
-console.log(`\noverhead multiplayer (0a-0f + edge-hold + combat + co-op lives): ${pass} passed, ${fail} failed`);
+console.log('Phase versus(1) — settings + teams + FIXED arena camera:');
+{
+  const W = 30, H = 16, ground = [], elevation = [];
+  for (let r = 0; r < H; r++) { ground.push(new Array(W).fill('grass')); elevation.push(new Array(W).fill(0)); }
+  const mkVs = (over) => mk(Object.assign({ mapSnapshot: { gridW: W, gridH: H, density: 1, baseW: W, baseH: H, cell: 32, objectScaleMode: 'independent', ground, elevation, decorations: [] },
+    spawns: [{ col: 3, row: 8 }, { col: 6, row: 8 }, { col: 9, row: 8 }, { col: 12, row: 8 }] }, over));
+  // Teams ON -> paired index%2.
+  let g = new OverheadGame(mkVs({ settings: Object.assign(OH_SETTINGS.defaults(), { versusMode: 'deathmatch', versusTeams: true }) }), { testMode: true, numPlayers: 4 }, () => {});
+  ok(g._versusOn(), 'versus is active (deathmatch, 4 players)');
+  ok(g.players.map(p => p._team).join('') === '0101', 'teams ON: players paired into 2 teams (index%2)');
+  ok(g.players.every(p => p._score === 0), 'scores start at 0');
+  // Teams OFF -> each its own team (free-for-all).
+  g = new OverheadGame(mkVs({ settings: Object.assign(OH_SETTINGS.defaults(), { versusMode: 'deathmatch', versusTeams: false }) }), { testMode: true, numPlayers: 4 }, () => {});
+  ok(g.players.map(p => p._team).join('') === '0123', 'teams OFF: each player its own team (free-for-all)');
+  // FIXED whole-arena camera: zoom fits the world and does NOT tether as players spread.
+  g.input.isDown = () => false; g.input.isJustDown = () => false; g.input.pJustDown = () => false; g.input.pAttack = () => false;
+  g.input.pGp = (i) => i === 1 ? { moveX: 1, moveY: 0, aimX: 0, aimY: 0 } : { moveX: 0, moveY: 0, aimX: 0, aimY: 0 };
+  g._update();
+  const z0 = g.grid.masterZoom;
+  const fit = Math.max(0.35, Math.min(3, Math.min(CANVAS_W / (W * 32), CANVAS_H / (H * 32))));
+  ok(Math.abs(z0 - fit) < 1e-6, 'versus camera zoom = whole-arena fit');
+  for (let f = 0; f < 80; f++) g._update();
+  ok(Math.abs(g.grid.masterZoom - z0) < 1e-6, 'versus camera is FIXED (no co-op tether as a player runs off)');
+  // Co-op (versus off) still tethers - not fixed.
+  const gc = new OverheadGame(mkVs({ settings: OH_SETTINGS.defaults() }), { testMode: true, numPlayers: 2 }, () => {});
+  ok(!gc._versusOn(), 'versusOff (co-op) reports versus inactive');
+}
+
+console.log(`\noverhead multiplayer (... + versus settings/teams/camera): ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

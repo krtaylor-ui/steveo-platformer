@@ -221,8 +221,12 @@
       }
       p._spawn = { x: p.x, y: p.y };
       p._lives = ((this.settings && this.settings.coopLivesCount) | 0) || 3;   // §modes co-op per-player lives
+      p._team = (this.settings && this.settings.versusTeams) ? (index % 2) : index;   // §modes versus team (or its own)
+      p._score = 0;   // §modes versus kills
       return p;
     }
+    // §modes — is a PvP versus mode active? (co-op / single-player = false)
+    _versusOn() { return !!(this.settings && this.settings.versusMode && this.settings.versusMode !== 'off' && this.players && this.players.length > 1); }
     // Legacy single-player call-sites read `this.player`; keep it pointing at P1 (players[0])
     // through the players[] migration. activePlayers() skips downed/absent slots.
     get player() { return this.players ? this.players[0] : null; }
@@ -528,6 +532,14 @@
     // regroups the zoom eases back toward the world's base zoom (never zooms IN past it). Not
     // split-screen — one shared view, per Kevin's decision.
     _updateCamera() {
+      // §modes versus — a FIXED whole-arena camera (adversaries roam apart; show the whole map,
+      // no co-op tether/edge-hold). Fit the world into the view and centre on it.
+      if (this._versusOn()) {
+        const ww = OH_GRID.pixelWidth(this.grid), wh = OH_GRID.pixelHeight(this.grid);
+        OH_GRID.setZoom(this.grid, Math.min(CANVAS_W / ww, CANVAS_H / wh));   // clamps to MIN/MAX
+        this.camera = OH_GRID.centerOn(this.grid, ww / 2, wh / 2, CANVAS_W, CANVAS_H);
+        return;
+      }
       const live = this.activePlayers();
       if (live.length <= 1) { const p = this.player; if (p) this.camera = OH_GRID.centerOn(this.grid, p.x, p.y, CANVAS_W, CANVAS_H); return; }
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, sx = 0, sy = 0;
