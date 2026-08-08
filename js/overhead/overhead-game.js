@@ -460,6 +460,13 @@
 
     _update() {
       const inp = this.input; this._frame = (this._frame || 0) + 1;
+      // Poll real gamepad hardware into inp.gamepads EVERY frame. The 2D engine does this in
+      // game.js (this.input.updateGamepad()); the overhead loop was missing it entirely, so real
+      // controllers read as empty/disconnected and did nothing in overhead play — only the test-mode
+      // pGp overrides worked (Kevin, build 414). Sync the pad->player slots first so deadzone
+      // resolution uses the right assignment. Guarded: the headless test InputManager stub has neither.
+      this._syncControllerSlots();
+      if (inp.updateGamepad) inp.updateGamepad();
       if (inp.isJustDown && inp.isJustDown('Backquote')) this._debug = !this._debug;   // toggle the debug HUD
       // Advance the day/night clock (~60fps). detectMultiplier feeds mob sight.
       if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') { this._elapsed += 1 / 60; this._tod = OH_DAYNIGHT.phase(this._elapsed, this._dayLen, this._dayStart); this._detectMult = OH_DAYNIGHT.detectMultiplier(this._tod); }
@@ -483,7 +490,6 @@
       // independently in the shared world. COMBAT, the E-action (pipes/portals/levers/locks) and the
       // goal stay P1-only for now — they go per-player in the combat + Phase 0c passes. Secondary
       // players can't die yet (0e): _moveWithCollision blocks them at pits/walls like a mob.
-      this._syncControllerSlots();
       if (inp.isJustDown && (inp.isJustDown('KeyQ') || inp.isJustDown('Tab'))) this._cycleWeapon();   // P1 weapon switch (keyboard)
       const mouseWorld = OH_GRID.screenToWorld(this.grid, this.camera, inp.mouse.x, inp.mouse.y);
       for (const pl of this.activePlayers()) this._controlPlayer(pl, pl._index);
