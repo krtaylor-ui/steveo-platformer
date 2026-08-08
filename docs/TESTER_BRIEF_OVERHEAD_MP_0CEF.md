@@ -1,4 +1,4 @@
-# TESTER BRIEF - Overhead Multiplayer, foundation 0c-0f (build 402)
+# TESTER BRIEF - Overhead Multiplayer, foundation 0c-0f (build 403)
 
 Plain ASCII (relay-safe). Supersedes the 397 brief. Notation: ">=" at least, "->" then.
 
@@ -9,13 +9,16 @@ UPDATES since the 401 run (thanks for the findings):
 - Item 3 padless: the console override now has an E-trigger recipe (see item 3) + the config key.
 - Item 4 was fine: respawn IS at the player's own spawn - your (13,7) was the pGp override still
   driving P2 AFTER it respawned. Clear the override before reading the respawn position.
-- Pull the latest: `git pull` on overhead-mp-0f, hard-reload, confirm badge build 402.
+- Pull the latest: `git pull` on overhead-mp-0f, hard-reload, confirm badge build 403.
+- STALE-BUNDLE GUARD is now live (build 403): if the served build differs from the one running,
+  a red banner appears ("Stale build: running N, server has M. Hard-reload."). That kills the
+  trap you hit 3x - if you see it, hard-reload; if not, you are on the served build.
 
 ## Why a new build
 
 Build 397 (what you tested) did NOT render players 2-4 at all - the "draw all players" fix
 landed in build 398. So on 397, launching 4 players gives players.length 4 but only P1 is
-visible. This build (402, branch `overhead-mp-0f`) has that fix PLUS the rest of the foundation:
+visible. This build (403, branch `overhead-mp-0f`) has that fix PLUS the rest of the foundation:
 per-player pipes/portals, per-player death/respawn, and mobs that chase the nearest player.
 
 ## Setup (branch changed)
@@ -23,7 +26,7 @@ per-player pipes/portals, per-player death/respawn, and mobs that chase the near
 1. git checkout overhead-mp-0f
 2. npm run static  -> http://localhost:8000
 3. HARD RELOAD to beat the stale bundle (the page served 391 last time while the server was on
-   397). Confirm the badge: console `GAME_VERSION.match(/build \d+/)[0]` -> "build 402". If it is
+   397). Confirm the badge: console `GAME_VERSION.match(/build \d+/)[0]` -> "build 403". If it is
    lower, cache-bust again (Ctrl-Shift-R / clear the SW) before doing anything.
 
 ## READ THIS FIRST - the blocker from last run
