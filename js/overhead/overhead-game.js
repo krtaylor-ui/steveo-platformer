@@ -223,6 +223,7 @@
       p._lives = ((this.settings && this.settings.coopLivesCount) | 0) || 3;   // §modes co-op per-player lives
       p._team = (this.settings && this.settings.versusTeams) ? (index % 2) : index;   // §modes versus team (or its own)
       p._score = 0;   // §modes versus kills
+      p._out = false;   // §modes — explicit so `=== false` checks read right for living players
       return p;
     }
     // §modes — is a PvP versus mode active? (co-op / single-player = false)
@@ -1841,16 +1842,17 @@
       if (this._versusOn()) {
         const dm = this.settings.versusMode === 'deathmatch';
         const cols = ['#ffd24a', '#7fd0ff', '#9cff7f', '#ff9c9c'];   // P1-P4 accents
+        const top = this._testMode ? 36 : 8;   // clear the Designer/God button row in Test mode
         ctx.save(); ctx.font = 'bold 12px sans-serif'; ctx.textBaseline = 'top';
         (this.players || []).forEach((p, i) => {
-          const y = 8 + i * 18;
+          const y = top + i * 18;
           ctx.fillStyle = 'rgba(10,14,24,.72)'; ctx.fillRect(8, y, 150, 16);
           ctx.fillStyle = cols[i] || '#fff';
           const tag = this.settings.versusTeams ? ('P' + (i + 1) + ' (T' + (p._team + 1) + ')') : ('P' + (i + 1));
           const val = dm ? (p._score | 0) + ' kills' : (p._out ? 'OUT' : (p._lives | 0) + ' lives');
           ctx.fillText(tag + '  ' + val, 12, y + 2);
         });
-        if (dm) { ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillText('first to ' + (((this.settings.versusKillTarget) | 0) || 10), 12, 8 + (this.players.length) * 18 + 2); }
+        if (dm) { ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillText('first to ' + (((this.settings.versusKillTarget) | 0) || 10), 12, top + (this.players.length) * 18 + 2); }
         ctx.restore();
       }
       // Day/night clock (top-right): a sun (day) or moon (night) disc + a label.
@@ -1879,7 +1881,7 @@
       ctx.fillText(`Overhead · ${this.mode} · ${this.baseScheme}${this.player.weapon ? ' · ' + this.player.weapon : ''}  (WASD · mouse aim · click fire · F melee · Space jump · E action · RMB recall trident · wheel zoom)`, 12, CANVAS_H - 12);
       if (this._schemeOverlay > 0) { ctx.globalAlpha = Math.min(1, this._schemeOverlay / 30); ctx.fillStyle = '#ffcf4a'; ctx.textAlign = 'center'; ctx.font = 'bold 13px sans-serif'; ctx.fillText('⟳ Twin-Stick auto-fire', CANVAS_W / 2, 24); ctx.globalAlpha = 1; }
       if (this._notif) { this._notif.t--; if (this._notif.t <= 0) this._notif = null; else { ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(CANVAS_W / 2 - 130, 34, 260, 26); ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = '13px sans-serif'; ctx.fillText(this._notif.text, CANVAS_W / 2, 51); } }
-      if (this.state === 'won' || this.state === 'dead' || this.state === 'paused') { ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H); ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 30px sans-serif'; ctx.fillText(this.state === 'won' ? '★ Level Complete!' : this.state === 'dead' ? 'Game Over' : 'Paused', CANVAS_W / 2, CANVAS_H / 2 - 8); ctx.font = '15px sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText(this.state === 'paused' ? 'Esc to resume · click to exit' : 'Click / Enter to exit', CANVAS_W / 2, CANVAS_H / 2 + 24); }
+      if (this.state === 'won' || this.state === 'dead' || this.state === 'paused') { ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H); ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 30px sans-serif'; ctx.fillText(this.state === 'won' ? ((this._versusOn() && this._winnerMsg) ? this._winnerMsg : '★ Level Complete!') : this.state === 'dead' ? 'Game Over' : 'Paused', CANVAS_W / 2, CANVAS_H / 2 - 8); ctx.font = '15px sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText(this.state === 'paused' ? 'Esc to resume · click to exit' : 'Click / Enter to exit', CANVAS_W / 2, CANVAS_H / 2 + 24); }
     }
 
     // MEASURED performance for THIS world on THIS machine (build 371). Renders the real frame

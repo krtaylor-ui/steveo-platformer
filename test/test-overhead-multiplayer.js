@@ -499,6 +499,14 @@ console.log('Phase versus(3) — scoring / win / HUD:');
   // HUD source: a versus readout is drawn.
   const gs = require('fs').readFileSync(path.join(__dirname, '..', 'js', 'overhead', 'overhead-game.js'), 'utf8');
   ok(/if \(this\._versusOn\(\)\) \{[\s\S]*kills[\s\S]*lives/.test(gs), 'HUD draws a per-player versus readout (kills / lives)');
+  // 408 tester findings —
+  // (a) the win screen shows the winner string in versus, not the generic co-op title.
+  ok(/this\._versusOn\(\) && this\._winnerMsg\) \? this\._winnerMsg : '★ Level Complete!'/.test(gs), 'win screen renders _winnerMsg in versus (not "Level Complete")');
+  // (b) fresh players have _out === false (not undefined), so `=== false` checks read right.
+  let gp = mkVs({ versusMode: 'deathmatch' }, 2);
+  ok(gp.players[0]._out === false && gp.players[1]._out === false, 'living players have _out === false, not undefined');
+  // (c) the versus HUD drops below the Designer/God button row in Test mode (no collision).
+  ok(/const top = this\._testMode \? 36 : 8;/.test(gs), 'versus HUD offsets below the Test-mode button row');
 }
 
 console.log(`\noverhead multiplayer (FULL: 0a-0f + combat + co-op lives + versus): ${pass} passed, ${fail} failed`);
