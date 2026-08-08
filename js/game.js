@@ -2002,6 +2002,9 @@ class Game {
         if (ch) {
           this._chestOpen     = ch;
           this._chestModalSel = 0;
+          // §O6 — if the shared palette tab isn't one the chest offers (e.g. Red Stone / a stale
+          // tab), snap it to World so the chest never opens on an empty palette.
+          if (this.sandbox && !this._chestTabs().some((t) => t.key === this.sandbox.paletteTab)) this.sandbox.paletteTab = 'overworld';
           this.inventoryOpen  = true;
           this.craftingMenu._eWasDown = true;  // consume E so crafting menu ignores it
           this._playSound('sounds/chest-open.mp3');
@@ -4393,11 +4396,11 @@ class Game {
 
     // Tab bar
     if (clicked) {
-      const TABS = ['overworld', 'nether', 'decorative', 'gear', 'other'];
-      for (let i = 0; i < TABS.length; i++) {
-        const tx = L.tabX + i * 92;
-        if (mx >= tx && mx <= tx + 88 && my >= L.tabY && my <= L.tabY + 24) {
-          this.sandbox.paletteTab = TABS[i];
+      const tabs = this._chestTabs(), tw = this._chestTabW(L.pw);
+      for (let i = 0; i < tabs.length; i++) {
+        const tx = L.tabX + i * tw;
+        if (mx >= tx && mx <= tx + tw - 4 && my >= L.tabY && my <= L.tabY + 24) {
+          this.sandbox.paletteTab = tabs[i].key;
           return;
         }
       }
@@ -4459,8 +4462,23 @@ class Game {
     }
   }
 
+  // §O6 — the chest palette tabs, aligned with the MAIN sandbox palette (was a stale set with a
+  // broken "Nether" tab, and the draw vs click lists disagreed so tabs selected the wrong palette).
+  // Redstone is intentionally omitted (its components can't be chest contents). One source of truth
+  // for both the draw + the click hit-test.
+  _chestTabs() {
+    return [
+      { key: 'overworld',  label: 'World',    color: '#4CAF50' },
+      { key: 'decorative', label: 'Decor',    color: '#8ED07A' },
+      { key: 'mechanics',  label: 'Plumbing', color: '#6FB6FF' },
+      { key: 'gear',       label: 'Gear',     color: '#FFD700' },
+      { key: 'other',      label: 'Other',    color: '#FF9800' },
+    ];
+  }
+  _chestTabW(pw) { return Math.floor((pw - 32) / this._chestTabs().length); }
+
   _sbChestLayout() {
-    const pw = 420, slotSz = SLOT_SIZE, gap = SLOT_GAP;
+    const pw = 460, slotSz = SLOT_SIZE, gap = SLOT_GAP;
     const tab = this.sandbox?.paletteTab || 'overworld';
     const items = this._sbChestPaletteItems();
     const nRows = Math.max(1, Math.ceil(items.length / 8));
@@ -4533,26 +4551,21 @@ class Game {
       if (item) this._drawChestItemIcon(ctx, item, sx, sy, L.slotSz);
     }
 
-    // Tab bar
-    const TABS = [
-      { key: 'overworld', label: 'Overworld', color: '#4CAF50' },
-      { key: 'nether',    label: 'Nether',    color: '#FF4400' },
-      { key: 'gear',      label: 'Gear',      color: '#FFD700' },
-      { key: 'other',     label: 'Other',     color: '#FF9800' },
-    ];
+    // Tab bar (shared source of truth with the click hit-test; width scales to fit)
+    const TABS = this._chestTabs(), tw = this._chestTabW(L.pw), tbw = tw - 4;
     for (let i = 0; i < TABS.length; i++) {
-      const tx  = L.tabX + i * 92;
+      const tx  = L.tabX + i * tw;
       const tab = TABS[i];
       const act = this.sandbox.paletteTab === tab.key;
-      const hov = mx >= tx && mx <= tx + 88 && my >= L.tabY && my <= L.tabY + 24;
+      const hov = mx >= tx && mx <= tx + tbw && my >= L.tabY && my <= L.tabY + 24;
       ctx.fillStyle   = act ? `${tab.color}33` : (hov ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.3)');
-      _roundRect(ctx, tx, L.tabY, 88, 24, 4); ctx.fill();
+      _roundRect(ctx, tx, L.tabY, tbw, 24, 4); ctx.fill();
       ctx.strokeStyle = act ? tab.color : (hov ? '#888' : '#333'); ctx.lineWidth = act ? 2 : 1;
-      _roundRect(ctx, tx, L.tabY, 88, 24, 4); ctx.stroke();
+      _roundRect(ctx, tx, L.tabY, tbw, 24, 4); ctx.stroke();
       ctx.fillStyle = act ? tab.color : (hov ? '#ccc' : '#666');
       ctx.font = act ? 'bold 10px Courier New' : '10px Courier New';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(tab.label, tx + 44, L.tabY + 12);
+      ctx.fillText(tab.label, tx + tbw / 2, L.tabY + 12);
     }
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
 

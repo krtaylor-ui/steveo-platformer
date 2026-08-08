@@ -45,7 +45,7 @@ call; LAST step = a big plain-ASCII tester test plan covering everything, then s
   usable by all 4 players; must work in Arena. Mirror the per-player `_climb`/transit pattern
   (per-player state, groupTravel-style). Editor: add a tube tool. Reuse the 2D TRAVEL_TUBE geometry
   helpers if portable, else an overhead-native version. Headless-test the geometry + per-player entry.
-- [ ] O6: 2D sandbox Chest. `_sbChestPaletteItems()` (game.js ~4320) uses paletteTab -> GEAR/OTHER/
+- [DONE 421] O6: 2D sandbox Chest. `_sbChestPaletteItems()` (game.js ~4320) uses paletteTab -> GEAR/OTHER/
   SANDBOX_PALETTE_BLOCKS — but the chest palette/tabs are stale vs the main sandbox palette. Make the
   chest offer ALL current palette tabs correctly (align with the main sandbox palette tab set +
   items). ALSO allow REMOVING an item from a chest slot (e.g. right-click a chest slot deletes it /
