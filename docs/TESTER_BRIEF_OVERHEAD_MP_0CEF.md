@@ -21,7 +21,7 @@ per-player pipes/portals, per-player death/respawn, and mobs that chase the near
 
 The whole 397 run was invalid because the Chrome window was MINIMIZED: visibilityState hidden,
 rAF ~0.2-1 fps, game._elapsed stuck at 0, the sim never advanced. Nothing timing-dependent can be
-trusted in that state (this is the §0 trap in your HANDOFF).
+trusted in that state (this is the frozen-tab trap, section 0 of your HANDOFF).
 
 Before ANY item: run your frame-advance self-check. The window must be VISIBLE and FOREGROUND.
 Confirm `document.visibilityState === 'visible'` AND that `window.game._frame` (or game._elapsed)
