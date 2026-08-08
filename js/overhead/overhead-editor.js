@@ -139,9 +139,9 @@
               <option value="1" selected>1× (coarse)</option><option value="2">2×</option>
               <option value="3">3×</option><option value="4">4× (fine)</option></select></label>
             <label>Game mode <select id="ohc-mode">
-              <option value="platformer" selected>Platformer</option><option value="campaign">Campaign</option>
-              <option value="arena">Arena</option><option value="towerdefense">Tower Defense</option>
-              <option value="moba">MOBA</option></select></label>
+              <option value="platformer" selected>Platform</option><option value="speedrunner">Speed Run</option>
+              <option value="arena">Arena</option><option value="campaign">Campaign</option>
+              <option value="towerdefense">Tower Defense</option><option value="moba">MOBA</option></select></label>
             <label>Control scheme <select id="ohc-scheme">
               <option value="free-aim" selected>Free-Aim</option><option value="move-to-aim">Move-to-Aim</option>
               <option value="twin-stick">Twin-Stick</option></select></label>
@@ -172,7 +172,7 @@
       const ground = [], elevation = [];
       for (let r = 0; r < H; r++) { ground.push(new Array(W).fill('grass')); elevation.push(new Array(W).fill(0)); }
       return {
-        name, mode, viewMode: 'overhead', gameModeDefault: 'NRM',   // NRM keeps server validation happy
+        name, mode, viewMode: 'overhead', gameModeDefault: this._gmdCode(mode),   // discovery key — the world shows up under this play mode
         controlScheme: scheme, angleLockDeg: 0, rules: {},
         mapSnapshot: { gridW: W, gridH: H, density, baseW, baseH, cell, objectScaleMode: 'independent', ground, elevation, decorations: [] },
         buildings: [], mobs: [], items: [], spawns: [{ col: 1, row: H - 2 }], ramps: [], bridges: [], redstone: [],
@@ -366,6 +366,9 @@
         <button id="oh-zin" title="Zoom in (=)">＋</button>
         <button id="oh-settings">⚙ Settings</button>
         <button id="oh-perf" title="Measure the real fps of this world per quality tier on this machine">⏱ Perf</button>
+        <label title="The play mode this world is offered under (Platform / Speed Run / Arena). Set it, then Save so it appears in that mode's New Game list." style="font-size:12px">Mode <select id="oh-mode">
+          ${['platformer:Platform', 'speedrunner:Speed Run', 'arena:Arena', 'campaign:Campaign'].map((o) => { const [v, t] = o.split(':'); return `<option value="${v}"${(this.world.mode || 'platformer') === v ? ' selected' : ''}>${t}</option>`; }).join('')}
+        </select></label>
         <button id="oh-test">▶ Test</button>
         <button id="oh-save" class="primary">💾 Save</button>
         ${(typeof WORLD_TRANSFER !== 'undefined' && WORLD_TRANSFER.exportHidden(this.world)) ? '' : `<button id="oh-export" title="Download this world as a .json file (exports what's on screen, saved or not)">⬇ Export</button>`}
@@ -468,6 +471,7 @@
       g('oh-undo').onclick = () => this.undo(); g('oh-redo').onclick = () => this.redo();
       g('oh-zin').onclick = () => OH_GRID.zoomBy(this.grid, 1.15); g('oh-zout').onclick = () => OH_GRID.zoomBy(this.grid, 0.87);
       g('oh-test').onclick = () => this._test(); g('oh-save').onclick = () => this._save(); g('oh-exit').onclick = () => this.close();
+      { const ms = g('oh-mode'); if (ms) ms.onchange = () => { this.world.mode = ms.value; this._flash('Mode: ' + ms.options[ms.selectedIndex].text + ' — Save to list it under this mode'); this._renderBar(); }; }
       { const ex = g('oh-export'); if (ex) ex.onclick = () => this._export(); }   // absent when the world is Hidden from export (§40.1)
       g('oh-import').onclick = () => this._import();
       // Full terrain rebuild on demand. The incremental patch should leave nothing behind now
@@ -1319,8 +1323,12 @@
     // The exact object Save writes and Export downloads — one helper so the two can't
     // drift (an exported file must be loadable by the same migrator that reads a save).
     _worldPayload() {
-      return Object.assign({}, this.world, { viewMode: 'overhead', gameModeDefault: 'NRM', schemaVersion: (typeof OH_SETTINGS !== 'undefined' && OH_SETTINGS.SCHEMA) || 1 });
+      return Object.assign({}, this.world, { viewMode: 'overhead', gameModeDefault: this._gmdCode(this.world.mode), schemaVersion: (typeof OH_SETTINGS !== 'undefined' && OH_SETTINGS.SCHEMA) || 1 });
     },
+    // Runtime ruleset (`this.world.mode`) -> server gameModeDefault CODE (the single source of
+    // truth for which play-mode list the world appears in). Platform=PLT, Speed Run=RUN, Arena=ARN;
+    // anything else (campaign/td/moba/unset) stays NRM = not yet in a real play-mode flow.
+    _gmdCode(mode) { return { platformer: 'PLT', speedrunner: 'RUN', arena: 'ARN' }[String(mode || '').toLowerCase()] || 'NRM'; },
 
     // ⬇ Export — download the OPEN world (in-memory, so unsaved edits are included)
     // as a .json file. Built client-side, so it works offline and signed-in alike and
@@ -1421,7 +1429,7 @@
           // Mint a server row (dummy side-view size — overwritten by the PUT below),
           // then store the real overhead world_data. No server change needed.
           const cr = await AUTH.authedFetch('/api/worlds/sandbox/create', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ worldName: name, description: 'Overhead world', worldWidth: 25, worldHeight: 15, gameModeDefault: 'NRM' }) });
+            body: JSON.stringify({ worldName: name, description: 'Overhead world', worldWidth: 25, worldHeight: 15, gameModeDefault: this._gmdCode(this.world.mode) }) });
           const row = await cr.json(); if (!cr.ok) throw new Error(row.error || 'create failed');
           this.worldId = row.id;
         }

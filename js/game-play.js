@@ -30,13 +30,30 @@ const GAME_PLAY = {
       if (window.menu && typeof window.menu._stop === 'function') window.menu._stop();
       if (window.game && typeof window.game.destroy === 'function') window.game.destroy();
 
-      // Reveal canvas, show HUD
+      // Build options for Game constructor
+      const gameData = record.game_data || {};
+
+      // ── Engine dispatch by viewMode ──────────────────────────────────────
+      // Overhead worlds run on the top-down engine (OverheadGame), not the side-scroll
+      // Game. Hand the whole session to OVERHEAD_PLAY, which has its own world-load,
+      // controller-setup, pause and exit flow. Side-scroll continues below unchanged.
+      const isOverhead = (gameData.viewMode === 'overhead') ||
+        !!(gameData.world_data && gameData.world_data.viewMode === 'overhead');
+      if (isOverhead) {
+        if (typeof OVERHEAD_PLAY === 'undefined' || typeof OverheadGame === 'undefined') {
+          alert('Overhead engine not loaded — please hard-reload.'); this._goBackToSelection(); return;
+        }
+        this._showLoader(false);
+        return OVERHEAD_PLAY.init({
+          gameId: this.gameId, gameName: this.gameName, gameMode: this.gameMode,
+          record, gameData, onExit: () => this._onGameExit(),
+        });
+      }
+
+      // Reveal canvas, show HUD (side-scroll)
       document.getElementById('game-selection-screen').style.display = 'none';
       document.getElementById('play-hud').style.display = 'flex';
       document.getElementById('play-hud-title').textContent = this.gameName;
-
-      // Build options for Game constructor
-      const gameData = record.game_data || {};
       // A game that has never been played reads as "new" → start fresh at the world's
       // spawn point; an in-progress game restores the saved position/loadout ("Continue").
       // last_played_at is meant to be null until the first save, but the DB column may
