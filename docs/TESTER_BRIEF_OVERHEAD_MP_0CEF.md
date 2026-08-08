@@ -1,12 +1,21 @@
-# TESTER BRIEF - Overhead Multiplayer, foundation 0c-0f (build 401)
+# TESTER BRIEF - Overhead Multiplayer, foundation 0c-0f (build 402)
 
 Plain ASCII (relay-safe). Supersedes the 397 brief. Notation: ">=" at least, "->" then.
+
+UPDATES since the 401 run (thanks for the findings):
+- Item 5 EDGE-HOLD is now implemented (build 402): a straggler no longer walks off-screen at the
+  zoom floor; they are HELD at the screen edge, and the auto-zoom no longer bottoms out at 0.35
+  (capped at max(MIN_ZOOM, base*0.5)) so a heavy world stays readable. RE-CHECK item 5.
+- Item 3 padless: the console override now has an E-trigger recipe (see item 3) + the config key.
+- Item 4 was fine: respawn IS at the player's own spawn - your (13,7) was the pGp override still
+  driving P2 AFTER it respawned. Clear the override before reading the respawn position.
+- Pull the latest: `git pull` on overhead-mp-0f, hard-reload, confirm badge build 402.
 
 ## Why a new build
 
 Build 397 (what you tested) did NOT render players 2-4 at all - the "draw all players" fix
 landed in build 398. So on 397, launching 4 players gives players.length 4 but only P1 is
-visible. This build (401, branch `overhead-mp-0f`) has that fix PLUS the rest of the foundation:
+visible. This build (402, branch `overhead-mp-0f`) has that fix PLUS the rest of the foundation:
 per-player pipes/portals, per-player death/respawn, and mobs that chase the nearest player.
 
 ## Setup (branch changed)
@@ -14,7 +23,7 @@ per-player pipes/portals, per-player death/respawn, and mobs that chase the near
 1. git checkout overhead-mp-0f
 2. npm run static  -> http://localhost:8000
 3. HARD RELOAD to beat the stale bundle (the page served 391 last time while the server was on
-   397). Confirm the badge: console `GAME_VERSION.match(/build \d+/)[0]` -> "build 401". If it is
+   397). Confirm the badge: console `GAME_VERSION.match(/build \d+/)[0]` -> "build 402". If it is
    lower, cache-bust again (Ctrl-Shift-R / clear the SW) before doing anything.
 
 ## READ THIS FIRST - the blocker from last run
@@ -62,7 +71,7 @@ console-drive P2 away:
 Let the REAL loop run (window visible) until the two are well over one screen apart.
 Expected: `window.game.grid.masterZoom` DROPS below its start value as they separate and RISES
 back as they regroup (never above the base). The camera centres on the group midpoint; a player
-who would leave the screen is HELD at the edge. It is ONE shared view (not split-screen).
+who would leave the screen is HELD at the edge (FIXED in 402 - re-check this specifically). It is ONE shared view (not split-screen).
 JUDGEMENT CALLS (need eyes): zoom smooth or jittery? Is the max zoom-out enough or do players get
 too tiny? Does the edge-hold read clearly? Report `masterZoom` start vs most-zoomed-out value.
 
@@ -76,11 +85,19 @@ Zero pads: the pGp override above moves only P2; P1/P3/P4 stay at 0 (you saw +70
 re-confirm here with the window visible so it's the real loop, not 200 manual _update() calls).
 
 ### 3. Pipes/portals - EVERY player uses them, + the travel toggle
-Link two pipes (select a pipe -> its dialog -> Teleport destination). Walk P2 into a pipe and
-press E (its own E): P2 travels. Then edit the pipe and tick "Pull ALL nearby players through
-together": now when one player uses it, everyone standing near the mouth is pulled through too
-(Mario-3D-World style). Off = only the user travels. Also confirm one player using a pipe does NOT
-freeze the others (the old bug).
+Link two pipes (select a pipe -> its dialog -> Teleport destination).
+PADLESS RECIPE for a secondary player's own E-press (this was your blocker - the pGp override only
+carries move/aim; E is a just-pressed button, name "context"/RB):
+    window.game.input.pJustDown = (i, btn) => (i === 1 && btn === 'context');   // P2 presses E
+Stand P2 at a pipe mouth (move it there with the pGp override, then null the override), then
+install the pJustDown override above -> P2 travels on its own E. (Reset both with a reload.)
+THE PULL-ALL CONFIG KEY is `config.groupTravel` on the pipe/portal building. Set it via the editor
+(select the pipe with the Hand tool -> dialog -> "Pull ALL nearby players through together"), or
+padless from the console:
+    window.game.buildings.find(b => b.typeId === 'pipe').config.groupTravel = true;
+Expected: with groupTravel ON, when one player uses the pipe every OTHER player near that mouth is
+pulled through too (Mario-3D-World). OFF (default) = only the user travels. Also confirm one player
+using a pipe does NOT freeze the others (the old bug - you already saw P4's hp change mid-transit).
 
 ### 4. Per-player death + respawn (co-op)
 With 2+ players, walk ONE into the deadly pit (set Pit blocks = deadly in settings). Expected:
