@@ -46,6 +46,11 @@
       attackBlockHeight: 2,
       // Mobs — detection range in BLOCKS (absolute, player-sprite blocks), default 10.
       mobDetectBlocks:  10,
+      // Multiplayer (2-4 players) — how death works in co-op. 'infinite' = always respawn at your
+      // own spawn; 'perPlayer' = each player has coopLivesCount lives then stays out; 'shared' = one
+      // shared pool of coopLivesCount lives. Match ends when everyone is out. Single-player ignores this.
+      coopLives:        'infinite',
+      coopLivesCount:   3,
       // View / controls.
       controlScheme:    'free-aim', // free-aim | move-to-aim | twin-stick
       angleLockDeg:     0,          // 0 = smooth aim
@@ -175,7 +180,7 @@
   const SEL = (key, group, opts, label, advanced, hint) => ({ key, group, type: 'sel', opts, label, advanced: !!advanced, hint });
   const TOG = (key, group, label, advanced, hint) => ({ key, group, type: 'toggle', label, advanced: !!advanced, hint });
   const G_MOVE = 'Movement & Elevation', G_WEP = 'Weapons', G_VIEW = 'View & Controls',
-        G_ATM = 'Atmosphere — Day / Night', G_THREAT = 'Threats', G_LOCK = 'Designer Locks', G_ANIM = 'Interaction animations';
+        G_ATM = 'Atmosphere — Day / Night', G_THREAT = 'Threats', G_LOCK = 'Designer Locks', G_ANIM = 'Interaction animations', G_MP = 'Multiplayer (2-4 players)';
   const SETTINGS_SCHEMA = [
     // ── Movement & Elevation ── (doubleJump/doubleJumpStyle moved ABOVE doubleJumpClear so
     //    the switch precedes the knob that depends on it.)
@@ -243,6 +248,9 @@
     SEL('redstoneVisibility', G_THREAT, [['always', 'Always shown'], ['active', 'Reveal when active'], ['hidden', 'Hidden (sources still show)']], 'Redstone wiring in play', false),
     TOG('bridgeGuardrails', G_THREAT, 'Bridge guardrails (off = can fall off bridges)', false),
     SEL('drawbridgeStyle', G_THREAT, [['vanishing', 'Vanishing (appears/disappears)'], ['animated', 'Animated (raises ~80°)']], 'Drawbridge style', false),
+    // ── Multiplayer (2-4 players) ──
+    SEL('coopLives', G_MP, [['infinite', 'Infinite respawn'], ['perPlayer', 'Per-player lives'], ['shared', 'Shared pool']], 'Co-op lives', false, 'with 2+ players: Infinite = always respawn at your own spawn; Per-player = each has N lives then stays out; Shared = one pool of N lives. Match ends when everyone is out.'),
+    R('coopLivesCount', G_MP, 1, 9, 1, 'Lives (per-player or shared pool)', false, 'how many lives when co-op lives is not Infinite'),
     // ── Designer Locks ──
     TOG('hideFromExport', G_LOCK, 'Hide from export', false, 'ON removes the Export buttons for this world. NOT protection — anyone can still read the JSON in their browser; it only takes away the easy download. You can always turn it off and export your own world.'),
     // ── Interaction animations ──
@@ -253,7 +261,7 @@
     R('interactionSpeed', G_ANIM, 0.5, 2, 0.1, 'Interaction animation speed', true),
   ];
   // Group render order (empty groups auto-hide, so the removed "Mobs" group just vanishes).
-  const GROUP_ORDER = [G_MOVE, G_WEP, G_VIEW, G_ATM, G_THREAT, G_LOCK, G_ANIM];
+  const GROUP_ORDER = [G_MOVE, G_WEP, G_VIEW, G_ATM, G_THREAT, G_MP, G_LOCK, G_ANIM];
 
   const OH_WORLD_SETTINGS = {
     _world: null, _onClose: null, _advanced: false,

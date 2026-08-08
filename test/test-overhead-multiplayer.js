@@ -375,5 +375,44 @@ console.log('Phase combat — P1 combat unchanged (mouse fire still works):');
   ok(g._bolts.length > before, 'P1 still fires on mouse (single-player combat unchanged)');
 }
 
-console.log(`\noverhead multiplayer (0a-0f + edge-hold + per-player combat): ${pass} passed, ${fail} failed`);
+function respawnCycle(g, p) { for (let f = 0; f < 90 && p._dead && !p._out; f++) g._advancePlayerDeaths(); }
+
+console.log('Phase modes — co-op lives: PER-PLAYER (N deaths then OUT; match ends when all out):');
+{
+  const world = mk({ spawns: [{ col: 3, row: 8 }, { col: 8, row: 8 }], settings: Object.assign(OH_SETTINGS.defaults(), { coopLives: 'perPlayer', coopLivesCount: 2 }) });
+  const g = new OverheadGame(world, { testMode: true, numPlayers: 2 }, () => {});
+  ok(g.players[0]._lives === 2, 'per-player lives seeded from coopLivesCount');
+  g._die(g.players[0], 'x'); ok(g.players[0]._lives === 1 && g.players[0]._dead && !g.players[0]._out, 'death 1: a life spent, respawning (not out)');
+  respawnCycle(g, g.players[0]); ok(!g.players[0]._dead, 'P1 respawned after death 1');
+  g._die(g.players[0], 'x'); ok(g.players[0]._lives === 0 && g.players[0]._out, 'death 2: out of lives -> OUT (stays down)');
+  g._advancePlayerDeaths(); ok(g.state === 'playing', 'match continues while P2 still has lives');
+  g._die(g.players[1], 'x'); respawnCycle(g, g.players[1]); ok(!g.players[1]._dead, 'P2 respawned after its 1st death');
+  g._die(g.players[1], 'x'); g._advancePlayerDeaths();
+  ok(g.players[1]._out && g.state === 'dead', 'match ENDS when ALL players are out');
+}
+
+console.log('Phase modes — co-op lives: SHARED POOL (any death drains one shared pool):');
+{
+  const world = mk({ spawns: [{ col: 3, row: 8 }, { col: 8, row: 8 }], settings: Object.assign(OH_SETTINGS.defaults(), { coopLives: 'shared', coopLivesCount: 2 }) });
+  const g = new OverheadGame(world, { testMode: true, numPlayers: 2 }, () => {});
+  g._die(g.players[0], 'x'); ok(g._coopLives === 1 && !g.players[0]._out, 'P1 death drains the shared pool to 1, respawns');
+  respawnCycle(g, g.players[0]);
+  g._die(g.players[1], 'x'); ok(g._coopLives === 0 && g.players[1]._out, 'P2 death empties the pool -> P2 is out');
+}
+
+console.log('Phase modes — co-op lives: INFINITE (default) respawns forever:');
+{
+  const g = new OverheadGame(mk({ spawns: [{ col: 3, row: 8 }, { col: 8, row: 8 }] }), { testMode: true, numPlayers: 2 }, () => {});
+  for (let n = 0; n < 5; n++) { g._die(g.players[0], 'x'); ok(!g.players[0]._out, 'infinite: never out (death ' + (n + 1) + ')'); respawnCycle(g, g.players[0]); }
+  ok(g.state === 'playing', 'infinite: match never ends on death');
+}
+
+console.log('Phase modes — creator exposes the co-op lives setting (source):');
+{
+  const ss = require('fs').readFileSync(path.join(__dirname, '..', 'js', 'overhead', 'overhead-settings.js'), 'utf8');
+  ok(/coopLives:\s*'infinite'/.test(ss) && /coopLivesCount:\s*3/.test(ss), 'defaults carry coopLives + coopLivesCount');
+  ok(/SEL\('coopLives'/.test(ss) && /R\('coopLivesCount'/.test(ss), 'settings schema exposes the co-op lives controls');
+}
+
+console.log(`\noverhead multiplayer (0a-0f + edge-hold + combat + co-op lives): ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

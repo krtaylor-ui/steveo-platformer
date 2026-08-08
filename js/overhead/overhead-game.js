@@ -220,6 +220,7 @@
         const c = this._cellOf(d.x, d.y); p.elev = this._elev(c.col, c.row); p._cameFromPortal = true;
       }
       p._spawn = { x: p.x, y: p.y };
+      p._lives = ((this.settings && this.settings.coopLivesCount) | 0) || 3;   // §modes co-op per-player lives
       return p;
     }
     // Legacy single-player call-sites read `this.player`; keep it pointing at P1 (players[0])
@@ -242,11 +243,16 @@
         if (!p || !p._dead) continue;
         const fx = p._deathFx;
         if (fx && fx.parts) { fx.t++; for (const q of fx.parts) { if (q.life <= 0) continue; q.x += q.vx; q.y += q.vy; q.vx *= 0.9; q.vy *= 0.9; q.rot += q.vr; q.vh -= grav; q.h += q.vh; if (q.h < 0) { q.h = 0; q.vh = 0; } q.life--; } }
+        if (p._out) continue;   // §modes — out of lives: stays down, no respawn
         if (p._respawnT > 0 && --p._respawnT <= 0) {
           p._dead = false; p._deathFx = null; p.hp = p.maxHp; p.x = p._spawn.x; p.y = p._spawn.y; p.jump = null; p.iFrames = 90;
           const c = this._cellOf(p.x, p.y); p.elev = this._elev(c.col, c.row);
           this._notify('P' + ((p._index | 0) + 1) + ' respawned', 60);
         }
+      }
+      // §modes — co-op game over: with 2+ players, once EVERY player is out of lives, end the match.
+      if (this.players.length > 1 && this.state === 'playing' && this.players.every((pl) => pl && pl._out)) {
+        this.state = 'dead'; this._deathMsg = 'All players are out'; this._notify('Game over — all players out', 240);
       }
     }
 
@@ -916,9 +922,18 @@
       // §0e Multiplayer: DOWN this player (burst) then respawn at its OWN spawn; the others keep
       // playing (no global freeze). Single-player keeps the original dying->dead->exit flow below.
       if (this.players.length > 1) {
-        p._dead = true; p.hp = 0; p._deathMsg = msg || 'Down'; p._respawnT = 70; p._climb = null; p.jump = null;
+        p._dead = true; p.hp = 0; p._deathMsg = msg || 'Down'; p._climb = null; p.jump = null;
         p._deathFx = { phase: 'burst', t: 0, x: p.x, y: p.y, parts: this._burstParts(p.x, p.y) };
-        this._notify('P' + ((p._index | 0) + 1) + ' down — respawning', 90);
+        // §modes — co-op lives: infinite = always respawn; per-player = each has coopLivesCount;
+        // shared = one pool. When lives run out the player stays OUT; match ends when ALL are out.
+        const mode = (this.settings && this.settings.coopLives) || 'infinite';
+        const N = ((this.settings && this.settings.coopLivesCount) | 0) || 3;
+        let canRespawn = true;
+        if (mode === 'perPlayer') { p._lives = (p._lives | 0) - 1; canRespawn = p._lives > 0; }
+        else if (mode === 'shared') { if (this._coopLives == null) this._coopLives = N; this._coopLives -= 1; canRespawn = this._coopLives > 0; }
+        const n = 'P' + ((p._index | 0) + 1);
+        if (canRespawn) { p._respawnT = 70; p._out = false; this._notify(n + ' down' + (mode === 'perPlayer' ? ' (' + p._lives + ' left)' : mode === 'shared' ? ' (' + this._coopLives + ' shared)' : ''), 90); }
+        else { p._out = true; p._respawnT = 0; this._notify(n + ' is OUT', 120); }
         return;
       }
       if (this.state === 'dying' || this.state === 'dead') return;
