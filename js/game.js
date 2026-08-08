@@ -20398,14 +20398,20 @@ class Game {
   // Per-frame: fly the traveler through, else watch each mouth for an entry (shared rule above).
   _updateTravelTubes() {
     if (this.gameMode === 'sandbox' || !this._travelTubes || !this._travelTubes.length) return;
-    const p = this.player; if (!p || p.hp <= 0) return;
-    if (p._tubeOwn) { this._advanceTube(p); return; }
-    if (p._tubeCooldown > 0) { p._tubeCooldown--; return; }
-    for (const tube of this._travelTubes) {
-      const pts = this._tubePts(tube);
-      if (pts.length < 2) continue;
-      for (const m of TRAVEL_TUBE.mouths(pts)) {
-        if (this._pipeEntryTriggered(p, m.x, m.y, m.dir)) { this._enterTube(p, tube, pts, m); return; }
+    // §Travel Tube — ALL players (was P1-only). Entry/fly-through/exit are already per-player
+    // (p._tubeOwn / p._tubeCooldown), so this just fans the check out over activePlayers (Kevin O5).
+    for (const p of this.activePlayers()) {
+      if (!p || p.hp <= 0) continue;
+      if (p._tubeOwn) { this._advanceTube(p); continue; }
+      if (p._tubeCooldown > 0) { p._tubeCooldown--; continue; }
+      for (const tube of this._travelTubes) {
+        const pts = this._tubePts(tube);
+        if (pts.length < 2) continue;
+        let entered = false;
+        for (const m of TRAVEL_TUBE.mouths(pts)) {
+          if (this._pipeEntryTriggered(p, m.x, m.y, m.dir)) { this._enterTube(p, tube, pts, m); entered = true; break; }
+        }
+        if (entered) break;
       }
     }
   }
@@ -20701,10 +20707,13 @@ class Game {
   // The tube the player is FLYING through gets its glass drawn OVER the player (solid + pass-in-front;
   // pass-behind is already covered by the front pass) so the traveler always looks INSIDE the glass.
   _drawFlyingTubeGlass(ctx) {
-    const p = this.player; if (!p || !p._tubeOwn) return;
-    const tube = this._travelTubes && this._travelTubes.find(t => t.id === p._tubeId);
-    const mode = tube && (tube.mode || 'solid');
-    if (tube && (mode === 'solid' || mode === 'passFront')) this._drawTubeGroup(ctx, [tube]);
+    // Draw the glass over EVERY player currently flying (was P1-only — Kevin O5).
+    for (const p of this.activePlayers()) {
+      if (!p || !p._tubeOwn) continue;
+      const tube = this._travelTubes && this._travelTubes.find(t => t.id === p._tubeId);
+      const mode = tube && (tube.mode || 'solid');
+      if (tube && (mode === 'solid' || mode === 'passFront')) this._drawTubeGroup(ctx, [tube]);
+    }
   }
   _enterTube(p, tube, pts, m) {
     p._tubeOwn = true; p._tubeId = tube.id;
