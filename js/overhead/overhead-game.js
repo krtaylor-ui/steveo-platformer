@@ -149,7 +149,7 @@
       // level (config.isGoal).
       this._portalCells = new Map(); this._portalCenter = new Map(); this._portalIndex = new Map(); this._portalByKey = new Map(); this._portalCd = false; this._portalGlow = null; this._portalPrompt = null;
       let pIdx = 0;
-      for (const b of this.buildings) if (b.typeId === 'portal' || b.typeId === 'pipe') {
+      for (const b of this.buildings) if (b.typeId === 'portal' || b.typeId === 'pipe' || b.typeId === 'tube') {
         const fpB = OH_BUILDINGS.footprintOf(b.typeId, this._density), fw = fpB.w, fh = fpB.h;
         const key = b.col + ',' + b.row;
         this._portalCenter.set(key, { x: (b.col + fw / 2) * this.grid.cell, y: (b.row + fh / 2) * this.grid.cell });
@@ -338,6 +338,7 @@
       // §0c — a player in pipe/portal transit is driven by its own animation; skip its control this
       // frame but DO NOT freeze the others (the old global this._climb early-return did exactly that).
       if (p._climb) { this._updatePipeClimb(p); p._moving = false; p._intent = null; return null; }
+      if (p._tube) { this._updateTubeFly(p); p._moving = false; p._intent = null; return null; }   // §O4 flying through a glass tube
       if (p.iFrames > 0) p.iFrames--; if (p._fireCd > 0) p._fireCd--;
       if (p._swingT > 0) p._swingT--;   // advance the melee-swing animation
       const raw = this._rawFor(p, idx);
@@ -542,7 +543,8 @@
     _triggerTransit(p, b, dest) {
       const cfg = b.config || {};
       const send = (pl) => {
-        if (b.typeId === 'pipe' && this.settings.pipeClimbAnim !== false) this._startPipeClimb(pl, b, dest);
+        if (b.typeId === 'tube') this._startTubeFly(pl, b, dest);
+        else if (b.typeId === 'pipe' && this.settings.pipeClimbAnim !== false) this._startPipeClimb(pl, b, dest);
         else if (b.typeId === 'portal' && this.settings.portalStepAnim !== false) this._startPortalStep(pl, b, dest);
         else { const c = this._cellOf(dest.px, dest.py); pl.x = dest.px; pl.y = dest.py; pl.elev = this._elev(c.col, c.row); pl._portalCd = true; pl._portalGlow = { keys: [b.col + ',' + b.row, dest.key], t: 42 }; }
       };
@@ -802,7 +804,7 @@
       else this._notify('Locked — need ' + (accept ? accept.join('/') + ' ' : 'a ') + 'key', 90);
       return true;
     }
-    _doAction(p) { let near = null, nd = 1e9; for (const b of this.buildings) { if (b.typeId === 'portal' || b.typeId === 'pipe') continue; const bx = (b.col + 0.5) * this.grid.cell, by = (b.row + 0.5) * this.grid.cell; const d = Math.hypot(bx - p.x, by - p.y); if (d < this.unit * 2 && d < nd) { near = b; nd = d; } } if (near) { const t = OH_BUILDINGS.get(near.typeId); this._notify((t ? t.category : 'Building') + ': ' + near.typeId, 90); } }
+    _doAction(p) { let near = null, nd = 1e9; for (const b of this.buildings) { if (b.typeId === 'portal' || b.typeId === 'pipe' || b.typeId === 'tube') continue; const bx = (b.col + 0.5) * this.grid.cell, by = (b.row + 0.5) * this.grid.cell; const d = Math.hypot(bx - p.x, by - p.y); if (d < this.unit * 2 && d < nd) { near = b; nd = d; } } if (near) { const t = OH_BUILDINGS.get(near.typeId); this._notify((t ? t.category : 'Building') + ': ' + near.typeId, 90); } }
 
     // ── PIPE CLIMB-IN animation — the "pull-up (foreshortened leg)" from the mockup ──
     // Grab the rim → pull the body up to the hands → a leg lifts (foot on the pipe) → the
@@ -877,6 +879,50 @@
       if (this.activePlayers().length <= 1) this.grid.masterZoom = cl.zoomFrom;   // restore the game zoom (solo)
       this.camera = OH_GRID.centerOn(this.grid, p.x, p.y, CANVAS_W, CANVAS_H);
     }
+
+    // §O4 Glass Tube — a linked-pair transport that FLIES the player along a visible straight tube
+    // from the entry endpoint to the exit endpoint. Per-player (p._tube), so 2-4 players can fly at
+    // once (co-op AND arena). Mirrors the pipe/portal linking (config.dest) but with a fly-through
+    // instead of a climb. The player's x/y is lerped along the tube, so _drawPlayer already shows
+    // them mid-flight; _drawGlassTubes renders the glass. groupTravel pulls nearby players too.
+    _startTubeFly(p, b, dest) {
+      const fp = OH_BUILDINGS.footprintOf(b.typeId, this._density);
+      const sx = (b.col + fp.w / 2) * this.grid.cell, sy = (b.row + fp.h / 2) * this.grid.cell;
+      const ex = dest.px, ey = dest.py, dist = Math.hypot(ex - sx, ey - sy);
+      const dur = Math.max(12, Math.min(72, Math.round(dist / Math.max(1, this.unit * 0.6))));   // ~0.6 units/frame
+      p._tube = { sx, sy, ex, ey, t: 0, dur, srcKey: b.col + ',' + b.row, destKey: dest.key };
+      p.x = sx; p.y = sy; p.jump = null; p._moving = false; p._intent = null;
+    }
+    _updateTubeFly(p) {
+      const cl = p._tube; if (!cl) return;
+      cl.t++; const f = Math.min(1, cl.t / cl.dur);
+      p.x = cl.sx + (cl.ex - cl.sx) * f; p.y = cl.sy + (cl.ey - cl.sy) * f;
+      if (f >= 1) this._finishTubeFly(p);
+    }
+    _finishTubeFly(p) {
+      const cl = p._tube; p._tube = null;
+      const c = this._cellOf(cl.ex, cl.ey);
+      p.x = cl.ex; p.y = cl.ey; p.elev = this._elev(c.col, c.row);
+      p._portalCd = true; p._portalGlow = { keys: [cl.srcKey, cl.destKey], t: 42 };
+    }
+    // §O4 — draw a translucent glass tube between each linked tube endpoint and its destination.
+    _drawGlassTubes(ctx, S, cs) {
+      if (!this._portalByKey) return;
+      for (const b of this.buildings) {
+        if (b.typeId !== 'tube') continue;
+        const cfg = b.config || {}; if (!cfg.dest) continue;
+        const db = this._portalByKey.get(cfg.dest); if (!db) continue;
+        const fa = OH_BUILDINGS.footprintOf(b.typeId, this._density), fb = OH_BUILDINGS.footprintOf(db.typeId, this._density);
+        const a = S((b.col + fa.w / 2) * this.grid.cell, (b.row + fa.h / 2) * this.grid.cell);
+        const d = S((db.col + fb.w / 2) * this.grid.cell, (db.row + fb.h / 2) * this.grid.cell);
+        const w = Math.max(6, cs * 0.7);
+        ctx.save(); ctx.lineCap = 'round';
+        ctx.strokeStyle = 'rgba(143,208,230,.22)'; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(d.x, d.y); ctx.stroke();                 // glass body
+        ctx.strokeStyle = 'rgba(255,255,255,.30)'; ctx.lineWidth = Math.max(2, w * 0.28); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(d.x, d.y); ctx.stroke();   // highlight streak
+        ctx.restore();
+      }
+    }
+
     _pickups(p) { for (const it of this.items) { if (it.taken) continue; const ix = (it.col + 0.5) * this.grid.cell, iy = (it.row + 0.5) * this.grid.cell; if (Math.hypot(ix - p.x, iy - p.y) < p.r + this.unit * 0.4) { it.taken = true; if (it.kind === 'weapon') { if (!p.weapons.includes(it.weapon)) p.weapons.push(it.weapon); p.weapon = it.weapon; this._notify('Equipped ' + it.weapon + ' (Q to switch)', 120); } else if (it.kind === 'key') { p.keys.push(it.keyId || it.itemKey); this._notify('Picked up ' + (it.keyId || 'key') + ' key', 90); } else this._notify('Coin!', 60); } } }
     // Cycle the equipped weapon through the collected list (+ pickaxe fallback).
     _cycleWeapon() { const list = this.player.weapons.length ? this.player.weapons.slice() : []; if (!list.includes('pickaxe')) list.push('pickaxe'); if (list.length < 2) return; const i = Math.max(0, list.indexOf(this.player.weapon)); this.player.weapon = list[(i + 1) % list.length]; this._notify(this.player.weapon, 60); }
@@ -1397,8 +1443,10 @@
           OVERHEAD.drawWeapon(ctx, reach * 0.62 * arcScale, wk);
           ctx.restore();
         } }
+      // §O4 — visible glass tubes between linked endpoints (drawn under the badges/glow).
+      this._drawGlassTubes(ctx, S, cs);
       // Portal/pipe # badges + a purple glow on the ends of an active teleport.
-      for (const b of this.buildings) if (b.typeId === 'portal' || b.typeId === 'pipe') {
+      for (const b of this.buildings) if (b.typeId === 'portal' || b.typeId === 'pipe' || b.typeId === 'tube') {
         const fpr = OH_BUILDINGS.footprintOf(b.typeId, this._density), fw = fpr.w, fh = fpr.h;
         const key = b.col + ',' + b.row, sp = S((b.col + fw / 2) * g.cell, (b.row + fh / 2) * g.cell);
         // §0c — glow/prompt are per-player; light a cell that ANY player just used / is near.

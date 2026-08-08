@@ -39,7 +39,7 @@ call; LAST step = a big plain-ASCII tester test plan covering everything, then s
   stop the foreign dark card). Player count from setup, not spawn count. Gamepad nav: read
   ControllerConfig assignments; each pad's d-pad/buttons drive its own panel (poll via a rAF loop or
   hook the InputManager). Keep it controller-first but mouse still works.
-- [ ] O4: glass tubes in OVERHEAD. Check existing overhead transport: overhead has pipes/portals
+- [DONE 420] O4: glass tubes in OVERHEAD. Check existing overhead transport: overhead has pipes/portals
   (`_triggerTransit`, `_startPipeClimb`) + tests test-overhead-glass.js / test-travel-tube.js /
   test-glass-block.js. Add a point-to-point GLASS TUBE building (visible tube + fly-through visual)
   usable by all 4 players; must work in Arena. Mirror the per-player `_climb`/transit pattern

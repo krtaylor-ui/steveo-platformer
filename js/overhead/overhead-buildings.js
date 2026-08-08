@@ -34,6 +34,7 @@
       scaleWithDensity: !!opts.scaleWithDensity,   // footprint grows with map density (pipes/portals)
       onInteract:      opts.onInteract || null,   // string hook id, resolved by the runtime
       color:           opts.color || '#8a7fb0',
+      glassTube:       !!opts.glassTube,           // §O4 — a fly-through glass tube endpoint
     };
   }
 
@@ -44,6 +45,7 @@
   // Footprints (w × h in grid cells) per Kevin's dimensions.
   register(def('portal',      'Portal',   { footprint: { w: 4, h: 1 }, scaleWithDensity: true, interactionType: 'enter', skinVariants: ['default', 'nether', 'end'], onInteract: 'teleport', color: '#7b3fb0' }));
   register(def('pipe',        'Portal',   { footprint: { w: 2, h: 2 }, scaleWithDensity: true, interactionType: 'enter', skinVariants: ['default'], onInteract: 'teleport', color: '#3fae66' }));
+  register(def('tube',        'Portal',   { footprint: { w: 2, h: 2 }, scaleWithDensity: true, interactionType: 'enter', skinVariants: ['default'], onInteract: 'teleport', color: '#8fd0e6', glassTube: true }));
   register(def('healer',      'Healer',   { footprint: { w: 4, h: 4 }, interactionType: 'interact-on-approach', onInteract: 'heal', color: '#3fb07b' }));
   register(def('shop',        'Shop',     { footprint: { w: 4, h: 4 }, interactionType: 'enter', onInteract: 'shop', color: '#b0923f' }));
   register(def('savepoint',   'SavePoint',{ footprint: { w: 2, h: 2 }, blocksMovement: false, interactionType: 'interact-on-approach', onInteract: 'save', color: '#3f8cb0' }));

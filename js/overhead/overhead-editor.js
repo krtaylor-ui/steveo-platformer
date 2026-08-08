@@ -937,7 +937,7 @@
     _rotateClip() { if (!this._clip) return; const { h, cells } = this._clip; for (const c of cells) { const ndc = h - 1 - c.dr, ndr = c.dc; c.dc = ndc; c.dr = ndr; } const t = this._clip.w; this._clip.w = this._clip.h; this._clip.h = t; this._flash('Clipboard rotated 90°'); },
 
     // ── Configuration modals (portal/pipe, goal star, spawn) ───────────────────
-    _portalList() { let n = 0; return (this.world.buildings || []).filter((b) => b.typeId === 'portal' || b.typeId === 'pipe').map((b) => ({ key: b.col + ',' + b.row, n: ++n, label: '#' + n + ' ' + (b.typeId === 'pipe' ? 'Pipe' : 'Portal') + ' (' + b.col + ',' + b.row + ')' })); },
+    _portalList() { let n = 0; return (this.world.buildings || []).filter((b) => b.typeId === 'portal' || b.typeId === 'pipe' || b.typeId === 'tube').map((b) => ({ key: b.col + ',' + b.row, n: ++n, label: '#' + n + ' ' + (b.typeId === 'tube' ? 'Glass Tube' : b.typeId === 'pipe' ? 'Pipe' : 'Portal') + ' (' + b.col + ',' + b.row + ')' })); },
     _portalNum(b) { const p = this._portalList().find((x) => x.key === b.col + ',' + b.row); return p ? p.n : '?'; },
     // Cached palette icons (data URLs, rendered once per key).
     _icon(key, drawFn) {
@@ -1086,7 +1086,7 @@
       return best;
     },
 
-    _selHasSettings(sel) { return !!(sel && (sel.kind === 'device' || sel.kind === 'gate' || sel.kind === 'bridge' || sel.kind === 'goal' || sel.kind === 'spawn' || (sel.kind === 'building' && (sel.ref.typeId === 'portal' || sel.ref.typeId === 'pipe')))); },
+    _selHasSettings(sel) { return !!(sel && (sel.kind === 'device' || sel.kind === 'gate' || sel.kind === 'bridge' || sel.kind === 'goal' || sel.kind === 'spawn' || (sel.kind === 'building' && (sel.ref.typeId === 'portal' || sel.ref.typeId === 'pipe' || sel.ref.typeId === 'tube')))); },
     _selMovable(sel) { return !!(sel && (sel.kind === 'building' || sel.kind === 'mob' || sel.kind === 'item' || sel.kind === 'device' || sel.kind === 'bridge' || sel.kind === 'terrain')); },
     _openSettingsFor(sel) {
       if (!sel) return;
@@ -1095,7 +1095,7 @@
       if (sel.kind === 'bridge') return this._bridgeModal(sel.ref);
       if (sel.kind === 'goal') return this._goalModal();
       if (sel.kind === 'spawn') return this._spawnModal(sel.ref);
-      if (sel.kind === 'building' && (sel.ref.typeId === 'portal' || sel.ref.typeId === 'pipe')) return this._portalModal(sel.ref);
+      if (sel.kind === 'building' && (sel.ref.typeId === 'portal' || sel.ref.typeId === 'pipe' || sel.ref.typeId === 'tube')) return this._portalModal(sel.ref);
       this._flash('No settings for this ' + sel.kind);
     },
     _deleteSel() {
@@ -1235,7 +1235,7 @@
     _startMove(ref) { this._selEnt = { kind: 'obj', ref }; this.tool = 'hand'; this._renderBar(); },
     _openConfigAt(col, row) {
       const b = this._buildingAt(col, row);
-      if (b && (b.typeId === 'portal' || b.typeId === 'pipe')) return this._portalModal(b);
+      if (b && (b.typeId === 'portal' || b.typeId === 'pipe' || b.typeId === 'tube')) return this._portalModal(b);
       if (this.world.goal && this.world.goal.col === col && this.world.goal.row === row) return this._goalModal();
       const sp = (this.world.spawns || []).find((s) => s.col === col && s.row === row);
       if (sp) return this._spawnModal(sp);
@@ -1281,7 +1281,7 @@
       b.config = b.config || {};
       const others = this._portalList().filter((p) => p.key !== b.col + ',' + b.row);
       const opts = `<option value="">(none)</option>` + others.map((p) => `<option value="${p.key}" ${b.config.dest === p.key ? 'selected' : ''}>${p.label}</option>`).join('');
-      this._cfgModal((b.typeId === 'pipe' ? 'Pipe' : 'Portal') + ' @' + b.col + ',' + b.row,
+      this._cfgModal((b.typeId === 'tube' ? 'Glass Tube' : b.typeId === 'pipe' ? 'Pipe' : 'Portal') + ' @' + b.col + ',' + b.row,
         `<label>Teleport destination <select id="cfg-dest">${opts}</select></label>
          <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="cfg-two" ${b.config.twoWay ? 'checked' : ''}> Two-way (also link the destination back here)</label>
          <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="cfg-goal" ${b.config.isGoal ? 'checked' : ''}> Entering this ends the level (acts as a Goal Star)</label>
@@ -1532,7 +1532,7 @@
       // Entities.
       const unitPx = g.cell * (g.density || 1) * g.masterZoom;   // player-scale in editor px
       if (this.view.buildings) for (const b of this.world.buildings) { if (hiAbove(b.level || 0)) continue; const fp = this._bFootprint(b.typeId); const w = fp.w * cs, h = fp.h * cs; const lv = (b.level || 0); const sp = S(b.col * g.cell, b.row * g.cell); const bx = sp.x - lv * Q, by = sp.y - lv * Q; OVERHEAD.drawBuilding(ctx, b.typeId, bx, by, w, h, Math.min(1, cs / 28), b.skin || 'default');
-        if (b.typeId === 'portal' || b.typeId === 'pipe') { const br = Math.max(11, cs * 0.5), cyN = by + cs * 0.4; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.beginPath(); ctx.arc(bx + w / 2, cyN, br, 0, 7); ctx.fill(); ctx.strokeStyle = '#b56bde'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(12, cs * 0.55) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('#' + this._portalNum(b), bx + w / 2, cyN); ctx.textBaseline = 'alphabetic'; } }
+        if (b.typeId === 'portal' || b.typeId === 'pipe' || b.typeId === 'tube') { const br = Math.max(11, cs * 0.5), cyN = by + cs * 0.4; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.beginPath(); ctx.arc(bx + w / 2, cyN, br, 0, 7); ctx.fill(); ctx.strokeStyle = '#b56bde'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(12, cs * 0.55) | 0}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('#' + this._portalNum(b), bx + w / 2, cyN); ctx.textBaseline = 'alphabetic'; } }
       if (this.view.mobs) for (const mo of this.world.mobs) { if (hiAbove(m.elevation[mo.row] ? m.elevation[mo.row][mo.col] : 0)) continue; const d = P().OH_MOB_BY_KEY[mo.type] || P().OH_MOBS[0]; const sp = S((mo.col + 0.5) * g.cell, (mo.row + 0.5) * g.cell); ctx.strokeStyle = 'rgba(150,150,160,.9)'; ctx.lineWidth = 2; ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(sp.x, sp.y, unitPx * 0.34, 0, 7); ctx.fill(); ctx.stroke(); }
       if (this.view.items) for (const it of this.world.items) { if (hiAbove(m.elevation[it.row] ? m.elevation[it.row][it.col] : 0)) continue; const sp = S((it.col + 0.5) * g.cell, (it.row + 0.5) * g.cell); OVERHEAD.drawItemSprite(ctx, it.itemKey, sp.x, sp.y, unitPx * 0.8); }
       // Swinging gates — block-based panels at rest, plus a dashed arc hint for the powered swing.
