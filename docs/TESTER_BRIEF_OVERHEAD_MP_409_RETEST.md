@@ -8,7 +8,7 @@ present now, so a mismatch WILL banner this time).
 ## FIXED since 408 - please re-verify
 
 ### R1. Versus win screen shows the WINNER (was your D3 finding)
-Both versus modes previously ended on the generic the co-op "Level Complete!" title even though the winner string
+Both versus modes previously ended on the generic co-op "Level Complete!" title even though the winner string
 was computed. Now the end screen prints the actual result.
 - Deathmatch to a low kill target -> end screen reads e.g. "P2 wins!".
 - Deathmatch with Teams ON, team kills SUM to target -> end screen reads "Team 1 wins!" (this is
@@ -18,7 +18,7 @@ was computed. Now the end screen prints the actual result.
 Co-op (versus OFF) still reads the co-op "Level Complete!" title.
 
 ### R2. Versus HUD no longer collides with the Designer button (was your D5 note)
-In Test mode the per-player HUD now starts BELOW the the "Designer / God" button row. Confirm P1's
+In Test mode the per-player HUD now starts BELOW the "Designer / God" button row. Confirm P1's
 row is fully visible and no rows overlap the button or each other.
 
 ### R3. _out is false for living players (was your smaller note)
