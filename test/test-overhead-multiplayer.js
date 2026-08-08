@@ -473,5 +473,33 @@ console.log('Phase versus(2) — PvP: player weapons damage enemy players (teams
   ok(g.players[1].hp === chp0, 'co-op: NO friendly fire (players cannot damage each other)');
 }
 
-console.log(`\noverhead multiplayer (... + versus PvP): ${pass} passed, ${fail} failed`);
+console.log('Phase versus(3) — scoring / win / HUD:');
+{
+  const mkVs = (settings, np) => new OverheadGame(mk({ spawns: [{ col: 3, row: 8 }, { col: 5, row: 8 }, { col: 7, row: 8 }, { col: 9, row: 8 }], settings: Object.assign(OH_SETTINGS.defaults(), settings) }), { testMode: true, numPlayers: np || 2 }, () => {});
+  // Deathmatch: reaching the kill target wins.
+  let g = mkVs({ versusMode: 'deathmatch', versusTeams: false, versusKillTarget: 2 }, 2);
+  g.players[0]._score = 2; g._checkVersusWin();
+  ok(g.state === 'won', 'deathmatch: reaching the kill target wins');
+  // Deathmatch integration: a real lethal hit credits the killer and triggers the win.
+  g = mkVs({ versusMode: 'deathmatch', versusTeams: false, versusKillTarget: 1 }, 2);
+  g.players[0].x = 8 * 32; g.players[0].y = 8 * 32; g.players[0].aim = { x: 1, y: 0 };
+  g.players[1].x = 8.6 * 32; g.players[1].y = 8 * 32; g.players[1].hp = 1; g.players[1].iFrames = 0;
+  g._melee(g.players[0], 0, 'sword'); g._advancePlayerDeaths();
+  ok(g.players[0]._score === 1 && g.state === 'won', 'deathmatch: a kill reaching the target wins (integration)');
+  // Deathmatch teams: team score SUM reaches target.
+  g = mkVs({ versusMode: 'deathmatch', versusTeams: true, versusKillTarget: 5 }, 4);
+  g.players[0]._score = 3; g.players[2]._score = 2;   // team 0 = P1+P3 = 5
+  g._checkVersusWin();
+  ok(g.state === 'won', 'deathmatch teams: the team score SUM reaching the target wins');
+  // Last-standing: last player not out wins (forces finite lives even if coopLives is infinite).
+  g = mkVs({ versusMode: 'lastStanding', versusTeams: false, coopLivesCount: 1 }, 2);
+  g._die(g.players[1], 'x'); g._advancePlayerDeaths();
+  ok(g.players[1]._out, 'last-standing: an eliminated player is OUT (finite lives forced)');
+  ok(g.state === 'won', 'last-standing: the last player alive wins');
+  // HUD source: a versus readout is drawn.
+  const gs = require('fs').readFileSync(path.join(__dirname, '..', 'js', 'overhead', 'overhead-game.js'), 'utf8');
+  ok(/if \(this\._versusOn\(\)\) \{[\s\S]*kills[\s\S]*lives/.test(gs), 'HUD draws a per-player versus readout (kills / lives)');
+}
+
+console.log(`\noverhead multiplayer (FULL: 0a-0f + combat + co-op lives + versus): ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

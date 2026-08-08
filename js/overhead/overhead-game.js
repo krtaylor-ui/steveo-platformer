@@ -261,9 +261,28 @@
           this._notify('P' + ((p._index | 0) + 1) + ' respawned', 60);
         }
       }
-      // §modes — co-op game over: with 2+ players, once EVERY player is out of lives, end the match.
-      if (this.players.length > 1 && this.state === 'playing' && this.players.every((pl) => pl && pl._out)) {
+      // §modes versus — check for a winner (deathmatch score target / last-standing elimination).
+      this._checkVersusWin();
+      // §modes — co-op game over: with 2+ CO-OP players, once EVERY player is out, end the match.
+      if (!this._versusOn() && this.players.length > 1 && this.state === 'playing' && this.players.every((pl) => pl && pl._out)) {
         this.state = 'dead'; this._deathMsg = 'All players are out'; this._notify('Game over — all players out', 240);
+      }
+    }
+    // §modes versus — declare a winner: deathmatch (first to the kill target, or team sum) /
+    // last-standing (last player/team with a member still in). Runs each frame during versus.
+    _checkVersusWin() {
+      if (!this._versusOn() || this.state !== 'playing') return;
+      const teams = !!(this.settings && this.settings.versusTeams);
+      const win = (label) => { this.state = 'won'; this._wonExitColor = 0; this._winnerMsg = label; this._notify(label, 300); };
+      if (this.settings.versusMode === 'deathmatch') {
+        const target = ((this.settings && this.settings.versusKillTarget) | 0) || 10;
+        if (teams) { const sum = {}; for (const p of this.players) if (p) sum[p._team] = (sum[p._team] | 0) + (p._score | 0);
+          for (const t in sum) if (sum[t] >= target) return win('Team ' + (+t + 1) + ' wins!'); }
+        else { for (const p of this.players) if (p && (p._score | 0) >= target) return win('P' + ((p._index | 0) + 1) + ' wins!'); }
+      } else if (this.settings.versusMode === 'lastStanding') {
+        const inPlay = this.players.filter((p) => p && !p._out);
+        if (teams) { const t = new Set(inPlay.map((p) => p._team)); if (t.size === 1) return win('Team ' + ([...t][0] + 1) + ' wins!'); }
+        else if (inPlay.length === 1) return win('P' + ((inPlay[0]._index | 0) + 1) + ' wins!');
       }
     }
 
@@ -954,7 +973,10 @@
         p._deathFx = { phase: 'burst', t: 0, x: p.x, y: p.y, parts: this._burstParts(p.x, p.y) };
         // §modes — co-op lives: infinite = always respawn; per-player = each has coopLivesCount;
         // shared = one pool. When lives run out the player stays OUT; match ends when ALL are out.
-        const mode = (this.settings && this.settings.coopLives) || 'infinite';
+        let mode = (this.settings && this.settings.coopLives) || 'infinite';
+        // §modes versus — Last-standing IS elimination, so it forces finite per-player lives even
+        // if the co-op lives setting is Infinite (else the match could never end).
+        if (this._versusOn() && this.settings.versusMode === 'lastStanding' && mode === 'infinite') mode = 'perPlayer';
         const N = ((this.settings && this.settings.coopLivesCount) | 0) || 3;
         let canRespawn = true;
         if (mode === 'perPlayer') { p._lives = (p._lives | 0) - 1; canRespawn = p._lives > 0; }
@@ -1815,6 +1837,22 @@
     _drawHUD(ctx) {
       ctx.textAlign = 'left';
       if (this._debug) this._drawDebugHUD(ctx);   // frame sampling now happens in _loop, for the soak log
+      // §modes versus — per-player readout (top-left): kills (deathmatch) or lives/out (last-standing).
+      if (this._versusOn()) {
+        const dm = this.settings.versusMode === 'deathmatch';
+        const cols = ['#ffd24a', '#7fd0ff', '#9cff7f', '#ff9c9c'];   // P1-P4 accents
+        ctx.save(); ctx.font = 'bold 12px sans-serif'; ctx.textBaseline = 'top';
+        (this.players || []).forEach((p, i) => {
+          const y = 8 + i * 18;
+          ctx.fillStyle = 'rgba(10,14,24,.72)'; ctx.fillRect(8, y, 150, 16);
+          ctx.fillStyle = cols[i] || '#fff';
+          const tag = this.settings.versusTeams ? ('P' + (i + 1) + ' (T' + (p._team + 1) + ')') : ('P' + (i + 1));
+          const val = dm ? (p._score | 0) + ' kills' : (p._out ? 'OUT' : (p._lives | 0) + ' lives');
+          ctx.fillText(tag + '  ' + val, 12, y + 2);
+        });
+        if (dm) { ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillText('first to ' + (((this.settings.versusKillTarget) | 0) || 10), 12, 8 + (this.players.length) * 18 + 2); }
+        ctx.restore();
+      }
       // Day/night clock (top-right): a sun (day) or moon (night) disc + a label.
       if (this._dayNight && typeof OH_DAYNIGHT !== 'undefined') {
         const t = this._tod, lab = OH_DAYNIGHT.label(t), night = OH_DAYNIGHT.darkness(t) > 0.5, cx = CANVAS_W - 96;
