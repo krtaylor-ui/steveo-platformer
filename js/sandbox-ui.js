@@ -286,13 +286,19 @@ const SANDBOX = {
     // Overhead worlds get a 🗺 badge, and (as of build 412) their OWN play-mode dropdown right
     // on the card — set Platform / Speed Run / Arena here without opening the editor (Kevin).
     // The dropdown drives the same gameModeDefault code the New Game world lists filter on.
+    // An UNTAGGED overhead world (gameModeDefault NRM) is NOT in any play-mode list yet, so its
+    // dropdown must show a "Set play mode…" placeholder (not falsely read "Platform") — otherwise
+    // picking the already-shown value fires no change and the world stays undiscoverable (build 421
+    // tester: 8 "Platform" overhead worlds never appeared under Platformer). Build 422 fix.
+    const overheadTagged = overhead && ['PLT', 'RUN', 'ARN'].includes(mode);
     const badge = overhead
-      ? `<span class="mode-badge">🗺 ${this.getModeLabel(mode === 'NRM' ? 'PLT' : mode)}</span>`
+      ? `<span class="mode-badge">🗺 ${overheadTagged ? this.getModeLabel(mode) : 'Not set — pick a Mode'}</span>`
       : `<span class="mode-badge mode-${mode}">${this.getModeLabel(mode)}</span>`;
     const ohModes = [['PLT', 'Platform'], ['RUN', 'Speed Run'], ['ARN', 'Arena']];
     const modeSelect = overhead ? `
           <label class="mode-select-label">Mode:
             <select class="mode-select" data-world-id="${this._esc(w.id)}" data-overhead="1">
+              ${overheadTagged ? '' : '<option value="" disabled selected>Set play mode…</option>'}
               ${ohModes.map(([v, t]) => `<option value="${v}"${v === mode ? ' selected' : ''}>${t}</option>`).join('')}
             </select>
           </label>` : `
@@ -437,6 +443,7 @@ const SANDBOX = {
 
   // Inline game-mode change from a world card (no editor round-trip).
   async changeWorldMode(worldId, gameModeDefault) {
+    if (!gameModeDefault) return;   // the "Set play mode…" placeholder — ignore
     if (this._isLocalWorld(worldId)) {
       LOCAL_WORLDS.setMode(worldId, gameModeDefault);
       const w = this.worlds.find(x => x.id === worldId);

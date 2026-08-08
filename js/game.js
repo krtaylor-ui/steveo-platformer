@@ -1998,7 +1998,7 @@ class Game {
       if (this._chestOpen) {
         this._closeChest();
       } else {
-        const ch = this._nearestChest();
+        const ch = this._nearestChest(this.gameMode === 'sandbox');   // §O6 sandbox: open the nearest chest even if the avatar isn't adjacent
         if (ch) {
           this._chestOpen     = ch;
           this._chestModalSel = 0;
@@ -4201,13 +4201,18 @@ class Game {
   }
 
   // ── Chest helpers ─────────────────────────────────────────
-  _nearestChest() {
+  _nearestChest(ignoreReach) {
+    // In the SANDBOX editor you place a chest with the mouse, so the player avatar is rarely
+    // adjacent — requiring reach there made chests impossible to open/configure (Kevin O6). In
+    // sandbox, return the chest NEAREST the player regardless of distance; elsewhere keep the reach.
     const REACH = 2.5 * BLOCK_SIZE;
+    let best = null, bestD = Infinity;
     for (const ch of this._chests.values()) {
-      if (Math.hypot((ch.col + 0.5) * BLOCK_SIZE - this.player.cx,
-                     (ch.row + 0.5) * BLOCK_SIZE - this.player.cy) <= REACH) return ch;
+      const d = Math.hypot((ch.col + 0.5) * BLOCK_SIZE - this.player.cx, (ch.row + 0.5) * BLOCK_SIZE - this.player.cy);
+      if (ignoreReach) { if (d < bestD) { bestD = d; best = ch; } }
+      else if (d <= REACH) return ch;
     }
-    return null;
+    return best;
   }
 
   _closeChest() {
