@@ -241,6 +241,19 @@ const ARENA_SELECT = {
         return;
       }
     }
+    // Overhead worlds can't run on the side-scroll arena engine — hand off to OVERHEAD_PLAY
+    // (Arena = the local PvP versus modes). Without this an overhead Arena world silently loads
+    // as a 2D scrolling map (Kevin, build 413). Full versus-mode/config prelaunch = later polish;
+    // for now Arena defaults the world to Deathmatch versus (see OVERHEAD_PLAY._launch).
+    if (typeof OVERHEAD_PLAY !== 'undefined' && OVERHEAD_PLAY.isOverheadGameData && OVERHEAD_PLAY.isOverheadGameData(templateData)) {
+      if (typeof OverheadGame === 'undefined') { alert('Overhead engine not loaded — please hard-reload.'); return; }
+      OVERHEAD_PLAY.init({
+        gameId: worldId, gameName: worldName || 'Arena', gameMode: 'arena', gameData: templateData,
+        onExit: () => { const s = document.getElementById('arena-select-screen'); if (s) s.style.display = 'block'; },
+      });
+      return;
+    }
+
     // Modes this world declares support for (null = all, e.g. Quick Play).
     const supported = this._supportedModes(templateData);
     this.chooseMode(mode => {

@@ -65,6 +65,13 @@
     _launch(world, numPlayers) {
       if (typeof OVERHEAD === 'undefined' || !OVERHEAD.launchWorld) { this._return(); return; }
       const w = JSON.parse(JSON.stringify(world));
+      // Arena = local PvP versus. If the world hasn't picked a versus mode, default it to Deathmatch
+      // so "Arena" actually means versus (engages with 2+ players). Platform/Speed Run leave settings
+      // untouched. (Full versus-config prelaunch is later polish.)
+      if (this._ctx && this._ctx.gameMode === 'arena') {
+        w.settings = w.settings || {};
+        if (!w.settings.versusMode || w.settings.versusMode === 'off') w.settings.versusMode = 'deathmatch';
+      }
       window.game = OVERHEAD.launchWorld(w, { testMode: false, numPlayers }, () => this._return());
       this._startPauseWatch();
     },
