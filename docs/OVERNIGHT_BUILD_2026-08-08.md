@@ -30,7 +30,7 @@ call; LAST step = a big plain-ASCII tester test plan covering everything, then s
   #3D1C02 — see death-scatter defs at game.js ~1138 for the region map). Find the LIVE player draw
   (NOT `_spawnDeathParts`), parameterize its region colours by `PLAYER_LOOKS.palette(pnum, teamIdx)`
   per player, and add a minimal Boy/Girl tweak. Fallback: at least SHIRT (+team colour) per player.
-- [ ] O2: pre-game flow. In js/overhead-play.js: Speed Run -> skip the setup window, launch 1P
+- [DONE 419] O2: pre-game flow. In js/overhead-play.js: Speed Run -> skip the setup window, launch 1P
   directly. Platform -> setup window with co-op player count (1-4). Arena -> setup window (2-4 +
   versus). REBUILD `_openSetup` as D-pad-navigable per-player PANELS (each pad edits only its own:
   pad assignment + control type + appearance via PLAYER_LOOKS swatches + Boy/Girl); P1 panel also

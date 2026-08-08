@@ -56,21 +56,31 @@
       this._ctx = ctx; this._world = world;
       this._hideScreens();
       const c = cfg(); if (c && c.setMode) c.setMode(ctx.gameMode || 'platformer');   // per-mode stick tuning shared with side-scroll
-      this._openSetup(world, ctx.gameMode, (choice) => {
+      if (typeof PLAYER_LOOKS !== 'undefined' && PLAYER_LOOKS.load) PLAYER_LOOKS.load();
+      // Speed Run (and anything that isn't Platform/Arena) = single player, NO setup window — it just
+      // plays; controls are tuned via the Esc pause menu. Platform (co-op 1-4) and Arena (2-4 + versus)
+      // get the pre-game settings window (Kevin: Speed Run wrongly showed the window + 4 players).
+      const mode = ctx.gameMode;
+      if (mode !== 'platformer' && mode !== 'arena') { this._launch(world, { numPlayers: 1 }); return; }
+      this._openSetup(world, mode, (choice) => {
         if (!choice) { this._return(); return; }   // cancelled → back to selection
-        this._launch(world, choice.numPlayers);
+        this._launch(world, choice);
       });
     },
 
-    _launch(world, numPlayers) {
+    _launch(world, opts) {
+      opts = opts || {};
+      const numPlayers = Math.max(1, Math.min(4, opts.numPlayers || 1));
       if (typeof OVERHEAD === 'undefined' || !OVERHEAD.launchWorld) { this._return(); return; }
       const w = JSON.parse(JSON.stringify(world));
-      // Arena = local PvP versus. If the world hasn't picked a versus mode, default it to Deathmatch
-      // so "Arena" actually means versus (engages with 2+ players). Platform/Speed Run leave settings
-      // untouched. (Full versus-config prelaunch is later polish.)
+      // Arena = local PvP versus. Apply the settings window's versus choice (mode/teams/kill target);
+      // default to Deathmatch so "Arena" means versus (engages with 2+ players).
       if (this._ctx && this._ctx.gameMode === 'arena') {
         w.settings = w.settings || {};
-        if (!w.settings.versusMode || w.settings.versusMode === 'off') w.settings.versusMode = 'deathmatch';
+        const v = opts.versus || {};
+        w.settings.versusMode = v.mode || ((w.settings.versusMode && w.settings.versusMode !== 'off') ? w.settings.versusMode : 'deathmatch');
+        w.settings.versusTeams = !!v.teams;
+        if (v.killTarget) w.settings.versusKillTarget = v.killTarget;
       }
       window.game = OVERHEAD.launchWorld(w, { testMode: false, numPlayers }, () => this._return());
       this._startPauseWatch();
@@ -109,35 +119,133 @@
       return !!(wd && (wd.viewMode === 'overhead' || wd.mapSnapshot)) || gd.viewMode === 'overhead' || !!gd.mapSnapshot;
     },
 
-    // ── Pre-launch controller setup ─────────────────────────────────────────
+    // ── Pre-game settings window ─────────────────────────────────────────────
+    // Per-player PANELS navigated with the D-pad (each pad edits ONLY its own player's panel; P1 also
+    // owns the match options + Start). Mouse works too. Fields "cycle" on A / left-right so young
+    // players never need a free cursor (Kevin). Platform => co-op 1-4; Arena => 2-4 + versus config.
     _openSetup(world, gameMode, done) {
-      const maxByWorld = this._playerCount(world);
-      const ov = this._overlay('oh-setup-overlay');
-      const opts = padOptions(), c = cfg();
-      let rows = '';
-      for (let i = 1; i <= 4; i++) {
-        rows += `<div class="ohs-row" data-p="${i}" style="display:flex;align-items:center;gap:10px;margin:6px 0">
-          <span class="oh-pchip" style="background:${PLAYER_COLORS[i - 1]}">P${i}</span>
-          <select class="ohs-pad" style="flex:1;padding:6px">${optionHtml(opts, effectiveAssign(i))}</select></div>`;
-      }
-      ov.innerHTML = `<div class="ohs-card">
-        <h2 style="margin:0 0 4px">Set up controllers</h2>
-        <p class="oh-sub">Assign a keyboard or gamepad to each player, then start. P1 defaults to keyboard/mouse. You can change these any time from the in-game pause menu (Esc).</p>
-        <label style="display:block;margin-bottom:10px">Players: <select id="ohs-count">${[1, 2, 3, 4].map((n) => `<option value="${n}"${n === maxByWorld ? ' selected' : ''}>${n}</option>`).join('')}</select>
-          <span class="oh-note">(this world has ${maxByWorld} spawn${maxByWorld > 1 ? 's' : ''})</span></label>
-        <div id="ohs-rows">${rows}</div>
-        <div class="oh-btnrow"><button id="ohs-cancel">Cancel</button><button id="ohs-start" class="primary">▶ Start</button></div>
-      </div>`;
-      const g = (id) => document.getElementById(id);
-      const rowEls = () => [].slice.call(ov.querySelectorAll('.ohs-row'));
-      const applyCount = () => { const n = +g('ohs-count').value; rowEls().forEach((r) => { r.style.display = (+r.dataset.p <= n) ? 'flex' : 'none'; }); };
-      applyCount(); g('ohs-count').onchange = applyCount;
-      g('ohs-cancel').onclick = () => { this._closeOverlay(ov); done(null); };
-      g('ohs-start').onclick = () => {
-        const n = +g('ohs-count').value;
-        if (c) rowEls().forEach((r) => { const sel = r.querySelector('.ohs-pad'); c.setAssignment(+r.dataset.p, +sel.value); });
-        this._closeOverlay(ov); done({ numPlayers: n });
+      const isArena = gameMode === 'arena';
+      const minP = isArena ? 2 : 1, maxP = 4;
+      const c = cfg(), L = (typeof PLAYER_LOOKS !== 'undefined') ? PLAYER_LOOKS : null;
+      const st = {
+        count: Math.max(minP, Math.min(maxP, this._playerCount(world) || (isArena ? 2 : 1))),
+        versusMode: (world.settings && world.settings.versusMode && world.settings.versusMode !== 'off') ? world.settings.versusMode : 'deathmatch',
+        teams: !!(world.settings && world.settings.versusTeams),
+        killTarget: (world.settings && world.settings.versusKillTarget) || 10,
       };
+      const ctrlOrder = [-1, 0, 1, 2, 3];
+      const ctrlLabel = (a) => a < 0 ? 'Keyboard' : ('Pad ' + (a + 1) + (padConnected(a) ? '' : ' (none)'));
+      const cyc = (arr, cur, dir) => { let i = arr.indexOf(cur); i = (i < 0) ? 0 : (i + dir + arr.length) % arr.length; return arr[i]; };
+
+      const fieldsFor = (pnum) => {
+        const sw = (field) => ({ key: field, label: field[0].toUpperCase() + field.slice(1), kind: 'swatch',
+          color: () => L ? L.get(pnum)[field] : '#888', step: (d) => { if (L) L.set(pnum, field, cyc(L.SWATCHES[field], L.get(pnum)[field], d)); } });
+        return [
+          { key: 'ctrl', label: 'Controller', kind: 'text', text: () => ctrlLabel(c ? c.getAssignment(pnum) : (pnum === 1 ? -1 : pnum - 1)),
+            step: (d) => { if (c) c.setAssignment(pnum, cyc(ctrlOrder, c.getAssignment(pnum), d)); } },
+          { key: 'char', label: 'Character', kind: 'text', text: () => (L && L.get(pnum).sprite === 'girl') ? 'Girl' : 'Boy',
+            step: () => { if (L) L.set(pnum, 'sprite', L.get(pnum).sprite === 'girl' ? 'boy' : 'girl'); } },
+          sw('skin'), sw('hair'), sw('shirt'), sw('pants'),
+        ];
+      };
+      const globalFields = () => {
+        const g = [{ key: 'count', label: 'Players', kind: 'text', global: true, text: () => String(st.count),
+          step: (d) => { st.count = Math.max(minP, Math.min(maxP, st.count + (d >= 0 ? 1 : -1))); } }];
+        if (isArena) {
+          g.push({ key: 'mode', label: 'Match', kind: 'text', global: true, text: () => st.versusMode === 'lastStanding' ? 'Last-Standing' : 'Deathmatch',
+            step: () => { st.versusMode = st.versusMode === 'lastStanding' ? 'deathmatch' : 'lastStanding'; } });
+          g.push({ key: 'teams', label: 'Teams', kind: 'text', global: true, text: () => st.teams ? 'On (P1+P3 v P2+P4)' : 'Off',
+            step: () => { st.teams = !st.teams; } });
+          g.push({ key: 'kt', label: 'Kill target', kind: 'text', global: true, text: () => String(st.killTarget),
+            step: (d) => { st.killTarget = Math.max(1, st.killTarget + (d >= 0 ? 1 : -1)); } });
+        }
+        g.push({ key: 'start', label: '▶ START', kind: 'action', global: true, action: () => finish() });
+        return g;
+      };
+      const listFor = (p) => p === 1 ? fieldsFor(1).concat(globalFields()) : fieldsFor(p);
+
+      const focus = { 1: 0, 2: 0, 3: 0, 4: 0 };
+      const ov = this._overlay('oh-setup-overlay');
+      let open = true, raf = 0; const navPrev = [{}, {}, {}, {}];
+
+      const finish = () => { open = false; if (raf) cancelAnimationFrame(raf); document.removeEventListener('keydown', onKey, true);
+        this._closeOverlay(ov); done({ numPlayers: st.count, versus: { mode: st.versusMode, teams: st.teams, killTarget: st.killTarget } }); };
+      const cancel = () => { open = false; if (raf) cancelAnimationFrame(raf); document.removeEventListener('keydown', onKey, true);
+        this._closeOverlay(ov); done(null); };
+
+      const render = () => {
+        st.count = Math.max(minP, Math.min(maxP, st.count));
+        let panels = '';
+        for (let p = 1; p <= st.count; p++) {
+          const list = listFor(p); focus[p] = Math.min(focus[p], list.length - 1);
+          let rows = '';
+          list.forEach((f, i) => {
+            const hot = i === focus[p];
+            const val = f.kind === 'swatch' ? `<span class="ohsw" style="background:${f.color()}"></span>`
+              : f.kind === 'action' ? '' : `<span class="ohv">${f.text()}</span>`;
+            rows += `<div class="ohf${hot ? ' hot' : ''}${f.global ? ' glob' : ''}${f.kind === 'action' ? ' act' : ''}" data-p="${p}" data-i="${i}"><span class="ohl">${f.label}</span>${val}</div>`;
+          });
+          panels += `<div class="ohpanel"><div class="ohph" style="background:${PLAYER_COLORS[p - 1]}">P${p}</div>${rows}</div>`;
+        }
+        ov.innerHTML = `<div class="ohsetup"><h2>${isArena ? 'Arena setup' : 'Co-op setup'}</h2>
+          <p class="oh-sub">Each player uses their OWN controller to set their panel — D-pad to move, A or left/right to change. P1 sets the match options and starts. (Mouse works too.)</p>
+          <div class="ohpanels">${panels}</div>
+          <div class="oh-btnrow"><button id="ohs-cancel" class="btn">Cancel</button></div></div>`;
+        [].slice.call(ov.querySelectorAll('.ohf')).forEach((el) => {
+          const p = +el.dataset.p, i = +el.dataset.i;
+          el.onclick = () => { focus[p] = i; const f = listFor(p)[i]; if (f.kind === 'action') f.action(); else if (f.step) { f.step(1); render(); } };
+          el.oncontextmenu = (e) => { e.preventDefault(); focus[p] = i; const f = listFor(p)[i]; if (f.step) { f.step(-1); render(); } };
+        });
+        const cxb = document.getElementById('ohs-cancel'); if (cxb) cxb.onclick = cancel;
+      };
+
+      const nav = (pnum, act) => {
+        if (pnum > st.count) return;
+        const list = listFor(pnum); let fi = Math.min(focus[pnum], list.length - 1);
+        if (act === 'up') fi = (fi - 1 + list.length) % list.length;
+        else if (act === 'down') fi = (fi + 1) % list.length;
+        else { const f = list[fi];
+          if (act === 'act') { if (f.kind === 'action') { f.action(); return; } if (f.step) f.step(1); }
+          else if (act === 'left' && f.step) f.step(-1);
+          else if (act === 'right' && f.step) f.step(1); }
+        focus[pnum] = fi; render();
+      };
+
+      const onKey = (e) => {
+        if (!open) return; const k = e.key; let h = true;
+        if (k === 'Escape') { cancel(); }
+        else if (k === 'ArrowUp') nav(1, 'up');
+        else if (k === 'ArrowDown') nav(1, 'down');
+        else if (k === 'ArrowLeft') nav(1, 'left');
+        else if (k === 'ArrowRight') nav(1, 'right');
+        else if (k === 'Enter' || k === ' ') nav(1, 'act');
+        else h = false;
+        if (h) e.preventDefault();
+      };
+      document.addEventListener('keydown', onKey, true);
+
+      const poll = () => {
+        if (!open) return;
+        let pads = []; try { pads = (navigator.getGamepads && navigator.getGamepads()) || []; } catch (_) {}
+        for (let s = 0; s < 4; s++) {
+          const gp = pads[s]; if (!gp) continue; const pnum = s + 1; if (pnum > st.count) continue;
+          const b = gp.buttons || [], ax = gp.axes || [];
+          const dn = (i) => !!(b[i] && b[i].pressed), av = (i) => ax.length > i ? ax[i] : 0;
+          const cur = { up: dn(12) || av(1) < -0.5, down: dn(13) || av(1) > 0.5, left: dn(14) || av(0) < -0.5, right: dn(15) || av(0) > 0.5, a: dn(0), start: dn(9) };
+          const pv = navPrev[s];
+          if (cur.up && !pv.up) nav(pnum, 'up');
+          if (cur.down && !pv.down) nav(pnum, 'down');
+          if (cur.left && !pv.left) nav(pnum, 'left');
+          if (cur.right && !pv.right) nav(pnum, 'right');
+          if (cur.a && !pv.a) nav(pnum, 'act');
+          if (cur.start && !pv.start && pnum === 1) { finish(); return; }
+          navPrev[s] = cur;
+        }
+        raf = requestAnimationFrame(poll);
+      };
+
+      render();
+      raf = requestAnimationFrame(poll);
     },
 
     // ── In-game pause menu (Esc) — polls window.game.state so the runtime needs no hook ──
@@ -200,7 +308,7 @@
       ov.style.cssText = 'position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;background:rgba(6,10,18,.72)';
       if (!document.getElementById('oh-play-overlay-css')) {
         const st = document.createElement('style'); st.id = 'oh-play-overlay-css';
-        st.textContent = '.oh-play-overlay .ohs-card,.oh-play-overlay .ohp-card{background:#141a26;color:#e7edf7;border:1px solid #33507e;border-radius:12px;padding:22px;width:92%;max-width:520px;box-shadow:0 12px 40px rgba(0,0,0,.5);font-family:sans-serif}.oh-play-overlay h2{font-size:20px}.oh-play-overlay .oh-sub{opacity:.72;margin:.2em 0 1em;font-size:13px}.oh-play-overlay .oh-note{opacity:.6;font-size:12px}.oh-play-overlay .oh-pchip{width:26px;height:26px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;color:#111;flex:none}.oh-play-overlay .ohp-row{border-top:1px solid rgba(255,255,255,.12);padding:8px 0}.oh-play-overlay .oh-btnrow{display:flex;gap:10px;justify-content:flex-end;align-items:center;margin-top:16px;flex-wrap:wrap}.oh-play-overlay button{background:#22304a;color:#dbe4f3;border:1px solid #3c5a8c;border-radius:7px;padding:8px 14px;cursor:pointer;font-size:14px}.oh-play-overlay button.primary{background:#2f7d4f;border-color:#49b578;color:#fff}.oh-play-overlay select,.oh-play-overlay input{background:#0e1420;color:#e7edf7;border:1px solid #33507e;border-radius:5px}';
+        st.textContent = '.oh-play-overlay .ohs-card,.oh-play-overlay .ohp-card{background:#141a26;color:#e7edf7;border:1px solid #33507e;border-radius:12px;padding:22px;width:92%;max-width:520px;box-shadow:0 12px 40px rgba(0,0,0,.5);font-family:sans-serif}.oh-play-overlay h2{font-size:20px}.oh-play-overlay .oh-sub{opacity:.72;margin:.2em 0 1em;font-size:13px}.oh-play-overlay .oh-note{opacity:.6;font-size:12px}.oh-play-overlay .oh-pchip{width:26px;height:26px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;color:#111;flex:none}.oh-play-overlay .ohp-row{border-top:1px solid rgba(255,255,255,.12);padding:8px 0}.oh-play-overlay .oh-btnrow{display:flex;gap:10px;justify-content:flex-end;align-items:center;margin-top:16px;flex-wrap:wrap}.oh-play-overlay button{background:#22304a;color:#dbe4f3;border:1px solid #3c5a8c;border-radius:7px;padding:8px 14px;cursor:pointer;font-size:14px}.oh-play-overlay button.primary{background:#2f7d4f;border-color:#49b578;color:#fff}.oh-play-overlay select,.oh-play-overlay input{background:#0e1420;color:#e7edf7;border:1px solid #33507e;border-radius:5px}.oh-play-overlay .ohsetup{background:#141a26;color:#e7edf7;border:1px solid #33507e;border-radius:12px;padding:20px;width:94%;max-width:880px;box-shadow:0 12px 40px rgba(0,0,0,.5);font-family:sans-serif}.oh-play-overlay .ohpanels{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}.oh-play-overlay .ohpanel{flex:1 1 180px;max-width:205px;background:#0e1420;border:1px solid #33507e;border-radius:10px;overflow:hidden}.oh-play-overlay .ohph{font-weight:800;color:#111;text-align:center;padding:6px 0}.oh-play-overlay .ohf{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border-top:1px solid rgba(255,255,255,.08);cursor:pointer;font-size:13px}.oh-play-overlay .ohf.hot{background:#1d2d4a;box-shadow:inset 3px 0 0 #6fb0ff}.oh-play-overlay .ohf.glob{background:rgba(80,120,200,.10)}.oh-play-overlay .ohf.act{justify-content:center;font-weight:800;color:#8fe0a8}.oh-play-overlay .ohf.act.hot{background:#2f7d4f;color:#fff}.oh-play-overlay .ohl{opacity:.8}.oh-play-overlay .ohv{font-weight:600}.oh-play-overlay .ohsw{width:28px;height:16px;border-radius:4px;border:1px solid rgba(255,255,255,.5);display:inline-block}';
         document.head.appendChild(st);
       }
       ov.style.display = 'flex';
