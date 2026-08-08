@@ -51,7 +51,7 @@ call; LAST step = a big plain-ASCII tester test plan covering everything, then s
   items). ALSO allow REMOVING an item from a chest slot (e.g. right-click a chest slot deletes it /
   drag out to trash). Chest click handling ~`_handleSandboxChestClick` (game.js ~4340), slots
   `ch.items` (Array(8)), held item `_sbChestHeld`.
-- [ ] O7 LAST: big plain-ASCII tester plan (docs + C:\Dev\Steveo-QA\docs\) covering O1-O6, run
+- [DONE 421] O7 LAST: big plain-ASCII tester plan (docs + C:\Dev\Steveo-QA\docs\) covering O1-O6, run
   -without-stopping style with per-item PASS/FAIL + capture notes. Then ScheduleWakeup stop:true and
   post a full summary of the overnight run.
 
