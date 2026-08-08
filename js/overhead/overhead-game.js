@@ -278,7 +278,8 @@
         if (gp && gp.connected && (Math.abs(gp.axes2) > 0.2 || Math.abs(gp.axes3) > 0.2)) { aimVec = { x: gp.axes2, y: gp.axes3 }; aimStickMag = Math.hypot(gp.axes2, gp.axes3); }
         return { moveVec: mv, aimVec, aimStickMag, fireBtn: inp.mouse.clicked, fireHeld: inp.mouse.down || (gp && gp.rt > 0.5),
           meleeBtn: inp.mouse.clicked || K('KeyF'), jumpBtn: inp.isJustDown && inp.isJustDown('Space'),
-          actionBtn: inp.isJustDown && inp.isJustDown('KeyE'), recallBtn: inp.mouse.rightClicked, lastAim: p.lastAim };
+          actionBtn: inp.isJustDown && inp.isJustDown('KeyE'), recallBtn: inp.mouse.rightClicked,
+          meleeWeaponBtn: !!(inp.isDown && inp.isDown('KeyF')), lastAim: p.lastAim };   // §combat P1: F swings the held weapon (click still fires)
       }
       const g = (inp.pGp ? inp.pGp(idx) : null) || {};
       const jd = (btn) => (inp.pJustDown ? inp.pJustDown(idx, btn) : false);
@@ -286,7 +287,8 @@
       const aMag = Math.hypot(g.aimX || 0, g.aimY || 0);
       const aimVec = aMag > 0.2 ? { x: g.aimX, y: g.aimY } : { x: 0, y: 0 };
       return { moveVec: mv, aimVec, aimStickMag: aMag, fireBtn: jd('rangedBtn'), fireHeld: (inp.pAttack ? inp.pAttack(idx) : false),
-        meleeBtn: jd('attack'), jumpBtn: jd('jump'), actionBtn: jd('context'), recallBtn: jd('throwBtn'), lastAim: p.lastAim };
+        meleeBtn: jd('attack'), jumpBtn: jd('jump'), actionBtn: jd('context'), recallBtn: jd('throwBtn'),
+        meleeWeaponBtn: jd('attack'), lastAim: p.lastAim };   // §combat P2-P4: X swings the held weapon; RT fires ranged
     }
 
     // §Overhead multiplayer (Phase 0b) — advance one player's locomotion for the frame; returns its
@@ -329,6 +331,7 @@
       { const c = this._cellOf(p.x, p.y); p.hidden = (this._key(c.col, c.row) === 'leaves' && this._elev(c.col, c.row) > p.elev); }
       this._pickups(p);
       p._intent = intent;   // §0c — stored so the per-player interaction pass (pipes/levers/goal) can use each player's E
+      p._raw = raw;         // §combat — stored so per-player _updateWeapons sees each player's fire/melee/recall
       return intent;
     }
 
@@ -446,11 +449,10 @@
       this._syncControllerSlots();
       if (inp.isJustDown && (inp.isJustDown('KeyQ') || inp.isJustDown('Tab'))) this._cycleWeapon();   // P1 weapon switch (keyboard)
       const mouseWorld = OH_GRID.screenToWorld(this.grid, this.camera, inp.mouse.x, inp.mouse.y);
-      let intent = null;
-      for (const pl of this.activePlayers()) { const it = this._controlPlayer(pl, pl._index); if (pl._index === 0) intent = it; }
+      for (const pl of this.activePlayers()) this._controlPlayer(pl, pl._index);
       this._advancePlayerDeaths();   // §0e — downed players (MP) burst + respawn at their own spawn, independently
-      // Weapons / melee — P1 only for now (per-player combat is a follow-on step).
-      if (intent) this._updateWeapons(intent, mouseWorld);
+      // §combat — every player fires/melees with its own weapon + inputs.
+      for (const pl of this.activePlayers()) this._updateWeapons(pl, mouseWorld);
       // Mobs + projectiles (once).
       this._updateMobs(); this._updateProjectiles(); this._updateShards();
 
@@ -645,20 +647,24 @@
     }
 
     // ── Weapons ────────────────────────────────────────────────────────────
-    _updateWeapons(intent, mouseWorld) {
-      const p = this.player;
-      const fire = intent.fire || (this.input.mouse.down && p._fireCd === 0);
+    // §combat — PER-PLAYER now. `p` fires/melees from its own resolved intent (p._intent, which
+    // already folds fireBtn||fireHeld) + raw buttons (p._raw): meleeWeaponBtn swings the held
+    // weapon (P1 = F, P2-P4 = X) separately from the fire button, recallBtn recalls a trident.
+    // mouseWorld is P1-only (boomerang throw distance); P2-P4 use the world's boomerang range.
+    _updateWeapons(p, mouseWorld) {
+      const intent = p._intent, raw = p._raw || {};
+      if (!intent) return;   // in transit / down
+      const fire = intent.fire && p._fireCd === 0;
       const ang = OH_CONTROLS.angleOf(p.aim);
       if (!p.weapon) { if (intent.melee) this._melee(p, ang, 'pickaxe'); return; }
-      // With a weapon held, F does a MELEE SWING using that weapon (click still fires).
-      if (this.input.isDown && this.input.isDown('KeyF')) this._melee(p, ang, p.weapon);
+      if (raw.meleeWeaponBtn) this._melee(p, ang, p.weapon);   // dedicated weapon-swing button (not the fire click)
       const wc = this._weaponCfg();
-      if (p.weapon === 'crossbow') { if (fire && p._fireCd === 0) { this._bolts.push(Object.assign(OH_WEAPONS.startBolt(p.x, p.y, ang, wc), { owner: 'p', elev: p.elev })); p._fireCd = 14; } }
+      if (p.weapon === 'crossbow') { if (fire) { this._bolts.push(Object.assign(OH_WEAPONS.startBolt(p.x, p.y, ang, wc), { owner: 'p', elev: p.elev })); p._fireCd = 14; } }
       else if (p.weapon === 'trident') {
-        if (intent.recallBtn && p._trident) OH_WEAPONS.recallTrident(p._trident);
+        if (raw.recallBtn && p._trident) OH_WEAPONS.recallTrident(p._trident);
         else if (fire && !p._trident) { p._trident = OH_WEAPONS.startTrident(p.x, p.y, ang, wc); p._trident.elev = p.elev; p._fireCd = 10; }
       } else if (p.weapon === 'boomerang') {
-        if (fire && !p._boom) { const dist = Math.hypot(mouseWorld.x - p.x, mouseWorld.y - p.y); p._boom = OH_WEAPONS.startBoomerang(p.x, p.y, ang, dist, wc); p._boom._hit = {}; p._boom.elev = p.elev; p._fireCd = 10; }
+        if (fire && !p._boom) { const dist = (mouseWorld && p === this.player) ? Math.hypot(mouseWorld.x - p.x, mouseWorld.y - p.y) : (this.settings.boomerangRange || this.unit * 6); p._boom = OH_WEAPONS.startBoomerang(p.x, p.y, ang, dist, wc); p._boom._hit = {}; p._boom.elev = p.elev; p._fireCd = 10; }
       }
     }
     _weaponCfg() { const s = this.settings || {}; return { crossbowSpeed: s.crossbowSpeed, tridentSpeed: s.tridentSpeed, tridentReturnSpeed: s.tridentReturnSpeed, boomerangSpeed: s.boomerangSpeed, boomerangMaxRange: s.boomerangRange, boomerangWidth: s.boomerangWidth }; }
@@ -675,18 +681,19 @@
     // A projectile dies if it crosses terrain ≥ attackBlock levels above its origin.
     _boltWalled(b) { const c = this._cellOf(b.x, b.y); if (this._key(c.col, c.row) === 'leaves') return false; return (this._elev(c.col, c.row) - (b.elev || 0)) >= this.attackBlock; }
     _updateProjectiles() {
-      const p = this.player, live = this.mobs.filter((m) => !m.dead);
-      // Crossbow bolts.
+      const live = this.mobs.filter((m) => !m.dead);
+      // Crossbow bolts (shared array; owner-tagged - any player's bolts hit mobs).
       for (const b of this._bolts) { OH_WEAPONS.stepBolt(b); const bc = this._cellOf(b.x, b.y); const brokeGlass = this._shatterGlass(bc.col, bc.row); if (!brokeGlass && this._boltWalled(b)) { b.dead = true; continue; } const hit = OH_COMBAT.lineHit({ x: b.x - b.vx, y: b.y - b.vy }, { x: b.x, y: b.y }, live, this.unit * 0.3); if (hit && this._canAttack(b.elev || 0, hit.elev || 0)) { hit.hp -= 5; if (hit.hp <= 0) hit.dead = true; b.dead = true; } }
       this._bolts = this._bolts.filter((b) => !b.dead);
-      // Trident.
-      if (p._trident) { OH_WEAPONS.stepTrident(p._trident, p); const t = p._trident;
-        if (t.state === 'out') { const tc = this._cellOf(t.x, t.y); if (!this._shatterGlass(tc.col, tc.row) && this._boltWalled(t)) OH_WEAPONS.recallTrident(t); }   // shatter glass and fly on, else a too-high wall returns it
-        if (!t.caught) { for (const m of live) if (this._canAttack(p.elev, m.elev || 0) && Math.hypot(m.x - t.x, m.y - t.y) < m.r + this.unit * 0.3) { m.hp -= 6; if (m.hp <= 0) m.dead = true; if (t.state === 'out') t.state = 'return'; } } if (t.caught) p._trident = null; }
-      // Boomerang (arcs, hits along the path, auto-returns; a wall cuts it to the return leg).
-      if (p._boom) { OH_WEAPONS.stepBoomerang(p._boom, p); const b = p._boom;
-        if (b.t < 0.5 && this._boltWalled(b)) b.t = 1 - b.t;   // wall on the way out → start coming back
-        for (const m of live) { const id = m.col + ',' + m.row + ',' + (this.mobs.indexOf(m)); if (!b._hit[id] && this._canAttack(p.elev, m.elev || 0) && Math.hypot(m.x - b.x, m.y - b.y) < m.r + this.unit * 0.3) { m.hp -= 4; b._hit[id] = 1; if (m.hp <= 0) m.dead = true; } } if (b.dead) p._boom = null; }
+      // §combat — Trident + Boomerang are PER-PLAYER (each on p._trident / p._boom).
+      for (const p of this.activePlayers()) {
+        if (p._trident) { OH_WEAPONS.stepTrident(p._trident, p); const t = p._trident;
+          if (t.state === 'out') { const tc = this._cellOf(t.x, t.y); if (!this._shatterGlass(tc.col, tc.row) && this._boltWalled(t)) OH_WEAPONS.recallTrident(t); }   // shatter glass and fly on, else a too-high wall returns it
+          if (!t.caught) { for (const m of live) if (this._canAttack(p.elev, m.elev || 0) && Math.hypot(m.x - t.x, m.y - t.y) < m.r + this.unit * 0.3) { m.hp -= 6; if (m.hp <= 0) m.dead = true; if (t.state === 'out') t.state = 'return'; } } if (t.caught) p._trident = null; }
+        if (p._boom) { OH_WEAPONS.stepBoomerang(p._boom, p); const b = p._boom;
+          if (b.t < 0.5 && this._boltWalled(b)) b.t = 1 - b.t;   // wall on the way out → start coming back
+          for (const m of live) { const id = m.col + ',' + m.row + ',' + (this.mobs.indexOf(m)); if (!b._hit[id] && this._canAttack(p.elev, m.elev || 0) && Math.hypot(m.x - b.x, m.y - b.y) < m.r + this.unit * 0.3) { m.hp -= 4; b._hit[id] = 1; if (m.hp <= 0) m.dead = true; } } if (b.dead) p._boom = null; }
+      }
       // Mob bolts (skeletons).
       for (const mb of this._mobBolts) { OH_WEAPONS.stepBolt(mb); if (this._boltWalled(mb)) { mb.dead = true; continue; }
         if (mb._dodged) continue;

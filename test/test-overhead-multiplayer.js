@@ -329,5 +329,51 @@ console.log('Phase 0d/0e — EDGE-HOLD: a straggler is held on-screen, not lost 
   ok(z >= (g.grid.MIN_ZOOM || 0.35) && z >= g._baseZoom * 0.5 - 1e-6, 'auto-zoom respects the MP floor (not zoomed out to the raw minimum)');
 }
 
-console.log(`\noverhead multiplayer (0a-0f + edge-hold): ${pass} passed, ${fail} failed`);
+console.log('Phase combat — a SECONDARY player fires a ranged weapon on its own input + damages a mob:');
+{
+  const g = new OverheadGame(mk({ mobs: [{ col: 12, row: 8, type: 'zombie', hp: 20, speed: 2, detect: 6 }], spawns: [{ col: 2, row: 8 }, { col: 8, row: 8 }] }), { testMode: true, numPlayers: 2 }, () => {});
+  const mob = g.mobs[0]; mob.speed = 0; mob.detect = 0;   // stationary target directly right of P2
+  g.players[1].weapon = 'crossbow'; g.players[1].weapons = ['crossbow'];
+  g.players[1].x = 8.5 * 32; g.players[1].y = 8.5 * 32;   // P2 left of the mob
+  g.players[0].x = 2.5 * 32; g.players[0].y = 8.5 * 32;   // P1 out of the way
+  g.input.isDown = () => false; g.input.isJustDown = () => false; g.input.pJustDown = () => false;
+  g.input.pGp = (i) => i === 1 ? { moveX: 0, moveY: 0, aimX: 1, aimY: 0 } : { moveX: 0, moveY: 0, aimX: 0, aimY: 0 };   // P2 aims right at the mob
+  g.input.pAttack = (i) => i === 1;   // P2 holds fire
+  const before = g._bolts.length;
+  g._update();
+  ok(g._bolts.length > before, 'P2 fired a crossbow bolt on its own input (per-player combat)');
+  const hp0 = mob.hp;
+  for (let f = 0; f < 40; f++) g._update();
+  ok(mob.hp < hp0, "P2's bolts damaged the mob");
+}
+
+console.log('Phase combat — a SECONDARY player melees a nearby mob on its own melee button:');
+{
+  const g = new OverheadGame(mk({ mobs: [{ col: 9, row: 8, type: 'zombie', hp: 20, speed: 2, detect: 6 }], spawns: [{ col: 2, row: 8 }, { col: 8, row: 8 }] }), { testMode: true, numPlayers: 2 }, () => {});
+  const mob = g.mobs[0]; mob.speed = 0; mob.detect = 0;
+  g.players[1].weapon = null;   // unarmed -> pickaxe cone melee
+  g.players[1].x = 8.5 * 32; g.players[1].y = 8.5 * 32;   // P2 adjacent-left of the mob at col 9
+  g.players[0].x = 2.5 * 32;
+  g.input.isDown = () => false; g.input.isJustDown = () => false; g.input.pAttack = () => false;
+  g.input.pGp = (i) => i === 1 ? { moveX: 0, moveY: 0, aimX: 1, aimY: 0 } : { moveX: 0, moveY: 0, aimX: 0, aimY: 0 };
+  g.input.pJustDown = (i, btn) => (i === 1 && btn === 'attack');   // P2 presses melee (X)
+  const hp0 = mob.hp;
+  for (let f = 0; f < 10; f++) g._update();
+  ok(mob.hp < hp0, 'P2 melee (X) damaged the adjacent mob');
+  ok(g.players[1]._swingT > 0 || g.players[1]._fireCd > 0, "P2's swing animation/cooldown triggered");
+}
+
+console.log('Phase combat — P1 combat unchanged (mouse fire still works):');
+{
+  const g = new OverheadGame(mk({ mobs: [{ col: 12, row: 8, type: 'zombie', hp: 20, speed: 2, detect: 6 }], spawns: [{ col: 8, row: 8 }] }), { testMode: true }, () => {});
+  g.players[0].weapon = 'crossbow'; g.players[0].weapons = ['crossbow'];
+  g.players[0].x = 8.5 * 32; g.players[0].y = 8.5 * 32; g.players[0].aim = { x: 1, y: 0 };
+  g.input.isDown = () => false; g.input.isJustDown = () => false;
+  g.input.mouse = { x: 700, y: 250, clicked: true, down: true, rightClicked: false, moveVec: { x: 0, y: 0 } };   // P1 holds fire
+  const before = g._bolts.length;
+  g._update();
+  ok(g._bolts.length > before, 'P1 still fires on mouse (single-player combat unchanged)');
+}
+
+console.log(`\noverhead multiplayer (0a-0f + edge-hold + per-player combat): ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
