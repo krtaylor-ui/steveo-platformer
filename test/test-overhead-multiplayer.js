@@ -309,5 +309,25 @@ console.log('Phase 0f — mobs target the NEAREST player (and switch when someon
   ok(m.x > mx1 + 2, 'mob switched target and chased P2 (moved right)');
 }
 
-console.log(`\noverhead multiplayer (0a-0f FOUNDATION COMPLETE): ${pass} passed, ${fail} failed`);
+console.log('Phase 0d/0e — EDGE-HOLD: a straggler is held on-screen, not lost off the edge (tester finding):');
+{
+  const W = 60, H = 16, ground = [], elevation = [];
+  for (let r = 0; r < H; r++) { ground.push(new Array(W).fill('grass')); elevation.push(new Array(W).fill(0)); }
+  const world = mk({ mapSnapshot: { gridW: W, gridH: H, density: 1, baseW: W, baseH: H, cell: 32, objectScaleMode: 'independent', ground, elevation, decorations: [] },
+    spawns: [{ col: 4, row: 8 }, { col: 7, row: 8 }] });
+  const g = new OverheadGame(world, { testMode: true, numPlayers: 2 }, () => {});
+  g.input.isDown = () => false; g.input.isJustDown = () => false; g.input.pJustDown = () => false; g.input.pAttack = () => false;
+  g.input.pGp = (i) => i === 1 ? { moveX: 1, moveY: 0, aimX: 0, aimY: 0 } : { moveX: 0, moveY: 0, aimX: 0, aimY: 0 };
+  for (let f = 0; f < 500; f++) g._update();
+  const z = g.grid.masterZoom;
+  const p2sx = (g.players[1].x - g.camera.x) * z;   // P2 screen-x
+  const p1sx = (g.players[0].x - g.camera.x) * z;   // P1 screen-x
+  ok(p2sx <= CANVAS_W + 6 && p2sx >= -6, 'the driven player (P2) is HELD on-screen, not lost off the edge');
+  ok(p1sx <= CANVAS_W + 6 && p1sx >= -6, 'the idle player (P1) is also kept on-screen');
+  const spread = Math.abs(g.players[1].x - g.players[0].x);
+  ok(spread <= CANVAS_W / z + 4, 'group spread is capped to the shared view (tethered, cannot separate past the screen)');
+  ok(z >= (g.grid.MIN_ZOOM || 0.35) && z >= g._baseZoom * 0.5 - 1e-6, 'auto-zoom respects the MP floor (not zoomed out to the raw minimum)');
+}
+
+console.log(`\noverhead multiplayer (0a-0f + edge-hold): ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

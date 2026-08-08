@@ -529,10 +529,25 @@
       const spanX = (maxX - minX) + pad * 2, spanY = (maxY - minY) + pad * 2;
       const fitZ = Math.min(CANVAS_W / Math.max(1, spanX), CANVAS_H / Math.max(1, spanY));
       const base = this._baseZoom || 1;
-      const target = Math.min(base, fitZ);   // fit the group, but never zoom IN past the world's base zoom
+      // §0d/0e — don't zoom out UNBOUNDED: cap at half the world's base zoom (or MIN_ZOOM if that's
+      // higher). Zooming to the raw MIN made a heavy world unreadable (~6fps, players tiny) AND the
+      // trailing player still fell off the edge. The edge-hold below then keeps everyone on-screen.
+      const floor = Math.max((OH_GRID.MIN_ZOOM || 0.35), base * 0.5);
+      const target = Math.max(floor, Math.min(base, fitZ));   // fit the group; never zoom IN past base, never OUT past the floor
       const cur = this.grid.masterZoom;
       OH_GRID.setZoom(this.grid, cur + (target - cur) * 0.12);   // smooth toward the fit (setZoom clamps to MIN/MAX)
       this.camera = OH_GRID.centerOn(this.grid, cx, cy, CANVAS_W, CANVAS_H);
+      // §0e EDGE-HOLD (the "tethered" rule Kevin asked for): once zoomed out as far as allowed, a
+      // player who would leave the shared view is HELD at the screen edge instead of walking off
+      // (New-Super-Mario-Bros co-op). Clamp each player to the visible world rect at the current
+      // zoom. When everyone already fits this is a no-op; only a straggler past the floor gets held.
+      const z = this.grid.masterZoom, m = this.unit * 0.6;
+      const vMinX = this.camera.x + m, vMaxX = this.camera.x + CANVAS_W / z - m;
+      const vMinY = this.camera.y + m, vMaxY = this.camera.y + CANVAS_H / z - m;
+      for (const p of live) {
+        const nx = Math.max(vMinX, Math.min(vMaxX, p.x)), ny = Math.max(vMinY, Math.min(vMaxY, p.y));
+        if (nx !== p.x || ny !== p.y) { p.x = nx; p.y = ny; }   // held at the edge
+      }
     }
 
     // Dodging: airborne cancels a hit when the dodge mode allows it. 'single' = any
