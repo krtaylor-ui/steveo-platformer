@@ -141,3 +141,27 @@ Notes for the dev (known / by design):
   sensitivity + deadzone are still tunable in the in-game Esc pause panel.
 - Glass tubes (overhead) are a straight segment between the two linked endpoints (not a drawn multi-
   bend path) in this version.
+
+===================================================================================================
+## O8 - Speed Run Phase 2 (overhead)  [added build 423]
+===================================================================================================
+Context: overhead Speed Run now has a run TIMER + a real FINISH (the Goal Star) + a best-time
+LEADERBOARD. Single player.
+
+Setup: tag an overhead world as Speed Run (Sandbox card Mode -> Speed Run, or editor toolbar), give
+it a Goal Star, Save. Dashboard -> Speed Runner -> New Game -> pick it -> play (1 player, no window).
+
+O8.1 TIMER IDLE: on launch the clock (top-centre) reads 0:00.00 with a "move to start" hint and does
+     NOT tick until you move.
+O8.2 TIMER RUNS: move -> the clock turns gold and counts up.
+O8.3 FINISH: reach the Goal Star. Expected: the run ENDS ("Finish!"), the clock stops + turns green,
+     and the overlay shows "Time m:ss.cc" plus either "New top-5 time!" or "Best m:ss.cc".
+O8.4 LEADERBOARD PERSISTS: finish once, exit, replay the same world -> your prior best is remembered
+     (a slower run shows the earlier best; a faster run shows "New top-5 time!").
+O8.5 REGRESSION: a Platform overhead world still wins on its Goal Star with NO timer shown.
+
+    O8.1 timer idle until move ............ PASS/FAIL
+    O8.2 timer runs on movement .......... PASS/FAIL
+    O8.3 finish stops clock + shows time .. PASS/FAIL
+    O8.4 best time persists across runs ... PASS/FAIL
+    O8.5 platformer goal unaffected ...... PASS/FAIL
