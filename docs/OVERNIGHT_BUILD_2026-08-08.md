@@ -60,3 +60,24 @@ call; LAST step = a big plain-ASCII tester test plan covering everything, then s
 - Single-player + side-scroll unchanged unless the item requires it. Overhead-MP versus/co-op intact.
 - Bump build via tools/bump-build.js on behaviour changes. Plain-ASCII tester files only.
 - Anything ambiguous: pick the sensible default, DO it, and note it here under the item for Kevin.
+
+## PART 2 (Kevin picked, ~00:30) — Speed Run Phase 2 (overhead)
+Build on branch overhead-play-modes (@ build 422 after the 421-defect fixes). Complete the 3rd play
+mode. Ghost + checkpoints stay deferred.
+- [ ] Finish-enable: overhead goal-win is gated to platformer/campaign (overhead-game.js ~533 and the
+  portal isGoal path ~520). ENABLE the finish for mode==='speedrunner' too (the world's Goal Star /
+  a portal isGoal = the finish line).
+- [ ] Run timer: start on the player's FIRST movement input, stop at finish. Draw elapsed time in the
+  overhead HUD (_drawHUD). Keep the clock in the game (e.g. this._srT / this._srRunning), advanced in
+  _update. Single-player Speed Run only (mode already forces 1P via OVERHEAD_PLAY).
+- [ ] Best time + leaderboard: reuse the side-scroll SpeedRunnerLeaderboard + SPEEDRUN_SYNC
+  (js/speedrunner-mode.js; POST/GET /api/speedrun/results) keyed levelId=`${playerName}:${worldName}`
+  (mirror game.js:17902). On finish: record ms, qualifies()->add(); show the time + best on the win
+  overlay. playerName from AUTH (fallback 'Player'), worldName from world.name.
+- [ ] Headless tests: timer format/start/stop, finish-enable gating for speedrunner, leaderboard
+  qualify/add + levelId keying. Keep node test/run.js exit 0.
+- [ ] Bump build, commit+push each step, tick here, mark task #32 done.
+- [ ] LAST: append a Speed-Run section to the tester brief (or a small new brief) + QA copy; then
+  ScheduleWakeup stop:true + post a summary. Judgment calls documented here.
+Decisions (autonomous): timer starts on first move (no countdown in v1); Goal Star = finish; results
+overlay shows time + personal best; ghost/checkpoints deferred.
