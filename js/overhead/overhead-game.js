@@ -54,6 +54,13 @@
           elev: this._elev(m.col, m.row),   // FIX: mobs need an elevation or collision NaN-blocks them (they sat still)
           hp: m.hp || d.hp, speed: m.speed || d.speed, detect: (cfg.mobDetectBlocks != null ? cfg.mobDetectBlocks : 10) * this.unit, ranged: !!d.ranged, state: 'path', wp: 0, dead: false, cool: 0, _wc: 0 }; });
       this.mode = worldData.mode || 'platformer';
+      // §Speed Run (Phase 2) — a run timer that starts on first movement and stops at the finish
+      // (the Goal Star / a portal isGoal). Best times persist to the shared SpeedRunnerLeaderboard,
+      // keyed author:worldName (stable per level, like the side-scroll engine). Single-player only.
+      this._srMode = (this.mode === 'speedrunner');
+      this._srT = 0; this._srRunning = false; this._srDone = false; this._srFinalMs = 0; this._srBest = 0; this._srQualified = false;
+      this._srAuthor = worldData.playerName || worldData.creator_name || (worldData.metadata && worldData.metadata.createdBy) || 'Player';
+      this._srWorldName = worldData.name || (worldData.mapSnapshot && worldData.mapSnapshot.name) || 'World';
       this.climbLevels = Number.isFinite(+cfg.climbLevels) ? +cfg.climbLevels : 0;   // coerce (guards a stringy setting)
       this.playerH = cfg.playerHeight != null ? cfg.playerHeight : 1;
       // A taller player makes each elevation LEVEL render smaller (height 2 → ½ a level),
@@ -494,6 +501,7 @@
       if (inp.isJustDown && (inp.isJustDown('KeyQ') || inp.isJustDown('Tab'))) this._cycleWeapon();   // P1 weapon switch (keyboard)
       const mouseWorld = OH_GRID.screenToWorld(this.grid, this.camera, inp.mouse.x, inp.mouse.y);
       for (const pl of this.activePlayers()) this._controlPlayer(pl, pl._index);
+      this._srTick();   // §Speed Run — clock starts on first movement, ticks every playing frame
       this._advancePlayerDeaths();   // §0e — downed players (MP) burst + respawn at their own spawn, independently
       // §combat — every player fires/melees with its own weapon + inputs.
       for (const pl of this.activePlayers()) this._updateWeapons(pl, mouseWorld);
@@ -531,7 +539,7 @@
       if (intent.action && !actionUsed && this._toggleNearbyLever(p)) actionUsed = true;
       if (intent.action && !actionUsed) this._doAction(p);
       // Goal — ANY player reaching it wins (co-op any-one-reaches; the modes phase refines this).
-      if ((this.mode === 'platformer' || this.mode === 'campaign') && this.goal) {
+      if ((this.mode === 'platformer' || this.mode === 'campaign' || this.mode === 'speedrunner') && this.goal) {
         const c = this._cellOf(p.x, p.y);
         if (c.col >= this.goal.col && c.col < this.goal.col + 2 && c.row >= this.goal.row && c.row < this.goal.row + 2) { this._wonExitColor = this.goal.color || 0; this._win(); }
       }
@@ -1268,7 +1276,26 @@
       ctx.fillStyle = '#222'; ctx.fillRect(-u * 0.12, -u * 0.42, u * 0.08, u * 0.08); ctx.fillRect(u * 0.04, -u * 0.42, u * 0.08, u * 0.08);
       ctx.restore();
     }
-    _win() { if (this.state === 'won') return; this.state = 'won'; if (this._onWin) { try { this._onWin(this, this._wonExitColor || 0); } catch (e) {} } }
+    _win() { if (this.state === 'won') return; this.state = 'won'; if (this._srMode) this._srFinish(); if (this._onWin) { try { this._onWin(this, this._wonExitColor || 0); } catch (e) {} } }
+    // §Speed Run — stable per-level id (author:worldName), so everyone racing the same level shares a
+    // board. `srUsername()` is the current account (for the row's `user` field), not the level key.
+    _srTick() {
+      if (!this._srMode || this._srDone) return;
+      if (!this._srRunning && this.player && this.player._moving) this._srRunning = true;   // start on first movement
+      if (this._srRunning) this._srT += 1000 / 60;   // ~one frame at 60fps
+    }
+    _srLevelId() { return (this._srAuthor || 'Player') + ':' + (this._srWorldName || 'World'); }
+    _srName() { try { if (typeof srUsername === 'function') { const u = srUsername(); if (u) return u; } } catch (e) {} return (typeof srGetSavedInitials === 'function' ? srGetSavedInitials() : 'AAA'); }
+    _srFinish() {
+      this._srRunning = false; this._srDone = true;
+      const ms = this._srFinalMs = Math.max(1, Math.round(this._srT));
+      if (typeof SpeedRunnerLeaderboard === 'undefined') { this._srBest = ms; return; }
+      const levelId = this._srLevelId();
+      this._srQualified = SpeedRunnerLeaderboard.qualifies(levelId, ms);
+      if (this._srQualified) { try { SpeedRunnerLeaderboard.add(levelId, this._srName(), ms); } catch (e) {} }
+      const lb = SpeedRunnerLeaderboard.get(levelId) || [];
+      this._srBest = (lb[0] && lb[0].ms) || ms;
+    }
     _notify(text, frames) { this._notif = { text, t: frames || 120 }; }
     _exit() { this._running = false; if (document.body) document.body.classList.remove('in-game'); if (this._onExit) this._onExit(this.state); }
     destroy() { this._running = false; if (document.body) document.body.classList.remove('in-game'); }
@@ -1911,6 +1938,15 @@
     _drawHUD(ctx) {
       ctx.textAlign = 'left';
       if (this._debug) this._drawDebugHUD(ctx);   // frame sampling now happens in _loop, for the soak log
+      // §Speed Run — run clock (top centre): grey before the start, gold while running, green at finish.
+      if (this._srMode) {
+        const fmt = (ms) => (typeof srFormatTime === 'function') ? srFormatTime(ms) : (ms / 1000).toFixed(2);
+        ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.font = 'bold 20px ui-monospace,monospace';
+        ctx.fillStyle = this._srDone ? '#9cff7f' : (this._srRunning ? '#ffd24a' : 'rgba(255,255,255,.55)');
+        ctx.fillText(fmt(this._srDone ? this._srFinalMs : this._srT), CANVAS_W / 2, 30);
+        if (!this._srRunning && !this._srDone) { ctx.font = '11px sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillText('move to start', CANVAS_W / 2, 46); }
+        ctx.restore(); ctx.textAlign = 'left';
+      }
       // §modes versus — per-player readout (top-left): kills (deathmatch) or lives/out (last-standing).
       if (this._versusOn()) {
         const dm = this.settings.versusMode === 'deathmatch';
@@ -1955,7 +1991,13 @@
       ctx.fillText(`Overhead · ${this.mode} · ${this.baseScheme}${this.player.weapon ? ' · ' + this.player.weapon : ''}  (WASD · mouse aim · click fire · F melee · Space jump · E action · RMB recall trident · wheel zoom)`, 12, CANVAS_H - 12);
       if (this._schemeOverlay > 0) { ctx.globalAlpha = Math.min(1, this._schemeOverlay / 30); ctx.fillStyle = '#ffcf4a'; ctx.textAlign = 'center'; ctx.font = 'bold 13px sans-serif'; ctx.fillText('⟳ Twin-Stick auto-fire', CANVAS_W / 2, 24); ctx.globalAlpha = 1; }
       if (this._notif) { this._notif.t--; if (this._notif.t <= 0) this._notif = null; else { ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(CANVAS_W / 2 - 130, 34, 260, 26); ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = '13px sans-serif'; ctx.fillText(this._notif.text, CANVAS_W / 2, 51); } }
-      if (this.state === 'won' || this.state === 'dead' || this.state === 'paused') { ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H); ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 30px sans-serif'; ctx.fillText(this.state === 'won' ? ((this._versusOn() && this._winnerMsg) ? this._winnerMsg : '★ Level Complete!') : this.state === 'dead' ? 'Game Over' : 'Paused', CANVAS_W / 2, CANVAS_H / 2 - 8); ctx.font = '15px sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText(this.state === 'paused' ? 'Esc to resume · click to exit' : 'Click / Enter to exit', CANVAS_W / 2, CANVAS_H / 2 + 24); }
+      if (this.state === 'won' || this.state === 'dead' || this.state === 'paused') { ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H); ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 30px sans-serif'; ctx.fillText(this.state === 'won' ? ((this._srMode) ? '🏁 Finish!' : (this._versusOn() && this._winnerMsg) ? this._winnerMsg : '★ Level Complete!') : this.state === 'dead' ? 'Game Over' : 'Paused', CANVAS_W / 2, CANVAS_H / 2 - 8); ctx.font = '15px sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText(this.state === 'paused' ? 'Esc to resume · click to exit' : 'Click / Enter to exit', CANVAS_W / 2, CANVAS_H / 2 + 24);
+        // §Speed Run — final time + personal best / new-record note on the finish screen.
+        if (this.state === 'won' && this._srMode) { const fmt = (ms) => (typeof srFormatTime === 'function') ? srFormatTime(ms) : (ms / 1000).toFixed(2);
+          ctx.font = 'bold 22px ui-monospace,monospace'; ctx.fillStyle = '#ffd24a'; ctx.fillText('Time  ' + fmt(this._srFinalMs), CANVAS_W / 2, CANVAS_H / 2 + 60);
+          ctx.font = '14px sans-serif'; ctx.fillStyle = this._srQualified ? '#9cff7f' : 'rgba(255,255,255,.75)';
+          ctx.fillText(this._srQualified ? '★ New top-5 time!' : ('Best  ' + fmt(this._srBest || this._srFinalMs)), CANVAS_W / 2, CANVAS_H / 2 + 84); }
+        ctx.textAlign = 'left'; }
     }
 
     // MEASURED performance for THIS world on THIS machine (build 371). Renders the real frame

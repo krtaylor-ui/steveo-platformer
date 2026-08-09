@@ -184,3 +184,8 @@ function srFormatTime(ms) {
   const cs = String(Math.floor((ms % 1000) / 10)).padStart(2, '0');
   return `${m}:${s}.${cs}`;
 }
+
+// Headless test export (no effect in the browser, where these are script-scope globals).
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { SR_CONFIG, SpeedRunnerLeaderboard, SPEEDRUN_SYNC, srFormatTime, srUsername, srGetSavedInitials, srSaveInitials };
+}
