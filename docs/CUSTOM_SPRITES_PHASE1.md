@@ -43,7 +43,7 @@ both engines + a single-pick character-select. Player-made sprites (parts mixer)
 - [ ] Editor: let the creator set the world's character (Sandbox card or editor), default classic.
 - [DONE 428] Tests: feat plumbing (renderer receives the right feat per world), select persistence; keep
   the shape renderers headless-safe.
-- [ ] Tester brief (plain ASCII + QA copy): pick a character in each engine; confirm accessories +
+- [DONE 428] Tester brief (plain ASCII + QA copy): pick a character in each engine; confirm accessories +
   colours render and all animations (double jump / edge climb / pipe crawl / melee) still play.
 
 ## Guardrails
