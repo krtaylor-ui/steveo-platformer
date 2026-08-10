@@ -1,4 +1,4 @@
-# TESTER BRIEF - Custom Sprites Phase 1 (build 430)
+# TESTER BRIEF - Custom Sprites Phase 1 (build 431)
 
 Plain ASCII (relay-safe). Branch `custom-sprites`. Notation: ">=" at least, "->" then.
 Goal: 16 pickable characters (astronaut, knight, alien, cat, robot, wizard, ...) render in BOTH the
@@ -15,9 +15,9 @@ plays. Characters are cosmetic only - they never change how the game plays (same
   freeze the automation channel again. New Part D checks this.
 
 ## Setup
-1. git checkout custom-sprites ; git pull   (must be at build 430)
+1. git checkout custom-sprites ; git pull   (must be at build 431)
 2. npm run static -> http://localhost:8000   (if /api routes 404, restart the API server too)
-3. HARD RELOAD. Confirm badge build 430 (console GAME_VERSION.match(/build \d+/)[0]).
+3. HARD RELOAD. Confirm badge build 431 (console GAME_VERSION.match(/build \d+/)[0]).
 4. The full roster: Classic, Astronaut, Knight, Ranger, Super, Ninja, Zib (alien), Bolt (robot),
    Whiskers (cat), Ember Fox, Rex (dino), Bruin (bear), Wizard, Corsair (pirate), Scout, Buzz (bee).
 
@@ -36,7 +36,7 @@ A3 In play, confirm the character's accessories render top-down and correctly (p
    ears/antennae centred on the head, hats as rings from above, snout on the FORWARD edge (no eyes),
    dome/cape/tail where expected. The head faces the walking direction.
 A4 ANIMATIONS: with the accessorized character, confirm these still play and the accessories move with
-   the body: walk, jump, DOUBLE JUMP (spin/somersault), PIPE/TUBE crawl (glass tube), grapple, melee.
+   the body: walk, jump, DOUBLE JUMP (spin/somersault), PIPE/TUBE crawl (glass tube), melee. (Grapple is N/A - the overhead engine has no grapple.)
 A5 COLOURS: recolour the player (skin/hair/shirt/pants) - the character keeps its shape, new colours.
    In multiplayer, each player is still offered colour (always).
 
@@ -68,12 +68,12 @@ D3 Trigger a prompt (e.g. Rename a world; name a teleport destination in sandbox
 D4 Dismissal: modals close with mouse, Enter/Esc, AND a gamepad (A = OK, B = Cancel).
 
 ## Report template
-    CUSTOM SPRITES 430 - <date>, Chrome <ver>, badge <...>, pads <n>
+    CUSTOM SPRITES 431 - <date>, Chrome <ver>, badge <...>, pads <n>
 
     A1 card Character picker persists ... PASS/FAIL
     A2 pre-game Character + Body fields . PASS/FAIL
     A3 overhead accessories render right  PASS/FAIL + notes
-    A4 overhead animations play ........ PASS/FAIL (walk/jump/double/tube/grapple/melee)
+    A4 overhead animations play ........ PASS/FAIL (walk/jump/double/tube/melee; grapple N/A)
     A5 recolour + MP colour ............ PASS/FAIL
     B1 side card Character picker ...... PASS/FAIL
     B2 side accessories + z-order ...... PASS/FAIL + notes
@@ -102,3 +102,27 @@ Automation notes (for the tester rig):
   allow the request to complete (or reload Sandbox) before asserting it stuck.
 - In-page modals are plain DOM (class .dlg-back / .dlg-card, buttons [data-act="ok"|"cancel"], and a
   .dlg-input for prompts) - drive them by clicking those, not by expecting a CDP dialog event.
+
+## FIXED since the 430 run (build 431)
+- Offline OVERHEAD cards (oh-<name> ids) now SAVE a Character (were 404 on ~9/18 cards). Re-check the
+  card picker on an offline overhead world.
+- Native window.confirm / window.prompt are now safety-overridden too (no native dialog anywhere, even
+  from a stray / older code path).
+- Rex's tail now attaches to the body in overhead.
+
+## Clarifications from the 430 report
+- SIDE-SCROLL character IS wired: the value is set in the Game constructor (window.CURRENT_CHARACTER_ID
+  from the world) and read by the sprite. It applies to a game CREATED AFTER the world was tagged
+  (games snapshot the world at creation) - so use New Game from the tagged world; an OLD game slot made
+  before tagging will still show Classic. This is why the free Platformer slot matters (below).
+- Please free ONE Platformer slot so the literal New Game path isn't blocked - that unblocks B1-B3
+  end-to-end.
+- Grapple is NOT in the overhead engine - struck from A4; do not log it as an open item.
+- Modal DOM contracts - there are TWO valid in-page modals, both non-native + screenshottable:
+    * DIALOG (alerts / most confirms / prompts): backdrop .dlg-back, card .dlg-card, buttons
+      [data-act="ok"] / [data-act="cancel"], prompt field .dlg-input.
+    * Sandbox world-card Delete: #sb-confirm-modal with #sb-confirm-ok / #sb-confirm-cancel (CANCEL
+      focused by design). Neither freezes the channel.
+- Cosmetic backlog (not blockers): at Arena size (r ~ 7.7px) some characters read as blobs (we'll
+  favour silhouette over fine colour detail); Zib's head faces AIM not travel, so antennae can point
+  "backward" while moonwalking (correct behaviour, noted).
