@@ -73,6 +73,7 @@
       const numPlayers = Math.max(1, Math.min(4, opts.numPlayers || 1));
       if (typeof OVERHEAD === 'undefined' || !OVERHEAD.launchWorld) { this._return(); return; }
       const w = JSON.parse(JSON.stringify(world));
+      if (opts.characterId) w.characterId = opts.characterId;   // §Custom Sprites — chosen character (overhead reads worldData.characterId)
       // Arena = local PvP versus. Apply the settings window's versus choice (mode/teams/kill target);
       // default to Deathmatch so "Arena" means versus (engages with 2+ players).
       if (this._ctx && this._ctx.gameMode === 'arena') {
@@ -129,6 +130,7 @@
       const c = cfg(), L = (typeof PLAYER_LOOKS !== 'undefined') ? PLAYER_LOOKS : null;
       const st = {
         count: Math.max(minP, Math.min(maxP, this._playerCount(world) || (isArena ? 2 : 1))),
+        characterId: world.characterId || (typeof CHARACTERS !== 'undefined' ? CHARACTERS.DEFAULT_ID : 'classic') || 'classic',
         versusMode: (world.settings && world.settings.versusMode && world.settings.versusMode !== 'off') ? world.settings.versusMode : 'deathmatch',
         teams: !!(world.settings && world.settings.versusTeams),
         killTarget: (world.settings && world.settings.versusKillTarget) || 10,
@@ -143,7 +145,7 @@
         return [
           { key: 'ctrl', label: 'Controller', kind: 'text', text: () => ctrlLabel(c ? c.getAssignment(pnum) : (pnum === 1 ? -1 : pnum - 1)),
             step: (d) => { if (c) c.setAssignment(pnum, cyc(ctrlOrder, c.getAssignment(pnum), d)); } },
-          { key: 'char', label: 'Character', kind: 'text', text: () => (L && L.get(pnum).sprite === 'girl') ? 'Girl' : 'Boy',
+          { key: 'body', label: 'Body', kind: 'text', text: () => (L && L.get(pnum).sprite === 'girl') ? 'Girl' : 'Boy',
             step: () => { if (L) L.set(pnum, 'sprite', L.get(pnum).sprite === 'girl' ? 'boy' : 'girl'); } },
           sw('skin'), sw('hair'), sw('shirt'), sw('pants'),
         ];
@@ -151,6 +153,9 @@
       const globalFields = () => {
         const g = [{ key: 'count', label: 'Players', kind: 'text', global: true, text: () => String(st.count),
           step: (d) => { st.count = Math.max(minP, Math.min(maxP, st.count + (d >= 0 ? 1 : -1))); } }];
+        if (typeof CHARACTERS !== 'undefined') g.push({ key: 'character', label: 'Character', kind: 'text', global: true,
+          text: () => (CHARACTERS.get(st.characterId).name || 'Classic'),
+          step: (d) => { const ids = CHARACTERS.ids(); let i = ids.indexOf(st.characterId); i = (i < 0) ? 0 : (i + (d >= 0 ? 1 : -1) + ids.length) % ids.length; st.characterId = ids[i]; } });
         if (isArena) {
           g.push({ key: 'mode', label: 'Match', kind: 'text', global: true, text: () => st.versusMode === 'lastStanding' ? 'Last-Standing' : 'Deathmatch',
             step: () => { st.versusMode = st.versusMode === 'lastStanding' ? 'deathmatch' : 'lastStanding'; } });
@@ -169,7 +174,7 @@
       let open = true, raf = 0; const navPrev = [{}, {}, {}, {}];
 
       const finish = () => { open = false; if (raf) cancelAnimationFrame(raf); document.removeEventListener('keydown', onKey, true);
-        this._closeOverlay(ov); done({ numPlayers: st.count, versus: { mode: st.versusMode, teams: st.teams, killTarget: st.killTarget } }); };
+        this._closeOverlay(ov); done({ numPlayers: st.count, characterId: st.characterId, versus: { mode: st.versusMode, teams: st.teams, killTarget: st.killTarget } }); };
       const cancel = () => { open = false; if (raf) cancelAnimationFrame(raf); document.removeEventListener('keydown', onKey, true);
         this._closeOverlay(ov); done(null); };
 

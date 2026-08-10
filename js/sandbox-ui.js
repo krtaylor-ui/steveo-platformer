@@ -276,6 +276,19 @@ const SANDBOX = {
     });
   },
 
+  // §Custom Sprites — per-world playable character dropdown (both engines). Persists
+  // world_data.characterId; the runtime reads it to draw the character's accessories.
+  _charSelect(w) {
+    if (typeof CHARACTERS === 'undefined') return '';
+    const cur = (w.world_data && w.world_data.characterId) || 'classic';
+    return `
+          <label class="mode-select-label">Character:
+            <select class="char-select" data-world-id="${this._esc(w.id)}">
+              ${CHARACTERS.list().map((c) => `<option value="${this._esc(c.id)}"${c.id === cur ? ' selected' : ''}>${this._esc(c.name)}</option>`).join('')}
+            </select>
+          </label>`;
+  },
+
   _worldCard(w) {
     const mode = (w.world_data && w.world_data.gameModeDefault) || 'NRM';
     const isLocal = this._isLocalWorld(w.id) || this._isOfflineOverhead(w.id);
@@ -320,6 +333,7 @@ const SANDBOX = {
         <p class="world-card-meta">Created: ${w.created_at ? new Date(w.created_at).toLocaleDateString() : '—'}</p>
         <div class="world-card-actions">
           ${modeSelect}
+          ${this._charSelect(w)}
           <button class="btn btn-primary edit-world-btn" data-world-id="${this._esc(w.id)}">Edit</button>
           <button class="btn btn-secondary rename-world-btn" data-world-id="${this._esc(w.id)}">Rename</button>
           <button class="btn btn-secondary copy-world-btn" data-world-id="${this._esc(w.id)}">Copy</button>
@@ -347,6 +361,20 @@ const SANDBOX = {
       }));
     list.querySelectorAll('.mode-select').forEach(sel =>
       sel.addEventListener('change', (e) => this.changeWorldMode(e.currentTarget.dataset.worldId, e.currentTarget.value)));
+    list.querySelectorAll('.char-select').forEach(sel =>
+      sel.addEventListener('change', (e) => this.changeWorldCharacter(e.currentTarget.dataset.worldId, e.currentTarget.value)));
+  },
+
+  // §Custom Sprites — persist a world's chosen character (world_data.characterId).
+  async changeWorldCharacter(worldId, characterId) {
+    if (!characterId) return;
+    const cache = () => { const w = (this.worlds || []).find((x) => x.id === worldId); if (w) { w.world_data = w.world_data || {}; w.world_data.characterId = characterId; } };
+    if (this._isLocalWorld(worldId)) { cache(); try { if (LOCAL_WORLDS.setCharacter) LOCAL_WORLDS.setCharacter(worldId, characterId); } catch (_) {} return; }
+    try {
+      const res = await AUTH.authedFetch(`/api/worlds/sandbox/${worldId}/character`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ characterId }) });
+      if (!res.ok) { alert('Failed to change character'); return; }
+      cache();
+    } catch (error) { console.error('Change character error:', error); alert('Failed to change character'); }
   },
 
   // Cross-space section — ONLINE ONLY. Shows your LOCAL worlds (badged) as tiles

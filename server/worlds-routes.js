@@ -511,6 +511,27 @@ module.exports = function setupWorldsRoutes(app) {
     }
   });
 
+  // §Custom Sprites — set a world's chosen playable character (world_data.characterId). The runtime
+  // (side + overhead) reads this to draw the character's accessories; player colours stay per-player.
+  app.post('/api/worlds/sandbox/:worldId/character', verifyToken, async (req, res) => {
+    try {
+      const characterId = String((req.body && req.body.characterId) || '').slice(0, 40);
+      if (!characterId) return res.status(400).json({ error: 'Missing characterId' });
+      const { data: prev, error: getErr } = await supabaseAdmin
+        .from('worlds').select('world_data').eq('id', req.params.worldId).eq('creator_id', req.user.id).single();
+      if (getErr || !prev) return res.status(404).json({ error: 'World not found' });
+      const world_data = { ...(prev.world_data || {}), characterId };
+      const { data: world, error } = await supabaseAdmin
+        .from('worlds').update({ world_data, updated_at: new Date().toISOString() })
+        .eq('id', req.params.worldId).eq('creator_id', req.user.id).select().single();
+      if (error) throw error;
+      res.json({ message: 'Character updated', world });
+    } catch (error) {
+      console.error('Change character error:', error);
+      res.status(500).json({ error: 'Failed to change character' });
+    }
+  });
+
   // ── Rename (world_name only — leaves world_data untouched) ─────
   app.post('/api/worlds/sandbox/:worldId/name', verifyToken, async (req, res) => {
     try {

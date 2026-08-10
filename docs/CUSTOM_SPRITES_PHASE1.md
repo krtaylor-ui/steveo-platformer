@@ -36,7 +36,7 @@ both engines + a single-pick character-select. Player-made sprites (parts mixer)
   standing/walk + jump; then crouch/ladder-climb). Port the artifact's side (profile) accessory code
   adapted to player.js's front-ish sprite. Respect z-order (far arm behind torso). Read the world's
   character feat.
-- [ ] CHARACTER-SELECT: creator picks the world's character. Overhead: add a "Character" field to the
+- [DONE 427] CHARACTER-SELECT: creator picks the world's character. Overhead: add a "Character" field to the
   OVERHEAD_PLAY settings window (js/overhead-play.js) + persist on the world. Side-scroll: add to the
   relevant pre-game / world settings. Colour policy already exists via PLAYER_LOOKS + the settings
   window; MP always colour. v1 = single character per world.
