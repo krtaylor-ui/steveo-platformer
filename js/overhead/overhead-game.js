@@ -54,6 +54,9 @@
           elev: this._elev(m.col, m.row),   // FIX: mobs need an elevation or collision NaN-blocks them (they sat still)
           hp: m.hp || d.hp, speed: m.speed || d.speed, detect: (cfg.mobDetectBlocks != null ? cfg.mobDetectBlocks : 10) * this.unit, ranged: !!d.ranged, state: 'path', wp: 0, dead: false, cool: 0, _wc: 0 }; });
       this.mode = worldData.mode || 'platformer';
+      // §Custom Sprites — the world's chosen character (default 'classic' = unchanged). Its accessory
+      // feat is passed to drawOverheadPlayer per player; player colours still come from PLAYER_LOOKS.
+      this._characterId = worldData.characterId || (typeof CHARACTERS !== 'undefined' ? CHARACTERS.DEFAULT_ID : 'classic') || 'classic';
       // §Speed Run (Phase 2) — a run timer that starts on first movement and stops at the finish
       // (the Goal Star / a portal isGoal). Best times persist to the shared SpeedRunnerLeaderboard,
       // keyed author:worldName (stable per level, like the side-scroll engine). Single-player only.
@@ -1645,10 +1648,11 @@
       const _teamIdx = (this.settings && this.settings.versusTeams && this._versusOn()) ? p._team : null;
       const _pal = (typeof PLAYER_LOOKS !== 'undefined') ? PLAYER_LOOKS.palette(_pnum, _teamIdx) : null;
       const _spr = (typeof PLAYER_LOOKS !== 'undefined') ? PLAYER_LOOKS.sprite(_pnum) : 'boy';
+      const _feat = (typeof CHARACTERS !== 'undefined') ? CHARACTERS.feat(this._characterId) : null;   // §Custom Sprites accessory set
       OVERHEAD.drawOverheadPlayer(ctx, cx, cy, (cl ? rr * cl.scale : rr) * em, p.dist, cl ? false : moving, aimA,
         { rotate: true, weapon: inFlight ? null : (p.weapon || 'pickaxe'), moveAngle: (cl ? cl.face : (p.moveAngle != null ? p.moveAngle : OH_CONTROLS.angleOf(p.aim))), spin, somersault, facing: aimA,
           grab: cl ? cl.grab : reach, mantleLeg: cl ? cl.mantleLeg : 0, crouch: cl ? cl.crouch : 0,
-          palette: _pal, sprite: _spr });
+          palette: _pal, sprite: _spr, character: _feat });
       ctx.globalAlpha = 1;
       if (p.iFrames > 0 && ((p.iFrames >> 2) & 1)) { ctx.globalAlpha = 0.4; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
       // Aim reticle.

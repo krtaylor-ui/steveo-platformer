@@ -487,6 +487,7 @@
     drawOverheadPlayer(ctx, cx, cy, r, dist, moving, aimAngle, opts) {
       opts = opts || {};
       const S = opts.palette || window.OH_SPRITE;
+      const feat = opts.character || {};   // §Custom Sprites — accessory flags (CHARACTERS.feat(id))
       const weapon = opts.weapon === undefined ? 'pickaxe' : opts.weapon;
       const moveAngle = opts.moveAngle != null ? opts.moveAngle : aimAngle;
       const ph = (dist / (r * 1.15)) % (Math.PI * 2), swing = moving ? Math.sin(ph) : 0;
@@ -497,6 +498,14 @@
       // Somersault: foreshorten ALONG the facing direction (cos 1 → edge-on → flipped
       // → back) so the sprite rolls head-over-heels the way it's FACING, not always down.
       if (opts.somersault != null) { const f = opts.facing != null ? opts.facing : (aimAngle || 0); const cv = Math.cos(opts.somersault * Math.PI * 2); ctx.rotate(f); ctx.scale(Math.abs(cv) < 0.06 ? 0.06 : cv, 1); ctx.rotate(-f); }
+
+      // §Custom Sprites — behind-the-body accessories (cape / tail / backpack / wings), drawn FIRST
+      // (aim-relative: -x = behind) so the body covers their base. Inside the spin/somersault
+      // transform, so they inherit every animation.
+      if (feat.cape || feat.tail || feat.tailBush || feat.pack || feat.wings) {
+        ctx.save(); if (opts.rotate !== false && aimAngle != null) ctx.rotate(aimAngle);
+        this._ohAccBehind(ctx, r, span, S, feat, swing); ctx.restore();
+      }
 
       // ── LOWER BODY — faces movement ──
       const crouch = opts.crouch || 0, mantle = opts.mantleLeg || 0;   // pipe-climb pose
@@ -538,7 +547,7 @@
         ctx.fillRect(-r * 0.28, -r * 0.06, r * 0.5, r * 0.12); }                                       // thin neck
       else { ctx.fillStyle = S.shirt; ctx.fillRect(-r * 0.36, -span / 2, r * 0.72, span); }
       // Head (smaller, on top).
-      const headR = r * 0.5;
+      const headR = r * 0.5 * (feat.bighead ? 1.28 : 1);
       // Girl sprite: longer hair — two strands flanking the head, extending down past the shoulders.
       // Boy sprite: just the square head cap below. Colours still come from the palette either way.
       if (opts.sprite === 'girl') {
@@ -549,10 +558,62 @@
       ctx.fillStyle = S.hair; ctx.fillRect(-headR, -headR, headR * 2, headR * 2);
       if (opts.eyeSockets) { ctx.fillStyle = '#222'; ctx.fillRect(headR - headR * 0.5, -headR * 0.55, headR * 0.34, headR * 0.34); ctx.fillRect(headR - headR * 0.5, headR * 0.2, headR * 0.34, headR * 0.34); }
       else { ctx.fillStyle = 'rgba(255,255,255,.10)'; ctx.fillRect(-headR, -headR, headR * 2, headR * 0.4); }
+      // §Custom Sprites — on-head accessories (front = +x, sides = ±y): ears, antennae, dome, hats,
+      // visor, crest, snout-on-front, helm, mask, bolts…
+      this._ohAccHead(ctx, headR, S, feat);
       // Weapon in the forward hand (suppressed when thrown via weapon:null).
       if (weapon) { ctx.save(); ctx.translate(headR * 0.5, span / 2); this.drawWeapon(ctx, r, weapon); ctx.restore(); }
       ctx.restore();
       ctx.restore();
+    },
+
+    // §Custom Sprites — behind-the-body accessories (aim-relative frame; -x = behind the character).
+    _ohAccBehind(ctx, r, span, S, feat, swing) {
+      var ax = S.accent || '#ffd24a';
+      if (feat.wings) { ctx.fillStyle = 'rgba(220,235,255,.55)';
+        ctx.beginPath(); ctx.ellipse(-r * 0.35, -r * 0.45, r * 0.5, r * 0.3, 0.6, 0, 7); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(-r * 0.35, r * 0.45, r * 0.5, r * 0.3, -0.6, 0, 7); ctx.fill(); }
+      if (feat.cape) { ctx.fillStyle = ax; ctx.beginPath();
+        ctx.moveTo(-r * 0.18, -span * 0.4); ctx.lineTo(-r * 0.18, span * 0.4); ctx.lineTo(-r * 1.05, span * 0.5); ctx.lineTo(-r * 1.05, -span * 0.5); ctx.closePath(); ctx.fill(); }
+      if (feat.pack) { ctx.fillStyle = _shade(S.pants, -0.1); ctx.fillRect(-r * 0.62, -r * 0.3, r * 0.34, r * 0.6);
+        ctx.fillStyle = ax; ctx.fillRect(-r * 0.56, -r * 0.12, r * 0.2, r * 0.24); }
+      if (feat.tail || feat.tailBush) { var tw = feat.tailBush ? r * 0.34 : r * 0.18;
+        ctx.strokeStyle = feat.tailBush ? _shade(S.shirt, 0.05) : S.shirt; ctx.lineWidth = tw; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(-r * 0.2, 0); ctx.quadraticCurveTo(-r * 0.9, r * 0.28, -r * 1.05, (swing || 0) * r * 0.2); ctx.stroke();
+        if (feat.tailBush) { ctx.fillStyle = ax; ctx.beginPath(); ctx.arc(-r * 1.05, (swing || 0) * r * 0.2, tw * 0.5, 0, 7); ctx.fill(); } }
+    },
+
+    // §Custom Sprites — on-head accessories, head-local frame: front = +x, sides = ±y, centre (0,0).
+    _ohAccHead(ctx, hr, S, feat) {
+      var ax = S.accent || '#ffd24a', lw = Math.max(1.5, hr * 0.12);
+      // ears — CENTRED front-to-back (x~0), poking out the SIDES (±y)
+      if (feat.earsTri) { ctx.fillStyle = S.hair; ctx.strokeStyle = 'rgba(20,22,30,.5)'; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(-hr * 0.4, -hr * 0.55); ctx.lineTo(hr * 0.35, -hr * 0.55); ctx.lineTo(0, -hr * 1.55); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-hr * 0.4, hr * 0.55); ctx.lineTo(hr * 0.35, hr * 0.55); ctx.lineTo(0, hr * 1.55); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+      if (feat.earsRound) { ctx.fillStyle = S.hair; ctx.beginPath(); ctx.arc(0, -hr * 1.02, hr * 0.5, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(0, hr * 1.02, hr * 0.5, 0, 7); ctx.fill(); }
+      // snout on the FRONT edge (+x) + a nose (animals) — no eyes top-down
+      if (feat.snout) { ctx.fillStyle = _shade(S.skin, 0.12); ctx.fillRect(hr * 0.55, -hr * 0.32, hr * 0.6, hr * 0.64);
+        ctx.fillStyle = '#101018'; ctx.beginPath(); ctx.arc(hr * 1.08, 0, hr * 0.12, 0, 7); ctx.fill(); }
+      // head coverings
+      if (feat.helm) { ctx.fillStyle = _shade(S.shirt, 0.12); ctx.fillRect(-hr, -hr, hr * 2, hr * 2); ctx.fillStyle = '#1a1d26'; ctx.fillRect(hr * 0.35, -hr * 0.5, hr * 0.55, hr); }
+      if (feat.wrap) { ctx.fillStyle = S.shirt; ctx.fillRect(-hr, -hr, hr * 2, hr * 2); }
+      if (feat.bandana) { ctx.fillStyle = S.shirt; ctx.fillRect(-hr, -hr, hr * 2, hr * 0.95); }
+      if (feat.cap) { ctx.fillStyle = _shade(S.shirt, -0.1); ctx.fillRect(-hr, -hr, hr * 2, hr * 1.2); ctx.fillRect(hr * 0.6, -hr * 0.45, hr * 0.55, hr * 0.9); }
+      if (feat.band) { ctx.fillStyle = ax; ctx.fillRect(-hr, -hr * 0.16, hr * 2, hr * 0.3); ctx.fillRect(-hr * 1.35, -hr * 0.35, hr * 0.5, hr * 0.18); ctx.fillRect(-hr * 1.35, hr * 0.15, hr * 0.5, hr * 0.18); }
+      if (feat.mask) { ctx.fillStyle = ax; ctx.fillRect(hr * 0.3, -hr * 0.75, hr * 0.45, hr * 1.5); }
+      if (feat.visor) { ctx.fillStyle = ax; ctx.fillRect(hr * 0.25, -hr * 0.7, hr * 0.55, hr * 1.4); }
+      if (feat.dome) { ctx.fillStyle = 'rgba(180,220,255,.30)'; ctx.beginPath(); ctx.arc(0, 0, hr * 1.12, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(220,240,255,.8)'; ctx.lineWidth = 1.6; ctx.stroke(); }
+      if (feat.hat) { ctx.fillStyle = _shade(S.shirt, -0.06); ctx.beginPath(); ctx.arc(0, 0, hr * 0.95, 0, 7); ctx.fill(); ctx.fillStyle = S.shirt; ctx.beginPath(); ctx.arc(0, 0, hr * 0.5, 0, 7); ctx.fill(); ctx.fillStyle = ax; ctx.beginPath(); ctx.arc(0, 0, hr * 0.16, 0, 7); ctx.fill(); }
+      if (feat.fedora) { ctx.fillStyle = _shade(S.pants, 0.06); ctx.beginPath(); ctx.arc(0, 0, hr * 0.98, 0, 7); ctx.fill(); ctx.fillStyle = _shade(S.pants, 0.18); ctx.beginPath(); ctx.arc(0, 0, hr * 0.56, 0, 7); ctx.fill(); }
+      if (feat.crest) { ctx.fillStyle = ax; for (var i = 0; i < 3; i++) { var xx = -hr * 0.45 + i * hr * 0.45; ctx.beginPath(); ctx.moveTo(xx, -hr * 0.16); ctx.lineTo(xx + hr * 0.22, -hr * 0.55); ctx.lineTo(xx + hr * 0.44, -hr * 0.16); ctx.closePath(); ctx.fill(); } }
+      if (feat.plume) { ctx.fillStyle = ax; ctx.beginPath(); ctx.ellipse(hr * 0.2, -hr * 0.85, hr * 0.5, hr * 0.18, 0, 0, 7); ctx.fill(); }
+      // antennae — from the crown CENTRE (x~0), splay forward + out
+      if (feat.antennae) { ctx.strokeStyle = S.hair; ctx.lineWidth = lw; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(0, -hr * 0.2); ctx.lineTo(hr * 0.25, -hr * 0.95); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, hr * 0.2); ctx.lineTo(hr * 0.25, hr * 0.95); ctx.stroke();
+        ctx.fillStyle = ax; ctx.beginPath(); ctx.arc(hr * 0.28, -hr * 1.02, hr * 0.2, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(hr * 0.28, hr * 1.02, hr * 0.2, 0, 7); ctx.fill(); }
+      if (feat.antenna) { ctx.strokeStyle = S.hair; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(hr * 0.15, -hr * 0.95); ctx.stroke(); ctx.fillStyle = ax; ctx.beginPath(); ctx.arc(hr * 0.16, -hr * 1.02, hr * 0.2, 0, 7); ctx.fill(); }
+      if (feat.bolts) { ctx.fillStyle = _shade(S.pants, -0.3); [[-hr * 0.6, -hr * 0.6], [-hr * 0.6, hr * 0.6], [hr * 0.5, 0]].forEach(function (p) { ctx.beginPath(); ctx.arc(p[0], p[1], hr * 0.1, 0, 7); ctx.fill(); }); }
     },
 
     // ── Mob dispatch (zombie = green humanoid; skeleton = bony; spider = custom).

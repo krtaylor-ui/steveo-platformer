@@ -26,7 +26,7 @@ both engines + a single-pick character-select. Player-made sprites (parts mixer)
 - [DONE] `js/characters.js` + `test/characters.js` (120 assertions). Registered in index.html.
 
 ## REMAINING (each: keep node test/run.js exit 0, bump build, commit+push, tick here)
-- [ ] OVERHEAD accessory rendering: extend `drawOverheadPlayer` (js/overhead/overhead-launch.js) to
+- [DONE 425] OVERHEAD accessory rendering: extend `drawOverheadPlayer` (js/overhead/overhead-launch.js) to
   draw accessories from `opts.character` (a feat object) — port the artifact's overhead accessory
   code (ears centred on sides, antennae from crown, hats as rings, dome, cape, tail, snout on the
   facing edge, visor, crest, pack, emblem, bolts, wings, stripes). It draws in the same rotated/scaled
