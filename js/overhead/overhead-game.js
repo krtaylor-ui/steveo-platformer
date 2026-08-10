@@ -1649,6 +1649,7 @@
       const _pal = (typeof PLAYER_LOOKS !== 'undefined') ? PLAYER_LOOKS.palette(_pnum, _teamIdx) : null;
       const _spr = (typeof PLAYER_LOOKS !== 'undefined') ? PLAYER_LOOKS.sprite(_pnum) : 'boy';
       const _feat = (typeof CHARACTERS !== 'undefined') ? CHARACTERS.feat(this._characterId) : null;   // §Custom Sprites accessory set
+      if (_pal && typeof CHARACTERS !== 'undefined') _pal.accent = CHARACTERS.get(this._characterId).pal.accent;   // accent isn't in PLAYER_LOOKS — take the character default
       OVERHEAD.drawOverheadPlayer(ctx, cx, cy, (cl ? rr * cl.scale : rr) * em, p.dist, cl ? false : moving, aimA,
         { rotate: true, weapon: inFlight ? null : (p.weapon || 'pickaxe'), moveAngle: (cl ? cl.face : (p.moveAngle != null ? p.moveAngle : OH_CONTROLS.angleOf(p.aim))), spin, somersault, facing: aimA,
           grab: cl ? cl.grab : reach, mantleLeg: cl ? cl.mantleLeg : 0, crouch: cl ? cl.crouch : 0,

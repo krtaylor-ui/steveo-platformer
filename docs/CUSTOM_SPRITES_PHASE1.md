@@ -32,7 +32,7 @@ both engines + a single-pick character-select. Player-made sprites (parts mixer)
   facing edge, visor, crest, pack, emblem, bolts, wings, stripes). It draws in the same rotated/scaled
   context, so it inherits spin/somersault/climb automatically. overhead-game `_drawPlayer` passes the
   world's character feat. Store `this._characterId = worldData.characterId || 'classic'`.
-- [ ] SIDE accessory rendering: add an accessory layer to js/player.js poses (start with the primary
+- [DONE 426] SIDE accessory rendering: add an accessory layer to js/player.js poses (start with the primary
   standing/walk + jump; then crouch/ladder-climb). Port the artifact's side (profile) accessory code
   adapted to player.js's front-ish sprite. Respect z-order (far arm behind torso). Read the world's
   character feat.

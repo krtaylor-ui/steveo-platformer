@@ -280,6 +280,9 @@ class Game {
     this._arenaStarter = !!options.arenaStarter;
     // True when the SANDBOX editor is editing an arena world (fresh or with a grid),
     // so the editor view can auto-fit single-screen arenas like play does (Phase 3A.3).
+    // §Custom Sprites — the world's chosen character (v1: one per world; default 'classic' =
+    // unchanged look). player.js reads this global; a per-player _characterId would override (Phase 2).
+    if (typeof window !== 'undefined') window.CURRENT_CHARACTER_ID = (options.templateData && options.templateData.characterId) || (options.worldData && options.worldData.characterId) || 'classic';
     this._editArena = this._arenaStarter || !!(options.templateData && options.templateData.gameModeDefault === 'ARN');
     if (this.isArena) {
       this.arenaConfig = Object.assign(

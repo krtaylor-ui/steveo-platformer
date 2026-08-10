@@ -1604,6 +1604,7 @@ class Player {
     // tuck slightly behind it.
     ctx.fillStyle = HAIR; ctx.fillRect(sx + 2, sy, 16, 16);
     ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(sx + 2, sy + 13, 16, 3);
+    this._sideAccHead(ctx, sx + 2, sy, 16, true);   // §Custom Sprites — accessories on the ladder (back view)
   }
 
   _drawHangFigure(ctx, sx, sy) {
@@ -1715,6 +1716,67 @@ class Player {
   _charSkin()   { return this._looksField('skin',  '#F4C78A'); }
   _charPants()  { return this._looksField('pants', '#2C5F8A'); }
   _hasPonytail(){ try { if (typeof PLAYER_LOOKS !== 'undefined') return PLAYER_LOOKS.sprite(this._pnum()) === 'girl'; } catch (_) {} return this.charType === 'female'; }
+
+  // ── §Custom Sprites — per-character accessory layer (side-scroll). The world's characterId is set
+  // on the player by game.js; a feat set (CHARACTERS.feat) decides which accessories draw. Colours
+  // come from the char palette (skin/hair/shirt/pants via PLAYER_LOOKS; accent from the character).
+  // All drawn in _drawStanding/_drawCrouch/_drawLadderClimb LOCAL space, so they inherit the
+  // flip / double-jump spin / squish / slide transforms _drawSteve applies. Cosmetic only — the
+  // hitbox never changes.
+  _shc(hex, f) { try { var n = parseInt(String(hex).slice(1), 16), R = n >> 16 & 255, G = n >> 8 & 255, B = n & 255; var c = function (v) { return Math.max(0, Math.min(255, Math.round(v * (1 + f)))); }; return '#' + ((1 << 24) + (c(R) << 16) + (c(G) << 8) + c(B)).toString(16).slice(1); } catch (e) { return hex; } }
+  // v1 = one character per world (window.CURRENT_CHARACTER_ID, set by game.js at load); a per-player
+  // this._characterId still wins (Phase 2 rosters).
+  _charId() { return this._characterId || (typeof window !== 'undefined' && window.CURRENT_CHARACTER_ID) || 'classic'; }
+  _feat() { try { if (typeof CHARACTERS !== 'undefined') return CHARACTERS.feat(this._charId()) || {}; } catch (_) {} return {}; }
+  _accent() { try { if (typeof CHARACTERS !== 'undefined') return CHARACTERS.get(this._charId()).pal.accent; } catch (_) {} return '#ffd24a'; }
+  _sidePal() { return { skin: this._charSkin(), hair: this._charHair(), shirt: this.shirtColor || this._charShirt(), pants: this._charPants(), accent: this._accent() }; }
+
+  // Behind-the-body accessories (cape / tail / pack / wings). tx,ty = torso top-left; back = -x (left).
+  _sideAccBehind(ctx, tx, ty) {
+    var f = this._feat(); if (!f) return; var S = this._sidePal(), ax = S.accent;
+    if (f.wings) { ctx.fillStyle = 'rgba(220,235,255,.55)'; ctx.beginPath(); ctx.ellipse(tx - 1, ty + 2, 7, 5, -0.5, 0, 7); ctx.fill(); ctx.beginPath(); ctx.ellipse(tx - 1, ty + 9, 7, 5, -0.5, 0, 7); ctx.fill(); }
+    if (f.cape) { ctx.fillStyle = ax; ctx.beginPath(); ctx.moveTo(tx + 1, ty); ctx.lineTo(tx + 11, ty); ctx.lineTo(tx + 6, ty + 24); ctx.lineTo(tx - 4, ty + 24); ctx.closePath(); ctx.fill(); }
+    if (f.pack) { ctx.fillStyle = this._shc(S.pants, -0.12); ctx.fillRect(tx - 3, ty + 1, 6, 14); ctx.fillStyle = ax; ctx.fillRect(tx - 2, ty + 5, 4, 5); }
+    if (f.tail || f.tailBush) { var tw = f.tailBush ? 5 : 3; ctx.strokeStyle = f.tailBush ? this._shc(S.shirt, 0.05) : S.shirt; ctx.lineWidth = tw; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(tx + 2, ty + 13); ctx.quadraticCurveTo(tx - 8, ty + 16, tx - 7, ty + 4); ctx.stroke(); if (f.tailBush) { ctx.fillStyle = ax; ctx.beginPath(); ctx.arc(tx - 7, ty + 4, tw * 0.6, 0, 7); ctx.fill(); } }
+  }
+
+  // Torso accessories (vest / stripes / sash / emblem) + hand items (shield / staff). Standing space.
+  _sideAccTorso(ctx, sx, sy) {
+    var f = this._feat(); if (!f) return; var S = this._sidePal(), ax = S.accent;
+    if (f.vest) { ctx.fillStyle = this._shc(S.shirt, -0.25); ctx.fillRect(sx + 6, sy + 19, 8, 13); }
+    if (f.stripes) { ctx.fillStyle = S.hair; for (var i = 0; i < 3; i++) ctx.fillRect(sx + 4, sy + 20 + i * 5, 12, 2); }
+    if (f.sash) { ctx.strokeStyle = ax; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(sx + 4, sy + 19); ctx.lineTo(sx + 16, sy + 31); ctx.stroke(); }
+    if (f.emblem) { ctx.fillStyle = ax; ctx.beginPath(); ctx.arc(sx + 10, sy + 24, 3, 0, 7); ctx.fill(); }
+    if (f.shield) { ctx.fillStyle = ax; ctx.fillRect(sx + 16, sy + 24, 6, 10); ctx.strokeStyle = this._shc(ax, -0.4); ctx.lineWidth = 1.5; ctx.strokeRect(sx + 16, sy + 24, 6, 10); }
+    if (f.staff) { ctx.strokeStyle = this._shc(S.hair, -0.2); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(sx + 18, sy + 34); ctx.lineTo(sx + 19, sy + 8); ctx.stroke(); ctx.fillStyle = ax; ctx.beginPath(); ctx.arc(sx + 19, sy + 6, 3, 0, 7); ctx.fill(); }
+  }
+
+  // Head accessories. Head box = (hx,hy,hs,hs); front edge = +x. back=true skips face-front items.
+  _sideAccHead(ctx, hx, hy, hs, back) {
+    var f = this._feat(); if (!f) return; var S = this._sidePal(), ax = S.accent, cx = hx + hs / 2, cy = hy + hs / 2, fr = hx + hs;
+    if (f.bighead) { ctx.fillStyle = S.skin; ctx.fillRect(hx - 2, hy - 3, hs + 4, hs + 3); ctx.fillStyle = S.hair; ctx.fillRect(hx - 2, hy - 3, hs + 4, (hs + 3) * 0.35); }
+    if (f.earsTri) { ctx.fillStyle = S.hair; ctx.beginPath(); ctx.moveTo(hx + 1, hy + 2); ctx.lineTo(hx + 3, hy - 6); ctx.lineTo(hx + 7, hy + 2); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(hx + hs - 7, hy + 2); ctx.lineTo(hx + hs - 3, hy - 6); ctx.lineTo(hx + hs - 1, hy + 2); ctx.closePath(); ctx.fill(); }
+    if (f.earsRound) { ctx.fillStyle = S.hair; ctx.beginPath(); ctx.arc(hx + 3, hy + 1, 3.2, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(hx + hs - 3, hy + 1, 3.2, 0, 7); ctx.fill(); }
+    if (f.snout && !back) { ctx.fillStyle = this._shc(S.skin, 0.12); ctx.fillRect(fr - 2, cy - 2, 5, 5); ctx.fillStyle = '#101018'; ctx.fillRect(fr + 2, cy, 2, 2); }
+    if (f.bigeyes && !back) { ctx.fillStyle = '#101018'; ctx.fillRect(hx + hs - 8, cy - 2, 4, 5); ctx.fillStyle = '#fff'; ctx.fillRect(hx + hs - 7, cy - 1, 1, 1); }
+    if (f.helm) { ctx.fillStyle = this._shc(S.shirt, 0.12); ctx.fillRect(hx - 1, hy - 1, hs + 2, hs * 0.62); if (!back) { ctx.fillStyle = '#1a1d26'; ctx.fillRect(cx, cy - 1, hs * 0.42, 3); } }
+    if (f.wrap && !back) { ctx.fillStyle = S.shirt; ctx.fillRect(hx, hy + hs * 0.5, hs, hs * 0.5); ctx.fillRect(hx, hy, hs, hs * 0.42); ctx.fillStyle = '#fff'; ctx.fillRect(hx + hs * 0.55, cy - 1, 3, 2); }
+    if (f.bandana) { ctx.fillStyle = S.shirt; ctx.fillRect(hx - 1, hy - 1, hs + 2, hs * 0.42); }
+    if (f.cap) { ctx.fillStyle = this._shc(S.shirt, -0.1); ctx.fillRect(hx - 1, hy - 1, hs + 2, hs * 0.4); if (!back) ctx.fillRect(fr - 1, hy + hs * 0.28, 5, 3); }
+    if (f.band) { ctx.fillStyle = ax; ctx.fillRect(hx, hy + hs * 0.28, hs, 3); ctx.fillRect(hx - 4, hy + hs * 0.3, 4, 2); ctx.fillRect(hx - 4, hy + hs * 0.5, 4, 2); }
+    if (f.mask && !back) { ctx.fillStyle = ax; ctx.fillRect(hx + hs * 0.3, cy - 3, hs * 0.72, 4); }
+    if (f.visor && !back) { ctx.fillStyle = this._shc(S.pants, -0.4); ctx.fillRect(hx + hs * 0.3, cy - 3, hs * 0.7, 5); ctx.fillStyle = ax; ctx.fillRect(hx + hs * 0.36, cy - 2, hs * 0.55, 2); }
+    if (f.patch && !back) { ctx.fillStyle = '#111'; ctx.fillRect(hx + hs * 0.55, cy - 2, 4, 4); ctx.strokeStyle = '#111'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(hx + hs * 0.4, hy + hs * 0.3); ctx.lineTo(fr, cy - 2); ctx.stroke(); }
+    if (f.dome) { ctx.fillStyle = 'rgba(180,220,255,.32)'; ctx.beginPath(); ctx.arc(cx, cy - 1, hs * 0.72, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(220,240,255,.8)'; ctx.lineWidth = 1.5; ctx.stroke(); }
+    if (f.hat) { ctx.fillStyle = S.shirt; ctx.beginPath(); ctx.moveTo(hx - 2, hy + 2); ctx.lineTo(hx + hs + 2, hy + 2); ctx.lineTo(cx + (back ? 0 : hs * 0.2), hy - hs); ctx.closePath(); ctx.fill(); ctx.fillStyle = ax; ctx.beginPath(); ctx.arc(cx + (back ? 0 : hs * 0.2), hy - hs, 2, 0, 7); ctx.fill(); }
+    if (f.fedora) { ctx.fillStyle = this._shc(S.pants, 0.1); ctx.fillRect(hx - 3, hy + 1, hs + 6, 3); ctx.fillRect(hx + 2, hy - 4, hs - 4, 6); ctx.fillStyle = ax; ctx.fillRect(hx + 2, hy, hs - 4, 2); }
+    if (f.crest) { ctx.fillStyle = ax; for (var j = 0; j < 3; j++) { ctx.beginPath(); ctx.moveTo(hx + 3 + j * 5, hy); ctx.lineTo(hx + 5 + j * 5, hy - 5); ctx.lineTo(hx + 7 + j * 5, hy); ctx.closePath(); ctx.fill(); } }
+    if (f.plume) { ctx.fillStyle = ax; ctx.beginPath(); ctx.ellipse(cx, hy - 4, 2, 6, 0, 0, 7); ctx.fill(); }
+    if (f.beard && !back) { ctx.fillStyle = S.hair; ctx.beginPath(); ctx.moveTo(hx + hs * 0.35, hy + hs * 0.6); ctx.quadraticCurveTo(fr, hy + hs + 6, fr - 1, hy + hs * 0.6); ctx.lineTo(fr - 1, hy + hs); ctx.lineTo(hx + hs * 0.35, hy + hs); ctx.closePath(); ctx.fill(); }
+    if (f.antennae) { ctx.strokeStyle = S.hair; ctx.lineWidth = 1.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(hx + hs * 0.35, hy + 1); ctx.lineTo(hx + hs * 0.28, hy - 6); ctx.stroke(); ctx.beginPath(); ctx.moveTo(hx + hs * 0.65, hy + 1); ctx.lineTo(hx + hs * 0.72, hy - 6); ctx.stroke(); ctx.fillStyle = ax; ctx.beginPath(); ctx.arc(hx + hs * 0.28, hy - 7, 2, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(hx + hs * 0.72, hy - 7, 2, 0, 7); ctx.fill(); }
+    if (f.antenna) { ctx.strokeStyle = S.hair; ctx.lineWidth = 1.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(cx, hy + 1); ctx.lineTo(cx + 1, hy - 6); ctx.stroke(); ctx.fillStyle = ax; ctx.beginPath(); ctx.arc(cx + 1, hy - 7, 2, 0, 7); ctx.fill(); }
+    if (f.bolts) { ctx.fillStyle = this._shc(S.pants, -0.3); [[hx + 2, hy + 2], [hx + hs - 2, hy + 2], [cx, hy + hs - 2]].forEach(function (p) { ctx.beginPath(); ctx.arc(p[0], p[1], 1.2, 0, 7); ctx.fill(); }); }
+  }
   // Ponytail for the flat (standing/crouch) poses: a tuft off the BACK-lower head,
   // below where a helmet lip would sit. The head is a 16×16 box at (sx+2, sy); the
   // whole sprite is flipped for facing-left, so "back" = the local left edge.
@@ -1795,6 +1857,9 @@ class Player {
     ctx.ellipse(sx + this.width/2, sy + this.height + 2, 10, 3, 0, 0, Math.PI*2);
     ctx.fill();
 
+    // §Custom Sprites — behind-body accessories (cape / tail / backpack / wings) draw first.
+    this._sideAccBehind(ctx, sx + 4, sy + 18);
+
     // ── Legs (animated) ─────────────────────────────────────
     const legSwing = swing * 10; // degrees effectively
 
@@ -1859,6 +1924,9 @@ class Player {
     ctx.fillStyle = PANTS;
     ctx.fillRect(sx + 4, sy + 31, 12, 3);
 
+    // §Custom Sprites — torso accessories + hand items (vest / stripes / sash / emblem / shield / staff)
+    this._sideAccTorso(ctx, sx, sy);
+
     // ── Right arm (holds pickaxe side) ───────────────────────
     ctx.save();
     ctx.translate(sx + 16 - tuck * 5, sy + 18 - tuck * 2);
@@ -1886,6 +1954,9 @@ class Player {
     ctx.fillStyle = '#9A4020';
     ctx.fillRect(sx + 10, sy + 12, 2, 1);
     ctx.fillRect(sx + 13, sy + 12, 2, 1);
+
+    // §Custom Sprites — on-head accessories (ears / antennae / dome / hats / visor / crest / snout…)
+    this._sideAccHead(ctx, sx + 2, sy, 16, false);
   }
 
   _drawCrouch(ctx, sx, sy) {
@@ -1947,6 +2018,7 @@ class Player {
     ctx.fillStyle = '#9A4020';
     ctx.fillRect(sx+10, sy+12, 2, 1);
     ctx.fillRect(sx+13, sy+12, 2, 1);
+    this._sideAccHead(ctx, sx + 2, sy, 16, false);   // §Custom Sprites — accessories in crouch
   }
 
   _drawWeapon(ctx, sx, sy, swing, flipX, crouch) {
