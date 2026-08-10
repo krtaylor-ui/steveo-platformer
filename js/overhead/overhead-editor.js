@@ -397,7 +397,9 @@
       const terrOpts = `<input id="oh-terr-filter" placeholder="🔎 filter blocks…" value="${this._esc(this._terrFilter || '')}" style="width:90%;margin:2px auto;display:block;padding:3px 6px;background:#141a26;border:1px solid #2c3648;color:#dbe4f3;border-radius:5px;font-size:12px">`
         + P().OH_TERRAIN.map((t) => `<div class="opt ${this.tool === 'terrain' && this.terrainKey === t.key ? 'sel' : ''}" data-terr="${t.key}">${blockSw(t.key)}${t.name}</div>`).join('');
       const bTypes = (typeof OH_BUILDINGS !== 'undefined') ? OH_BUILDINGS.all().map((d) => d.id) : ['healer'];
-      const buildOpts = bTypes.map((b) => `<div class="opt ${this.tool === 'building' && this.buildingType === b ? 'sel' : ''}" data-build="${b}">🏛 ${b}</div>`).join('')
+      // Friendly display names so the palette isn't raw ids (a search for "Glass Tube" now hits).
+      const bldName = (id) => ({ tube: 'Glass Tube', pipe: 'Pipe', portal: 'Portal', healer: 'Healer', shop: 'Shop', savepoint: 'Save Point', spawner: 'Spawner', core: 'Core', nexus: 'Nexus', tower: 'Tower', statue: 'Statue' }[id] || (id.charAt(0).toUpperCase() + id.slice(1)));
+      const buildOpts = bTypes.map((b) => `<div class="opt ${this.tool === 'building' && this.buildingType === b ? 'sel' : ''}" data-build="${b}" title="${b === 'tube' ? 'Place two, then Hand-select one and set its Teleport destination to the other' : ''}">🏛 ${bldName(b)}</div>`).join('')
         + `<div class="opt ${this.tool === 'spawn' ? 'sel' : ''}" data-spawn="1">🚩 Player Spawns (1-4)</div><div class="opt ${this.tool === 'goal' ? 'sel' : ''}" data-goal="1">★ Goal Star</div>`
         + `<div class="opt ${this.tool === 'ramp' ? 'sel' : ''}" data-ramp="ramp">⟋ Ramp</div><div class="opt ${this.tool === 'ladder' ? 'sel' : ''}" data-ramp="ladder">🪜 Ladder</div>`
         + `<div class="opt ${this.tool === 'tree' ? 'sel' : ''}" data-tree="1">🌳 Tree (prefab)</div>`
