@@ -124,7 +124,7 @@ const CUSTOM_RULES_UI = {
   },
   async _saveToProfile() {
     if (typeof AUTH === 'undefined' || !AUTH.authedFetch) { this._msg('Sign in to save to your profile.'); return; }
-    const name = (prompt('Name this configuration:') || '').trim();
+    const name = ((await DIALOG.prompt('Name this configuration:', { title: 'Save configuration' })) || '').trim();
     if (!name) return;
     try {
       const res = await AUTH.authedFetch('/api/custom-rules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, config: this._snapshot() }) });

@@ -367,7 +367,7 @@ const SERVER = '';
     qa('[data-del]').forEach(btn => {
       btn.onclick = async () => {
         const gid = btn.dataset.del;
-        if (!confirm('Delete this game? This cannot be undone.')) return;
+        if (!(await DIALOG.confirm('Delete this game? This cannot be undone.', { title: 'Delete game', okText: 'Delete', danger: true }))) return;
         const adminCode = localStorage.getItem('mp_admin_mode') === '1' ? 'DOGS' : undefined;
         const json = await fetchJSON(`${SERVER}/api/deleteGame`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -941,7 +941,7 @@ const SERVER = '';
 
       qa('[data-adel]').forEach(btn => {
         btn.onclick = async () => {
-          if (!confirm('Admin delete this game?')) return;
+          if (!(await DIALOG.confirm('Admin delete this game?', { title: 'Admin delete', okText: 'Delete', danger: true }))) return;
           const json = await fetchJSON(`${SERVER}/api/deleteGame`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ gameId: btn.dataset.adel, adminCode: 'DOGS' }),

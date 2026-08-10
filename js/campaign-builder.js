@@ -141,7 +141,7 @@
 
     // ── Campaign lifecycle ────────────────────────────────────────────────────
     async _newCampaign() {
-      const name = prompt('Name your Campaign:', 'My Campaign');
+      const name = await DIALOG.prompt('Name your Campaign:', { title: 'New Campaign', value: 'My Campaign' });
       if (name == null) return;
       try {
         const def = M().newCampaign(name || 'My Campaign', (AUTH.user && AUTH.user.id) || null);
@@ -173,7 +173,7 @@
     },
 
     async _delete(id, name) {
-      if (!confirm('Delete campaign "' + name + '"? This cannot be undone.')) return;
+      if (!(await DIALOG.confirm('Delete campaign "' + name + '"? This cannot be undone.', { title: 'Delete campaign', okText: 'Delete', danger: true }))) return;
       try { await CAMPAIGN_API.remove(id); await this._loadList(); }
       catch (e) { this._flash('Delete failed: ' + e.message, 'err'); }
     },
@@ -200,8 +200,8 @@
     },
 
     // ── Zone + World mutation ─────────────────────────────────────────────────
-    _addZone() {
-      const name = prompt('Name the new ' + (this._c.zoneLabel || 'Zone') + ':', 'New ' + (this._c.zoneLabel || 'Zone'));
+    async _addZone() {
+      const name = await DIALOG.prompt('Name the new ' + (this._c.zoneLabel || 'Zone') + ':', { title: 'New ' + (this._c.zoneLabel || 'Zone'), value: 'New ' + (this._c.zoneLabel || 'Zone') });
       if (name == null) return;
       const id = M().nextId('z', this._c.zones);
       const z = M().newZone(id, name || 'New Zone');

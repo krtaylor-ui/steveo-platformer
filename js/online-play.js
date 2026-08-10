@@ -181,7 +181,7 @@ const ONLINE_PLAY = {
   },
 
   async _friendAction(id, path, method = 'POST', confirmMsg = null) {
-    if (confirmMsg && !confirm(confirmMsg)) return;
+    if (confirmMsg && !(await DIALOG.confirm(confirmMsg))) return;
     try {
       const res = await AUTH.authedFetch(`/api/friends/${id}${path}`, { method });
       if (!res.ok) {

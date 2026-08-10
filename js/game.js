@@ -10861,8 +10861,8 @@ class Game {
         // Delete game (creator)
         const delY = L.FIRST_ROW + 280;
         if (window.multiplayerManager?.isCreator && mx >= btnX && mx <= btnX + btnW && my >= delY && my <= delY + btnH) {
-          if (confirm('Delete this game permanently? All players will be disconnected.'))
-            window.multiplayerManager.deleteGame(window.multiplayerManager.worldId);
+          DIALOG.confirm('Delete this game permanently? All players will be disconnected.', { title: 'Delete game', okText: 'Delete', danger: true })
+            .then(function (ok) { if (ok) window.multiplayerManager.deleteGame(window.multiplayerManager.worldId); });
         }
       } else {
         // Non-sandbox: Disable Chat toggle + connect/disconnect + download
@@ -14985,16 +14985,13 @@ class Game {
         const col = Math.floor(this.player.cx / BLOCK_SIZE);
         const row = Math.floor(this.player.cy / BLOCK_SIZE);
         const defaultName = `x:${col} y:${row}`;
-        const name = window.prompt('Name this teleport destination:', defaultName);
-        if (name !== null) {
+        const px = this.player.x, py = this.player.y;   // capture now — the modal resolves later (non-blocking)
+        DIALOG.prompt('Name this teleport destination:', { title: 'Teleport destination', value: defaultName }).then((name) => {
+          if (name === null) return;
           const label = name.trim() || defaultName;
-          this._worldAdvSettings.customTeleportPoints.push({
-            label,
-            x: this.player.x,
-            y: this.player.y,
-          });
+          this._worldAdvSettings.customTeleportPoints.push({ label, x: px, y: py });
           this._notify(`Saved: ${label}`, '#66FF99', 180);
-        }
+        });
         return;
       }
     }

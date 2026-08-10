@@ -242,7 +242,7 @@ const DASHBOARD = {
   },
 
   async _logout() {
-    if (!confirm('Are you sure you want to logout?')) return;
+    if (!(await DIALOG.confirm('Log out of your account?', { title: 'Log out', okText: 'Log out' }))) return;
     await AUTH.logout();
     this.currentUser = null;
     this._showLogin();

@@ -127,8 +127,8 @@ const GAME_SELECTION = {
     });
 
     document.querySelectorAll('.restart-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        if (confirm('Restart this game? Progress will be lost.')) {
+      btn.addEventListener('click', async (e) => {
+        if (await DIALOG.confirm('Restart this game? Progress will be lost.', { title: 'Restart game', okText: 'Restart', danger: true })) {
           this._restartGame(e.target.dataset.gameId);
         }
       });
@@ -141,8 +141,8 @@ const GAME_SELECTION = {
     });
 
     document.querySelectorAll('.delete-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        if (confirm('Delete this game? This cannot be undone.')) {
+      btn.addEventListener('click', async (e) => {
+        if (await DIALOG.confirm('Delete this game? This cannot be undone.', { title: 'Delete game', okText: 'Delete', danger: true })) {
           this._deleteGame(e.target.dataset.gameId);
         }
       });

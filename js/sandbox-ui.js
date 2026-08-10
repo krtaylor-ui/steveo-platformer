@@ -435,7 +435,7 @@ const SANDBOX = {
         if (cp && srcUid && cp.copiedFrom === srcUid) return true;
         return c.world_name === name;
       });
-      if (dup && !confirm(`A world named “${name}” (or a copy of this one) is already in your online worlds.\n\nOK = copy anyway\nCancel = go back and rename`)) return;
+      if (dup && !(await DIALOG.confirm(`A world named “${name}” (or a copy of this one) is already in your online worlds.`, { title: 'Copy anyway?', okText: 'Copy anyway', cancelText: 'Go back' }))) return;
       await this._doCopyToCloud(name, srcData, ctx.world.description);
     } else {
       LOCAL_WORLDS.importWorld({ worldName: name, description: ctx.world.description || '', worldData: srcData, mode: srcData.gameModeDefault });
@@ -507,7 +507,7 @@ const SANDBOX = {
     const w = this.worlds.find(x => x.id === worldId) ||
       (this._isLocalWorld(worldId) ? LOCAL_WORLDS.get(worldId) : null);
     const current = (w && w.world_name) || '';
-    const input = window.prompt('Rename world:', current);
+    const input = await DIALOG.prompt('Rename world:', { title: 'Rename world', value: current });
     if (input == null) return;                 // cancelled
     const newName = input.trim();
     if (!newName || newName === current) return;
