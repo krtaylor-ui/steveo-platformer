@@ -369,12 +369,24 @@ const SANDBOX = {
   async changeWorldCharacter(worldId, characterId) {
     if (!characterId) return;
     const cache = () => { const w = (this.worlds || []).find((x) => x.id === worldId); if (w) { w.world_data = w.world_data || {}; w.world_data.characterId = characterId; } };
-    if (this._isLocalWorld(worldId)) { cache(); try { if (LOCAL_WORLDS.setCharacter) LOCAL_WORLDS.setCharacter(worldId, characterId); } catch (_) {} return; }
-    try {
-      const res = await AUTH.authedFetch(`/api/worlds/sandbox/${worldId}/character`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ characterId }) });
-      if (!res.ok) { alert('Failed to change character'); return; }
+    if (this._isLocalWorld(worldId)) {
       cache();
-    } catch (error) { console.error('Change character error:', error); alert('Failed to change character'); }
+      try { if (LOCAL_WORLDS.setCharacter) LOCAL_WORLDS.setCharacter(worldId, characterId);
+        else { const lw = LOCAL_WORLDS.get && LOCAL_WORLDS.get(worldId); if (lw) { lw.world_data = lw.world_data || {}; lw.world_data.characterId = characterId; if (LOCAL_WORLDS.save) LOCAL_WORLDS.save(); } } } catch (_) {}
+      return;
+    }
+    // Persist through the long-standing full-world save (GET the current world_data, merge characterId,
+    // PUT it back) rather than a dedicated route — so it works even against an API server that hasn't
+    // been restarted to pick up newer routes (tester saw the /character route 404 on a stale server).
+    try {
+      const g = await AUTH.authedFetch(`/api/worlds/sandbox/${worldId}`);
+      if (!g.ok) { alert('Could not load the world to save the character.'); return; }
+      const world = await g.json();
+      const wd = Object.assign({}, world.world_data || {}, { characterId });
+      const res = await AUTH.authedFetch(`/api/worlds/sandbox/${worldId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ worldData: wd, worldName: world.world_name }) });
+      if (!res.ok) { alert('Failed to save character.'); return; }
+      cache();
+    } catch (error) { console.error('Change character error:', error); alert('Failed to save character.'); }
   },
 
   // Cross-space section — ONLINE ONLY. Shows your LOCAL worlds (badged) as tiles
