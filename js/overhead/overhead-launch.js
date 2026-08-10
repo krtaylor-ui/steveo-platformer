@@ -579,7 +579,8 @@
         ctx.fillStyle = ax; ctx.fillRect(-r * 0.56, -r * 0.12, r * 0.2, r * 0.24); }
       if (feat.tail || feat.tailBush) { var tw = feat.tailBush ? r * 0.34 : r * 0.18;
         ctx.strokeStyle = feat.tailBush ? _shade(S.shirt, 0.05) : S.shirt; ctx.lineWidth = tw; ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(-r * 0.2, 0); ctx.quadraticCurveTo(-r * 0.9, r * 0.28, -r * 1.05, (swing || 0) * r * 0.2); ctx.stroke();
+        // start AT the body centre (covered by the torso) so the tail reads as attached, not floating
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(-r * 0.85, r * 0.28, -r * 1.05, (swing || 0) * r * 0.2); ctx.stroke();
         if (feat.tailBush) { ctx.fillStyle = ax; ctx.beginPath(); ctx.arc(-r * 1.05, (swing || 0) * r * 0.2, tw * 0.5, 0, 7); ctx.fill(); } }
     },
 

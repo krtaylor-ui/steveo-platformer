@@ -139,6 +139,11 @@
     // (Native alert blocked the thread; callers that ran code after alert() still run it — now
     // immediately rather than after dismissal, which is fine for fire-and-forget messages.)
     window.alert = function (m) { DIALOG.alert(m); };
+    // Safety net: native confirm()/prompt() FREEZE the automation channel. Every real caller now uses
+    // DIALOG.confirm/prompt (async); these overrides guarantee that any stray or future native call
+    // can never freeze — they show a non-blocking modal and return a safe default (cancel / null).
+    window.confirm = function (m) { console.warn('[dialog] native confirm() intercepted — use DIALOG.confirm'); DIALOG.alert(m); return false; };
+    window.prompt = function (m, d) { console.warn('[dialog] native prompt() intercepted — use DIALOG.prompt'); DIALOG.alert(m); return (d == null ? null : d); };
     if (typeof requestAnimationFrame === 'function') requestAnimationFrame(padLoop);
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = { DIALOG };
