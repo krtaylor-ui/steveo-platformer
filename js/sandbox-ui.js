@@ -281,12 +281,27 @@ const SANDBOX = {
   _charSelect(w) {
     if (typeof CHARACTERS === 'undefined') return '';
     const cur = (w.world_data && w.world_data.characterId) || 'classic';
+    const isCustom = cur === 'custom';
+    const customName = (w.world_data && w.world_data.customCharacter && w.world_data.customCharacter.name) || 'My Character';
+    // Built-in roster + (if present) the world's own custom character + a "build/edit" entry that
+    // opens the parts-mixer (Phase 2). Selecting __build__ opens the builder instead of switching.
+    const builtins = CHARACTERS.list().map((c) => `<option value="${this._esc(c.id)}"${c.id === cur ? ' selected' : ''}>${this._esc(c.name)}</option>`).join('');
+    const customOpt = isCustom ? `<option value="custom" selected>★ ${this._esc(customName)}</option>` : '';
+    const buildOpt = `<option value="__build__">🎨 ${isCustom ? 'Edit Custom…' : 'Custom…'}</option>`;
     return `
           <label class="mode-select-label">Character:
             <select class="char-select" data-world-id="${this._esc(w.id)}">
-              ${CHARACTERS.list().map((c) => `<option value="${this._esc(c.id)}"${c.id === cur ? ' selected' : ''}>${this._esc(c.name)}</option>`).join('')}
+              ${builtins}${customOpt}${buildOpt}
             </select>
           </label>`;
+  },
+
+  // Open the Phase-2 parts-mixer for a world; on save, re-render the library so the card reflects it.
+  _openCharacterBuilder(worldId) {
+    if (typeof CHARACTER_BUILDER === 'undefined') { alert('Character builder not loaded — please hard-reload.'); return; }
+    const w = (this.worlds || []).find((x) => x.id === worldId);
+    const existing = (w && w.world_data && w.world_data.characterId === 'custom') ? w.world_data.customCharacter : null;
+    CHARACTER_BUILDER.open(worldId, existing, () => { try { this.renderWorlds && this.renderWorlds(); } catch (_) { try { this.render && this.render(); } catch (__) {} } });
   },
 
   _worldCard(w) {
@@ -362,7 +377,11 @@ const SANDBOX = {
     list.querySelectorAll('.mode-select').forEach(sel =>
       sel.addEventListener('change', (e) => this.changeWorldMode(e.currentTarget.dataset.worldId, e.currentTarget.value)));
     list.querySelectorAll('.char-select').forEach(sel =>
-      sel.addEventListener('change', (e) => this.changeWorldCharacter(e.currentTarget.dataset.worldId, e.currentTarget.value)));
+      sel.addEventListener('change', (e) => {
+        const wid = e.currentTarget.dataset.worldId, val = e.currentTarget.value;
+        if (val === '__build__') { this._openCharacterBuilder(wid); e.currentTarget.value = ''; return; }   // open the mixer, don't switch
+        this.changeWorldCharacter(wid, val);
+      }));
   },
 
   // §Custom Sprites — persist a world's chosen character (world_data.characterId).
