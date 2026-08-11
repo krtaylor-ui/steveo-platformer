@@ -4,11 +4,12 @@
 -- Prereqs (confirmed present 2026-08-11): community.sql + stats.sql applied.
 -- ============================================================
 
--- 1. LEVEL STATES — Draft / Live / Published, downloadable opt-in, immutable creator.
+-- 1. LEVEL STATES — Draft / Live / Published + downloadable opt-in. Provenance reuses the existing
+--    worlds.original_author TEXT column from community.sql (creator_name of the source) — do NOT add a
+--    second column; we just make that one immutable so a downloader can't rewrite the creator.
 ALTER TABLE public.worlds ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT 'draft'
   CHECK (state IN ('draft','live','published'));
 ALTER TABLE public.worlds ADD COLUMN IF NOT EXISTS downloadable BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE public.worlds ADD COLUMN IF NOT EXISTS original_author_id UUID;
 
 -- Backfill: anything already published becomes 'published'.
 UPDATE public.worlds SET state = 'published' WHERE is_published = TRUE AND state = 'draft';
@@ -16,9 +17,9 @@ UPDATE public.worlds SET state = 'published' WHERE is_published = TRUE AND state
 -- Provenance is stamped once and must never change (a downloader can't rewrite the creator).
 CREATE OR REPLACE FUNCTION public.lock_original_author() RETURNS TRIGGER AS $$
 BEGIN
-  IF OLD.original_author_id IS NOT NULL
-     AND NEW.original_author_id IS DISTINCT FROM OLD.original_author_id THEN
-    RAISE EXCEPTION 'original_author_id is immutable';
+  IF OLD.original_author IS NOT NULL
+     AND NEW.original_author IS DISTINCT FROM OLD.original_author THEN
+    RAISE EXCEPTION 'original_author is immutable';
   END IF;
   RETURN NEW;
 END;
