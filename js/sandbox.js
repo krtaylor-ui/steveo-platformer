@@ -463,6 +463,22 @@ class SandboxManager {
     this._applyHotbarEntry(this.sbHotbar[this.sbHotbarSel]);
   }
 
+  // QA / automation hook — programmatically select a palette BLOCK by name ('SPIKES', 'SPEED_BOOSTER',
+  // 'LAVA', 'ANCHOR_BLOCK', …) or numeric id, exactly as a palette click would (resets the other
+  // selection kinds). Returns the resolved block id, or null if the name is unknown. This lets a
+  // headless / synthetic-input rig place blocks and reach the right-click config popups that the
+  // canvas-rendered palette can't be driven for. (kind defaults to 'block'; pass e.g. 'egg' for a spawn
+  // egg key.) Not used by gameplay — a stable test seam only.
+  selectItem(nameOrId, kind = 'block') {
+    let value = nameOrId;
+    if (typeof nameOrId === 'string' && kind === 'block') {
+      value = (typeof BLOCK !== 'undefined') ? BLOCK[nameOrId] : undefined;
+      if (value == null) return null;
+    }
+    this._applyHotbarEntry({ kind, value });
+    return (kind === 'block') ? this.selectedBlock : value;
+  }
+
   // ── Brush size ────────────────────────────────────────────────
 
   setBrushSize(n) { this.brushSize = n; }

@@ -152,3 +152,48 @@ NEEDS KEVIN'S VISUAL CONFIRM
 - All Speed Runner HUD/settings changes are best confirmed on a TV/controller for
   legibility (the point of the scaled-up spec).
 ================================================================================
+
+
+================================================================================
+ADDENDUM - responses to the 440-453 test feedback (builds 455-456)
+================================================================================
+
+[B6] FIXED (build 455). Root cause: the cloud RENAME uses a dedicated endpoint
+  POST /api/worlds/sandbox/:id/name that was never wired, and offline/local (lw-)
+  worlds never hit the server at all. Now: client-side MODERATION.check in
+  SANDBOX.createWorld (name + description) and SANDBOX.renameWorld, PLUS the /name
+  server route. Re-test: creating/renaming any world (local or cloud) with an
+  offensive name should now be rejected with an alert / 400.
+  NOTE: if you test client files against the PRODUCTION API, the server half won't
+  reject until this branch's server is deployed - but the client-side check now
+  blocks it regardless.
+
+[E8] per-level key collision FIXED (build 456). An un-saved editor "Test World" had
+  no name, so levelId collapsed to ":" and every such run shared one key. It now
+  falls back to "sr_unsaved_testworld". Real SAVED worlds always had a name and were
+  never affected. (The permanent worlds.id re-key is still in the migrations doc.)
+
+[QA UNBLOCK] new SANDBOX.selectItem(name) hook (build 456) - this is the "cheapest
+  fix" you asked for. In Sandbox, select any palette BLOCK by name WITHOUT opening
+  the canvas palette, then click the canvas to place it:
+    SANDBOX.selectItem('SPIKES')          -> returns the block id (67), or null if unknown
+    SANDBOX.selectItem('SPEED_BOOSTER')   -> 56
+    SANDBOX.selectItem('LAVA')            -> then click canvas to place lava
+    SANDBOX.selectItem('ANCHOR_BLOCK')    -> for moving-platform tests
+  After placing, right-click the placed block (with it still selected) to open its
+  config popup (E6 booster / E12 spike orient). This unblocks F1, E6, E12, E5, and
+  the behavioural halves of E3/E11. Block names are the BLOCK enum keys in
+  js/blocks.js (SPIKES, SPEED_BOOSTER, LAVA, JUMP_PAD, RAIL, ANCHOR_BLOCK, GOAL...).
+
+[E3] note: Platform Launch Accel/Lift are ADVANCED settings - tick the "Advanced"
+  checkbox in the World Settings header or they render on no tab. (They live under
+  Movement > Transport when Advanced is on.)
+
+[E13] note: otherItemVisibleInMode takes an ITEM OBJECT, not a block id. Pass the
+  palette entry shape: otherItemVisibleInMode({ modes:['arena'] }, 'speedrunner')
+  === false; otherItemVisibleInMode({ modes:['arena'] }, 'arena') === true; an item
+  with no `modes` key is universal (true everywhere). Real palette items live in
+  OTHER_PALETTE_ITEMS. The in-app behaviour (open the Other palette in worlds of
+  each mode) is the more meaningful check.
+
+[A1] published cap 2->20 still needs a manual run (publish 3+ worlds) - next session.

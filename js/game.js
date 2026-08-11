@@ -18002,8 +18002,13 @@ class Game {
       } catch {}
     }
 
-    // Unique level ID for ghost + leaderboard
-    this._sr.levelId = `${data.playerName || ''}:${data.worldName || ''}`;
+    // Unique level ID for ghost + leaderboard. When a world has no identity (e.g. an editor "Test World"
+    // with no name), author:worldName collapses to just ":" — which would make EVERY such level share one
+    // ghost/leaderboard/attempt/best-% key. Fall back to a distinct sentinel so those un-saved test runs
+    // don't collide (real saved worlds always have a name; the worlds.id re-key in the migrations doc is
+    // the permanent fix). §E8.
+    const _lvlId = `${data.playerName || ''}:${data.worldName || ''}`;
+    this._sr.levelId = (_lvlId === ':' || !_lvlId) ? 'sr_unsaved_testworld' : _lvlId;
     // Hybrid leaderboard: pull any server times for this level and merge them
     // into the local top-5 (best-effort; local stays authoritative offline).
     if (typeof SPEEDRUN_SYNC !== 'undefined') {
