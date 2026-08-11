@@ -21,6 +21,16 @@ below would need a second human player or a pad, it is marked [SKIP - controller
 5. Record PASS / FAIL / BLOCKED / NOTE + one line each. Do NOT stop on a failure - note it, continue.
 
 Notation for capture: paste the "[GamePlay]" engine-dispatch console line where a step asks for it.
+(Build 435+: OVERHEAD launches now print a "[GamePlay] engine dispatch -> OVERHEAD" line too - it was
+missing before, which is why earlier overhead runs logged nothing.)
+
+PREREQUISITE before testing any 2D MOVEMENT (learned the hard way - caused a false "double jump
+broken" for two builds): a NEW 2D world ships with airJumpEnabled / ledgeHangEnabled / slideEnabled /
+wallSlideEnabled all FALSE by default - these are per-world opt-in abilities, not bugs. Before judging
+2D movement, dump the world's config in the console:
+    window.game && window.game._worldAdvSettings
+and enable the ability under test in the world's Advanced settings first. A disabled ability is
+CONFIGURATION, not a code fault - do not file it as a movement bug.
 
 ===================================================================================================
 ## B1 - Version badge shows the NUMBER only (build 434 fix)

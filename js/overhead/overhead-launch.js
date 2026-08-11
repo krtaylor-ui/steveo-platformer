@@ -61,6 +61,12 @@
     },
     launchWorld(world, opts, onExit) {
       if (window.game && typeof window.game.destroy === 'function') window.game.destroy();
+      // [GamePlay] dispatch signal for the OVERHEAD engine. game-play.js prints this line for the
+      // side-scroll path, but overhead worlds launched through the play-mode setup window / arena
+      // picker / editor Test funnel here and bypassed it — so QA saw ZERO overhead lines (tester,
+      // build 434). This is the single chokepoint for every real overhead launch.
+      try { const o = opts || {}; console.log('[GamePlay] engine dispatch →', 'OVERHEAD',
+        '(mode', (world && (world.mode || world.gameModeDefault)) + ', testMode', !!o.testMode + ', players', (o.numPlayers || 1) + ')'); } catch (_) {}
       window.game = new OverheadGame(world, opts || {}, onExit || (() => this._return()));
       return window.game;
     },
