@@ -367,6 +367,23 @@ const SANDBOX = {
     return (g && typeof g._boosterCfgAt === 'function') ? g._boosterCfgAt(row, col) : null;
   },
 
+  // QA seam — set a WIND_ZONE group's config (E7). cfg = { dir, strength, thickness, channel, affectsGrounded }.
+  // Keys by the group's anchor (like the popup), invalidates the zone cache. Returns the stored config.
+  setWindConfig(col, row, cfg) {
+    const g = (typeof window !== 'undefined') ? window.game : null;
+    if (!g || typeof g._windAnchorAt !== 'function') { console.warn('setWindConfig: open a Sandbox world first.'); return null; }
+    const key = g._windAnchorAt(row, col);
+    g._windCfg = g._windCfg || new Map();
+    const c = Object.assign({ dir: 'right', strength: 0.6, thickness: 2, channel: null, affectsGrounded: false }, cfg || {});
+    g._windCfg.set(key, c);
+    if (g._invalidateWindZones) g._invalidateWindZones();
+    return c;
+  },
+  getWindConfig(col, row) {
+    const g = (typeof window !== 'undefined') ? window.game : null;
+    return (g && typeof g._windAnchorAt === 'function') ? g._windCfgAt.apply(g, g._windAnchorAt(row, col).split(',').map(Number)) : null;
+  },
+
   // Scriptable publish/unpublish for a specific world id (A1 cap test). Exercises the real
   // POST /api/worlds/sandbox/:id/publish route (server enforces the 20-world cap). Returns the parsed
   // response, or { error } on failure. Logged-in cloud worlds only.

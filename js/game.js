@@ -3405,6 +3405,8 @@ class Game {
           this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'booster' };      // §Speed Boost Zone (E6) — mode/amount/duration
         } else if (target === BLOCK.SPIKES && this.sandbox.selectedBlock === BLOCK.SPIKES) {
           this._cycleSpikeDir(hoverRow, hoverCol);                                      // §Spike Orientation (E12) — cycle valid dirs, then remove
+        } else if (target === BLOCK.WIND_ZONE && this.sandbox.selectedBlock === BLOCK.WIND_ZONE) {
+          this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'wind' };          // §E7 Wind Zone — direction/strength/thickness/redstone
         } else if (target === BLOCK.WEIGHT_PLATE && this.sandbox.selectedBlock === BLOCK.WEIGHT_PLATE) {
           this._weightPopup = { col: hoverCol, row: hoverRow };                        // §Weight Sensor — set trigger (players/mobs/both)
         } else if (target === BLOCK.PRESSURE_PLATE && this.sandbox.selectedBlock === BLOCK.PRESSURE_PLATE) {
@@ -6526,7 +6528,8 @@ class Game {
       ctx.translate(-CANVAS_W / 2, -CANVAS_H / 2);
     }
     try { this._drawTravelTubesBack(ctx); } catch (e) { /* ignore */ }   // §Travel Tube — Pass-In-Front/Solid glass BEHIND the blocks (so the world reads in front of it)
-    this.level.draw(ctx, this.camera, this.redstone, this.frameCount, this.gameMode === 'sandbox', this._trampFx, this._spikeDirMap);
+    if (this._windDirMap == null && this.level && this.level.grid) this._buildWindZones();   // §E7 — dir map for rendering (also warms the zone cache)
+    this.level.draw(ctx, this.camera, this.redstone, this.frameCount, this.gameMode === 'sandbox', this._trampFx, this._spikeDirMap, this._windDirMap);
     // Re-draw open chest with lid-open state on top
     if (this._chestOpen) {
       const sx = this._chestOpen.col * BLOCK_SIZE - this.camera.x;
@@ -8396,6 +8399,7 @@ class Game {
     if (data && Array.isArray(data.pipeEntry)) { this._pipeEntry = new Map(); for (const [k, v] of data.pipeEntry) this._pipeEntry.set(k, v); }
     if (data && Array.isArray(data.blockContents)) { this._blockContents = new Map(); for (const [k, v] of data.blockContents) this._blockContents.set(k, v); }
     if (data && Array.isArray(data.boosterCfg)) { this._boosterCfg = new Map(); for (const [k, v] of data.boosterCfg) this._boosterCfg.set(k, v); }   // §Speed Boost Zone (E6)
+    if (data && Array.isArray(data.windCfg)) { this._windCfg = new Map(); for (const [k, v] of data.windCfg) this._windCfg.set(k, v); this._invalidateWindZones(); }   // §E7 Wind Zone
     // §Travel Tube — the TUBE_WALL footprint cells restore with the grid; this restores the
     // fly-through PATHS (waypoints + speed) so travel works after a reload.
     if (data && Array.isArray(data.travelTubes)) {
@@ -8451,8 +8455,42 @@ class Game {
     if (typeof SB_POWERUP_TYPES !== 'undefined') for (const pu of SB_POWERUP_TYPES) items.push({ label: pu.label + ' ⚡', key: 'pu:' + pu.type });
     return items;
   }
+  // §E7 — anchor (min-row then min-col) of the connected WIND_ZONE group containing (r,c). Config is keyed
+  // by the anchor so the whole group shares one setting.
+  _windAnchorAt(r, c) {
+    const L = this.level; if (!L || L.get(r, c) !== BLOCK.WIND_ZONE) return r + ',' + c;
+    const seen = new Set([r + ',' + c]); const stack = [[c, r]]; let mr = r, mc = c;
+    while (stack.length) {
+      const [cc, rr] = stack.pop();
+      if (rr < mr || (rr === mr && cc < mc)) { mr = rr; mc = cc; }
+      for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nc = cc + dc, nr = rr + dr, k = nr + ',' + nc;
+        if (nr >= 0 && nc >= 0 && nr < L.height && nc < L.width && L.get(nr, nc) === BLOCK.WIND_ZONE && !seen.has(k)) { seen.add(k); stack.push([nc, nr]); }
+      }
+    }
+    return mr + ',' + mc;
+  }
   _classicPopupButtons() {
     const p = this._classicPopup; if (!p) return [];
+    if (p.kind === 'wind') {
+      // Edits the group's shared config (keyed by anchor); any change rebuilds the zone cache.
+      const key = this._windAnchorAt(p.row, p.col);
+      const cfg = () => { this._windCfg = this._windCfg || new Map(); let d = this._windCfg.get(key); if (!d) { d = { dir: 'right', strength: 0.6, thickness: 2, channel: null, affectsGrounded: false }; this._windCfg.set(key, d); } return d; };
+      const DIRS = ['right', 'downright', 'down', 'downleft', 'left', 'upleft', 'up', 'upright'];
+      const STR = [0.3, 0.6, 1.0, 1.5, 2.0];
+      const THK = [1, 2, 3, 4];
+      const CH = [null, 'A', 'B', 'C'];
+      const c = cfg();
+      const touch = () => this._invalidateWindZones();
+      return [
+        { label: 'Direction: ' + c.dir, act: () => { const cc = cfg(); cc.dir = DIRS[(DIRS.indexOf(cc.dir) + 1) % DIRS.length]; touch(); } },
+        { label: 'Strength: ' + (c.strength).toFixed(1), act: () => { const cc = cfg(); const i = STR.findIndex(v => v >= cc.strength); cc.strength = STR[(i + 1) % STR.length]; touch(); } },
+        { label: 'Wall Thickness: ' + c.thickness, act: () => { const cc = cfg(); const i = THK.indexOf(cc.thickness); cc.thickness = THK[(i + 1) % THK.length]; touch(); } },
+        { label: 'Redstone: ' + (c.channel == null ? 'Always On' : 'Channel ' + c.channel), act: () => { const cc = cfg(); const i = CH.indexOf(cc.channel); cc.channel = CH[(i + 1) % CH.length]; touch(); } },
+        { label: 'Push While Grounded: ' + (c.affectsGrounded ? 'Yes' : 'No'), act: () => { const cc = cfg(); cc.affectsGrounded = !cc.affectsGrounded; touch(); } },
+        { label: '🗑 Remove Cell', act: () => { this.level.set(p.row, p.col, BLOCK.AIR); this._invalidateWindZones(); this._classicPopup = null; this._notify('Wind cell removed', '#c66', 90); } },
+      ];
+    }
     if (p.kind === 'booster') {
       // §Speed Boost Zone (E6) — mode (temp/perm), amount, and (temp only) linger duration.
       const key = p.row + ',' + p.col;
@@ -8519,6 +8557,7 @@ class Game {
     let title = 'Warp Pipe — destination';
     if (p.kind === 'contents') { const cur = this._blockContents && this._blockContents.get(p.row + ',' + p.col); title = 'Contents: ' + (cur == null ? 'world default' : cur === 'coin' ? 'Coin' : this._isPowerupContent(cur) ? cur.slice(3).replace(/_/g, ' ') + ' ⚡' : ((BLOCK_DATA[cur] && BLOCK_DATA[cur].name) || cur)); }
     else if (p.kind === 'booster') title = 'Speed Boost Zone';
+    else if (p.kind === 'wind') title = 'Wind Zone';
     ctx.fillText(title, g.px + 12, g.py + 10);
     ctx.fillStyle = '#c66'; ctx.fillText('✕', g.px + g.pw - 20, g.py + 10);
     for (let i = 0; i < btns.length; i++) {
@@ -18365,8 +18404,68 @@ class Game {
   // ── §Classic Blocks pack (2026-07-24) — per-frame interactions for the new blocks ──
   // Runs after players update. Covers trampoline bounce, spike/coin overlap, conveyor push,
   // crumble trigger, warp-pipe descend/teleport, and question/hidden bump-from-below.
+  // ── §E7 WIND / CURRENT ZONES ──────────────────────────────────────────────────
+  // Per-block config for the WIND_ZONE group whose anchor (top-left cell) is (r,c). Stored in _windCfg.
+  _windCfgAt(r, c) {
+    const d = this._windCfg && this._windCfg.get(r + ',' + c);
+    return d || { dir: 'right', strength: 0.6, thickness: 2, channel: null, affectsGrounded: false };
+  }
+  // Flood-fill each connected WIND_ZONE group, compute its bounding box + the wall-shadow set + resolve
+  // its config (keyed by the group's anchor = min row then min col). Rebuilt lazily; invalidated on edit.
+  _buildWindZones() {
+    this._windZones = [];
+    this._windDirMap = {};
+    const L = this.level; if (!L) return;
+    const isWind = (c, r) => (r >= 0 && c >= 0 && r < L.height && c < L.width && L.get(r, c) === BLOCK.WIND_ZONE);
+    const seen = new Set();
+    for (let r = 0; r < L.height; r++) for (let c = 0; c < L.width; c++) {
+      if (!isWind(c, r) || seen.has(r + ',' + c)) continue;
+      // 4-connected group of wind cells.
+      const grp = [], stack = [[c, r]]; seen.add(r + ',' + c);
+      let minC = c, maxC = c, minR = r, maxR = r;
+      while (stack.length) {
+        const [cc, rr] = stack.pop(); grp.push({ col: cc, row: rr });
+        minC = Math.min(minC, cc); maxC = Math.max(maxC, cc); minR = Math.min(minR, rr); maxR = Math.max(maxR, rr);
+        for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nc = cc + dc, nr = rr + dr, k = nr + ',' + nc;
+          if (isWind(nc, nr) && !seen.has(k)) { seen.add(k); stack.push([nc, nr]); }
+        }
+      }
+      const cfg = this._windCfgAt(minR, minC);
+      for (const g of grp) this._windDirMap[g.row + ',' + g.col] = cfg.dir;
+      // Bounding box cells for the wall-shadow calc (a wall = solid cells inside the box).
+      const box = [];
+      for (let br = minR; br <= maxR; br++) for (let bc = minC; bc <= maxC; bc++) box.push({ col: bc, row: br });
+      const isSolid = (bc, br) => { const b = L.get(br, bc); return !!(BLOCK_DATA[b] && BLOCK_DATA[b].solid); };
+      const shadow = WIND.shadowedCells(box, cfg.dir, isSolid, cfg.thickness);
+      this._windZones.push({ key: minR + ',' + minC, cfg, minC, maxC, minR, maxR, cells: new Set(grp.map(g => g.col + ',' + g.row)), shadow, isSolid });
+    }
+  }
+  _invalidateWindZones() { this._windZones = null; this._windDirMap = null; }
+  // Push every active player each frame while inside a live, unshadowed wind cell.
+  _applyWind() {
+    if (this.gameMode === 'sandbox') return;
+    if (this._windZones == null) this._buildWindZones();
+    if (!this._windZones.length) return;
+    const players = this.activePlayers ? this.activePlayers() : [this.player];
+    const powered = (ch) => this._channelPowered(ch);
+    for (const p of players) {
+      if (!p || p.hp <= 0) continue;
+      const pc = Math.floor(p.cx / BLOCK_SIZE), pr = Math.floor(p.cy / BLOCK_SIZE);
+      for (const z of this._windZones) {
+        if (pc < z.minC || pc > z.maxC || pr < z.minR || pr > z.maxR) continue;
+        if (!z.cells.has(pc + ',' + pr)) continue;                 // player's cell is a wind cell
+        if (!WIND.active(z.cfg, powered)) continue;                // redstone gate
+        if (!WIND.reaches(pc, pr, z.shadow, z.isSolid)) continue;  // behind a wall
+        const f = WIND.forceFor(z.cfg.dir, z.cfg.strength, p.onGround, z.cfg);
+        p.vx += f.ax; p.vy += f.ay;
+      }
+    }
+  }
+
   _updateClassicBlocks() {
     if (!this.level || this.gameMode === 'sandbox') { this._updateBlockFx(); return; }   // editor: FX only
+    this._applyWind();                       // §E7 — push players inside active wind zones
     this._crumbleTouched = this._crumbleTouched || new Set();
     this._crumbleTouched.clear();     // reused each frame — no per-frame allocation
     const players = this.activePlayers ? this.activePlayers() : [this.player];

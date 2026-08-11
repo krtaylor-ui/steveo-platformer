@@ -112,6 +112,7 @@ const BLOCK = Object.freeze({
   WEIGHT_PLATE:           93,   // §Weight Sensor — a SOLID full block that emits redstone while a player/mob/both stands ON TOP (config modal)
   RAIL_SWITCH:            94,   // §Moving Platforms — a railroad switch: pivot + two routes, flips by redstone; platforms hand off to touching rails
   GLASS:                  95,   // solid, see-through pane; minable in Normal; a world setting lets melee/ranged/explosion/impact SHATTER it into shards
+  WIND_ZONE:              96,   // §E7 non-solid region that pushes entities (dir+strength); wall-blockable + redstone-gated; both engines
 });
 
 // §Phase R — Redstone Lamp colours (click a placed lamp with the Lamp selected to cycle). One hue
@@ -262,6 +263,7 @@ const BLOCK_DATA = {
   [BLOCK.ANCHOR_BLOCK]:      { name: 'Anchor Block',    hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.DIRECTION_CONTROLLER]: { name: 'Direction Controller', hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.SPEED_SEGMENT]:     { name: 'Speed Segment',   hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
+  [BLOCK.WIND_ZONE]:         { name: 'Wind Zone',       hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.LAUNCH_RAMP]:       { name: 'Launch Ramp',     hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.RAIL_GATE]:         { name: 'Rail Gate',       hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
 };
@@ -371,6 +373,7 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.ANCHOR_BLOCK:           _drawAnchorBlock(ctx, px, py, s);               break;
     case BLOCK.DIRECTION_CONTROLLER:   _drawDirectionController(ctx, px, py, s);       break;
     case BLOCK.SPEED_SEGMENT:          _drawSpeedSegment(ctx, px, py, s);              break;
+    case BLOCK.WIND_ZONE:              _drawWindZone(ctx, px, py, s, state.windDir || 'right', state.frame || 0); break;
     case BLOCK.LAUNCH_RAMP:            _drawLaunchRamp(ctx, px, py, s);                break;
     case BLOCK.RAIL_GATE:             _drawRailGate(ctx, px, py, s);                  break;
   }
@@ -1805,6 +1808,23 @@ function _drawSlime(ctx, px, py, s, compress = 0) {
   ctx.strokeRect(px + 1.5, py + 1.5 + dip, s - 3, s - 3 - dip);
   ctx.fillStyle = 'rgba(60,150,80,0.9)'; ctx.fillRect(px + 9, py + 9 + dip, s - 18, s - 18 - dip);   // inner core
   ctx.fillStyle = 'rgba(200,255,210,0.5)'; ctx.fillRect(px + 4, py + 4 + dip, 5, 5);                 // highlight
+}
+// §E7 Wind Zone — a translucent cyan cell with animated chevrons streaming in the wind direction.
+function _drawWindZone(ctx, px, py, s, dir = 'right', frame = 0) {
+  const V = { right: [1, 0], left: [-1, 0], up: [0, -1], down: [0, 1], upright: [1, -1], upleft: [-1, -1], downright: [1, 1], downleft: [-1, 1] }[dir] || [1, 0];
+  const len = Math.hypot(V[0], V[1]) || 1, ux = V[0] / len, uy = V[1] / len;
+  ctx.save();
+  ctx.fillStyle = 'rgba(120,200,235,0.14)'; ctx.fillRect(px, py, s, s);
+  const cx = px + s / 2, cy = py + s / 2, ang = Math.atan2(uy, ux);
+  ctx.translate(cx, cy); ctx.rotate(ang);
+  ctx.strokeStyle = 'rgba(180,225,245,0.7)'; ctx.lineWidth = Math.max(1.4, s * 0.06); ctx.lineCap = 'round';
+  const flow = ((frame || 0) * 0.6) % (s * 0.5);
+  for (let i = -1; i < 2; i++) {
+    const x = -s * 0.28 + i * (s * 0.28) + flow;
+    const h = s * 0.16;
+    ctx.beginPath(); ctx.moveTo(x - h, -h); ctx.lineTo(x, 0); ctx.lineTo(x - h, h); ctx.stroke();   // chevron '>'
+  }
+  ctx.restore();
 }
 function _drawSpikes(ctx, px, py, s, dir = 'up') {
   // §Spike Orientation (E12) — the base sprite points UP; rotate about the cell centre for the other

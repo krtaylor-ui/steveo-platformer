@@ -102,7 +102,7 @@ class Level {
 
   // ── Rendering ──────────────────────────────────────────────
 
-  draw(ctx, camera, redstone = null, frame = 0, editor = false, trampFx = null, spikeDirMap = null) {
+  draw(ctx, camera, redstone = null, frame = 0, editor = false, trampFx = null, spikeDirMap = null, windDirMap = null) {
     // SR zoom scales around canvas centre, so the visible world region is
     // centred on (camera.x + CANVAS_W/2, camera.y + CANVAS_H/2) and expands
     // symmetrically by 1/z in both directions.  The old formula only expanded
@@ -173,6 +173,8 @@ class Level {
           state = { pipeT: pipe(r - 1, c), pipeB: pipe(r + 1, c), pipeL: pipe(r, c - 1), pipeR: pipe(r, c + 1) };
         } else if (block === BLOCK.SPIKES) {
           state = { spikeDir: (spikeDirMap && spikeDirMap[r + ',' + c]) || 'up' };   // §Spike Orientation (E12)
+        } else if (block === BLOCK.WIND_ZONE) {
+          state = { windDir: (windDirMap && windDirMap[r + ',' + c]) || 'right', frame };   // §E7 Wind Zone
         } else if (block === BLOCK.TRAMPOLINE || block === BLOCK.SLIME_BLOCK) {
           const f = trampFx && trampFx.get(r + ',' + c);   // 0..10 compression frames
           state = { compress: f ? f / 10 : 0 };

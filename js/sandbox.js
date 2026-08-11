@@ -131,6 +131,7 @@ const OTHER_PALETTE_ITEMS = [
   // Speed Runner blocks (SPEED_BOOSTER/JUMP_PAD now work in all modes — E6; SPEED_ITEM is SR-only)
   { kind: 'block', blockType: BLOCK.SPEED_BOOSTER },                                       // all modes (E6)
   { kind: 'block', blockType: BLOCK.JUMP_PAD },                                            // all modes
+  { kind: 'block', blockType: BLOCK.WIND_ZONE },                                           // §E7 all modes — paint a region, right-click to set direction/strength
   { kind: 'block', blockType: BLOCK.SPEED_ITEM, modes: ['speedrunner'] },
   { kind: 'block', blockType: BLOCK.MUSIC_PLAYER },                                        // all modes
   // ── Consumable items ─────────────────────────────────────────
