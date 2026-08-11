@@ -278,3 +278,47 @@ ADDENDUM 3 - hook reachability + A1 + GAP-3 (build 458)
   run started), not the fix. The empty "sr_attempts_:" key did NOT reappear. If you
   can start a run, confirm the key is now "<author>:<worldName>" (or
   "sr_unsaved_testworld" for an un-named Test World), never just ":".
+
+
+================================================================================
+ADDENDUM 4 - scriptable config gestures (build 459) + placement notes + A1/B6 caveat
+================================================================================
+
+The right-click gesture won't reach the canvas handlers via CDP or synthetic events,
+which blocked E12/E6/E5. Same fix pattern as selectItem - scriptable equivalents on
+window.SANDBOX (must be INSIDE a Sandbox world so window.game exists):
+
+[E12] spike orientation - cycle exactly as a right-click does:
+    SANDBOX.selectItem('SPIKES'); // then click canvas to place a spike at (col,row)
+    SANDBOX.cycleSpikeOrientation(col, row)  // returns 'up'|'down'|'left'|'right', or 'removed'
+    SANDBOX.getSpikeDir(col, row)            // read current orientation
+    // game._spikeDirMap['<row>,<col>'] also holds the explicit dir.
+  Cycle repeatedly through the valid set for that surface; one past the last valid
+  orientation returns 'removed' and the block is gone (the terminal step).
+
+[E6]/[E5] speed-booster config - set the per-block config directly:
+    SANDBOX.setBoosterConfig(col, row, { mode:'perm', amount:1.0, durSec:5 })
+    SANDBOX.getBoosterConfig(col, row)   // read it back (defaults if unset)
+    // mode: 'temp' | 'perm'; amount: 0..2 (+0..200%); durSec: 1..8 (temp only)
+  Then play NORMAL/PLATFORMER (E6) or SPEED RUNNER (E5) and confirm the boost matches
+  the config (perm = sustained, temp = lingers then decays).
+
+NOTE argument order is (col, row) on all of these - tester-friendly, matching how you
+read level.grid[row][col]. The engine internally uses (row, col).
+
+--- Placement gotchas (fold in - cost several attempts) ---
+1. The target cell must be a LEGAL slot: air directly above solid terrain. Clicks into
+   open air or onto an occupied cell place nothing. In the fixture world rows 13-14 are
+   filled (block 83), so those obvious surface cells are already taken - place one row up.
+2. It must be a REAL click. Synthetic MouseEvent clicks place nothing, and synthetic
+   mousemove doesn't update _hoverCol/_hoverRow. Use the coordinate maths from the 458
+   report (real CDP click at the computed canvas pixel).
+
+--- A1 + B6 server caveat (NOT a regression) ---
+A1 returned "Max 2 published worlds allowed" because the API SERVER answering is running
+pre-453 code (same split as B6). The branch code is correct:
+  - server/worlds-routes.js publish route: PUBLISH_CAP = 20.
+  - B6 server checks are wired on signup + create + /name + update.
+Both are verifiable only once the BRANCH server is deployed. On 459 the CLIENT halves
+of A1 (publishWorld) and B6 (create/rename blocks) are correct; the server halves are
+deploy-gated, not code bugs. No action needed beyond deploying the branch server.

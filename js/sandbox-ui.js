@@ -335,6 +335,38 @@ const SANDBOX = {
     return g.sandbox.selectItem(nameOrId, kind);
   },
 
+  // QA seam — cycle a placed SPIKES block's orientation exactly as a right-click does (E12). Tester-
+  // friendly (col,row) order; the engine uses (row,col). Returns the new orientation, or 'removed' when
+  // the terminal step deletes the spike. Read game._spikeDirMap / game._spikeDirAt(r,c) to confirm.
+  cycleSpikeOrientation(col, row) {
+    const g = (typeof window !== 'undefined') ? window.game : null;
+    if (!g || typeof g._cycleSpikeDir !== 'function') { console.warn('cycleSpikeOrientation: open a Sandbox world first.'); return null; }
+    g._cycleSpikeDir(row, col);
+    if (g._spikeDirMap && g._spikeDirMap[row + ',' + col]) return g._spikeDirMap[row + ',' + col];
+    return (g.level && g.level.get(row, col) === (typeof BLOCK !== 'undefined' ? BLOCK.SPIKES : 67)) ? g._spikeDirAt(row, col) : 'removed';
+  },
+  getSpikeDir(col, row) {
+    const g = (typeof window !== 'undefined') ? window.game : null;
+    return (g && typeof g._spikeDirAt === 'function') ? g._spikeDirAt(row, col) : null;
+  },
+
+  // QA seam — set a placed SPEED_BOOSTER block's per-block config directly (E6/E5), bypassing the
+  // right-click popup. cfg = { mode:'temp'|'perm', amount:0..2, durSec:1..8 }; missing keys use defaults.
+  // Returns the stored config. Read game._boosterCfgAt(row,col) to confirm.
+  setBoosterConfig(col, row, cfg) {
+    const g = (typeof window !== 'undefined') ? window.game : null;
+    if (!g) { console.warn('setBoosterConfig: open a Sandbox world first.'); return null; }
+    g._boosterCfg = g._boosterCfg || new Map();
+    const base = (typeof SPEED_BOOSTER_FX !== 'undefined') ? SPEED_BOOSTER_FX.DEFAULTS : { mode: 'temp', amount: 0.5, durSec: 3 };
+    const c = Object.assign({}, base, cfg || {});
+    g._boosterCfg.set(row + ',' + col, c);
+    return c;
+  },
+  getBoosterConfig(col, row) {
+    const g = (typeof window !== 'undefined') ? window.game : null;
+    return (g && typeof g._boosterCfgAt === 'function') ? g._boosterCfgAt(row, col) : null;
+  },
+
   // Scriptable publish/unpublish for a specific world id (A1 cap test). Exercises the real
   // POST /api/worlds/sandbox/:id/publish route (server enforces the 20-world cap). Returns the parsed
   // response, or { error } on failure. Logged-in cloud worlds only.
