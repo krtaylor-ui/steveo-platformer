@@ -1691,3 +1691,57 @@ Build sketch:
 
 Effort: moderate (its own phase, after the MP foundation + modes). Slots in as the natural
 extension of the transport pass — do NOT build mid-foundation.
+
+## §45 — Auto-generate / procedural random maps for NORMAL mode  *(Kevin, 2026-08-10 — "gauge feasibility, add to roadmap")*
+
+Idea: the platform randomizes a fresh side-scroll world from a rules set, for NORMAL mode. Should be
+able to populate nether + end portals and stamp in structures. VERDICT after a code sweep: **feasible
+by EXTENDING what already exists — a medium feature, not a from-scratch build.** Three load-bearing
+pieces are already in the repo:
+
+1. **A rules-based side-scroll generator already exists** — `tools/gen-sample-worlds.js`
+   `buildSpeedRun()` builds a level left->right from a SEGMENT SCRIPT of `{run|boost|ramp|gap|pad}`
+   primitives with baked design rules (bottomless/lava gaps, telegraph cues, jump-pads for wide gaps,
+   auto-climb ramps), plus a schema-correct `world()` payload assembler. Today it's deterministic (no
+   RNG) and a Node CLI. Randomizer = port the pure functions into a browser module + swap the fixed
+   segment scripts for seeded RNG.
+2. **A physics-honest solvability checker already exists and is already wired in** —
+   `js/pathfinding.js navReachable()` (envelope `NAV_MAX_JUMP_UP=3`, `NAV_MAX_JUMP_DX=6`).
+   `gen-sample-worlds.js validate()` already runs a spawn->goal->all-POI reachability BFS and FAILS a
+   world that isn't beatable. So we can GUARANTEE a completable level: generate -> navReachable ->
+   repair, loop until solvable. The overhead generator `tools/gen-overhead-worlds.js` already
+   demonstrates exactly this RNG+validate-until-solvable loop (for the other engine).
+3. **Portals + structures stamp into the grid with NO engine change** — nether/end are data-driven:
+   paint frame+portal blocks (`js/blocks.js`: NETHER_PORTAL_FRAME 26, NETHER_PORTAL 20, END_PORTAL 39,
+   END_PORTAL_FRAME 40/41) into the grid and emit matching `portalLinks`/`ruinedPortals`/
+   `endPortalAnchors` (`js/game-state.js:183-228`). `js/world.js:52-176` is a complete worked example
+   (Plains->Cave->Nether->End as column bands linked by portal destLabel routing).
+
+### The 3-4 hardest parts (call these out before starting)
+- **Solvability under the FULL move-set.** `navReachable` models only the base envelope + jump-pads.
+  Double-jump / ledge-hang / slide / jump-velocity overrides (`js/player.js:558-679`) are NOT in the
+  nav model, so a level that REQUIRES them can't be proven beatable. Safe path for v1: generate
+  strictly to the base 3-up/6-across envelope (provably solvable), treat abilities as optional
+  shortcuts. Extending the nav model to abilities is its own sub-project.
+- **Multi-dimension portal wiring.** A nether/end sub-area needs frame+portal blocks, matching
+  `portalLinks` with consistent label/destLabel routing (`js/game.js:5843-5860`), return portals,
+  obsidian fill slots, End-portal anchors/eye counts. The only working example (`js/world.js`) is
+  hardcoded column bands, not composable — the generator must reproduce that wiring and keep both
+  dimensions mutually reachable.
+- **No side-scroll PREFAB library.** The clean voxel-template/stamp system exists only for OVERHEAD
+  (`js/overhead/overhead-templates.js`). Normal-mode structures are built imperatively today. To
+  "place structures" we author a side-scroll prefab set (or capture regions into reusable functions)
+  and ensure each stamp lands on standable ground without breaking reachability.
+- **Emitting a complete valid payload.** `serialize()` (`js/game-state.js`) has ~60 fields; a
+  malformed generated field risks a broken load. Track schema drift (`saveVersion:2`), default every
+  array the loaders touch.
+
+### Suggested phasing
+- **P1 — "Surprise Me" flat randomizer:** RNG segment-script -> grid + spawn/goal + navReachable gate,
+  base envelope only. Ships the core loop; no portals/structures yet. Reuses buildSpeedRun + validate.
+- **P2 — Rules panel:** expose knobs (length, difficulty/gap-frequency, biome, hazard mix, coins/
+  enemies density) -> seed the RNG. Save a generated world into a slot like any other.
+- **P3 — Structures:** author a side-scroll prefab set; stamp N per level on standable ground,
+  re-validate.
+- **P4 — Nether/End:** generate the portal sub-areas + wiring (the hardest part); reuse js/world.js as
+  the reference implementation.
