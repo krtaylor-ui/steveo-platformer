@@ -3390,6 +3390,8 @@ class Game {
           this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'pipe' };        // config only with the pipe SELECTED
         } else if ((target === BLOCK.QUESTION_BLOCK || target === BLOCK.BREAKABLE_BLOCK || target === BLOCK.HIDDEN_BLOCK) && this.sandbox.selectedBlock === target) {
           this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'contents' };     // config only with the matching block SELECTED
+        } else if (target === BLOCK.SPEED_BOOSTER && this.sandbox.selectedBlock === BLOCK.SPEED_BOOSTER) {
+          this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'booster' };      // §Speed Boost Zone (E6) — mode/amount/duration
         } else if (target === BLOCK.WEIGHT_PLATE && this.sandbox.selectedBlock === BLOCK.WEIGHT_PLATE) {
           this._weightPopup = { col: hoverCol, row: hoverRow };                        // §Weight Sensor — set trigger (players/mobs/both)
         } else if (target === BLOCK.PRESSURE_PLATE && this.sandbox.selectedBlock === BLOCK.PRESSURE_PLATE) {
@@ -8341,6 +8343,7 @@ class Game {
     if (data && Array.isArray(data.pipeLinks)) { this._pipeLinks = new Map(); for (const [k, v] of data.pipeLinks) this._pipeLinks.set(k, v); }
     if (data && Array.isArray(data.pipeEntry)) { this._pipeEntry = new Map(); for (const [k, v] of data.pipeEntry) this._pipeEntry.set(k, v); }
     if (data && Array.isArray(data.blockContents)) { this._blockContents = new Map(); for (const [k, v] of data.blockContents) this._blockContents.set(k, v); }
+    if (data && Array.isArray(data.boosterCfg)) { this._boosterCfg = new Map(); for (const [k, v] of data.boosterCfg) this._boosterCfg.set(k, v); }   // §Speed Boost Zone (E6)
     // §Travel Tube — the TUBE_WALL footprint cells restore with the grid; this restores the
     // fly-through PATHS (waypoints + speed) so travel works after a reload.
     if (data && Array.isArray(data.travelTubes)) {
@@ -8398,6 +8401,21 @@ class Game {
   }
   _classicPopupButtons() {
     const p = this._classicPopup; if (!p) return [];
+    if (p.kind === 'booster') {
+      // §Speed Boost Zone (E6) — mode (temp/perm), amount, and (temp only) linger duration.
+      const key = p.row + ',' + p.col;
+      const cfg = () => { this._boosterCfg = this._boosterCfg || new Map(); let c = this._boosterCfg.get(key); if (!c) { c = { ...SPEED_BOOSTER_FX.DEFAULTS }; this._boosterCfg.set(key, c); } return c; };
+      const AMTS = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0];
+      const DURS = [1, 2, 3, 5, 8];
+      const c = cfg();
+      const list = [
+        { label: 'Mode: ' + (c.mode === 'perm' ? 'Permanent' : 'Temporary'), act: () => { const cc = cfg(); cc.mode = cc.mode === 'perm' ? 'temp' : 'perm'; } },
+        { label: 'Boost: +' + Math.round((c.amount ?? 0.5) * 100) + '%', act: () => { const cc = cfg(); const i = AMTS.findIndex(a => a >= (cc.amount ?? 0.5)); cc.amount = AMTS[(i + 1) % AMTS.length]; } },
+      ];
+      if (c.mode !== 'perm') list.push({ label: 'Linger: ' + (c.durSec ?? 3) + 's', act: () => { const cc = cfg(); const i = DURS.findIndex(d => d >= (cc.durSec ?? 3)); cc.durSec = DURS[(i + 1) % DURS.length]; } });
+      list.push({ label: '🗑 Remove Block', act: () => { this.level.set(p.row, p.col, BLOCK.AIR); if (this._boosterCfg) this._boosterCfg.delete(key); this._classicPopup = null; this._notify('Block removed', '#c66', 90); } });
+      return list;
+    }
     if (p.kind === 'pipe') {
       const key = this._pipeAnchorKey(p.row, p.col);
       const OPEN = { up: 'Top (press Down)', down: 'Bottom (jump up)', left: 'Left (walk in)', right: 'Right (walk in)' };
@@ -8448,6 +8466,7 @@ class Game {
     ctx.fillStyle = '#cdd6ff'; ctx.font = 'bold 13px system-ui, sans-serif';
     let title = 'Warp Pipe — destination';
     if (p.kind === 'contents') { const cur = this._blockContents && this._blockContents.get(p.row + ',' + p.col); title = 'Contents: ' + (cur == null ? 'world default' : cur === 'coin' ? 'Coin' : this._isPowerupContent(cur) ? cur.slice(3).replace(/_/g, ' ') + ' ⚡' : ((BLOCK_DATA[cur] && BLOCK_DATA[cur].name) || cur)); }
+    else if (p.kind === 'booster') title = 'Speed Boost Zone';
     ctx.fillText(title, g.px + 12, g.py + 10);
     ctx.fillStyle = '#c66'; ctx.fillText('✕', g.px + g.pw - 20, g.py + 10);
     for (let i = 0; i < btns.length; i++) {
@@ -18246,6 +18265,13 @@ class Game {
     }
   }
 
+  // §Speed Boost Zone (E6) — per-block config for a SPEED_BOOSTER cell (right-click sets it; see the
+  // 'booster' _classicPopup). Falls back to the shared defaults when the creator never configured it.
+  _boosterCfgAt(row, col) {
+    const c = this._boosterCfg && this._boosterCfg.get(row + ',' + col);
+    return c || SPEED_BOOSTER_FX.DEFAULTS;
+  }
+
   // ── §Classic Blocks pack (2026-07-24) — per-frame interactions for the new blocks ──
   // Runs after players update. Covers trampoline bounce, spike/coin overlap, conveyor push,
   // crumble trigger, warp-pipe descend/teleport, and question/hidden bump-from-below.
@@ -18330,11 +18356,19 @@ class Game {
     const feetRow = Math.floor((p.y + p.height) / BS);
     const headRow = Math.floor((p.y - 1) / BS);
 
-    // Body overlap: spikes (hazard) + coins (collect).
+    // Body overlap: spikes (hazard) + coins (collect) + speed-booster (E6).
+    let boosterCfg = null;
     for (let r = row0; r <= row1; r++) for (let c = col0; c <= col1; c++) {
       const b = L.get(r, c);
       if (b === BLOCK.SPIKES) { if (!p.godMode && p.iframes <= 0 && p.hp > 0) p.takeDamage(3, Math.sign(p.vx) || (p.facing || 1)); }
       else if (b === BLOCK.COIN) { L.set(r, c, BLOCK.AIR); this._collectCoin(p); }
+      else if (b === BLOCK.SPEED_BOOSTER && !boosterCfg) boosterCfg = this._boosterCfgAt(r, c);
+    }
+    // §Speed Boost Zone (E6) — apply the movement-speed multiplier OUTSIDE Speed Runner (SR keeps its own
+    // `_srCheckBoosterBlocks` path). Runs every frame so the temporary boost decays after the player leaves.
+    if (this.gameMode !== 'speedrunner') {
+      if (!p._boostState) p._boostState = { permMult: 1, tempMult: 1, tempFrames: 0 };
+      p._boosterMult = SPEED_BOOSTER_FX.step(p._boostState, boosterCfg);
     }
     // Standing-on effects (the row under the feet).
     if (p.onGround) {

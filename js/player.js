@@ -285,8 +285,10 @@ class Player {
   get _xpMult()       { return this.xpSpeedDisabled ? 1 : 1 + this.xp / this.maxXp; }
   // _speedBoostMult is the arena SPEED power-up multiplier (Phase 3A.2); 1 when inactive.
   // _moveSpeedMult is the per-world Player Speed setting (World Settings → Movement); 1 = default.
-  get moveSpeed()     { return MOVE_SPEED   * this._xpMult * (this._speedBoostMult || 1) * (this._moveSpeedMult || 1); }
-  get crouchSpeed()   { return CROUCH_SPEED * this._xpMult * (this._speedBoostMult || 1) * (this._moveSpeedMult || 1); }
+  // _boosterMult is the §Speed Boost Zone (E6) multiplier from walking through a SPEED_BOOSTER block in
+  // non-Speed-Runner play (SPEED_BOOSTER_FX); 1 when no boost is active.
+  get moveSpeed()     { return MOVE_SPEED   * this._xpMult * (this._speedBoostMult || 1) * (this._moveSpeedMult || 1) * (this._boosterMult || 1); }
+  get crouchSpeed()   { return CROUCH_SPEED * this._xpMult * (this._speedBoostMult || 1) * (this._moveSpeedMult || 1) * (this._boosterMult || 1); }
 
   gainXp(amount) {
     if (this.godMode) return; // no XP in sandbox mode
