@@ -90,7 +90,7 @@
           '<div class="cb-h"><h2>🎨 Build a Character</h2></div>' +
           '<div class="cb-grid">' +
             '<div class="cb-prev">' +
-              '<canvas class="cb-canvas" width="150" height="150"></canvas>' +
+              '<canvas class="cb-canvas" width="168" height="168"></canvas>' +
               '<div class="cb-row" style="width:100%"><label>Name</label><input type="text" class="cb-name" maxlength="24" value="' + (this._name.replace(/"/g, '&quot;')) + '"></div>' +
               '<div class="cb-row" style="width:100%"><label>Body</label><select class="cb-body">' + bodyOpts + '</select></div>' +
             '</div>' +
@@ -130,10 +130,12 @@
       CHARACTERS.PARTS.forEach(function (cat) { self._sel[cat.key] = cat.options[Math.floor(Math.random() * cat.options.length)].id; });
       var rc = function () { return '#' + ('000000' + Math.floor(Math.random() * 0xffffff).toString(16)).slice(-6); };
       this._pal = { skin: rc(), hair: rc(), shirt: rc(), pants: rc(), accent: rc() };
+      this._body = Math.random() < 0.5 ? 'boy' : 'girl';   // Surprise Me now also flips Body (tester note)
       // reflect into the controls
       if (this._el) {
         this._el.querySelectorAll('select[data-cat]').forEach(function (s) { s.value = self._sel[s.dataset.cat]; });
         this._el.querySelectorAll('input[data-col]').forEach(function (i) { i.value = self._pal[i.dataset.col]; });
+        var bodySel = this._el.querySelector('.cb-body'); if (bodySel) bodySel.value = this._body;
       }
       this._render();
     },
@@ -149,8 +151,10 @@
       var feat = CHARACTERS.composeFeat(this._sel);
       var pal = Object.assign({}, this._pal);
       try {
-        // front-facing (aim toward the viewer), idle, generous radius for a clear preview
-        OVERHEAD.drawOverheadPlayer(ctx, cv.width / 2, cv.height / 2 + 6, 34, 0, false, Math.PI / 2,
+        // front-facing (aim toward the viewer), idle. Radius scales to the canvas so the sprite fills
+        // the preview and parts are legible (tester: bump the small preview).
+        var r = Math.min(cv.width, cv.height) * 0.42;
+        OVERHEAD.drawOverheadPlayer(ctx, cv.width / 2, cv.height / 2 + 6, r, 0, false, Math.PI / 2,
           { rotate: true, weapon: null, palette: pal, sprite: this._body, character: feat, facing: Math.PI / 2 });
       } catch (e) { /* never let a preview throw break the modal */ }
     },
@@ -158,8 +162,11 @@
     _save: function () {
       var self = this;
       var def = this._defNow();
-      if (window.SANDBOX && typeof SANDBOX.saveCustomCharacter === 'function') {
-        Promise.resolve(SANDBOX.saveCustomCharacter(this._worldId, def)).then(function (ok) {
+      // Bare SANDBOX (global lexical binding), NOT window.SANDBOX — a top-level `const` is not a window
+      // property, so the old window.SANDBOX guard silently failed and Save no-op'd (tester build 439).
+      var SB = (typeof SANDBOX !== 'undefined') ? SANDBOX : (typeof window !== 'undefined' ? window.SANDBOX : null);
+      if (SB && typeof SB.saveCustomCharacter === 'function') {
+        Promise.resolve(SB.saveCustomCharacter(this._worldId, def)).then(function (ok) {
           if (ok !== false) { self._close(); self._onSaved(def); }
         });
       } else { this._close(); this._onSaved(def); }
