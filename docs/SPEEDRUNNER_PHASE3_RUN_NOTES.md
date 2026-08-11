@@ -99,3 +99,12 @@ silent and any limits that stopped a full rollout, per the "document assumptions
   Community), storefront sorts/tags/thumbnails/duration/search + creator profiles, downloadable +
   provenance enforcement, leaderboard re-key to worlds.id. The build-out (client + routes) remains.
 - CK3 practice mode; Epic D wiring; Phase 3 picker/MP/side-preview/sprite-sheet.
+
+## Epic C — Sandbox editor cleanup + Create World  (build 467)
+- **DONE:** C5 (Import-from-Games button removed — replaced by the storefront flow), C1-partial (redundant
+  Overhead Demo shortcut removed).
+- **DEFERRED (flagged, lower-value UI reshuffles that are risky on the live sandbox):** C2 left-side mode
+  tabs (replace #mode-filter dropdown), C3 fold overhead creation into the single Create World modal +
+  hide World-View for Normal + drop Control Scheme (the modal has no overhead-create path today; the
+  overhead editor owns that flow), C4 post-create description edit (create-time description already works;
+  editing later needs a text-input affordance). Prioritized functional epics over UI reshuffles.
