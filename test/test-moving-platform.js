@@ -94,5 +94,25 @@ console.log('Invariant 6 — platform connectivity flood fill:');
   ok(MP.floodFill(0, 0, isBlock).length === 0, 'anchor not on a block → empty');
 }
 
+// 7 ── (F1) a SPIKES cell built into a platform group is CARRIED by the flood-fill.
+// The engine's isPlatBlock predicate (game.js:19086) is `b !== AIR && b !== RAIL`, so any hazard
+// block — SPIKES(67) included — that is connected to the anchor is lifted onto the moving group and
+// rides it as a solid obstacle. This asserts the connectivity (the brief's F1 verify), and that the
+// carried cell keeps its blockType so the renderer/serializer draw a spike, not a generic block.
+console.log('Invariant 7 — (F1) spike built onto a platform is carried:');
+{
+  const AIR = 0, RAIL = 89, SPIKES = 67, STONE = 1;   // RAIL/SPIKES ids per blocks.js
+  // anchor STONE at (5,5); a SPIKES cell attached at (6,5); a RAIL under the anchor is NOT grabbed.
+  const grid = new Map([['5,5', STONE], ['6,5', SPIKES], ['5,6', RAIL], ['7,5', AIR]]);
+  const isPlatBlock = (c, r) => { const b = grid.get(c + ',' + r) ?? AIR; return b !== AIR && b !== RAIL; };
+  const set = MP.floodFill(5, 5, isPlatBlock);
+  ok(set.some(c => c.col === 6 && c.row === 5), 'the spikes cell is carried onto the platform group');
+  ok(!set.some(c => c.col === 5 && c.row === 6), 'the rail itself is not absorbed into the group');
+  // blockType is captured from the grid the same way game.js does (pl.cells[].blockType).
+  const spikeCell = set.find(c => c.col === 6 && c.row === 5);
+  const carriedType = grid.get(spikeCell.col + ',' + spikeCell.row);
+  ok(carriedType === SPIKES, 'the carried cell keeps blockType SPIKES for render/serialize');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
