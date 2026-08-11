@@ -1,4 +1,5 @@
 const { supabaseAdmin, supabaseAuth } = require('./supabase-client');
+const MODERATION = require('../js/moderation.js');   // §B6 appropriateness filter
 
 // Middleware to verify JWT token from Authorization: Bearer <token>
 const verifyToken = async (req, res, next) => {
@@ -28,12 +29,17 @@ function registerAuthRoutes(app) {
       if (username.length < 3 || username.length > 20) {
         return res.status(400).json({ error: 'Username must be 3-20 characters' });
       }
+      // §B6 appropriateness filter — reject offensive usernames before they're shown to other players.
+      const modU = MODERATION.check(username, 'username');
+      if (!modU.ok) return res.status(400).json({ error: modU.reason });
 
-      // Check username uniqueness (admin DB client — no session contamination)
+      // Check username uniqueness — §B6 CASE-FOLDED so "Steve" and "steve" can't both exist (the old
+      // .eq was case-sensitive). ilike with wildcards escaped = a case-insensitive exact match.
+      const foldPattern = MODERATION.foldUsername(username).replace(/[%_\\]/g, '\\$&');
       const { data: existingUser } = await supabaseAdmin
         .from('users')
         .select('id')
-        .eq('username', username)
+        .ilike('username', foldPattern)
         .single();
 
       if (existingUser) {

@@ -1,6 +1,7 @@
 const { supabaseAdmin } = require('./supabase-client');
 const { worldModeDefaults } = require('../js/platformer-defaults.js');
 const WORLD_TRANSFER = require('../js/world-transfer.js');   // shared export-flag predicate (§40.1)
+const MODERATION = require('../js/moderation.js');           // §B6 appropriateness filter
 
 // Token verification — same contract as games-routes.js. Kept local so the two
 // route modules stay independently mountable.
@@ -180,6 +181,11 @@ module.exports = function setupWorldsRoutes(app) {
       if (!worldName || worldName.trim().length === 0) {
         return res.status(400).json({ error: 'World name required' });
       }
+      // §B6 appropriateness filter — world name + description are shown to other players.
+      const modN = MODERATION.check(worldName, 'world name');
+      if (!modN.ok) return res.status(400).json({ error: modN.reason });
+      const modD = MODERATION.check(description, 'description');
+      if (!modD.ok) return res.status(400).json({ error: modD.reason });
       if (!GAME_MODES.includes(gameModeDefault)) {
         return res.status(400).json({ error: 'Invalid game mode default' });
       }
@@ -449,8 +455,17 @@ module.exports = function setupWorldsRoutes(app) {
         mode: MODE_LONG[finalMode] || 'NORMAL', // keep the derived column in sync
         updated_at: new Date().toISOString(),
       };
-      if (worldName !== undefined) patch.world_name = worldName;
-      if (description !== undefined) patch.description = description;
+      // §B6 appropriateness filter on rename / description edit.
+      if (worldName !== undefined) {
+        const m = MODERATION.check(worldName, 'world name');
+        if (!m.ok) return res.status(400).json({ error: m.reason });
+        patch.world_name = worldName;
+      }
+      if (description !== undefined) {
+        const m = MODERATION.check(description, 'description');
+        if (!m.ok) return res.status(400).json({ error: m.reason });
+        patch.description = description;
+      }
 
       const { data: world, error } = await supabaseAdmin
         .from('worlds')
