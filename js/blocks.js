@@ -114,6 +114,7 @@ const BLOCK = Object.freeze({
   GLASS:                  95,   // solid, see-through pane; minable in Normal; a world setting lets melee/ranged/explosion/impact SHATTER it into shards
   WIND_ZONE:              96,   // §E7 non-solid region that pushes entities (dir+strength); wall-blockable + redstone-gated; both engines
   GRAVITY_ZONE:           97,   // §E4 non-solid region that INVERTS gravity for a player inside it (ceiling-walk)
+  CHECKPOINT:             98,   // §CK1 Speed Runner mid-level checkpoint — respawn anchor + split-timer marker
 });
 
 // §Phase R — Redstone Lamp colours (click a placed lamp with the Lamp selected to cycle). One hue
@@ -266,6 +267,7 @@ const BLOCK_DATA = {
   [BLOCK.SPEED_SEGMENT]:     { name: 'Speed Segment',   hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.WIND_ZONE]:         { name: 'Wind Zone',       hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.GRAVITY_ZONE]:      { name: 'Gravity Zone',    hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
+  [BLOCK.CHECKPOINT]:        { name: 'Checkpoint',      hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.LAUNCH_RAMP]:       { name: 'Launch Ramp',     hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.RAIL_GATE]:         { name: 'Rail Gate',       hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
 };
@@ -377,6 +379,7 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.SPEED_SEGMENT:          _drawSpeedSegment(ctx, px, py, s);              break;
     case BLOCK.WIND_ZONE:              _drawWindZone(ctx, px, py, s, state.windDir || 'right', state.frame || 0); break;
     case BLOCK.GRAVITY_ZONE:           _drawGravityZone(ctx, px, py, s, state.frame || 0); break;
+    case BLOCK.CHECKPOINT:             _drawCheckpoint(ctx, px, py, s, state.cpReached); break;
     case BLOCK.LAUNCH_RAMP:            _drawLaunchRamp(ctx, px, py, s);                break;
     case BLOCK.RAIL_GATE:             _drawRailGate(ctx, px, py, s);                  break;
   }
@@ -1840,6 +1843,15 @@ function _drawGravityZone(ctx, px, py, s, frame = 0) {
   ctx.beginPath(); ctx.moveTo(cx, py + s * 0.14); ctx.lineTo(cx - a, py + s * 0.14 + a); ctx.moveTo(cx, py + s * 0.14); ctx.lineTo(cx + a, py + s * 0.14 + a); ctx.stroke();
   // down arrow (bottom half)
   ctx.beginPath(); ctx.moveTo(cx, py + s * 0.86); ctx.lineTo(cx - a, py + s * 0.86 - a); ctx.moveTo(cx, py + s * 0.86); ctx.lineTo(cx + a, py + s * 0.86 - a); ctx.stroke();
+  ctx.restore();
+}
+// §CK1 Checkpoint — a flag on a pole; green when reached this run, grey when pending.
+function _drawCheckpoint(ctx, px, py, s, reached) {
+  ctx.save();
+  ctx.strokeStyle = '#8a8f99'; ctx.lineWidth = Math.max(2, s * 0.08);
+  ctx.beginPath(); ctx.moveTo(px + s * 0.28, py + s * 0.92); ctx.lineTo(px + s * 0.28, py + s * 0.1); ctx.stroke();
+  ctx.fillStyle = reached ? '#39c862' : '#9aa0ac';
+  ctx.beginPath(); ctx.moveTo(px + s * 0.28, py + s * 0.12); ctx.lineTo(px + s * 0.74, py + s * 0.24); ctx.lineTo(px + s * 0.28, py + s * 0.38); ctx.closePath(); ctx.fill();
   ctx.restore();
 }
 function _drawSpikes(ctx, px, py, s, dir = 'up') {

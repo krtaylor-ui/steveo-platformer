@@ -40,3 +40,17 @@ silent and any limits that stopped a full rollout, per the "document assumptions
      design). Side-scroll only, per the brief's "side-scroll primary".
   4. Ghost replay (SR) is position-based so it replays fine (per the brief).
   Recommend: a dedicated browser pass on a small ceiling-walk level before shipping E4.
+
+## Epic CK — Checkpoints + Practice + Splits  (build 464)
+- **CK1 placeable checkpoints: DONE.** BLOCK.CHECKPOINT(98) (Other palette, Speed Runner). First contact
+  during a run sets it as the death respawn anchor; `_srRespawnToCheckpoint` recovers there WITHOUT
+  resetting the run clock (a mid-run recovery). World setting `srCheckpoints` (default on) gates it.
+- **CK4 split timing: DONE.** Each checkpoint's first-touch time is banked in `sr.splits`; HUD shows
+  "CP n/total" + a per-checkpoint split notification. (Win-screen split breakdown = light follow-up.)
+- **CK2 ghost re-baseline: DONE (chose the clean option).** The ghost is HIDDEN after a checkpoint respawn
+  (re-baselining a single full-run recording mid-run is error-prone); a full restart re-shows it.
+- **CK3 Practice mode + personal checkpoints: DEFERRED (flagged).** A player-side mode with player-placed
+  temporary checkpoints that flags the run non-submittable is net-new player-facing UI + input; not built
+  this pass. The official-checkpoint machinery above is the foundation it would build on.
+- In-world "reached" (green flag) visual is drawn grey/static in level.draw; the HUD + notify convey
+  reached state. Overhead SR has no checkpoint support (overhead SR is minimal per prior notes).

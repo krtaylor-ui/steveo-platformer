@@ -18059,11 +18059,16 @@ class Game {
     // Scan grid for goals and speed items; extract speed items from grid (drawn dynamically)
     this._sr.goals      = [];
     this._sr.speedItems = [];
+    this._sr.checkpoints = [];        // §CK1 — placeable mid-level checkpoints
+    this._sr.splits      = [];        // §CK4 — {idx, ms} recorded as each checkpoint is first reached
+    this._sr.lastCheckpoint = null;   // §CK1 — respawn anchor once a checkpoint is reached
     for (let r = 0; r < this.level.height; r++) {
       for (let c = 0; c < this.level.width; c++) {
         const b = this.level.grid[r][c];
         if (b === BLOCK.GOAL) {
           this._sr.goals.push({ col: c, row: r });
+        } else if (b === BLOCK.CHECKPOINT) {
+          this._sr.checkpoints.push({ col: c, row: r, reached: false });
         } else if (b === BLOCK.SPEED_ITEM) {
           this._sr.speedItems.push({ col: c, row: r, collected: false, bobPhase: Math.random() * Math.PI * 2 });
           this.level.set(r, c, BLOCK.AIR); // remove from grid; SR HUD draws these
@@ -18180,14 +18185,18 @@ class Game {
         if (elapsed > SR_CONFIG.respawnFadeMs)
           part.alpha = Math.max(0, part.alpha - 0.04);
       }
+      // §CK1 — if a checkpoint was reached (and checkpoints aren't disabled), recover there without
+      // restarting the run; otherwise a normal full restart.
+      const useCp = this._sr.lastCheckpoint && this._worldAdvSettings.srCheckpoints !== false;
+      const respawn = () => (useCp ? this._srRespawnToCheckpoint() : this._srRespawn());
       // §E9 Instant Retry — no countdown, no wait-for-press: drop back into the run as soon as the
       // death explosion has faded.
       if (this._worldAdvSettings.srInstantRetry) {
-        if (elapsed > SR_CONFIG.respawnFadeMs) this._srRespawn();
+        if (elapsed > SR_CONFIG.respawnFadeMs) respawn();
       } else if (elapsed > SR_CONFIG.respawnFadeMs + SR_CONFIG.respawnWaitMs) {
         if (this.input.isJustDown('Space') || this.input.p1JustDown('jump') ||
             this.input.isJustDown('KeyW')) {
-          this._srRespawn();
+          respawn();
         }
       }
       sr.srZoom      += (1.0 - sr.srZoom)      * 0.08;
@@ -18341,6 +18350,7 @@ class Game {
     this._srCheckBoosterBlocks();
     this._srCheckJumpPads();
     this._srCheckSpeedItems();
+    this._srCheckCheckpoints();
     this._srCheckGoals();
     this._srCheckMobCollision();
     this._srCheckProjectiles();
@@ -21369,6 +21379,32 @@ class Game {
     }
   }
 
+  // §CK1/CK4 — first contact with a checkpoint records a split + becomes the death respawn anchor.
+  _srCheckCheckpoints() {
+    const sr = this._sr; if (!sr || !sr.checkpoints || !sr.checkpoints.length || !sr.startMs) return;
+    const p = this.player, pc = Math.floor(p.cx / BLOCK_SIZE), pr = Math.floor(p.cy / BLOCK_SIZE);
+    for (let i = 0; i < sr.checkpoints.length; i++) {
+      const cp = sr.checkpoints[i];
+      if (cp.reached || cp.col !== pc || cp.row !== pr) continue;
+      cp.reached = true;
+      sr.lastCheckpoint = { x: cp.col * BLOCK_SIZE + BLOCK_SIZE / 2 - p.width / 2, y: cp.row * BLOCK_SIZE + BLOCK_SIZE - p.height, idx: i };
+      sr.splits.push({ idx: i, ms: Date.now() - sr.startMs });   // §CK4
+      this._notify('Checkpoint ' + sr.splits.length + '  ' + srFormatTime(Date.now() - sr.startMs), '#39c862', 110);
+      this._playSound('sounds/powerup.mp3', 0.4);
+    }
+  }
+  // §CK1 — respawn to the last checkpoint WITHOUT resetting the run clock (a mid-run recovery, not a
+  // full restart). Ghost is hidden after a checkpoint respawn (§CK2 chose the clean "disable" option, since
+  // re-baselining a single full-run recording mid-run is error-prone).
+  _srRespawnToCheckpoint() {
+    const sr = this._sr, cp = sr.lastCheckpoint; if (!cp) { this._srRespawn(); return; }
+    this.player.x = cp.x; this.player.y = cp.y; this.player.vx = 0; this.player.vy = 0;
+    this.player.hp = this.player.maxHp;
+    sr.vx = 0; sr.dead = false; sr.deathParts = null;
+    sr.ghostVisible = false;   // §CK2 — disable ghost between checkpoints
+    sr.boosts = { timeBased: 1.0, distBased: 1.0, blockBoost: 1.0, item: 1.0, itemExpiresMs: 0, itemStack: 0 };
+    if (this.mobManager) { this.mobManager.mobs = []; this.mobManager.droppedItems = []; for (const sp of this.mobManager.spawnPoints) sp.timer = 0; }
+  }
   _srCheckGoals() {
     const p = this.player;
     for (const g of this._sr.goals) {
@@ -21591,6 +21627,10 @@ class Game {
     sr.momentum = { running: false, runStartMs: 0, runDist: 0, lastVxSign: 0 };
     sr.distanceTraveled = 0;
     sr.lastX  = sr.spawnX;
+    // §CK1 — a full restart clears the checkpoint progress + splits and re-shows the ghost.
+    if (sr.checkpoints) for (const cp of sr.checkpoints) cp.reached = false;
+    sr.lastCheckpoint = null; sr.splits = [];
+    if (sr.ghostData) sr.ghostVisible = true;
     for (const item of sr.speedItems) item.collected = false;
     sr.ghostRec      = null;
     sr.deathParts    = null;
@@ -21832,7 +21872,8 @@ class Game {
     // §E8 — attempt count + furthest-progress %, just under the timer (shown even on a failed run).
     {
       const best = Math.round(sr.bestPct != null ? sr.bestPct : SpeedRunnerStats.bestPct(sr.levelId));
-      const line = `Attempt #${sr.attemptNum || 1}` + (best > 0 ? `  ·  Best ${best}%` : '');
+      const cps = (sr.checkpoints && sr.checkpoints.length) ? `  ·  CP ${sr.splits ? sr.splits.length : 0}/${sr.checkpoints.length}` : '';   // §CK4
+      const line = `Attempt #${sr.attemptNum || 1}` + (best > 0 ? `  ·  Best ${best}%` : '') + cps;
       ctx.save();
       ctx.font = 'bold 13px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       const w = ctx.measureText(line).width + 16;

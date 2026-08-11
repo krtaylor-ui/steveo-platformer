@@ -175,6 +175,8 @@ class Level {
           state = { spikeDir: (spikeDirMap && spikeDirMap[r + ',' + c]) || 'up' };   // §Spike Orientation (E12)
         } else if (block === BLOCK.WIND_ZONE) {
           state = { windDir: (windDirMap && windDirMap[r + ',' + c]) || 'right', frame };   // §E7 Wind Zone
+        } else if (block === BLOCK.GRAVITY_ZONE || block === BLOCK.CHECKPOINT) {
+          state = { frame };
         } else if (block === BLOCK.TRAMPOLINE || block === BLOCK.SLIME_BLOCK) {
           const f = trampFx && trampFx.get(r + ',' + c);   // 0..10 compression frames
           state = { compress: f ? f / 10 : 0 };

@@ -134,6 +134,7 @@ const OTHER_PALETTE_ITEMS = [
   { kind: 'block', blockType: BLOCK.WIND_ZONE },                                           // §E7 all modes — paint a region, right-click to set direction/strength
   { kind: 'block', blockType: BLOCK.GRAVITY_ZONE, modes: ['platformer', 'speedrunner', 'normal'] },   // §E4 side-scroll gravity flip
   { kind: 'block', blockType: BLOCK.SPEED_ITEM, modes: ['speedrunner'] },
+  { kind: 'block', blockType: BLOCK.CHECKPOINT, modes: ['speedrunner'] },              // §CK1 mid-level checkpoint
   { kind: 'block', blockType: BLOCK.MUSIC_PLAYER },                                        // all modes
   // ── Consumable items ─────────────────────────────────────────
   { kind: 'blockItem', blockType: BLOCK.ARROW, defaultCount: 20, name: 'Arrow Stack' },   // all modes

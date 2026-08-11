@@ -218,6 +218,10 @@ const WORLD_SETTINGS = {
       // §E9 Instant Retry — after a death, skip the 3·2·1 restart countdown and drop straight back into
       // the run (great for tight practice loops). Trade-off: no start-signal / perfect-start speed boost.
       { key: 'srInstantRetry', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'toggle', dflt: false, label: 'Instant Retry', hint: 'ON: a failed run restarts immediately with no countdown — you are moving again the instant the death animation clears. OFF (default): the 3·2·1 countdown plays before each run. (Instant Retry skips the perfect-start boost.)' },
+      // §CK1/CK4 — Checkpoints: placing Checkpoint markers (Other palette) sets mid-level respawn anchors +
+      // split timers. ON (default) means a death recovers at the last checkpoint (keeping the run clock);
+      // OFF makes every death restart from the start line even if checkpoints are placed.
+      { key: 'srCheckpoints', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'toggle', dflt: true, label: 'Checkpoints', hint: 'ON (default): reaching a placed Checkpoint marker records a split time and makes it your respawn point on death (the run clock keeps going — the ghost hides after a checkpoint). OFF: deaths always restart from the start line.' },
       { key: 'srBoostPct', tab: 'speedrun', group: 'Boosts', modes: M.speedrun, type: 'cycle', opts: O.srPct, dflt: 0.05, label: 'Boost Amount', fmt: (v) => Math.round(v * 100) + '%', advanced: true },
       { key: 'srTimeBoostEnabled', tab: 'speedrun', group: 'Boosts', modes: M.speedrun, type: 'toggle', get: (a) => a.srTimeBoostEnabled !== false, set: (a, v) => { a.srTimeBoostEnabled = v; }, label: 'Time Boost' },
       { key: 'srTimeBoostIntervalSec', tab: 'speedrun', group: 'Boosts', modes: M.speedrun, type: 'cycle', opts: O.srSec, dflt: 5, label: 'Time Boost Every', fmt: (v) => v + 's', sub: true, dependsOn: 'srTimeBoostEnabled', advanced: true },
