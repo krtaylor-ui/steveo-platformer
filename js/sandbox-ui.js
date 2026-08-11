@@ -301,7 +301,9 @@ const SANDBOX = {
     if (typeof CHARACTER_BUILDER === 'undefined') { alert('Character builder not loaded — please hard-reload.'); return; }
     const w = (this.worlds || []).find((x) => x.id === worldId);
     const existing = (w && w.world_data && w.world_data.characterId === 'custom') ? w.world_data.customCharacter : null;
-    CHARACTER_BUILDER.open(worldId, existing, () => { try { this.renderWorlds && this.renderWorlds(); } catch (_) { try { this.render && this.render(); } catch (__) {} } });
+    // renderWorlds REQUIRES the list arg — calling it bare rendered `undefined` and made the whole
+    // world list vanish until reload (tester build 439). Pass this.worlds.
+    CHARACTER_BUILDER.open(worldId, existing, () => { try { this.renderWorlds(this.worlds); } catch (_) {} });
   },
 
   _worldCard(w) {
@@ -1333,3 +1335,9 @@ const SANDBOX = {
       .replace(/"/g, '&quot;');
   },
 };
+
+// Expose on window. A top-level `const SANDBOX` is a global LEXICAL binding (reachable by bare name in
+// same-realm scripts) but is NOT a window property — so cross-module code that guarded on
+// `window.SANDBOX` (e.g. character-builder.js _save) silently saw undefined and no-op'd (Phase 2 save
+// blocker, tester build 439). Publishing it here fixes that and matches window.CHARACTER_BUILDER etc.
+if (typeof window !== 'undefined') window.SANDBOX = SANDBOX;

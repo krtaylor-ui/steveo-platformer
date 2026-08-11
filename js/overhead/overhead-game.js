@@ -1660,9 +1660,18 @@
       const _pnum = (p._index | 0) + 1;
       const _teamIdx = (this.settings && this.settings.versusTeams && this._versusOn()) ? p._team : null;
       const _pal = (typeof PLAYER_LOOKS !== 'undefined') ? PLAYER_LOOKS.palette(_pnum, _teamIdx) : null;
-      const _spr = (typeof PLAYER_LOOKS !== 'undefined') ? PLAYER_LOOKS.sprite(_pnum) : 'boy';
+      let _spr = (typeof PLAYER_LOOKS !== 'undefined') ? PLAYER_LOOKS.sprite(_pnum) : 'boy';
       const _feat = (typeof CHARACTERS !== 'undefined') ? CHARACTERS.feat(this._characterId) : null;   // §Custom Sprites accessory set
       if (_pal && typeof CHARACTERS !== 'undefined') _pal.accent = CHARACTERS.get(this._characterId).pal.accent;   // accent isn't in PLAYER_LOOKS — take the character default
+      // §Custom Sprites Phase 2 — a CUSTOM character's own palette + body win over PLAYER_LOOKS (the
+      // creator designed the colours), EXCEPT a team shirt still overrides for versus readability.
+      if (_pal && this._characterId === 'custom' && typeof CHARACTERS !== 'undefined' && CHARACTERS.getCustom && CHARACTERS.getCustom()) {
+        const _cc = CHARACTERS.getCustom();
+        const _teamShirt = (_teamIdx != null) ? _pal.shirt : null;
+        if (_cc.pal) Object.assign(_pal, _cc.pal);
+        if (_teamShirt) _pal.shirt = _teamShirt;
+        if (_cc.body) _spr = _cc.body;
+      }
       OVERHEAD.drawOverheadPlayer(ctx, cx, cy, (cl ? rr * cl.scale : rr) * em, p.dist, cl ? false : moving, aimA,
         { rotate: true, weapon: inFlight ? null : (p.weapon || 'pickaxe'), moveAngle: (cl ? cl.face : (p.moveAngle != null ? p.moveAngle : OH_CONTROLS.angleOf(p.aim))), spin, somersault, facing: aimA,
           grab: cl ? cl.grab : reach, mantleLeg: cl ? cl.mantleLeg : 0, crouch: cl ? cl.crouch : 0,

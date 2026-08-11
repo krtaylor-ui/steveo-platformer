@@ -1708,6 +1708,14 @@ class Player {
   // still sets this.shirtColor, which overrides _charShirt() in every draw method (§6).
   _pnum() { const m = /^p([1-4])$/.exec(this._ownerId || ''); return m ? +m[1] : (((this._index | 0) + 1) || 1); }
   _looksField(field, fallback) {
+    // A CUSTOM character carries its OWN full palette — the creator designed those colours, so they
+    // win over the per-player PLAYER_LOOKS (tester open-Q, build 439). Built-ins are unaffected.
+    try {
+      if (typeof CHARACTERS !== 'undefined' && this._charId() === 'custom') {
+        const cp = CHARACTERS.get('custom');
+        if (cp && cp.custom && cp.pal && cp.pal[field]) return cp.pal[field];
+      }
+    } catch (_) {}
     try { if (typeof PLAYER_LOOKS !== 'undefined') { const v = PLAYER_LOOKS.get(this._pnum())[field]; if (v) return v; } } catch (_) {}
     return fallback;
   }
