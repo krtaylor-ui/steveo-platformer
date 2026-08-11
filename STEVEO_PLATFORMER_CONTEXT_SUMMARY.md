@@ -1,4 +1,60 @@
-## CURRENT STATE (2026-08-06) — MEGA SESSION builds 362–374 on branch `mega-20260806`, NOT pushed, NOT merged
+## CURRENT STATE (2026-08-10) — builds 397–434 ALL MERGED to `main` + pushed; working directly on `main`
+
+**`main` == `origin/main` at build 434, working tree clean, nothing unpushed on any branch.** The big
+`overhead-play-modes` + `custom-sprites` stack was fast-forwarded into `main` (build 434, commit
+`f72d881`; 59 commits, clean FF) — the old feature branches (`custom-sprites`, `overhead-play-modes`,
+`overhead-mp-0f`) and the frozen tester branch `overhead-multiplayer@397` are now **obsolete; work from
+`main`.** Deploy: pushed to `origin/main`; if Railway auto-deploys `main` it is live — confirm on the
+deploy dashboard. **Kevin is doing a full manual test the night of 2026-08-10 — expect a cleanup pass
+after.** Suite `node test/run.js` → green. Every commit bumps `GAME_VERSION` + 88 cache-busters +
+`sw.js` via `tools/bump-build.js`.
+
+### The arc that landed on `main` (≈builds 397–434) — three big features
+- **Overhead multiplayer + versus** — same-screen 2–4p on one device, each player its own controller.
+  Co-op (shared auto-fit camera, per-player pipes/tubes/death/respawn) + versus (Deathmatch /
+  Last-Standing, teams, kill-target, winner end-screen + per-player HUD). PvP damage via
+  `_enemyPlayers`. **Overhead is LOCAL same-device only — there is no networked/online overhead path.**
+- **Overhead real-play modes** (outside the editor Test button): **Platform** (co-op 1–4), **Speed Run**
+  (1P, run timer + finish + best-time leaderboard reusing the side-scroll `SpeedRunnerLeaderboard`), and
+  **Arena** (versus). Pre-game setup WINDOW is D-pad-navigable per-player panels (P2 edits only P2; P1
+  owns global + Start; **B = cancel**). Speed Run skips the window. Plus **overhead Glass Tubes**
+  (point-to-point fly-through transport, all players, works in Arena) and **2D tubes for all 4 players**
+  (were P1-only), and a **2D Chest** palette/remove pass.
+- **Custom Sprites Phase 1** — `js/characters.js` `CHARACTERS` registry: 16 shape-composed characters
+  (astronaut/knight/alien/cat/robot/wizard/…) as engine-agnostic DATA (accessory `feat` + default
+  palette + side/top views), rendered in BOTH engines (`_ohAccHead/_ohAccBehind` overhead;
+  `_sideAccHead/_sideAccBehind/_sideAccTorso` side). Single-pick per world (Sandbox card "Character:"
+  dropdown + pre-game "Character" field; per-player field relabeled "Body"=boy/girl). **Accessories are
+  COSMETIC ONLY — never change the hitbox (fairness); `classic` is the default everywhere so existing
+  worlds / single-player are unchanged.** Phase 2 (parts-mixer) is deferred.
+- **In-app modals** (`js/ui-dialog.js` `DIALOG`) — native `alert`/`confirm`/`prompt` are overridden so
+  the automated tester never freezes on a system dialog.
+
+### Late fixes worth knowing (builds 429–434)
+- **433** overhead P1 controller was dead: `_rawFor` read phantom pad fields (`gp.axes0/rt`); now reads
+  P1's ASSIGNED pad via `pGp(0)` with the real InputManager fields (`moveX/moveY/aimX/aimY/triggerR`).
+- **434** app version badge shows the number only (`v3 build N`, full note on hover) — the long build
+  note was shoving the dashboard Logout button off-screen. + setup-window **B = cancel**.
+
+### Known-open / deferred (for the design session)
+- **SpeedRunner mode = Kevin's separate full review** — timer-starts-before-move + timer-runs-past-finish
+  flagged, deliberately NOT touched. Don't fix piecemeal; it's a whole-mode review.
+- **Local-vs-online gating (asymmetric):** offline mode blocks the Normal/Platformer/Speed-Runner/Arena/
+  Campaign dashboard cards (`dashboard.js:201`) — **only Sandbox is reachable offline** (guest can still
+  reach the modes via Sandbox → Test World). Truly local-only: the **whole Overhead engine** + **2D
+  split-screen 2P co-op** (no online path — networking either would be real netcode work). CHEAP unlock =
+  offline dashboard modes; EXPENSIVE = online overhead/2P.
+- **Roadmap §45 (NEW 2026-08-10):** auto-generate / procedural random maps for Normal mode — feasibility
+  = achievable by extending `tools/gen-sample-worlds.js` (rules-based segment generator) +
+  `js/pathfinding.js navReachable` (already-wired solvability BFS); portals/structures stamp into the
+  grid (see `js/world.js`). Hard parts: solvability only covers the base moveset, multi-dim portal
+  wiring, no side-scroll prefab library yet. Phasing P1–P4 in FUTURE_ROADMAP.md §45.
+- Cosmetic backlog: small-Arena-size sprite legibility; overhead "Zib" head faces aim not travel;
+  dashboard gamepad focus can drift far-left (needs repro).
+
+---
+
+## PRIOR STATE (2026-08-06) — MEGA SESSION builds 362–374 on branch `mega-20260806`, NOT pushed, NOT merged
 
 **Deployed (`origin/main`, Railway): still build 361.** The soak passed clean on 361 (7h31m,
 no leak, 0 errors) and a QA tester will do a browser pass on this branch. **Nothing here is
