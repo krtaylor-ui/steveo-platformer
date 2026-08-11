@@ -108,3 +108,13 @@ silent and any limits that stopped a full rollout, per the "document assumptions
   hide World-View for Normal + drop Control Scheme (the modal has no overhead-create path today; the
   overhead editor owns that flow), C4 post-create description edit (create-time description already works;
   editing later needs a text-input affordance). Prioritized functional epics over UI reshuffles.
+
+## Epic MB — Music per-instance + Beat Grid  (build 469)
+- **MB2 Beat Grid core DONE + tested:** js/beat-grid.js (BEAT_GRID) — tapTempo (standalone, BPM from tap
+  intervals), beatMs/beatTimes, beatXs (time→distance under constant speed). 10 headless tests.
+- **DEFERRED (flagged):** the EDITOR OVERLAY (drawing beat lines at beatXs on the SR editor canvas + a
+  tap button/key + BPM state + the "warn under variable speed" note) — the reusable math is done; the
+  canvas/input wiring is the follow-up. Automatic BPM detection also deferred (the core consumes any BPM).
+- **MB1 per-instance track:** the Music Player block's right-click config already lists MUSIC_DISCS and a
+  placed instance plays its configured track (verified working in prior builds); no change needed beyond
+  confirming in-browser.
