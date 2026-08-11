@@ -233,6 +233,10 @@ setupStatsRoutes(app);
 const setupCustomRulesRoutes = require('./server/custom-rules-routes');
 setupCustomRulesRoutes(app);
 
+// §Phase 3 — per-account custom-character roster (user_characters).
+const setupUserCharactersRoutes = require('./server/user-characters-routes');
+setupUserCharactersRoutes(app);
+
 // ============================================================
 // API ENDPOINTS (Express Routes)
 // ============================================================

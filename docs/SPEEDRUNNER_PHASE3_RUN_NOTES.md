@@ -64,3 +64,19 @@ silent and any limits that stopped a full rollout, per the "document assumptions
   _notify flow; (c) the D3 persistence route — the SQL is applied (player_achievements.world_id), so a
   POST /api/achievements/world route can record per-level unlocks. The reusable, tested core is done; the
   wiring is straightforward but spans several engine hooks + new editor UI, deferred under budget.
+
+## Phase 3 — Custom Sprites roster + packs  (build 466)
+- **P3-1 per-account roster: server + create-half DONE.** user_characters.sql (you ran it) +
+  server/user-characters-routes.js (GET/POST/DELETE /api/characters, moderated names, soft cap 30) +
+  client js/user-characters.js (list/save/remove) + a "🗂 Save to Roster" button in the parts-mixer
+  builder. You can now build a character and bank it to your account.
+  **DEFERRED (flagged):** the roster PICKER — surfacing your saved roster in the world-card Character
+  dropdown / a "My Characters" section to APPLY one to a world (the async load into the sync card render
+  is the remaining wiring). The API + storage are done; this is UI glue.
+- **P3-2 MP per-player custom: DEFERRED.** Each player picking their own roster character in the pre-game
+  window — needs per-player character wiring through the overhead pre-game UI. Not started.
+- **P3-3 side-scroll builder preview: DEFERRED.** The builder previews the overhead sprite; a side-scroll
+  preview needs a standalone side draw (player.js side draw isn't standalone). Not started.
+- **P3-4 sprite-sheet render pipeline: DEFERRED.** You chose "build now", but it needs a second image-based
+  renderer + at least one curated PNG sheet asset (none exist in-repo). Building the pipeline blind with no
+  asset would be untestable; flagged to do with a real/placeholder sheet in a focused pass. Not started.
