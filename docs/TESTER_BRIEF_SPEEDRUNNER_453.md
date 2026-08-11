@@ -197,3 +197,49 @@ ADDENDUM - responses to the 440-453 test feedback (builds 455-456)
   each mode) is the more meaningful check.
 
 [A1] published cap 2->20 still needs a manual run (publish 3+ worlds) - next session.
+
+
+================================================================================
+ADDENDUM 2 - Phase 2 custom-sprite gap fixes (build 457) + carried-over items
+================================================================================
+
+Context: main (Phase 2 @ build 454) is now merged into speedrunner-overhaul, and the
+three remaining Phase 2 gaps from docs/PHASE2_FINAL_HANDOFF.md were fixed on top.
+Verify on build 457. (Branch is NOT on the live server - test the branch build.)
+
+[GAP-1] Offline-overhead (oh-) custom character now SAVES. This was the headline bug:
+  building a custom on an OFFLINE OVERHEAD world and clicking Save changed nothing.
+  All three stores now go through one writer (SANDBOX._persistWorldData).
+  RE-TEST the round-trip in ALL THREE spaces - set a custom, hard-reload, confirm it
+  stuck:
+    - CLOUD world (logged in)            -> was already OK @454, confirm still OK
+    - LOCAL side-scroll world (lw- id)   -> was already OK @454, confirm still OK
+    - OFFLINE OVERHEAD world (oh- id)    -> THE FIX: was a no-op, must now persist
+  Check both the card (shows your custom's name) AND localStorage
+  (steveo_overhead_worlds[<id>].characterId === 'custom' + .customCharacter present).
+
+[GAP-2] Overhead custom PALETTE renders (was untestable until GAP-1). Now that an
+  oh- world can hold a real builder-saved custom:
+    - Launch that overhead world and confirm the character draws with the CUSTOM
+      colours + body you chose (not the default player palette). In a team/versus
+      context the team shirt still overrides (by design).
+  If it still shows default colours, that's a real GAP-2 bug to report; otherwise
+  GAP-2 is confirmed.
+
+[GAP-3] Card character dropdown no longer blanks on Cancel.
+    - On a world card, open the Character dropdown, choose "Build/Edit Custom...",
+      then CANCEL the builder.
+    - PASS = the dropdown shows the world's CURRENT character (Custom if it had one,
+      else Classic) - NOT blank. Same on Save.
+
+--------------------------------------------------------------------------------
+STILL OUTSTANDING from the last batch (please fold into this run)
+--------------------------------------------------------------------------------
+- F1, E6, E12, E5 and the behavioural halves of E3/E11 were BLOCKED on block
+  placement last time. Use the new SANDBOX.selectItem('NAME') hook (Addendum 1) to
+  place spikes / speed-boosters / lava / anchors, then right-click to reach their
+  config popups. These should now be fully testable.
+- A1 (publish cap 2->20) still needs a manual run: publish 3+ worlds and confirm no
+  "max 2" rejection until 20.
+
+Nothing here is on the live server yet - all verification is on the branch build 457.
