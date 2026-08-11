@@ -54,3 +54,13 @@ silent and any limits that stopped a full rollout, per the "document assumptions
   this pass. The official-checkpoint machinery above is the foundation it would build on.
 - In-world "reached" (green flag) visual is drawn grey/static in level.draw; the HUD + notify convey
   reached state. Overhead SR has no checkpoint support (overhead SR is minimal per prior notes).
+
+## Epic D — Per-level Achievements  (build 465)
+- **Pure evaluator DONE + tested:** js/achievement-eval.js (ACHIEVEMENT_EVAL) — 5 templates (collect N,
+  defeat N, finish within T, ≤N jumps, no hazard damage), satisfied()/evaluate()/label()/freshStats().
+  17 headless tests. Definitions ride world_data.achievements[] (max 3, migration-free).
+- **DEFERRED (flagged) — the engine + UI wiring:** (a) a creator UI in the editor to pick up to 3
+  templates; (b) in-play stat tracking (collect/kill/jump/hazard-hit) + fire-on-completion via the existing
+  _notify flow; (c) the D3 persistence route — the SQL is applied (player_achievements.world_id), so a
+  POST /api/achievements/world route can record per-level unlocks. The reusable, tested core is done; the
+  wiring is straightforward but spans several engine hooks + new editor UI, deferred under budget.
