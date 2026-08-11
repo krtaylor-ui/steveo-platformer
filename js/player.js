@@ -557,7 +557,7 @@ class Player {
         const jumpNow = input.isJump();
         if (this._ladderMidJump && jumpNow && !this._jumpPressed) {
           this._onLadder = false; this._ladderEngaged = false;
-          this.vy = this._jumpVelocityOverride ?? JUMP_VELOCITY;
+          this.vy = (this._jumpVelocityOverride ?? JUMP_VELOCITY) * (this._gravitySign || 1);   // §E4 flip
           this.jumpSquish = 1; this._jumpPressed = jumpNow;
           return;
         }
@@ -601,7 +601,7 @@ class Player {
     // Jump (with coyote time + jump buffer)
     const jumpNow  = input.isJump();
     const jumpEdge = jumpNow && !this._jumpPressed;
-    const jumpVel  = this._jumpVelocityOverride ?? JUMP_VELOCITY;
+    const jumpVel  = (this._jumpVelocityOverride ?? JUMP_VELOCITY) * (this._gravitySign || 1);   // §E4 flip
 
     // ── Ground slide in progress (opt-in): jump+down started it. ──
     if (this._slideFrames > 0) {
@@ -831,7 +831,7 @@ class Player {
     }
     if (jumpEdge) {                            // Jump → launch off with the double-jump 2nd-stage flip
       this._releaseBar();
-      this.vy = this._jumpVelocityOverride ?? JUMP_VELOCITY;
+      this.vy = (this._jumpVelocityOverride ?? JUMP_VELOCITY) * (this._gravitySign || 1);   // §E4 flip
       this.onGround = false; this.jumpSquish = 1;
       // The bar-jump IS the "second" jump: consume the air jump so there's no double-jump after
       // it (you already got the flip off the bar). Landing refreshes it as usual.
@@ -873,9 +873,13 @@ class Player {
       return;
     }
 
-    // Gravity — disabled while flying or climbing a ladder (§Classic Blocks)
+    // Gravity — disabled while flying or climbing a ladder (§Classic Blocks). §E4 Gravity Inverter zones:
+    // _gravitySign (+1 normal, -1 inverted) flips the pull; the clamp caps the magnitude in either
+    // direction. _gravitySign is 1 everywhere except inside a Gravity Zone, so normal play is untouched.
     if (!this.flying && !this._onLadder) {
-      this.vy = Math.min(this.vy + (this._gravityOverride ?? GRAVITY), MAX_FALL_SPEED);
+      const gs = this._gravitySign || 1;
+      const v = this.vy + (this._gravityOverride ?? GRAVITY) * gs;
+      this.vy = gs > 0 ? Math.min(v, MAX_FALL_SPEED) : Math.max(v, -MAX_FALL_SPEED);
     }
     if (this._dropThrough > 0) this._dropThrough--;   // §Classic Blocks — one-way platform pass-through window
     // Wall slide: while pressing into a wall in the air, fall slowly (opt-in).
@@ -926,6 +930,9 @@ class Player {
         if (level.isSolid(r, bLeft) || level.isSolid(r, bRight)) {
           this.y  = (r + 1) * BLOCK_SIZE;
           this.vy = 0;
+          // §E4 — under inverted gravity a ceiling IS the ground: register a landing so the player can
+          // stand + jump off it (jump pushes back down thanks to the _jumpVel sign flip).
+          if ((this._gravitySign || 1) < 0) { this.onGround = true; this._airJumpsUsed = 0; if (!wasOnGround) this.jumpSquish = 0.85; }
           stopped = true;
           break;
         }

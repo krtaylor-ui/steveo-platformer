@@ -132,6 +132,7 @@ const OTHER_PALETTE_ITEMS = [
   { kind: 'block', blockType: BLOCK.SPEED_BOOSTER },                                       // all modes (E6)
   { kind: 'block', blockType: BLOCK.JUMP_PAD },                                            // all modes
   { kind: 'block', blockType: BLOCK.WIND_ZONE },                                           // §E7 all modes — paint a region, right-click to set direction/strength
+  { kind: 'block', blockType: BLOCK.GRAVITY_ZONE, modes: ['platformer', 'speedrunner', 'normal'] },   // §E4 side-scroll gravity flip
   { kind: 'block', blockType: BLOCK.SPEED_ITEM, modes: ['speedrunner'] },
   { kind: 'block', blockType: BLOCK.MUSIC_PLAYER },                                        // all modes
   // ── Consumable items ─────────────────────────────────────────

@@ -113,6 +113,7 @@ const BLOCK = Object.freeze({
   RAIL_SWITCH:            94,   // §Moving Platforms — a railroad switch: pivot + two routes, flips by redstone; platforms hand off to touching rails
   GLASS:                  95,   // solid, see-through pane; minable in Normal; a world setting lets melee/ranged/explosion/impact SHATTER it into shards
   WIND_ZONE:              96,   // §E7 non-solid region that pushes entities (dir+strength); wall-blockable + redstone-gated; both engines
+  GRAVITY_ZONE:           97,   // §E4 non-solid region that INVERTS gravity for a player inside it (ceiling-walk)
 });
 
 // §Phase R — Redstone Lamp colours (click a placed lamp with the Lamp selected to cycle). One hue
@@ -264,6 +265,7 @@ const BLOCK_DATA = {
   [BLOCK.DIRECTION_CONTROLLER]: { name: 'Direction Controller', hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.SPEED_SEGMENT]:     { name: 'Speed Segment',   hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.WIND_ZONE]:         { name: 'Wind Zone',       hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
+  [BLOCK.GRAVITY_ZONE]:      { name: 'Gravity Zone',    hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.LAUNCH_RAMP]:       { name: 'Launch Ramp',     hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.RAIL_GATE]:         { name: 'Rail Gate',       hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
 };
@@ -374,6 +376,7 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.DIRECTION_CONTROLLER:   _drawDirectionController(ctx, px, py, s);       break;
     case BLOCK.SPEED_SEGMENT:          _drawSpeedSegment(ctx, px, py, s);              break;
     case BLOCK.WIND_ZONE:              _drawWindZone(ctx, px, py, s, state.windDir || 'right', state.frame || 0); break;
+    case BLOCK.GRAVITY_ZONE:           _drawGravityZone(ctx, px, py, s, state.frame || 0); break;
     case BLOCK.LAUNCH_RAMP:            _drawLaunchRamp(ctx, px, py, s);                break;
     case BLOCK.RAIL_GATE:             _drawRailGate(ctx, px, py, s);                  break;
   }
@@ -1824,6 +1827,19 @@ function _drawWindZone(ctx, px, py, s, dir = 'right', frame = 0) {
     const h = s * 0.16;
     ctx.beginPath(); ctx.moveTo(x - h, -h); ctx.lineTo(x, 0); ctx.lineTo(x - h, h); ctx.stroke();   // chevron '>'
   }
+  ctx.restore();
+}
+// §E4 Gravity Zone — translucent purple cell with paired up/down arrows (gravity flips here).
+function _drawGravityZone(ctx, px, py, s, frame = 0) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(170,120,235,0.15)'; ctx.fillRect(px, py, s, s);
+  const cx = px + s / 2, pulse = 0.5 + 0.5 * Math.abs(Math.sin((frame || 0) * 0.05));
+  ctx.strokeStyle = 'rgba(210,180,250,' + (0.45 + 0.4 * pulse).toFixed(2) + ')'; ctx.lineWidth = Math.max(1.4, s * 0.06); ctx.lineCap = 'round';
+  const a = s * 0.16;
+  // up arrow (top half)
+  ctx.beginPath(); ctx.moveTo(cx, py + s * 0.14); ctx.lineTo(cx - a, py + s * 0.14 + a); ctx.moveTo(cx, py + s * 0.14); ctx.lineTo(cx + a, py + s * 0.14 + a); ctx.stroke();
+  // down arrow (bottom half)
+  ctx.beginPath(); ctx.moveTo(cx, py + s * 0.86); ctx.lineTo(cx - a, py + s * 0.86 - a); ctx.moveTo(cx, py + s * 0.86); ctx.lineTo(cx + a, py + s * 0.86 - a); ctx.stroke();
   ctx.restore();
 }
 function _drawSpikes(ctx, px, py, s, dir = 'up') {

@@ -18545,10 +18545,11 @@ class Game {
     const feetRow = Math.floor((p.y + p.height) / BS);
     const headRow = Math.floor((p.y - 1) / BS);
 
-    // Body overlap: spikes (hazard) + coins (collect) + speed-booster (E6).
-    let boosterCfg = null;
+    // Body overlap: spikes (hazard) + coins (collect) + speed-booster (E6) + gravity zone (E4).
+    let boosterCfg = null, inGravityZone = false;
     for (let r = row0; r <= row1; r++) for (let c = col0; c <= col1; c++) {
       const b = L.get(r, c);
+      if (b === BLOCK.GRAVITY_ZONE) inGravityZone = true;
       if (b === BLOCK.SPIKES) {
         // §Spike Orientation (E12) — only the exposed side of the cell (where the tips are) impales; the
         // base side is embedded against the solid surface. hazardRect gives that sub-rect in cell space.
@@ -18569,6 +18570,9 @@ class Game {
       if (!p._boostState) p._boostState = { permMult: 1, tempMult: 1, tempFrames: 0 };
       p._boosterMult = SPEED_BOOSTER_FX.step(p._boostState, boosterCfg);
     }
+    // §E4 Gravity Inverter — flip the player's gravity sign while inside a Gravity Zone, restore on exit.
+    // Contained to the zone: _gravitySign is 1 everywhere else, so normal platforming is unchanged.
+    p._gravitySign = inGravityZone ? -1 : 1;
     // Standing-on effects (the row under the feet).
     if (p.onGround) {
       for (let c = col0; c <= col1; c++) {
