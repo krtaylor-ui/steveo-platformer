@@ -181,9 +181,12 @@ const WORLD_SETTINGS = {
       // run (no accelerate/coast). Recommended base for the Beat Grid (E-MB). Default off = the classic
       // race-car accelerate model. When ON, the Acceleration/Deceleration knobs below don't apply.
       { key: 'srConstantSpeed', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'toggle', dflt: false, label: 'Constant Speed (auto-run)', hint: 'ON: the runner moves at a fixed speed automatically for the whole level (a true auto-scroller) — you steer jumps, not pace. OFF (default): the race-car model where you accelerate from a stop up to Max Speed and coast when you let go.' },
-      { key: 'srBaseSpeed', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'cycle', opts: O.srBase, dflt: 1.0, label: 'Base Speed', fmt: x1 },
-      { key: 'srMaxMultiplier', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'cycle', opts: O.srMax, dflt: 2.0, label: 'Max Speed', fmt: x1 },
-      { key: 'srAccel', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'cycle', opts: O.srAccel, dflt: 0.5, label: 'Acceleration', fmt: (v) => v.toFixed(2) + '/f' },
+      // §E1 Base + Max are independent, precise (slider + one-decimal text box). "Max = Base" removes the
+      // speed-up ceiling so the runner just cruises at Base. Acceleration gains an "Instant" (no ramp) end.
+      { key: 'srBaseSpeed', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'numbox', min: 0.3, max: 3, step: 0.1, dflt: 1.0, label: 'Base Speed', fmt: x1, hint: 'overall pace of the run (1.0 = default). Precise: drag the slider or type a value to one decimal.' },
+      { key: 'srMaxEqualsBase', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'toggle', dflt: false, label: 'Max = Base (no speed-up)', hint: 'ON: the runner never accelerates past Base Speed — a flat cruise (the Max Speed knob is ignored). OFF (default): the runner speeds up from Base toward Max Speed.' },
+      { key: 'srMaxMultiplier', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'numbox', min: 1, max: 5, step: 0.1, dflt: 2.0, label: 'Max Speed', fmt: x1, dependsOn: (a) => !a.srMaxEqualsBase, hint: 'top speed ceiling as a multiple of Base (2.0 = twice Base). Precise: slider or one-decimal text box.' },
+      { key: 'srAccel', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'cycle', opts: [...O.srAccel, 'instant'], dflt: 0.5, label: 'Acceleration', fmt: (v) => v === 'instant' ? 'Instant' : v.toFixed(2) + '/f', hint: '"Instant" = no ramp, the runner is at full speed immediately. Otherwise how quickly it builds speed each frame.' },
       { key: 'srDecel', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'cycle', opts: O.srDecel, dflt: 2, label: 'Deceleration', fmt: (v) => v + '× accel' },
       { key: 'srBoostPct', tab: 'speedrun', group: 'Boosts', modes: M.speedrun, type: 'cycle', opts: O.srPct, dflt: 0.05, label: 'Boost Amount', fmt: (v) => Math.round(v * 100) + '%', advanced: true },
       { key: 'srTimeBoostEnabled', tab: 'speedrun', group: 'Boosts', modes: M.speedrun, type: 'toggle', get: (a) => a.srTimeBoostEnabled !== false, set: (a, v) => { a.srTimeBoostEnabled = v; }, label: 'Time Boost' },
@@ -577,6 +580,12 @@ const WORLD_SETTINGS = {
         el.querySelector('.ws-cyc-prev').onclick = () => { this._cycleNext(s, -1); this._render(); };
       } else if (s.type === 'slider') {
         el.oninput = () => { this._set(s, +el.value); const v = el.parentElement.querySelector('.ws-slval'); if (v) v.textContent = el.value + '%'; };
+      } else if (s.type === 'numbox') {
+        // el is the range (first data-key match); the number box shares the wrapper via data-numbox.
+        const num = el.parentElement.querySelector(`[data-numbox="${s.key}"]`);
+        const clamp = (x) => Math.min(s.max, Math.max(s.min, isNaN(x) ? s.dflt : x));
+        el.oninput = () => { const v = clamp(+el.value); this._set(s, v); if (num) num.value = v.toFixed(1); };
+        if (num) num.onchange = () => { const v = clamp(+num.value); this._set(s, v); num.value = v.toFixed(1); el.value = v; };
       } else if (s.type === 'button') {
         el.onclick = () => s.act(this._game);
       }
@@ -652,6 +661,14 @@ const WORLD_SETTINGS = {
     if (s.type === 'slider') {
       const v = this._get(s);
       return `<div class="ws-row">${label}<div class="ws-slwrap"><input type="range" min="0" max="100" value="${v}" class="ws-slider" data-key="${s.key}"><span class="ws-slval">${v}%</span></div></div>`;
+    }
+    if (s.type === 'numbox') {
+      // §E1 precision input — a slider plus a one-decimal number box, kept in sync.
+      const v = (+this._get(s)).toFixed(1);
+      const step = s.step || 0.1;
+      return `<div class="ws-row">${label}<div class="ws-slwrap">
+        <input type="range" min="${s.min}" max="${s.max}" step="${step}" value="${v}" class="ws-slider ws-numbox-range" data-key="${s.key}">
+        <input type="number" min="${s.min}" max="${s.max}" step="${step}" value="${v}" class="ws-numbox-input" data-numbox="${s.key}"></div></div>`;
     }
     if (s.type === 'button') {
       return `<div class="ws-row">${label}<button class="ws-btn" data-key="${s.key}">Open</button></div>`;

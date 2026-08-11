@@ -18201,9 +18201,13 @@ class Game {
     sr.accelHeld = accel;
     this.player.srControlled = true;   // SR owns horizontal vx (see player.js)
     if (sr.vx == null) sr.vx = Math.max(0, this.player.vx || 0);
-    const SR_ACCEL  = Math.max(0.05, aws.srAccel ?? 0.5);  // fixed accel/frame (tunable)
+    // §E1 — "Instant" acceleration = no ramp (huge accel → full speed in one frame). "Max = Base" drops
+    // the speed-up ceiling so the runner cruises at Base (max multiplier forced to 1).
+    const _accelSet = aws.srAccel ?? 0.5;
+    const SR_ACCEL  = _accelSet === 'instant' ? 9999 : Math.max(0.05, _accelSet);  // fixed accel/frame (tunable)
     const SR_DECEL  = (aws.srDecel ?? 2) * SR_ACCEL;       // release decel (tunable)
-    const maxSpeed  = this.player.moveSpeed * 3 * (aws.srMaxMultiplier ?? SR_CONFIG.maxMultiplier) * baseSpeed;
+    const _maxMult  = aws.srMaxEqualsBase ? 1 : (aws.srMaxMultiplier ?? SR_CONFIG.maxMultiplier);
+    const maxSpeed  = this.player.moveSpeed * 3 * _maxMult * baseSpeed;
     sr.maxSpeed     = maxSpeed;
     // Active boost (booster block / pickup / perfect start) raises the ceiling and
     // accelerates faster; capped at 1.5× max.
