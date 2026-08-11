@@ -95,6 +95,26 @@ const WORLD_SETTINGS = {
     all:      ['normal', 'platformer', 'speedrunner', 'arena', 'sandbox'],
   },
 
+  // §E10 Rule-set presets — named Speed Runner "feels". Each `vals` is a batch of _worldAdvSettings the
+  // preset writes; every setting stays editable afterwards. `classic` reproduces the defaults.
+  SR_PRESETS: [
+    { id: 'classic', label: 'Classic Runner', hint: 'the default race-car feel: accelerate up to 2× and coast.',
+      vals: { srConstantSpeed: false, srMaxEqualsBase: false, srBaseSpeed: 1.0, srMaxMultiplier: 2.0, srAccel: 0.5, srDecel: 2, srInstantRetry: false } },
+    { id: 'autoscroll', label: 'Auto-Scroller', hint: 'a hands-off forced march — constant speed, instant retry. Great with the Beat Grid.',
+      vals: { srConstantSpeed: true, srMaxEqualsBase: false, srBaseSpeed: 1.2, srMaxMultiplier: 2.0, srAccel: 0.5, srInstantRetry: true } },
+    { id: 'plumber', label: 'Plumber Mode', hint: 'steady, forgiving pace with quick restarts — precision-jump platforming.',
+      vals: { srConstantSpeed: false, srMaxEqualsBase: false, srBaseSpeed: 1.0, srMaxMultiplier: 1.8, srAccel: 0.35, srDecel: 3, srInstantRetry: true } },
+    { id: 'shape', label: 'Shape Run', hint: 'fast constant flow, instant to full speed — twitchy rhythm running.',
+      vals: { srConstantSpeed: true, srMaxEqualsBase: false, srBaseSpeed: 1.5, srMaxMultiplier: 2.0, srAccel: 'instant', srInstantRetry: true } },
+    { id: 'zen', label: 'Zen Flow', hint: 'a calm, flat cruise (no speed-up) with instant retries.',
+      vals: { srConstantSpeed: false, srMaxEqualsBase: true, srBaseSpeed: 0.75, srMaxMultiplier: 1.5, srAccel: 0.5, srInstantRetry: true } },
+  ],
+  _applySrPreset(game, preset) {
+    const a = game._worldAdvSettings;
+    for (const k in preset.vals) a[k] = preset.vals[k];
+    if (game._notify) game._notify('Applied preset: ' + preset.label + ' (all settings still editable)', '#7fd0ff', 160);
+  },
+
   // Helpers for value fns
   _num: (v) => v,
   _cap: (s) => s.charAt(0) + s.slice(1).toLowerCase(),
@@ -177,6 +197,13 @@ const WORLD_SETTINGS = {
       { key: 'aimUpEnabled', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Look-Up Aim (Up/W)', hint: 'hold Up/W to aim straight up (bow, crossbow, trident, boomerang, grapple); jump moves to J. Rebind or pick “Legacy Jump” in Controls to restore Up/W = jump.' },
 
       // ── SPEED RUN ───────────────────────────────────────────
+      // §E10 Rule-set presets — one click sets a batch of Pace settings for a named "feel"; every knob
+      // below stays editable afterwards (Advanced toggle tucks the fine detail). Reuses the Arena
+      // Custom-Rules "preset SETS defaults, leaves settings editable" pattern.
+      ...this.SR_PRESETS.map(p => ({
+        key: 'srPreset_' + p.id, tab: 'speedrun', group: 'Presets', modes: M.speedrun, type: 'button',
+        rerender: true, label: p.label, btnLabel: 'Apply', hint: p.hint, act: (g) => this._applySrPreset(g, p),
+      })),
       // §E2 Constant / Auto-speed — a true fixed auto-scroll: the runner is pinned at Max Speed the whole
       // run (no accelerate/coast). Recommended base for the Beat Grid (E-MB). Default off = the classic
       // race-car accelerate model. When ON, the Acceleration/Deceleration knobs below don't apply.
@@ -590,7 +617,7 @@ const WORLD_SETTINGS = {
         el.oninput = () => { const v = clamp(+el.value); this._set(s, v); if (num) num.value = v.toFixed(1); };
         if (num) num.onchange = () => { const v = clamp(+num.value); this._set(s, v); num.value = v.toFixed(1); el.value = v; };
       } else if (s.type === 'button') {
-        el.onclick = () => s.act(this._game);
+        el.onclick = () => { s.act(this._game); if (s.rerender !== false) this._render(); };
       }
     }
     // Mob Settings tab: also wire the special drops table (sandbox only).
@@ -674,10 +701,11 @@ const WORLD_SETTINGS = {
         <input type="number" min="${s.min}" max="${s.max}" step="${step}" value="${v}" class="ws-numbox-input" data-numbox="${s.key}"></div></div>`;
     }
     if (s.type === 'button') {
-      return `<div class="ws-row">${label}<button class="ws-btn" data-key="${s.key}">Open</button></div>`;
+      return `<div class="ws-row">${label}<button class="ws-btn" data-key="${s.key}">${esc(s.btnLabel || 'Open')}</button></div>`;
     }
     return '';
   },
 };
 
 if (typeof window !== 'undefined') window.WORLD_SETTINGS = WORLD_SETTINGS;
+if (typeof module !== 'undefined' && module.exports) module.exports = { WORLD_SETTINGS };
