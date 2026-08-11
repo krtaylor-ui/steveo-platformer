@@ -82,6 +82,17 @@ const LOCAL_WORLDS = {
     return this._persist(map);
   },
 
+  // §Custom Sprites — persist the world's chosen character on a local (lw-) world.
+  // Without this the Sandbox card's fallback path silently no-op'd: get() returns a
+  // detached copy of localStorage (mutating it persists nothing) and save() with no
+  // args writes map[undefined] — so lw- side-scroll worlds never kept characterId
+  // (tester, build 434), unlike the oh- overhead store which writes back explicitly.
+  setCharacter(id, characterId) {
+    const map = this._all(); const w = map[id]; if (!w) return false;
+    w.world_data = w.world_data || {}; w.world_data.characterId = characterId;
+    return this._persist(map);
+  },
+
   copy(id, newName) {
     const map = this._all(); const src = map[id]; if (!src) return null;
     const nid = this._uid();

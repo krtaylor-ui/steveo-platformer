@@ -238,6 +238,13 @@ const GAME_STATE = {
     return {
       saveVersion: 2,
       savedAt: new Date().toISOString(),
+      // Custom Sprites: persist the world's chosen character so a RESUME/Continue keeps it.
+      // freshGameData spreads world_data (with characterId) at CREATE, but the first autosave
+      // overwrites game_data with this serialize() — so without this field every resumed game
+      // silently reverted to 'classic' (tester, build 434). Sourced from the live global the
+      // player is actually rendering with, falling back to any id already on the game/world.
+      characterId: (typeof window !== 'undefined' && window.CURRENT_CHARACTER_ID)
+        || game._characterId || 'classic',
       worldWidth:  game.level.width,
       worldHeight: game.level.height,
       // Persistent total play time (ms) — kept current by GAME_TIMER each tick.
@@ -339,6 +346,13 @@ const GAME_STATE = {
     if (!stateData) return;
     // Restore persistent total play time (top-level, independent of playerProgress).
     if (typeof stateData.totalGameTime === 'number') game.totalGameTime = stateData.totalGameTime;
+    // Custom Sprites: restore the saved character (belt-and-suspenders with the constructor's
+    // templateData read) so a resumed game renders the tagged character, not 'classic'. Runs
+    // before the newGame/no-progress early-returns because the character applies either way.
+    if (stateData.characterId) {
+      game._characterId = stateData.characterId;
+      if (typeof window !== 'undefined') window.CURRENT_CHARACTER_ID = stateData.characterId;
+    }
     // NEW GAME: a freshly-created game's game_data is a full COPY of the source world —
     // including the sandbox editor's player state (god-mode loadout + editor POSITION).
     // Restoring that would spawn the player wherever the designer left off instead of at
