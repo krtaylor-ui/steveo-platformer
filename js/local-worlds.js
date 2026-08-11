@@ -93,6 +93,16 @@ const LOCAL_WORLDS = {
     return this._persist(map);
   },
 
+  // §Custom Sprites Phase 2 — store a built custom character on a local world (sets characterId
+  // 'custom' + the mix). Pass null def to just switch the id via setCharacter instead.
+  setCustomCharacter(id, def) {
+    const map = this._all(); const w = map[id]; if (!w) return false;
+    w.world_data = w.world_data || {};
+    w.world_data.characterId = 'custom';
+    w.world_data.customCharacter = def || null;
+    return this._persist(map);
+  },
+
   copy(id, newName) {
     const map = this._all(); const src = map[id]; if (!src) return null;
     const nid = this._uid();

@@ -57,6 +57,12 @@
       // §Custom Sprites — the world's chosen character (default 'classic' = unchanged). Its accessory
       // feat is passed to drawOverheadPlayer per player; player colours still come from PLAYER_LOOKS.
       this._characterId = worldData.characterId || (typeof CHARACTERS !== 'undefined' ? CHARACTERS.DEFAULT_ID : 'classic') || 'classic';
+      // §Custom Sprites Phase 2 — install the per-world custom mix (world_data.customCharacter) under
+      // id 'custom' so the CHARACTERS.feat/get lookups below resolve it; clear stale custom otherwise.
+      if (typeof CHARACTERS !== 'undefined' && CHARACTERS.setCustom) {
+        if (this._characterId === 'custom' && worldData.customCharacter) { CHARACTERS.setCustom(worldData.customCharacter); this._customCharacter = worldData.customCharacter; }
+        else { CHARACTERS.setCustom(null); this._customCharacter = null; if (this._characterId === 'custom') this._characterId = 'classic'; }
+      }
       // §Speed Run (Phase 2) — a run timer that starts on first movement and stops at the finish
       // (the Goal Star / a portal isGoal). Best times persist to the shared SpeedRunnerLeaderboard,
       // keyed author:worldName (stable per level, like the side-scroll engine). Single-player only.

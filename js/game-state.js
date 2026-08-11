@@ -245,6 +245,9 @@ const GAME_STATE = {
       // player is actually rendering with, falling back to any id already on the game/world.
       characterId: (typeof window !== 'undefined' && window.CURRENT_CHARACTER_ID)
         || game._characterId || 'classic',
+      // Phase 2: the per-world custom-character mix ({name,body,sel,pal}) so a 'custom' character
+      // survives save/resume too. Null for the built-in roster.
+      customCharacter: game._customCharacter || null,
       worldWidth:  game.level.width,
       worldHeight: game.level.height,
       // Persistent total play time (ms) — kept current by GAME_TIMER each tick.
@@ -352,6 +355,11 @@ const GAME_STATE = {
     if (stateData.characterId) {
       game._characterId = stateData.characterId;
       if (typeof window !== 'undefined') window.CURRENT_CHARACTER_ID = stateData.characterId;
+    }
+    // Phase 2: restore the custom-character mix so a resumed 'custom' world renders the built one.
+    if (stateData.customCharacter && typeof CHARACTERS !== 'undefined' && CHARACTERS.setCustom) {
+      game._customCharacter = stateData.customCharacter;
+      CHARACTERS.setCustom(stateData.customCharacter);
     }
     // NEW GAME: a freshly-created game's game_data is a full COPY of the source world —
     // including the sandbox editor's player state (god-mode loadout + editor POSITION).

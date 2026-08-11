@@ -396,6 +396,31 @@ const SANDBOX = {
     } catch (error) { console.error('Change character error:', error); alert('Failed to save character.'); }
   },
 
+  // §Custom Sprites Phase 2 — persist a BUILT custom character (sets characterId='custom' + the mix
+  // {name,body,sel,pal}). Same three stores as changeWorldCharacter: offline overhead / local / server.
+  async saveCustomCharacter(worldId, def) {
+    const cache = () => { const w = (this.worlds || []).find((x) => x.id === worldId); if (w) { w.world_data = w.world_data || {}; w.world_data.characterId = 'custom'; w.world_data.customCharacter = def; } };
+    if (this._isOfflineOverhead(worldId)) {
+      try { const all = this._ohStore(); if (all[worldId]) { all[worldId].characterId = 'custom'; all[worldId].customCharacter = def; localStorage.setItem('steveo_overhead_worlds', JSON.stringify(all)); } } catch (_) {}
+      cache(); return true;
+    }
+    if (this._isLocalWorld(worldId)) {
+      cache();
+      try { if (LOCAL_WORLDS.setCustomCharacter) LOCAL_WORLDS.setCustomCharacter(worldId, def); } catch (_) {}
+      return true;
+    }
+    try {
+      const wid = encodeURIComponent(worldId);
+      const g = await AUTH.authedFetch(`/api/worlds/sandbox/${wid}`);
+      if (!g.ok) { alert('Could not load the world to save the character.'); return false; }
+      const world = await g.json();
+      const wd = Object.assign({}, world.world_data || {}, { characterId: 'custom', customCharacter: def });
+      const res = await AUTH.authedFetch(`/api/worlds/sandbox/${wid}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ worldData: wd, worldName: world.world_name }) });
+      if (!res.ok) { alert('Failed to save character.'); return false; }
+      cache(); return true;
+    } catch (error) { console.error('Save custom character error:', error); alert('Failed to save character.'); return false; }
+  },
+
   // Cross-space section — ONLINE ONLY. Shows your LOCAL worlds (badged) as tiles
   // with a single "⬆ Copy to Online". (In offline mode we intentionally show only
   // local worlds — surfacing cloud worlds there would be confusing.) Cloud cards

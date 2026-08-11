@@ -283,6 +283,16 @@ class Game {
     // §Custom Sprites — the world's chosen character (v1: one per world; default 'classic' =
     // unchanged look). player.js reads this global; a per-player _characterId would override (Phase 2).
     if (typeof window !== 'undefined') window.CURRENT_CHARACTER_ID = (options.templateData && options.templateData.characterId) || (options.worldData && options.worldData.characterId) || 'classic';
+    // §Custom Sprites Phase 2 — a 'custom' character is a per-world mix stored in world_data.
+    // customCharacter ({name,body,sel,pal}). Install it under id 'custom' so player.js's existing
+    // CHARACTERS.feat/_accent lookups resolve the mix; clear any stale custom otherwise. Kept on the
+    // game so serialize() re-persists it across a save/resume (like characterId).
+    if (typeof window !== 'undefined' && typeof CHARACTERS !== 'undefined' && CHARACTERS.setCustom) {
+      const _srcWd = options.templateData || options.worldData || null;
+      const _cc = (window.CURRENT_CHARACTER_ID === 'custom' && _srcWd) ? _srcWd.customCharacter : null;
+      if (_cc) { CHARACTERS.setCustom(_cc); this._customCharacter = _cc; }
+      else { CHARACTERS.setCustom(null); this._customCharacter = null; if (window.CURRENT_CHARACTER_ID === 'custom') window.CURRENT_CHARACTER_ID = 'classic'; }
+    }
     this._editArena = this._arenaStarter || !!(options.templateData && options.templateData.gameModeDefault === 'ARN');
     if (this.isArena) {
       this.arenaConfig = Object.assign(

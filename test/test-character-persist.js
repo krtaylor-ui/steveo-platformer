@@ -23,6 +23,8 @@ global.localStorage = { getItem: (k) => (k in _ls ? _ls[k] : null), setItem: (k,
 global.alert = () => {};
 require(path.join(__dirname, '..', 'js', 'local-worlds.js'));
 const LOCAL_WORLDS = global.LOCAL_WORLDS;
+// CHARACTERS must be global so game-state.js's deserialize (which references it via typeof) can setCustom.
+global.CHARACTERS = require(path.join(__dirname, '..', 'js', 'characters.js')).CHARACTERS;
 
 console.log('BUG 1 — serialize writes characterId, deserialize restores it:');
 {
@@ -51,6 +53,40 @@ console.log('BUG 1 — serialize writes characterId, deserialize restores it:');
   global.window.CURRENT_CHARACTER_ID = 'cat';
   GAME_STATE.deserialize(g3, { playerProgress: null }, {});
   ok(global.window.CURRENT_CHARACTER_ID === 'cat', 'deserialize() without characterId does not clobber the current id');
+}
+
+console.log('PHASE 2 — customCharacter survives serialize/deserialize:');
+{
+  const stubGame = {
+    level: { grid: [[1]], width: 1, height: 1 },
+    player: { x: 0, y: 0, hp: 10, xp: 0, level: 1, selectedSlot: 0, hotbar: [], inventory: [], facing: 1 },
+    totalGameTime: 0, sandbox: null,
+    _customCharacter: { name: 'Mixy', body: 'girl', sel: { headgear: 'hat', tail: 'tail' }, pal: { shirt: '#123456' } },
+  };
+  global.window.CURRENT_CHARACTER_ID = 'custom';
+  const out = GAME_STATE.serialize(stubGame);
+  ok(out && out.customCharacter && out.customCharacter.name === 'Mixy', 'serialize() carries the custom mix');
+  ok(out.characterId === 'custom', 'serialize() carries characterId=custom');
+
+  // deserialize restores it AND installs it into CHARACTERS so the renderers resolve it
+  CHARACTERS.setCustom(null);
+  const g2 = { player: {} };
+  GAME_STATE.deserialize(g2, { characterId: 'custom', customCharacter: out.customCharacter }, { newGame: true });
+  ok(g2._customCharacter && g2._customCharacter.name === 'Mixy', 'deserialize() restores game._customCharacter');
+  ok(CHARACTERS.feat('custom').hat === 1 && CHARACTERS.feat('custom').tail === 1, 'deserialize() installs the mix (CHARACTERS.feat resolves it)');
+  ok(CHARACTERS.defaultPalette('custom').shirt === '#123456', 'installed custom palette resolves');
+  CHARACTERS.setCustom(null);
+}
+
+console.log('PHASE 2 — LOCAL_WORLDS.setCustomCharacter persists mix + id on lw- worlds:');
+{
+  ok(typeof LOCAL_WORLDS.setCustomCharacter === 'function', 'LOCAL_WORLDS.setCustomCharacter exists');
+  const w = LOCAL_WORLDS.create({ worldName: 'C', worldWidth: 10, worldHeight: 10, gameModeDefault: 'PLT' });
+  const def = { name: 'Loc', body: 'boy', sel: { back: 'cape' }, pal: {} };
+  ok(LOCAL_WORLDS.setCustomCharacter(w.id, def) === true, 'setCustomCharacter returns true');
+  const re = LOCAL_WORLDS.get(w.id);
+  ok(re.world_data.characterId === 'custom', 'stored characterId=custom');
+  ok(re.world_data.customCharacter && re.world_data.customCharacter.name === 'Loc', 'stored the custom mix');
 }
 
 console.log('BUG 2 — LOCAL_WORLDS.setCharacter persists on lw- worlds:');
