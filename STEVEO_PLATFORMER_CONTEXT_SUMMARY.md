@@ -1,4 +1,35 @@
-## CURRENT STATE (2026-08-11) — Speed Runner overhaul: builds 440–453 on branch `speedrunner-overhaul` (pushed, NOT merged)
+## CURRENT STATE (2026-08-11 late) — Speed Runner + Phase 2 SHIPPED to `main` @ build 460
+
+**`main` == `origin/main` at build 460** (fast-forwarded from `speedrunner-overhaul`; clean FF, pushed —
+live on Railway if it auto-deploys `main`). The whole Speed Runner overhaul (440–453), the QA-feedback
+fixes + automation seams (455–459), the merge of the concurrent Phase-2 save fix (454), the Phase-2
+FINAL gaps (GAP-1 `_persistWorldData` unify / GAP-2 verified / GAP-3 re-render), and the E3 Transport
+regroup + SQL (460) are all on `main`. Suite green (84 test files).
+
+**Tester-confirmed PASS:** E1,E2,E8,E9,E10 (Wave 2), E11 (lava), E13, GAP-1/2/3, B6 (client), plus
+`selectItem` placement + all the automation seams. **Server-half of A1 (cap 2→20) + B6 were deploy-gated
+on the branch** (the QA rig hit a stale API); the push to `main` makes them verifiable in production.
+
+**QA automation seams on `window.SANDBOX` (in-editor):** `selectItem(name)`, `cycleSpikeOrientation(col,row)`
++ `getSpikeDir`, `setBoosterConfig(col,row,{mode,amount,durSec})` + `getBoosterConfig`,
+`publishWorld(id,bool)`. Right-click/movement gestures don't arrive via CDP, so these are how the rig
+drives E12/E6/E5.
+
+**READY FOR KEVIN:** `server/sql/speedrunner.sql` — one idempotent, decision-made migration file (level
+states + provenance trigger, play_count/last_played, rating_avg, tags/tag_requests/system_tags, thumbnail,
+per-level achievement world_id, speedrun_results re-key). Prereqs (community.sql/stats.sql) confirmed
+present. Apply top-to-bottom in Supabase; it unblocks the DB-gated storefront/state/leaderboard wiring.
+
+**NEXT BATCH (branch off `main`@460):** the remaining Speed Runner epics — E4 gravity zones, **E7 WIND
+(flagship)**, Epic CK (checkpoints/practice/splits), Epic C (editor + Create-World), Epic UI (modal
+unification refactor), Epic MB (music + Beat Grid), Epic D (achievement templates + evaluator), and the
+DB-gated A/B/LB storefront wiring (now unblockable once the SQL is applied) — PLUS **Phase 3** custom
+sprites (per-account roster, MP per-player custom, side-scroll preview, studio sprite-sheet packs; see
+`docs/PHASE2_FINAL_HANDOFF.md` for the Phase 3 overview).
+
+---
+
+## PRIOR STATE (2026-08-11) — Speed Runner overhaul: builds 440–453 on branch `speedrunner-overhaul` (pushed, NOT merged)
 
 **Branch `speedrunner-overhaul` (off `main` @439), pushed to origin, NOT merged — Kevin reviews.**
 Overnight run of the Speed Runner MEGA brief (`docs/SPEEDRUNNER_MEGA_BRIEF.md`). Suite
