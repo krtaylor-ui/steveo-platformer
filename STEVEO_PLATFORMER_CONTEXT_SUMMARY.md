@@ -1,3 +1,39 @@
+## CURRENT STATE (2026-08-11) — Speed Runner overhaul: builds 440–453 on branch `speedrunner-overhaul` (pushed, NOT merged)
+
+**Branch `speedrunner-overhaul` (off `main` @439), pushed to origin, NOT merged — Kevin reviews.**
+Overnight run of the Speed Runner MEGA brief (`docs/SPEEDRUNNER_MEGA_BRIEF.md`). Suite
+`node test/run.js` GREEN (added 6 headless test files). Every commit bumps the build via
+`tools/bump-build.js`. This was the migration-free slice + build-to-the-SQL-wall; nothing on `main` changed.
+
+**LANDED (each = its own commit + tests):**
+- **Wave 1:** E3 (Launch Accel/Lift → Transport group), F1 (verified spike-rides-platform + test), E6
+  (SPEED_BOOSTER works outside SR + right-click per-block config Temp/Perm/amount/linger; new
+  `js/speed-booster.js`), E11 (`lavaInstaKill` named setting), E12 (per-cell spike orientation up/down/
+  left/right, right-click cycles-then-removes, orientation-aware damage; new `js/spike-orient.js` +
+  `_spikeDirMap`), E13 (Other-palette + chest mode-filter; new `js/palette-filter.js`).
+- **Wave 2:** E1 (Base/Max as precise slider+numbox, Max=Base toggle, Instant accel), E2 (`srConstantSpeed`
+  auto-run), E5 (Player Speed Zones = configured SPEED_BOOSTER runs, Permanent = sustained), E8 (attempt
+  counter + best-progress %, HUD line, `SpeedRunnerStats`), E9 (`srInstantRetry` no-countdown), E10 (SR
+  rule-set presets Classic/Auto-Scroller/Plumber/Shape/Zen in `WORLD_SETTINGS.SR_PRESETS`).
+- **Safety/storefront (migration-free slices):** B6 (appropriateness wordlist `js/moderation.js` wired into
+  signup + world create/rename, case-folded username uniqueness), A1 (published cap 2→20), A2 (level finish
+  validator `js/level-validator.js`, gates future Draft→Live/Published).
+
+**DELIVERABLES:** `docs/SPEEDRUNNER_MIGRATIONS.md` (all DB-gated SQL, ordered, copy-paste, NOT applied),
+`docs/UI_STYLE_GUIDE.md` (unified dark/TV modal spec), `docs/TESTER_BRIEF_SPEEDRUNNER_453.md` (+ copied to
+`/mnt/c/Dev/Steveo-QA/docs/`).
+
+**DEFERRED (documented, NOT built — budget + risk):** E4 gravity-inverter zones (full ceiling-walk flip =
+large high-risk physics rework), E7 WIND/current zones (the epic — both engines + wall-blocking + redstone),
+Epic CK (checkpoints/practice/splits), Epic C (editor + Create-World cleanup), Epic UI modal-unification
+REFACTOR (only the style guide was written), Epic MB (music per-instance + Beat Grid), Epic D
+templates/evaluator, and the DB-gated bodies of Epics A/B + LB re-key (all specced in the migrations doc).
+
+**SHIP =** Kevin browser-reviews the branch, applies `docs/SPEEDRUNNER_MIGRATIONS.md` when ready for the
+storefront, then merges `speedrunner-overhaul` → `main`.
+
+---
+
 ## CURRENT STATE (2026-08-10) — builds 397–434 ALL MERGED to `main` + pushed; working directly on `main`
 
 **`main` == `origin/main` at build 434, working tree clean, nothing unpushed on any branch.** The big
