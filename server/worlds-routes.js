@@ -536,6 +536,9 @@ module.exports = function setupWorldsRoutes(app) {
       const { worldName } = req.body;
       const name = (typeof worldName === 'string') ? worldName.trim() : '';
       if (!name) return res.status(400).json({ error: 'Name required' });
+      // §B6 appropriateness filter — the dedicated rename endpoint (the client's real rename path).
+      const mod = MODERATION.check(name, 'world name');
+      if (!mod.ok) return res.status(400).json({ error: mod.reason });
 
       const { data: world, error } = await supabaseAdmin
         .from('worlds')

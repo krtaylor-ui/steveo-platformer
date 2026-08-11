@@ -574,6 +574,12 @@ const SANDBOX = {
     if (input == null) return;                 // cancelled
     const newName = input.trim();
     if (!newName || newName === current) return;
+    // §B6 appropriateness filter — client-side (covers offline/local worlds that never hit the server,
+    // and gives instant feedback for cloud worlds; the server re-checks authoritatively).
+    if (typeof MODERATION !== 'undefined') {
+      const mod = MODERATION.check(newName, 'world name');
+      if (!mod.ok) { await DIALOG.alert(mod.reason, { title: 'Name not allowed' }); return; }
+    }
 
     if (this._isLocalWorld(worldId)) {
       LOCAL_WORLDS.rename(worldId, newName);
@@ -629,6 +635,14 @@ const SANDBOX = {
     const gameModeDefault = document.getElementById('game-mode-default-input').value;
 
     if (!name) { alert('World name required'); return; }
+    // §B6 appropriateness filter — client-side on the world name + description (covers offline/local
+    // worlds that never reach the server; the server re-checks online creates authoritatively).
+    if (typeof MODERATION !== 'undefined') {
+      const modN = MODERATION.check(name, 'world name');
+      if (!modN.ok) { await DIALOG.alert(modN.reason, { title: 'Name not allowed' }); return; }
+      const modD = MODERATION.check(description, 'description');
+      if (!modD.ok) { await DIALOG.alert(modD.reason, { title: 'Description not allowed' }); return; }
+    }
 
     // Physics now live in World Settings → Physics (server applies defaults here).
     // Arena (Phase 3A.3): Single-Screen = size preset; Scrolling = free size.
