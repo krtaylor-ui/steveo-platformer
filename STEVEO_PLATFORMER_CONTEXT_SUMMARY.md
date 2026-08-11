@@ -1,4 +1,18 @@
-## CURRENT STATE (2026-08-11 night) — Speed Runner EPICS + Phase 3 on branch `speedrunner-phase3` (builds 461–466, pushed, NOT merged)
+## CURRENT STATE (2026-08-11 night) — Speed Runner EPICS + Phase 3 on branch `speedrunner-phase3` (builds 461–471, pushed, NOT merged)
+
+**Second-half additions (467–471) on top of 461–466 below:** Epic C safe wins (removed Import-from-Games +
+Overhead Demo), Phase 3 roster PICKER (apply saved characters to worlds — roster now create+apply complete),
+Epic MB Beat Grid core (`js/beat-grid.js` tap-tempo + time→distance, tested), Epic A/B/LB storefront SERVER
+slices (rating sort→rating_avg, Most-Played/Trending sorts, play_count route, publish sets `state` + gates
+on the finish validator A2), Epic D3 unlock routes (`/api/achievements/world`). **Deferred with specs
+(browser-unverifiable/large UI or net-new modes):** Epic UI 12-modal refactor (style guide written), Epic C
+tabs/overhead-fold, Epic MB editor overlay, Epic D creator-UI + in-play tracking, storefront LANDING/browse
+UI + downloadable/provenance + LB re-key, CK3 practice, Phase 3 MP/side-preview/sprite-sheet. Suite green
+(89 test files). Deliverables: `docs/TESTER_BRIEF_PHASE3_466.md` (through 471), `docs/SPEEDRUNNER_PHASE3_RUN_NOTES.md`.
+
+---
+
+## (earlier this session) — Speed Runner EPICS + Phase 3 on branch `speedrunner-phase3` (builds 461–466)
 
 **Branch `speedrunner-phase3` (off `main`@460), pushed, NOT merged.** Autonomous multi-hour run of the
 remaining epics. Suite green (86 test files). SQL applied by Kevin: `speedrunner.sql` + `user_characters.sql`.
