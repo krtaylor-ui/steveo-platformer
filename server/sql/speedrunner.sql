@@ -1,98 +1,78 @@
--- ============================================================================
--- speedrunner.sql — migrations for the Speed Runner storefront / level-state /
--- leaderboard work. Run top-to-bottom in the Supabase SQL editor. Idempotent
--- (IF NOT EXISTS / guarded), so re-running is safe. Nothing here is applied by the
--- app; the code that USES these columns is gated until you run this.
---
--- Prereqs verified 2026-08-11: server/sql/community.sql and server/sql/stats.sql
--- are already applied (worlds community columns + player_achievements exist).
--- ============================================================================
+-- ============================================================
+-- speedrunner.sql — Speed Runner storefront / level-state / leaderboard migrations.
+-- Run in the Supabase SQL editor (additive; safe to re-run). Format model: community.sql.
+-- Prereqs (confirmed present 2026-08-11): community.sql + stats.sql applied.
+-- ============================================================
 
 -- 1. LEVEL STATES — Draft / Live / Published, downloadable opt-in, immutable creator.
-alter table worlds
-  add column if not exists state text not null default 'draft'
-    check (state in ('draft','live','published')),
-  add column if not exists downloadable boolean not null default false,
-  add column if not exists original_author uuid references users(id);
+ALTER TABLE public.worlds ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT 'draft'
+  CHECK (state IN ('draft','live','published'));
+ALTER TABLE public.worlds ADD COLUMN IF NOT EXISTS downloadable BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.worlds ADD COLUMN IF NOT EXISTS original_author_id UUID;
 
--- Backfill: anything already published becomes 'published', the rest stay 'draft'.
-update worlds set state = 'published' where is_published = true and state = 'draft';
+-- Backfill: anything already published becomes 'published'.
+UPDATE public.worlds SET state = 'published' WHERE is_published = TRUE AND state = 'draft';
 
--- Provenance is stamped once and must never change (so a downloader can't rewrite
--- who made a level). Immutability enforced by a trigger.
-create or replace function lock_original_author() returns trigger as $$
-begin
-  if OLD.original_author is not null
-     and NEW.original_author is distinct from OLD.original_author then
-    raise exception 'original_author is immutable';
-  end if;
-  return NEW;
-end;
-$$ language plpgsql;
+-- Provenance is stamped once and must never change (a downloader can't rewrite the creator).
+CREATE OR REPLACE FUNCTION public.lock_original_author() RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.original_author_id IS NOT NULL
+     AND NEW.original_author_id IS DISTINCT FROM OLD.original_author_id THEN
+    RAISE EXCEPTION 'original_author_id is immutable';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
-drop trigger if exists trg_lock_original_author on worlds;
-create trigger trg_lock_original_author
-  before update on worlds
-  for each row execute function lock_original_author();
+DROP TRIGGER IF EXISTS trg_lock_original_author ON public.worlds;
+CREATE TRIGGER trg_lock_original_author
+  BEFORE UPDATE ON public.worlds
+  FOR EACH ROW EXECUTE FUNCTION public.lock_original_author();
 
--- 2. PLAY COUNT + RECENCY — Most-Played / Trending sorts. (App increments play_count
---    and stamps last_played_at on each successful play launch.)
-alter table worlds
-  add column if not exists play_count integer not null default 0,
-  add column if not exists last_played_at timestamptz;
+-- 2. PLAY COUNT + RECENCY — Most-Played / Trending sorts.
+ALTER TABLE public.worlds ADD COLUMN IF NOT EXISTS play_count      INT NOT NULL DEFAULT 0;
+ALTER TABLE public.worlds ADD COLUMN IF NOT EXISTS last_played_at  TIMESTAMPTZ;
 
--- 3. RATING AVERAGE — fixes the sum-vs-avg sort (was ordering by rating_sum, which
---    favours many-mediocre over few-excellent). Generated column + index.
-alter table worlds
-  add column if not exists rating_avg numeric
-    generated always as (
-      case when rating_count > 0 then rating_sum::numeric / rating_count else 0 end
-    ) stored;
-create index if not exists idx_worlds_rating_avg on worlds (rating_avg desc);
+-- 3. RATING AVERAGE — fixes the sum-vs-avg sort (was ordering by rating_sum).
+ALTER TABLE public.worlds ADD COLUMN IF NOT EXISTS rating_avg NUMERIC
+  GENERATED ALWAYS AS (CASE WHEN rating_count > 0 THEN rating_sum::NUMERIC / rating_count ELSE 0 END) STORED;
+CREATE INDEX IF NOT EXISTS idx_worlds_rating_avg ON public.worlds (rating_avg DESC);
 
--- 4. TAGS — GIN-indexed array + a curated system tag list + a request queue.
-alter table worlds add column if not exists tags text[] not null default '{}';
-create index if not exists idx_worlds_tags on worlds using gin (tags);
+-- 4. TAGS — GIN-indexed array + curated tag list + request queue.
+ALTER TABLE public.worlds ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
+CREATE INDEX IF NOT EXISTS idx_worlds_tags ON public.worlds USING GIN (tags);
 
-create table if not exists system_tags (
-  id uuid primary key default gen_random_uuid(),
-  name text unique not null,
-  created_at timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS public.system_tags (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       TEXT UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-create table if not exists tag_requests (
-  id uuid primary key default gen_random_uuid(),
-  requested_by uuid references users(id),
-  name text not null,
-  status text not null default 'pending'
-    check (status in ('pending','approved','rejected')),
-  created_at timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS public.tag_requests (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  requested_by UUID,
+  name         TEXT NOT NULL,
+  status       TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 5. THUMBNAILS — column for the capture URL / data-URI. (ALSO create a public
---    Storage bucket named 'world-thumbnails' in the Supabase dashboard; that step
---    is manual and can't be scripted here.)
-alter table worlds add column if not exists thumbnail text;
+-- 5. THUMBNAILS — capture URL / data-URI column. (ALSO create a public Storage bucket
+--    'world-thumbnails' in the dashboard — that step is manual.)
+ALTER TABLE public.worlds ADD COLUMN IF NOT EXISTS thumbnail TEXT;
 
--- 6. PER-LEVEL ACHIEVEMENT UNLOCKS — world scope on the existing table (Option A).
-alter table player_achievements add column if not exists world_id uuid references worlds(id);
-create index if not exists idx_player_ach_world on player_achievements (player_id, world_id);
+-- 6. PER-LEVEL ACHIEVEMENT UNLOCKS — world scope on the existing table.
+ALTER TABLE public.player_achievements ADD COLUMN IF NOT EXISTS world_id UUID;
+CREATE INDEX IF NOT EXISTS idx_player_ach_world ON public.player_achievements (player_id, world_id);
 
--- 7. LEADERBOARD RE-KEY — move speedrun_results.level_id ("author:worldName") to
---    worlds.id. Add the column + backfill what resolves; unresolved rows keep the
---    old level_id string. (Client switches its levelId + sr_* localStorage keys to
---    the world id in lockstep — see docs/SPEEDRUNNER_MIGRATIONS.md §7.)
-alter table speedrun_results add column if not exists world_id uuid references worlds(id);
+-- 7. LEADERBOARD RE-KEY — speedrun_results.level_id ("author:worldName") -> worlds.id.
+ALTER TABLE public.speedrun_results ADD COLUMN IF NOT EXISTS world_id UUID;
+UPDATE public.speedrun_results r
+   SET world_id = w.id
+  FROM public.worlds w
+  JOIN public.users u ON u.id = w.creator_id
+ WHERE r.world_id IS NULL
+   AND r.level_id = u.username || ':' || w.world_name;
+CREATE INDEX IF NOT EXISTS idx_speedrun_world ON public.speedrun_results (world_id);
 
-update speedrun_results r
-   set world_id = w.id
-  from worlds w
-  join users u on u.id = w.creator_id
- where r.world_id is null
-   and r.level_id = u.username || ':' || w.world_name;
-
-create index if not exists idx_speedrun_world on speedrun_results (world_id);
-
--- Published cap (2 -> 20) is CODE, not SQL — already shipped in
--- server/worlds-routes.js (PUBLISH_CAP = 20). Listed for completeness.
--- ============================================================================
+-- Published cap (2 -> 20) is CODE (server/worlds-routes.js PUBLISH_CAP), not SQL.
+-- ============================================================
