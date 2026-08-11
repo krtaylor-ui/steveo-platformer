@@ -59,15 +59,113 @@
 
   var MAP = {}; LIST.forEach(function (c) { MAP[c.id] = c; });
 
+  // ── Phase 2 — parts mixer ────────────────────────────────────────────────
+  // The builder lets a creator COMPOSE a character from curated parts. Every option maps to the
+  // Phase-1 feat flags above, so a custom character renders in BOTH engines with NO new art. Each
+  // category is PICK-ONE; the chosen options' feat objects merge into the final feat. Order matters
+  // only for readability — the renderers key off individual flags, not order.
+  var PARTS = [
+    { key: 'headgear', label: 'Head', options: [
+      { id: 'none',    label: 'None',        feat: {} },
+      { id: 'helm',    label: 'Knight Helm', feat: { helm: 1, plume: 1 } },
+      { id: 'dome',    label: 'Space Dome',  feat: { dome: 1 } },
+      { id: 'hat',     label: 'Wizard Hat',  feat: { hat: 1 } },
+      { id: 'cap',     label: 'Cap',         feat: { cap: 1 } },
+      { id: 'fedora',  label: 'Explorer Hat',feat: { fedora: 1 } },
+      { id: 'bandana', label: 'Bandana',     feat: { bandana: 1 } },
+      { id: 'mask',    label: 'Hero Mask',   feat: { mask: 1 } },
+      { id: 'wrap',    label: 'Ninja Wrap',  feat: { wrap: 1, band: 1 } },
+      { id: 'crest',   label: 'Dino Crest',  feat: { crest: 1 } } ] },
+    { key: 'ears', label: 'Ears', options: [
+      { id: 'none',      label: 'None',          feat: {} },
+      { id: 'earsTri',   label: 'Pointed Ears',  feat: { earsTri: 1 } },
+      { id: 'earsRound', label: 'Round Ears',    feat: { earsRound: 1 } },
+      { id: 'antennae',  label: 'Antennae',      feat: { antennae: 1 } },
+      { id: 'antenna',   label: 'Robot Antenna', feat: { antenna: 1, bolts: 1 } } ] },
+    { key: 'face', label: 'Face', options: [
+      { id: 'none',    label: 'None',      feat: {} },
+      { id: 'visor',   label: 'Visor',     feat: { visor: 1 } },
+      { id: 'bigeyes', label: 'Big Eyes',  feat: { bighead: 1, bigeyes: 1 } },
+      { id: 'snout',   label: 'Snout',     feat: { snout: 1, whisk: 1 } },
+      { id: 'patch',   label: 'Eye Patch', feat: { patch: 1 } },
+      { id: 'beard',   label: 'Beard',     feat: { beard: 1 } } ] },
+    { key: 'back', label: 'Back', options: [
+      { id: 'none',  label: 'None',     feat: {} },
+      { id: 'cape',  label: 'Cape',     feat: { cape: 1 } },
+      { id: 'wings', label: 'Wings',    feat: { wings: 1 } },
+      { id: 'pack',  label: 'Backpack', feat: { pack: 1 } },
+      { id: 'vest',  label: 'Vest',     feat: { vest: 1 } },
+      { id: 'scarf', label: 'Scarf',    feat: { scarf: 1 } },
+      { id: 'sash',  label: 'Sash',     feat: { sash: 1 } } ] },
+    { key: 'tail', label: 'Tail', options: [
+      { id: 'none',     label: 'None',       feat: {} },
+      { id: 'tail',     label: 'Cat Tail',   feat: { tail: 1 } },
+      { id: 'tailBush', label: 'Bushy Tail', feat: { tailBush: 1 } } ] },
+    { key: 'hand', label: 'Hand', options: [
+      { id: 'none',   label: 'None',   feat: {} },
+      { id: 'shield', label: 'Shield', feat: { shield: 1 } },
+      { id: 'staff',  label: 'Staff',  feat: { staff: 1 } } ] },
+    { key: 'pattern', label: 'Pattern', options: [
+      { id: 'none',    label: 'None',   feat: {} },
+      { id: 'stripes', label: 'Stripes',feat: { stripes: 1 } },
+      { id: 'emblem',  label: 'Emblem', feat: { emblem: 1 } } ] }
+  ];
+
+  var DEFAULT_PAL = { skin: '#f4c78a', hair: '#7d4e1a', shirt: '#3f74c4', pants: '#2c5f8a', accent: '#ffd24a' };
+
+  // Merge a selection {categoryKey: optionId} into a single feat object. Unknown/missing keys fall
+  // back to the category's first option ('none'), so a partial selection is always safe.
+  function composeFeat(sel) {
+    var f = {};
+    PARTS.forEach(function (cat) {
+      var oid = sel && sel[cat.key];
+      var opt = null;
+      for (var i = 0; i < cat.options.length; i++) { if (cat.options[i].id === oid) { opt = cat.options[i]; break; } }
+      if (!opt) opt = cat.options[0];
+      if (opt.feat) Object.assign(f, opt.feat);
+    });
+    return f;
+  }
+
+  // Normalise a stored custom-character record into a full character def (feat DERIVED from sel, so
+  // sel is the single source of truth the builder round-trips). Cosmetic only — no hitbox fields.
+  function buildCustom(def) {
+    def = def || {};
+    var sel = def.sel || {};
+    return {
+      id: 'custom', name: def.name || 'My Character', theme: 'Custom',
+      body: def.body === 'girl' ? 'girl' : 'boy', views: BOTH, custom: true, sel: sel,
+      feat: composeFeat(sel),
+      pal: Object.assign({}, DEFAULT_PAL, def.pal || {})
+    };
+  }
+
+  var CUSTOM = null;   // the active runtime custom def (set from world_data.customCharacter on load)
+
   var CHARACTERS = {
     LIST: LIST,
     DEFAULT_ID: 'classic',
+    PARTS: PARTS,
+    DEFAULT_PALETTE: Object.assign({}, DEFAULT_PAL),
     list: function () { return LIST.slice(); },
     ids: function () { return LIST.map(function (c) { return c.id; }); },
     get: function (id) { return MAP[id] || MAP['classic']; },
     feat: function (id) { return (MAP[id] || MAP.classic).feat || {}; },
     defaultPalette: function (id) { return Object.assign({}, (MAP[id] || MAP.classic).pal); },
-    supports: function (id, view) { var c = MAP[id] || MAP.classic; return !!(c.views && c.views[view]); }
+    supports: function (id, view) { var c = MAP[id] || MAP.classic; return !!(c.views && c.views[view]); },
+    // Phase 2 — mixer API
+    composeFeat: composeFeat,
+    buildCustom: buildCustom,
+    // Install (or clear) the active custom character. Registers it under id 'custom' so the EXISTING
+    // get/feat/defaultPalette/supports paths resolve it with no renderer change. Pass null to clear.
+    setCustom: function (def) {
+      if (!def) { CUSTOM = null; delete MAP['custom']; return null; }
+      CUSTOM = buildCustom(def);
+      MAP['custom'] = CUSTOM;
+      return CUSTOM;
+    },
+    getCustom: function () { return CUSTOM; },
+    isCustom: function (id) { return id === 'custom'; }
   };
 
   if (typeof window !== 'undefined') window.CHARACTERS = CHARACTERS;
