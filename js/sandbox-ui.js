@@ -276,6 +276,50 @@ const SANDBOX = {
     });
   },
 
+  // §Custom Sprites GAP-1 — the SINGLE place that knows which store owns a world id and writes a shallow
+  // patch of world_data fields there. Extracted because the "write a field into whichever store owns this
+  // id" logic had been duplicated across changeWorldCharacter + saveCustomCharacter and the oh- branch had
+  // drifted three times. Routing is by ID PREFIX first (deterministic, independent of store-read timing:
+  // an `oh-` id ALWAYS goes to the overhead store, never the server which 404s it), with store-membership
+  // as a fallback. Patch nesting is made CONSISTENT: in all three stores the fields end up in the world's
+  // world_data (for the oh- store the record IS the world_data). Also refreshes the in-memory this.worlds
+  // card cache. Returns true on success, false on a handled failure. The ONLY writer of these fields.
+  async _persistWorldData(worldId, patch) {
+    if (!worldId || !patch) return false;
+    const id = String(worldId);
+    const cachePatch = () => { const w = (this.worlds || []).find((x) => x.id === worldId); if (w) w.world_data = Object.assign({}, w.world_data || {}, patch); };
+
+    // OFFLINE OVERHEAD (oh-*) — the record in steveo_overhead_worlds IS the world_data.
+    if (id.startsWith('oh-') || this._isOfflineOverhead(worldId)) {
+      try {
+        const all = this._ohStore();
+        all[worldId] = Object.assign(all[worldId] || {}, patch);   // assign even if the record was falsy (fixes the silent no-op)
+        localStorage.setItem('steveo_overhead_worlds', JSON.stringify(all));
+        cachePatch(); return true;
+      } catch (e) { console.error('persist (oh-) failed:', e); return false; }
+    }
+    // LOCAL (lw-*) — fields live under world_data. get() returns a DETACHED copy, so write via _all/_persist.
+    if (id.startsWith('lw-') || this._isLocalWorld(worldId)) {
+      try {
+        const map = LOCAL_WORLDS._all(); const rec = map[worldId];
+        if (rec) { rec.world_data = Object.assign({}, rec.world_data || {}, patch); LOCAL_WORLDS._persist(map); }
+        cachePatch(); return !!rec;
+      } catch (e) { console.error('persist (lw-) failed:', e); return false; }
+    }
+    // SERVER — GET the current world_data, merge the patch, PUT it back (works even against a stale API
+    // server that lacks newer dedicated routes; tester saw the /character route 404 on a stale server).
+    try {
+      const wid = encodeURIComponent(worldId);
+      const g = await AUTH.authedFetch(`/api/worlds/sandbox/${wid}`);
+      if (!g.ok) { alert('Could not load the world to save.'); return false; }
+      const world = await g.json();
+      const wd = Object.assign({}, world.world_data || {}, patch);
+      const res = await AUTH.authedFetch(`/api/worlds/sandbox/${wid}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ worldData: wd, worldName: world.world_name }) });
+      if (!res.ok) { alert('Failed to save.'); return false; }
+      cachePatch(); return true;
+    } catch (e) { console.error('persist (server) failed:', e); alert('Failed to save.'); return false; }
+  },
+
   // §Custom Sprites — per-world playable character dropdown (both engines). Persists
   // world_data.characterId; the runtime reads it to draw the character's accessories.
   _charSelect(w) {
@@ -381,65 +425,29 @@ const SANDBOX = {
     list.querySelectorAll('.char-select').forEach(sel =>
       sel.addEventListener('change', (e) => {
         const wid = e.currentTarget.dataset.worldId, val = e.currentTarget.value;
-        if (val === '__build__') { this._openCharacterBuilder(wid); e.currentTarget.value = ''; return; }   // open the mixer, don't switch
+        if (val === '__build__') {
+          // GAP-3: restore the dropdown to the world's CURRENT character (not blank) so it reads correctly
+          // whether the builder is saved or cancelled — the card re-renders on close either way.
+          const w = (this.worlds || []).find((x) => x.id === wid);
+          e.currentTarget.value = (w && w.world_data && w.world_data.characterId) || 'classic';
+          this._openCharacterBuilder(wid);
+          return;
+        }
         this.changeWorldCharacter(wid, val);
       }));
   },
 
-  // §Custom Sprites — persist a world's chosen character (world_data.characterId).
+  // §Custom Sprites — persist a world's chosen character (world_data.characterId) to whichever store owns
+  // it, via the single _persistWorldData writer (GAP-1: no more per-store duplication / oh- drift).
   async changeWorldCharacter(worldId, characterId) {
     if (!characterId) return;
-    const cache = () => { const w = (this.worlds || []).find((x) => x.id === worldId); if (w) { w.world_data = w.world_data || {}; w.world_data.characterId = characterId; } };
-    // OFFLINE OVERHEAD worlds (oh-<name> ids) live in localStorage, not the server — persist there.
-    // (These 404'd before because they were sent to the server save path.)
-    if (this._isOfflineOverhead(worldId)) {
-      try { const all = this._ohStore(); if (all[worldId]) { all[worldId].characterId = characterId; localStorage.setItem('steveo_overhead_worlds', JSON.stringify(all)); } } catch (_) {}
-      cache(); return;
-    }
-    if (this._isLocalWorld(worldId)) {
-      cache();
-      try { if (LOCAL_WORLDS.setCharacter) LOCAL_WORLDS.setCharacter(worldId, characterId);
-        else { const lw = LOCAL_WORLDS.get && LOCAL_WORLDS.get(worldId); if (lw) { lw.world_data = lw.world_data || {}; lw.world_data.characterId = characterId; if (LOCAL_WORLDS.save) LOCAL_WORLDS.save(); } } } catch (_) {}
-      return;
-    }
-    // Persist through the long-standing full-world save (GET the current world_data, merge characterId,
-    // PUT it back) rather than a dedicated route — so it works even against an API server that hasn't
-    // been restarted to pick up newer routes (tester saw the /character route 404 on a stale server).
-    try {
-      const wid = encodeURIComponent(worldId);
-      const g = await AUTH.authedFetch(`/api/worlds/sandbox/${wid}`);
-      if (!g.ok) { alert('Could not load the world to save the character.'); return; }
-      const world = await g.json();
-      const wd = Object.assign({}, world.world_data || {}, { characterId });
-      const res = await AUTH.authedFetch(`/api/worlds/sandbox/${wid}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ worldData: wd, worldName: world.world_name }) });
-      if (!res.ok) { alert('Failed to save character.'); return; }
-      cache();
-    } catch (error) { console.error('Change character error:', error); alert('Failed to save character.'); }
+    await this._persistWorldData(worldId, { characterId });
   },
 
-  // §Custom Sprites Phase 2 — persist a BUILT custom character (sets characterId='custom' + the mix
-  // {name,body,sel,pal}). Same three stores as changeWorldCharacter: offline overhead / local / server.
+  // §Custom Sprites Phase 2 — persist a BUILT custom character (characterId='custom' + the mix
+  // {name,body,sel,pal}) via the same single writer. Returns true on success (the builder waits on it).
   async saveCustomCharacter(worldId, def) {
-    const cache = () => { const w = (this.worlds || []).find((x) => x.id === worldId); if (w) { w.world_data = w.world_data || {}; w.world_data.characterId = 'custom'; w.world_data.customCharacter = def; } };
-    if (this._isOfflineOverhead(worldId)) {
-      try { const all = this._ohStore(); if (all[worldId]) { all[worldId].characterId = 'custom'; all[worldId].customCharacter = def; localStorage.setItem('steveo_overhead_worlds', JSON.stringify(all)); } } catch (_) {}
-      cache(); return true;
-    }
-    if (this._isLocalWorld(worldId)) {
-      cache();
-      try { if (LOCAL_WORLDS.setCustomCharacter) LOCAL_WORLDS.setCustomCharacter(worldId, def); } catch (_) {}
-      return true;
-    }
-    try {
-      const wid = encodeURIComponent(worldId);
-      const g = await AUTH.authedFetch(`/api/worlds/sandbox/${wid}`);
-      if (!g.ok) { alert('Could not load the world to save the character.'); return false; }
-      const world = await g.json();
-      const wd = Object.assign({}, world.world_data || {}, { characterId: 'custom', customCharacter: def });
-      const res = await AUTH.authedFetch(`/api/worlds/sandbox/${wid}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ worldData: wd, worldName: world.world_name }) });
-      if (!res.ok) { alert('Failed to save character.'); return false; }
-      cache(); return true;
-    } catch (error) { console.error('Save custom character error:', error); alert('Failed to save character.'); return false; }
+    return this._persistWorldData(worldId, { characterId: 'custom', customCharacter: def });
   },
 
   // Cross-space section — ONLINE ONLY. Shows your LOCAL worlds (badged) as tiles
@@ -1355,3 +1363,4 @@ const SANDBOX = {
 // `window.SANDBOX` (e.g. character-builder.js _save) silently saw undefined and no-op'd (Phase 2 save
 // blocker, tester build 439). Publishing it here fixes that and matches window.CHARACTER_BUILDER etc.
 if (typeof window !== 'undefined') window.SANDBOX = SANDBOX;
+if (typeof module !== 'undefined' && module.exports) module.exports = { SANDBOX };   // headless tests (store-routing)
