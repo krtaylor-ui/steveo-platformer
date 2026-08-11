@@ -236,13 +236,14 @@
           const gp = pads[s]; if (!gp) continue; const pnum = s + 1; if (pnum > st.count) continue;
           const b = gp.buttons || [], ax = gp.axes || [];
           const dn = (i) => !!(b[i] && b[i].pressed), av = (i) => ax.length > i ? ax[i] : 0;
-          const cur = { up: dn(12) || av(1) < -0.5, down: dn(13) || av(1) > 0.5, left: dn(14) || av(0) < -0.5, right: dn(15) || av(0) > 0.5, a: dn(0), start: dn(9) };
+          const cur = { up: dn(12) || av(1) < -0.5, down: dn(13) || av(1) > 0.5, left: dn(14) || av(0) < -0.5, right: dn(15) || av(0) > 0.5, a: dn(0), b: dn(1), start: dn(9) };
           const pv = navPrev[s];
           if (cur.up && !pv.up) nav(pnum, 'up');
           if (cur.down && !pv.down) nav(pnum, 'down');
           if (cur.left && !pv.left) nav(pnum, 'left');
           if (cur.right && !pv.right) nav(pnum, 'right');
           if (cur.a && !pv.a) nav(pnum, 'act');
+          if (cur.b && !pv.b && pnum === 1) { cancel(); return; }   // B = cancel/back out of the setup (P1)
           if (cur.start && !pv.start && pnum === 1) { finish(); return; }
           navPrev[s] = cur;
         }
