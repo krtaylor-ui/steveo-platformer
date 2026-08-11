@@ -18131,7 +18131,11 @@ class Game {
         if (elapsed > SR_CONFIG.respawnFadeMs)
           part.alpha = Math.max(0, part.alpha - 0.04);
       }
-      if (elapsed > SR_CONFIG.respawnFadeMs + SR_CONFIG.respawnWaitMs) {
+      // §E9 Instant Retry — no countdown, no wait-for-press: drop back into the run as soon as the
+      // death explosion has faded.
+      if (this._worldAdvSettings.srInstantRetry) {
+        if (elapsed > SR_CONFIG.respawnFadeMs) this._srRespawn();
+      } else if (elapsed > SR_CONFIG.respawnFadeMs + SR_CONFIG.respawnWaitMs) {
         if (this.input.isJustDown('Space') || this.input.p1JustDown('jump') ||
             this.input.isJustDown('KeyW')) {
           this._srRespawn();
@@ -21471,6 +21475,19 @@ class Game {
     sr.ghostFrameIdx  = 0;
     sr.vx             = 0;
     sr.fireUntil      = 0;
+
+    // §E9 Instant Retry — begin the next run immediately (no 3·2·1). Set the race clock + ghost recorder
+    // here, and mark the start-signal boost as already consumed so it never fires (accepted trade-off).
+    if (this._worldAdvSettings.srInstantRetry) {
+      const now = Date.now();
+      sr.startMs        = now;
+      sr.goMs           = now;
+      sr.countdownStart = now;
+      sr.accelAtGo      = true;    // suppress the perfect-start / start-signal boost
+      sr.perfectChecked = true;
+      sr.lastX          = sr.spawnX;
+      sr.ghostRec       = new SpeedRunnerGhost(sr.levelId);
+    }
 
     // Reset the level to its authored start state so every run is identical:
     // respawn mobs (clear the field + re-ready every spawn point), clear leftover
