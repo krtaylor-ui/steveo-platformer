@@ -2552,8 +2552,14 @@ class Game {
     const pMidRow = Math.floor(this.player.cy / BLOCK_SIZE);
     const pMidCol = Math.floor(this.player.cx / BLOCK_SIZE);
     if (this._p1RespawnTimer === 0 && this.level.get(pMidRow, pMidCol) === BLOCK.LAVA && !this.player.godMode && this.player.hp > 0) {
-      this.player.hp = 0;
-      this._triggerDeath('Burned by lava');
+      // §Insta-Death (E11) — one-hit kill by default; OFF makes Lava a survivable damage hazard.
+      if (this._worldAdvSettings.lavaInstaKill !== false) {
+        this.player.hp = 0;
+        this._triggerDeath('Burned by lava');
+      } else if (this.player.iframes <= 0) {
+        this.player.takeDamage(4, Math.sign(this.player.vx) || (this.player.facing || 1));
+        this._checkDeath();
+      }
     }
 
     // ── End void: instant kill when below bedrock floor or in void transition zone ────
@@ -2584,10 +2590,15 @@ class Game {
           this.level.get(feetRow - 1, feetCol) === BLOCK.SOUL_SAND) {
         p.vx *= 0.6;
       }
-      // Lava
+      // Lava — §Insta-Death (E11): one-hit kill by default; OFF = survivable damage.
       if (this.level.get(midRow, midCol) === BLOCK.LAVA && !p.godMode && p.hp > 0) {
-        p.hp = 0;
-        this._triggerSecondaryDeath(i, 'Burned by lava');
+        if (this._worldAdvSettings.lavaInstaKill !== false) {
+          p.hp = 0;
+          this._triggerSecondaryDeath(i, 'Burned by lava');
+        } else if (p.iframes <= 0) {
+          p.takeDamage(4, Math.sign(p.vx) || (p.facing || 1));
+          if (p.hp <= 0) this._triggerSecondaryDeath(i, 'Burned by lava');
+        }
       }
       // Void
       if (!p.godMode && p.hp > 0) {
@@ -18224,11 +18235,12 @@ class Game {
     this._srCheckMobCollision();
     this._srCheckProjectiles();
 
-    // Lava instant death
+    // Lava death — §Insta-Death (E11): one-hit kill by default; OFF = survivable damage in SR too.
     const pMidRow = Math.floor(this.player.cy / BLOCK_SIZE);
     const pMidCol = Math.floor(this.player.cx / BLOCK_SIZE);
-    if (this.level.get(pMidRow, pMidCol) === BLOCK.LAVA) {
-      this._srTriggerDeath(); return;
+    if (this.level.get(pMidRow, pMidCol) === BLOCK.LAVA && !this.player.godMode) {
+      if (this._worldAdvSettings.lavaInstaKill !== false) { this._srTriggerDeath(); return; }
+      else if (this.player.iframes <= 0) { this.player.takeDamage(4, Math.sign(this.player.vx) || (this.player.facing || 1)); if (this.player.hp <= 0) { this._srTriggerDeath(); return; } }
     }
 
     // Void death

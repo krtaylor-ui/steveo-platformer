@@ -167,6 +167,10 @@ const WORLD_SETTINGS = {
       { key: 'trampEarlyPenalty', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Trampoline: Early-Jump Penalty', sub: true, dependsOn: 'trampJumpBoost', advanced: true, hint: 'holding Jump at the instant you land on the trampoline (jumping too soon) saps the spring — a weaker launch. Rewards timing over mashing' },
       { key: 'questionContents', tab: 'world', group: 'Blocks', modes: M.physics, type: 'cycle', opts: ['coin', 'apple', 'arrow', 'glowstone'], dflt: 'coin', label: 'Block Contents', fmt: this._cap, hint: 'the DEFAULT item a Question / Breakable block yields. Blocks you set individually in the editor (Contents) override this — so it only applies to blocks left on “world default”.' },
       { key: 'glassShatter', tab: 'world', group: 'Blocks', modes: M.physics, type: 'toggle', dflt: true, label: 'Glass Shatters', hint: 'Glass blocks shatter into shards when hit by a melee swing, an arrow, an explosion, or a hard fall onto them (still minable in Normal). Off = indestructible except mining.' },
+      // §Insta-Death (E11) — surfaces the hardwired Lava one-hit kill as a named, configurable setting.
+      // Default ON = the classic behaviour every existing world already has. OFF makes Lava a survivable
+      // damage hazard (repeated contact still kills). Falling into the End void / off the map stays deadly.
+      { key: 'lavaInstaKill', tab: 'world', group: 'Blocks', modes: M.physics, type: 'toggle', dflt: true, label: 'Lava: Instant Death', hint: 'ON (default): touching Lava is a one-hit kill — the classic behaviour. OFF: Lava deals heavy contact damage instead (with brief invulnerability between hits), so a quick brush is survivable. Falling into the void / off the map is always deadly.' },
       // §Phase 5b — Look-Up Aim: hold Up/W to aim ranged weapons (and the grapple) straight
       // up; jump moves to J. Its own toggle (also auto-on when the grappling hook is enabled).
       // The rebind panel's "Legacy Jump" preset is the one-click way back to Up/W = jump.
