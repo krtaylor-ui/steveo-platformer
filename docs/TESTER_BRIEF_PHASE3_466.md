@@ -96,3 +96,40 @@ BUGS FLAGGED BY KEVIN — need browser repro (not fixed this run)
    was found in code — need to know the exact key/toggle you used so it can be traced.
 Both are logged in the run notes as needs-investigation.
 ================================================================================
+
+
+================================================================================
+ADDENDUM — builds 467–471 (roster picker, storefront, achievements server, tidy)
+================================================================================
+(All on branch speedrunner-phase3. Server-dependent items need the BRANCH server running.)
+
+[Phase 3 roster PICKER] (468)
+  - Build + "🗂 Save to Roster" a character (466), then on ANY world card open the Character dropdown:
+    a "My Characters" group lists your saved roster. Pick one → it applies to that world (card shows
+    "★ <name>"). PASS = the saved character applies and persists.
+
+[Epic C tidy] (467)
+  - The Sandbox top bar no longer shows "Overhead Demo"; the controls no longer show "Import from Games"
+    (replaced by the storefront flow). "Import from File" + "New Overhead World" remain. PASS = both gone,
+    everything else works.
+
+[Storefront server slices] (470) — needs the branch server + community browse UI/API:
+  - Community browse sort=rating now orders by TRUE AVERAGE (rating_avg), not sum. New sorts: played /
+    mostplayed (play_count), trending (last_played_at).
+  - POST /api/worlds/:id/played increments play_count (any launch).
+  - Publish now REJECTS a level with no finish/goal ("Add at least one Goal…") and sets state=published.
+    Test: try to publish a world with no Goal Star → rejected; add a Goal → publishes.
+
+[Achievements server] (465 core, 471 routes) — no player-facing UI yet:
+  - Evaluator unit-tested (5 templates). POST/GET /api/achievements/world record/list per-level unlocks
+    (needs speedrunner.sql). The creator UI + in-play tracking + fire are NOT wired yet (nothing to
+    click-test); the server + evaluator are ready.
+
+[Beat Grid core] (469) — no editor overlay yet:
+  - js/beat-grid.js (tap-tempo + time→distance) unit-tested. The editor overlay UI is deferred.
+
+STILL DEFERRED (documented in SPEEDRUNNER_PHASE3_RUN_NOTES.md; not click-testable this run):
+  Epic UI 12-modal dark unification; Epic C left-tabs + overhead-fold + post-create description; Epic MB
+  editor overlay; Epic D creator UI + in-play tracking; storefront LANDING screen + browse UI + downloadable
+  /provenance + LB re-key; CK3 practice mode; Phase 3 MP-per-player + side-scroll preview + sprite-sheet.
+================================================================================
