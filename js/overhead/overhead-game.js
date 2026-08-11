@@ -315,18 +315,25 @@
       const inp = this.input;
       if (idx === 0) {
         const K = (c) => inp.isDown(c);
-        const gp = inp.gamepads && inp.gamepads[0];
+        // P1's ASSIGNED pad via pGp(0)/_p1gp (respects p1GpSlot) with the REAL InputManager field
+        // shape — moveX/moveY/aimX/aimY, attack/jump/context/throwBtn, triggerR/rangedBtn (RT).
+        // (The old code read a hardcoded gamepads[0] and phantom axes0/rt fields that never existed,
+        // so P1's controller did nothing in overhead — only P2-P4's pGp path worked. Kevin build 432.)
+        const gp = (inp.pGp ? inp.pGp(0) : null) || {};
+        const jd = (btn) => (inp.pJustDown ? inp.pJustDown(0, btn) : false);
+        const padFire = (gp.triggerR > 0.5) || !!gp.rangedBtn;
         const mv = { x: 0, y: 0 };
         if (K('KeyA') || K('ArrowLeft')) mv.x -= 1; if (K('KeyD') || K('ArrowRight')) mv.x += 1;
         if (K('KeyW') || K('ArrowUp')) mv.y -= 1; if (K('KeyS') || K('ArrowDown')) mv.y += 1;
-        if (gp && gp.connected) { if (Math.abs(gp.axes0) > 0.2) mv.x += gp.axes0; if (Math.abs(gp.axes1) > 0.2) mv.y += gp.axes1; }
+        if (Math.abs(gp.moveX || 0) > 0.2) mv.x += gp.moveX; if (Math.abs(gp.moveY || 0) > 0.2) mv.y += gp.moveY;
         const pscr = OH_GRID.worldToScreen(this.grid, this.camera, p.x, p.y);
         let aimVec = { x: inp.mouse.x - pscr.x, y: inp.mouse.y - pscr.y }, aimStickMag = 0;
-        if (gp && gp.connected && (Math.abs(gp.axes2) > 0.2 || Math.abs(gp.axes3) > 0.2)) { aimVec = { x: gp.axes2, y: gp.axes3 }; aimStickMag = Math.hypot(gp.axes2, gp.axes3); }
-        return { moveVec: mv, aimVec, aimStickMag, fireBtn: inp.mouse.clicked, fireHeld: inp.mouse.down || (gp && gp.rt > 0.5),
-          meleeBtn: inp.mouse.clicked || K('KeyF'), jumpBtn: inp.isJustDown && inp.isJustDown('Space'),
-          actionBtn: inp.isJustDown && inp.isJustDown('KeyE'), recallBtn: inp.mouse.rightClicked,
-          meleeWeaponBtn: !!(inp.isDown && inp.isDown('KeyF')), lastAim: p.lastAim };   // §combat P1: F swings the held weapon (click still fires)
+        const aMag = Math.hypot(gp.aimX || 0, gp.aimY || 0);
+        if (aMag > 0.2) { aimVec = { x: gp.aimX, y: gp.aimY }; aimStickMag = aMag; }
+        return { moveVec: mv, aimVec, aimStickMag, fireBtn: inp.mouse.clicked || jd('rangedBtn'), fireHeld: inp.mouse.down || padFire,
+          meleeBtn: inp.mouse.clicked || K('KeyF') || jd('attack'), jumpBtn: (inp.isJustDown && inp.isJustDown('Space')) || jd('jump'),
+          actionBtn: (inp.isJustDown && inp.isJustDown('KeyE')) || jd('context'), recallBtn: inp.mouse.rightClicked || jd('throwBtn'),
+          meleeWeaponBtn: !!(inp.isDown && inp.isDown('KeyF')) || jd('attack'), lastAim: p.lastAim };   // §combat P1: F/X swings, click/RT fires, E/RB action
       }
       const g = (inp.pGp ? inp.pGp(idx) : null) || {};
       const jd = (btn) => (inp.pJustDown ? inp.pJustDown(idx, btn) : false);

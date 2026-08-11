@@ -523,5 +523,18 @@ console.log('Phase versus(3) — scoring / win / HUD:');
   ok(/lv === 1 \? ' life' : ' lives'/.test(gs) && /k === 1 \? ' kill' : ' kills'/.test(gs), 'versus HUD pluralizes "1 life" / "1 kill"');
 }
 
+console.log('P1 controller — reads the ASSIGNED pad via real InputManager fields (O1 field-name fix):');
+{
+  const g = new OverheadGame(mk({ spawns: [{ col: 3, row: 8 }] }), { testMode: true, numPlayers: 1 }, () => {});
+  // stub P1's pad the way InputManager actually shapes it (moveX/moveY/aimX/aimY/triggerR) — NOT the
+  // old phantom axes0/axes1/axes2/axes3/rt fields that left P1's controller dead in overhead.
+  g.input.pGp = (i) => (i === 0 ? { moveX: 0.9, moveY: 0, aimX: 0.8, aimY: 0, triggerR: 1 } : {});
+  g.input.pJustDown = () => false; g.input.pAttack = () => false;
+  const r = g._rawFor(g.player, 0);
+  ok(Math.abs(r.moveVec.x - 0.9) < 1e-6, 'P1 pad left-stick moves via gp.moveX (not phantom axes0)');
+  ok(r.aimStickMag > 0.2 && Math.abs(r.aimVec.x - 0.8) < 1e-6, 'P1 pad right-stick aims via gp.aimX');
+  ok(r.fireHeld === true, 'P1 pad RT (triggerR) fires');
+}
+
 console.log(`\noverhead multiplayer (FULL: 0a-0f + combat + co-op lives + versus): ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
