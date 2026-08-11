@@ -1,4 +1,28 @@
-## CURRENT STATE (2026-08-11 late) — Speed Runner + Phase 2 SHIPPED to `main` @ build 460
+## CURRENT STATE (2026-08-11 night) — Speed Runner EPICS + Phase 3 on branch `speedrunner-phase3` (builds 461–466, pushed, NOT merged)
+
+**Branch `speedrunner-phase3` (off `main`@460), pushed, NOT merged.** Autonomous multi-hour run of the
+remaining epics. Suite green (86 test files). SQL applied by Kevin: `speedrunner.sql` + `user_characters.sql`.
+- **E7 WIND (flagship): 2D FULL** (WIND_ZONE painter, dir/strength/wall-thickness/redstone config, wall-shadow
+  blocking, animated chevrons, QA seams) + **overhead RUNTIME** (worldData.windZones push via collision;
+  overhead editor/redstone = follow-ups). Pure core `js/wind-zone.js` (19 tests).
+- **E4 GRAVITY INVERTER zones (side-scroll): DONE, ⚠️ HIGHEST-RISK/browser-unverified.** GRAVITY_ZONE(97)
+  flips a player's gravity+jump inside it (ceiling-walk); contained so normal play is provably unchanged.
+- **Epic CK: DONE** (CK1 placeable CHECKPOINT(98) respawn-keeps-clock + CK4 split HUD + CK2 ghost-hide;
+  CK3 practice mode deferred).
+- **Epic D: CORE** (`js/achievement-eval.js` evaluator, 5 templates, 17 tests; creator UI + in-play tracking
+  + persistence route deferred).
+- **Phase 3 roster: SAVE-HALF** (user_characters route + client API + "Save to Roster" builder button; picker
+  + MP + side-preview + sprite-sheet deferred).
+- **New blocks:** WIND_ZONE 96, GRAVITY_ZONE 97, CHECKPOINT 98.
+- **DEFERRED (specs in `docs/SPEEDRUNNER_PHASE3_RUN_NOTES.md`):** Epic C (editor/Create-World), Epic UI
+  (12-modal unification), Epic MB (music/beat grid), Epic A/B/LB storefront wiring (SQL applied → unblocked),
+  CK3, D wiring, Phase 3 picker/MP/preview/sprite-sheet. Two Kevin-flagged bugs need browser repro.
+- **Deliverables:** `docs/TESTER_BRIEF_PHASE3_466.md` (+QA copy), `docs/SPEEDRUNNER_PHASE3_RUN_NOTES.md`.
+- **Ship:** Kevin browser-reviews (esp. E4 gravity + E7 wind), then merges `speedrunner-phase3` → `main`.
+
+---
+
+## PRIOR STATE (2026-08-11 late) — Speed Runner + Phase 2 SHIPPED to `main` @ build 460
 
 **`main` == `origin/main` at build 460** (fast-forwarded from `speedrunner-overhaul`; clean FF, pushed —
 live on Railway if it auto-deploys `main`). The whole Speed Runner overhaul (440–453), the QA-feedback
