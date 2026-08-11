@@ -191,6 +191,11 @@ const SANDBOX = {
 
   // ── Load + render worlds ───────────────────────────────────────
   async loadWorlds() {
+    // §Phase 3 — cache the account roster once so the card Character dropdown can offer saved characters.
+    if (this._roster == null && typeof USER_CHARACTERS !== 'undefined') {
+      this._roster = [];
+      USER_CHARACTERS.list().then((r) => { this._roster = r || []; try { this.renderWorlds(this.worlds); } catch (_) {} });
+    }
     if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
       const data = LOCAL_WORLDS.list({ page: this.currentPage, filter: this.currentFilter, sort: this.currentSort });
       this.worlds = data.worlds;
@@ -411,10 +416,15 @@ const SANDBOX = {
     const builtins = CHARACTERS.list().map((c) => `<option value="${this._esc(c.id)}"${c.id === cur ? ' selected' : ''}>${this._esc(c.name)}</option>`).join('');
     const customOpt = isCustom ? `<option value="custom" selected>★ ${this._esc(customName)}</option>` : '';
     const buildOpt = `<option value="__build__">🎨 ${isCustom ? 'Edit Custom…' : 'Custom…'}</option>`;
+    // §Phase 3 — the account roster (saved characters) as a pickable group; choosing one applies its mix.
+    const roster = (this._roster || []);
+    const rosterOpts = roster.length
+      ? `<optgroup label="My Characters">${roster.map((rc) => `<option value="roster:${this._esc(rc.id)}">🗂 ${this._esc(rc.name || 'Character')}</option>`).join('')}</optgroup>`
+      : '';
     return `
           <label class="mode-select-label">Character:
             <select class="char-select" data-world-id="${this._esc(w.id)}">
-              ${builtins}${customOpt}${buildOpt}
+              ${builtins}${customOpt}${rosterOpts}${buildOpt}
             </select>
           </label>`;
   },
@@ -511,6 +521,12 @@ const SANDBOX = {
           const w = (this.worlds || []).find((x) => x.id === wid);
           e.currentTarget.value = (w && w.world_data && w.world_data.characterId) || 'classic';
           this._openCharacterBuilder(wid);
+          return;
+        }
+        if (val.indexOf('roster:') === 0) {
+          // §Phase 3 — apply a saved roster character to this world (as its custom mix).
+          const rc = (this._roster || []).find((x) => String(x.id) === val.slice(7));
+          if (rc && rc.definition) this.saveCustomCharacter(wid, rc.definition).then(() => { try { this.renderWorlds(this.worlds); } catch (_) {} });
           return;
         }
         this.changeWorldCharacter(wid, val);
