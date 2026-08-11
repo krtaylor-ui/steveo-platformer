@@ -243,3 +243,38 @@ STILL OUTSTANDING from the last batch (please fold into this run)
   "max 2" rejection until 20.
 
 Nothing here is on the live server yet - all verification is on the branch build 457.
+
+
+================================================================================
+ADDENDUM 3 - hook reachability + A1 + GAP-3 (build 458)
+================================================================================
+
+[selectItem] FIXED reachability. Root cause of "the hook isn't in the build": it
+  DOES exist, but on the IN-EDITOR palette object (window.game.sandbox), not on the
+  dashboard window.SANDBOX object the earlier doc named. Both now work:
+    - window.SANDBOX.selectItem('SPIKES')      <- delegates to the running editor
+    - window.game.sandbox.selectItem('SPIKES') <- the direct definition
+  IMPORTANT: you must be INSIDE a Sandbox world (editing) for either to work -
+  window.game is null on the dashboard. Flow:
+    1. Open/Edit a Sandbox world (so window.game.sandbox exists).
+    2. window.SANDBOX.selectItem('SPIKES')  -> returns 67 (or null if not in editor).
+    3. Click the canvas to place; right-click the placed block to open its config.
+  Returns null + a console.warn if no editor is open. This unblocks F1/E6/E12/E5 and
+  behavioural E3/E11.
+
+[A1] Scriptable publish added: window.SANDBOX.publishWorld(worldId, true). Calls the
+  real publish route (server enforces the 20 cap). To verify ">2":
+    - publish 3+ of your cloud worlds via the per-world flow or:
+      await SANDBOX.publishWorld('<worldId>', true)   // repeat for 3+ ids
+    - all should succeed (no "max 2" rejection); it only rejects at 20.
+  Returns the parsed response, or { error, status } on failure.
+
+[GAP-3] Now a FULL fix (was partial): the character builder re-renders the card on
+  Cancel (and backdrop-close), not just Save. After Cancel the dropdown shows the
+  world's REAL current character (e.g. "* OH Neon"), never "Classic" or blank.
+  Re-test: card > Character dropdown > "Edit Custom..." > Cancel -> shows the custom.
+
+[E8] Behaviour passed on 453; the 457 re-test was blocked by a rig/input issue (no
+  run started), not the fix. The empty "sr_attempts_:" key did NOT reappear. If you
+  can start a run, confirm the key is now "<author>:<worldName>" (or
+  "sr_unsaved_testworld" for an un-named Test World), never just ":".

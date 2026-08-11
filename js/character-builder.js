@@ -46,10 +46,13 @@
   var CB = {
     _el: null,
 
-    open: function (worldId, existingDef, onSaved) {
+    open: function (worldId, existingDef, onSaved, onClose) {
       if (typeof CHARACTERS === 'undefined' || !CHARACTERS.PARTS) return;
       this._worldId = worldId;
       this._onSaved = onSaved || function () {};
+      // GAP-3: fire on EVERY close (save, Cancel, backdrop) so the card always re-renders to the real
+      // stored character — a Cancel used to leave the dropdown showing the wrong entry until a later render.
+      this._onClose = onClose || function () {};
       var def = existingDef || {};
       this._sel = Object.assign({}, def.sel || {});
       this._pal = Object.assign({}, CHARACTERS.DEFAULT_PALETTE, def.pal || {});
@@ -172,7 +175,7 @@
       } else { this._close(); this._onSaved(def); }
     },
 
-    _close: function () { if (this._el) { this._el.remove(); this._el = null; } }
+    _close: function () { if (this._el) { this._el.remove(); this._el = null; } if (this._onClose) { try { this._onClose(); } catch (e) {} } }
   };
 
   if (typeof window !== 'undefined') window.CHARACTER_BUILDER = CB;

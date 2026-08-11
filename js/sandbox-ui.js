@@ -320,6 +320,36 @@ const SANDBOX = {
     } catch (e) { console.error('persist (server) failed:', e); alert('Failed to save.'); return false; }
   },
 
+  // ── QA / automation seams (not used by gameplay) ───────────────────────────────
+  // The block-placement palette lives on the IN-EDITOR SandboxManager (window.game.sandbox), which has
+  // its own selectItem(). This delegate lets a rig call window.SANDBOX.selectItem('SPIKES') from anywhere
+  // while a sandbox world is open — it forwards to the running editor. Returns the resolved block id, or
+  // null if no editor is active / the name is unknown. (Then click the canvas to place, right-click to
+  // reach the config popups.)
+  selectItem(nameOrId, kind = 'block') {
+    const g = (typeof window !== 'undefined') ? window.game : null;
+    if (!g || !g.sandbox || typeof g.sandbox.selectItem !== 'function') {
+      console.warn('SANDBOX.selectItem: open a Sandbox world first (window.game.sandbox is not active).');
+      return null;
+    }
+    return g.sandbox.selectItem(nameOrId, kind);
+  },
+
+  // Scriptable publish/unpublish for a specific world id (A1 cap test). Exercises the real
+  // POST /api/worlds/sandbox/:id/publish route (server enforces the 20-world cap). Returns the parsed
+  // response, or { error } on failure. Logged-in cloud worlds only.
+  async publishWorld(worldId, isPublished = true) {
+    try {
+      const res = await AUTH.authedFetch(`/api/worlds/sandbox/${encodeURIComponent(worldId)}/publish`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isPublished }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) return { error: body.error || `HTTP ${res.status}`, status: res.status };
+      const w = (this.worlds || []).find((x) => x.id === worldId); if (w) w.is_published = isPublished;
+      return body;
+    } catch (e) { console.error('publishWorld failed:', e); return { error: String(e) }; }
+  },
+
   // §Custom Sprites — per-world playable character dropdown (both engines). Persists
   // world_data.characterId; the runtime reads it to draw the character's accessories.
   _charSelect(w) {
@@ -347,7 +377,8 @@ const SANDBOX = {
     const existing = (w && w.world_data && w.world_data.characterId === 'custom') ? w.world_data.customCharacter : null;
     // renderWorlds REQUIRES the list arg — calling it bare rendered `undefined` and made the whole
     // world list vanish until reload (tester build 439). Pass this.worlds.
-    CHARACTER_BUILDER.open(worldId, existing, () => { try { this.renderWorlds(this.worlds); } catch (_) {} });
+    const rerender = () => { try { this.renderWorlds(this.worlds); } catch (_) {} };
+    CHARACTER_BUILDER.open(worldId, existing, rerender, rerender);   // re-render on save AND on cancel/close (GAP-3)
   },
 
   _worldCard(w) {
