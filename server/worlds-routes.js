@@ -554,7 +554,7 @@ module.exports = function setupWorldsRoutes(app) {
     }
   });
 
-  // ── Publish / unpublish (max 2 published per player) ───────────
+  // ── Publish / unpublish (max 20 published per player — §A1) ───────────
   app.post('/api/worlds/sandbox/:worldId/publish', verifyToken, async (req, res) => {
     try {
       const { worldId } = req.params;
@@ -570,9 +570,11 @@ module.exports = function setupWorldsRoutes(app) {
         if (checkError) throw checkError;
 
         // Re-publishing an already-published world shouldn't count against itself.
+        // §A1 — raised the published cap from 2 to 20 (Speed Runner brief §2).
+        const PUBLISH_CAP = 20;
         const others = (published || []).filter(w => w.id !== worldId);
-        if (others.length >= 2) {
-          return res.status(400).json({ error: 'Max 2 published worlds allowed' });
+        if (others.length >= PUBLISH_CAP) {
+          return res.status(400).json({ error: `Max ${PUBLISH_CAP} published worlds allowed` });
         }
       }
 
