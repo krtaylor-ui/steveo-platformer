@@ -134,3 +134,20 @@ silent and any limits that stopped a full rollout, per the "document assumptions
   thumbnails capture/display), downloadable+provenance enforcement in the download route, Community-
   Nominated Picks, and the leaderboard re-key to worlds.id. The schema is applied + these server slices
   are in; the remaining work is UI + a few routes (specs in docs/SPEEDRUNNER_MEGA_BRIEF.md Epics A/B/LB).
+
+## Epic D3 persistence route (build 471)
+- **DONE:** POST /api/achievements/world (record a per-level unlock; idempotent per world+key) + GET
+  /api/achievements/world/:worldId (list) — uses player_achievements.world_id (speedrunner.sql). Completes
+  the D server side.
+- **REMAINING D wiring (flagged):** the creator UI to DEFINE up to 3 achievements into
+  world_data.achievements[], and the in-play STAT TRACKING (jump count / mob kills / collectibles /
+  hazard-hit) + fire-on-completion → _notify → POST the route. The tested evaluator + the storage + the
+  route are all in; this is engine hooks (4 sites) + one editor panel. Deferred under budget as a cohesive
+  follow-up (partial tracking would fire wrong, so it's left whole).
+
+## Epic UI — modal unification (NOT done this run)
+- The style guide (docs/UI_STYLE_GUIDE.md) is written. The actual conversion of the ~12 white
+  .modal-content modals onto the dark .ws-panel shell was NOT attempted this run: it is browser-
+  unverifiable, the single highest visual-risk change, and Kevin serves the live working directory (a
+  broken modal mid-run is disruptive). Recommend doing it in a dedicated session with browser review,
+  one modal per commit per the style guide. Flagged honestly rather than shipped blind.

@@ -121,6 +121,31 @@ function setupStatsRoutes(app) {
     }
   });
 
+  // ── §Epic D3 — per-level achievement unlocks (needs speedrunner.sql: player_achievements.world_id) ──
+  // Record an unlock for a creator-defined per-level achievement. Idempotent-ish (skips if already held
+  // for this world+key). Body: { worldId, key, name? }.
+  app.post('/api/achievements/world', verifyToken, async (req, res) => {
+    try {
+      const { worldId, key } = req.body || {};
+      if (!worldId || !key) return res.status(400).json({ error: 'worldId + key required' });
+      const { data: have } = await supabaseAdmin.from('player_achievements')
+        .select('id').eq('player_id', req.user.id).eq('world_id', worldId).eq('achievement', key).limit(1);
+      if (have && have.length) return res.json({ already: true });
+      const { error } = await supabaseAdmin.from('player_achievements')
+        .insert({ player_id: req.user.id, world_id: worldId, achievement: key });
+      if (error) throw error;
+      res.json({ unlocked: true });
+    } catch (e) { console.error('world achievement error:', e); res.status(500).json({ error: 'Failed to record achievement' }); }
+  });
+
+  app.get('/api/achievements/world/:worldId', verifyToken, async (req, res) => {
+    try {
+      const { data } = await supabaseAdmin.from('player_achievements')
+        .select('achievement, unlocked_at').eq('player_id', req.user.id).eq('world_id', req.params.worldId);
+      res.json({ unlocked: (data || []).map(a => a.achievement) });
+    } catch (e) { res.status(500).json({ error: 'Failed to load world achievements' }); }
+  });
+
   // ── Personal best per mode (optionally per world) ──────────────────
   app.get('/api/stats/personal-best/:mode', verifyToken, async (req, res) => {
     try {
