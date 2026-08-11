@@ -18210,7 +18210,11 @@ class Game {
     const boostMult = Math.min(1.5, Math.max(sr.boosts.blockBoost || 1, sr.boosts.item || 1));
     const effMax    = maxSpeed * boostMult;
     const accelRate = SR_ACCEL * (boostMult > 1 ? 2 : 1);
-    if (accel) {
+    if (aws.srConstantSpeed) {
+      // §E2 Constant / Auto-speed — pinned at the (boost-adjusted) max the whole run; accelerate/coast
+      // input is ignored. Deterministic, so the recorded ghost stays in sync.
+      sr.vx = effMax;
+    } else if (accel) {
       if (sr.vx < effMax) sr.vx = Math.min(effMax, sr.vx + accelRate);
       else                sr.vx = Math.max(effMax, sr.vx - SR_DECEL); // ease down when a boost ends
     } else {

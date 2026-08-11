@@ -177,6 +177,10 @@ const WORLD_SETTINGS = {
       { key: 'aimUpEnabled', tab: 'movement', group: 'Moves', modes: M.physics, type: 'toggle', dflt: false, label: 'Look-Up Aim (Up/W)', hint: 'hold Up/W to aim straight up (bow, crossbow, trident, boomerang, grapple); jump moves to J. Rebind or pick “Legacy Jump” in Controls to restore Up/W = jump.' },
 
       // ── SPEED RUN ───────────────────────────────────────────
+      // §E2 Constant / Auto-speed — a true fixed auto-scroll: the runner is pinned at Max Speed the whole
+      // run (no accelerate/coast). Recommended base for the Beat Grid (E-MB). Default off = the classic
+      // race-car accelerate model. When ON, the Acceleration/Deceleration knobs below don't apply.
+      { key: 'srConstantSpeed', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'toggle', dflt: false, label: 'Constant Speed (auto-run)', hint: 'ON: the runner moves at a fixed speed automatically for the whole level (a true auto-scroller) — you steer jumps, not pace. OFF (default): the race-car model where you accelerate from a stop up to Max Speed and coast when you let go.' },
       { key: 'srBaseSpeed', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'cycle', opts: O.srBase, dflt: 1.0, label: 'Base Speed', fmt: x1 },
       { key: 'srMaxMultiplier', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'cycle', opts: O.srMax, dflt: 2.0, label: 'Max Speed', fmt: x1 },
       { key: 'srAccel', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'cycle', opts: O.srAccel, dflt: 0.5, label: 'Acceleration', fmt: (v) => v.toFixed(2) + '/f' },
