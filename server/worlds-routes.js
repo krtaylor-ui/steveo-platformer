@@ -2,6 +2,7 @@ const { supabaseAdmin } = require('./supabase-client');
 const { worldModeDefaults } = require('../js/platformer-defaults.js');
 const WORLD_TRANSFER = require('../js/world-transfer.js');   // shared export-flag predicate (§40.1)
 const MODERATION = require('../js/moderation.js');           // §B6 appropriateness filter
+const LEVEL_VALIDATOR = require('../js/level-validator.js');  // §A2 finish/goal gate
 
 // Token verification — same contract as games-routes.js. Kept local so the two
 // route modules stay independently mountable.
@@ -557,6 +558,20 @@ module.exports = function setupWorldsRoutes(app) {
     }
   });
 
+  // ── §B2 — record a play (Most-Played / Trending). No auth: any launch counts. Read-modify-write is
+  //    fine for a play counter (a lost race just misses one increment). Needs speedrunner.sql (play_count).
+  app.post('/api/worlds/:worldId/played', async (req, res) => {
+    try {
+      const { data: w } = await supabaseAdmin.from('worlds').select('play_count').eq('id', req.params.worldId).single();
+      const next = ((w && w.play_count) || 0) + 1;
+      const { error } = await supabaseAdmin.from('worlds')
+        .update({ play_count: next, last_played_at: new Date().toISOString() })
+        .eq('id', req.params.worldId);
+      if (error) throw error;
+      res.json({ play_count: next });
+    } catch (e) { console.error('play count error:', e); res.status(500).json({ error: 'Failed to record play' }); }
+  });
+
   // ── Publish / unpublish (max 20 published per player — §A1) ───────────
   app.post('/api/worlds/sandbox/:worldId/publish', verifyToken, async (req, res) => {
     try {
@@ -579,11 +594,16 @@ module.exports = function setupWorldsRoutes(app) {
         if (others.length >= PUBLISH_CAP) {
           return res.status(400).json({ error: `Max ${PUBLISH_CAP} published worlds allowed` });
         }
+        // §A2 — a level must have at least one finish/goal before it can be published.
+        const { data: wd } = await supabaseAdmin.from('worlds').select('world_data').eq('id', worldId).eq('creator_id', req.user.id).single();
+        const gate = LEVEL_VALIDATOR.canGoLive(wd && wd.world_data);
+        if (!gate.ok) return res.status(400).json({ error: gate.reason });
       }
 
       // Stamp publication time + optional community metadata (genre/difficulty).
-      // Requires server/sql/community.sql to have added these columns.
-      const patch = { is_published: isPublished, published_at: isPublished ? new Date().toISOString() : null };
+      // §A1 — also set the level state (speedrunner.sql added the `state` column).
+      // Requires server/sql/community.sql to have added the community columns.
+      const patch = { is_published: isPublished, published_at: isPublished ? new Date().toISOString() : null, state: isPublished ? 'published' : 'draft' };
       if (req.body.genre != null) patch.genre = String(req.body.genre).slice(0, 40);
       if (req.body.difficulty != null) patch.difficulty = String(req.body.difficulty).slice(0, 20);
 

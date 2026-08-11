@@ -118,3 +118,19 @@ silent and any limits that stopped a full rollout, per the "document assumptions
 - **MB1 per-instance track:** the Music Player block's right-click config already lists MUSIC_DISCS and a
   placed instance plays its configured track (verified working in prior builds); no change needed beyond
   confirming in-browser.
+
+## Epic A/B/LB — Storefront (build 470) — SQL-backed slices landed
+- **B2 rating sort fixed:** community browse `sort=rating` now orders by the generated `rating_avg`
+  column (was `rating_sum` — the sum-vs-avg bug). Added `sort=played`/`mostplayed` (play_count) and
+  `sort=trending` (last_played_at + play_count).
+- **B2 play counter:** POST /api/worlds/:id/played bumps play_count + stamps last_played_at (no auth; any
+  launch counts). Client call on world launch is a small follow-up wire.
+- **A1 level state on publish:** the publish route now sets `state` = published/draft (speedrunner.sql
+  column) alongside is_published.
+- **A2 finish gate:** publishing now REJECTS a level with no finish/goal (LEVEL_VALIDATOR.canGoLive on the
+  server, reusing the shipped pure validator).
+- **DEFERRED (flagged):** the big client build-out — the Speed Runner LANDING screen (System/My/Community
+  left-tabs), storefront browse UI (tag filter, duration buckets, search-as-you-type, creator profiles,
+  thumbnails capture/display), downloadable+provenance enforcement in the download route, Community-
+  Nominated Picks, and the leaderboard re-key to worlds.id. The schema is applied + these server slices
+  are in; the remaining work is UI + a few routes (specs in docs/SPEEDRUNNER_MEGA_BRIEF.md Epics A/B/LB).

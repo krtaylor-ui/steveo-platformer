@@ -43,12 +43,15 @@ function setupCommunityRoutes(app) {
       if (mode) query = query.eq('mode', mode);
       if (q) query = query.ilike('world_name', `%${q}%`);
 
-      // Sorting. rating uses the average via rating_sum/rating_count on the client
-      // side ordering isn't possible in one column, so approximate with rating_sum.
-      if (sort === 'downloads')      query = query.order('download_count', { ascending: false });
-      else if (sort === 'rating')    query = query.order('rating_sum', { ascending: false });
-      else if (sort === 'name')      query = query.order('world_name', { ascending: true });
-      else                           query = query.order('published_at', { ascending: false, nullsFirst: false }).order('updated_at', { ascending: false });
+      // Sorting. §B2 — rating now orders by the true AVERAGE (speedrunner.sql added the generated
+      // rating_avg column), and Most-Played / Trending use play_count + last_played_at.
+      if (sort === 'downloads')       query = query.order('download_count', { ascending: false });
+      else if (sort === 'rating')     query = query.order('rating_avg', { ascending: false, nullsFirst: false });
+      else if (sort === 'played' ||
+               sort === 'mostplayed') query = query.order('play_count', { ascending: false });
+      else if (sort === 'trending')   query = query.order('last_played_at', { ascending: false, nullsFirst: false }).order('play_count', { ascending: false });
+      else if (sort === 'name')       query = query.order('world_name', { ascending: true });
+      else                            query = query.order('published_at', { ascending: false, nullsFirst: false }).order('updated_at', { ascending: false });
 
       query = query.range(offset, offset + limit - 1);
       const { data, error, count } = await query;
