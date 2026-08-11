@@ -18222,7 +18222,7 @@ class Game {
     sr.maxSpeed     = maxSpeed;
     // Active boost (booster block / pickup / perfect start) raises the ceiling and
     // accelerates faster; capped at 1.5× max.
-    const boostMult = Math.min(1.5, Math.max(sr.boosts.blockBoost || 1, sr.boosts.item || 1));
+    const boostMult = Math.min(1.5, Math.max(sr.boosts.blockBoost || 1, sr.boosts.item || 1, sr.boosts.blockPerm || 1));
     const effMax    = maxSpeed * boostMult;
     const accelRate = SR_ACCEL * (boostMult > 1 ? 2 : 1);
     if (aws.srConstantSpeed) {
@@ -18336,7 +18336,14 @@ class Game {
     for (let r = bT; r <= bB; r++) {
       for (let c = bL; c <= bR; c++) {
         if (this.level.get(r, c) === BLOCK.SPEED_BOOSTER) {
-          this._sr.boosts.blockBoost = 1.0 + SR_CONFIG.boosterBlockBoost;
+          // §E5 Player Speed Zones — a run of SPEED_BOOSTER cells is a placed speed region; each cell's
+          // E6 config sets the zone's strength, and Permanent mode SUSTAINS it after you leave (the
+          // runner accelerates toward the raised ceiling = a ramp over the zone length), while Temporary
+          // decays back once you're clear. Default amount = the classic SR_CONFIG.boosterBlockBoost.
+          const cfg = this._boosterCfgAt(r, c);
+          const amt = cfg.amount != null ? cfg.amount : SR_CONFIG.boosterBlockBoost;
+          this._sr.boosts.blockBoost = 1.0 + amt;
+          if (cfg.mode === 'perm') this._sr.boosts.blockPerm = Math.max(this._sr.boosts.blockPerm || 1, 1.0 + amt);
           return;
         }
       }
