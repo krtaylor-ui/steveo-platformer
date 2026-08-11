@@ -124,6 +124,13 @@ B5.3 Single-player feel is unchanged (movement, jump, combat) - nothing from the
 ===================================================================================================
 Multi-player tube travel needs pads [SKIP - controller]; verify the P1 path only here.
 
+UNBLOCK for B6.3 + B7 (the canvas-palette blocker): import the ready-made fixture world instead of
+driving the palette. In Sandbox -> Import from File, choose:
+    FIXTURE_2D_ladder_tube_chest.json   (in this docs folder / C:\Dev\Steveo-QA\docs\)
+It is a small flat 2D Platformer world laid out left-to-right: spawn -> a LADDER (col 6, climb to a
+ledge) -> a horizontal TRAVEL TUBE (walk RIGHT into the left mouth ~col 12, fly to ~col 30) -> a CHEST
+(col 36, pre-filled 3 items + 5 empty slots) -> the GOAL. Play it (New Game / Test) as 1P keyboard.
+
 B6.1 OVERHEAD editor: in the buildings palette find "Glass Tube" (friendly name), place TWO. Select
      one (Hand tool) -> settings -> set its Teleport destination to the other. Save. (Confirm the
      palette shows friendly names like "Glass Tube" / "Save Point", and the tube link hint appears.)
@@ -138,7 +145,9 @@ B6.3 2D world with a Travel Tube: P1 can enter and fly through it (mouse/keyboar
 ===================================================================================================
 ## B7 - 2D sandbox Chest: palette tabs + remove item (MOUSE)
 ===================================================================================================
-B7.1 Place a Chest in a 2D sandbox world, open it. The item palette shows the CURRENT sandbox palette
+(Use the SAME imported FIXTURE_2D_ladder_tube_chest.json - it already has a chest with items. Open it
+in the SANDBOX EDITOR to see the placement palette/tabs, and in PLAY to open the chest.)
+B7.1 Place a Chest in a 2D sandbox world (or use the fixture's chest at col 36), open it. The item palette shows the CURRENT sandbox palette
      tabs/items (not a stale short list) - all tabs are present and populated.
 B7.2 Put an item into a chest slot, then REMOVE it from the slot (right-click the slot, or drag out to
      trash - whatever the UI offers). The slot empties.
