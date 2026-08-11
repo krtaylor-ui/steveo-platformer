@@ -80,3 +80,22 @@ silent and any limits that stopped a full rollout, per the "document assumptions
 - **P3-4 sprite-sheet render pipeline: DEFERRED.** You chose "build now", but it needs a second image-based
   renderer + at least one curated PNG sheet asset (none exist in-repo). Building the pipeline blind with no
   asset would be untestable; flagged to do with a real/placeholder sheet in a focused pass. Not started.
+
+## Flagged bugs (Kevin, needs browser repro — not fixed this run)
+1. Small-world sprite fall-off + bedrock-below-map: world-gen writes BEDROCK on the last grid row
+   (js/world.js). In a small world, clearing down to the bottom likely exposes the boundary/render
+   interaction Kevin saw. Needs a repro world + mode to fix safely.
+2. X-ray in Platformer TEST under GOD mode: no feature literally named "xray/x-ray" found in js/*.js —
+   need the exact key/toggle used. Likely a Normal-mode-only creative feature; trace once identified.
+
+## DEFERRED EPICS (not built this run — clear specs exist in docs/SPEEDRUNNER_MEGA_BRIEF.md)
+- Epic C (Wave 5): sandbox top-bar reduce, world-list left-tabs, unified Create-World modal,
+  editable description post-create, remove Import-from-Games.
+- Epic UI (Wave 6): convert ~12 white .modal-content modals onto the dark .ws-panel shell per
+  docs/UI_STYLE_GUIDE.md (highest visual risk; own commits; Kevin's confirm gates it).
+- Epic MB (Wave 7): per-instance music track pick + editor Beat Grid overlay (tap-to-tempo + optional
+  autodetect; time→distance; default constant-speed).
+- Epic A/B/LB (Wave 9): SQL is APPLIED now, so this is unblocked — landing-screen tabs (System/My/
+  Community), storefront sorts/tags/thumbnails/duration/search + creator profiles, downloadable +
+  provenance enforcement, leaderboard re-key to worlds.id. The build-out (client + routes) remains.
+- CK3 practice mode; Epic D wiring; Phase 3 picker/MP/side-preview/sprite-sheet.
