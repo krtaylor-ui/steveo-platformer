@@ -18034,6 +18034,11 @@ class Game {
     this._sr.spawnX = this.player.x;
     this._sr.spawnY = this.player.y;
     this._sr.lastX  = this.player.x;
+    // §E8 — finish x (furthest goal) drives the best-progress %; maxX tracks how far this run got.
+    this._sr.finishX = this._sr.goals.length
+      ? Math.max(...this._sr.goals.map(g => g.col * BLOCK_SIZE)) + BLOCK_SIZE
+      : this.level.pixelWidth;
+    this._sr.maxX = this.player.x;
 
     // Portal links (same format as platformer mode)
     if (Array.isArray(data.portalLinks)) {
@@ -18183,8 +18188,10 @@ class Game {
                           || this.input.isDown('KeyD')
                           || this.input.gamepads.some(g => g && g.connected && (g.dpad1 || g.moveX > 0.3));
         sr.lastX          = this.player.x;
+        sr.maxX           = this.player.x;
         sr.ghostRec       = new SpeedRunnerGhost(sr.levelId);
         sr.ghostFrameIdx  = 0;
+        sr.attemptNum     = SpeedRunnerStats.bumpAttempt(sr.levelId);   // §E8 — count this attempt
       }
       return;
     }
@@ -18229,6 +18236,7 @@ class Game {
       sr.vx = Math.max(0, sr.vx - SR_DECEL);
     }
     this.player.vx = sr.vx;
+    if (this.player.x > (sr.maxX || 0)) sr.maxX = this.player.x;   // §E8 — furthest reached this run
 
     // Perfect start: a fresh accelerate press within perfectStartMs of GREEN
     // (and not held through the countdown) grants a short speed boost.
@@ -21309,6 +21317,9 @@ class Game {
     this._sr.dead     = true;
     this._sr.deathMs  = Date.now();
     this._sr.ghostRec = null;
+    // §E8 — even a failed run banks its furthest-progress %.
+    this._sr.bestPct  = SpeedRunnerStats.recordPct(this._sr.levelId,
+      SpeedRunnerStats.progressPct(this._sr.maxX ?? this._sr.spawnX, this._sr.spawnX, this._sr.finishX ?? this.level.pixelWidth));
     this._playSound('sounds/player-death.mp3');
     this._srAddParticles(this.player.cx, this.player.cy, '#FF4444', 20);
 
@@ -21347,6 +21358,7 @@ class Game {
     const elapsed      = Date.now() - this._sr.startMs;
     this._sr.won       = true;
     this._sr.finishMs  = elapsed;
+    this._sr.bestPct   = SpeedRunnerStats.recordPct(this._sr.levelId, 100);   // §E8 — a clear is 100%
     this._playSound('sounds/win.mp3');
 
     // Burst fireworks from player position
@@ -21486,7 +21498,9 @@ class Game {
       sr.accelAtGo      = true;    // suppress the perfect-start / start-signal boost
       sr.perfectChecked = true;
       sr.lastX          = sr.spawnX;
+      sr.maxX           = sr.spawnX;
       sr.ghostRec       = new SpeedRunnerGhost(sr.levelId);
+      sr.attemptNum     = SpeedRunnerStats.bumpAttempt(sr.levelId);   // §E8 — instant retry counts too
     }
 
     // Reset the level to its authored start state so every run is identical:
@@ -21699,6 +21713,18 @@ class Game {
     ctx.textBaseline = 'middle';
     ctx.fillText(timeStr, CANVAS_W / 2, 31);
     ctx.restore();
+
+    // §E8 — attempt count + furthest-progress %, just under the timer (shown even on a failed run).
+    {
+      const best = Math.round(sr.bestPct != null ? sr.bestPct : SpeedRunnerStats.bestPct(sr.levelId));
+      const line = `Attempt #${sr.attemptNum || 1}` + (best > 0 ? `  ·  Best ${best}%` : '');
+      ctx.save();
+      ctx.font = 'bold 13px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const w = ctx.measureText(line).width + 16;
+      ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(CANVAS_W / 2 - w / 2, 58, w, 20);
+      ctx.fillStyle = '#FFE08A'; ctx.fillText(line, CANVAS_W / 2, 68);
+      ctx.restore();
+    }
 
     // Speed meter — ACTUAL character speed as a % of the world's max speed.
     // 100% = at max; a boost can push it above 100% (bar caps, % keeps counting).

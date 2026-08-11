@@ -143,6 +143,36 @@ const SpeedRunnerLeaderboard = {
   },
 };
 
+// ── §E8 Attempt counter + best-progress % (per level, local) ────────────────
+// Tracks how many times a level has been attempted and the furthest the runner has ever reached
+// (as a % of the run's length), so even a FAILED run shows meaningful progress. Keyed by the same
+// levelId the ghost/leaderboard use, in localStorage (`sr_attempts_<id>` / `sr_bestpct_<id>`).
+const SpeedRunnerStats = {
+  // Pure: furthest x reached, spawn x, and finish x → a 0..100 progress percentage.
+  progressPct(x, spawnX, finishX) {
+    const span = finishX - spawnX;
+    if (!(span > 0)) return 0;
+    return Math.max(0, Math.min(100, ((x - spawnX) / span) * 100));
+  },
+  attempts(levelId) {
+    try { return parseInt(localStorage.getItem(`sr_attempts_${levelId}`), 10) || 0; } catch { return 0; }
+  },
+  bumpAttempt(levelId) {
+    const n = this.attempts(levelId) + 1;
+    try { localStorage.setItem(`sr_attempts_${levelId}`, String(n)); } catch {}
+    return n;
+  },
+  bestPct(levelId) {
+    try { return parseFloat(localStorage.getItem(`sr_bestpct_${levelId}`)) || 0; } catch { return 0; }
+  },
+  // Store `pct` if it beats the stored best; returns the (possibly updated) best.
+  recordPct(levelId, pct) {
+    const best = this.bestPct(levelId);
+    if (pct > best) { try { localStorage.setItem(`sr_bestpct_${levelId}`, String(pct)); } catch {} return pct; }
+    return best;
+  },
+};
+
 // ── Hybrid server sync (best-effort; local stays offline-capable) ──
 const SPEEDRUN_SYNC = {
   async submit(levelId, name, ms, username) {
@@ -187,5 +217,5 @@ function srFormatTime(ms) {
 
 // Headless test export (no effect in the browser, where these are script-scope globals).
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { SR_CONFIG, SpeedRunnerLeaderboard, SPEEDRUN_SYNC, srFormatTime, srUsername, srGetSavedInitials, srSaveInitials };
+  module.exports = { SR_CONFIG, SpeedRunnerLeaderboard, SpeedRunnerStats, SPEEDRUN_SYNC, srFormatTime, srUsername, srGetSavedInitials, srSaveInitials };
 }
