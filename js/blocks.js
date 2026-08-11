@@ -345,7 +345,7 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.LADDER:                 _drawLadder(ctx, px, py, s);                     break;
     case BLOCK.TRAMPOLINE:             _drawTrampoline(ctx, px, py, s, state.compress || 0); break;
     case BLOCK.SLIME_BLOCK:            _drawSlime(ctx, px, py, s, state.compress || 0);      break;
-    case BLOCK.SPIKES:                 _drawSpikes(ctx, px, py, s);                     break;
+    case BLOCK.SPIKES:                 _drawSpikes(ctx, px, py, s, state.spikeDir || 'up'); break;
     case BLOCK.COIN:                   _drawCoinBlock(ctx, px, py, s, state.frame || 0);break;
     case BLOCK.ICE:                    _drawIce(ctx, px, py, s);                        break;
     case BLOCK.GLASS:                  _drawGlass(ctx, px, py, s);                      break;
@@ -1806,7 +1806,12 @@ function _drawSlime(ctx, px, py, s, compress = 0) {
   ctx.fillStyle = 'rgba(60,150,80,0.9)'; ctx.fillRect(px + 9, py + 9 + dip, s - 18, s - 18 - dip);   // inner core
   ctx.fillStyle = 'rgba(200,255,210,0.5)'; ctx.fillRect(px + 4, py + 4 + dip, 5, 5);                 // highlight
 }
-function _drawSpikes(ctx, px, py, s) {
+function _drawSpikes(ctx, px, py, s, dir = 'up') {
+  // §Spike Orientation (E12) — the base sprite points UP; rotate about the cell centre for the other
+  // three directions so tips point away from the surface the spike is attached to.
+  const rot = { up: 0, right: Math.PI / 2, down: Math.PI, left: -Math.PI / 2 }[dir] || 0;
+  ctx.save();
+  if (rot) { ctx.translate(px + s / 2, py + s / 2); ctx.rotate(rot); ctx.translate(-s / 2, -s / 2); px = 0; py = 0; }
   ctx.fillStyle = '#8a9099';
   const n = 3, w = s / n;
   for (let i = 0; i < n; i++) {
@@ -1818,6 +1823,7 @@ function _drawSpikes(ctx, px, py, s) {
   }
   ctx.fillStyle = '#c9d2db';
   for (let i = 0; i < n; i++) { ctx.beginPath(); ctx.moveTo(px + i * w + w / 2 - 1, py + 3); ctx.lineTo(px + i * w + w / 2 + 2, py + 10); ctx.lineTo(px + i * w + w / 2, py + 12); ctx.closePath(); ctx.fill(); }
+  ctx.restore();
 }
 function _drawCoinBlock(ctx, px, py, s, frame) {
   const cx = px + s / 2, cy = py + s / 2;

@@ -26,6 +26,21 @@ const GAME_STATE = {
     return out;
   },
 
+  // Serialize per-cell spike orientations from game._spikeDirMap ("r,c" -> 'up'|'down'|'left'|'right').
+  // Only non-default cells need storing; an absent entry re-infers 'up'/the adjacent surface at load.
+  _spikeDirs(game) {
+    const cm = game._spikeDirMap;
+    if (!cm) return [];
+    const out = [];
+    for (const key in cm) {
+      const dir = cm[key];
+      if (!dir) continue;   // an entry exists only when the creator explicitly cycled — store it as-is
+      const [row, col] = key.split(',').map(Number);
+      if (Number.isFinite(row) && Number.isFinite(col)) out.push({ row, col, dir });
+    }
+    return out;
+  },
+
   // Serialize decorative-foliage colours from game._foliageColorMap ("r,c" -> idx).
   // The block ids (bush/leaves, front/back) already live in the grid; only the
   // per-cell colour needs its own array (Smart Mobs §10).
@@ -268,6 +283,7 @@ const GAME_STATE = {
       arenaObjects: game.sandbox ? game.sandbox.placedArenaObjs.map(o => ({ ...o })) : [],
       // Goal-star colours (campaign-prep) — [{row,col,color}] for coloured exits.
       goalStars: GAME_STATE._goalStars(game),
+      spikeDirs: GAME_STATE._spikeDirs(game),
       foliage:   GAME_STATE._foliage(game),
       placedItems,
       portalLinks,

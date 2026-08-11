@@ -3403,6 +3403,8 @@ class Game {
           this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'contents' };     // config only with the matching block SELECTED
         } else if (target === BLOCK.SPEED_BOOSTER && this.sandbox.selectedBlock === BLOCK.SPEED_BOOSTER) {
           this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'booster' };      // §Speed Boost Zone (E6) — mode/amount/duration
+        } else if (target === BLOCK.SPIKES && this.sandbox.selectedBlock === BLOCK.SPIKES) {
+          this._cycleSpikeDir(hoverRow, hoverCol);                                      // §Spike Orientation (E12) — cycle valid dirs, then remove
         } else if (target === BLOCK.WEIGHT_PLATE && this.sandbox.selectedBlock === BLOCK.WEIGHT_PLATE) {
           this._weightPopup = { col: hoverCol, row: hoverRow };                        // §Weight Sensor — set trigger (players/mobs/both)
         } else if (target === BLOCK.PRESSURE_PLATE && this.sandbox.selectedBlock === BLOCK.PRESSURE_PLATE) {
@@ -5243,6 +5245,45 @@ class Game {
     return cells;
   }
   _invalidateGoalCells() { this._goalCells = null; }
+  // ── §Spike Orientation (E12 / §14) ──────────────────────────────────────────────
+  _cellSolid(r, c) {
+    const grid = this.level && this.level.grid;
+    if (!grid || r < 0 || c < 0 || r >= grid.length || !grid[r] || c >= grid[r].length) return false;
+    const b = grid[r][c];
+    return !!(BLOCK_DATA[b] && BLOCK_DATA[b].solid);
+  }
+  _spikeNeighbors(r, c) {
+    return { up: this._cellSolid(r - 1, c), down: this._cellSolid(r + 1, c), left: this._cellSolid(r, c - 1), right: this._cellSolid(r, c + 1) };
+  }
+  // Effective orientation of the spike at (r,c): the stored value, else the default inferred from the
+  // surface it sits against (so an un-configured spike still points sensibly + damages correctly).
+  _spikeDirAt(r, c) {
+    const stored = this._spikeDirMap && this._spikeDirMap[r + ',' + c];
+    return stored || SPIKE_ORIENT.defaultFor(this._spikeNeighbors(r, c));
+  }
+  _restoreSpikeDirs(data) {
+    this._spikeDirMap = {};
+    if (data && Array.isArray(data.spikeDirs)) {
+      for (const s of data.spikeDirs) {
+        if (s && typeof s.row === 'number' && typeof s.col === 'number' && s.dir) this._spikeDirMap[s.row + ',' + s.col] = s.dir;
+      }
+    }
+  }
+  // Right-click cycle through the valid orientations for this context; past the last one → REMOVE the
+  // spike (terminal, deliberately unlike the wrapping goal-star colour cycle).
+  _cycleSpikeDir(r, c) {
+    const valid = SPIKE_ORIENT.validFor(this._spikeNeighbors(r, c));
+    const next = SPIKE_ORIENT.nextOrRemove(this._spikeDirAt(r, c), valid);
+    if (next == null) {
+      this.level.set(r, c, BLOCK.AIR);
+      if (this._spikeDirMap) delete this._spikeDirMap[r + ',' + c];
+      this._notify('Spike removed', '#c66', 90);
+    } else {
+      if (!this._spikeDirMap) this._spikeDirMap = {};
+      this._spikeDirMap[r + ',' + c] = next;
+      this._notify('Spike points ' + next, '#8a9099', 80);
+    }
+  }
   // Colour index for a Goal Star at (row,col); 0 = classic gold.
   _goalColorAt(r, c) { return (this._goalColorMap && this._goalColorMap[r + ',' + c]) || 0; }
   _setGoalColor(r, c, color) {
@@ -6485,7 +6526,7 @@ class Game {
       ctx.translate(-CANVAS_W / 2, -CANVAS_H / 2);
     }
     try { this._drawTravelTubesBack(ctx); } catch (e) { /* ignore */ }   // §Travel Tube — Pass-In-Front/Solid glass BEHIND the blocks (so the world reads in front of it)
-    this.level.draw(ctx, this.camera, this.redstone, this.frameCount, this.gameMode === 'sandbox', this._trampFx);
+    this.level.draw(ctx, this.camera, this.redstone, this.frameCount, this.gameMode === 'sandbox', this._trampFx, this._spikeDirMap);
     // Re-draw open chest with lid-open state on top
     if (this._chestOpen) {
       const sx = this._chestOpen.col * BLOCK_SIZE - this.camera.x;
@@ -16604,6 +16645,7 @@ class Game {
       }
     }
     this._invalidateGoalCells();
+    this._restoreSpikeDirs(data);
     this._restoreFoliageColors(data);
 
     // Restore arena collectibles (Phase 3A.2) + objectives (Phase 3A.3)
@@ -17572,6 +17614,7 @@ class Game {
       }
     }
     this._invalidateGoalCells();
+    this._restoreSpikeDirs(data);
     this._restoreFoliageColors(data);
     this._score = 0;
     this._emeraldsCollected = 0;
@@ -18372,7 +18415,17 @@ class Game {
     let boosterCfg = null;
     for (let r = row0; r <= row1; r++) for (let c = col0; c <= col1; c++) {
       const b = L.get(r, c);
-      if (b === BLOCK.SPIKES) { if (!p.godMode && p.iframes <= 0 && p.hp > 0) p.takeDamage(3, Math.sign(p.vx) || (p.facing || 1)); }
+      if (b === BLOCK.SPIKES) {
+        // §Spike Orientation (E12) — only the exposed side of the cell (where the tips are) impales; the
+        // base side is embedded against the solid surface. hazardRect gives that sub-rect in cell space.
+        if (!p.godMode && p.iframes <= 0 && p.hp > 0) {
+          const hr = SPIKE_ORIENT.hazardRect(this._spikeDirAt(r, c), BS);
+          const zx = c * BS + hr.x, zy = r * BS + hr.y;
+          if (p.x + p.width > zx && p.x < zx + hr.w && p.y + p.height > zy && p.y < zy + hr.h) {
+            p.takeDamage(3, Math.sign(p.vx) || (p.facing || 1));
+          }
+        }
+      }
       else if (b === BLOCK.COIN) { L.set(r, c, BLOCK.AIR); this._collectCoin(p); }
       else if (b === BLOCK.SPEED_BOOSTER && !boosterCfg) boosterCfg = this._boosterCfgAt(r, c);
     }
