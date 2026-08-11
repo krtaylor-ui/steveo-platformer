@@ -111,43 +111,49 @@ const REDSTONE_PALETTE_ITEMS = [
   { kind: 'block', blockType: BLOCK.PULSE_CONVERTER },
 ];
 
-// "Other" palette tab: storage, structural, special, spawn eggs (redstone lives in its own tab now)
+// "Other" palette tab: storage, structural, special, spawn eggs (redstone lives in its own tab now).
+// §E13 (§15) — each entry may carry a `modes:[]` set of the play modes it's useful in (one of
+// 'normal'|'platformer'|'speedrunner'|'arena'); the Other tab + chest mirror filter to the world's
+// gameModeDefault. NO `modes` = shown in every mode (universal items).
 const OTHER_PALETTE_ITEMS = [
   // ── Storage ───────────────────────────────────────────────────
-  { kind: 'block', blockType: BLOCK.CHEST },
-  // ── Structural / Special ─────────────────────────────────────
-  { kind: 'block', blockType: BLOCK.BED },
-  { kind: 'block', blockType: BLOCK.RESPAWN_ANCHOR },
-  { kind: 'block', blockType: BLOCK.NETHER_PORTAL_FRAME },
-  { kind: 'block', blockType: SB_RUINED_PORTAL },
-  { kind: 'block', blockType: SB_END_PORTAL },
-  { kind: 'block', blockType: BLOCK.EYE_OF_ENDER },
-  { kind: 'block', blockType: SB_WITHER_ALTAR },
-  { kind: 'block', blockType: BLOCK.WITHER_SKELETON_HEAD },
-  { kind: 'block', blockType: BLOCK.GOAL },
-  // Speed Runner blocks
-  { kind: 'block', blockType: BLOCK.SPEED_BOOSTER },
-  { kind: 'block', blockType: BLOCK.JUMP_PAD },
-  { kind: 'block', blockType: BLOCK.SPEED_ITEM },
-  { kind: 'block', blockType: BLOCK.MUSIC_PLAYER },
+  { kind: 'block', blockType: BLOCK.CHEST },                                              // all modes
+  // ── Structural / Special (survival/adventure dimensional gear) ─
+  { kind: 'block', blockType: BLOCK.BED, modes: ['normal', 'platformer'] },
+  { kind: 'block', blockType: BLOCK.RESPAWN_ANCHOR, modes: ['normal'] },
+  { kind: 'block', blockType: BLOCK.NETHER_PORTAL_FRAME, modes: ['normal'] },
+  { kind: 'block', blockType: SB_RUINED_PORTAL, modes: ['normal'] },
+  { kind: 'block', blockType: SB_END_PORTAL, modes: ['normal'] },
+  { kind: 'block', blockType: BLOCK.EYE_OF_ENDER, modes: ['normal'] },
+  { kind: 'block', blockType: SB_WITHER_ALTAR, modes: ['normal'] },
+  { kind: 'block', blockType: BLOCK.WITHER_SKELETON_HEAD, modes: ['normal'] },
+  { kind: 'block', blockType: BLOCK.GOAL, modes: ['normal', 'platformer', 'speedrunner'] },
+  // Speed Runner blocks (SPEED_BOOSTER/JUMP_PAD now work in all modes — E6; SPEED_ITEM is SR-only)
+  { kind: 'block', blockType: BLOCK.SPEED_BOOSTER },                                       // all modes (E6)
+  { kind: 'block', blockType: BLOCK.JUMP_PAD },                                            // all modes
+  { kind: 'block', blockType: BLOCK.SPEED_ITEM, modes: ['speedrunner'] },
+  { kind: 'block', blockType: BLOCK.MUSIC_PLAYER },                                        // all modes
   // ── Consumable items ─────────────────────────────────────────
-  { kind: 'blockItem', blockType: BLOCK.ARROW, defaultCount: 20, name: 'Arrow Stack' },
+  { kind: 'blockItem', blockType: BLOCK.ARROW, defaultCount: 20, name: 'Arrow Stack' },   // all modes
   // ── Arena collectibles (Phase 3A.2) ──────────────────────────
-  { kind: 'emerald', name: 'Emerald',  color: '#2ecc71' },
-  { kind: 'powerup', name: 'Power-Up', color: '#e67e22' },
+  { kind: 'emerald', name: 'Emerald',  color: '#2ecc71', modes: ['arena', 'platformer'] },
+  { kind: 'powerup', name: 'Power-Up', color: '#e67e22', modes: ['arena'] },
   // ── Arena objectives (Phase 3A.3) ────────────────────────────
-  { kind: 'hill',      name: 'Hill (KotH)',  color: '#f1c40f' },
-  { kind: 'spawnline', name: 'Spawn Line',   color: '#9b59b6' },
+  { kind: 'hill',      name: 'Hill (KotH)',  color: '#f1c40f', modes: ['arena'] },
+  { kind: 'spawnline', name: 'Spawn Line',   color: '#9b59b6', modes: ['arena'] },
   // Player spawn points (Phase 3 — distinct from Survival "Spawn Line" mob markers).
-  { kind: 'spawnpoint', name: 'Player Spawn', color: '#4aa3ff' },
+  { kind: 'spawnpoint', name: 'Player Spawn', color: '#4aa3ff', modes: ['arena'] },
   // Arena objects (Phase 3 v3) — CTF Base (flag inherent to its centre), Defend-
   // the-Tower target, and Heal Tower pickup. One unified placeable, `obj` subtype.
-  { kind: 'arenaobj', obj: 'base',  name: 'CTF Base',   color: '#e74c3c' },
-  { kind: 'arenaobj', obj: 'tower', name: 'Tower',      color: '#9a9488' },
-  { kind: 'arenaobj', obj: 'heal',  name: 'Heal Tower', color: '#2ecc71' },
+  { kind: 'arenaobj', obj: 'base',  name: 'CTF Base',   color: '#e74c3c', modes: ['arena'] },
+  { kind: 'arenaobj', obj: 'tower', name: 'Tower',      color: '#9a9488', modes: ['arena'] },
+  { kind: 'arenaobj', obj: 'heal',  name: 'Heal Tower', color: '#2ecc71', modes: ['arena'] },
   // ── Spawn Eggs ───────────────────────────────────────────────
-  ...SPAWN_EGG_DEFS.map(d => ({ kind: 'egg', ...d })),
+  ...SPAWN_EGG_DEFS.map(d => ({ kind: 'egg', ...d })),                                     // all modes
 ];
+
+// §E13 — the mode-filter predicate `otherItemVisibleInMode(item, worldMode)` lives in js/palette-filter.js
+// (loaded before this file) so it can be headless-tested without pulling in the whole sandbox module.
 
 // Power-up types (editor cycle order). Runtime effects live in powerup-system.js.
 const SB_POWERUP_TYPES = [
@@ -1162,7 +1168,7 @@ class SandboxManager {
   }
 
   _paletteItems() {
-    return this.paletteTab === 'other'    ? OTHER_PALETTE_ITEMS
+    return this.paletteTab === 'other'    ? OTHER_PALETTE_ITEMS.filter(it => otherItemVisibleInMode(it, this.worldMode))   // §E13 mode-filter
          : this.paletteTab === 'redstone' ? REDSTONE_PALETTE_ITEMS
          : this.paletteTab === 'gear'     ? GEAR_PALETTE_ITEMS   // Boomerang + Grapple always available under Equipment
          : (SANDBOX_PALETTE_BLOCKS[this.paletteTab] || []);

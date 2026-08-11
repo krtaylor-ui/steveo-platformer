@@ -4356,7 +4356,7 @@ class Game {
   _sbChestPaletteItems() {
     const tab = this.sandbox?.paletteTab || 'overworld';
     if (tab === 'gear')  return GEAR_PALETTE_ITEMS;
-    if (tab === 'other') return OTHER_PALETTE_ITEMS;
+    if (tab === 'other') return OTHER_PALETTE_ITEMS.filter(it => otherItemVisibleInMode(it, this.sandbox?.worldMode));   // §E13 mode-filter
     return SANDBOX_PALETTE_BLOCKS[tab] || [];
   }
 
@@ -16607,6 +16607,9 @@ class Game {
       this._notify('Failed to load world!', '#FF4444', 300);
       return;
     }
+    // §E13 — record the world's target play mode so the "Other" palette can hide items that don't
+    // apply (e.g. arena objectives in a Speed Runner world). NRM/PLT/RUN/ARN → mode name.
+    if (this.sandbox) this.sandbox.worldMode = { NRM: 'normal', PLT: 'platformer', RUN: 'speedrunner', ARN: 'arena' }[data.gameModeDefault] || null;
 
     // Restore grid
     if (Array.isArray(data.grid)) {
