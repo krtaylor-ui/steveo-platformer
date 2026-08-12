@@ -22,7 +22,7 @@ const COMMUNITY = {
     });
     // Filters
     const reload = () => this.loadBrowse();
-    ['community-mode', 'community-genre', 'community-difficulty', 'community-sort'].forEach((id) => {
+    ['community-mode', 'community-genre', 'community-difficulty', 'community-sort', 'community-tag'].forEach((id) => {
       document.getElementById(id)?.addEventListener('change', reload);
     });
     const search = document.getElementById('community-search');
@@ -35,7 +35,39 @@ const COMMUNITY = {
   open() {
     document.getElementById('dashboard-screen').style.display = 'none';
     document.getElementById('community-screen').style.display = 'block';
+    this._creator = null;
+    this._loadTags();
     this._selectTab('browse');
+  },
+
+  // §B3 — populate the tag filter from the curated system tags (once).
+  async _loadTags() {
+    const sel = document.getElementById('community-tag'); if (!sel || sel._loaded) return;
+    try {
+      const res = await AUTH.authedFetch('/api/community/tags');
+      const d = await res.json();
+      for (const t of (d.tags || [])) { const o = document.createElement('option'); o.value = t; o.textContent = '#' + t; sel.appendChild(o); }
+      sel._loaded = true;
+    } catch (e) {}
+  },
+
+  // §B2 — browse a specific creator's published worlds (a lightweight profile bar over the grid).
+  async loadCreator(creatorId) {
+    this._creator = creatorId;
+    const bar = document.getElementById('community-creator-bar');
+    if (bar) {
+      bar.style.display = 'block';
+      bar.innerHTML = 'Loading creator…';
+      try {
+        const res = await AUTH.authedFetch('/api/community/creator/' + encodeURIComponent(creatorId));
+        const p = await res.json();
+        bar.innerHTML = `<span class="cc-avatar" style="background:${this._esc(p.color || '#888')}"></span>
+          <b>${this._esc(p.name || 'Creator')}</b> · ${p.published || 0} published · ⬇ ${p.totalDownloads || 0} · ▶ ${p.totalPlays || 0}
+          <button class="btn btn-small cc-clear-creator">← All creators</button>`;
+        bar.querySelector('.cc-clear-creator')?.addEventListener('click', () => { this._creator = null; bar.style.display = 'none'; this.loadBrowse(); });
+      } catch (e) { bar.innerHTML = 'Failed to load creator.'; }
+    }
+    this.loadBrowse();
   },
   close() {
     document.getElementById('community-screen').style.display = 'none';
@@ -61,9 +93,10 @@ const COMMUNITY = {
     const params = new URLSearchParams();
     const q = this._val('community-search').trim();
     if (q) params.set('q', q);
-    for (const [id, key] of [['community-mode', 'mode'], ['community-genre', 'genre'], ['community-difficulty', 'difficulty'], ['community-sort', 'sort']]) {
+    for (const [id, key] of [['community-mode', 'mode'], ['community-genre', 'genre'], ['community-difficulty', 'difficulty'], ['community-sort', 'sort'], ['community-tag', 'tag']]) {
       const v = this._val(id); if (v) params.set(key, v);
     }
+    if (this._creator) params.set('creator', this._creator);
     try {
       const res = await AUTH.authedFetch(`/api/community/worlds?${params.toString()}`);
       const data = await res.json();
@@ -126,20 +159,33 @@ const COMMUNITY = {
 
   _card(w) {
     const rate = [1, 2, 3, 4, 5].map(n => `<span class="rate-star ${n <= (w.myRating || 0) ? 'on' : ''}" data-stars="${n}">★</span>`).join('');
+    const tags = (w.tags && w.tags.length) ? `<div class="cc-tags">${w.tags.slice(0,4).map(t => `<span class="cc-tag">#${this._esc(t)}</span>`).join('')}</div>` : '';
+    const thumb = w.thumbnail ? `<div class="cc-thumb"><img src="${this._esc(w.thumbnail)}" alt="" loading="lazy"></div>` : '';
+    const dl = w.downloadable === false
+      ? `<button class="btn btn-small cc-download" disabled title="The creator hasn't made this downloadable">⬇ Not downloadable</button>`
+      : `<button class="btn btn-small cc-download">⬇ Download</button>`;
+    const author = w.creatorId
+      ? `<a href="#" class="cc-author" data-creator="${this._esc(w.creatorId)}">${this._esc(w.author || 'Unknown')}</a>`
+      : this._esc(w.author || 'Unknown');
     return `<div class="community-card" data-id="${w.id}">
+      ${thumb}
       <div class="cc-title">${this._esc(w.name)}</div>
-      <div class="cc-meta">by ${this._esc(w.author || 'Unknown')} · ${w.mode || ''}${w.difficulty ? ' · ' + w.difficulty : ''}${w.genre ? ' · ' + w.genre : ''}</div>
+      <div class="cc-meta">by ${author} · ${w.mode || ''}${w.difficulty ? ' · ' + w.difficulty : ''}${w.genre ? ' · ' + w.genre : ''}</div>
       ${w.description ? `<div class="cc-desc">${this._esc(w.description)}</div>` : ''}
-      <div class="cc-stats">${this._stars(w.avgRating || 0, w.ratingCount)} · ⬇ ${w.downloads || 0}</div>
+      ${tags}
+      <div class="cc-stats">${this._stars(w.avgRating || 0, w.ratingCount)} · ⬇ ${w.downloads || 0} · ▶ ${w.plays || 0}</div>
       <div class="cc-rate">Rate: <span class="rate-stars">${rate}</span></div>
       <div class="cc-actions">
-        <button class="btn btn-small cc-download">⬇ Download</button>
+        ${dl}
         <button class="btn btn-small cc-fav ${w.favorited ? 'faved' : ''}">${w.favorited ? '★ Favorited' : '☆ Favorite'}</button>
       </div>
     </div>`;
   },
 
   _wireCards(root) {
+    root.querySelectorAll('.cc-author[data-creator]').forEach((a) => {
+      a.addEventListener('click', (e) => { e.preventDefault(); this.loadCreator(a.dataset.creator); });
+    });
     root.querySelectorAll('.community-card').forEach((card) => {
       const id = card.dataset.id;
       card.querySelector('.cc-fav')?.addEventListener('click', (e) => this._toggleFav(id, e.currentTarget));
