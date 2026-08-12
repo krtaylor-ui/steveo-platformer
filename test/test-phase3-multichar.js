@@ -45,5 +45,13 @@ t('registerCustom(id, null) removes the slot', () => {
   assert.strictEqual(CHARACTERS.get('custom_p4').id, 'classic');
 });
 
+t('§Phase B — Stick + Sketch are registered with the stick feat (Sketch adds skirt)', () => {
+  assert.strictEqual(CHARACTERS.get('stick').feat.stick, 1);
+  assert.strictEqual(CHARACTERS.get('sketch').feat.stick, 1);
+  assert.strictEqual(CHARACTERS.get('sketch').feat.skirt, 1);
+  assert.ok(!CHARACTERS.get('stick').feat.skirt, 'plain Stick has no skirt');
+  assert.ok(CHARACTERS.ids().includes('stick') && CHARACTERS.ids().includes('sketch'), 'both in the roster');
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

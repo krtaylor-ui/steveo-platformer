@@ -497,7 +497,8 @@
       const weapon = opts.weapon === undefined ? 'pickaxe' : opts.weapon;
       const moveAngle = opts.moveAngle != null ? opts.moveAngle : aimAngle;
       const ph = (dist / (r * 1.15)) % (Math.PI * 2), swing = moving ? Math.sin(ph) : 0;
-      const span = r * 1.4, limbW = opts.bony ? r * 0.16 : r * 0.26;
+      const isStick = !!feat.stick;   // §Phase B — the line-stick character reads as thin limbs (its all-dark palette already lines it)
+      const span = r * 1.4, limbW = isStick ? r * 0.13 : (opts.bony ? r * 0.16 : r * 0.26);
       const armAmp = r * 0.55, legAmp = r * 0.5, restFwd = r * 0.18;
       ctx.save(); ctx.translate(cx, cy);
       if (opts.spin) ctx.rotate(opts.spin);   // double-jump flat spin

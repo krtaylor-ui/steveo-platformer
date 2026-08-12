@@ -1433,6 +1433,7 @@ class Player {
   }
 
   _drawSteve(ctx, sx, sy) {
+    this._refreshStick();   // §Phase B — cache the stick flag/colour for every limb this frame
     const crouch    = this.crouching;
     // Ledge hang / climb uses an articulated figure (waist + hip hinges) — its own path.
     if (this._hangState) { this._drawHangFigure(ctx, sx, sy); return; }
@@ -1554,11 +1555,30 @@ class Player {
     ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
   }
   _limbBar(ctx, x0, y0, x1, y1, w, color, outline) {
+    // §Phase B — a stick character draws every limb as a thin round-capped LINE, so all the articulated
+    // poses (ledge climb / hang / bar hand-over-hand / ladder) that already route through _limbBar become
+    // stick with no per-pose code.
+    if (this._isStick) {
+      ctx.save();
+      ctx.strokeStyle = this._stickColor || '#1c1f26'; ctx.lineCap = 'round';
+      ctx.lineWidth = Math.max(2, w * 0.42);
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      ctx.restore();
+      return;
+    }
     const dx = x1-x0, dy = y1-y0, len = Math.hypot(dx,dy) || 0.001, a = Math.atan2(dy,dx);
     ctx.save(); ctx.translate(x0,y0); ctx.rotate(a);
     if (outline) { ctx.fillStyle = outline; ctx.fillRect(-1, -w/2-1, len+2, w+2); }  // dark silhouette edge
     ctx.fillStyle = color; ctx.fillRect(0, -w/2, len, w);   // hard-edged, matches the blocky sprite
     ctx.restore();
+  }
+  // §Phase B — cache the stick flag + line colour once per sprite draw (feat lookups are relatively
+  // costly to run per-limb). Called at the top of the sprite entry point.
+  _refreshStick() {
+    const f = this._feat();
+    this._isStick    = !!(f && f.stick);
+    this._stickSkirt = !!(f && f.skirt);
+    this._stickColor = this._isStick ? (this.shirtColor || this._charShirt()) : null;
   }
 
   // §Classic Blocks — front-facing pose for a Warp Pipe (both eyes toward the camera), arms at
@@ -1867,6 +1887,7 @@ class Player {
   }
 
   _drawStanding(ctx, sx, sy, swing, tuck = 0, armAngleL = null, armAngleR = null, hipBend = 0) {
+    if (this._isStick) { this._drawStandingStick(ctx, sx, sy, swing, tuck, armAngleL, armAngleR, hipBend); return; }   // §Phase B
     // ── Colors ──────────────────────────────────────────────
     const SKIN = this._charSkin();
     const HAIR    = this._charHair();
@@ -1983,7 +2004,56 @@ class Player {
     this._sideAccHead(ctx, sx + 2, sy, 16, false);
   }
 
+  // §Phase B — stick version of _drawStanding: SAME joint anchors + rotations, thin lines + a circle head,
+  // so it animates identically through walk/run/jump/double-jump spin/lean. Cosmetic; hitbox unchanged.
+  _drawStandingStick(ctx, sx, sy, swing, tuck = 0, armAngleL = null, armAngleR = null, hipBend = 0) {
+    const C = this._stickColor || '#1c1f26';
+    // ground shadow
+    ctx.save(); ctx.fillStyle = 'rgba(0,0,0,0.26)';
+    ctx.beginPath(); ctx.ellipse(sx + this.width / 2, sy + this.height + 2, 8, 2.4, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+
+    ctx.save();
+    ctx.strokeStyle = C; ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const legSwing = swing * 10;
+    const seg = (px, py, ang, x0, y0, x1, y1) => { ctx.save(); ctx.translate(px, py); ctx.rotate(ang); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.restore(); };
+    // Legs (same pivots/rotations as the blocky version)
+    seg(sx + 4 + tuck * 4, sy + 34 - tuck * 14, legSwing + hipBend, 2, 0, 2, 17);
+    seg(sx + 12 - tuck * 4, sy + 34 - tuck * 14, -legSwing + hipBend * 0.85, 2, 0, 2, 17);
+    // Torso (neck → hip)
+    ctx.beginPath(); ctx.moveTo(sx + 10, sy + 34); ctx.lineTo(sx + 10, sy + 15); ctx.stroke();
+    // Arms
+    seg(sx + 2 + tuck * 5, sy + 18 - tuck * 2, armAngleL != null ? armAngleL : -legSwing, 1, 0, 1, 16);
+    seg(sx + 16 - tuck * 5, sy + 18 - tuck * 2, armAngleR != null ? armAngleR : legSwing, 1, 0, 1, 16);
+    // Skirt silhouette (the "Sketch" variant)
+    if (this._stickSkirt) { ctx.fillStyle = C; ctx.beginPath(); ctx.moveTo(sx + 10, sy + 22); ctx.lineTo(sx + 3, sy + 34); ctx.lineTo(sx + 17, sy + 34); ctx.closePath(); ctx.fill(); }
+    // Head (circle)
+    ctx.beginPath(); ctx.arc(sx + 10, sy + 8, 6.5, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+    // Eye dot toward facing (flip handled by the caller)
+    ctx.save(); ctx.fillStyle = this._accent() || '#eef1f8';
+    ctx.beginPath(); ctx.arc(sx + 12, sy + 7, 1.3, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  }
+
   _drawCrouch(ctx, sx, sy) {
+    if (this._isStick) {   // §Phase B — compact crouched stick (head + folded legs)
+      const C = this._stickColor || '#1c1f26', midY = sy + this.height * 0.5;
+      ctx.save(); ctx.strokeStyle = C; ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      // head
+      ctx.beginPath(); ctx.arc(sx + this.width / 2, midY - 4, 6, 0, Math.PI * 2); ctx.stroke();
+      // short torso
+      ctx.beginPath(); ctx.moveTo(sx + this.width / 2, midY + 2); ctx.lineTo(sx + this.width / 2, midY + 12); ctx.stroke();
+      // folded legs (knees out to the sides, feet under)
+      ctx.beginPath();
+      ctx.moveTo(sx + this.width / 2, midY + 12); ctx.lineTo(sx + 3, midY + 14); ctx.lineTo(sx + 6, sy + this.height);
+      ctx.moveTo(sx + this.width / 2, midY + 12); ctx.lineTo(sx + this.width - 3, midY + 14); ctx.lineTo(sx + this.width - 6, sy + this.height);
+      ctx.stroke();
+      // arms forward
+      ctx.beginPath(); ctx.moveTo(sx + this.width / 2, midY + 4); ctx.lineTo(sx + this.width - 4, midY + 8); ctx.stroke();
+      ctx.restore();
+      if (this._stickSkirt) { ctx.save(); ctx.fillStyle = C; ctx.beginPath(); ctx.moveTo(sx + this.width / 2, midY + 4); ctx.lineTo(sx + 3, midY + 14); ctx.lineTo(sx + this.width - 3, midY + 14); ctx.closePath(); ctx.fill(); ctx.restore(); }
+      ctx.save(); ctx.fillStyle = this._accent() || '#eef1f8'; ctx.beginPath(); ctx.arc(sx + this.width / 2 + 2, midY - 5, 1.2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      return;
+    }
     const SKIN = this._charSkin();
     const HAIR  = this._charHair();
     const SHIRT = this.shirtColor || this._charShirt(); // CTF team shirt colour (§6) overrides

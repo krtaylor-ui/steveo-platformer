@@ -54,7 +54,15 @@
     { id: 'scout',    name: 'Scout',     theme: 'Adventure', body: 'boy',  views: BOTH, feat: { fedora: 1, scarf: 1, pack: 1 },
       pal: { skin: '#e0b083', hair: '#5a3d22', shirt: '#8a7a4a', pants: '#5a4a2a', accent: '#d64545' } },
     { id: 'bee',      name: 'Buzz',      theme: 'Bug',       body: 'boy',  views: BOTH, feat: { antennae: 1, wings: 1, stripes: 1 },
-      pal: { skin: '#f0c419', hair: '#2a2a2a', shirt: '#f0c419', pants: '#2a2a2a', accent: '#eef1f8' } }
+      pal: { skin: '#f0c419', hair: '#2a2a2a', shirt: '#f0c419', pants: '#2a2a2a', accent: '#eef1f8' } },
+    // §Phase B — line-stick render mode: `stick` swaps the blocky body for thin limbs + a circle head,
+    // drawn between the SAME animation joints so it animates through every move. `skirt` adds the classic
+    // triangle-dress silhouette. Cosmetic only (same hitbox). The palette's `shirt` is the line colour, so
+    // a creator can recolour the whole figure; `accent` is the eye.
+    { id: 'stick',    name: 'Stick',     theme: 'Line',      body: 'boy',  views: BOTH, feat: { stick: 1 },
+      pal: { skin: '#1c1f26', hair: '#1c1f26', shirt: '#1c1f26', pants: '#1c1f26', accent: '#eef1f8' } },
+    { id: 'sketch',   name: 'Sketch',    theme: 'Line',      body: 'girl', views: BOTH, feat: { stick: 1, skirt: 1 },
+      pal: { skin: '#1c1f26', hair: '#1c1f26', shirt: '#1c1f26', pants: '#1c1f26', accent: '#eef1f8' } }
   ];
 
   var MAP = {}; LIST.forEach(function (c) { MAP[c.id] = c; });
