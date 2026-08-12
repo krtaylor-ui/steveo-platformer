@@ -77,7 +77,10 @@ const GAME_PLAY = {
       // Once we actually play it, it's no longer "just restarted" (a save will give it real
       // progress); drop the marker so a later visit reflects true state.
       if (wasRestarted) GAME_SELECTION._justRestarted.delete(String(gameId));
-      const options  = { templateData: gameData, newGame: isNew };
+      // §T1-3 — pass the bound world's DB id so Speed Runner leaderboards/ghosts re-key to worlds.id
+      // (the game-slot launcher previously omitted it, so _launchWorldId stayed null and SR fell back to
+      // the fragile author:worldName — or, for world_data with no name, the shared test-world sentinel).
+      const options  = { templateData: gameData, newGame: isNew, worldId: record.world_id || (gameData && gameData.worldId) || null };
       // Normal / platformer still expect world:'adventure' so their level generation
       // runs before the templateData override replaces the grid.
       if (this.gameMode === 'normal' || this.gameMode === 'platformer') {

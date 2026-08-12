@@ -232,11 +232,13 @@ function setupCommunityRoutes(app) {
       const { data: sys } = await supabaseAdmin.from('system_tags').select('name');
       const allow = new Set((sys || []).map(t => t.name));
       const clean = tags.filter(t => allow.has(t));
+      const rejected = tags.filter(t => !allow.has(t));
       const { data, error } = await supabaseAdmin.from('worlds')
         .update({ tags: clean }).eq('id', req.params.worldId).eq('creator_id', req.user.id)
         .select('id, tags').single();
       if (error) throw error;
-      res.json({ tags: (data && data.tags) || [] });
+      // Report any non-curated tags that were dropped so the UI can explain instead of them vanishing.
+      res.json({ tags: (data && data.tags) || [], rejected, note: rejected.length ? 'Some tags are not in the curated list and were not added. Use "Request a tag" for new ones.' : undefined });
     } catch (e) { console.error('set tags error:', e); res.status(500).json({ error: 'Failed to set tags' }); }
   });
 

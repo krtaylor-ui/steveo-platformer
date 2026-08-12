@@ -1910,14 +1910,20 @@ html[data-theme="retro"] .ws-adv { color: #ffd166 !important; }
 .cc-avatar { width: 22px; height: 22px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
 .cc-download:disabled { opacity: .55; cursor: not-allowed; }
 /* §T1-2 — the generic .btn is white-on-translucent-white (for dark bars); inside the light community
-   card that was ~1:1 contrast (invisible). Give the card CTAs readable, solid colors in both themes. */
+   card that was ~1:1 contrast (invisible). Card CTAs get readable, solid colors, guarded per theme.
+   Download = a solid dark indigo (theme-independent, white text ~6.5:1). Favorite = a bordered pill with
+   DARK text on the light card, flipping to LIGHT text only in true dark contexts (the previous rule leaked
+   light text into the default/system-light view). */
 .cc-actions .btn { border: 1px solid transparent; }
-.cc-actions .cc-download { background: var(--accent, #3a6ea5); color: #fff; }
-.cc-actions .cc-download:hover:not(:disabled) { filter: brightness(1.08); }
-.cc-actions .cc-fav { background: rgba(90,120,170,.16); color: #223; border-color: var(--border, #9fb0c8); }
+.cc-actions .cc-download { background: #33499e; color: #fff; }
+.cc-actions .cc-download:hover:not(:disabled) { filter: brightness(1.12); }
+.cc-actions .cc-fav { background: rgba(90,120,170,.14); color: #22303f; border: 1px solid #9fb0c8; }
 .cc-actions .cc-fav.faved { background: #e2b23c; color: #23180a; border-color: transparent; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .cc-actions .cc-fav { color: #dfe6f2; border-color: #3a4a5f; }
+}
 :root[data-theme="dark"] .cc-actions .cc-fav,
-:root:not([data-theme="light"]) .cc-actions .cc-fav { color: #dfe6f2; border-color: var(--border, #363a46); }
+html[data-theme="retro"] .cc-actions .cc-fav { color: #dfe6f2; border-color: #3a4a5f; }
 .community-picks { margin: 0 0 14px; }
 .community-picks:empty { display: none; }
 .picks-head { font-weight: 700; margin: 0 0 8px; opacity: .85; }
