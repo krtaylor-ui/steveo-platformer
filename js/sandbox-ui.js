@@ -1069,6 +1069,13 @@ const SANDBOX = {
       };
       aws.levelMusicId = songEl.value || null;   // §Phase A — the track that plays during the run
       close();
+      // Same trap as the Level Challenges editor: this only writes live editor state — the world must be
+      // Saved for a real launch to pick it up. Remind the creator.
+      const t = document.createElement('div');
+      t.textContent = 'Beat Grid set — remember to Save your world';
+      t.style.cssText = 'position:fixed;left:50%;bottom:32px;transform:translateX(-50%);z-index:9600;background:#2f6f4f;color:#fff;border:1px solid #46557a;border-radius:8px;padding:9px 16px;font:13px sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.5)';
+      document.body.appendChild(t);
+      setTimeout(() => { if (t.remove) t.remove(); }, 2600);
     };
   },
 

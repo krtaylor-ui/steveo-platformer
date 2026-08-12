@@ -18298,6 +18298,7 @@ class Game {
         sr.startMs        = Date.now();
         sr.goMs           = sr.startMs;
         sr.perfectChecked = false;
+        this._achStats = null; this._achFired = new Set(); if (this.player) this.player._jumpCount = 0;   // §T3-1 — fresh Level-Challenge stats per SR run
         this._startLevelMusic();   // §Phase A — begin the level's chosen catalog track (within the GO gesture window)
         sr.accelAtGo      = this.input.isRight() || this.input.isDown('ArrowRight')
                           || this.input.isDown('KeyD')
@@ -21676,6 +21677,7 @@ class Game {
     this._sr.won       = true;
     this._sr.finishMs  = elapsed;
     if (!this._sr.practice) this._sr.bestPct = SpeedRunnerStats.recordPct(this._sr.levelId, 100);   // §E8 clear=100% (§CK3 practice=unranked)
+    this._fireAchievements(elapsed);   // §T3-1 — Level Challenges fire on the SR finish line too (was platformer-goal only)
     this._playSound('sounds/win.mp3');
 
     // Burst fireworks from player position

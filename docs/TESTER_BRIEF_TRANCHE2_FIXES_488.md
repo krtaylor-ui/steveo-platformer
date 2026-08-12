@@ -71,3 +71,22 @@ Where: character pickers (World Settings -> Character, or a world card's charact
 Still the priority for next pass (unchanged): (1) in-run music playback/mute/on-beat alignment, (2) the
 three un-run items — end-to-end achievement FIRE (most important; never observed live), two different
 customs on screen at once, Arena/Custom-Rules dark modals. Hold the merge until those close.
+
+---
+
+## Build 490 (from the 489 closeout)
+
+- T3-1 (BLOCKER, fixed): Level Challenges now fire on the SPEED RUNNER finish line too — _srTriggerWin()
+  calls _fireAchievements(elapsed); SR stats reset at each GO (fresh per run/retry). Was platformer-goal
+  only. RE-CHECK: an SR run with challenges defined should produce _achFired + the toast + a POST, same as
+  platformer.
+- T3-2 (LOW, fixed): Custom Rules teaching text (win-condition guide, section headings, AND/OR/NOT tags,
+  empty state) lifted off the 2.2-2.5:1 dim tokens to readable light on the dark modal.
+- Beat Grid modal now shows a "remember to Save your world" reminder on Save (same trap as Level
+  Challenges).
+
+### Two known traps (documented, not defects)
+1. The Level Challenges AND the Beat Grid modals write only LIVE EDITOR STATE — you MUST then hit the
+   editor's top-bar Save or a real game gets no challenges/song. (Both now show a Save reminder.)
+2. No POST from Test World is CORRECT — achievement persistence is gated on _launchWorldId, which is
+   deliberately null in Test World. Test from a real created game to see the POST.

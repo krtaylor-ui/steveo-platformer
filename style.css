@@ -1390,6 +1390,14 @@ html:not([data-theme="retro"]) .modal-content .cr-score-row,
 html:not([data-theme="retro"]) .modal-content .cr-step-cond { color: #e9ebf4; }
 html:not([data-theme="retro"]) .modal-content .cr-step-cond { background: #242838; }
 html:not([data-theme="retro"]) .modal-content.cr-modal { color: #e9ebf4; }
+/* §T3-2 — the Custom-Rules TEACHING text (win-condition guide, section headings, AND/OR/NOT emphasis,
+   empty-state) sat at 2.2–2.5:1 — the muted/#4a4ad0 tokens are too dim on the dark shell. Lift them. */
+html:not([data-theme="retro"]) .modal-content .cr-guide,
+html:not([data-theme="retro"]) .modal-content .cr-step-empty { color: #9aa6bd; }
+html:not([data-theme="retro"]) .modal-content .cr-section h4,
+html:not([data-theme="retro"]) .modal-content .cr-step-head,
+html:not([data-theme="retro"]) .modal-content #cr-win-hint,
+html:not([data-theme="retro"]) .modal-content .cr-step-tag { color: #9db0ff; }
 /* §T2-1 — Copy World's fieldset hardcodes #2a2a3a (id-specificity), so the "Copy to" legend was
    1.18:1 dark-on-dark on the dark shell. Match specificity to flip it light. */
 html:not([data-theme="retro"]) #copy-world-modal .copy-dest { color: #e9ebf4; }
