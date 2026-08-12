@@ -60,7 +60,7 @@ function setupSrHubRoutes(app) {
         .eq('creator_id', req.user.id).eq('mode', 'SPEEDRUNNER').eq('is_live', true)
         .order('updated_at', { ascending: false });
       if (error) throw error;
-      res.json({ worlds: (data || []).map(toRow) });
+      res.json({ worlds: (data || []).map(toRow), isAdmin: isAdmin(req) });
     } catch (e) { console.error('sr/mine:', e); res.status(500).json({ error: 'Failed to load your levels' }); }
   });
 

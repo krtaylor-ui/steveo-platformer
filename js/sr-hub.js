@@ -45,7 +45,7 @@ const SR_HUB = {
     try { const r = await AUTH.authedFetch(url); data = r.ok ? await r.json() : {}; }
     catch (e) { list.innerHTML = '<p class="srh-empty">Could not load levels.</p>'; return; }
     this._rows = data.worlds || [];
-    if (tab === 'system') this._isAdmin = !!data.isAdmin;
+    if (data.isAdmin != null) this._isAdmin = !!data.isAdmin;   // system + mine both report it
     this._renderToolbar(tab, bar);
     this._renderRows(tab, list);
   },
