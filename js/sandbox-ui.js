@@ -505,6 +505,7 @@ const SANDBOX = {
           <button class="btn btn-primary edit-world-btn" data-world-id="${this._esc(w.id)}">Edit</button>
           <button class="btn btn-secondary rename-world-btn" data-world-id="${this._esc(w.id)}">Rename</button>
           <button class="btn btn-secondary desc-world-btn" data-world-id="${this._esc(w.id)}" title="Edit the storefront description">Info</button>
+          ${this._isLocalWorld(w.id) ? '' : `<button class="btn ${w.is_live ? 'btn-live-on' : 'btn-secondary'} live-world-btn" data-world-id="${this._esc(w.id)}" data-live="${w.is_live ? 1 : 0}" title="Live = appears in your Speed Runner 'My Levels' list; In Process = hidden">${w.is_live ? '● Live' : '○ In Process'}</button>`}
           <button class="btn btn-secondary copy-world-btn" data-world-id="${this._esc(w.id)}">Copy</button>
           ${(typeof WORLD_TRANSFER !== 'undefined' && WORLD_TRANSFER.exportHidden(w.world_data)) ? '' : `<button class="btn btn-secondary export-world-btn" data-world-id="${this._esc(w.id)}" title="Download this world as a .json file">Export</button>`}
           <button class="btn btn-danger delete-world-btn" data-world-id="${this._esc(w.id)}">Delete</button>
@@ -521,6 +522,8 @@ const SANDBOX = {
       btn.addEventListener('click', (e) => this.renameWorld(e.currentTarget.dataset.worldId)));
     list.querySelectorAll('.desc-world-btn').forEach(btn =>
       btn.addEventListener('click', (e) => this.editDescription(e.currentTarget.dataset.worldId)));
+    list.querySelectorAll('.live-world-btn').forEach(btn =>
+      btn.addEventListener('click', (e) => this.toggleLive(e.currentTarget.dataset.worldId, e.currentTarget)));
     list.querySelectorAll('.copy-world-btn').forEach(btn =>
       btn.addEventListener('click', (e) => this.copyWorld(e.currentTarget.dataset.worldId)));
     list.querySelectorAll('.export-world-btn').forEach(btn =>
@@ -762,6 +765,27 @@ const SANDBOX = {
       console.error('Description edit error:', error);
       await DIALOG.alert('Failed to update description', { title: 'Error' });
     }
+  },
+
+  // §SR Hub — flip a cloud world between In Process and Live. Live worlds appear in the player's Speed
+  // Runner "My Levels" list; In Process ones stay private to the editor.
+  async toggleLive(worldId, btn) {
+    const willLive = (btn.dataset.live !== '1');
+    btn.disabled = true;
+    try {
+      const res = await AUTH.authedFetch(`/api/worlds/sandbox/${worldId}/live`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isLive: willLive }),
+      });
+      if (!res.ok) throw new Error('failed');
+      const d = await res.json();
+      const isLive = !!d.isLive;
+      btn.dataset.live = isLive ? '1' : '0';
+      btn.textContent = isLive ? '● Live' : '○ In Process';
+      btn.classList.toggle('btn-live-on', isLive);
+      btn.classList.toggle('btn-secondary', !isLive);
+      const c = this.worlds.find(x => x.id === worldId); if (c) c.is_live = isLive;
+    } catch (e) { await DIALOG.alert('Could not update Live status', { title: 'Error' }); }
+    btn.disabled = false;
   },
 
   updatePagination(page, totalPages) {

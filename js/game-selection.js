@@ -12,6 +12,10 @@ const GAME_SELECTION = {
     this.currentMode = mode;
     this._showScreen();
     this._setupStaticListeners();
+    // §SR Level Hub — Speed Runner uses the three-group hub (System / My Levels / Community) instead of
+    // the 4 save-slots. Other modes keep the slots.
+    if (mode === 'SPEEDRUNNER' && typeof SR_HUB !== 'undefined') { SR_HUB.init(); return; }
+    if (typeof SR_HUB !== 'undefined') SR_HUB.hide();
     await this._loadGames();
   },
 

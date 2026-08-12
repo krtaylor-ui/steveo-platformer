@@ -66,7 +66,7 @@ function setupCommunityRoutes(app) {
 
       // Attach the requester's favorite flag + own rating for the returned page.
       const ids = (data || []).map(w => w.id);
-      let favSet = new Set(), myRatings = {};
+      let favSet = new Set(), addedSet = new Set(), myRatings = {};
       if (ids.length) {
         const [{ data: favs }, { data: rates }] = await Promise.all([
           supabaseAdmin.from('world_favorites').select('world_id').eq('user_id', req.user.id).in('world_id', ids),
@@ -74,6 +74,11 @@ function setupCommunityRoutes(app) {
         ]);
         favSet = new Set((favs || []).map(f => f.world_id));
         for (const r of (rates || [])) myRatings[r.world_id] = r.stars;
+        // §SR Hub — "Added to my levels". Resilient: if sr_level_hub.sql isn't applied yet, don't break browse.
+        try {
+          const { data: adds } = await supabaseAdmin.from('world_added').select('world_id').eq('user_id', req.user.id).in('world_id', ids);
+          addedSet = new Set((adds || []).map(a => a.world_id));
+        } catch (_) { /* table not present yet */ }
       }
       const worlds = (data || []).map(w => ({
         id: w.id, name: w.world_name, author: w.original_author || w.creator_name, creatorId: w.creator_id,
@@ -82,7 +87,7 @@ function setupCommunityRoutes(app) {
         avgRating: w.rating_count ? +(w.rating_sum / w.rating_count).toFixed(1) : 0,
         ratingCount: w.rating_count || 0, tags: w.tags || [], thumbnail: w.thumbnail || null,
         downloadable: w.downloadable !== false,
-        favorited: favSet.has(w.id), myRating: myRatings[w.id] || 0,
+        favorited: favSet.has(w.id), added: addedSet.has(w.id), myRating: myRatings[w.id] || 0,
         publishedAt: w.published_at || w.updated_at,
       }));
       res.json({ worlds, total: count || worlds.length, limit, offset });

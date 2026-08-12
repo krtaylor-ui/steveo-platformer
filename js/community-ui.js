@@ -11,8 +11,10 @@ const COMMUNITY = {
   _wired: false,
   _searchTimer: null,
 
-  init() {
-    if (this._wired) return;
+  // §SR Hub — init() with a presetMode (e.g. 'SPEEDRUNNER') opens the store filtered to that mode and
+  // routes "Back" to the SR hub instead of the dashboard.
+  init(presetMode) {
+    if (this._wired) { if (presetMode) this._openForSr(presetMode); return; }
     this._wired = true;
     document.getElementById('community-btn')?.addEventListener('click', () => this.open());
     document.getElementById('community-back-btn')?.addEventListener('click', () => this.close());
@@ -30,6 +32,7 @@ const COMMUNITY = {
       clearTimeout(this._searchTimer);
       this._searchTimer = setTimeout(reload, 300); // debounce
     });
+    if (presetMode) this._openForSr(presetMode);   // first-call-with-preset fallback
   },
 
   open() {
@@ -87,8 +90,20 @@ const COMMUNITY = {
     }
     this.loadBrowse();
   },
+  // §SR Hub — open filtered to a mode, remembering to return to the SR hub on Back.
+  _openForSr(mode) {
+    this._returnToSrHub = true;
+    const m = document.getElementById('community-mode'); if (m) m.value = mode;
+    this.open();
+  },
   close() {
     document.getElementById('community-screen').style.display = 'none';
+    if (this._returnToSrHub) {
+      this._returnToSrHub = false;
+      document.getElementById('game-selection-screen').style.display = 'block';
+      if (typeof SR_HUB !== 'undefined') { SR_HUB.init(); SR_HUB.loadTab('community'); }
+      return;
+    }
     document.getElementById('dashboard-screen').style.display = 'block';
   },
 
@@ -196,6 +211,7 @@ const COMMUNITY = {
       <div class="cc-rate">Rate: <span class="rate-stars">${rate}</span></div>
       <div class="cc-actions">
         ${w.mode === 'SPEEDRUNNER' ? `<button class="btn btn-small cc-play" title="Race this level now (no download)">▶ Play</button>` : ''}
+        <button class="btn btn-small cc-add ${w.added ? 'added' : ''}" title="Add to your levels list">${w.added ? '✓ Added' : '＋ Add'}</button>
         ${dl}
         <button class="btn btn-small cc-fav ${w.favorited ? 'faved' : ''}">${w.favorited ? '★ Favorited' : '☆ Favorite'}</button>
       </div>
@@ -211,6 +227,7 @@ const COMMUNITY = {
       card.querySelector('.cc-fav')?.addEventListener('click', (e) => this._toggleFav(id, e.currentTarget));
       card.querySelector('.cc-download')?.addEventListener('click', (e) => this._download(id, e.currentTarget));
       card.querySelector('.cc-play')?.addEventListener('click', (e) => this._playSpeedRun(id, e.currentTarget));
+      card.querySelector('.cc-add')?.addEventListener('click', (e) => this._toggleAdded(id, e.currentTarget));
       card.querySelectorAll('.rate-star').forEach((st) => {
         st.addEventListener('click', () => this._rate(id, parseInt(st.dataset.stars, 10), card));
       });
@@ -298,6 +315,18 @@ const COMMUNITY = {
       btn.textContent = 'Failed'; btn.disabled = false;
       setTimeout(() => { btn.textContent = orig; }, 1500);
     }
+  },
+
+  // §SR Hub — add/remove a community world from the player's "Added" library (world_added).
+  async _toggleAdded(id, btn) {
+    const willAdd = !btn.classList.contains('added');
+    btn.disabled = true;
+    try {
+      await AUTH.authedFetch(`/api/sr/added/${id}`, { method: willAdd ? 'POST' : 'DELETE' });
+      btn.classList.toggle('added', willAdd);
+      btn.textContent = willAdd ? '✓ Added' : '＋ Add';
+    } catch (e) { /* leave as-is */ }
+    btn.disabled = false;
   },
 
   _esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); },

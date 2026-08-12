@@ -2440,3 +2440,34 @@ html[data-theme="retro"] #copy-world-modal .copy-dest { color: #cfe8f2; border-c
 /* Overhead Engine — Sandbox browser view toggle (Side-scroll / Overhead) */
 .view-toggle-btn { padding: 4px 12px; opacity: 0.6; }
 .view-toggle-btn.active { opacity: 1; background: #3a5a8c; border-color: #5573ad; color: #fff; }
+
+/* ════ §SR Level Hub — System / My Levels / Community on the Speed Runner screen ════ */
+#sr-hub { max-width: 860px; margin: 0 auto; }
+.srh-tabs { display: flex; gap: 8px; margin: 4px 0 14px; flex-wrap: wrap; }
+.srh-tab { background: rgba(120,140,180,.12); color: var(--ink, #cdd6e6); border: 1px solid #3a4a5f;
+  border-radius: 9px; padding: 9px 16px; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
+.srh-tab.active { background: #2f6f8f; color: #eaffff; border-color: transparent; }
+html:not([data-theme="retro"]) .srh-tab { color: #dfe6f2; }
+.srh-toolbar { margin-bottom: 10px; min-height: 8px; display: flex; align-items: center; gap: 10px; }
+.srh-hint { color: #9aa6bd; font-size: 0.82rem; }
+.srh-hint.srh-admin { color: #e8ad55; }
+.srh-list { display: flex; flex-direction: column; gap: 8px; }
+.srh-empty { color: #9aa6bd; text-align: center; padding: 26px 10px; font-size: 0.95rem; }
+.srh-row { display: flex; align-items: center; gap: 12px; background: rgba(0,0,0,.30);
+  border: 1px solid #333c4c; border-radius: 10px; padding: 8px 10px; }
+.srh-thumb { width: 64px; height: 42px; border-radius: 6px; overflow: hidden; flex: none;
+  background: #12202c; display: flex; align-items: center; justify-content: center; }
+.srh-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.srh-thumb-none { font-size: 20px; }
+.srh-meta { flex: 1 1 auto; min-width: 0; }
+.srh-name { font-weight: 700; font-size: 0.98rem; color: #eef2f8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.srh-sub { color: #9fb0c8; font-size: 0.8rem; margin-top: 2px; }
+.srh-actions { display: flex; align-items: center; gap: 6px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+.btn-icon { padding: 4px 8px; background: rgba(120,140,180,.15); border: 1px solid #3a4a5f; color: #cdd6e6; border-radius: 6px; cursor: pointer; }
+.btn-icon:hover { filter: brightness(1.15); }
+/* Store "Add to my levels" button */
+.cc-actions .cc-add { background: #6d5ad0; color: #fff; }
+.cc-actions .cc-add.added { background: #2f7d4f; }
+.cc-actions .cc-add:hover:not(:disabled) { filter: brightness(1.12); }
+/* Sandbox "Live" toggle on world cards */
+.btn-live-on { background: #2f7d4f !important; color: #fff !important; border-color: transparent !important; }
