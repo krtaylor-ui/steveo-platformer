@@ -8,6 +8,7 @@
 // ============================================================
 
 const { supabaseAdmin } = require('./supabase-client');
+const MODERATION = require('../js/moderation.js');   // §B6 — tag-request names are player-visible
 
 const verifyToken = async (req, res, next) => {
   try {
@@ -28,20 +29,26 @@ function setupCommunityRoutes(app) {
   //        downloads|name), mine (include own; default false), limit, offset.
   app.get('/api/community/worlds', verifyToken, async (req, res) => {
     try {
-      const { q, genre, difficulty, mode, sort = 'recent', mine } = req.query;
+      const { q, genre, difficulty, mode, sort = 'recent', mine, tag, creator } = req.query;
       const limit = Math.min(60, Math.max(1, parseInt(req.query.limit, 10) || 24));
       const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
 
+      // §B — expose tags / thumbnail / play_count (speedrunner.sql columns) so the storefront can filter +
+      // render them. Downloadable is surfaced too so the download flow can honor it.
       let query = supabaseAdmin
         .from('worlds')
-        .select('id, world_name, creator_name, original_author, mode, genre, difficulty, description, download_count, rating_sum, rating_count, published_at, updated_at, creator_id', { count: 'exact' })
+        .select('id, world_name, creator_name, original_author, mode, genre, difficulty, description, download_count, rating_sum, rating_count, play_count, tags, thumbnail, downloadable, published_at, updated_at, creator_id', { count: 'exact' })
         .eq('is_published', true);
 
-      if (!mine || mine === 'false') query = query.neq('creator_id', req.user.id);
+      // §B3 creator profile — when browsing a specific creator, show THEIR worlds (incl. yourself);
+      // otherwise the community view hides your own.
+      if (creator) query = query.eq('creator_id', creator);
+      else if (!mine || mine === 'false') query = query.neq('creator_id', req.user.id);
       if (genre) query = query.eq('genre', genre);
       if (difficulty) query = query.eq('difficulty', difficulty);
       if (mode) query = query.eq('mode', mode);
-      if (q) query = query.ilike('world_name', `%${q}%`);
+      if (tag) query = query.contains('tags', [tag]);              // §B3 tag filter (GIN-indexed array)
+      if (q) query = query.ilike('world_name', `%${q}%`);          // §B2 search-as-you-type
 
       // Sorting. §B2 — rating now orders by the true AVERAGE (speedrunner.sql added the generated
       // rating_avg column), and Most-Played / Trending use play_count + last_played_at.
@@ -69,11 +76,12 @@ function setupCommunityRoutes(app) {
         for (const r of (rates || [])) myRatings[r.world_id] = r.stars;
       }
       const worlds = (data || []).map(w => ({
-        id: w.id, name: w.world_name, author: w.original_author || w.creator_name,
+        id: w.id, name: w.world_name, author: w.original_author || w.creator_name, creatorId: w.creator_id,
         mode: w.mode, genre: w.genre || null, difficulty: w.difficulty || null,
-        description: w.description || '', downloads: w.download_count || 0,
+        description: w.description || '', downloads: w.download_count || 0, plays: w.play_count || 0,
         avgRating: w.rating_count ? +(w.rating_sum / w.rating_count).toFixed(1) : 0,
-        ratingCount: w.rating_count || 0,
+        ratingCount: w.rating_count || 0, tags: w.tags || [], thumbnail: w.thumbnail || null,
+        downloadable: w.downloadable !== false,
         favorited: favSet.has(w.id), myRating: myRatings[w.id] || 0,
         publishedAt: w.published_at || w.updated_at,
       }));
@@ -171,6 +179,8 @@ function setupCommunityRoutes(app) {
       const { data: src, error: getErr } = await supabaseAdmin
         .from('worlds').select('*').eq('id', worldId).eq('is_published', true).single();
       if (getErr || !src) return res.status(404).json({ error: 'Published world not found' });
+      // §B4 — honor the creator's Downloadable opt-in (default allow for legacy rows without the column).
+      if (src.downloadable === false) return res.status(403).json({ error: 'The creator has not made this level downloadable.' });
 
       // Requester's display name (for creator_name on the clone).
       const meta = req.user.user_metadata || {};
@@ -188,6 +198,7 @@ function setupCommunityRoutes(app) {
           description: src.description,
           genre: src.genre, difficulty: src.difficulty,
           is_published: false,
+          downloadable: false,   // §B4 — a downloaded copy isn't re-shareable unless the new owner opts in
           parent_world_id: src.id,
           editors: [],
         })
@@ -203,6 +214,71 @@ function setupCommunityRoutes(app) {
       console.error('Download world error:', error);
       res.status(500).json({ error: 'Failed to download world' });
     }
+  });
+
+  // ── §B3 Tags — the admin-curated tag list, a creator setting their world's tags, and a "request a
+  //    new tag" queue for admin review. Needs speedrunner.sql (tags/system_tags/tag_requests). ──
+  app.get('/api/community/tags', verifyToken, async (req, res) => {
+    try {
+      const { data } = await supabaseAdmin.from('system_tags').select('name').order('name');
+      res.json({ tags: (data || []).map(t => t.name) });
+    } catch (e) { res.status(500).json({ error: 'Failed to load tags' }); }
+  });
+
+  app.post('/api/worlds/:worldId/tags', verifyToken, async (req, res) => {
+    try {
+      const tags = Array.isArray(req.body.tags) ? req.body.tags.slice(0, 8).map(String) : [];
+      // Only accept tags that exist in the curated system list.
+      const { data: sys } = await supabaseAdmin.from('system_tags').select('name');
+      const allow = new Set((sys || []).map(t => t.name));
+      const clean = tags.filter(t => allow.has(t));
+      const { data, error } = await supabaseAdmin.from('worlds')
+        .update({ tags: clean }).eq('id', req.params.worldId).eq('creator_id', req.user.id)
+        .select('id, tags').single();
+      if (error) throw error;
+      res.json({ tags: (data && data.tags) || [] });
+    } catch (e) { console.error('set tags error:', e); res.status(500).json({ error: 'Failed to set tags' }); }
+  });
+
+  app.post('/api/community/tag-requests', verifyToken, async (req, res) => {
+    try {
+      const name = String(req.body.name || '').trim().slice(0, 30);
+      if (!name) return res.status(400).json({ error: 'Tag name required' });
+      const m = MODERATION.check(name, 'tag');
+      if (!m.ok) return res.status(400).json({ error: m.reason });
+      const { error } = await supabaseAdmin.from('tag_requests').insert({ requested_by: req.user.id, name });
+      if (error) throw error;
+      res.json({ requested: true });
+    } catch (e) { res.status(500).json({ error: 'Failed to submit tag request' }); }
+  });
+
+  // ── §B2 Creator mini-profile — display name + a few stats + their published worlds. ──
+  app.get('/api/community/creator/:creatorId', verifyToken, async (req, res) => {
+    try {
+      const cid = req.params.creatorId;
+      const { data: user } = await supabaseAdmin.from('users').select('username, avatar_color').eq('id', cid).single();
+      const { data: worlds } = await supabaseAdmin.from('worlds')
+        .select('id, world_name, mode, download_count, play_count, rating_avg', { count: 'exact' })
+        .eq('creator_id', cid).eq('is_published', true).order('published_at', { ascending: false });
+      const totalDownloads = (worlds || []).reduce((a, w) => a + (w.download_count || 0), 0);
+      const totalPlays = (worlds || []).reduce((a, w) => a + (w.play_count || 0), 0);
+      res.json({
+        name: (user && user.username) || 'Creator', color: (user && user.avatar_color) || '#888',
+        published: (worlds || []).length, totalDownloads, totalPlays,
+        worlds: (worlds || []).map(w => ({ id: w.id, name: w.world_name, mode: w.mode, downloads: w.download_count || 0, plays: w.play_count || 0, avgRating: w.rating_avg || 0 })),
+      });
+    } catch (e) { console.error('creator profile error:', e); res.status(500).json({ error: 'Failed to load creator' }); }
+  });
+
+  // ── §B5 Community-Nominated Picks — the current cycle's featured worlds (admin can regenerate from
+  //    trending). Simple, read-mostly: top trending published worlds this cycle. ──
+  app.get('/api/community/picks', verifyToken, async (req, res) => {
+    try {
+      const { data } = await supabaseAdmin.from('worlds')
+        .select('id, world_name, creator_name, original_author, mode, rating_avg, play_count, thumbnail')
+        .eq('is_published', true).order('play_count', { ascending: false }).limit(6);
+      res.json({ picks: (data || []).map(w => ({ id: w.id, name: w.world_name, author: w.original_author || w.creator_name, mode: w.mode, avgRating: w.rating_avg || 0, plays: w.play_count || 0, thumbnail: w.thumbnail || null })) });
+    } catch (e) { res.status(500).json({ error: 'Failed to load picks' }); }
   });
 }
 

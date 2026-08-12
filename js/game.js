@@ -294,6 +294,9 @@ class Game {
       else { CHARACTERS.setCustom(null); this._customCharacter = null; if (window.CURRENT_CHARACTER_ID === 'custom') window.CURRENT_CHARACTER_ID = 'classic'; }
     }
     this._editArena = this._arenaStarter || !!(options.templateData && options.templateData.gameModeDefault === 'ARN');
+    // §LB — the launched world's DB id (when known), used to re-key Speed Runner leaderboards/ghosts to
+    // worlds.id instead of the fragile author:worldName string (which collides + breaks on rename).
+    this._launchWorldId = options.worldId || (options.templateData && options.templateData.id) || null;
     if (this.isArena) {
       this.arenaConfig = Object.assign(
         { gameDuration: 300000, respawnDelay: 2000, botCount: 3, mapName: 'DEATHMATCH_SMALL',
@@ -18054,7 +18057,11 @@ class Game {
     // don't collide (real saved worlds always have a name; the worlds.id re-key in the migrations doc is
     // the permanent fix). §E8.
     const _lvlId = `${data.playerName || ''}:${data.worldName || ''}`;
-    this._sr.levelId = (_lvlId === ':' || !_lvlId) ? 'sr_unsaved_testworld' : _lvlId;
+    // §LB re-key — prefer the stable worlds.id when the level came from a saved/published world; fall back
+    // to author:worldName (or the test-world sentinel). CLEAN CUT (documented): pre-re-key local best-times
+    // keyed by author:worldName are superseded, not migrated — acceptable per the brief. player_id already
+    // scopes server rows, so non-system boards stay per-account.
+    this._sr.levelId = this._launchWorldId || ((_lvlId === ':' || !_lvlId) ? 'sr_unsaved_testworld' : _lvlId);
     // Hybrid leaderboard: pull any server times for this level and merge them
     // into the local top-5 (best-effort; local stays authoritative offline).
     if (typeof SPEEDRUN_SYNC !== 'undefined') {
