@@ -1,3 +1,44 @@
+## CURRENT STATE (2026-08-12) — TRANCHE 2 COMPLETE (all 8 items); branch `speedrunner-phase3` @ build 485, PUSHED, NOT merged
+
+**`speedrunner-phase3` (off main@460). Builds 478–485. Suite green. Pushed to origin. NOT merged to main.**
+Tranche 2 (creator tools, gameplay & visual unification) — all shipped, functional + headless-tested,
+**UX-unverified** (awaiting the tester pass in `docs/TESTER_BRIEF_TRANCHE2_485.md`):
+- **478 Wind Style picker** — Chevrons/Streamlines/Speed Lines, seamless across cells, flow downwind +
+  scales with strength (`js/blocks.js _drawWindZone`; wind popup Style cycle; `_windDirMap` carries style).
+- **479 Epic D — per-level Achievements** — creator UI (World Settings → Achievements → Level Challenges,
+  `SANDBOX.editAchievements`, stored on `worldAdvSettings.achievements[]`) + in-play tracking (coins/
+  stomp+arrow-melee kills/jumps/lava hazard/time) + fire-on-completion (`game._fireAchievements`, toast +
+  POST `/api/achievements/world`). `achievement-eval.js` gained `keyOf`. Stats reset per run.
+- **480 Epic MB — Beat Grid overlay** — World Settings → Beat Grid → Edit… (tap-tempo/BPM/offset,
+  `SANDBOX.editBeatGrid`, `worldAdvSettings.beatGrid`); editor draws beat lines (`game._drawBeatGridOverlay`,
+  downbeats every 4th, constant-speed assumption). 🔎 needs-eyeball.
+- **481 CK3 — SR Practice Mode** — in-run **T** toggles unranked, **C** drops a personal checkpoint
+  (respawn there), PRACTICE HUD badge, best-%/attempts gated when `sr.practice`.
+- **482 Epic C — Create World cleanup** — "Overhead" folded into the mode picker (delegates to OH_EDITOR;
+  redundant top button hidden) + post-create description edit ("Info" card button → `SANDBOX.editDescription`
+  → new `POST /api/worlds/sandbox/:id/description`; `LOCAL_WORLDS.update` for offline).
+- **483 Phase 3 — per-player custom characters** — `CHARACTERS.registerCustom(id,def)` multi-slot API so
+  several players run DIFFERENT customs; `game._applyPlayerCharacter(p,i)` reads a `playerCharacters`
+  launch option (2p + arena). New test `test-phase3-multichar.js`. **Side-scroll builder preview deferred**
+  (needs a standalone side renderer — currently overhead-only preview). Sprite-sheet = **how-to artifact**
+  (Kevin's scoped deliverable): https://claude.ai/code/artifact/a76d8b6c-ebf1-4269-90c8-fe5256adca54
+- **484 A3 — play community SR levels** — storefront SPEEDRUNNER cards get a green **▶ Play** (races in
+  place, no clone) via new read-only `GET /api/community/worlds/:id/play` (bumps play_count). NOTE: the
+  original A3 canvas SR-landing target is DEAD reference code (HTML dashboard is live) → landed on the
+  active storefront instead; a dedicated tabbed SR landing remains a design call for Kevin.
+- **485 Epic UI — modal dark unification** — one revertible CSS block (search `§Epic UI — Modal dark
+  unification`) moves the whole `.modal-content` family onto the dark shell in the **modern** theme
+  (`:not([data-theme=retro])`; retro keeps its skin). Per `docs/UI_STYLE_GUIDE.md` this is the highest-risk
+  change → 🔎 needs-eyeball; revert the one block to undo. arena-tile/card grids + inline-colour modals
+  remain for follow-up commits.
+
+**Server restarted** for the two new routes (`/description`, `/play`). Ship path when tester-clean =
+merge `speedrunner-phase3` → `main` + push + apply any pending SQL (Tranche 1's `server/sql/*` still apply).
+**Two open design calls for Kevin:** (a) side-scroll builder preview + full sprite-sheet importer;
+(b) whether a dedicated tabbed SR landing is still wanted on the active dashboard.
+
+---
+
 ## CURRENT STATE (2026-08-11 night) — TRANCHE 1 (Storefront & Platform) VERIFIED CLEAN; branch `speedrunner-phase3` @ build 477
 
 **`speedrunner-phase3` (off main@460), pushed, NOT merged. Build 477. Suite green.** Tranche 1 storefront
