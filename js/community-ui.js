@@ -40,6 +40,24 @@ const COMMUNITY = {
     this._selectTab('browse');
   },
 
+  // §B5 — Community Picks: a featured strip of the cycle's top worlds (hidden when browsing a creator).
+  async _loadPicks() {
+    const el = document.getElementById('community-picks'); if (!el) return;
+    if (this._creator) { el.innerHTML = ''; return; }
+    try {
+      const res = await AUTH.authedFetch('/api/community/picks');
+      const d = await res.json();
+      const picks = d.picks || [];
+      if (!picks.length) { el.innerHTML = ''; return; }
+      el.innerHTML = `<div class="picks-head">✨ Community Picks</div><div class="picks-row">` +
+        picks.map(p => `<div class="pick-card" data-id="${this._esc(p.id)}">
+          ${p.thumbnail ? `<div class="pick-thumb"><img src="${this._esc(p.thumbnail)}" alt="" loading="lazy"></div>` : '<div class="pick-thumb pick-noimg">▶</div>'}
+          <div class="pick-name">${this._esc(p.name)}</div>
+          <div class="pick-meta">by ${this._esc(p.author || '—')} · ▶ ${p.plays || 0}</div>
+        </div>`).join('') + `</div>`;
+    } catch (e) { el.innerHTML = ''; }
+  },
+
   // §B3 — populate the tag filter from the curated system tags (once).
   async _loadTags() {
     const sel = document.getElementById('community-tag'); if (!sel || sel._loaded) return;
@@ -90,6 +108,7 @@ const COMMUNITY = {
     const status = document.getElementById('community-status');
     if (!grid) return;
     status.textContent = 'Loading…';
+    this._loadPicks();   // §B5 featured strip
     const params = new URLSearchParams();
     const q = this._val('community-search').trim();
     if (q) params.set('q', q);

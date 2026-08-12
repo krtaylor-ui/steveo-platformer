@@ -340,6 +340,22 @@ const SANDBOX = {
     return g.sandbox.selectItem(nameOrId, kind);
   },
 
+  // §B1 — capture a small JPEG thumbnail from the live game canvas and store it on the world (best-effort,
+  // creator-only, size-capped server-side). Runs on publish, when the editor canvas shows the world.
+  async captureThumbnail(worldId) {
+    try {
+      const src = document.getElementById('gameCanvas'); if (!src || !worldId) return;
+      const W = 256, H = 144;
+      const off = document.createElement('canvas'); off.width = W; off.height = H;
+      off.getContext('2d').drawImage(src, 0, 0, W, H);
+      const uri = off.toDataURL('image/jpeg', 0.55);
+      if (uri.length > 190000 || typeof AUTH === 'undefined' || !AUTH.authedFetch) return;
+      await AUTH.authedFetch('/api/worlds/' + encodeURIComponent(worldId) + '/thumbnail', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ thumbnail: uri }),
+      });
+    } catch (e) { /* thumbnails are best-effort */ }
+  },
+
   // QA seam — cycle a placed SPIKES block's orientation exactly as a right-click does (E12). Tester-
   // friendly (col,row) order; the engine uses (row,col). Returns the new orientation, or 'removed' when
   // the terminal step deletes the spike. Read game._spikeDirMap / game._spikeDirAt(r,c) to confirm.
@@ -1325,12 +1341,15 @@ const SANDBOX = {
       const res = await AUTH.authedFetch(`/api/worlds/sandbox/${this.selectedWorldId}/publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isPublished }),
+        // §B4 — publishing makes the level downloadable by default (creators can opt out later; a
+        // per-world Downloadable toggle in World Settings is a documented follow-up).
+        body: JSON.stringify({ isPublished, downloadable: isPublished }),
       });
       const data = await res.json();
       if (!res.ok) { alert(`Error: ${data.error}`); return; }
 
       this.currentWorldData.is_published = isPublished;
+      if (isPublished) this.captureThumbnail(this.selectedWorldId);   // §B1 best-effort auto-thumbnail
       document.getElementById('sb-publish-btn').textContent = isPublished ? 'Unpublish' : 'Publish';
       alert(isPublished ? 'World published!' : 'World unpublished');
       // Record the publish for stats/achievements (Phase 4, fire-and-forget).

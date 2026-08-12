@@ -572,6 +572,18 @@ module.exports = function setupWorldsRoutes(app) {
     } catch (e) { console.error('play count error:', e); res.status(500).json({ error: 'Failed to record play' }); }
   });
 
+  // ── §B1 — store an auto-captured thumbnail (small JPEG data-URI in the column; no Storage bucket
+  //    needed for a downscaled preview). Creator-only; size-capped so the row stays small. ──
+  app.post('/api/worlds/:worldId/thumbnail', verifyToken, async (req, res) => {
+    try {
+      const t = String(req.body.thumbnail || '');
+      if (!t.startsWith('data:image/') || t.length > 200000) return res.status(400).json({ error: 'Invalid or too-large thumbnail' });
+      const { error } = await supabaseAdmin.from('worlds').update({ thumbnail: t }).eq('id', req.params.worldId).eq('creator_id', req.user.id);
+      if (error) throw error;
+      res.json({ ok: true });
+    } catch (e) { console.error('thumbnail error:', e); res.status(500).json({ error: 'Failed to save thumbnail' }); }
+  });
+
   // ── Publish / unpublish (max 20 published per player — §A1) ───────────
   app.post('/api/worlds/sandbox/:worldId/publish', verifyToken, async (req, res) => {
     try {
@@ -604,6 +616,7 @@ module.exports = function setupWorldsRoutes(app) {
       // §A1 — also set the level state (speedrunner.sql added the `state` column).
       // Requires server/sql/community.sql to have added the community columns.
       const patch = { is_published: isPublished, published_at: isPublished ? new Date().toISOString() : null, state: isPublished ? 'published' : 'draft' };
+      if (req.body.downloadable != null) patch.downloadable = !!req.body.downloadable;   // §B4 creator opt-in
       if (req.body.genre != null) patch.genre = String(req.body.genre).slice(0, 40);
       if (req.body.difficulty != null) patch.difficulty = String(req.body.difficulty).slice(0, 20);
 
