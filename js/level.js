@@ -174,7 +174,8 @@ class Level {
         } else if (block === BLOCK.SPIKES) {
           state = { spikeDir: (spikeDirMap && spikeDirMap[r + ',' + c]) || 'up' };   // §Spike Orientation (E12)
         } else if (block === BLOCK.WIND_ZONE) {
-          state = { windDir: (windDirMap && windDirMap[r + ',' + c]) || 'right', frame };   // §E7 Wind Zone
+          const wi = windDirMap && windDirMap[r + ',' + c];   // §E7 — {dir,style} per cell (or a legacy dir string)
+          state = { windDir: (wi && wi.dir) || (typeof wi === 'string' ? wi : 'right'), windStyle: (wi && wi.style) || 'chevron', windStrength: (wi && wi.strength) || 0.6, frame, col: c, row: r };
         } else if (block === BLOCK.GRAVITY_ZONE || block === BLOCK.CHECKPOINT) {
           state = { frame };
         } else if (block === BLOCK.TRAMPOLINE || block === BLOCK.SLIME_BLOCK) {

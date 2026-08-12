@@ -395,7 +395,7 @@ const SANDBOX = {
     if (!g || typeof g._windAnchorAt !== 'function') { console.warn('setWindConfig: open a Sandbox world first.'); return null; }
     const key = g._windAnchorAt(row, col);
     g._windCfg = g._windCfg || new Map();
-    const c = Object.assign({ dir: 'right', strength: 0.6, thickness: 2, channel: null, affectsGrounded: false }, cfg || {});
+    const c = Object.assign({ dir: 'right', style: 'chevron', strength: 0.6, thickness: 2, channel: null, affectsGrounded: false }, cfg || {});
     g._windCfg.set(key, c);
     if (g._invalidateWindZones) g._invalidateWindZones();
     return c;

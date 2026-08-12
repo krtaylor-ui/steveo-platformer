@@ -8485,8 +8485,10 @@ class Game {
     if (p.kind === 'wind') {
       // Edits the group's shared config (keyed by anchor); any change rebuilds the zone cache.
       const key = this._windAnchorAt(p.row, p.col);
-      const cfg = () => { this._windCfg = this._windCfg || new Map(); let d = this._windCfg.get(key); if (!d) { d = { dir: 'right', strength: 0.6, thickness: 2, channel: null, affectsGrounded: false }; this._windCfg.set(key, d); } return d; };
+      const cfg = () => { this._windCfg = this._windCfg || new Map(); let d = this._windCfg.get(key); if (!d) { d = { dir: 'right', style: 'chevron', strength: 0.6, thickness: 2, channel: null, affectsGrounded: false }; this._windCfg.set(key, d); } return d; };
       const DIRS = ['right', 'downright', 'down', 'downleft', 'left', 'upleft', 'up', 'upright'];
+      const STYLES = ['chevron', 'stream', 'speed'];
+      const STYLE_LABEL = { chevron: 'Chevrons', stream: 'Streamlines', speed: 'Speed Lines' };
       const STR = [0.3, 0.6, 1.0, 1.5, 2.0];
       const THK = [1, 2, 3, 4];
       const CH = [null, 1, 2, 3];   // §F1 — INTEGER channels: _channelPowered matches tx.number (1–99), so string 'A'/'B'/'C' never fired
@@ -8494,6 +8496,7 @@ class Game {
       const touch = () => this._invalidateWindZones();
       return [
         { label: 'Direction: ' + c.dir, act: () => { const cc = cfg(); cc.dir = DIRS[(DIRS.indexOf(cc.dir) + 1) % DIRS.length]; touch(); } },
+        { label: 'Style: ' + (STYLE_LABEL[c.style] || 'Chevrons'), act: () => { const cc = cfg(); cc.style = STYLES[(STYLES.indexOf(cc.style || 'chevron') + 1) % STYLES.length]; touch(); } },
         { label: 'Strength: ' + (c.strength).toFixed(1), act: () => { const cc = cfg(); const i = STR.findIndex(v => v >= cc.strength); cc.strength = STR[(i + 1) % STR.length]; touch(); } },
         { label: 'Wall Thickness: ' + c.thickness, act: () => { const cc = cfg(); const i = THK.indexOf(cc.thickness); cc.thickness = THK[(i + 1) % THK.length]; touch(); } },
         { label: 'Redstone: ' + (c.channel == null ? 'Always On' : 'Channel ' + c.channel), act: () => { const cc = cfg(); const i = CH.indexOf(cc.channel); cc.channel = CH[(i + 1) % CH.length]; touch(); } },
@@ -18435,7 +18438,7 @@ class Game {
   // Per-block config for the WIND_ZONE group whose anchor (top-left cell) is (r,c). Stored in _windCfg.
   _windCfgAt(r, c) {
     const d = this._windCfg && this._windCfg.get(r + ',' + c);
-    return d || { dir: 'right', strength: 0.6, thickness: 2, channel: null, affectsGrounded: false };
+    return d || { dir: 'right', style: 'chevron', strength: 0.6, thickness: 2, channel: null, affectsGrounded: false };
   }
   // Flood-fill each connected WIND_ZONE group, compute its bounding box + the wall-shadow set + resolve
   // its config (keyed by the group's anchor = min row then min col). Rebuilt lazily; invalidated on edit.
@@ -18464,8 +18467,8 @@ class Game {
       // only when no wind cell anywhere was configured.
       let cfg = (this._windCfg && this._windCfg.get(minR + ',' + minC)) || null;
       if (!cfg && this._windCfg && this._windCfg.size) cfg = this._windCfg.values().next().value;
-      if (!cfg) cfg = { dir: 'right', strength: 0.6, thickness: 2, channel: null, affectsGrounded: false };
-      for (const g of grp) this._windDirMap[g.row + ',' + g.col] = cfg.dir;
+      if (!cfg) cfg = { dir: 'right', style: 'chevron', strength: 0.6, thickness: 2, channel: null, affectsGrounded: false };
+      for (const g of grp) this._windDirMap[g.row + ',' + g.col] = { dir: cfg.dir, style: cfg.style || 'chevron', strength: cfg.strength || 0.6 };   // §Wind Style (flow speed scales with strength)
       // Bounding box cells for the wall-shadow calc (a wall = solid cells inside the box). §F4 — expand
       // the box by a margin so a FULL-HEIGHT wall that splits a zone into two groups is captured (it sits
       // just outside a group's tight bbox); then the downwind group falls in the wall's shadow = calm.

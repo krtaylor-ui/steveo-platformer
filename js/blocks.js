@@ -377,7 +377,7 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.ANCHOR_BLOCK:           _drawAnchorBlock(ctx, px, py, s);               break;
     case BLOCK.DIRECTION_CONTROLLER:   _drawDirectionController(ctx, px, py, s);       break;
     case BLOCK.SPEED_SEGMENT:          _drawSpeedSegment(ctx, px, py, s);              break;
-    case BLOCK.WIND_ZONE:              _drawWindZone(ctx, px, py, s, state.windDir || 'right', state.frame || 0); break;
+    case BLOCK.WIND_ZONE:              _drawWindZone(ctx, px, py, s, state.windDir || 'right', state.frame || 0, state.windStyle || 'chevron', state.col || 0, state.row || 0, state.windStrength || 0.6); break;
     case BLOCK.GRAVITY_ZONE:           _drawGravityZone(ctx, px, py, s, state.frame || 0); break;
     case BLOCK.CHECKPOINT:             _drawCheckpoint(ctx, px, py, s, state.cpReached); break;
     case BLOCK.LAUNCH_RAMP:            _drawLaunchRamp(ctx, px, py, s);                break;
@@ -1815,20 +1815,58 @@ function _drawSlime(ctx, px, py, s, compress = 0) {
   ctx.fillStyle = 'rgba(60,150,80,0.9)'; ctx.fillRect(px + 9, py + 9 + dip, s - 18, s - 18 - dip);   // inner core
   ctx.fillStyle = 'rgba(200,255,210,0.5)'; ctx.fillRect(px + 4, py + 4 + dip, 5, 5);                 // highlight
 }
-// §E7 Wind Zone — a translucent cyan cell with animated chevrons streaming in the wind direction.
-function _drawWindZone(ctx, px, py, s, dir = 'right', frame = 0) {
+// §E7 Wind Zone — a translucent cyan cell with an animated wind pattern streaming DOWNWIND. Three styles
+// (Kevin's pick): 'chevron' (arrow marks), 'stream' (flowing curved lines), 'speed' (dashed speed lines).
+// The pattern is computed in ABSOLUTE world coordinates (col/row give the cell's world origin) so it tiles
+// seamlessly across every block — each cell just draws its clipped slice of one continuous field. The
+// pattern moves in the wind direction (downwind). speed/strength come from the zone's own settings (the
+// engine passes them via `frame`-scaled flow; density scales with strength upstream).
+function _drawWindZone(ctx, px, py, s, dir = 'right', frame = 0, style = 'chevron', col = 0, row = 0, strength = 0.6) {
   const V = { right: [1, 0], left: [-1, 0], up: [0, -1], down: [0, 1], upright: [1, -1], upleft: [-1, -1], downright: [1, 1], downleft: [-1, 1] }[dir] || [1, 0];
-  const len = Math.hypot(V[0], V[1]) || 1, ux = V[0] / len, uy = V[1] / len;
+  const len = Math.hypot(V[0], V[1]) || 1, ux = V[0] / len, uy = V[1] / len;   // along-wind unit
+  const pxu = -uy, pyu = ux;                                                    // across-wind unit
   ctx.save();
-  ctx.fillStyle = 'rgba(120,200,235,0.14)'; ctx.fillRect(px, py, s, s);
-  const cx = px + s / 2, cy = py + s / 2, ang = Math.atan2(uy, ux);
-  ctx.translate(cx, cy); ctx.rotate(ang);
-  ctx.strokeStyle = 'rgba(180,225,245,0.7)'; ctx.lineWidth = Math.max(1.4, s * 0.06); ctx.lineCap = 'round';
-  const flow = ((frame || 0) * 0.6) % (s * 0.5);
-  for (let i = -1; i < 2; i++) {
-    const x = -s * 0.28 + i * (s * 0.28) + flow;
-    const h = s * 0.16;
-    ctx.beginPath(); ctx.moveTo(x - h, -h); ctx.lineTo(x, 0); ctx.lineTo(x - h, h); ctx.stroke();   // chevron '>'
+  ctx.fillStyle = 'rgba(120,200,235,0.13)'; ctx.fillRect(px, py, s, s);
+  ctx.beginPath(); ctx.rect(px, py, s, s); ctx.clip();
+  ctx.translate(px - col * s, py - row * s);   // draw in absolute world coords; clip keeps it in this cell
+  ctx.strokeStyle = 'rgba(185,228,246,0.72)'; ctx.lineCap = 'round';
+  const wx0 = col * s, wy0 = row * s, ccx = wx0 + s / 2, ccy = wy0 + s / 2;
+  const acc = ccx * ux + ccy * uy, kcc = ccx * pxu + ccy * pyu;   // cell centre in (along, across)
+  const R = s * 0.85;                                             // half-extent to cover the cell any dir
+  const pitch = s * 0.42;                                         // lane spacing
+  const flow = (frame || 0) * (s * 0.02) * (0.5 + (strength || 0.6));   // downwind scroll — faster in a stronger wind
+  const kLo = Math.floor((kcc - R) / pitch), kHi = Math.ceil((kcc + R) / pitch);
+  const P = (a, across) => [a * ux + across * pxu, a * uy + across * pyu];      // (along,across)->world
+  for (let k = kLo; k <= kHi; k++) {
+    const across = k * pitch;
+    if (style === 'stream') {
+      ctx.lineWidth = Math.max(1.3, s * 0.05);
+      ctx.beginPath(); let first = true;
+      for (let a = acc - R; a <= acc + R; a += 3) {
+        const w = s * 0.11 * Math.sin(a * 0.09 - flow * 0.12 + k * 0.7);
+        const [x, y] = P(a - flow * 0, across + w);
+        if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    } else if (style === 'speed') {
+      ctx.lineWidth = Math.max(1.6, s * 0.06);
+      const dash = s * 0.4, gap = s * 0.34;
+      ctx.setLineDash([dash, gap]);
+      ctx.lineDashOffset = -flow * 1.6;   // NEGATIVE = scroll dashes DOWNWIND (the Kevin fix)
+      const [x0, y0] = P(acc - R, across), [x1, y1] = P(acc + R, across);
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      ctx.setLineDash([]);
+    } else {   // chevron
+      ctx.lineWidth = Math.max(1.6, s * 0.07);
+      const step = s * 0.5, h = s * 0.14;
+      const start = acc - R + (((flow % step) + step) % step);
+      for (let a = start; a <= acc + R; a += step) {
+        const [tipX, tipY] = P(a, across);
+        const [bx, by] = P(a - h, across - h * 0.9);   // one wing
+        const [cx2, cy2] = P(a - h, across + h * 0.9); // other wing
+        ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(tipX, tipY); ctx.lineTo(cx2, cy2); ctx.stroke();
+      }
+    }
   }
   ctx.restore();
 }
