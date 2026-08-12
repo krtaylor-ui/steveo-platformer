@@ -1,3 +1,29 @@
+## CURRENT STATE (2026-08-12) — TRANCHE 2 + Creative-Tools Phase A/B SHIPPED to `main` @ build 490 (merged + pushed + deploying)
+
+**MERGED to `main` (commit 14b7ec9) + pushed — Railway auto-deploys. Builds 478-490. Suite green.**
+Tester-verified clean end-to-end (`reports/tranche2-490-final-2026-08-12.md`). `speedrunner-phase3` is now
+merged; back to working on `main`. Shipped:
+- **Tranche 2 (8):** Wind Style picker, per-level Achievements (Epic D), Beat Grid (Epic MB), SR Practice
+  Mode (CK3), Create-World cleanup + post-create description (Epic C), per-player custom characters
+  (Phase 3 engine), community SR play (A3), modal dark unification (Epic UI).
+- **Creative-Tools Phase A:** level music — catalog Song picker + auto-BPM (`js/bpm-detect.js`, 6 tests) +
+  loops during the SR run. Catalog-only (no per-level upload).
+- **Creative-Tools Phase B:** line-stick render mode + **Stick** / **Stick (Skirt)** characters (both
+  engines, same hitbox). Cornerstone asset for roadmap Phases D/F.
+- **All tester defects closed:** T2-1..T2-6, T3-1 (SR achievement fire — `_srTriggerWin` now calls
+  `_fireAchievements` + resets stats per GO), T3-2 (Custom Rules contrast).
+
+**New server routes live:** `POST /api/worlds/sandbox/:id/description`, `GET /api/community/worlds/:id/play`.
+**Residual cosmetics (NOT this tranche — future):** the shared "Start Match" indigo primary button at
+3.66:1 (app-wide, pre-existing), and the Platformer PRE-GAME window still a light card not the dark shell.
+**Live-render follow-up:** two customs SIDE-BY-SIDE in a real 2P match still needs the per-player selection
+wiring (483 shipped the engine capability only). **Roadmap:** `docs/CREATIVE_TOOLS_ROADMAP.md` (ladder
+Rungs 0-4, Part/Frame Studio, enemy templates, Movement Editor) + `FUTURE_ROADMAP.md` §13/§14
+(progression-gated creator features). NEXT candidates: the Creative-Tools studio phases (C→E1→D→F→E2→G),
+or the residual cosmetics.
+
+---
+
 ## CURRENT STATE (2026-08-12) — TRANCHE 2 tester fixes + Creative-Tools Phase A/B; branch `speedrunner-phase3` @ build 488, PUSHED, NOT merged
 
 **Builds 486-488 on `speedrunner-phase3`, pushed, NOT merged, suite green.** After the Tranche 2 tester
