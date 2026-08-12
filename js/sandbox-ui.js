@@ -504,6 +504,7 @@ const SANDBOX = {
           ${this._charSelect(w)}
           <button class="btn btn-primary edit-world-btn" data-world-id="${this._esc(w.id)}">Edit</button>
           <button class="btn btn-secondary rename-world-btn" data-world-id="${this._esc(w.id)}">Rename</button>
+          <button class="btn btn-secondary desc-world-btn" data-world-id="${this._esc(w.id)}" title="Edit the storefront description">Info</button>
           <button class="btn btn-secondary copy-world-btn" data-world-id="${this._esc(w.id)}">Copy</button>
           ${(typeof WORLD_TRANSFER !== 'undefined' && WORLD_TRANSFER.exportHidden(w.world_data)) ? '' : `<button class="btn btn-secondary export-world-btn" data-world-id="${this._esc(w.id)}" title="Download this world as a .json file">Export</button>`}
           <button class="btn btn-danger delete-world-btn" data-world-id="${this._esc(w.id)}">Delete</button>
@@ -518,6 +519,8 @@ const SANDBOX = {
       btn.addEventListener('click', (e) => this.editWorld(e.currentTarget.dataset.worldId)));
     list.querySelectorAll('.rename-world-btn').forEach(btn =>
       btn.addEventListener('click', (e) => this.renameWorld(e.currentTarget.dataset.worldId)));
+    list.querySelectorAll('.desc-world-btn').forEach(btn =>
+      btn.addEventListener('click', (e) => this.editDescription(e.currentTarget.dataset.worldId)));
     list.querySelectorAll('.copy-world-btn').forEach(btn =>
       btn.addEventListener('click', (e) => this.copyWorld(e.currentTarget.dataset.worldId)));
     list.querySelectorAll('.export-world-btn').forEach(btn =>
@@ -727,6 +730,40 @@ const SANDBOX = {
     }
   },
 
+  // §Epic C — edit a world's storefront description after creation (the create-time field was the only
+  // way to set it before). Local worlds update in place; cloud worlds hit the lightweight /description route.
+  async editDescription(worldId) {
+    const w = this.worlds.find(x => x.id === worldId) ||
+      (this._isLocalWorld(worldId) ? LOCAL_WORLDS.get(worldId) : null);
+    const current = (w && w.description) || '';
+    const input = await DIALOG.prompt('Description (shown in the storefront):', { title: 'Edit description', value: current, multiline: true });
+    if (input == null) return;                 // cancelled
+    const desc = input.trim();
+    if (desc === current) return;
+    if (typeof MODERATION !== 'undefined') {
+      const mod = MODERATION.check(desc, 'description');
+      if (!mod.ok) { await DIALOG.alert(mod.reason, { title: 'Description not allowed' }); return; }
+    }
+    if (this._isLocalWorld(worldId)) {
+      if (LOCAL_WORLDS.update) LOCAL_WORLDS.update(worldId, { description: desc });
+      const c = this.worlds.find(x => x.id === worldId); if (c) c.description = desc;
+      this.loadWorlds();
+      return;
+    }
+    try {
+      const res = await AUTH.authedFetch(`/api/worlds/sandbox/${worldId}/description`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: desc }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); await DIALOG.alert(d.error || 'Failed to update description', { title: 'Error' }); return; }
+      const c = this.worlds.find(x => x.id === worldId); if (c) c.description = desc;
+      this.loadWorlds();
+    } catch (error) {
+      console.error('Description edit error:', error);
+      await DIALOG.alert('Failed to update description', { title: 'Error' });
+    }
+  },
+
   updatePagination(page, totalPages) {
     const tp = Math.max(totalPages, 1);
     document.getElementById('page-info').textContent = `Page ${page + 1} of ${tp}`;
@@ -756,6 +793,15 @@ const SANDBOX = {
     const worldWidth = parseInt(document.getElementById('world-width-input').value, 10);
     const worldHeight = parseInt(document.getElementById('world-height-input').value, 10);
     const gameModeDefault = document.getElementById('game-mode-default-input').value;
+
+    // §Epic C — Overhead folds into this one Create World door: delegate to the overhead editor's own
+    // new-world setup (grid size + density live there). Name/description from this form are optional here.
+    if (gameModeDefault === 'OVH') {
+      this.hideCreateWorldModal();
+      if (typeof OH_EDITOR !== 'undefined' && OH_EDITOR.open) OH_EDITOR.open();
+      else await DIALOG.alert('Overhead editor unavailable', { title: 'Error' });
+      return;
+    }
 
     if (!name) { alert('World name required'); return; }
     // §B6 appropriateness filter — client-side on the world name + description (covers offline/local
@@ -1188,14 +1234,22 @@ const SANDBOX = {
   },
 
   // Arena worlds are a fixed 25×15; lock the dimension inputs when ARN is selected.
+  // §Epic C — Overhead is now a mode here too; it delegates to the overhead editor's own new-world
+  // setup (grid size + density), so we hide the side-scroll size fields and show a short note.
   _applyModeDimLock(mode) {
     const arena = mode === 'ARN';
+    const overhead = mode === 'OVH';
     const opts  = document.getElementById('create-arena-options');
     const note  = document.getElementById('game-mode-default-note');
+    const sizeRow = document.getElementById('create-size-row');
     if (opts) opts.style.display = arena ? 'block' : 'none';
+    if (sizeRow) sizeRow.style.display = overhead ? 'none' : (sizeRow.style.display || 'flex');
     if (note) note.textContent = arena
       ? 'Arena: choose Single-Screen (size preset) or Scrolling (free size).'
+      : overhead
+      ? 'Overhead (top-down): Create opens the overhead editor to pick grid size + density.'
       : 'What mode should this world open in by default?';
+    if (overhead) return;   // skip the side-scroll size re-enable + arena vis for overhead
     // Re-enable the manual size inputs (a prior arena selection may have hidden them).
     const w = document.getElementById('world-width-input');
     const h = document.getElementById('world-height-input');

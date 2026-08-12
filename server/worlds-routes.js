@@ -558,6 +558,29 @@ module.exports = function setupWorldsRoutes(app) {
     }
   });
 
+  // ── §Epic C — lightweight description edit (post-create). Mirrors /name; used by the "Edit info"
+  //    card affordance so a creator can add/update the storefront blurb without opening the editor.
+  app.post('/api/worlds/sandbox/:worldId/description', verifyToken, async (req, res) => {
+    try {
+      const desc = (typeof req.body.description === 'string') ? req.body.description : '';
+      const mod = MODERATION.check(desc, 'description');
+      if (!mod.ok) return res.status(400).json({ error: mod.reason });
+      const { data: world, error } = await supabaseAdmin
+        .from('worlds')
+        .update({ description: desc.trim(), updated_at: new Date().toISOString() })
+        .eq('id', req.params.worldId)
+        .eq('creator_id', req.user.id)
+        .select()
+        .single();
+      if (error) throw error;
+      if (!world) return res.status(404).json({ error: 'World not found' });
+      res.json({ message: 'Description updated', world });
+    } catch (error) {
+      console.error('Description edit error:', error);
+      res.status(500).json({ error: 'Failed to update description' });
+    }
+  });
+
   // ── §B2 — record a play (Most-Played / Trending). No auth: any launch counts. Read-modify-write is
   //    fine for a play counter (a lost race just misses one increment). Needs speedrunner.sql (play_count).
   app.post('/api/worlds/:worldId/played', async (req, res) => {

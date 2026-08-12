@@ -82,6 +82,13 @@ const LOCAL_WORLDS = {
     return this._persist(map);
   },
 
+  // §Epic C — patch top-level card fields (e.g. description) on a local world.
+  update(id, patch) {
+    const map = this._all(); const w = map[id]; if (!w || !patch) return false;
+    Object.assign(w, patch);
+    return this._persist(map);
+  },
+
   // §Custom Sprites — persist the world's chosen character on a local (lw-) world.
   // Without this the Sandbox card's fallback path silently no-op'd: get() returns a
   // detached copy of localStorage (mutating it persists nothing) and save() with no
