@@ -92,3 +92,26 @@ applied (rating_avg backfill+trigger, downloadable backfill, 10 seed tags).
 Regression watch: re-confirm the earlier passes still hold (publish gate, thumbnail
 capture, download/provenance immutability, sorts, creator profile, Picks).
 ================================================================================
+
+
+================================================================================
+RE-CHECK ROUND 2 (build 477 + 10 system_tags seeded)
+================================================================================
+Pull 477, restart node server.js. system_tags now has 10 rows (verified count=10).
+
+[T1-3 — LB re-key, real fix] launch a Speed Runner game from a GAME SLOT bound to a
+  cloud world (this is the path that was broken; game-play.js now passes
+  record.world_id). Expect game._launchWorldId = the world's UUID and game._sr.levelId
+  = that UUID (NOT "sr_unsaved_testworld" or author:worldName). The earlier SR-select-
+  screen launcher was also patched.
+
+[T1-2 — Favorite in LIGHT] measure contrast in DEFAULT/system-light theme:
+  - Download (solid dark indigo #33499e on the card) → white text ≥ 4.5:1.
+  - Favorite (dark text on the light pill) → ≥ 4.5:1; light text only appears in real
+    dark / retro (retro/dark already passed at 9.28:1 last round).
+
+[Tags — now testable] the "All tags" dropdown lists 10 (#parkour, #puzzle, …). Set a
+  world's tags via POST /api/worlds/:id/tags with curated names → they stick; passing a
+  NON-curated tag now returns a `rejected` list + note (no silent vanish). Filter the
+  grid by a tag → only tagged worlds show.
+================================================================================
