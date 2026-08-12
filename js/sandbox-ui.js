@@ -31,7 +31,7 @@ const SANDBOX = {
   _applyModeUI() {
     const local = (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal());
     const games = document.getElementById('import-games-btn');
-    if (games) games.style.display = local ? 'none' : '';   // cloud games = online only
+    if (games) games.style.display = 'none';   // §C5/F2 — "Import from Games" removed entirely (was re-shown online)
     const file = document.getElementById('import-file-btn');
     if (file) file.style.display = '';                        // file import works offline too
   },
@@ -191,6 +191,11 @@ const SANDBOX = {
 
   // ── Load + render worlds ───────────────────────────────────────
   async loadWorlds() {
+    // §Phase 3 — cache the account roster once so the card Character dropdown can offer saved characters.
+    if (this._roster == null && typeof USER_CHARACTERS !== 'undefined') {
+      this._roster = [];
+      USER_CHARACTERS.list().then((r) => { this._roster = r || []; try { this.renderWorlds(this.worlds); } catch (_) {} });
+    }
     if (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal()) {
       const data = LOCAL_WORLDS.list({ page: this.currentPage, filter: this.currentFilter, sort: this.currentSort });
       this.worlds = data.worlds;
@@ -335,6 +340,22 @@ const SANDBOX = {
     return g.sandbox.selectItem(nameOrId, kind);
   },
 
+  // §B1 — capture a small JPEG thumbnail from the live game canvas and store it on the world (best-effort,
+  // creator-only, size-capped server-side). Runs on publish, when the editor canvas shows the world.
+  async captureThumbnail(worldId) {
+    try {
+      const src = document.getElementById('gameCanvas'); if (!src || !worldId) return;
+      const W = 256, H = 144;
+      const off = document.createElement('canvas'); off.width = W; off.height = H;
+      off.getContext('2d').drawImage(src, 0, 0, W, H);
+      const uri = off.toDataURL('image/jpeg', 0.55);
+      if (uri.length > 190000 || typeof AUTH === 'undefined' || !AUTH.authedFetch) return;
+      await AUTH.authedFetch('/api/worlds/' + encodeURIComponent(worldId) + '/thumbnail', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ thumbnail: uri }),
+      });
+    } catch (e) { /* thumbnails are best-effort */ }
+  },
+
   // QA seam — cycle a placed SPIKES block's orientation exactly as a right-click does (E12). Tester-
   // friendly (col,row) order; the engine uses (row,col). Returns the new orientation, or 'removed' when
   // the terminal step deletes the spike. Read game._spikeDirMap / game._spikeDirAt(r,c) to confirm.
@@ -367,13 +388,31 @@ const SANDBOX = {
     return (g && typeof g._boosterCfgAt === 'function') ? g._boosterCfgAt(row, col) : null;
   },
 
+  // QA seam — set a WIND_ZONE group's config (E7). cfg = { dir, strength, thickness, channel, affectsGrounded }.
+  // Keys by the group's anchor (like the popup), invalidates the zone cache. Returns the stored config.
+  setWindConfig(col, row, cfg) {
+    const g = (typeof window !== 'undefined') ? window.game : null;
+    if (!g || typeof g._windAnchorAt !== 'function') { console.warn('setWindConfig: open a Sandbox world first.'); return null; }
+    const key = g._windAnchorAt(row, col);
+    g._windCfg = g._windCfg || new Map();
+    const c = Object.assign({ dir: 'right', style: 'chevron', strength: 0.6, thickness: 2, channel: null, affectsGrounded: false }, cfg || {});
+    g._windCfg.set(key, c);
+    if (g._invalidateWindZones) g._invalidateWindZones();
+    return c;
+  },
+  getWindConfig(col, row) {
+    const g = (typeof window !== 'undefined') ? window.game : null;
+    return (g && typeof g._windAnchorAt === 'function') ? g._windCfgAt.apply(g, g._windAnchorAt(row, col).split(',').map(Number)) : null;
+  },
+
   // Scriptable publish/unpublish for a specific world id (A1 cap test). Exercises the real
   // POST /api/worlds/sandbox/:id/publish route (server enforces the 20-world cap). Returns the parsed
   // response, or { error } on failure. Logged-in cloud worlds only.
   async publishWorld(worldId, isPublished = true) {
     try {
       const res = await AUTH.authedFetch(`/api/worlds/sandbox/${encodeURIComponent(worldId)}/publish`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isPublished }),
+        // §T1 seam-2 — send downloadable like the UI does, so the seam and the button behave identically.
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isPublished, downloadable: isPublished }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) return { error: body.error || `HTTP ${res.status}`, status: res.status };
@@ -394,10 +433,15 @@ const SANDBOX = {
     const builtins = CHARACTERS.list().map((c) => `<option value="${this._esc(c.id)}"${c.id === cur ? ' selected' : ''}>${this._esc(c.name)}</option>`).join('');
     const customOpt = isCustom ? `<option value="custom" selected>★ ${this._esc(customName)}</option>` : '';
     const buildOpt = `<option value="__build__">🎨 ${isCustom ? 'Edit Custom…' : 'Custom…'}</option>`;
+    // §Phase 3 — the account roster (saved characters) as a pickable group; choosing one applies its mix.
+    const roster = (this._roster || []);
+    const rosterOpts = roster.length
+      ? `<optgroup label="My Characters">${roster.map((rc) => `<option value="roster:${this._esc(rc.id)}">🗂 ${this._esc(rc.name || 'Character')}</option>`).join('')}</optgroup>`
+      : '';
     return `
           <label class="mode-select-label">Character:
             <select class="char-select" data-world-id="${this._esc(w.id)}">
-              ${builtins}${customOpt}${buildOpt}
+              ${builtins}${customOpt}${rosterOpts}${buildOpt}
             </select>
           </label>`;
   },
@@ -460,6 +504,7 @@ const SANDBOX = {
           ${this._charSelect(w)}
           <button class="btn btn-primary edit-world-btn" data-world-id="${this._esc(w.id)}">Edit</button>
           <button class="btn btn-secondary rename-world-btn" data-world-id="${this._esc(w.id)}">Rename</button>
+          <button class="btn btn-secondary desc-world-btn" data-world-id="${this._esc(w.id)}" title="Edit the storefront description">Info</button>
           <button class="btn btn-secondary copy-world-btn" data-world-id="${this._esc(w.id)}">Copy</button>
           ${(typeof WORLD_TRANSFER !== 'undefined' && WORLD_TRANSFER.exportHidden(w.world_data)) ? '' : `<button class="btn btn-secondary export-world-btn" data-world-id="${this._esc(w.id)}" title="Download this world as a .json file">Export</button>`}
           <button class="btn btn-danger delete-world-btn" data-world-id="${this._esc(w.id)}">Delete</button>
@@ -474,6 +519,8 @@ const SANDBOX = {
       btn.addEventListener('click', (e) => this.editWorld(e.currentTarget.dataset.worldId)));
     list.querySelectorAll('.rename-world-btn').forEach(btn =>
       btn.addEventListener('click', (e) => this.renameWorld(e.currentTarget.dataset.worldId)));
+    list.querySelectorAll('.desc-world-btn').forEach(btn =>
+      btn.addEventListener('click', (e) => this.editDescription(e.currentTarget.dataset.worldId)));
     list.querySelectorAll('.copy-world-btn').forEach(btn =>
       btn.addEventListener('click', (e) => this.copyWorld(e.currentTarget.dataset.worldId)));
     list.querySelectorAll('.export-world-btn').forEach(btn =>
@@ -494,6 +541,12 @@ const SANDBOX = {
           const w = (this.worlds || []).find((x) => x.id === wid);
           e.currentTarget.value = (w && w.world_data && w.world_data.characterId) || 'classic';
           this._openCharacterBuilder(wid);
+          return;
+        }
+        if (val.indexOf('roster:') === 0) {
+          // §Phase 3 — apply a saved roster character to this world (as its custom mix).
+          const rc = (this._roster || []).find((x) => String(x.id) === val.slice(7));
+          if (rc && rc.definition) this.saveCustomCharacter(wid, rc.definition).then(() => { try { this.renderWorlds(this.worlds); } catch (_) {} });
           return;
         }
         this.changeWorldCharacter(wid, val);
@@ -677,6 +730,40 @@ const SANDBOX = {
     }
   },
 
+  // §Epic C — edit a world's storefront description after creation (the create-time field was the only
+  // way to set it before). Local worlds update in place; cloud worlds hit the lightweight /description route.
+  async editDescription(worldId) {
+    const w = this.worlds.find(x => x.id === worldId) ||
+      (this._isLocalWorld(worldId) ? LOCAL_WORLDS.get(worldId) : null);
+    const current = (w && w.description) || '';
+    const input = await DIALOG.prompt('Description (shown in the storefront):', { title: 'Edit description', value: current, multiline: true });
+    if (input == null) return;                 // cancelled
+    const desc = input.trim();
+    if (desc === current) return;
+    if (typeof MODERATION !== 'undefined') {
+      const mod = MODERATION.check(desc, 'description');
+      if (!mod.ok) { await DIALOG.alert(mod.reason, { title: 'Description not allowed' }); return; }
+    }
+    if (this._isLocalWorld(worldId)) {
+      if (LOCAL_WORLDS.update) LOCAL_WORLDS.update(worldId, { description: desc });
+      const c = this.worlds.find(x => x.id === worldId); if (c) c.description = desc;
+      this.loadWorlds();
+      return;
+    }
+    try {
+      const res = await AUTH.authedFetch(`/api/worlds/sandbox/${worldId}/description`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: desc }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); await DIALOG.alert(d.error || 'Failed to update description', { title: 'Error' }); return; }
+      const c = this.worlds.find(x => x.id === worldId); if (c) c.description = desc;
+      this.loadWorlds();
+    } catch (error) {
+      console.error('Description edit error:', error);
+      await DIALOG.alert('Failed to update description', { title: 'Error' });
+    }
+  },
+
   updatePagination(page, totalPages) {
     const tp = Math.max(totalPages, 1);
     document.getElementById('page-info').textContent = `Page ${page + 1} of ${tp}`;
@@ -706,6 +793,15 @@ const SANDBOX = {
     const worldWidth = parseInt(document.getElementById('world-width-input').value, 10);
     const worldHeight = parseInt(document.getElementById('world-height-input').value, 10);
     const gameModeDefault = document.getElementById('game-mode-default-input').value;
+
+    // §Epic C — Overhead folds into this one Create World door: delegate to the overhead editor's own
+    // new-world setup (grid size + density live there). Name/description from this form are optional here.
+    if (gameModeDefault === 'OVH') {
+      this.hideCreateWorldModal();
+      if (typeof OH_EDITOR !== 'undefined' && OH_EDITOR.open) OH_EDITOR.open();
+      else await DIALOG.alert('Overhead editor unavailable', { title: 'Error' });
+      return;
+    }
 
     if (!name) { alert('World name required'); return; }
     // §B6 appropriateness filter — client-side on the world name + description (covers offline/local
@@ -808,6 +904,179 @@ const SANDBOX = {
     document.addEventListener('keydown', onKey);
     const cancel = wrap.querySelector('#sb-confirm-cancel'); if (cancel && cancel.focus) cancel.focus();
     return wrap;
+  },
+
+  // ── §Epic D — Level Challenges (per-level achievements) editor ──
+  // Up to 3 goals stored on world_data.worldAdvSettings.achievements[]; evaluated by
+  // ACHIEVEMENT_EVAL on level completion. Migration-free (rides the world save).
+  editAchievements(g) {
+    g = g || window.game; if (!g) return;
+    const aws = g._worldAdvSettings || (g._worldAdvSettings = {});
+    if (!Array.isArray(aws.achievements)) aws.achievements = [];
+    const defs = aws.achievements.slice(0, 3);
+    while (defs.length < 3) defs.push({ type: 'none' });
+    const TYPES = [
+      ['none', 'None'], ['collect', 'Collect N coins'], ['defeat', 'Defeat N enemies'],
+      ['time', 'Finish under Ns'], ['nojump', 'Few jumps'], ['nodamage', 'No hazard damage'],
+    ];
+    const old = document.getElementById('sb-ach-modal'); if (old && old.remove) old.remove();
+    const wrap = document.createElement('div'); wrap.id = 'sb-ach-modal';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:9500;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)';
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const row = (d, i) => {
+      const sel = TYPES.map(([v, l]) => `<option value="${v}"${v === d.type ? ' selected' : ''}>${l}</option>`).join('');
+      return `<div class="sb-ach-row" data-i="${i}" style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+        <span style="width:16px;color:#7f8db0">${i + 1}</span>
+        <select class="sb-ach-type" style="flex:1;background:#111826;color:#dfe7f5;border:1px solid #46557a;border-radius:6px;padding:5px">${sel}</select>
+        <span class="sb-ach-params" style="display:flex;gap:4px;align-items:center;min-width:120px"></span>
+      </div>`;
+    };
+    wrap.innerHTML = `<div role="dialog" aria-modal="true" style="background:#1a2233;border:1px solid #46557a;border-radius:12px;padding:18px 20px;max-width:440px;width:92%;box-shadow:0 8px 30px rgba(0,0,0,.6);color:#dfe7f5">
+      <div style="font-weight:600;font-size:15px;margin-bottom:4px">🏆 Level Challenges</div>
+      <div style="color:#b6c2da;font:12px sans-serif;margin-bottom:14px">Up to 3 goals players earn by clearing this level. They fire on completion.</div>
+      <div id="sb-ach-rows">${defs.map(row).join('')}</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+        <button id="sb-ach-cancel" style="background:#2b3548;border:1px solid #46557a;color:#fff;border-radius:7px;padding:8px 14px;cursor:pointer;font:14px sans-serif">Cancel</button>
+        <button id="sb-ach-save" style="background:#2f6f4f;border:1px solid #46557a;color:#fff;border-radius:7px;padding:8px 14px;cursor:pointer;font:14px sans-serif">Save</button>
+      </div></div>`;
+    document.body.appendChild(wrap);
+    const numIn = (cls, val, min, max, w) => `<input type="number" class="${cls}" value="${esc(val)}" min="${min}" max="${max}" style="width:${w || 56}px;background:#111826;color:#dfe7f5;border:1px solid #46557a;border-radius:6px;padding:5px">`;
+    const renderParams = (rowEl, d) => {
+      const box = rowEl.querySelector('.sb-ach-params');
+      if (d.type === 'collect') box.innerHTML = numIn('sb-ach-count', d.count || 5, 1, 999) + '<span style="color:#7f8db0;font:12px sans-serif">coins</span>';
+      else if (d.type === 'defeat') box.innerHTML = numIn('sb-ach-count', d.count || 3, 1, 999) + '<span style="color:#7f8db0;font:12px sans-serif">enemies</span>';
+      else if (d.type === 'time') box.innerHTML = numIn('sb-ach-seconds', d.seconds || 60, 1, 9999) + '<span style="color:#7f8db0;font:12px sans-serif">sec</span>';
+      else if (d.type === 'nojump') box.innerHTML = numIn('sb-ach-max', d.max || 5, 0, 999) + '<span style="color:#7f8db0;font:12px sans-serif">jumps</span>';
+      else box.innerHTML = '<span style="color:#7f8db0;font:12px sans-serif">' + (d.type === 'nodamage' ? '—' : '') + '</span>';
+    };
+    const state = defs.map((d) => Object.assign({}, d));
+    wrap.querySelectorAll('.sb-ach-row').forEach((rowEl, i) => {
+      renderParams(rowEl, state[i]);
+      rowEl.querySelector('.sb-ach-type').onchange = (e) => { state[i].type = e.target.value; renderParams(rowEl, state[i]); };
+    });
+    const close = () => { if (wrap.remove) wrap.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    wrap.querySelector('#sb-ach-cancel').onclick = close;
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+    document.addEventListener('keydown', onKey);
+    wrap.querySelector('#sb-ach-save').onclick = () => {
+      const out = [];
+      wrap.querySelectorAll('.sb-ach-row').forEach((rowEl, i) => {
+        const t = rowEl.querySelector('.sb-ach-type').value;
+        if (t === 'none') return;
+        const d = { type: t };
+        const gv = (cls) => { const el = rowEl.querySelector('.' + cls); return el ? Math.round(+el.value) : 0; };
+        if (t === 'collect') { d.count = gv('sb-ach-count'); d.item = 'coin'; }
+        else if (t === 'defeat') d.count = gv('sb-ach-count');
+        else if (t === 'time') d.seconds = gv('sb-ach-seconds');
+        else if (t === 'nojump') d.max = gv('sb-ach-max');
+        out.push(d);
+      });
+      aws.achievements = out;
+      close();
+      const msg = out.length ? (out.length + ' challenge' + (out.length > 1 ? 's' : '') + ' set — remember to Save your world') : 'Challenges cleared';
+      const t = document.createElement('div');
+      t.textContent = msg;
+      t.style.cssText = 'position:fixed;left:50%;bottom:32px;transform:translateX(-50%);z-index:9600;background:#2f6f4f;color:#fff;border:1px solid #46557a;border-radius:8px;padding:9px 16px;font:13px sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.5)';
+      document.body.appendChild(t);
+      setTimeout(() => { if (t.remove) t.remove(); }, 2600);
+    };
+  },
+
+  // ── §Epic MB — Beat Grid editor (tap-tempo / BPM) ──────────────
+  // Stores { enabled, bpm, offsetMs } on worldAdvSettings.beatGrid; the sandbox editor overlays
+  // beat lines (game._drawBeatGridOverlay). Tap-tempo uses BEAT_GRID.tapTempo (pure core).
+  editBeatGrid(g) {
+    g = g || window.game; if (!g) return;
+    const aws = g._worldAdvSettings || (g._worldAdvSettings = {});
+    const bg = Object.assign({ enabled: false, bpm: 120, offsetMs: 0 }, aws.beatGrid || {});
+    // §Phase A — the level's music track (from the shared MUSIC_DISCS catalog); plays during the run and is
+    // the source the "Detect beat" button analyzes. Background tracks only.
+    const curSong = aws.levelMusicId || '';
+    let songOpts = '<option value="">None (silent)</option>';
+    if (typeof MUSIC_DISCS !== 'undefined') {
+      // The whole catalog is selectable as level music (background + boss tracks); loop handles short ones.
+      for (const k of Object.keys(MUSIC_DISCS)) {
+        const d = MUSIC_DISCS[k]; if (!d || !d.audioFile) continue;
+        const tag = d.category === 'boss' ? ' (intense)' : '';
+        songOpts += `<option value="${k}"${k === curSong ? ' selected' : ''}>${(d.discName || k).replace(/[<>&]/g, '')}${tag}</option>`;
+      }
+    }
+    const old = document.getElementById('sb-beat-modal'); if (old && old.remove) old.remove();
+    const wrap = document.createElement('div'); wrap.id = 'sb-beat-modal';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:9500;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)';
+    const inp = 'background:#111826;color:#dfe7f5;border:1px solid #46557a;border-radius:6px;padding:6px';
+    wrap.innerHTML = `<div role="dialog" aria-modal="true" style="background:#1a2233;border:1px solid #46557a;border-radius:12px;padding:18px 20px;max-width:380px;width:92%;box-shadow:0 8px 30px rgba(0,0,0,.6);color:#dfe7f5">
+      <div style="font-weight:600;font-size:15px;margin-bottom:4px">🎵 Beat Grid</div>
+      <div style="color:#b6c2da;font:12px sans-serif;margin-bottom:14px">Pick a song, detect its beat, then place hazards on the beat lines. Most exact with Constant Speed on.</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="width:70px;color:#b6c2da;font:13px sans-serif">Song</span><select id="sb-beat-song" style="${inp};flex:1">${songOpts}</select></div>
+      <button id="sb-beat-detect" style="${inp};background:#33499e;cursor:pointer;width:100%;margin-bottom:6px">♪ Detect beat from song</button>
+      <div id="sb-beat-detectinfo" style="color:#7f8db0;font:12px sans-serif;min-height:14px;margin-bottom:12px"></div>
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer"><input type="checkbox" id="sb-beat-enabled"${bg.enabled ? ' checked' : ''}> <span>Show beat lines in editor</span></label>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="width:70px;color:#b6c2da;font:13px sans-serif">BPM</span><input type="number" id="sb-beat-bpm" value="${bg.bpm}" min="20" max="400" style="${inp};width:80px"><button id="sb-beat-tap" style="${inp};background:#33499e;cursor:pointer;flex:1">Tap tempo</button></div>
+      <div id="sb-beat-tapinfo" style="color:#7f8db0;font:12px sans-serif;min-height:16px;margin-bottom:10px"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="width:70px;color:#b6c2da;font:13px sans-serif">Offset</span><input type="number" id="sb-beat-offset" value="${bg.offsetMs}" min="0" max="10000" step="10" style="${inp};width:80px"><span style="color:#7f8db0;font:12px sans-serif">ms (shift the first beat)</span></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+        <button id="sb-beat-cancel" style="${inp};background:#2b3548;cursor:pointer">Cancel</button>
+        <button id="sb-beat-save" style="${inp};background:#2f6f4f;cursor:pointer">Save</button>
+      </div></div>`;
+    document.body.appendChild(wrap);
+    let taps = [];
+    const bpmEl = wrap.querySelector('#sb-beat-bpm');
+    wrap.querySelector('#sb-beat-tap').onclick = () => {
+      taps.push(Date.now());
+      if (taps.length > 9) taps = taps.slice(-9);
+      const bpm = (typeof BEAT_GRID !== 'undefined') ? BEAT_GRID.tapTempo(taps) : 0;
+      if (bpm) { bpmEl.value = bpm; wrap.querySelector('#sb-beat-tapinfo').textContent = 'Tapped ' + taps.length + ' → ' + bpm + ' BPM'; }
+      else wrap.querySelector('#sb-beat-tapinfo').textContent = 'Keep tapping to the beat…';
+    };
+    // §Phase A — decode the chosen catalog track in-browser and auto-fill BPM + offset (best effort).
+    const songEl = wrap.querySelector('#sb-beat-song');
+    const offEl = wrap.querySelector('#sb-beat-offset');
+    const dInfo = wrap.querySelector('#sb-beat-detectinfo');
+    wrap.querySelector('#sb-beat-detect').onclick = async () => {
+      const id = songEl.value;
+      if (!id || typeof MUSIC_DISCS === 'undefined' || !MUSIC_DISCS[id]) { dInfo.textContent = 'Pick a song first.'; return; }
+      if (typeof BPM_DETECT === 'undefined') { dInfo.textContent = 'Detector unavailable.'; return; }
+      dInfo.textContent = 'Analyzing…';
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        const ac = new AC();
+        const resp = await fetch(MUSIC_DISCS[id].audioFile);
+        const audio = await ac.decodeAudioData(await resp.arrayBuffer());
+        // Decimate to ~11 kHz mono so the analysis is fast on a full-length track.
+        const ch = audio.getChannelData(0), step = Math.max(1, Math.floor(audio.sampleRate / 11025));
+        const small = new Float32Array(Math.floor(ch.length / step));
+        for (let i = 0, j = 0; j < small.length; i += step, j++) small[j] = ch[i];
+        const r = BPM_DETECT.analyze(small, audio.sampleRate / step);
+        try { ac.close(); } catch (_) {}
+        if (r.bpm) {
+          bpmEl.value = r.bpm; offEl.value = r.offsetMs;
+          dInfo.textContent = `Detected ${r.bpm} BPM (confidence ${Math.round((r.confidence || 0) * 100)}%) — adjust if needed.`;
+        } else { dInfo.textContent = 'No clear beat found — set BPM manually.'; }
+      } catch (e) { dInfo.textContent = 'Could not load/analyze that track.'; }
+    };
+    const close = () => { if (wrap.remove) wrap.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    wrap.querySelector('#sb-beat-cancel').onclick = close;
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+    document.addEventListener('keydown', onKey);
+    wrap.querySelector('#sb-beat-save').onclick = () => {
+      aws.beatGrid = {
+        enabled: wrap.querySelector('#sb-beat-enabled').checked,
+        bpm: Math.max(20, Math.min(400, Math.round(+bpmEl.value) || 120)),
+        offsetMs: Math.max(0, Math.round(+wrap.querySelector('#sb-beat-offset').value) || 0),
+      };
+      aws.levelMusicId = songEl.value || null;   // §Phase A — the track that plays during the run
+      close();
+      // Same trap as the Level Challenges editor: this only writes live editor state — the world must be
+      // Saved for a real launch to pick it up. Remind the creator.
+      const t = document.createElement('div');
+      t.textContent = 'Beat Grid set — remember to Save your world';
+      t.style.cssText = 'position:fixed;left:50%;bottom:32px;transform:translateX(-50%);z-index:9600;background:#2f6f4f;color:#fff;border:1px solid #46557a;border-radius:8px;padding:9px 16px;font:13px sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.5)';
+      document.body.appendChild(t);
+      setTimeout(() => { if (t.remove) t.remove(); }, 2600);
+    };
   },
 
   // ── Import from file ───────────────────────────────────────────
@@ -1014,14 +1283,22 @@ const SANDBOX = {
   },
 
   // Arena worlds are a fixed 25×15; lock the dimension inputs when ARN is selected.
+  // §Epic C — Overhead is now a mode here too; it delegates to the overhead editor's own new-world
+  // setup (grid size + density), so we hide the side-scroll size fields and show a short note.
   _applyModeDimLock(mode) {
     const arena = mode === 'ARN';
+    const overhead = mode === 'OVH';
     const opts  = document.getElementById('create-arena-options');
     const note  = document.getElementById('game-mode-default-note');
+    const sizeRow = document.getElementById('create-size-row');
     if (opts) opts.style.display = arena ? 'block' : 'none';
+    if (sizeRow) sizeRow.style.display = overhead ? 'none' : (sizeRow.style.display || 'flex');
     if (note) note.textContent = arena
       ? 'Arena: choose Single-Screen (size preset) or Scrolling (free size).'
+      : overhead
+      ? 'Overhead (top-down): Create opens the overhead editor to pick grid size + density.'
       : 'What mode should this world open in by default?';
+    if (overhead) return;   // skip the side-scroll size re-enable + arena vis for overhead
     // Re-enable the manual size inputs (a prior arena selection may have hidden them).
     const w = document.getElementById('world-width-input');
     const h = document.getElementById('world-height-input');
@@ -1292,12 +1569,15 @@ const SANDBOX = {
       const res = await AUTH.authedFetch(`/api/worlds/sandbox/${this.selectedWorldId}/publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isPublished }),
+        // §B4 — publishing makes the level downloadable by default (creators can opt out later; a
+        // per-world Downloadable toggle in World Settings is a documented follow-up).
+        body: JSON.stringify({ isPublished, downloadable: isPublished }),
       });
       const data = await res.json();
       if (!res.ok) { alert(`Error: ${data.error}`); return; }
 
       this.currentWorldData.is_published = isPublished;
+      if (isPublished) this.captureThumbnail(this.selectedWorldId);   // §B1 best-effort auto-thumbnail
       document.getElementById('sb-publish-btn').textContent = isPublished ? 'Unpublish' : 'Publish';
       alert(isPublished ? 'World published!' : 'World unpublished');
       // Record the publish for stats/achievements (Phase 4, fire-and-forget).

@@ -1,4 +1,131 @@
-## CURRENT STATE (2026-08-11 late) — Speed Runner + Phase 2 SHIPPED to `main` @ build 460
+## CURRENT STATE (2026-08-12) — TRANCHE 2 tester fixes + Creative-Tools Phase A/B; branch `speedrunner-phase3` @ build 488, PUSHED, NOT merged
+
+**Builds 486-488 on `speedrunner-phase3`, pushed, NOT merged, suite green.** After the Tranche 2 tester
+pass (report `reports/tranche2-478-485-test-2026-08-12.md`):
+- **486 — the 6 tester defects.** T2-1 Copy World legend (dark-on-dark) flipped light in modern; T2-2 the
+  DIALOG family keyed off `prefers-color-scheme:light` but the app has NO light theme -> removed the light
+  media queries so dialogs are always dark (a light-OS was turning the Info modal white); T2-3 Speed Lines
+  now seamless (manual segments stepping by s/3, world-anchored, like the chevrons); T2-4/T2-5 community
+  Play OWNS its exit (wires the shared play-hud Exit/Pause/Restart + routes the HUD Exit AND pause-menu
+  Main Menu back to the storefront); T2-6 `.cc-actions` flex-wrap. Tranche 2 brief also copied into the QA
+  docs folder (process note).
+- **487 — Phase A (Music v1).** New pure `js/bpm-detect.js` (onset-envelope autocorrelation ->
+  {bpm,confidence,offsetMs}, 6 tests). Beat Grid modal gains a Song picker (MUSIC_DISCS) + "Detect beat"
+  (in-browser decode, decimated ~11kHz, prefills BPM+offset+confidence). `worldAdvSettings.levelMusicId`
+  plays looped during the SR run (starts in the GO gesture, reuses `_playBackgroundTrack`). Catalog-only,
+  NO per-level upload. Browser-only bits (decode/playback) flagged.
+- **488 — Phase B (line-stick render mode).** Two playable characters Stick + Sketch (`feat.stick`, Sketch
+  adds `skirt`). Side-scroll: `_limbBar` draws thin round-capped lines when stick (all articulated poses
+  free) + `_drawStanding`/`_drawCrouch` stick branches reusing the EXACT joints (walk/run/jump/spin/lean
+  animate identically). Overhead: thinner limbs. Cosmetic only — **hitbox unchanged**. Names provisional.
+  This is the cornerstone asset for roadmap Phases D (exported template) + F (ghost guide).
+
+**Tester delta brief:** `docs/TESTER_BRIEF_TRANCHE2_FIXES_488.md` (re-checks + Phase A/B + the still-un-run
+sec 3 achievements-fire / sec 6 two-customs / Arena+Custom-Rules modal items). **Roadmap grew:**
+`FUTURE_ROADMAP.md` §14 = progression-gated creator features (achievements unlock creator power; the
+accessibility ladder IS the unlock tree; Creative-vs-Progression mode; aspirational locks). No server
+changes since 485. Ship = merge speedrunner-phase3 -> main once tester-clean.
+
+---
+
+## CURRENT STATE (2026-08-12) — TRANCHE 2 COMPLETE (all 8 items); branch `speedrunner-phase3` @ build 485, PUSHED, NOT merged
+
+**`speedrunner-phase3` (off main@460). Builds 478–485. Suite green. Pushed to origin. NOT merged to main.**
+Tranche 2 (creator tools, gameplay & visual unification) — all shipped, functional + headless-tested,
+**UX-unverified** (awaiting the tester pass in `docs/TESTER_BRIEF_TRANCHE2_485.md`):
+- **478 Wind Style picker** — Chevrons/Streamlines/Speed Lines, seamless across cells, flow downwind +
+  scales with strength (`js/blocks.js _drawWindZone`; wind popup Style cycle; `_windDirMap` carries style).
+- **479 Epic D — per-level Achievements** — creator UI (World Settings → Achievements → Level Challenges,
+  `SANDBOX.editAchievements`, stored on `worldAdvSettings.achievements[]`) + in-play tracking (coins/
+  stomp+arrow-melee kills/jumps/lava hazard/time) + fire-on-completion (`game._fireAchievements`, toast +
+  POST `/api/achievements/world`). `achievement-eval.js` gained `keyOf`. Stats reset per run.
+- **480 Epic MB — Beat Grid overlay** — World Settings → Beat Grid → Edit… (tap-tempo/BPM/offset,
+  `SANDBOX.editBeatGrid`, `worldAdvSettings.beatGrid`); editor draws beat lines (`game._drawBeatGridOverlay`,
+  downbeats every 4th, constant-speed assumption). 🔎 needs-eyeball.
+- **481 CK3 — SR Practice Mode** — in-run **T** toggles unranked, **C** drops a personal checkpoint
+  (respawn there), PRACTICE HUD badge, best-%/attempts gated when `sr.practice`.
+- **482 Epic C — Create World cleanup** — "Overhead" folded into the mode picker (delegates to OH_EDITOR;
+  redundant top button hidden) + post-create description edit ("Info" card button → `SANDBOX.editDescription`
+  → new `POST /api/worlds/sandbox/:id/description`; `LOCAL_WORLDS.update` for offline).
+- **483 Phase 3 — per-player custom characters** — `CHARACTERS.registerCustom(id,def)` multi-slot API so
+  several players run DIFFERENT customs; `game._applyPlayerCharacter(p,i)` reads a `playerCharacters`
+  launch option (2p + arena). New test `test-phase3-multichar.js`. **Side-scroll builder preview deferred**
+  (needs a standalone side renderer — currently overhead-only preview). Sprite-sheet = **how-to artifact**
+  (Kevin's scoped deliverable): https://claude.ai/code/artifact/a76d8b6c-ebf1-4269-90c8-fe5256adca54
+- **484 A3 — play community SR levels** — storefront SPEEDRUNNER cards get a green **▶ Play** (races in
+  place, no clone) via new read-only `GET /api/community/worlds/:id/play` (bumps play_count). NOTE: the
+  original A3 canvas SR-landing target is DEAD reference code (HTML dashboard is live) → landed on the
+  active storefront instead; a dedicated tabbed SR landing remains a design call for Kevin.
+- **485 Epic UI — modal dark unification** — one revertible CSS block (search `§Epic UI — Modal dark
+  unification`) moves the whole `.modal-content` family onto the dark shell in the **modern** theme
+  (`:not([data-theme=retro])`; retro keeps its skin). Per `docs/UI_STYLE_GUIDE.md` this is the highest-risk
+  change → 🔎 needs-eyeball; revert the one block to undo. arena-tile/card grids + inline-colour modals
+  remain for follow-up commits.
+
+**Server restarted** for the two new routes (`/description`, `/play`). Ship path when tester-clean =
+merge `speedrunner-phase3` → `main` + push + apply any pending SQL (Tranche 1's `server/sql/*` still apply).
+**Two open design calls for Kevin:** (a) side-scroll builder preview + full sprite-sheet importer;
+(b) whether a dedicated tabbed SR landing is still wanted on the active dashboard.
+
+---
+
+## CURRENT STATE (2026-08-11 night) — TRANCHE 1 (Storefront & Platform) VERIFIED CLEAN; branch `speedrunner-phase3` @ build 477
+
+**`speedrunner-phase3` (off main@460), pushed, NOT merged. Build 477. Suite green.** Tranche 1 storefront
+tester-verified (473-477): browse tags/creator/search + play/thumbnail fields, tag routes + 10 seeded
+system_tags, creator profiles, Community Picks, thumbnail auto-capture (data-URI, no bucket), downloadable
++ immutable-provenance enforcement, LB re-key SR levelId->worlds.id (game-slot launcher now passes
+record.world_id). All Tranche-1 tester defects fixed (T1-1 rating_avg backfill+trigger via
+server/sql/tranche1_fixes.sql; T1-2 card CTA contrast; T1-3 game-slot worldId). OPEN (human/deferred):
+rating avg-vs-sum ORDERING needs a 2nd account; A3 SR landing-screen tabs deferred to Tranche 2 (canvas,
+needs Kevin's review).
+
+**NEXT = TRANCHE 2** (creator tools, gameplay & visual unification): Epic D creator-UI + in-play tracking +
+fire; Epic MB editor Beat-Grid overlay; Epic C tabs/overhead-fold/description; CK3 practice mode; Phase 3
+MP-per-player + side-scroll preview + sprite-sheet pipeline (+ how-to artifact); Epic UI 12-modal dark
+unification; the WIND STYLE picker (chevrons/streamlines/speed-lines, downwind-flow); A3 landing tabs.
+
+---
+
+## CURRENT STATE (2026-08-11 night) — Speed Runner EPICS + Phase 3 on branch `speedrunner-phase3` (builds 461–471, pushed, NOT merged)
+
+**Second-half additions (467–471) on top of 461–466 below:** Epic C safe wins (removed Import-from-Games +
+Overhead Demo), Phase 3 roster PICKER (apply saved characters to worlds — roster now create+apply complete),
+Epic MB Beat Grid core (`js/beat-grid.js` tap-tempo + time→distance, tested), Epic A/B/LB storefront SERVER
+slices (rating sort→rating_avg, Most-Played/Trending sorts, play_count route, publish sets `state` + gates
+on the finish validator A2), Epic D3 unlock routes (`/api/achievements/world`). **Deferred with specs
+(browser-unverifiable/large UI or net-new modes):** Epic UI 12-modal refactor (style guide written), Epic C
+tabs/overhead-fold, Epic MB editor overlay, Epic D creator-UI + in-play tracking, storefront LANDING/browse
+UI + downloadable/provenance + LB re-key, CK3 practice, Phase 3 MP/side-preview/sprite-sheet. Suite green
+(89 test files). Deliverables: `docs/TESTER_BRIEF_PHASE3_466.md` (through 471), `docs/SPEEDRUNNER_PHASE3_RUN_NOTES.md`.
+
+---
+
+## (earlier this session) — Speed Runner EPICS + Phase 3 on branch `speedrunner-phase3` (builds 461–466)
+
+**Branch `speedrunner-phase3` (off `main`@460), pushed, NOT merged.** Autonomous multi-hour run of the
+remaining epics. Suite green (86 test files). SQL applied by Kevin: `speedrunner.sql` + `user_characters.sql`.
+- **E7 WIND (flagship): 2D FULL** (WIND_ZONE painter, dir/strength/wall-thickness/redstone config, wall-shadow
+  blocking, animated chevrons, QA seams) + **overhead RUNTIME** (worldData.windZones push via collision;
+  overhead editor/redstone = follow-ups). Pure core `js/wind-zone.js` (19 tests).
+- **E4 GRAVITY INVERTER zones (side-scroll): DONE, ⚠️ HIGHEST-RISK/browser-unverified.** GRAVITY_ZONE(97)
+  flips a player's gravity+jump inside it (ceiling-walk); contained so normal play is provably unchanged.
+- **Epic CK: DONE** (CK1 placeable CHECKPOINT(98) respawn-keeps-clock + CK4 split HUD + CK2 ghost-hide;
+  CK3 practice mode deferred).
+- **Epic D: CORE** (`js/achievement-eval.js` evaluator, 5 templates, 17 tests; creator UI + in-play tracking
+  + persistence route deferred).
+- **Phase 3 roster: SAVE-HALF** (user_characters route + client API + "Save to Roster" builder button; picker
+  + MP + side-preview + sprite-sheet deferred).
+- **New blocks:** WIND_ZONE 96, GRAVITY_ZONE 97, CHECKPOINT 98.
+- **DEFERRED (specs in `docs/SPEEDRUNNER_PHASE3_RUN_NOTES.md`):** Epic C (editor/Create-World), Epic UI
+  (12-modal unification), Epic MB (music/beat grid), Epic A/B/LB storefront wiring (SQL applied → unblocked),
+  CK3, D wiring, Phase 3 picker/MP/preview/sprite-sheet. Two Kevin-flagged bugs need browser repro.
+- **Deliverables:** `docs/TESTER_BRIEF_PHASE3_466.md` (+QA copy), `docs/SPEEDRUNNER_PHASE3_RUN_NOTES.md`.
+- **Ship:** Kevin browser-reviews (esp. E4 gravity + E7 wind), then merges `speedrunner-phase3` → `main`.
+
+---
+
+## PRIOR STATE (2026-08-11 late) — Speed Runner + Phase 2 SHIPPED to `main` @ build 460
 
 **`main` == `origin/main` at build 460** (fast-forwarded from `speedrunner-overhaul`; clean FF, pushed —
 live on Railway if it auto-deploys `main`). The whole Speed Runner overhaul (440–453), the QA-feedback

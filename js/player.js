@@ -557,7 +557,7 @@ class Player {
         const jumpNow = input.isJump();
         if (this._ladderMidJump && jumpNow && !this._jumpPressed) {
           this._onLadder = false; this._ladderEngaged = false;
-          this.vy = this._jumpVelocityOverride ?? JUMP_VELOCITY;
+          this.vy = (this._jumpVelocityOverride ?? JUMP_VELOCITY) * (this._gravitySign || 1);   // §E4 flip
           this.jumpSquish = 1; this._jumpPressed = jumpNow;
           return;
         }
@@ -601,7 +601,7 @@ class Player {
     // Jump (with coyote time + jump buffer)
     const jumpNow  = input.isJump();
     const jumpEdge = jumpNow && !this._jumpPressed;
-    const jumpVel  = this._jumpVelocityOverride ?? JUMP_VELOCITY;
+    const jumpVel  = (this._jumpVelocityOverride ?? JUMP_VELOCITY) * (this._gravitySign || 1);   // §E4 flip
 
     // ── Ground slide in progress (opt-in): jump+down started it. ──
     if (this._slideFrames > 0) {
@@ -665,12 +665,14 @@ class Player {
       this.onGround    = false;
       this.jumpSquish  = 1;
       this._sfxJump    = true;   // §4c — a ground jump makes noise
+      this._jumpCount  = (this._jumpCount || 0) + 1;   // §Epic D — nojump achievement
     } else if (jumpEdge && this._wallSliding) {
       // Wall jump — a normal jump off the wall. Optional lock-away forces the arc
       // away from the wall and disables steering until you land / hit a wall / hang.
       this.vy          = jumpVel;
       this._jumpBuffer = 0;
       this.jumpSquish  = 1;
+      this._jumpCount  = (this._jumpCount || 0) + 1;   // §Epic D
       if (this._wallJumpLockAway) {
         this._ctrlLock = true;
         this._lockVx   = -this._wallSlideDir * this.moveSpeed;
@@ -685,6 +687,7 @@ class Player {
       this._airJumpsUsed = (this._airJumpsUsed || 0) + 1;
       this._jumpBuffer   = 0;
       this.jumpSquish    = 1;
+      this._jumpCount    = (this._jumpCount || 0) + 1;   // §Epic D
       // Kick off the mid-air roll (tuck + one full spin). Single jump is untouched.
       this._rollFrames   = 24;
       this._rollTotal    = 24;
@@ -831,7 +834,7 @@ class Player {
     }
     if (jumpEdge) {                            // Jump → launch off with the double-jump 2nd-stage flip
       this._releaseBar();
-      this.vy = this._jumpVelocityOverride ?? JUMP_VELOCITY;
+      this.vy = (this._jumpVelocityOverride ?? JUMP_VELOCITY) * (this._gravitySign || 1);   // §E4 flip
       this.onGround = false; this.jumpSquish = 1;
       // The bar-jump IS the "second" jump: consume the air jump so there's no double-jump after
       // it (you already got the flip off the bar). Landing refreshes it as usual.
@@ -873,9 +876,13 @@ class Player {
       return;
     }
 
-    // Gravity — disabled while flying or climbing a ladder (§Classic Blocks)
+    // Gravity — disabled while flying or climbing a ladder (§Classic Blocks). §E4 Gravity Inverter zones:
+    // _gravitySign (+1 normal, -1 inverted) flips the pull; the clamp caps the magnitude in either
+    // direction. _gravitySign is 1 everywhere except inside a Gravity Zone, so normal play is untouched.
     if (!this.flying && !this._onLadder) {
-      this.vy = Math.min(this.vy + (this._gravityOverride ?? GRAVITY), MAX_FALL_SPEED);
+      const gs = this._gravitySign || 1;
+      const v = this.vy + (this._gravityOverride ?? GRAVITY) * gs;
+      this.vy = gs > 0 ? Math.min(v, MAX_FALL_SPEED) : Math.max(v, -MAX_FALL_SPEED);
     }
     if (this._dropThrough > 0) this._dropThrough--;   // §Classic Blocks — one-way platform pass-through window
     // Wall slide: while pressing into a wall in the air, fall slowly (opt-in).
@@ -906,13 +913,17 @@ class Player {
         if (level.isSolid(r, bLeft) || level.isSolid(r, bRight) || oneWay) {
           this.y        = r * BLOCK_SIZE - this.height;
           this.vy       = 0;
-          this.onGround = true;
-          this._airJumpsUsed = 0;                // landing refreshes the air jump
-          this._rollFrames   = 0;                // landing snaps the roll back to normal
-          this._ctrlLock     = false;            // landing returns control (lock-away wall jump)
-          if (!wasOnGround) { this.jumpSquish = 0.85; if (landingVy > 5) this._sfxLand = landingVy; }
-          if (this.flying) this.flying = false;  // auto-land when touching ground
           stopped = true;
+          // §F3/E4 — under INVERTED gravity a real floor is NOT ground (gravity pulls you up off it): stop
+          // at it but don't register a landing, so the next jump isn't eaten and you float back up.
+          if ((this._gravitySign || 1) > 0) {
+            this.onGround = true;
+            this._airJumpsUsed = 0;                // landing refreshes the air jump
+            this._rollFrames   = 0;                // landing snaps the roll back to normal
+            this._ctrlLock     = false;            // landing returns control (lock-away wall jump)
+            if (!wasOnGround) { this.jumpSquish = 0.85; if (landingVy > 5) this._sfxLand = landingVy; }
+            if (this.flying) this.flying = false;  // auto-land when touching ground
+          }
           break;
         }
       }
@@ -926,6 +937,9 @@ class Player {
         if (level.isSolid(r, bLeft) || level.isSolid(r, bRight)) {
           this.y  = (r + 1) * BLOCK_SIZE;
           this.vy = 0;
+          // §E4 — under inverted gravity a ceiling IS the ground: register a landing so the player can
+          // stand + jump off it (jump pushes back down thanks to the _jumpVel sign flip).
+          if ((this._gravitySign || 1) < 0) { this.onGround = true; this._airJumpsUsed = 0; if (!wasOnGround) this.jumpSquish = 0.85; }
           stopped = true;
           break;
         }
@@ -1419,6 +1433,7 @@ class Player {
   }
 
   _drawSteve(ctx, sx, sy) {
+    this._refreshStick();   // §Phase B — cache the stick flag/colour for every limb this frame
     const crouch    = this.crouching;
     // Ledge hang / climb uses an articulated figure (waist + hip hinges) — its own path.
     if (this._hangState) { this._drawHangFigure(ctx, sx, sy); return; }
@@ -1540,11 +1555,30 @@ class Player {
     ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
   }
   _limbBar(ctx, x0, y0, x1, y1, w, color, outline) {
+    // §Phase B — a stick character draws every limb as a thin round-capped LINE, so all the articulated
+    // poses (ledge climb / hang / bar hand-over-hand / ladder) that already route through _limbBar become
+    // stick with no per-pose code.
+    if (this._isStick) {
+      ctx.save();
+      ctx.strokeStyle = this._stickColor || '#1c1f26'; ctx.lineCap = 'round';
+      ctx.lineWidth = Math.max(2, w * 0.42);
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      ctx.restore();
+      return;
+    }
     const dx = x1-x0, dy = y1-y0, len = Math.hypot(dx,dy) || 0.001, a = Math.atan2(dy,dx);
     ctx.save(); ctx.translate(x0,y0); ctx.rotate(a);
     if (outline) { ctx.fillStyle = outline; ctx.fillRect(-1, -w/2-1, len+2, w+2); }  // dark silhouette edge
     ctx.fillStyle = color; ctx.fillRect(0, -w/2, len, w);   // hard-edged, matches the blocky sprite
     ctx.restore();
+  }
+  // §Phase B — cache the stick flag + line colour once per sprite draw (feat lookups are relatively
+  // costly to run per-limb). Called at the top of the sprite entry point.
+  _refreshStick() {
+    const f = this._feat();
+    this._isStick    = !!(f && f.stick);
+    this._stickSkirt = !!(f && f.skirt);
+    this._stickColor = this._isStick ? (this.shirtColor || this._charShirt()) : null;
   }
 
   // §Classic Blocks — front-facing pose for a Warp Pipe (both eyes toward the camera), arms at
@@ -1604,8 +1638,13 @@ class Player {
     this._limbBar(ctx, cx + 4, hipY, cx + 4, ph > 0 ? legHiY : legLoY, 6, PANTS, EDGE);
     // Head LAST — back of the head (all hair, hairline), drawn OVER the arms so the shoulders
     // tuck slightly behind it.
-    ctx.fillStyle = HAIR; ctx.fillRect(sx + 2, sy, 16, 16);
-    ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(sx + 2, sy + 13, 16, 3);
+    if (this._isStick) {   // §Phase B — circle head on the ladder too (back view: no eye)
+      ctx.save(); ctx.strokeStyle = this._stickColor || '#1c1f26'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(sx + 10, sy + 8, 6.5, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+    } else {
+      ctx.fillStyle = HAIR; ctx.fillRect(sx + 2, sy, 16, 16);
+      ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(sx + 2, sy + 13, 16, 3);
+    }
     this._sideAccHead(ctx, sx + 2, sy, 16, true);   // §Custom Sprites — accessories on the ladder (back view)
   }
 
@@ -1691,12 +1730,18 @@ class Player {
     this._limbBar(ctx, hipX, hipY, shX, shY, 12, SHIRT, EDGE);
     // Head
     ctx.save(); ctx.translate(hdX, hdY); ctx.rotate(tA);
-    ctx.fillStyle = EDGE; ctx.fillRect(-HEAD / 2 - 1, -HEAD / 2 - 1, HEAD + 2, HEAD + 2);
-    ctx.fillStyle = SKIN; ctx.fillRect(-HEAD / 2, -HEAD / 2, HEAD, HEAD);
-    ctx.fillStyle = HAIR; ctx.fillRect(-HEAD / 2, -HEAD / 2, HEAD, HEAD * 0.36);
-    ctx.fillStyle = '#fff'; ctx.fillRect(2 * facing, -2, 4, 4);
-    ctx.fillStyle = '#1A50C0'; ctx.fillRect(3 * facing, -1, 2, 2);
-    if (this._hasPonytail()) { const px = facing === 1 ? -HEAD / 2 - 2 : HEAD / 2; ctx.fillStyle = HAIR; ctx.fillRect(px, -1, 2, HEAD * 0.6); }
+    if (this._isStick) {   // §Phase B — circle head (was a skin-tone box → the bar-swing/hang half-stick bug)
+      ctx.strokeStyle = this._stickColor || '#1c1f26'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(0, 0, HEAD * 0.42, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = this._accent() || '#eef1f8'; ctx.beginPath(); ctx.arc(2 * facing, -1, 1.3, 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.fillStyle = EDGE; ctx.fillRect(-HEAD / 2 - 1, -HEAD / 2 - 1, HEAD + 2, HEAD + 2);
+      ctx.fillStyle = SKIN; ctx.fillRect(-HEAD / 2, -HEAD / 2, HEAD, HEAD);
+      ctx.fillStyle = HAIR; ctx.fillRect(-HEAD / 2, -HEAD / 2, HEAD, HEAD * 0.36);
+      ctx.fillStyle = '#fff'; ctx.fillRect(2 * facing, -2, 4, 4);
+      ctx.fillStyle = '#1A50C0'; ctx.fillRect(3 * facing, -1, 2, 2);
+      if (this._hasPonytail()) { const px = facing === 1 ? -HEAD / 2 - 2 : HEAD / 2; ctx.fillStyle = HAIR; ctx.fillRect(px, -1, 2, HEAD * 0.6); }
+    }
     ctx.restore();
     // Front arm + front hand (in front of the head)
     this._limbBar(ctx, shX + 3 * facing, shY, front.sx, front.sy, 6, SHIRT, EDGE);
@@ -1853,6 +1898,7 @@ class Player {
   }
 
   _drawStanding(ctx, sx, sy, swing, tuck = 0, armAngleL = null, armAngleR = null, hipBend = 0) {
+    if (this._isStick) { this._drawStandingStick(ctx, sx, sy, swing, tuck, armAngleL, armAngleR, hipBend); return; }   // §Phase B
     // ── Colors ──────────────────────────────────────────────
     const SKIN = this._charSkin();
     const HAIR    = this._charHair();
@@ -1969,7 +2015,56 @@ class Player {
     this._sideAccHead(ctx, sx + 2, sy, 16, false);
   }
 
+  // §Phase B — stick version of _drawStanding: SAME joint anchors + rotations, thin lines + a circle head,
+  // so it animates identically through walk/run/jump/double-jump spin/lean. Cosmetic; hitbox unchanged.
+  _drawStandingStick(ctx, sx, sy, swing, tuck = 0, armAngleL = null, armAngleR = null, hipBend = 0) {
+    const C = this._stickColor || '#1c1f26';
+    // ground shadow
+    ctx.save(); ctx.fillStyle = 'rgba(0,0,0,0.26)';
+    ctx.beginPath(); ctx.ellipse(sx + this.width / 2, sy + this.height + 2, 8, 2.4, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+
+    ctx.save();
+    ctx.strokeStyle = C; ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const legSwing = swing * 10;
+    const seg = (px, py, ang, x0, y0, x1, y1) => { ctx.save(); ctx.translate(px, py); ctx.rotate(ang); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.restore(); };
+    // Legs (same pivots/rotations as the blocky version)
+    seg(sx + 4 + tuck * 4, sy + 34 - tuck * 14, legSwing + hipBend, 2, 0, 2, 17);
+    seg(sx + 12 - tuck * 4, sy + 34 - tuck * 14, -legSwing + hipBend * 0.85, 2, 0, 2, 17);
+    // Torso (neck → hip)
+    ctx.beginPath(); ctx.moveTo(sx + 10, sy + 34); ctx.lineTo(sx + 10, sy + 15); ctx.stroke();
+    // Arms
+    seg(sx + 2 + tuck * 5, sy + 18 - tuck * 2, armAngleL != null ? armAngleL : -legSwing, 1, 0, 1, 16);
+    seg(sx + 16 - tuck * 5, sy + 18 - tuck * 2, armAngleR != null ? armAngleR : legSwing, 1, 0, 1, 16);
+    // Skirt silhouette (the "Sketch" variant)
+    if (this._stickSkirt) { ctx.fillStyle = C; ctx.beginPath(); ctx.moveTo(sx + 10, sy + 22); ctx.lineTo(sx + 3, sy + 34); ctx.lineTo(sx + 17, sy + 34); ctx.closePath(); ctx.fill(); }
+    // Head (circle)
+    ctx.beginPath(); ctx.arc(sx + 10, sy + 8, 6.5, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+    // Eye dot toward facing (flip handled by the caller)
+    ctx.save(); ctx.fillStyle = this._accent() || '#eef1f8';
+    ctx.beginPath(); ctx.arc(sx + 12, sy + 7, 1.3, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  }
+
   _drawCrouch(ctx, sx, sy) {
+    if (this._isStick) {   // §Phase B — compact crouched stick (head + folded legs)
+      const C = this._stickColor || '#1c1f26', midY = sy + this.height * 0.5;
+      ctx.save(); ctx.strokeStyle = C; ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      // head
+      ctx.beginPath(); ctx.arc(sx + this.width / 2, midY - 4, 6, 0, Math.PI * 2); ctx.stroke();
+      // short torso
+      ctx.beginPath(); ctx.moveTo(sx + this.width / 2, midY + 2); ctx.lineTo(sx + this.width / 2, midY + 12); ctx.stroke();
+      // folded legs (knees out to the sides, feet under)
+      ctx.beginPath();
+      ctx.moveTo(sx + this.width / 2, midY + 12); ctx.lineTo(sx + 3, midY + 14); ctx.lineTo(sx + 6, sy + this.height);
+      ctx.moveTo(sx + this.width / 2, midY + 12); ctx.lineTo(sx + this.width - 3, midY + 14); ctx.lineTo(sx + this.width - 6, sy + this.height);
+      ctx.stroke();
+      // arms forward
+      ctx.beginPath(); ctx.moveTo(sx + this.width / 2, midY + 4); ctx.lineTo(sx + this.width - 4, midY + 8); ctx.stroke();
+      ctx.restore();
+      if (this._stickSkirt) { ctx.save(); ctx.fillStyle = C; ctx.beginPath(); ctx.moveTo(sx + this.width / 2, midY + 4); ctx.lineTo(sx + 3, midY + 14); ctx.lineTo(sx + this.width - 3, midY + 14); ctx.closePath(); ctx.fill(); ctx.restore(); }
+      ctx.save(); ctx.fillStyle = this._accent() || '#eef1f8'; ctx.beginPath(); ctx.arc(sx + this.width / 2 + 2, midY - 5, 1.2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      return;
+    }
     const SKIN = this._charSkin();
     const HAIR  = this._charHair();
     const SHIRT = this.shirtColor || this._charShirt(); // CTF team shirt colour (§6) overrides

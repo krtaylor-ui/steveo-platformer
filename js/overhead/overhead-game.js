@@ -48,6 +48,10 @@
       this._debug = !!opts.testMode;   // test-critical state HUD (top-right); ` toggles
       this.ground = map.ground || []; this.elevation = map.elevation || [];
       this.buildings = (worldData.buildings || []).slice();
+      // §E7 WIND (overhead half) — rectangular push regions {col,row,w,h,dir,strength,affectsGrounded,channel}.
+      // Applied via _moveWithCollision so walls physically block the push. Authoring lives in world data /
+      // a future overhead editor tool; the 2D engine has the full painter + redstone gate.
+      this.windZones = (worldData.windZones || []).map((z) => ({ ...z }));
       this.items = (worldData.items || []).map((it) => ({ ...it, taken: false }));
       this.mobs = (worldData.mobs || []).map((m) => { const d = P().OH_MOB_BY_KEY[m.type] || P().OH_MOBS[0];
         return { ...m, x: (m.col + 0.5) * this.grid.cell, y: (m.row + 0.5) * this.grid.cell, r: this.unit * 0.34,
@@ -381,6 +385,7 @@
       }
       const airborne = p.jump && p.jump.jumping;
       this._moveWithCollision(p, intent.move.x * spd, intent.move.y * spd, airborne);
+      this._applyWind(p, airborne);   // §E7 — push through any wind zone (collision blocks it at walls)
       if (moving) { p.dist += Math.hypot(intent.move.x, intent.move.y) * p.speed; p.moveAngle = Math.atan2(intent.move.y, intent.move.x); }
       if (p.jump && p.jump.jumping && OH_MOVE.advanceJump(p.jump).landed) this._resolveLanding(p);   // §0e all players resolve landings (bad landing -> per-player death/respawn)
       // §0e Hazards / pits / gaps kill EVERY player now (each downs + respawns independently).
@@ -642,6 +647,20 @@
     // Attacks reach a target only if it's < attackBlock levels above the attacker
     // (down is always fine). Also used to kill a projectile at a too-high wall.
     _canAttack(fromElev, toElev) { return (toElev - fromElev) < this.attackBlock; }
+    // §E7 WIND (overhead) — push a player through any wind zone rectangle they occupy. The push goes
+    // through _moveWithCollision so walls physically stop it (the overhead analogue of 2D wall-blocking).
+    // NOTE (documented limitation): overhead redstone-gating + an editor placement tool are follow-ups;
+    // the 2D engine has the full painter + redstone gate. Overhead zones come from world data for now.
+    _applyWind(p, airborne) {
+      if (!this.windZones || !this.windZones.length || typeof WIND === 'undefined') return;
+      const c = this._cellOf(p.x, p.y);
+      for (const z of this.windZones) {
+        if (c.col < z.col || c.col >= z.col + (z.w || 1) || c.row < z.row || c.row >= z.row + (z.h || 1)) continue;
+        if (!WIND.active(z, () => true)) continue;   // channel gating deferred in overhead (always-on for now)
+        const f = WIND.forceFor(z.dir, z.strength != null ? z.strength : 0.6, !airborne, z);
+        if (f.ax || f.ay) this._moveWithCollision(p, f.ax, f.ay, airborne);
+      }
+    }
     // Elevation-relative movement (climbLevels C, playerHeight H):
     //   delta<=0 walk · delta<=C climb-up · delta<=H WALL · delta>H overhang (pass
     //   under, hidden). A ramp/ladder cell lets a walk cross ANY delta. Gaps/solids

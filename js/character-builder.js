@@ -103,7 +103,7 @@
             '</div>' +
           '</div>' +
           '<div class="cb-foot">' +
-            '<button class="cb-btn cb-rand">🎲 Surprise Me</button>' +
+            '<div style="display:flex;gap:10px"><button class="cb-btn cb-rand">🎲 Surprise Me</button><button class="cb-btn cb-roster" title="Save to your account roster to reuse across worlds">🗂 Save to Roster</button></div>' +
             '<div style="display:flex;gap:10px"><button class="cb-btn cb-cancel">Cancel</button><button class="cb-btn cb-save">Save Character</button></div>' +
           '</div>' +
         '</div>';
@@ -118,6 +118,14 @@
       back.querySelector('.cb-name').addEventListener('input', function (e) { self._name = e.currentTarget.value || 'My Character'; });
       back.querySelector('.cb-body').addEventListener('change', function (e) { self._body = e.currentTarget.value; self._render(); });
       back.querySelector('.cb-rand').addEventListener('click', function () { self._randomize(); });
+      // §Phase 3 — save the current mix to the account roster (reuse across worlds). Best-effort; needs login.
+      back.querySelector('.cb-roster').addEventListener('click', function () {
+        if (typeof USER_CHARACTERS === 'undefined') return;
+        Promise.resolve(USER_CHARACTERS.save(self._defNow())).then(function (r) {
+          const msg = (r && r.error) ? r.error : ('Saved "' + (self._name) + '" to your roster.');
+          if (typeof DIALOG !== 'undefined' && DIALOG.alert) DIALOG.alert(msg, { title: 'My Characters' }); else alert(msg);
+        });
+      });
       back.querySelector('.cb-cancel').addEventListener('click', function () { self._close(); });
       back.querySelector('.cb-save').addEventListener('click', function () { self._save(); });
       back.addEventListener('mousedown', function (e) { if (e.target === back) self._close(); });

@@ -1351,6 +1351,59 @@ html[data-theme="retro"] .ws-adv { color: #ffd166 !important; }
   overflow-y: auto;
 }
 
+/* ══ §Epic UI — Modal dark unification (UI_STYLE_GUIDE.md) ═══════════════════════════════════════════
+   The app is dark in BOTH themes, yet the shared .modal-content family is hardcoded white — so every
+   HTML modal (Create World, Copy, Import, Arena settings/pre-launch, Custom Rules, Theme, Test-World…)
+   flashes as a white card on the dark app in the default (modern) theme. This block moves that whole
+   family onto the guide's dark surface palette in ONE reviewable, independently-revertible place.
+   Scoped to :not([data-theme="retro"]) so ONLY modern is touched — retro already skins .modal-content
+   with its own !important rules, which keep winning. Scoped under .modal-content so no non-modal screen
+   is affected. Highest-risk visual change in the tranche → confirm on screen; revert THIS block to undo.
+   Colours are the guide's .ws-panel-derived tokens: surface #1b1e2a, text #e9ebf4, heading #fff,
+   muted #9aa0b8, control fill #242838, border #363a46. */
+html:not([data-theme="retro"]) .modal-content {
+  background: #1b1e2a;
+  color: #e9ebf4;
+  border: 1px solid #363a46;
+}
+html:not([data-theme="retro"]) .modal-content h3,
+html:not([data-theme="retro"]) .modal-content h2 { color: #fff; }
+html:not([data-theme="retro"]) .modal-content label,
+html:not([data-theme="retro"]) .modal-content .form-group label { color: #dfe3ef; }
+html:not([data-theme="retro"]) .modal-content .form-group small,
+html:not([data-theme="retro"]) .modal-content small { color: #9aa0b8; }
+html:not([data-theme="retro"]) .modal-content input,
+html:not([data-theme="retro"]) .modal-content select,
+html:not([data-theme="retro"]) .modal-content textarea {
+  background: #242838;
+  color: #e9ebf4;
+  border-color: #363a46;
+}
+html:not([data-theme="retro"]) .modal-content .btn-secondary { background: #2f3446; color: #e9ebf4; }
+html:not([data-theme="retro"]) .modal-content .btn-secondary:hover { background: #3a4152; }
+/* Import mode-mismatch warning: light-amber → dark-amber so it still reads as a caution on the dark shell. */
+html:not([data-theme="retro"]) .modal-content .warning-box { background: #3a3012; border-color: #7a5e1a; color: #f0d79a; }
+html:not([data-theme="retro"]) .modal-content .warning-box strong { color: #ffb877; }
+/* Custom-Rules builder rows live inside .modal-content.cr-modal and hardcode near-black text/fills. */
+html:not([data-theme="retro"]) .modal-content .cr-check,
+html:not([data-theme="retro"]) .modal-content .cr-score-row,
+html:not([data-theme="retro"]) .modal-content .cr-step-cond { color: #e9ebf4; }
+html:not([data-theme="retro"]) .modal-content .cr-step-cond { background: #242838; }
+html:not([data-theme="retro"]) .modal-content.cr-modal { color: #e9ebf4; }
+/* §T3-2 — the Custom-Rules TEACHING text (win-condition guide, section headings, AND/OR/NOT emphasis,
+   empty-state) sat at 2.2–2.5:1 — the muted/#4a4ad0 tokens are too dim on the dark shell. Lift them. */
+html:not([data-theme="retro"]) .modal-content .cr-guide,
+html:not([data-theme="retro"]) .modal-content .cr-step-empty { color: #9aa6bd; }
+html:not([data-theme="retro"]) .modal-content .cr-section h4,
+html:not([data-theme="retro"]) .modal-content .cr-step-head,
+html:not([data-theme="retro"]) .modal-content #cr-win-hint,
+html:not([data-theme="retro"]) .modal-content .cr-step-tag { color: #9db0ff; }
+/* §T2-1 — Copy World's fieldset hardcodes #2a2a3a (id-specificity), so the "Copy to" legend was
+   1.18:1 dark-on-dark on the dark shell. Match specificity to flip it light. */
+html:not([data-theme="retro"]) #copy-world-modal .copy-dest { color: #e9ebf4; }
+html:not([data-theme="retro"]) .modal-content legend,
+html:not([data-theme="retro"]) .modal-content fieldset { color: #e9ebf4; }
+
 /* Arena leaderboard modal */
 #lb-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 #lb-tabs .lb-tab { font-size: 0.8rem; padding: 4px 8px; }
@@ -1899,6 +1952,44 @@ html[data-theme="retro"] .ws-adv { color: #ffd166 !important; }
   padding: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); display: flex; flex-direction: column; gap: 6px;
 }
 .cc-title { font-weight: bold; font-size: 1.05rem; }
+/* §Storefront (Tranche 1) — thumbnails, tags, clickable author, creator bar */
+.cc-thumb { margin: -4px -4px 8px; border-radius: 8px 8px 0 0; overflow: hidden; aspect-ratio: 16/9; background: rgba(120,150,190,.12); }
+.cc-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cc-tags { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0; }
+.cc-tag { font-size: .72rem; padding: 2px 7px; border-radius: 999px; background: rgba(120,160,220,.16); color: inherit; }
+.cc-author { color: var(--accent, #7c8cff); text-decoration: none; font-weight: 600; cursor: pointer; }
+.cc-author:hover { text-decoration: underline; }
+.community-creator-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin: 0 0 12px; border: 1px solid var(--border, #363a46); border-radius: 10px; font-size: .9rem; }
+.cc-avatar { width: 22px; height: 22px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+.cc-download:disabled { opacity: .55; cursor: not-allowed; }
+/* §T1-2 — the generic .btn is white-on-translucent-white (for dark bars); inside the light community
+   card that was ~1:1 contrast (invisible). Card CTAs get readable, solid colors, guarded per theme.
+   Download = a solid dark indigo (theme-independent, white text ~6.5:1). Favorite = a bordered pill with
+   DARK text on the light card, flipping to LIGHT text only in true dark contexts (the previous rule leaked
+   light text into the default/system-light view). */
+.cc-actions .btn { border: 1px solid transparent; }
+.cc-actions .cc-download { background: #33499e; color: #fff; }
+.cc-actions .cc-download:hover:not(:disabled) { filter: brightness(1.12); }
+/* §A3 — Play (race a community Speed Run level in place). Solid green, white text (theme-safe). */
+.cc-actions .cc-play { background: #2f7d4f; color: #fff; }
+.cc-actions .cc-play:hover:not(:disabled) { filter: brightness(1.12); }
+.cc-actions .cc-play:disabled { opacity: .6; cursor: default; }
+.cc-actions .cc-fav { background: rgba(90,120,170,.14); color: #22303f; border: 1px solid #9fb0c8; }
+.cc-actions .cc-fav.faved { background: #e2b23c; color: #23180a; border-color: transparent; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .cc-actions .cc-fav { color: #dfe6f2; border-color: #3a4a5f; }
+}
+:root[data-theme="dark"] .cc-actions .cc-fav,
+html[data-theme="retro"] .cc-actions .cc-fav { color: #dfe6f2; border-color: #3a4a5f; }
+.community-picks { margin: 0 0 14px; }
+.community-picks:empty { display: none; }
+.picks-head { font-weight: 700; margin: 0 0 8px; opacity: .85; }
+.picks-row { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 4px; }
+.pick-card { flex: 0 0 168px; border: 1px solid var(--border, #363a46); border-radius: 10px; overflow: hidden; cursor: pointer; background: rgba(120,150,190,.06); }
+.pick-thumb { aspect-ratio: 16/9; background: rgba(120,150,190,.14); display: grid; place-items: center; font-size: 1.6rem; }
+.pick-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.pick-name { font-weight: 600; font-size: .85rem; padding: 6px 8px 2px; }
+.pick-meta { font-size: .72rem; opacity: .7; padding: 0 8px 8px; }
 .cc-meta { font-size: 0.78rem; color: #666; }
 .cc-desc { font-size: 0.82rem; color: #444; max-height: 3.2em; overflow: hidden; }
 .cc-stats { font-size: 0.85rem; color: #555; }
@@ -1906,8 +1997,8 @@ html[data-theme="retro"] .ws-adv { color: #ffd166 !important; }
 .rating-display .star { color: #ddd; } .rating-display .star.on { color: #f5b301; }
 .rate-star { color: #ccc; cursor: pointer; font-size: 1.1rem; } .rate-star.on { color: #f5b301; }
 .rate-star:hover { color: #f5b301; }
-.cc-actions { display: flex; gap: 8px; margin-top: 6px; }
-.cc-actions .btn { flex: 1; }
+.cc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }   /* §T2-6 — wrap so the 3rd (Play) button doesn't overflow the SR card */
+.cc-actions .btn { flex: 1 1 auto; min-width: 0; }
 .cc-fav.faved { background: #f5b301; color: #101018; }
 .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
 .stat-cell { background: rgba(0,0,0,0.28); border-radius: var(--ui-radius); padding: 16px; text-align: center; }

@@ -293,7 +293,16 @@ class Game {
       if (_cc) { CHARACTERS.setCustom(_cc); this._customCharacter = _cc; }
       else { CHARACTERS.setCustom(null); this._customCharacter = null; if (window.CURRENT_CHARACTER_ID === 'custom') window.CURRENT_CHARACTER_ID = 'classic'; }
     }
+    // §Phase 3 — per-player characters (multiplayer): an optional array [{id, custom?}, …] indexed by
+    // player slot. Each entry with a custom mix registers under its own slot ('custom_pN') so several
+    // players can run DIFFERENT custom characters at once. Applied to each player in _applyPlayerCharacters().
+    this._launchPlayerCharacters = (options.playerCharacters)
+      || (options.templateData && options.templateData.playerCharacters)
+      || (options.worldData && options.worldData.playerCharacters) || null;
     this._editArena = this._arenaStarter || !!(options.templateData && options.templateData.gameModeDefault === 'ARN');
+    // §LB — the launched world's DB id (when known), used to re-key Speed Runner leaderboards/ghosts to
+    // worlds.id instead of the fragile author:worldName string (which collides + breaks on rename).
+    this._launchWorldId = options.worldId || (options.templateData && options.templateData.id) || null;
     if (this.isArena) {
       this.arenaConfig = Object.assign(
         { gameDuration: 300000, respawnDelay: 2000, botCount: 3, mapName: 'DEATHMATCH_SMALL',
@@ -703,6 +712,7 @@ class Game {
         this._syncTwoPlayerAfterLoad();
         this.player.selectedSlot = 1;
         this._platformerStartMs  = Date.now();
+        this._achStats = null; this._achFired = new Set(); if (this.player) this.player._jumpCount = 0;   // §Epic D — fresh per-run stats
         this.player.platformerSlots = new Map([
           [BLOCK.OBSIDIAN,     4],
           [BLOCK.EYE_OF_ENDER, 5],
@@ -757,12 +767,14 @@ class Game {
     this.level           = new Level(data);
     if (this._isComboTrainer) this._comboGroundRow = data._comboTrainerGroundRow || (data.height - 4);
     this.player          = new Player(data.spawnX, data.spawnY);
+    this._applyPlayerCharacter(this.player, 0);   // §Phase 3
     this._p2SpawnX = data.spawnX + BLOCK_SIZE * 2;
     this._p2SpawnY = data.spawnY;
     if (this._worldAdvSettings.twoPlayerMode) {
       this.player2 = new Player(this._p2SpawnX, this._p2SpawnY);
       this.player2.godMode = (this.gameMode === 'sandbox');
       this.player2.selectedSlot = 1;
+      this._applyPlayerCharacter(this.player2, 1);   // §Phase 3 — P2's own custom character
     } else {
       this.player2 = null;
     }
@@ -771,6 +783,8 @@ class Game {
     this.mobManager                = new MobManager();
     this.mobManager.dropConfig     = this._mobDropSettings;
     this.mobManager.soundCallback  = (file, vol) => this._playSound(file, vol);
+    this.mobManager._onStomp       = () => { this._ensureAchStats().mobKills++; };   // §Epic D — stomp defeats count
+    if (!this.mobManager.onKill) this.mobManager.onKill = () => { this._ensureAchStats().mobKills++; };   // arrow/melee defeats (arena overrides this)
     this.mobManager.setupSpawnPoints(data.spawnPoints);
     // _camera is set after Camera construction below
     this.camera          = new Camera(this.level.pixelWidth, this.level.pixelHeight);
@@ -916,6 +930,7 @@ class Game {
       p.maxHp = maxHp;
       p._ownerId = Game.ownerId(i);  // PvP owner tag ('p1'..'p4')
       p.charType = (this.arenaConfig.playerCharTypes || [])[i] || 'male';  // Steve/Alex (cosmetic)
+      this._applyPlayerCharacter(p, i);   // §Phase 3 — per-player custom character
       this._armArenaPlayer(p, this._arenaSpawns[spawnKeys[i]]);
       // Reserved team fields (Phase 3C — no logic yet; see [[phase3-arena-redesign]]).
       p.teamId = p.teamId ?? null; p.teamColor = p.teamColor ?? null;
@@ -2558,6 +2573,7 @@ class Game {
         this._triggerDeath('Burned by lava');
       } else if (this.player.iframes <= 0) {
         this.player.takeDamage(4, Math.sign(this.player.vx) || (this.player.facing || 1));
+        this._ensureAchStats().tookHazardDamage = true;   // §Epic D
         this._checkDeath();
       }
     }
@@ -3405,6 +3421,8 @@ class Game {
           this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'booster' };      // §Speed Boost Zone (E6) — mode/amount/duration
         } else if (target === BLOCK.SPIKES && this.sandbox.selectedBlock === BLOCK.SPIKES) {
           this._cycleSpikeDir(hoverRow, hoverCol);                                      // §Spike Orientation (E12) — cycle valid dirs, then remove
+        } else if (target === BLOCK.WIND_ZONE && this.sandbox.selectedBlock === BLOCK.WIND_ZONE) {
+          this._classicPopup = { row: hoverRow, col: hoverCol, kind: 'wind' };          // §E7 Wind Zone — direction/strength/thickness/redstone
         } else if (target === BLOCK.WEIGHT_PLATE && this.sandbox.selectedBlock === BLOCK.WEIGHT_PLATE) {
           this._weightPopup = { col: hoverCol, row: hoverRow };                        // §Weight Sensor — set trigger (players/mobs/both)
         } else if (target === BLOCK.PRESSURE_PLATE && this.sandbox.selectedBlock === BLOCK.PRESSURE_PLATE) {
@@ -4195,6 +4213,7 @@ class Game {
           if (this._worldAdvSettings.platformerScore) {
             this._score += (this._worldAdvSettings.goalClearPoints || 0);
           }
+          this._fireAchievements(this._platformerFinishMs || (this._platformerStartMs ? Date.now() - this._platformerStartMs : 0));   // §Epic D
           this.state = 'won';
           break;
         }
@@ -4204,6 +4223,13 @@ class Game {
     // ── Void / fall death — triggers as soon as feet go below world bottom ──
     if (this.player.y + this.player.height > this.level.pixelHeight && !this.player.godMode) {
       this._triggerDeath('Fell into a pit');
+    }
+    // §F6 — in the SANDBOX editor the player is in god mode (no fall death), so clearing the bedrock row
+    // used to drop them off the world forever. Catch them and lift back to spawn instead of dying.
+    else if (this.gameMode === 'sandbox' && this.player.y > this.level.pixelHeight + 80) {
+      this.player.x = this.level.spawnX; this.player.y = this.level.spawnY;
+      this.player.vx = 0; this.player.vy = 0;
+      this._notify('Caught you — back to spawn', '#7fd0ff', 90);
     }
 
     // ── Phase 16: Multiplayer sync ─────────────────────────────
@@ -6526,7 +6552,8 @@ class Game {
       ctx.translate(-CANVAS_W / 2, -CANVAS_H / 2);
     }
     try { this._drawTravelTubesBack(ctx); } catch (e) { /* ignore */ }   // §Travel Tube — Pass-In-Front/Solid glass BEHIND the blocks (so the world reads in front of it)
-    this.level.draw(ctx, this.camera, this.redstone, this.frameCount, this.gameMode === 'sandbox', this._trampFx, this._spikeDirMap);
+    if (this._windDirMap == null && this.level && this.level.grid) this._buildWindZones();   // §E7 — dir map for rendering (also warms the zone cache)
+    this.level.draw(ctx, this.camera, this.redstone, this.frameCount, this.gameMode === 'sandbox', this._trampFx, this._spikeDirMap, this._windDirMap);
     // Re-draw open chest with lid-open state on top
     if (this._chestOpen) {
       const sx = this._chestOpen.col * BLOCK_SIZE - this.camera.x;
@@ -6545,6 +6572,10 @@ class Game {
 
     // Copy-selection overlay (sandbox)
     if (this.gameMode === 'sandbox') this._drawCopySelection(ctx);
+
+    // §Epic MB — Beat Grid overlay (sandbox only): faint vertical lines at each musical beat's
+    // world-x, so a creator can align hazards to the music. Downbeats (every 4th) are brighter.
+    if (this.gameMode === 'sandbox') this._drawBeatGridOverlay(ctx);
 
     // Place ghost / mining highlight
     const target = this.level.get(hoverRow, hoverCol);
@@ -8396,6 +8427,7 @@ class Game {
     if (data && Array.isArray(data.pipeEntry)) { this._pipeEntry = new Map(); for (const [k, v] of data.pipeEntry) this._pipeEntry.set(k, v); }
     if (data && Array.isArray(data.blockContents)) { this._blockContents = new Map(); for (const [k, v] of data.blockContents) this._blockContents.set(k, v); }
     if (data && Array.isArray(data.boosterCfg)) { this._boosterCfg = new Map(); for (const [k, v] of data.boosterCfg) this._boosterCfg.set(k, v); }   // §Speed Boost Zone (E6)
+    if (data && Array.isArray(data.windCfg)) { this._windCfg = new Map(); for (const [k, v] of data.windCfg) this._windCfg.set(k, v); this._invalidateWindZones(); }   // §E7 Wind Zone
     // §Travel Tube — the TUBE_WALL footprint cells restore with the grid; this restores the
     // fly-through PATHS (waypoints + speed) so travel works after a reload.
     if (data && Array.isArray(data.travelTubes)) {
@@ -8451,8 +8483,45 @@ class Game {
     if (typeof SB_POWERUP_TYPES !== 'undefined') for (const pu of SB_POWERUP_TYPES) items.push({ label: pu.label + ' ⚡', key: 'pu:' + pu.type });
     return items;
   }
+  // §E7 — anchor (min-row then min-col) of the connected WIND_ZONE group containing (r,c). Config is keyed
+  // by the anchor so the whole group shares one setting.
+  _windAnchorAt(r, c) {
+    const L = this.level; if (!L || L.get(r, c) !== BLOCK.WIND_ZONE) return r + ',' + c;
+    const seen = new Set([r + ',' + c]); const stack = [[c, r]]; let mr = r, mc = c;
+    while (stack.length) {
+      const [cc, rr] = stack.pop();
+      if (rr < mr || (rr === mr && cc < mc)) { mr = rr; mc = cc; }
+      for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nc = cc + dc, nr = rr + dr, k = nr + ',' + nc;
+        if (nr >= 0 && nc >= 0 && nr < L.height && nc < L.width && L.get(nr, nc) === BLOCK.WIND_ZONE && !seen.has(k)) { seen.add(k); stack.push([nc, nr]); }
+      }
+    }
+    return mr + ',' + mc;
+  }
   _classicPopupButtons() {
     const p = this._classicPopup; if (!p) return [];
+    if (p.kind === 'wind') {
+      // Edits the group's shared config (keyed by anchor); any change rebuilds the zone cache.
+      const key = this._windAnchorAt(p.row, p.col);
+      const cfg = () => { this._windCfg = this._windCfg || new Map(); let d = this._windCfg.get(key); if (!d) { d = { dir: 'right', style: 'chevron', strength: 0.6, thickness: 2, channel: null, affectsGrounded: false }; this._windCfg.set(key, d); } return d; };
+      const DIRS = ['right', 'downright', 'down', 'downleft', 'left', 'upleft', 'up', 'upright'];
+      const STYLES = ['chevron', 'stream', 'speed'];
+      const STYLE_LABEL = { chevron: 'Chevrons', stream: 'Streamlines', speed: 'Speed Lines' };
+      const STR = [0.3, 0.6, 1.0, 1.5, 2.0];
+      const THK = [1, 2, 3, 4];
+      const CH = [null, 1, 2, 3];   // §F1 — INTEGER channels: _channelPowered matches tx.number (1–99), so string 'A'/'B'/'C' never fired
+      const c = cfg();
+      const touch = () => this._invalidateWindZones();
+      return [
+        { label: 'Direction: ' + c.dir, act: () => { const cc = cfg(); cc.dir = DIRS[(DIRS.indexOf(cc.dir) + 1) % DIRS.length]; touch(); } },
+        { label: 'Style: ' + (STYLE_LABEL[c.style] || 'Chevrons'), act: () => { const cc = cfg(); cc.style = STYLES[(STYLES.indexOf(cc.style || 'chevron') + 1) % STYLES.length]; touch(); } },
+        { label: 'Strength: ' + (c.strength).toFixed(1), act: () => { const cc = cfg(); const i = STR.findIndex(v => v >= cc.strength); cc.strength = STR[(i + 1) % STR.length]; touch(); } },
+        { label: 'Wall Thickness: ' + c.thickness, act: () => { const cc = cfg(); const i = THK.indexOf(cc.thickness); cc.thickness = THK[(i + 1) % THK.length]; touch(); } },
+        { label: 'Redstone: ' + (c.channel == null ? 'Always On' : 'Channel ' + c.channel), act: () => { const cc = cfg(); const i = CH.indexOf(cc.channel); cc.channel = CH[(i + 1) % CH.length]; touch(); } },
+        { label: 'Push While Grounded: ' + (c.affectsGrounded ? 'Yes' : 'No'), act: () => { const cc = cfg(); cc.affectsGrounded = !cc.affectsGrounded; touch(); } },
+        { label: '🗑 Remove Cell', act: () => { this.level.set(p.row, p.col, BLOCK.AIR); this._invalidateWindZones(); this._classicPopup = null; this._notify('Wind cell removed', '#c66', 90); } },
+      ];
+    }
     if (p.kind === 'booster') {
       // §Speed Boost Zone (E6) — mode (temp/perm), amount, and (temp only) linger duration.
       const key = p.row + ',' + p.col;
@@ -8519,6 +8588,7 @@ class Game {
     let title = 'Warp Pipe — destination';
     if (p.kind === 'contents') { const cur = this._blockContents && this._blockContents.get(p.row + ',' + p.col); title = 'Contents: ' + (cur == null ? 'world default' : cur === 'coin' ? 'Coin' : this._isPowerupContent(cur) ? cur.slice(3).replace(/_/g, ' ') + ' ⚡' : ((BLOCK_DATA[cur] && BLOCK_DATA[cur].name) || cur)); }
     else if (p.kind === 'booster') title = 'Speed Boost Zone';
+    else if (p.kind === 'wind') title = 'Wind Zone';
     ctx.fillText(title, g.px + 12, g.py + 10);
     ctx.fillStyle = '#c66'; ctx.fillText('✕', g.px + g.pw - 20, g.py + 10);
     for (let i = 0; i < btns.length; i++) {
@@ -18008,7 +18078,14 @@ class Game {
     // don't collide (real saved worlds always have a name; the worlds.id re-key in the migrations doc is
     // the permanent fix). §E8.
     const _lvlId = `${data.playerName || ''}:${data.worldName || ''}`;
-    this._sr.levelId = (_lvlId === ':' || !_lvlId) ? 'sr_unsaved_testworld' : _lvlId;
+    // §T1-3 — the DB world id can arrive via launch options (_launchWorldId) OR embedded in the loaded
+    // world data; take whichever is present.
+    if (!this._launchWorldId) this._launchWorldId = data.worldId || data.id || (data.world_data && data.world_data.worldId) || null;
+    // §LB re-key — prefer the stable worlds.id when the level came from a saved/published world; fall back
+    // to author:worldName (or the test-world sentinel). CLEAN CUT (documented): pre-re-key local best-times
+    // keyed by author:worldName are superseded, not migrated — acceptable per the brief. player_id already
+    // scopes server rows, so non-system boards stay per-account.
+    this._sr.levelId = this._launchWorldId || ((_lvlId === ':' || !_lvlId) ? 'sr_unsaved_testworld' : _lvlId);
     // Hybrid leaderboard: pull any server times for this level and merge them
     // into the local top-5 (best-effort; local stays authoritative offline).
     if (typeof SPEEDRUN_SYNC !== 'undefined') {
@@ -18020,11 +18097,16 @@ class Game {
     // Scan grid for goals and speed items; extract speed items from grid (drawn dynamically)
     this._sr.goals      = [];
     this._sr.speedItems = [];
+    this._sr.checkpoints = [];        // §CK1 — placeable mid-level checkpoints
+    this._sr.splits      = [];        // §CK4 — {idx, ms} recorded as each checkpoint is first reached
+    this._sr.lastCheckpoint = null;   // §CK1 — respawn anchor once a checkpoint is reached
     for (let r = 0; r < this.level.height; r++) {
       for (let c = 0; c < this.level.width; c++) {
         const b = this.level.grid[r][c];
         if (b === BLOCK.GOAL) {
           this._sr.goals.push({ col: c, row: r });
+        } else if (b === BLOCK.CHECKPOINT) {
+          this._sr.checkpoints.push({ col: c, row: r, reached: false });
         } else if (b === BLOCK.SPEED_ITEM) {
           this._sr.speedItems.push({ col: c, row: r, collected: false, bobPhase: Math.random() * Math.PI * 2 });
           this.level.set(r, c, BLOCK.AIR); // remove from grid; SR HUD draws these
@@ -18122,6 +18204,26 @@ class Game {
     }
     sr._kKeyWas = kNow;
 
+    // §CK3 — Practice Mode: press T to toggle a personal-practice session (UNRANKED — attempts and
+    // best-% are not recorded), press C to drop a personal checkpoint you instantly respawn to. Lets a
+    // player drill a hard section without grinding the whole level or polluting the leaderboard.
+    const tNow = this.input.isDown('KeyT');
+    if (tNow && !sr._tKeyWas) {
+      sr.practice = !sr.practice;
+      if (!sr.practice) sr.practiceCP = null;
+      this._notify(sr.practice ? 'Practice Mode: ON (unranked) — press C to drop a checkpoint' : 'Practice Mode: OFF', '#ffcf5a', 150);
+    }
+    sr._tKeyWas = tNow;
+    if (sr.practice && !sr.dead) {
+      const cNow = this.input.isDown('KeyC');
+      if (cNow && !sr._cKeyWas) {
+        sr.practiceCP = { x: this.player.x, y: this.player.y };
+        this._notify('Practice checkpoint set', '#39c862', 110);
+        this._playSound('sounds/powerup.mp3', 0.35);
+      }
+      sr._cKeyWas = cNow;
+    }
+
     // Update sparkle particles
     sr.particles = sr.particles.filter(p => {
       p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.vx *= 0.96; p.life--;
@@ -18141,14 +18243,21 @@ class Game {
         if (elapsed > SR_CONFIG.respawnFadeMs)
           part.alpha = Math.max(0, part.alpha - 0.04);
       }
+      // §CK1 — if a checkpoint was reached (and checkpoints aren't disabled), recover there without
+      // restarting the run; otherwise a normal full restart.
+      const useCp = this._sr.lastCheckpoint && this._worldAdvSettings.srCheckpoints !== false;
+      const respawn = () => {
+        if (sr.practice && sr.practiceCP) { this._srRespawnToPractice(); return; }   // §CK3
+        return useCp ? this._srRespawnToCheckpoint() : this._srRespawn();
+      };
       // §E9 Instant Retry — no countdown, no wait-for-press: drop back into the run as soon as the
       // death explosion has faded.
       if (this._worldAdvSettings.srInstantRetry) {
-        if (elapsed > SR_CONFIG.respawnFadeMs) this._srRespawn();
+        if (elapsed > SR_CONFIG.respawnFadeMs) respawn();
       } else if (elapsed > SR_CONFIG.respawnFadeMs + SR_CONFIG.respawnWaitMs) {
         if (this.input.isJustDown('Space') || this.input.p1JustDown('jump') ||
             this.input.isJustDown('KeyW')) {
-          this._srRespawn();
+          respawn();
         }
       }
       sr.srZoom      += (1.0 - sr.srZoom)      * 0.08;
@@ -18189,6 +18298,8 @@ class Game {
         sr.startMs        = Date.now();
         sr.goMs           = sr.startMs;
         sr.perfectChecked = false;
+        this._achStats = null; this._achFired = new Set(); if (this.player) this.player._jumpCount = 0;   // §T3-1 — fresh Level-Challenge stats per SR run
+        this._startLevelMusic();   // §Phase A — begin the level's chosen catalog track (within the GO gesture window)
         sr.accelAtGo      = this.input.isRight() || this.input.isDown('ArrowRight')
                           || this.input.isDown('KeyD')
                           || this.input.gamepads.some(g => g && g.connected && (g.dpad1 || g.moveX > 0.3));
@@ -18196,7 +18307,7 @@ class Game {
         sr.maxX           = this.player.x;
         sr.ghostRec       = new SpeedRunnerGhost(sr.levelId);
         sr.ghostFrameIdx  = 0;
-        sr.attemptNum     = SpeedRunnerStats.bumpAttempt(sr.levelId);   // §E8 — count this attempt
+        if (!sr.practice) sr.attemptNum = SpeedRunnerStats.bumpAttempt(sr.levelId);   // §E8 count (§CK3 practice=unranked)
       }
       return;
     }
@@ -18302,6 +18413,7 @@ class Game {
     this._srCheckBoosterBlocks();
     this._srCheckJumpPads();
     this._srCheckSpeedItems();
+    this._srCheckCheckpoints();
     this._srCheckGoals();
     this._srCheckMobCollision();
     this._srCheckProjectiles();
@@ -18311,7 +18423,7 @@ class Game {
     const pMidCol = Math.floor(this.player.cx / BLOCK_SIZE);
     if (this.level.get(pMidRow, pMidCol) === BLOCK.LAVA && !this.player.godMode) {
       if (this._worldAdvSettings.lavaInstaKill !== false) { this._srTriggerDeath(); return; }
-      else if (this.player.iframes <= 0) { this.player.takeDamage(4, Math.sign(this.player.vx) || (this.player.facing || 1)); if (this.player.hp <= 0) { this._srTriggerDeath(); return; } }
+      else if (this.player.iframes <= 0) { this.player.takeDamage(4, Math.sign(this.player.vx) || (this.player.facing || 1)); this._ensureAchStats().tookHazardDamage = true; if (this.player.hp <= 0) { this._srTriggerDeath(); return; } }
     }
 
     // Void death
@@ -18365,8 +18477,79 @@ class Game {
   // ── §Classic Blocks pack (2026-07-24) — per-frame interactions for the new blocks ──
   // Runs after players update. Covers trampoline bounce, spike/coin overlap, conveyor push,
   // crumble trigger, warp-pipe descend/teleport, and question/hidden bump-from-below.
+  // ── §E7 WIND / CURRENT ZONES ──────────────────────────────────────────────────
+  // Per-block config for the WIND_ZONE group whose anchor (top-left cell) is (r,c). Stored in _windCfg.
+  _windCfgAt(r, c) {
+    const d = this._windCfg && this._windCfg.get(r + ',' + c);
+    return d || { dir: 'right', style: 'chevron', strength: 0.6, thickness: 2, channel: null, affectsGrounded: false };
+  }
+  // Flood-fill each connected WIND_ZONE group, compute its bounding box + the wall-shadow set + resolve
+  // its config (keyed by the group's anchor = min row then min col). Rebuilt lazily; invalidated on edit.
+  _buildWindZones() {
+    this._windZones = [];
+    this._windDirMap = {};
+    const L = this.level; if (!L) return;
+    const isWind = (c, r) => (r >= 0 && c >= 0 && r < L.height && c < L.width && L.get(r, c) === BLOCK.WIND_ZONE);
+    const seen = new Set();
+    for (let r = 0; r < L.height; r++) for (let c = 0; c < L.width; c++) {
+      if (!isWind(c, r) || seen.has(r + ',' + c)) continue;
+      // 4-connected group of wind cells.
+      const grp = [], stack = [[c, r]]; seen.add(r + ',' + c);
+      let minC = c, maxC = c, minR = r, maxR = r;
+      while (stack.length) {
+        const [cc, rr] = stack.pop(); grp.push({ col: cc, row: rr });
+        minC = Math.min(minC, cc); maxC = Math.max(maxC, cc); minR = Math.min(minR, rr); maxR = Math.max(maxR, rr);
+        for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nc = cc + dc, nr = rr + dr, k = nr + ',' + nc;
+          if (isWind(nc, nr) && !seen.has(k)) { seen.add(k); stack.push([nc, nr]); }
+        }
+      }
+      // §F4 — config resolution: explicit entry for this group's anchor, else INHERIT the creator's wind
+      // config (a full-height wall splits a zone into two flood-fill groups; the split-off half has no
+      // entry and should share the settings, not fall back to "blow right at 0.6"). Falls back to defaults
+      // only when no wind cell anywhere was configured.
+      let cfg = (this._windCfg && this._windCfg.get(minR + ',' + minC)) || null;
+      if (!cfg && this._windCfg && this._windCfg.size) cfg = this._windCfg.values().next().value;
+      if (!cfg) cfg = { dir: 'right', style: 'chevron', strength: 0.6, thickness: 2, channel: null, affectsGrounded: false };
+      for (const g of grp) this._windDirMap[g.row + ',' + g.col] = { dir: cfg.dir, style: cfg.style || 'chevron', strength: cfg.strength || 0.6 };   // §Wind Style (flow speed scales with strength)
+      // Bounding box cells for the wall-shadow calc (a wall = solid cells inside the box). §F4 — expand
+      // the box by a margin so a FULL-HEIGHT wall that splits a zone into two groups is captured (it sits
+      // just outside a group's tight bbox); then the downwind group falls in the wall's shadow = calm.
+      const isSolid = (bc, br) => { const b = L.get(br, bc); return !!(BLOCK_DATA[b] && BLOCK_DATA[b].solid); };
+      const M = (cfg.thickness || 2) + 2;
+      const bMinC = Math.max(0, minC - M), bMaxC = Math.min(L.width - 1, maxC + M);
+      const bMinR = Math.max(0, minR - M), bMaxR = Math.min(L.height - 1, maxR + M);
+      const box = [];
+      for (let br = bMinR; br <= bMaxR; br++) for (let bc = bMinC; bc <= bMaxC; bc++) box.push({ col: bc, row: br });
+      const shadow = WIND.shadowedCells(box, cfg.dir, isSolid, cfg.thickness);
+      this._windZones.push({ key: minR + ',' + minC, cfg, minC, maxC, minR, maxR, cells: new Set(grp.map(g => g.col + ',' + g.row)), shadow, isSolid });
+    }
+  }
+  _invalidateWindZones() { this._windZones = null; this._windDirMap = null; }
+  // Push every active player each frame while inside a live, unshadowed wind cell.
+  _applyWind() {
+    if (this.gameMode === 'sandbox') return;
+    if (this._windZones == null) this._buildWindZones();
+    if (!this._windZones.length) return;
+    const players = this.activePlayers ? this.activePlayers() : [this.player];
+    const powered = (ch) => this._channelPowered(ch);
+    for (const p of players) {
+      if (!p || p.hp <= 0) continue;
+      const pc = Math.floor(p.cx / BLOCK_SIZE), pr = Math.floor(p.cy / BLOCK_SIZE);
+      for (const z of this._windZones) {
+        if (pc < z.minC || pc > z.maxC || pr < z.minR || pr > z.maxR) continue;
+        if (!z.cells.has(pc + ',' + pr)) continue;                 // player's cell is a wind cell
+        if (!WIND.active(z.cfg, powered)) continue;                // redstone gate
+        if (!WIND.reaches(pc, pr, z.shadow, z.isSolid)) continue;  // behind a wall
+        const f = WIND.forceFor(z.cfg.dir, z.cfg.strength, p.onGround, z.cfg);
+        p.vx += f.ax; p.vy += f.ay;
+      }
+    }
+  }
+
   _updateClassicBlocks() {
     if (!this.level || this.gameMode === 'sandbox') { this._updateBlockFx(); return; }   // editor: FX only
+    this._applyWind();                       // §E7 — push players inside active wind zones
     this._crumbleTouched = this._crumbleTouched || new Set();
     this._crumbleTouched.clear();     // reused each frame — no per-frame allocation
     const players = this.activePlayers ? this.activePlayers() : [this.player];
@@ -18446,10 +18629,11 @@ class Game {
     const feetRow = Math.floor((p.y + p.height) / BS);
     const headRow = Math.floor((p.y - 1) / BS);
 
-    // Body overlap: spikes (hazard) + coins (collect) + speed-booster (E6).
-    let boosterCfg = null;
+    // Body overlap: spikes (hazard) + coins (collect) + speed-booster (E6) + gravity zone (E4).
+    let boosterCfg = null, inGravityZone = false;
     for (let r = row0; r <= row1; r++) for (let c = col0; c <= col1; c++) {
       const b = L.get(r, c);
+      if (b === BLOCK.GRAVITY_ZONE) inGravityZone = true;
       if (b === BLOCK.SPIKES) {
         // §Spike Orientation (E12) — only the exposed side of the cell (where the tips are) impales; the
         // base side is embedded against the solid surface. hazardRect gives that sub-rect in cell space.
@@ -18470,6 +18654,9 @@ class Game {
       if (!p._boostState) p._boostState = { permMult: 1, tempMult: 1, tempFrames: 0 };
       p._boosterMult = SPEED_BOOSTER_FX.step(p._boostState, boosterCfg);
     }
+    // §E4 Gravity Inverter — flip the player's gravity sign while inside a Gravity Zone, restore on exit.
+    // Contained to the zone: _gravitySign is 1 everywhere else, so normal platforming is unchanged.
+    p._gravitySign = inGravityZone ? -1 : 1;
     // Standing-on effects (the row under the feet).
     if (p.onGround) {
       for (let c = col0; c <= col1; c++) {
@@ -18616,8 +18803,44 @@ class Game {
     const aws = this._worldAdvSettings || {};
     this._coins = (this._coins || 0) + 1;
     if (aws.platformerScore) this._score = (this._score || 0) + (aws.emeraldPoints || 100);
+    const st = this._ensureAchStats(); st.collected.coin = (st.collected.coin || 0) + 1; st.collected.item = (st.collected.item || 0) + 1;   // §Epic D
     this._playSound('sounds/item-collected.mp3', 0.7);
     this._notify('+1 Coin', '#f2c531', 50);
+  }
+  // ─── §Epic D: per-level achievements ─────────────────────────────────────
+  _achDefs() { const aws = this._worldAdvSettings || {}; return Array.isArray(aws.achievements) ? aws.achievements : []; }
+  _ensureAchStats() {
+    if (!this._achStats) {
+      this._achStats = (typeof ACHIEVEMENT_EVAL !== 'undefined' && ACHIEVEMENT_EVAL.freshStats)
+        ? ACHIEVEMENT_EVAL.freshStats()
+        : { collected: {}, mobKills: 0, jumpCount: 0, tookHazardDamage: false, completed: false, completionMs: 0 };
+    }
+    return this._achStats;
+  }
+  _fireAchievements(completionMs) {
+    if (typeof ACHIEVEMENT_EVAL === 'undefined' || !ACHIEVEMENT_EVAL.evaluate) return;
+    const defs = this._achDefs(); if (!defs.length) return;
+    const st = this._ensureAchStats(); st.completed = true; st.completionMs = completionMs || 0;
+    st.jumpCount = (this.player && this.player._jumpCount) || 0;
+    let earned = [];
+    try { earned = ACHIEVEMENT_EVAL.evaluate(defs, st) || []; } catch (e) { earned = []; }
+    if (this._achFired) earned = earned.filter(d => !this._achFired.has(ACHIEVEMENT_EVAL.keyOf ? ACHIEVEMENT_EVAL.keyOf(d) : (d.name || d.type)));
+    else this._achFired = new Set();
+    for (const d of earned) {
+      const k = ACHIEVEMENT_EVAL.keyOf ? ACHIEVEMENT_EVAL.keyOf(d) : (d.name || d.type);
+      this._achFired.add(k);
+      const label = ACHIEVEMENT_EVAL.label ? ACHIEVEMENT_EVAL.label(d) : (d.name || 'Achievement');
+      this._notify('🏆 ' + label, '#ffd24a', 220);
+      this._playSound('sounds/level-up.mp3', 0.7);
+      if (this._launchWorldId && typeof AUTH !== 'undefined' && AUTH.authedFetch && AUTH.isLoggedIn && AUTH.isLoggedIn()) {
+        try {
+          AUTH.authedFetch('/api/achievements/world', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ worldId: this._launchWorldId, key: k, label })
+          }).catch(() => {});
+        } catch (e) {}
+      }
+    }
   }
   _questionPop(p) {
     // v1: a Question Block yields a coin (designer-configurable contents = noted follow-up).
@@ -19179,6 +19402,22 @@ class Game {
     ctx.fillStyle = '#5a6270'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();          // hub
     ctx.restore();
   }
+  // §Phase 3 — assign player index `i`'s custom character from _launchPlayerCharacters. A per-player
+  // custom mix registers under its own slot ('custom_pN') so several players can run DIFFERENT customs at
+  // once; player.js's _charId() prefers p._characterId over the world-wide global.
+  _applyPlayerCharacter(p, i) {
+    if (!p) return;
+    const pc = (this._launchPlayerCharacters || [])[i];
+    if (!pc) return;   // no per-player override → player keeps the world-wide character (global)
+    if ((pc.id === 'custom' || (pc.custom && !pc.id)) && pc.custom && typeof CHARACTERS !== 'undefined' && CHARACTERS.registerCustom) {
+      const slot = 'custom_p' + (i + 1);
+      CHARACTERS.registerCustom(slot, pc.custom);
+      p._characterId = slot;
+    } else if (pc.id) {
+      p._characterId = pc.id;
+    }
+  }
+
   // §Skins — draw a skin value (animated marker or block id) at a grid cell's screen position. Used by
   // the editor overlay so anchor/direction skins are visible while building (a static frame, angle 0).
   _drawSkinSprite(ctx, skin, col, row, angle = 0) {
@@ -19188,6 +19427,34 @@ class Game {
     else if (skin === 'pointer')  this._drawPointerDial(ctx, px, py, BLOCK_SIZE, angle);
     else if (skin === 'steering') this._drawSteering(ctx, px, py, BLOCK_SIZE, angle);
     else if (typeof skin === 'number') { try { drawBlock(ctx, skin, px, py, 0, {}); } catch (e) { /* ignore */ } }
+  }
+
+  // §Epic MB — draw the Beat Grid alignment overlay in the sandbox editor. Beat spacing in world-x is
+  // derived from the run's Base Speed (E1) under the Constant-Speed assumption (E2), which is where the
+  // grid is exact. When the level isn't constant-speed the lines are a guide, not a guarantee.
+  _drawBeatGridOverlay(ctx) {
+    const bg = this._worldAdvSettings && this._worldAdvSettings.beatGrid;
+    if (!bg || !bg.enabled || !bg.bpm || typeof BEAT_GRID === 'undefined') return;
+    const base = this._worldAdvSettings.srBaseSpeed || 1;
+    // px/sec ≈ base × default run px/frame × 60fps. The 3.2 base run rate matches the SR runner at 1.0×.
+    const pxPerSec = base * 3.2 * 60;
+    const beatPx = pxPerSec * (BEAT_GRID.beatMs(bg.bpm) / 1000);
+    if (!(beatPx > 4)) return;   // guard: absurd tempo/speed → skip (don't flood the canvas)
+    const startX = (this._srStartX != null) ? this._srStartX : 0;
+    const worldW = this.level.pixelWidth;
+    const count  = Math.min(2000, Math.ceil((worldW - startX) / beatPx) + 2);
+    const xs = BEAT_GRID.beatXs(bg.bpm, bg.offsetMs || 0, startX, pxPerSec, count);
+    ctx.save();
+    for (let i = 0; i < xs.length; i++) {
+      const sx = Math.round(xs[i] - this.camera.x);
+      if (sx < -2 || sx > ctx.canvas.width + 2) continue;
+      const down = (i % 4) === 0;
+      ctx.strokeStyle = down ? 'rgba(255,110,180,0.55)' : 'rgba(120,190,255,0.30)';
+      ctx.lineWidth = down ? 2 : 1;
+      ctx.beginPath(); ctx.moveTo(sx + 0.5, 0); ctx.lineTo(sx + 0.5, ctx.canvas.height); ctx.stroke();
+      if (down) { ctx.fillStyle = 'rgba(255,110,180,0.85)'; ctx.font = '10px sans-serif'; ctx.fillText('' + (i / 4 + 1), sx + 3, 12); }
+    }
+    ctx.restore();
   }
 
   // Placement / config entry: click a rail with the Anchor selected → bind a platform there; click an
@@ -21266,6 +21533,43 @@ class Game {
     }
   }
 
+  // §CK1/CK4 — first contact with a checkpoint records a split + becomes the death respawn anchor.
+  _srCheckCheckpoints() {
+    const sr = this._sr; if (!sr || !sr.checkpoints || !sr.checkpoints.length || !sr.startMs) return;
+    const p = this.player, pc = Math.floor(p.cx / BLOCK_SIZE), pr = Math.floor(p.cy / BLOCK_SIZE);
+    for (let i = 0; i < sr.checkpoints.length; i++) {
+      const cp = sr.checkpoints[i];
+      if (cp.reached || cp.col !== pc || cp.row !== pr) continue;
+      cp.reached = true;
+      sr.lastCheckpoint = { x: cp.col * BLOCK_SIZE + BLOCK_SIZE / 2 - p.width / 2, y: cp.row * BLOCK_SIZE + BLOCK_SIZE - p.height, idx: i };
+      sr.splits.push({ idx: i, ms: Date.now() - sr.startMs });   // §CK4
+      this._notify('Checkpoint ' + sr.splits.length + '  ' + srFormatTime(Date.now() - sr.startMs), '#39c862', 110);
+      this._playSound('sounds/powerup.mp3', 0.4);
+    }
+  }
+  // §CK1 — respawn to the last checkpoint WITHOUT resetting the run clock (a mid-run recovery, not a
+  // full restart). Ghost is hidden after a checkpoint respawn (§CK2 chose the clean "disable" option, since
+  // re-baselining a single full-run recording mid-run is error-prone).
+  _srRespawnToCheckpoint() {
+    const sr = this._sr, cp = sr.lastCheckpoint; if (!cp) { this._srRespawn(); return; }
+    this.player.x = cp.x; this.player.y = cp.y; this.player.vx = 0; this.player.vy = 0;
+    this.player.hp = this.player.maxHp;
+    sr.vx = 0; sr.dead = false; sr.deathParts = null;
+    sr.ghostVisible = false;   // §CK2 — disable ghost between checkpoints
+    sr.boosts = { timeBased: 1.0, distBased: 1.0, blockBoost: 1.0, item: 1.0, itemExpiresMs: 0, itemStack: 0 };
+    if (this.mobManager) { this.mobManager.mobs = []; this.mobManager.droppedItems = []; for (const sp of this.mobManager.spawnPoints) sp.timer = 0; }
+  }
+  // §CK3 — respawn to the player's PERSONAL practice checkpoint (unranked drilling). Mirrors the
+  // checkpoint respawn but uses the manually-dropped point; the run stays flagged practice so it never
+  // records a best-% / attempt.
+  _srRespawnToPractice() {
+    const sr = this._sr, cp = sr.practiceCP; if (!cp) { this._srRespawn(); return; }
+    this.player.x = cp.x; this.player.y = cp.y; this.player.vx = 0; this.player.vy = 0;
+    this.player.hp = this.player.maxHp;
+    sr.vx = 0; sr.dead = false; sr.deathParts = null; sr.ghostVisible = false;
+    sr.boosts = { timeBased: 1.0, distBased: 1.0, blockBoost: 1.0, item: 1.0, itemExpiresMs: 0, itemStack: 0 };
+    if (this.mobManager) { this.mobManager.mobs = []; this.mobManager.droppedItems = []; for (const sp of this.mobManager.spawnPoints) sp.timer = 0; }
+  }
   _srCheckGoals() {
     const p = this.player;
     for (const g of this._sr.goals) {
@@ -21329,9 +21633,11 @@ class Game {
     this._sr.dead     = true;
     this._sr.deathMs  = Date.now();
     this._sr.ghostRec = null;
-    // §E8 — even a failed run banks its furthest-progress %.
-    this._sr.bestPct  = SpeedRunnerStats.recordPct(this._sr.levelId,
-      SpeedRunnerStats.progressPct(this._sr.maxX ?? this._sr.spawnX, this._sr.spawnX, this._sr.finishX ?? this.level.pixelWidth));
+    // §E8 — even a failed run banks its furthest-progress %. §CK3 — but a PRACTICE run is unranked.
+    if (!this._sr.practice) {
+      this._sr.bestPct  = SpeedRunnerStats.recordPct(this._sr.levelId,
+        SpeedRunnerStats.progressPct(this._sr.maxX ?? this._sr.spawnX, this._sr.spawnX, this._sr.finishX ?? this.level.pixelWidth));
+    }
     this._playSound('sounds/player-death.mp3');
     this._srAddParticles(this.player.cx, this.player.cy, '#FF4444', 20);
 
@@ -21370,7 +21676,8 @@ class Game {
     const elapsed      = Date.now() - this._sr.startMs;
     this._sr.won       = true;
     this._sr.finishMs  = elapsed;
-    this._sr.bestPct   = SpeedRunnerStats.recordPct(this._sr.levelId, 100);   // §E8 — a clear is 100%
+    if (!this._sr.practice) this._sr.bestPct = SpeedRunnerStats.recordPct(this._sr.levelId, 100);   // §E8 clear=100% (§CK3 practice=unranked)
+    this._fireAchievements(elapsed);   // §T3-1 — Level Challenges fire on the SR finish line too (was platformer-goal only)
     this._playSound('sounds/win.mp3');
 
     // Burst fireworks from player position
@@ -21488,6 +21795,10 @@ class Game {
     sr.momentum = { running: false, runStartMs: 0, runDist: 0, lastVxSign: 0 };
     sr.distanceTraveled = 0;
     sr.lastX  = sr.spawnX;
+    // §CK1 — a full restart clears the checkpoint progress + splits and re-shows the ghost.
+    if (sr.checkpoints) for (const cp of sr.checkpoints) cp.reached = false;
+    sr.lastCheckpoint = null; sr.splits = [];
+    if (sr.ghostData) sr.ghostVisible = true;
     for (const item of sr.speedItems) item.collected = false;
     sr.ghostRec      = null;
     sr.deathParts    = null;
@@ -21512,7 +21823,7 @@ class Game {
       sr.lastX          = sr.spawnX;
       sr.maxX           = sr.spawnX;
       sr.ghostRec       = new SpeedRunnerGhost(sr.levelId);
-      sr.attemptNum     = SpeedRunnerStats.bumpAttempt(sr.levelId);   // §E8 — instant retry counts too
+      if (!sr.practice) sr.attemptNum = SpeedRunnerStats.bumpAttempt(sr.levelId);   // §E8 (§CK3 practice=unranked)
     }
 
     // Reset the level to its authored start state so every run is identical:
@@ -21632,6 +21943,18 @@ class Game {
     if (!this._sr) return;
     const sr = this._sr;
 
+    // §CK3 — persistent PRACTICE badge (top-center) so an unranked run is unmistakable.
+    if (sr.practice) {
+      ctx.save();
+      ctx.font = 'bold 12px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      const label = 'PRACTICE · UNRANKED' + (sr.practiceCP ? ' · C-checkpoint set' : '');
+      const w = ctx.measureText(label).width + 20;
+      ctx.fillStyle = 'rgba(120,80,10,0.82)'; ctx.fillRect(CANVAS_W / 2 - w / 2, 6, w, 20);
+      ctx.strokeStyle = '#ffcf5a'; ctx.lineWidth = 1; ctx.strokeRect(CANVAS_W / 2 - w / 2, 6, w, 20);
+      ctx.fillStyle = '#ffe28a'; ctx.fillText(label, CANVAS_W / 2, 9);
+      ctx.restore();
+    }
+
     // ── Pre-race countdown (race lights: 3·2·1·GO) ─────────────
     if (!sr.startMs && !sr.dead && !sr.won) {
       const cd  = sr.countdownStart ? (Date.now() - sr.countdownStart) : 0;
@@ -21729,7 +22052,8 @@ class Game {
     // §E8 — attempt count + furthest-progress %, just under the timer (shown even on a failed run).
     {
       const best = Math.round(sr.bestPct != null ? sr.bestPct : SpeedRunnerStats.bestPct(sr.levelId));
-      const line = `Attempt #${sr.attemptNum || 1}` + (best > 0 ? `  ·  Best ${best}%` : '');
+      const cps = (sr.checkpoints && sr.checkpoints.length) ? `  ·  CP ${sr.splits ? sr.splits.length : 0}/${sr.checkpoints.length}` : '';   // §CK4
+      const line = `Attempt #${sr.attemptNum || 1}` + (best > 0 ? `  ·  Best ${best}%` : '') + cps;
       ctx.save();
       ctx.font = 'bold 13px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       const w = ctx.measureText(line).width + 16;
@@ -22008,6 +22332,19 @@ class Game {
     if (!choices.length) choices = songs;
     const key = choices[Math.floor(Math.random() * choices.length)];
     this._playBackgroundTrack(key);
+  }
+
+  // §Phase A — play the level's chosen catalog track (worldAdvSettings.levelMusicId), looped for the whole
+  // run. Reuses the background-music path; only fires if a valid track is set and not already playing it.
+  _startLevelMusic() {
+    const id = this._worldAdvSettings && this._worldAdvSettings.levelMusicId;
+    if (!id || typeof MUSIC_DISCS === 'undefined' || !MUSIC_DISCS[id]) return;
+    if (!this._musicSystem || !this._musicSystem.bgAudio) return;
+    if (this._musicSystem.currentTrack === id && !this._musicSystem.bgAudio.paused) { this._musicSystem.bgAudio.loop = true; return; }
+    try {
+      this._playBackgroundTrack(id);
+      if (this._musicSystem.bgAudio) this._musicSystem.bgAudio.loop = true;   // level music loops for the run
+    } catch (e) { /* autoplay may reject outside a gesture — harmless */ }
   }
 
   _getEnabledSongs() {

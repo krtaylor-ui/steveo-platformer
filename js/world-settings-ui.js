@@ -149,6 +149,9 @@ const WORLD_SETTINGS = {
       { key: 'platformerScore', tab: 'world', group: 'Scoring', modes: M.platformer, type: 'toggle', dflt: false, label: 'Score / Points', hint: 'track a running score (emeralds + level-clear bonus)' },
       { key: 'emeraldPoints', tab: 'world', group: 'Scoring', modes: M.platformer, type: 'cycle', opts: [50, 100, 200, 500], dflt: 100, label: 'Points / Emerald', fmt: (v) => v + ' pts', sub: true, dependsOn: 'platformerScore', advanced: true, hint: 'score awarded per emerald' },
       { key: 'goalClearPoints', tab: 'world', group: 'Scoring', modes: M.platformer, type: 'cycle', opts: [0, 500, 1000, 2000], dflt: 1000, label: 'Level-Clear Bonus', fmt: (v) => v + ' pts', sub: true, dependsOn: 'platformerScore', advanced: true, hint: 'score awarded for reaching a Goal Star' },
+      // §Epic D — per-level Achievements: opens a small editor to define up to 3 challenge goals
+      // (collect N / defeat N / finish under Ns / few-jumps / no-damage) that fire on level completion.
+      { key: 'achievementsBtn', tab: 'world', group: 'Achievements', modes: ['platformer', 'speedrunner', 'sandbox'], type: 'button', rerender: false, label: 'Level Challenges', btnLabel: 'Edit…', hint: 'define up to 3 challenge goals players earn by clearing your level (collect, defeat, speed, few-jumps, no-damage)', act: (g) => { if (window.SANDBOX && SANDBOX.editAchievements) SANDBOX.editAchievements(g); } },
       { key: 'physicsLocked', tab: 'world', group: 'Designer Locks', modes: ['sandbox'], type: 'toggle', dflt: true, label: 'Lock Physics', advanced: true, hint: 'ON (default): players can’t change Gravity or Jump Height while playing your level, so its jumps stay as you tuned them. You can always change them here in Sandbox.' },
       { key: 'hideFromExport', tab: 'world', group: 'Designer Locks', modes: ['sandbox'], type: 'toggle', dflt: false, label: 'Hide from export', advanced: true, hint: '§40.1 — ON removes the Export buttons for this world (NOT encryption — anyone can still read the JSON in their browser; it only takes away the easy download). You can always turn it off here in Sandbox; the server still lets you, the owner, export your own world.' },
 
@@ -204,6 +207,9 @@ const WORLD_SETTINGS = {
         key: 'srPreset_' + p.id, tab: 'speedrun', group: 'Presets', modes: M.speedrun, type: 'button',
         rerender: true, label: p.label, btnLabel: 'Apply', hint: p.hint, act: (g) => this._applySrPreset(g, p),
       })),
+      // §Epic MB — Beat Grid: align hazards to music. Opens a tap-tempo / BPM editor; the editor then
+      // overlays beat lines on the canvas. Most exact under Constant Speed (below).
+      { key: 'beatGridBtn', tab: 'speedrun', group: 'Beat Grid', modes: M.speedrun, type: 'button', rerender: false, label: 'Beat Grid', btnLabel: 'Edit…', hint: 'set a tempo (tap or type BPM) and the editor overlays beat lines so you can place hazards on the beat — most exact with Constant Speed on', act: (g) => { if (window.SANDBOX && SANDBOX.editBeatGrid) SANDBOX.editBeatGrid(g); } },
       // §E2 Constant / Auto-speed — a true fixed auto-scroll: the runner is pinned at Max Speed the whole
       // run (no accelerate/coast). Recommended base for the Beat Grid (E-MB). Default off = the classic
       // race-car accelerate model. When ON, the Acceleration/Deceleration knobs below don't apply.
@@ -218,6 +224,10 @@ const WORLD_SETTINGS = {
       // §E9 Instant Retry — after a death, skip the 3·2·1 restart countdown and drop straight back into
       // the run (great for tight practice loops). Trade-off: no start-signal / perfect-start speed boost.
       { key: 'srInstantRetry', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'toggle', dflt: false, label: 'Instant Retry', hint: 'ON: a failed run restarts immediately with no countdown — you are moving again the instant the death animation clears. OFF (default): the 3·2·1 countdown plays before each run. (Instant Retry skips the perfect-start boost.)' },
+      // §CK1/CK4 — Checkpoints: placing Checkpoint markers (Other palette) sets mid-level respawn anchors +
+      // split timers. ON (default) means a death recovers at the last checkpoint (keeping the run clock);
+      // OFF makes every death restart from the start line even if checkpoints are placed.
+      { key: 'srCheckpoints', tab: 'speedrun', group: 'Pace', modes: M.speedrun, type: 'toggle', dflt: true, label: 'Checkpoints', hint: 'ON (default): reaching a placed Checkpoint marker records a split time and makes it your respawn point on death (the run clock keeps going — the ghost hides after a checkpoint). OFF: deaths always restart from the start line.' },
       { key: 'srBoostPct', tab: 'speedrun', group: 'Boosts', modes: M.speedrun, type: 'cycle', opts: O.srPct, dflt: 0.05, label: 'Boost Amount', fmt: (v) => Math.round(v * 100) + '%', advanced: true },
       { key: 'srTimeBoostEnabled', tab: 'speedrun', group: 'Boosts', modes: M.speedrun, type: 'toggle', get: (a) => a.srTimeBoostEnabled !== false, set: (a, v) => { a.srTimeBoostEnabled = v; }, label: 'Time Boost' },
       { key: 'srTimeBoostIntervalSec', tab: 'speedrun', group: 'Boosts', modes: M.speedrun, type: 'cycle', opts: O.srSec, dflt: 5, label: 'Time Boost Every', fmt: (v) => v + 's', sub: true, dependsOn: 'srTimeBoostEnabled', advanced: true },

@@ -315,6 +315,7 @@ const GAME_STATE = {
       pipeEntry:      game._pipeEntry ? [...game._pipeEntry.entries()] : [],
       blockContents:  game._blockContents ? [...game._blockContents.entries()] : [],
       boosterCfg:     game._boosterCfg ? [...game._boosterCfg.entries()] : [],   // §Speed Boost Zone (E6) — per-block mode/amount/duration
+      windCfg:        game._windCfg ? [...game._windCfg.entries()] : [],         // §E7 Wind Zone — per-group dir/strength/thickness/channel/grounded
       travelTubes:    game._travelTubes ? game._travelTubes.map(t => ({ id: t.id, cells: t.cells, speed: t.speed, mode: t.mode || 'solid', items: t.items || [], angled: !!t.angled })) : [],
       // §Moving Platforms — rails (waypoint paths) + platforms (anchor-bound block groups). Frozen at author time.
       rails:          game._rails ? game._rails.map(r => r.isSwitch

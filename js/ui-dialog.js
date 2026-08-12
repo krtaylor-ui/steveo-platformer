@@ -28,16 +28,15 @@
         'background:rgba(6,10,18,.62);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}' +
       '.dlg-card{background:#1b1f2b;color:#eef1f8;border:1px solid #33507e;border-radius:14px;padding:20px 22px;' +
         'width:92%;max-width:440px;box-shadow:0 14px 44px rgba(0,0,0,.5)}' +
-      '@media (prefers-color-scheme:light){.dlg-card{background:#fff;color:#161a24;border-color:#d9dee9}}' +
+      // §T2-2 — the app has NO light theme (modern + retro are both dark), so a light-OS must NOT flip
+      // the dialog to white (that was the Info-modal white-flash). Dialog family is always dark.
       '.dlg-title{font-weight:700;font-size:16px;margin:0 0 8px}' +
       '.dlg-msg{font-size:14px;line-height:1.5;margin:0 0 14px;white-space:pre-wrap;word-break:break-word}' +
       '.dlg-input{width:100%;box-sizing:border-box;padding:9px 11px;border-radius:8px;border:1px solid #33507e;' +
         'background:#0e1420;color:#eef1f8;font-size:14px;margin:0 0 14px}' +
-      '@media (prefers-color-scheme:light){.dlg-input{background:#f3f5fb;color:#161a24;border-color:#d9dee9}}' +
       '.dlg-btns{display:flex;gap:10px;justify-content:flex-end}' +
       '.dlg-btn{font:600 14px/1 inherit;border:1px solid #3c5a8c;background:#22304a;color:#dbe4f3;' +
         'border-radius:8px;padding:9px 16px;cursor:pointer}' +
-      '@media (prefers-color-scheme:light){.dlg-btn{background:#eef1f7;color:#1a2233;border-color:#c7d0e0}}' +
       '.dlg-btn.primary{background:#2f7d4f;border-color:#49b578;color:#fff}' +
       '.dlg-btn.danger{background:#a5342b;border-color:#d1584d;color:#fff}' +
       '.dlg-btn:focus-visible{outline:2px solid #6fb0ff;outline-offset:2px}' +

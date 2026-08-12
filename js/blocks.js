@@ -112,6 +112,9 @@ const BLOCK = Object.freeze({
   WEIGHT_PLATE:           93,   // §Weight Sensor — a SOLID full block that emits redstone while a player/mob/both stands ON TOP (config modal)
   RAIL_SWITCH:            94,   // §Moving Platforms — a railroad switch: pivot + two routes, flips by redstone; platforms hand off to touching rails
   GLASS:                  95,   // solid, see-through pane; minable in Normal; a world setting lets melee/ranged/explosion/impact SHATTER it into shards
+  WIND_ZONE:              96,   // §E7 non-solid region that pushes entities (dir+strength); wall-blockable + redstone-gated; both engines
+  GRAVITY_ZONE:           97,   // §E4 non-solid region that INVERTS gravity for a player inside it (ceiling-walk)
+  CHECKPOINT:             98,   // §CK1 Speed Runner mid-level checkpoint — respawn anchor + split-timer marker
 });
 
 // §Phase R — Redstone Lamp colours (click a placed lamp with the Lamp selected to cycle). One hue
@@ -262,6 +265,9 @@ const BLOCK_DATA = {
   [BLOCK.ANCHOR_BLOCK]:      { name: 'Anchor Block',    hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.DIRECTION_CONTROLLER]: { name: 'Direction Controller', hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.SPEED_SEGMENT]:     { name: 'Speed Segment',   hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
+  [BLOCK.WIND_ZONE]:         { name: 'Wind Zone',       hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
+  [BLOCK.GRAVITY_ZONE]:      { name: 'Gravity Zone',    hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
+  [BLOCK.CHECKPOINT]:        { name: 'Checkpoint',      hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.LAUNCH_RAMP]:       { name: 'Launch Ramp',     hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
   [BLOCK.RAIL_GATE]:         { name: 'Rail Gate',       hardness: Infinity, mineable: false, solid: false, mineTier: 0, classic: true },
 };
@@ -371,6 +377,9 @@ function drawBlock(ctx, type, px, py, breakProgress, state = {}) {
     case BLOCK.ANCHOR_BLOCK:           _drawAnchorBlock(ctx, px, py, s);               break;
     case BLOCK.DIRECTION_CONTROLLER:   _drawDirectionController(ctx, px, py, s);       break;
     case BLOCK.SPEED_SEGMENT:          _drawSpeedSegment(ctx, px, py, s);              break;
+    case BLOCK.WIND_ZONE:              _drawWindZone(ctx, px, py, s, state.windDir || 'right', state.frame || 0, state.windStyle || 'chevron', state.col || 0, state.row || 0, state.windStrength || 0.6); break;
+    case BLOCK.GRAVITY_ZONE:           _drawGravityZone(ctx, px, py, s, state.frame || 0); break;
+    case BLOCK.CHECKPOINT:             _drawCheckpoint(ctx, px, py, s, state.cpReached); break;
     case BLOCK.LAUNCH_RAMP:            _drawLaunchRamp(ctx, px, py, s);                break;
     case BLOCK.RAIL_GATE:             _drawRailGate(ctx, px, py, s);                  break;
   }
@@ -1805,6 +1814,86 @@ function _drawSlime(ctx, px, py, s, compress = 0) {
   ctx.strokeRect(px + 1.5, py + 1.5 + dip, s - 3, s - 3 - dip);
   ctx.fillStyle = 'rgba(60,150,80,0.9)'; ctx.fillRect(px + 9, py + 9 + dip, s - 18, s - 18 - dip);   // inner core
   ctx.fillStyle = 'rgba(200,255,210,0.5)'; ctx.fillRect(px + 4, py + 4 + dip, 5, 5);                 // highlight
+}
+// §E7 Wind Zone — a translucent cyan cell with an animated wind pattern streaming DOWNWIND. Three styles
+// (Kevin's pick): 'chevron' (arrow marks), 'stream' (flowing curved lines), 'speed' (dashed speed lines).
+// The pattern is computed in ABSOLUTE world coordinates (col/row give the cell's world origin) so it tiles
+// seamlessly across every block — each cell just draws its clipped slice of one continuous field. The
+// pattern moves in the wind direction (downwind). speed/strength come from the zone's own settings (the
+// engine passes them via `frame`-scaled flow; density scales with strength upstream).
+function _drawWindZone(ctx, px, py, s, dir = 'right', frame = 0, style = 'chevron', col = 0, row = 0, strength = 0.6) {
+  const V = { right: [1, 0], left: [-1, 0], up: [0, -1], down: [0, 1], upright: [1, -1], upleft: [-1, -1], downright: [1, 1], downleft: [-1, 1] }[dir] || [1, 0];
+  const len = Math.hypot(V[0], V[1]) || 1, ux = V[0] / len, uy = V[1] / len;   // along-wind unit
+  const pxu = -uy, pyu = ux;                                                    // across-wind unit
+  ctx.save();
+  ctx.fillStyle = 'rgba(120,200,235,0.13)'; ctx.fillRect(px, py, s, s);
+  ctx.beginPath(); ctx.rect(px, py, s, s); ctx.clip();
+  ctx.translate(px - col * s, py - row * s);   // draw in absolute world coords; clip keeps it in this cell
+  ctx.strokeStyle = 'rgba(185,228,246,0.72)'; ctx.lineCap = 'round';
+  const wx0 = col * s, wy0 = row * s, ccx = wx0 + s / 2, ccy = wy0 + s / 2;
+  const acc = ccx * ux + ccy * uy, kcc = ccx * pxu + ccy * pyu;   // cell centre in (along, across)
+  const R = s * 0.85;                                             // half-extent to cover the cell any dir
+  const pitch = s * 0.42;                                         // lane spacing
+  const flow = (frame || 0) * (s * 0.02) * (0.5 + (strength || 0.6));   // downwind scroll — faster in a stronger wind
+  const kLo = Math.floor((kcc - R) / pitch), kHi = Math.ceil((kcc + R) / pitch);
+  const P = (a, across) => [a * ux + across * pxu, a * uy + across * pyu];      // (along,across)->world
+  for (let k = kLo; k <= kHi; k++) {
+    const across = k * pitch;
+    if (style === 'stream') {
+      ctx.lineWidth = Math.max(1.3, s * 0.05);
+      ctx.beginPath(); let first = true;
+      for (let a = acc - R; a <= acc + R; a += 3) {
+        const w = s * 0.11 * Math.sin(a * 0.09 - flow * 0.12 + k * 0.7);
+        const [x, y] = P(a - flow * 0, across + w);
+        if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    } else if (style === 'speed') {
+      // §T2-3 — draw the dashes as MANUAL segments stepping by a period that divides `s`, phase-anchored
+      // in world-along coords (exactly like the chevrons). setLineDash + a per-line lineDashOffset was NOT
+      // seamless: its phase restarts at each cell's own line and the 0.74s period doesn't tile the cell.
+      ctx.lineWidth = Math.max(1.6, s * 0.06);
+      const period = s / 3, dashLen = period * 0.62;   // s/3 divides s → dashes align across cell edges
+      const start = acc - R + (((flow % period) + period) % period);   // downwind scroll (+along), wrapped
+      for (let a = start; a <= acc + R; a += period) {
+        const [x0, y0] = P(a, across), [x1, y1] = P(a + dashLen, across);
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      }
+    } else {   // chevron
+      ctx.lineWidth = Math.max(1.6, s * 0.07);
+      const step = s * 0.5, h = s * 0.14;
+      const start = acc - R + (((flow % step) + step) % step);
+      for (let a = start; a <= acc + R; a += step) {
+        const [tipX, tipY] = P(a, across);
+        const [bx, by] = P(a - h, across - h * 0.9);   // one wing
+        const [cx2, cy2] = P(a - h, across + h * 0.9); // other wing
+        ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(tipX, tipY); ctx.lineTo(cx2, cy2); ctx.stroke();
+      }
+    }
+  }
+  ctx.restore();
+}
+// §E4 Gravity Zone — translucent purple cell with paired up/down arrows (gravity flips here).
+function _drawGravityZone(ctx, px, py, s, frame = 0) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(170,120,235,0.15)'; ctx.fillRect(px, py, s, s);
+  const cx = px + s / 2, pulse = 0.5 + 0.5 * Math.abs(Math.sin((frame || 0) * 0.05));
+  ctx.strokeStyle = 'rgba(210,180,250,' + (0.45 + 0.4 * pulse).toFixed(2) + ')'; ctx.lineWidth = Math.max(1.4, s * 0.06); ctx.lineCap = 'round';
+  const a = s * 0.16;
+  // up arrow (top half)
+  ctx.beginPath(); ctx.moveTo(cx, py + s * 0.14); ctx.lineTo(cx - a, py + s * 0.14 + a); ctx.moveTo(cx, py + s * 0.14); ctx.lineTo(cx + a, py + s * 0.14 + a); ctx.stroke();
+  // down arrow (bottom half)
+  ctx.beginPath(); ctx.moveTo(cx, py + s * 0.86); ctx.lineTo(cx - a, py + s * 0.86 - a); ctx.moveTo(cx, py + s * 0.86); ctx.lineTo(cx + a, py + s * 0.86 - a); ctx.stroke();
+  ctx.restore();
+}
+// §CK1 Checkpoint — a flag on a pole; green when reached this run, grey when pending.
+function _drawCheckpoint(ctx, px, py, s, reached) {
+  ctx.save();
+  ctx.strokeStyle = '#8a8f99'; ctx.lineWidth = Math.max(2, s * 0.08);
+  ctx.beginPath(); ctx.moveTo(px + s * 0.28, py + s * 0.92); ctx.lineTo(px + s * 0.28, py + s * 0.1); ctx.stroke();
+  ctx.fillStyle = reached ? '#39c862' : '#9aa0ac';
+  ctx.beginPath(); ctx.moveTo(px + s * 0.28, py + s * 0.12); ctx.lineTo(px + s * 0.74, py + s * 0.24); ctx.lineTo(px + s * 0.28, py + s * 0.38); ctx.closePath(); ctx.fill();
+  ctx.restore();
 }
 function _drawSpikes(ctx, px, py, s, dir = 'up') {
   // §Spike Orientation (E12) — the base sprite points UP; rotate about the cell centre for the other

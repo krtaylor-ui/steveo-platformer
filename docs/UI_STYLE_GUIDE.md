@@ -7,6 +7,16 @@ clean and consistent, and fully retro-theme compliant. The refactor that MOVES a
 blind overnight — this doc is the spec so it can be applied in reviewable, independently-revertible commits
 with Kevin's visual confirm.
 
+> **STATUS UPDATE (build 485, Tranche 2).** The SHARED modal chrome is now converted in ONE revertible
+> block — search `style.css` for `§Epic UI — Modal dark unification`. It moves the whole `.modal-content`
+> family (surface, headings, labels, inputs/selects/textareas, secondary buttons, the import warning box,
+> and the Custom-Rules rows) onto the dark palette below, **scoped to `:not([data-theme="retro"])`** so
+> only the default *modern* theme changes and retro keeps its own skin. This is UX-UNVERIFIED — **eyeball
+> every modal in modern theme before trusting it; to undo, delete only that one CSS block.** Known
+> still-pending (not covered because they sit outside `.modal-content` or need per-modal art): the
+> `.arena-tile` cards, `.game-slot`/card grids, and any modal with its own inline colour. Those are the
+> next reviewable commits.
+
 The canonical dark base already exists: **`.ws-panel`** (World Settings) in `style.css:1205`. Everything
 below is derived from its real values so a converted modal looks identical to Settings.
 

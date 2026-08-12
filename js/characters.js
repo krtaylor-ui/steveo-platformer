@@ -54,7 +54,15 @@
     { id: 'scout',    name: 'Scout',     theme: 'Adventure', body: 'boy',  views: BOTH, feat: { fedora: 1, scarf: 1, pack: 1 },
       pal: { skin: '#e0b083', hair: '#5a3d22', shirt: '#8a7a4a', pants: '#5a4a2a', accent: '#d64545' } },
     { id: 'bee',      name: 'Buzz',      theme: 'Bug',       body: 'boy',  views: BOTH, feat: { antennae: 1, wings: 1, stripes: 1 },
-      pal: { skin: '#f0c419', hair: '#2a2a2a', shirt: '#f0c419', pants: '#2a2a2a', accent: '#eef1f8' } }
+      pal: { skin: '#f0c419', hair: '#2a2a2a', shirt: '#f0c419', pants: '#2a2a2a', accent: '#eef1f8' } },
+    // §Phase B — line-stick render mode: `stick` swaps the blocky body for thin limbs + a circle head,
+    // drawn between the SAME animation joints so it animates through every move. `skirt` adds the classic
+    // triangle-dress silhouette. Cosmetic only (same hitbox). The palette's `shirt` is the line colour, so
+    // a creator can recolour the whole figure; `accent` is the eye.
+    { id: 'stick',    name: 'Stick',     theme: 'Line',      body: 'boy',  views: BOTH, feat: { stick: 1 },
+      pal: { skin: '#1c1f26', hair: '#1c1f26', shirt: '#1c1f26', pants: '#1c1f26', accent: '#eef1f8' } },
+    { id: 'sketch',   name: 'Stick (Skirt)', theme: 'Line',  body: 'girl', views: BOTH, feat: { stick: 1, skirt: 1 },
+      pal: { skin: '#1c1f26', hair: '#1c1f26', shirt: '#1c1f26', pants: '#1c1f26', accent: '#eef1f8' } }
   ];
 
   var MAP = {}; LIST.forEach(function (c) { MAP[c.id] = c; });
@@ -165,7 +173,15 @@
       return CUSTOM;
     },
     getCustom: function () { return CUSTOM; },
-    isCustom: function (id) { return id === 'custom'; }
+    // Phase 3 — register a custom mix under an ARBITRARY id so several players can each run a DIFFERENT
+    // custom character at once (the single 'custom' slot can only hold one). Per-player _characterId then
+    // points at its own slot (e.g. 'custom_p2'). Pass null to remove. Returns the built def.
+    registerCustom: function (id, def) {
+      if (!id) return null;
+      if (!def) { delete MAP[id]; return null; }
+      var built = buildCustom(def); MAP[id] = built; return built;
+    },
+    isCustom: function (id) { return id === 'custom' || (typeof id === 'string' && id.indexOf('custom_') === 0); }
   };
 
   if (typeof window !== 'undefined') window.CHARACTERS = CHARACTERS;
