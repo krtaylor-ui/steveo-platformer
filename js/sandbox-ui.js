@@ -990,13 +990,26 @@ const SANDBOX = {
     g = g || window.game; if (!g) return;
     const aws = g._worldAdvSettings || (g._worldAdvSettings = {});
     const bg = Object.assign({ enabled: false, bpm: 120, offsetMs: 0 }, aws.beatGrid || {});
+    // §Phase A — the level's music track (from the shared MUSIC_DISCS catalog); plays during the run and is
+    // the source the "Detect beat" button analyzes. Background tracks only.
+    const curSong = aws.levelMusicId || '';
+    let songOpts = '<option value="">None (silent)</option>';
+    if (typeof MUSIC_DISCS !== 'undefined') {
+      for (const k of Object.keys(MUSIC_DISCS)) {
+        const d = MUSIC_DISCS[k]; if (!d || d.category !== 'background') continue;
+        songOpts += `<option value="${k}"${k === curSong ? ' selected' : ''}>${(d.discName || k).replace(/[<>&]/g, '')}</option>`;
+      }
+    }
     const old = document.getElementById('sb-beat-modal'); if (old && old.remove) old.remove();
     const wrap = document.createElement('div'); wrap.id = 'sb-beat-modal';
     wrap.style.cssText = 'position:fixed;inset:0;z-index:9500;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)';
     const inp = 'background:#111826;color:#dfe7f5;border:1px solid #46557a;border-radius:6px;padding:6px';
     wrap.innerHTML = `<div role="dialog" aria-modal="true" style="background:#1a2233;border:1px solid #46557a;border-radius:12px;padding:18px 20px;max-width:380px;width:92%;box-shadow:0 8px 30px rgba(0,0,0,.6);color:#dfe7f5">
       <div style="font-weight:600;font-size:15px;margin-bottom:4px">🎵 Beat Grid</div>
-      <div style="color:#b6c2da;font:12px sans-serif;margin-bottom:14px">Set a tempo, then place hazards on the beat lines the editor draws. Most exact with Constant Speed on.</div>
+      <div style="color:#b6c2da;font:12px sans-serif;margin-bottom:14px">Pick a song, detect its beat, then place hazards on the beat lines. Most exact with Constant Speed on.</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="width:70px;color:#b6c2da;font:13px sans-serif">Song</span><select id="sb-beat-song" style="${inp};flex:1">${songOpts}</select></div>
+      <button id="sb-beat-detect" style="${inp};background:#33499e;cursor:pointer;width:100%;margin-bottom:6px">♪ Detect beat from song</button>
+      <div id="sb-beat-detectinfo" style="color:#7f8db0;font:12px sans-serif;min-height:14px;margin-bottom:12px"></div>
       <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer"><input type="checkbox" id="sb-beat-enabled"${bg.enabled ? ' checked' : ''}> <span>Show beat lines in editor</span></label>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="width:70px;color:#b6c2da;font:13px sans-serif">BPM</span><input type="number" id="sb-beat-bpm" value="${bg.bpm}" min="20" max="400" style="${inp};width:80px"><button id="sb-beat-tap" style="${inp};background:#33499e;cursor:pointer;flex:1">Tap tempo</button></div>
       <div id="sb-beat-tapinfo" style="color:#7f8db0;font:12px sans-serif;min-height:16px;margin-bottom:10px"></div>
@@ -1015,6 +1028,32 @@ const SANDBOX = {
       if (bpm) { bpmEl.value = bpm; wrap.querySelector('#sb-beat-tapinfo').textContent = 'Tapped ' + taps.length + ' → ' + bpm + ' BPM'; }
       else wrap.querySelector('#sb-beat-tapinfo').textContent = 'Keep tapping to the beat…';
     };
+    // §Phase A — decode the chosen catalog track in-browser and auto-fill BPM + offset (best effort).
+    const songEl = wrap.querySelector('#sb-beat-song');
+    const offEl = wrap.querySelector('#sb-beat-offset');
+    const dInfo = wrap.querySelector('#sb-beat-detectinfo');
+    wrap.querySelector('#sb-beat-detect').onclick = async () => {
+      const id = songEl.value;
+      if (!id || typeof MUSIC_DISCS === 'undefined' || !MUSIC_DISCS[id]) { dInfo.textContent = 'Pick a song first.'; return; }
+      if (typeof BPM_DETECT === 'undefined') { dInfo.textContent = 'Detector unavailable.'; return; }
+      dInfo.textContent = 'Analyzing…';
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        const ac = new AC();
+        const resp = await fetch(MUSIC_DISCS[id].audioFile);
+        const audio = await ac.decodeAudioData(await resp.arrayBuffer());
+        // Decimate to ~11 kHz mono so the analysis is fast on a full-length track.
+        const ch = audio.getChannelData(0), step = Math.max(1, Math.floor(audio.sampleRate / 11025));
+        const small = new Float32Array(Math.floor(ch.length / step));
+        for (let i = 0, j = 0; j < small.length; i += step, j++) small[j] = ch[i];
+        const r = BPM_DETECT.analyze(small, audio.sampleRate / step);
+        try { ac.close(); } catch (_) {}
+        if (r.bpm) {
+          bpmEl.value = r.bpm; offEl.value = r.offsetMs;
+          dInfo.textContent = `Detected ${r.bpm} BPM (confidence ${Math.round((r.confidence || 0) * 100)}%) — adjust if needed.`;
+        } else { dInfo.textContent = 'No clear beat found — set BPM manually.'; }
+      } catch (e) { dInfo.textContent = 'Could not load/analyze that track.'; }
+    };
     const close = () => { if (wrap.remove) wrap.remove(); document.removeEventListener('keydown', onKey); };
     const onKey = (e) => { if (e.key === 'Escape') close(); };
     wrap.querySelector('#sb-beat-cancel').onclick = close;
@@ -1026,6 +1065,7 @@ const SANDBOX = {
         bpm: Math.max(20, Math.min(400, Math.round(+bpmEl.value) || 120)),
         offsetMs: Math.max(0, Math.round(+wrap.querySelector('#sb-beat-offset').value) || 0),
       };
+      aws.levelMusicId = songEl.value || null;   // §Phase A — the track that plays during the run
       close();
     };
   },

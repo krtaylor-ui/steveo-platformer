@@ -18298,6 +18298,7 @@ class Game {
         sr.startMs        = Date.now();
         sr.goMs           = sr.startMs;
         sr.perfectChecked = false;
+        this._startLevelMusic();   // §Phase A — begin the level's chosen catalog track (within the GO gesture window)
         sr.accelAtGo      = this.input.isRight() || this.input.isDown('ArrowRight')
                           || this.input.isDown('KeyD')
                           || this.input.gamepads.some(g => g && g.connected && (g.dpad1 || g.moveX > 0.3));
@@ -22329,6 +22330,19 @@ class Game {
     if (!choices.length) choices = songs;
     const key = choices[Math.floor(Math.random() * choices.length)];
     this._playBackgroundTrack(key);
+  }
+
+  // §Phase A — play the level's chosen catalog track (worldAdvSettings.levelMusicId), looped for the whole
+  // run. Reuses the background-music path; only fires if a valid track is set and not already playing it.
+  _startLevelMusic() {
+    const id = this._worldAdvSettings && this._worldAdvSettings.levelMusicId;
+    if (!id || typeof MUSIC_DISCS === 'undefined' || !MUSIC_DISCS[id]) return;
+    if (!this._musicSystem || !this._musicSystem.bgAudio) return;
+    if (this._musicSystem.currentTrack === id && !this._musicSystem.bgAudio.paused) { this._musicSystem.bgAudio.loop = true; return; }
+    try {
+      this._playBackgroundTrack(id);
+      if (this._musicSystem.bgAudio) this._musicSystem.bgAudio.loop = true;   // level music loops for the run
+    } catch (e) { /* autoplay may reject outside a gesture — harmless */ }
   }
 
   _getEnabledSongs() {
