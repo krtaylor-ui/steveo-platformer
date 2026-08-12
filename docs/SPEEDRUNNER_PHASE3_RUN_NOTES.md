@@ -161,3 +161,27 @@ silent and any limits that stopped a full rollout, per the "document assumptions
   NEGATIVE lineDashOffset to flow downwind (a positive offset scrolls them upwind).
 - Wire into blocks.js `_drawWindZone` (side-scroller) first, then the overhead variant. Cyan accent stays.
 - Artifact: https://claude.ai/code/artifact/985befff-ef0e-456f-ac62-b4c22851c5ae
+
+## Bugfix pass on the 461-471 tester report (build 472)
+- **F1 (HIGH) — E7 redstone gating never fired:** the wind popup offered STRING channels 'A'/'B'/'C', but
+  _channelPowered matches tx.number (integers 1–99). Changed the wind channel choices to integers 1/2/3
+  so a real transmitter #1 gates the zone. FIXED.
+- **F2 (MED) — Epic C5 undone online:** sandbox-ui _applyModeUI re-showed the Import-from-Games button
+  when not local. Now always hidden. FIXED.
+- **F3 (MED) — E4 dual-surface eaten jump:** under inverted gravity a real FLOOR no longer registers as
+  ground (the down-sweep only grounds when _gravitySign > 0), so a floor-standing inverted player floats
+  back up instead of eating the jump. FIXED (improves the flagged edge case).
+- **F4 (MED) — wind zone split by a full-height wall:** (a) the shadow bounding box is expanded by a margin
+  so the splitting wall is captured → the downwind group is correctly calm; (b) a split-off group with no
+  config now INHERITS the creator's wind config instead of defaulting to "blow right 0.6". FIXED.
+- **F6 (MED) — Kevin bug 1 (fall through cleared bedrock):** the sandbox editor runs the player in god
+  mode, which skipped the fall-death catch, so clearing the bedrock row dropped the player forever. Added
+  a sandbox catch that lifts them back to spawn. FIXED.
+- **X-RAY (Kevin bug 2):** NOT a code bug — X→phase-through IS wired (game.js:2244, works in god mode /
+  sandbox). Likely god mode wasn't active. God Mode = hold G+O+D together (non-sandbox), shows a banner;
+  then X toggles walk-through-blocks. If Kevin confirms the banner showed and X still failed, re-investigate.
+- **Test World fidelity (tester Q):** Normal mode intentionally loads the built-in adventure world (so a
+  25×15 grid renders as the 650×60 adventure map) — that's existing behavior, not from this run. The SR
+  auto-Goal at (28,444) is worth a look (SR may auto-place a finish when none exists); flagged.
+- **Stale API server (tester's #1):** not a code issue — restart the branch API server so it matches the
+  471+ client (storefront slices / achievement routes / roster save all need the current server).

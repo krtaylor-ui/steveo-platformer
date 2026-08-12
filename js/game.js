@@ -4207,6 +4207,13 @@ class Game {
     if (this.player.y + this.player.height > this.level.pixelHeight && !this.player.godMode) {
       this._triggerDeath('Fell into a pit');
     }
+    // §F6 — in the SANDBOX editor the player is in god mode (no fall death), so clearing the bedrock row
+    // used to drop them off the world forever. Catch them and lift back to spawn instead of dying.
+    else if (this.gameMode === 'sandbox' && this.player.y > this.level.pixelHeight + 80) {
+      this.player.x = this.level.spawnX; this.player.y = this.level.spawnY;
+      this.player.vx = 0; this.player.vy = 0;
+      this._notify('Caught you — back to spawn', '#7fd0ff', 90);
+    }
 
     // ── Phase 16: Multiplayer sync ─────────────────────────────
      if (window.multiplayerManager?.isConnected) {
@@ -8479,7 +8486,7 @@ class Game {
       const DIRS = ['right', 'downright', 'down', 'downleft', 'left', 'upleft', 'up', 'upright'];
       const STR = [0.3, 0.6, 1.0, 1.5, 2.0];
       const THK = [1, 2, 3, 4];
-      const CH = [null, 'A', 'B', 'C'];
+      const CH = [null, 1, 2, 3];   // §F1 — INTEGER channels: _channelPowered matches tx.number (1–99), so string 'A'/'B'/'C' never fired
       const c = cfg();
       const touch = () => this._invalidateWindZones();
       return [
@@ -18441,12 +18448,23 @@ class Game {
           if (isWind(nc, nr) && !seen.has(k)) { seen.add(k); stack.push([nc, nr]); }
         }
       }
-      const cfg = this._windCfgAt(minR, minC);
+      // §F4 — config resolution: explicit entry for this group's anchor, else INHERIT the creator's wind
+      // config (a full-height wall splits a zone into two flood-fill groups; the split-off half has no
+      // entry and should share the settings, not fall back to "blow right at 0.6"). Falls back to defaults
+      // only when no wind cell anywhere was configured.
+      let cfg = (this._windCfg && this._windCfg.get(minR + ',' + minC)) || null;
+      if (!cfg && this._windCfg && this._windCfg.size) cfg = this._windCfg.values().next().value;
+      if (!cfg) cfg = { dir: 'right', strength: 0.6, thickness: 2, channel: null, affectsGrounded: false };
       for (const g of grp) this._windDirMap[g.row + ',' + g.col] = cfg.dir;
-      // Bounding box cells for the wall-shadow calc (a wall = solid cells inside the box).
-      const box = [];
-      for (let br = minR; br <= maxR; br++) for (let bc = minC; bc <= maxC; bc++) box.push({ col: bc, row: br });
+      // Bounding box cells for the wall-shadow calc (a wall = solid cells inside the box). §F4 — expand
+      // the box by a margin so a FULL-HEIGHT wall that splits a zone into two groups is captured (it sits
+      // just outside a group's tight bbox); then the downwind group falls in the wall's shadow = calm.
       const isSolid = (bc, br) => { const b = L.get(br, bc); return !!(BLOCK_DATA[b] && BLOCK_DATA[b].solid); };
+      const M = (cfg.thickness || 2) + 2;
+      const bMinC = Math.max(0, minC - M), bMaxC = Math.min(L.width - 1, maxC + M);
+      const bMinR = Math.max(0, minR - M), bMaxR = Math.min(L.height - 1, maxR + M);
+      const box = [];
+      for (let br = bMinR; br <= bMaxR; br++) for (let bc = bMinC; bc <= bMaxC; bc++) box.push({ col: bc, row: br });
       const shadow = WIND.shadowedCells(box, cfg.dir, isSolid, cfg.thickness);
       this._windZones.push({ key: minR + ',' + minC, cfg, minC, maxC, minR, maxR, cells: new Set(grp.map(g => g.col + ',' + g.row)), shadow, isSolid });
     }

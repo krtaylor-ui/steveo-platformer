@@ -31,7 +31,7 @@ const SANDBOX = {
   _applyModeUI() {
     const local = (typeof APP_MODE !== 'undefined' && APP_MODE.isLocal());
     const games = document.getElementById('import-games-btn');
-    if (games) games.style.display = local ? 'none' : '';   // cloud games = online only
+    if (games) games.style.display = 'none';   // §C5/F2 — "Import from Games" removed entirely (was re-shown online)
     const file = document.getElementById('import-file-btn');
     if (file) file.style.display = '';                        // file import works offline too
   },

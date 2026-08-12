@@ -910,13 +910,17 @@ class Player {
         if (level.isSolid(r, bLeft) || level.isSolid(r, bRight) || oneWay) {
           this.y        = r * BLOCK_SIZE - this.height;
           this.vy       = 0;
-          this.onGround = true;
-          this._airJumpsUsed = 0;                // landing refreshes the air jump
-          this._rollFrames   = 0;                // landing snaps the roll back to normal
-          this._ctrlLock     = false;            // landing returns control (lock-away wall jump)
-          if (!wasOnGround) { this.jumpSquish = 0.85; if (landingVy > 5) this._sfxLand = landingVy; }
-          if (this.flying) this.flying = false;  // auto-land when touching ground
           stopped = true;
+          // §F3/E4 — under INVERTED gravity a real floor is NOT ground (gravity pulls you up off it): stop
+          // at it but don't register a landing, so the next jump isn't eaten and you float back up.
+          if ((this._gravitySign || 1) > 0) {
+            this.onGround = true;
+            this._airJumpsUsed = 0;                // landing refreshes the air jump
+            this._rollFrames   = 0;                // landing snaps the roll back to normal
+            this._ctrlLock     = false;            // landing returns control (lock-away wall jump)
+            if (!wasOnGround) { this.jumpSquish = 0.85; if (landingVy > 5) this._sfxLand = landingVy; }
+            if (this.flying) this.flying = false;  // auto-land when touching ground
+          }
           break;
         }
       }
