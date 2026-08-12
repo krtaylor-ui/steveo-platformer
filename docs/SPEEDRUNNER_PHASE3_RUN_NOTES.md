@@ -151,3 +151,13 @@ silent and any limits that stopped a full rollout, per the "document assumptions
   unverifiable, the single highest visual-risk change, and Kevin serves the live working directory (a
   broken modal mid-run is disruptive). Recommend doing it in a dedicated session with browser review,
   one modal per commit per the style guide. Flagged honestly rather than shipped blind.
+
+## Wind visual style (Kevin's ask, 2026-08-11) — scheduled for TRANCHE 2
+- Add a per-zone **Wind Style** option to the Wind Zone config: **Chevrons · Flowing streamlines · Speed
+  lines** (chosen from the 6-way visual study artifact). Flow speed + line density derive from the zone's
+  Strength/Speed settings. Rendered as a single continuous world-space field so it tiles seamlessly across
+  blocks (proven in the artifact), and the pattern moves IN the wind direction.
+- **Bug caught + fixed in the artifact (carry to the engine):** speed-lines dashes must scroll with a
+  NEGATIVE lineDashOffset to flow downwind (a positive offset scrolls them upwind).
+- Wire into blocks.js `_drawWindZone` (side-scroller) first, then the overhead variant. Cyan accent stays.
+- Artifact: https://claude.ai/code/artifact/985befff-ef0e-456f-ac62-b4c22851c5ae
