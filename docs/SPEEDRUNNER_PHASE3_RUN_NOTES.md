@@ -185,3 +185,27 @@ silent and any limits that stopped a full rollout, per the "document assumptions
   auto-Goal at (28,444) is worth a look (SR may auto-place a finish when none exists); flagged.
 - **Stale API server (tester's #1):** not a code issue — restart the branch API server so it matches the
   471+ client (storefront slices / achievement routes / roster save all need the current server).
+
+## TRANCHE 1 — Storefront & Platform  (builds 473–475)
+- **Server (community/worlds-routes):** browse now filters by TAG + CREATOR + search and returns
+  play_count/tags/thumbnail/downloadable/creatorId; new routes — system tags (list), set-world-tags
+  (curated only), tag-request (moderated), creator mini-profile (/api/community/creator/:id), Community
+  Picks (/api/community/picks), thumbnail store (POST /api/worlds/:id/thumbnail, data-URI, size-capped),
+  publish accepts `downloadable`; download route ENFORCES downloadable (403 if off) + immutable
+  original_author + marks the clone non-downloadable.
+- **Client (community-ui + index.html + style.css):** tag filter, Most-Played/Trending sorts,
+  search-as-you-type, card thumbnails + play counts + tag chips, clickable author → creator profile bar,
+  downloadable-aware Download button, Community Picks featured strip. New dark-shell-consistent CSS.
+- **B1 thumbnails:** auto-captured on publish from the game canvas (downscaled JPEG data-URI, no Supabase
+  Storage bucket needed) — removes the bucket dependency for previews.
+- **LB re-key (build 473):** Speed Runner levelId now prefers the stable worlds.id (options.worldId);
+  documented CLEAN CUT for pre-re-key local best-times (superseded, not migrated); player_id already
+  scopes server rows.
+- **DEFERRED (flagged) — A3 SR LANDING SCREEN tabs (System / My Levels / Community):** the 4-slot Speed
+  Runner select screen is drawn imperatively on the canvas (menu.js _drawSpeedRunnerSelect); adding the
+  three left-tabs there is a canvas-menu rework that's browser-unverifiable and best done with Kevin's
+  visual review. The Community browse screen already delivers the browse experience; wiring it as a Speed
+  Runner landing tab is the remaining nav integration. Left for a focused pass. Also deferred: a per-world
+  Downloadable opt-OUT toggle (publish currently defaults downloadable=true), duration-range buckets (no
+  per-world duration field exists yet), and the admin tag-approval / pick-generation UI (routes exist).
+- **REQUIRED:** restart the local API server (node server.js, pid 559) so all these new routes are live.
