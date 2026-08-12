@@ -1849,13 +1849,16 @@ function _drawWindZone(ctx, px, py, s, dir = 'right', frame = 0, style = 'chevro
       }
       ctx.stroke();
     } else if (style === 'speed') {
+      // §T2-3 — draw the dashes as MANUAL segments stepping by a period that divides `s`, phase-anchored
+      // in world-along coords (exactly like the chevrons). setLineDash + a per-line lineDashOffset was NOT
+      // seamless: its phase restarts at each cell's own line and the 0.74s period doesn't tile the cell.
       ctx.lineWidth = Math.max(1.6, s * 0.06);
-      const dash = s * 0.4, gap = s * 0.34;
-      ctx.setLineDash([dash, gap]);
-      ctx.lineDashOffset = -flow * 1.6;   // NEGATIVE = scroll dashes DOWNWIND (the Kevin fix)
-      const [x0, y0] = P(acc - R, across), [x1, y1] = P(acc + R, across);
-      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
-      ctx.setLineDash([]);
+      const period = s / 3, dashLen = period * 0.62;   // s/3 divides s → dashes align across cell edges
+      const start = acc - R + (((flow % period) + period) % period);   // downwind scroll (+along), wrapped
+      for (let a = start; a <= acc + R; a += period) {
+        const [x0, y0] = P(a, across), [x1, y1] = P(a + dashLen, across);
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      }
     } else {   // chevron
       ctx.lineWidth = Math.max(1.6, s * 0.07);
       const step = s * 0.5, h = s * 0.14;

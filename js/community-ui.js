@@ -267,10 +267,32 @@ const COMMUNITY = {
       document.getElementById('community-screen').style.display = 'none';
       const hud = document.getElementById('play-hud'); if (hud) hud.style.display = 'flex';
       if (window.game && window.game.destroy) { try { window.game.destroy(); } catch (_) {} window.game = null; }
+
+      // §T2-4/§T2-5 — community play must OWN its exit: the shared play-hud buttons are bound by
+      // GAME_PLAY on its own launches, not here, so the Exit button was inert; and the pause-menu
+      // Main Menu returned to the dashboard, not the storefront. Wire an explicit return-to-store used
+      // by BOTH the HUD Exit button AND the game's _onReturnToMenu (pause-menu Main Menu / confirmExit).
+      let exited = false;
+      const backToStore = () => {
+        if (exited) return; exited = true;
+        try { if (window.game && window.game.destroy) window.game.destroy(); } catch (_) {}
+        window.game = null;
+        if (hud) hud.style.display = 'none';
+        const dash = document.getElementById('dashboard-screen'); if (dash) dash.style.display = 'none';
+        const cs = document.getElementById('community-screen'); if (cs) cs.style.display = 'block';
+        if (this.loadBrowse) this.loadBrowse();   // refresh so the +1 play shows
+      };
+      const exitBtn = document.getElementById('play-hud-exit');
+      if (exitBtn) exitBtn.onclick = backToStore;
+      const pauseBtn = document.getElementById('play-hud-pause');
+      if (pauseBtn) { pauseBtn.textContent = 'Pause'; pauseBtn.onclick = () => { const g = window.game; if (!g) return; const p = g.state === 'paused'; g.state = p ? 'playing' : 'paused'; pauseBtn.textContent = p ? 'Pause' : 'Resume'; }; }
+      const restartBtn = document.getElementById('play-hud-restart');
+      if (restartBtn) { restartBtn.style.display = ''; restartBtn.onclick = () => { const g = window.game; if (!g) return; if (g.state === 'paused') { g.state = 'playing'; if (pauseBtn) pauseBtn.textContent = 'Pause'; } if (g._srRestartRun) g._srRestartRun(); }; }
+
       window.game = new Game(
         'speedrunner',
         { speedrunnerLoadKey: wd, playerName: 'Player', worldId: d.id },
-        () => { if (hud) hud.style.display = 'none'; window.game = null; COMMUNITY.init(); }
+        () => backToStore()
       );
     } catch (e) {
       btn.textContent = 'Failed'; btn.disabled = false;

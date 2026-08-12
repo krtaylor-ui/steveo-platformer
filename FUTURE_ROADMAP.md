@@ -1779,3 +1779,36 @@ ghost-draw underlay for the paint tool, from one asset.
 graceful degradation to skeleton, proportions+skin). Beginner-first: Rungs 2–3 lead; Rung 4 follows.
 Deferred: per-level music upload + storage + licensing; jukebox filtering; overhead animation rows.
 Sequence: A+B next tester pass; then C → **E1 (leads)** → D → F → E2 → G; then E3; far-future H.
+
+---
+
+## §14. Progression-gated creator features (achievements unlock design power)
+
+**Kevin's idea (2026-08-12):** the incentive for earning achievements = **unlocking creator/design
+features**. Start with limited config, sprites, and controls; earning achievements (largely via the
+campaign) unlocks new settings, blocks, sprite rungs, and controls. Gives achievements a real reward and
+makes PLAYING feed CREATING (the game's core value), and gives Campaign mode a job.
+
+**Key insight — the accessibility ladder IS the unlock tree.** Don't build a separate gating system; gate
+the ladder rungs + setting GROUPS we already have:
+- Rungs 0–1 (pick / mix+recolor) free from the start.
+- Rung 2 (reshape sliders) → early achievement.
+- Rung 3 (draw-your-own-pieces) → deeper achievement.
+- Exotic blocks (wind/gravity zones), advanced world settings, enemy-model templates, and
+  achievement-AUTHORING itself → later unlocks.
+
+**Plumbing already half-built:** Epic D shipped the achievement evaluator + a per-WORLD server ledger
+(`/api/achievements/world`). The missing piece is a **per-ACCOUNT unlock ledger** (same pattern, new
+scope) + an unlock-check at each gated feature + the aspirational-lock UI.
+
+**Guardrails so it doesn't wall the garden (build these in from day one):**
+- **Creative vs Progression mode** toggle (Minecraft-style): Creative unlocks everything; Progression gates.
+  Never force gating on someone who just wants to build.
+- **Never gate the basics** — a complete, playable level is always makeable; gate only the fancy stuff.
+- **Aspirational locks** — show locked features as "🔒 earn X to unlock" (visible, not hidden) so they pull
+  the player forward instead of confusing them.
+- Unlocks are **permanent per account**.
+
+**Scope:** cross-cutting rework (every gated setting/tool needs an unlock check + UI) — a big future
+initiative, but it can PILOT incrementally (gate 2–3 marquee features first, not all at once). Ties to:
+Campaign mode (§12), the Creative Tools ladder (§13), and Epic D achievements.

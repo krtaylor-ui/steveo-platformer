@@ -1390,6 +1390,11 @@ html:not([data-theme="retro"]) .modal-content .cr-score-row,
 html:not([data-theme="retro"]) .modal-content .cr-step-cond { color: #e9ebf4; }
 html:not([data-theme="retro"]) .modal-content .cr-step-cond { background: #242838; }
 html:not([data-theme="retro"]) .modal-content.cr-modal { color: #e9ebf4; }
+/* §T2-1 — Copy World's fieldset hardcodes #2a2a3a (id-specificity), so the "Copy to" legend was
+   1.18:1 dark-on-dark on the dark shell. Match specificity to flip it light. */
+html:not([data-theme="retro"]) #copy-world-modal .copy-dest { color: #e9ebf4; }
+html:not([data-theme="retro"]) .modal-content legend,
+html:not([data-theme="retro"]) .modal-content fieldset { color: #e9ebf4; }
 
 /* Arena leaderboard modal */
 #lb-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
@@ -1984,8 +1989,8 @@ html[data-theme="retro"] .cc-actions .cc-fav { color: #dfe6f2; border-color: #3a
 .rating-display .star { color: #ddd; } .rating-display .star.on { color: #f5b301; }
 .rate-star { color: #ccc; cursor: pointer; font-size: 1.1rem; } .rate-star.on { color: #f5b301; }
 .rate-star:hover { color: #f5b301; }
-.cc-actions { display: flex; gap: 8px; margin-top: 6px; }
-.cc-actions .btn { flex: 1; }
+.cc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }   /* §T2-6 — wrap so the 3rd (Play) button doesn't overflow the SR card */
+.cc-actions .btn { flex: 1 1 auto; min-width: 0; }
 .cc-fav.faved { background: #f5b301; color: #101018; }
 .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
 .stat-cell { background: rgba(0,0,0,0.28); border-radius: var(--ui-radius); padding: 16px; text-align: center; }
