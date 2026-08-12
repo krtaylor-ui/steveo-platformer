@@ -49,3 +49,46 @@ buckets; admin tag-approval / pick-generation UI (routes exist).
 SERVER-DEPENDENT: everything above needs the RESTARTED local server. If you hit a
 stale server the publish gate / sorts / routes will look broken — restart first.
 ================================================================================
+
+
+================================================================================
+RE-CHECK — Tranche 1 fixes (build 476 + tranche1_fixes.sql APPLIED)
+================================================================================
+Prereq: build 476 pulled + server RESTARTED (node server.js) + server/sql/tranche1_fixes.sql
+applied (rating_avg backfill+trigger, downloadable backfill, 10 seed tags).
+
+[T1-1 — "Top rated" now sorts] (was HIGH, SQL + trigger)
+  - Verify the column is populated: rating_avg should now equal rating_sum/rating_count
+    (not 0). A rating change should update it live (the trigger recomputes on any worlds
+    update).
+  - End-to-end order needs TWO accounts (world_ratings is unique per user+world): from
+    two accounts, rate world A 5★ and world B 2★, then Browse → sort "Top rated" → A
+    ranks above B and above unrated worlds.
+
+[T1-2 — community card buttons visible] (was HIGH, CSS)
+  - Every card's Download + Favorite buttons are now readable (solid Download, bordered
+    Favorite; gold when favorited) in BOTH light and dark themes. No more white-on-white.
+
+[T1-3 — Speed Runner LB re-key fires] (was HIGH, launcher)
+  - Launch a Speed Runner game bound to a CLOUD world that has a DB id → game._sr.levelId
+    should be that worlds.id (a UUID), NOT "author:worldName". game._launchWorldId should
+    be non-null.
+  - KNOWN/EXPECTED: a purely LOCAL SR save (SandboxSaves) has no DB id, so it still uses
+    the legacy author:worldName key — that's fine (local worlds have no shared server
+    board). Only worlds launched with a DB id re-key.
+
+[Seam-1 — existing published worlds downloadable]
+  - The 5 previously-published worlds now show an enabled ⬇ Download (not "Not
+    downloadable"); a normal user can download/clone them.
+
+[Seam-2 — publish seam aligned]
+  - SANDBOX.publishWorld now sends downloadable like the UI button (identical behavior).
+
+[Tag filtering — now testable]
+  - The "All tags" dropdown now lists 10 seeded tags (#parkour, #puzzle, …). Set a
+    world's tags (POST /api/worlds/:id/tags with curated names) then filter by that tag →
+    only tagged worlds show.
+
+Regression watch: re-confirm the earlier passes still hold (publish gate, thumbnail
+capture, download/provenance immutability, sorts, creator profile, Picks).
+================================================================================
