@@ -1,3 +1,21 @@
+## CURRENT STATE (2026-08-11 night) — TRANCHE 1 (Storefront & Platform) VERIFIED CLEAN; branch `speedrunner-phase3` @ build 477
+
+**`speedrunner-phase3` (off main@460), pushed, NOT merged. Build 477. Suite green.** Tranche 1 storefront
+tester-verified (473-477): browse tags/creator/search + play/thumbnail fields, tag routes + 10 seeded
+system_tags, creator profiles, Community Picks, thumbnail auto-capture (data-URI, no bucket), downloadable
++ immutable-provenance enforcement, LB re-key SR levelId->worlds.id (game-slot launcher now passes
+record.world_id). All Tranche-1 tester defects fixed (T1-1 rating_avg backfill+trigger via
+server/sql/tranche1_fixes.sql; T1-2 card CTA contrast; T1-3 game-slot worldId). OPEN (human/deferred):
+rating avg-vs-sum ORDERING needs a 2nd account; A3 SR landing-screen tabs deferred to Tranche 2 (canvas,
+needs Kevin's review).
+
+**NEXT = TRANCHE 2** (creator tools, gameplay & visual unification): Epic D creator-UI + in-play tracking +
+fire; Epic MB editor Beat-Grid overlay; Epic C tabs/overhead-fold/description; CK3 practice mode; Phase 3
+MP-per-player + side-scroll preview + sprite-sheet pipeline (+ how-to artifact); Epic UI 12-modal dark
+unification; the WIND STYLE picker (chevrons/streamlines/speed-lines, downwind-flow); A3 landing tabs.
+
+---
+
 ## CURRENT STATE (2026-08-11 night) — Speed Runner EPICS + Phase 3 on branch `speedrunner-phase3` (builds 461–471, pushed, NOT merged)
 
 **Second-half additions (467–471) on top of 461–466 below:** Epic C safe wins (removed Import-from-Games +
