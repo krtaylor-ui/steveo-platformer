@@ -665,12 +665,14 @@ class Player {
       this.onGround    = false;
       this.jumpSquish  = 1;
       this._sfxJump    = true;   // §4c — a ground jump makes noise
+      this._jumpCount  = (this._jumpCount || 0) + 1;   // §Epic D — nojump achievement
     } else if (jumpEdge && this._wallSliding) {
       // Wall jump — a normal jump off the wall. Optional lock-away forces the arc
       // away from the wall and disables steering until you land / hit a wall / hang.
       this.vy          = jumpVel;
       this._jumpBuffer = 0;
       this.jumpSquish  = 1;
+      this._jumpCount  = (this._jumpCount || 0) + 1;   // §Epic D
       if (this._wallJumpLockAway) {
         this._ctrlLock = true;
         this._lockVx   = -this._wallSlideDir * this.moveSpeed;
@@ -685,6 +687,7 @@ class Player {
       this._airJumpsUsed = (this._airJumpsUsed || 0) + 1;
       this._jumpBuffer   = 0;
       this.jumpSquish    = 1;
+      this._jumpCount    = (this._jumpCount || 0) + 1;   // §Epic D
       // Kick off the mid-air roll (tuck + one full spin). Single jump is untouched.
       this._rollFrames   = 24;
       this._rollTotal    = 24;

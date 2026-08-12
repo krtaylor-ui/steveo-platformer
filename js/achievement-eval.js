@@ -34,6 +34,13 @@ const ACHIEVEMENT_EVAL = {
     return defs.slice(0, 3).filter((d) => this.satisfied(d, stats));
   },
 
+  // Stable identity for a definition — used to dedupe fires and as the persistence ledger key.
+  keyOf(def) {
+    if (!def) return '';
+    if (def.name) return 'name:' + def.name;
+    return [def.type, def.item || '', def.count || '', def.seconds || '', def.max || ''].join(':');
+  },
+
   // A fresh per-run stats accumulator the engine updates as the player collects / kills / jumps / gets hurt.
   freshStats() { return { collected: {}, mobKills: 0, jumpCount: 0, tookHazardDamage: false, completed: false, completionMs: 0 }; },
 };

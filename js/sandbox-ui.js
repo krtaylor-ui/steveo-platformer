@@ -860,6 +860,83 @@ const SANDBOX = {
     return wrap;
   },
 
+  // ── §Epic D — Level Challenges (per-level achievements) editor ──
+  // Up to 3 goals stored on world_data.worldAdvSettings.achievements[]; evaluated by
+  // ACHIEVEMENT_EVAL on level completion. Migration-free (rides the world save).
+  editAchievements(g) {
+    g = g || window.game; if (!g) return;
+    const aws = g._worldAdvSettings || (g._worldAdvSettings = {});
+    if (!Array.isArray(aws.achievements)) aws.achievements = [];
+    const defs = aws.achievements.slice(0, 3);
+    while (defs.length < 3) defs.push({ type: 'none' });
+    const TYPES = [
+      ['none', 'None'], ['collect', 'Collect N coins'], ['defeat', 'Defeat N enemies'],
+      ['time', 'Finish under Ns'], ['nojump', 'Few jumps'], ['nodamage', 'No hazard damage'],
+    ];
+    const old = document.getElementById('sb-ach-modal'); if (old && old.remove) old.remove();
+    const wrap = document.createElement('div'); wrap.id = 'sb-ach-modal';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:9500;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)';
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const row = (d, i) => {
+      const sel = TYPES.map(([v, l]) => `<option value="${v}"${v === d.type ? ' selected' : ''}>${l}</option>`).join('');
+      return `<div class="sb-ach-row" data-i="${i}" style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+        <span style="width:16px;color:#7f8db0">${i + 1}</span>
+        <select class="sb-ach-type" style="flex:1;background:#111826;color:#dfe7f5;border:1px solid #46557a;border-radius:6px;padding:5px">${sel}</select>
+        <span class="sb-ach-params" style="display:flex;gap:4px;align-items:center;min-width:120px"></span>
+      </div>`;
+    };
+    wrap.innerHTML = `<div role="dialog" aria-modal="true" style="background:#1a2233;border:1px solid #46557a;border-radius:12px;padding:18px 20px;max-width:440px;width:92%;box-shadow:0 8px 30px rgba(0,0,0,.6);color:#dfe7f5">
+      <div style="font-weight:600;font-size:15px;margin-bottom:4px">🏆 Level Challenges</div>
+      <div style="color:#b6c2da;font:12px sans-serif;margin-bottom:14px">Up to 3 goals players earn by clearing this level. They fire on completion.</div>
+      <div id="sb-ach-rows">${defs.map(row).join('')}</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+        <button id="sb-ach-cancel" style="background:#2b3548;border:1px solid #46557a;color:#fff;border-radius:7px;padding:8px 14px;cursor:pointer;font:14px sans-serif">Cancel</button>
+        <button id="sb-ach-save" style="background:#2f6f4f;border:1px solid #46557a;color:#fff;border-radius:7px;padding:8px 14px;cursor:pointer;font:14px sans-serif">Save</button>
+      </div></div>`;
+    document.body.appendChild(wrap);
+    const numIn = (cls, val, min, max, w) => `<input type="number" class="${cls}" value="${esc(val)}" min="${min}" max="${max}" style="width:${w || 56}px;background:#111826;color:#dfe7f5;border:1px solid #46557a;border-radius:6px;padding:5px">`;
+    const renderParams = (rowEl, d) => {
+      const box = rowEl.querySelector('.sb-ach-params');
+      if (d.type === 'collect') box.innerHTML = numIn('sb-ach-count', d.count || 5, 1, 999) + '<span style="color:#7f8db0;font:12px sans-serif">coins</span>';
+      else if (d.type === 'defeat') box.innerHTML = numIn('sb-ach-count', d.count || 3, 1, 999) + '<span style="color:#7f8db0;font:12px sans-serif">enemies</span>';
+      else if (d.type === 'time') box.innerHTML = numIn('sb-ach-seconds', d.seconds || 60, 1, 9999) + '<span style="color:#7f8db0;font:12px sans-serif">sec</span>';
+      else if (d.type === 'nojump') box.innerHTML = numIn('sb-ach-max', d.max || 5, 0, 999) + '<span style="color:#7f8db0;font:12px sans-serif">jumps</span>';
+      else box.innerHTML = '<span style="color:#7f8db0;font:12px sans-serif">' + (d.type === 'nodamage' ? '—' : '') + '</span>';
+    };
+    const state = defs.map((d) => Object.assign({}, d));
+    wrap.querySelectorAll('.sb-ach-row').forEach((rowEl, i) => {
+      renderParams(rowEl, state[i]);
+      rowEl.querySelector('.sb-ach-type').onchange = (e) => { state[i].type = e.target.value; renderParams(rowEl, state[i]); };
+    });
+    const close = () => { if (wrap.remove) wrap.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    wrap.querySelector('#sb-ach-cancel').onclick = close;
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+    document.addEventListener('keydown', onKey);
+    wrap.querySelector('#sb-ach-save').onclick = () => {
+      const out = [];
+      wrap.querySelectorAll('.sb-ach-row').forEach((rowEl, i) => {
+        const t = rowEl.querySelector('.sb-ach-type').value;
+        if (t === 'none') return;
+        const d = { type: t };
+        const gv = (cls) => { const el = rowEl.querySelector('.' + cls); return el ? Math.round(+el.value) : 0; };
+        if (t === 'collect') { d.count = gv('sb-ach-count'); d.item = 'coin'; }
+        else if (t === 'defeat') d.count = gv('sb-ach-count');
+        else if (t === 'time') d.seconds = gv('sb-ach-seconds');
+        else if (t === 'nojump') d.max = gv('sb-ach-max');
+        out.push(d);
+      });
+      aws.achievements = out;
+      close();
+      const msg = out.length ? (out.length + ' challenge' + (out.length > 1 ? 's' : '') + ' set — remember to Save your world') : 'Challenges cleared';
+      const t = document.createElement('div');
+      t.textContent = msg;
+      t.style.cssText = 'position:fixed;left:50%;bottom:32px;transform:translateX(-50%);z-index:9600;background:#2f6f4f;color:#fff;border:1px solid #46557a;border-radius:8px;padding:9px 16px;font:13px sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.5)';
+      document.body.appendChild(t);
+      setTimeout(() => { if (t.remove) t.remove(); }, 2600);
+    };
+  },
+
   // ── Import from file ───────────────────────────────────────────
   showImportFileModal() {
     this._clearImportError();

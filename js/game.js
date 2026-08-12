@@ -706,6 +706,7 @@ class Game {
         this._syncTwoPlayerAfterLoad();
         this.player.selectedSlot = 1;
         this._platformerStartMs  = Date.now();
+        this._achStats = null; this._achFired = new Set(); if (this.player) this.player._jumpCount = 0;   // §Epic D — fresh per-run stats
         this.player.platformerSlots = new Map([
           [BLOCK.OBSIDIAN,     4],
           [BLOCK.EYE_OF_ENDER, 5],
@@ -774,6 +775,8 @@ class Game {
     this.mobManager                = new MobManager();
     this.mobManager.dropConfig     = this._mobDropSettings;
     this.mobManager.soundCallback  = (file, vol) => this._playSound(file, vol);
+    this.mobManager._onStomp       = () => { this._ensureAchStats().mobKills++; };   // §Epic D — stomp defeats count
+    if (!this.mobManager.onKill) this.mobManager.onKill = () => { this._ensureAchStats().mobKills++; };   // arrow/melee defeats (arena overrides this)
     this.mobManager.setupSpawnPoints(data.spawnPoints);
     // _camera is set after Camera construction below
     this.camera          = new Camera(this.level.pixelWidth, this.level.pixelHeight);
@@ -2561,6 +2564,7 @@ class Game {
         this._triggerDeath('Burned by lava');
       } else if (this.player.iframes <= 0) {
         this.player.takeDamage(4, Math.sign(this.player.vx) || (this.player.facing || 1));
+        this._ensureAchStats().tookHazardDamage = true;   // §Epic D
         this._checkDeath();
       }
     }
@@ -4200,6 +4204,7 @@ class Game {
           if (this._worldAdvSettings.platformerScore) {
             this._score += (this._worldAdvSettings.goalClearPoints || 0);
           }
+          this._fireAchievements(this._platformerFinishMs || (this._platformerStartMs ? Date.now() - this._platformerStartMs : 0));   // §Epic D
           this.state = 'won';
           break;
         }
@@ -18380,7 +18385,7 @@ class Game {
     const pMidCol = Math.floor(this.player.cx / BLOCK_SIZE);
     if (this.level.get(pMidRow, pMidCol) === BLOCK.LAVA && !this.player.godMode) {
       if (this._worldAdvSettings.lavaInstaKill !== false) { this._srTriggerDeath(); return; }
-      else if (this.player.iframes <= 0) { this.player.takeDamage(4, Math.sign(this.player.vx) || (this.player.facing || 1)); if (this.player.hp <= 0) { this._srTriggerDeath(); return; } }
+      else if (this.player.iframes <= 0) { this.player.takeDamage(4, Math.sign(this.player.vx) || (this.player.facing || 1)); this._ensureAchStats().tookHazardDamage = true; if (this.player.hp <= 0) { this._srTriggerDeath(); return; } }
     }
 
     // Void death
@@ -18760,8 +18765,44 @@ class Game {
     const aws = this._worldAdvSettings || {};
     this._coins = (this._coins || 0) + 1;
     if (aws.platformerScore) this._score = (this._score || 0) + (aws.emeraldPoints || 100);
+    const st = this._ensureAchStats(); st.collected.coin = (st.collected.coin || 0) + 1; st.collected.item = (st.collected.item || 0) + 1;   // §Epic D
     this._playSound('sounds/item-collected.mp3', 0.7);
     this._notify('+1 Coin', '#f2c531', 50);
+  }
+  // ─── §Epic D: per-level achievements ─────────────────────────────────────
+  _achDefs() { const aws = this._worldAdvSettings || {}; return Array.isArray(aws.achievements) ? aws.achievements : []; }
+  _ensureAchStats() {
+    if (!this._achStats) {
+      this._achStats = (typeof ACHIEVEMENT_EVAL !== 'undefined' && ACHIEVEMENT_EVAL.freshStats)
+        ? ACHIEVEMENT_EVAL.freshStats()
+        : { collected: {}, mobKills: 0, jumpCount: 0, tookHazardDamage: false, completed: false, completionMs: 0 };
+    }
+    return this._achStats;
+  }
+  _fireAchievements(completionMs) {
+    if (typeof ACHIEVEMENT_EVAL === 'undefined' || !ACHIEVEMENT_EVAL.evaluate) return;
+    const defs = this._achDefs(); if (!defs.length) return;
+    const st = this._ensureAchStats(); st.completed = true; st.completionMs = completionMs || 0;
+    st.jumpCount = (this.player && this.player._jumpCount) || 0;
+    let earned = [];
+    try { earned = ACHIEVEMENT_EVAL.evaluate(defs, st) || []; } catch (e) { earned = []; }
+    if (this._achFired) earned = earned.filter(d => !this._achFired.has(ACHIEVEMENT_EVAL.keyOf ? ACHIEVEMENT_EVAL.keyOf(d) : (d.name || d.type)));
+    else this._achFired = new Set();
+    for (const d of earned) {
+      const k = ACHIEVEMENT_EVAL.keyOf ? ACHIEVEMENT_EVAL.keyOf(d) : (d.name || d.type);
+      this._achFired.add(k);
+      const label = ACHIEVEMENT_EVAL.label ? ACHIEVEMENT_EVAL.label(d) : (d.name || 'Achievement');
+      this._notify('🏆 ' + label, '#ffd24a', 220);
+      this._playSound('sounds/level-up.mp3', 0.7);
+      if (this._launchWorldId && typeof AUTH !== 'undefined' && AUTH.authedFetch && AUTH.isLoggedIn && AUTH.isLoggedIn()) {
+        try {
+          AUTH.authedFetch('/api/achievements/world', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ worldId: this._launchWorldId, key: k, label })
+          }).catch(() => {});
+        } catch (e) {}
+      }
+    }
   }
   _questionPop(p) {
     // v1: a Question Block yields a coin (designer-configurable contents = noted follow-up).
