@@ -1696,6 +1696,7 @@ class MenuSystem {
     );
   }
 
+
   _drawSpeedRunnerSelect() {
     this._drawScreenTitle('SPEED RUNNER');
     this._drawBackBtn();

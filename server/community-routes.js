@@ -173,6 +173,27 @@ function setupCommunityRoutes(app) {
   });
 
   // ── Download (clone) a published world into the requester's sandbox ──
+  // ── §A3 — read-only fetch of a published world's data so it can be PLAYED straight from the Speed
+  //    Runner landing "Community" tab, without cloning it into the player's sandbox (that's Download).
+  //    Best-effort bumps the play counter (Most-Played / Trending). No downloadable gate — playing isn't
+  //    taking a copy. Auth kept so it matches the rest of the community surface.
+  app.get('/api/community/worlds/:worldId/play', verifyToken, async (req, res) => {
+    try {
+      const { data: src, error } = await supabaseAdmin
+        .from('worlds').select('id, world_name, world_data, mode, creator_name, original_author, play_count')
+        .eq('id', req.params.worldId).eq('is_published', true).single();
+      if (error || !src) return res.status(404).json({ error: 'Published world not found' });
+      supabaseAdmin.from('worlds')
+        .update({ play_count: (src.play_count || 0) + 1, last_played_at: new Date().toISOString() })
+        .eq('id', src.id).then(() => {}, () => {});   // fire-and-forget
+      res.json({ id: src.id, worldName: src.world_name, mode: src.mode,
+        author: src.original_author || src.creator_name, worldData: src.world_data });
+    } catch (e) {
+      console.error('Community play error:', e);
+      res.status(500).json({ error: 'Failed to load world' });
+    }
+  });
+
   app.post('/api/community/worlds/:worldId/download', verifyToken, async (req, res) => {
     try {
       const { worldId } = req.params;

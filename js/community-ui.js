@@ -195,6 +195,7 @@ const COMMUNITY = {
       <div class="cc-stats">${this._stars(w.avgRating || 0, w.ratingCount)} · ⬇ ${w.downloads || 0} · ▶ ${w.plays || 0}</div>
       <div class="cc-rate">Rate: <span class="rate-stars">${rate}</span></div>
       <div class="cc-actions">
+        ${w.mode === 'SPEEDRUNNER' ? `<button class="btn btn-small cc-play" title="Race this level now (no download)">▶ Play</button>` : ''}
         ${dl}
         <button class="btn btn-small cc-fav ${w.favorited ? 'faved' : ''}">${w.favorited ? '★ Favorited' : '☆ Favorite'}</button>
       </div>
@@ -209,6 +210,7 @@ const COMMUNITY = {
       const id = card.dataset.id;
       card.querySelector('.cc-fav')?.addEventListener('click', (e) => this._toggleFav(id, e.currentTarget));
       card.querySelector('.cc-download')?.addEventListener('click', (e) => this._download(id, e.currentTarget));
+      card.querySelector('.cc-play')?.addEventListener('click', (e) => this._playSpeedRun(id, e.currentTarget));
       card.querySelectorAll('.rate-star').forEach((st) => {
         st.addEventListener('click', () => this._rate(id, parseInt(st.dataset.stars, 10), card));
       });
@@ -247,6 +249,32 @@ const COMMUNITY = {
       btn.textContent = '✓ In your sandbox';
     } catch (e) {
       btn.textContent = 'Failed'; btn.disabled = false;
+    }
+  },
+
+  // §A3 — race a published Speed Runner level straight from the storefront (no clone into your sandbox).
+  // Uses the read-only /play endpoint (which also bumps the play counter) and the SR launch path; on exit
+  // it returns to the community browser. worldId is passed so leaderboards/ghosts re-key to worlds.id.
+  async _playSpeedRun(id, btn) {
+    const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Loading…';
+    try {
+      const res = await AUTH.authedFetch(`/api/community/worlds/${id}/play`);
+      const d = res.ok ? await res.json() : null;
+      if (!d || !d.worldData) throw new Error('no data');
+      const wd = d.worldData;
+      wd.id = d.id; wd.worldId = d.id; wd.worldName = d.worldName; wd.playerName = 'Player';
+      if (typeof window.menu !== 'undefined' && window.menu && window.menu._stop) window.menu._stop();
+      document.getElementById('community-screen').style.display = 'none';
+      const hud = document.getElementById('play-hud'); if (hud) hud.style.display = 'flex';
+      if (window.game && window.game.destroy) { try { window.game.destroy(); } catch (_) {} window.game = null; }
+      window.game = new Game(
+        'speedrunner',
+        { speedrunnerLoadKey: wd, playerName: 'Player', worldId: d.id },
+        () => { if (hud) hud.style.display = 'none'; window.game = null; COMMUNITY.init(); }
+      );
+    } catch (e) {
+      btn.textContent = 'Failed'; btn.disabled = false;
+      setTimeout(() => { btn.textContent = orig; }, 1500);
     }
   },
 

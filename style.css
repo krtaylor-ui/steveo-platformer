@@ -1917,6 +1917,10 @@ html[data-theme="retro"] .ws-adv { color: #ffd166 !important; }
 .cc-actions .btn { border: 1px solid transparent; }
 .cc-actions .cc-download { background: #33499e; color: #fff; }
 .cc-actions .cc-download:hover:not(:disabled) { filter: brightness(1.12); }
+/* §A3 — Play (race a community Speed Run level in place). Solid green, white text (theme-safe). */
+.cc-actions .cc-play { background: #2f7d4f; color: #fff; }
+.cc-actions .cc-play:hover:not(:disabled) { filter: brightness(1.12); }
+.cc-actions .cc-play:disabled { opacity: .6; cursor: default; }
 .cc-actions .cc-fav { background: rgba(90,120,170,.14); color: #22303f; border: 1px solid #9fb0c8; }
 .cc-actions .cc-fav.faved { background: #e2b23c; color: #23180a; border-color: transparent; }
 @media (prefers-color-scheme: dark) {
