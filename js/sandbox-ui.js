@@ -995,9 +995,11 @@ const SANDBOX = {
     const curSong = aws.levelMusicId || '';
     let songOpts = '<option value="">None (silent)</option>';
     if (typeof MUSIC_DISCS !== 'undefined') {
+      // The whole catalog is selectable as level music (background + boss tracks); loop handles short ones.
       for (const k of Object.keys(MUSIC_DISCS)) {
-        const d = MUSIC_DISCS[k]; if (!d || d.category !== 'background') continue;
-        songOpts += `<option value="${k}"${k === curSong ? ' selected' : ''}>${(d.discName || k).replace(/[<>&]/g, '')}</option>`;
+        const d = MUSIC_DISCS[k]; if (!d || !d.audioFile) continue;
+        const tag = d.category === 'boss' ? ' (intense)' : '';
+        songOpts += `<option value="${k}"${k === curSong ? ' selected' : ''}>${(d.discName || k).replace(/[<>&]/g, '')}${tag}</option>`;
       }
     }
     const old = document.getElementById('sb-beat-modal'); if (old && old.remove) old.remove();

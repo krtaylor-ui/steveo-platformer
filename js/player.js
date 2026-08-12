@@ -1638,8 +1638,13 @@ class Player {
     this._limbBar(ctx, cx + 4, hipY, cx + 4, ph > 0 ? legHiY : legLoY, 6, PANTS, EDGE);
     // Head LAST — back of the head (all hair, hairline), drawn OVER the arms so the shoulders
     // tuck slightly behind it.
-    ctx.fillStyle = HAIR; ctx.fillRect(sx + 2, sy, 16, 16);
-    ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(sx + 2, sy + 13, 16, 3);
+    if (this._isStick) {   // §Phase B — circle head on the ladder too (back view: no eye)
+      ctx.save(); ctx.strokeStyle = this._stickColor || '#1c1f26'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(sx + 10, sy + 8, 6.5, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+    } else {
+      ctx.fillStyle = HAIR; ctx.fillRect(sx + 2, sy, 16, 16);
+      ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(sx + 2, sy + 13, 16, 3);
+    }
     this._sideAccHead(ctx, sx + 2, sy, 16, true);   // §Custom Sprites — accessories on the ladder (back view)
   }
 
@@ -1725,12 +1730,18 @@ class Player {
     this._limbBar(ctx, hipX, hipY, shX, shY, 12, SHIRT, EDGE);
     // Head
     ctx.save(); ctx.translate(hdX, hdY); ctx.rotate(tA);
-    ctx.fillStyle = EDGE; ctx.fillRect(-HEAD / 2 - 1, -HEAD / 2 - 1, HEAD + 2, HEAD + 2);
-    ctx.fillStyle = SKIN; ctx.fillRect(-HEAD / 2, -HEAD / 2, HEAD, HEAD);
-    ctx.fillStyle = HAIR; ctx.fillRect(-HEAD / 2, -HEAD / 2, HEAD, HEAD * 0.36);
-    ctx.fillStyle = '#fff'; ctx.fillRect(2 * facing, -2, 4, 4);
-    ctx.fillStyle = '#1A50C0'; ctx.fillRect(3 * facing, -1, 2, 2);
-    if (this._hasPonytail()) { const px = facing === 1 ? -HEAD / 2 - 2 : HEAD / 2; ctx.fillStyle = HAIR; ctx.fillRect(px, -1, 2, HEAD * 0.6); }
+    if (this._isStick) {   // §Phase B — circle head (was a skin-tone box → the bar-swing/hang half-stick bug)
+      ctx.strokeStyle = this._stickColor || '#1c1f26'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(0, 0, HEAD * 0.42, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = this._accent() || '#eef1f8'; ctx.beginPath(); ctx.arc(2 * facing, -1, 1.3, 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.fillStyle = EDGE; ctx.fillRect(-HEAD / 2 - 1, -HEAD / 2 - 1, HEAD + 2, HEAD + 2);
+      ctx.fillStyle = SKIN; ctx.fillRect(-HEAD / 2, -HEAD / 2, HEAD, HEAD);
+      ctx.fillStyle = HAIR; ctx.fillRect(-HEAD / 2, -HEAD / 2, HEAD, HEAD * 0.36);
+      ctx.fillStyle = '#fff'; ctx.fillRect(2 * facing, -2, 4, 4);
+      ctx.fillStyle = '#1A50C0'; ctx.fillRect(3 * facing, -1, 2, 2);
+      if (this._hasPonytail()) { const px = facing === 1 ? -HEAD / 2 - 2 : HEAD / 2; ctx.fillStyle = HAIR; ctx.fillRect(px, -1, 2, HEAD * 0.6); }
+    }
     ctx.restore();
     // Front arm + front hand (in front of the head)
     this._limbBar(ctx, shX + 3 * facing, shY, front.sx, front.sy, 6, SHIRT, EDGE);

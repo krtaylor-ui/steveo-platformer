@@ -61,7 +61,7 @@
     // a creator can recolour the whole figure; `accent` is the eye.
     { id: 'stick',    name: 'Stick',     theme: 'Line',      body: 'boy',  views: BOTH, feat: { stick: 1 },
       pal: { skin: '#1c1f26', hair: '#1c1f26', shirt: '#1c1f26', pants: '#1c1f26', accent: '#eef1f8' } },
-    { id: 'sketch',   name: 'Sketch',    theme: 'Line',      body: 'girl', views: BOTH, feat: { stick: 1, skirt: 1 },
+    { id: 'sketch',   name: 'Stick (Skirt)', theme: 'Line',  body: 'girl', views: BOTH, feat: { stick: 1, skirt: 1 },
       pal: { skin: '#1c1f26', hair: '#1c1f26', shirt: '#1c1f26', pants: '#1c1f26', accent: '#eef1f8' } }
   ];
 
