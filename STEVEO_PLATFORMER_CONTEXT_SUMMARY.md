@@ -1,3 +1,33 @@
+## CURRENT STATE (2026-08-12) — TRANCHE 2 tester fixes + Creative-Tools Phase A/B; branch `speedrunner-phase3` @ build 488, PUSHED, NOT merged
+
+**Builds 486-488 on `speedrunner-phase3`, pushed, NOT merged, suite green.** After the Tranche 2 tester
+pass (report `reports/tranche2-478-485-test-2026-08-12.md`):
+- **486 — the 6 tester defects.** T2-1 Copy World legend (dark-on-dark) flipped light in modern; T2-2 the
+  DIALOG family keyed off `prefers-color-scheme:light` but the app has NO light theme -> removed the light
+  media queries so dialogs are always dark (a light-OS was turning the Info modal white); T2-3 Speed Lines
+  now seamless (manual segments stepping by s/3, world-anchored, like the chevrons); T2-4/T2-5 community
+  Play OWNS its exit (wires the shared play-hud Exit/Pause/Restart + routes the HUD Exit AND pause-menu
+  Main Menu back to the storefront); T2-6 `.cc-actions` flex-wrap. Tranche 2 brief also copied into the QA
+  docs folder (process note).
+- **487 — Phase A (Music v1).** New pure `js/bpm-detect.js` (onset-envelope autocorrelation ->
+  {bpm,confidence,offsetMs}, 6 tests). Beat Grid modal gains a Song picker (MUSIC_DISCS) + "Detect beat"
+  (in-browser decode, decimated ~11kHz, prefills BPM+offset+confidence). `worldAdvSettings.levelMusicId`
+  plays looped during the SR run (starts in the GO gesture, reuses `_playBackgroundTrack`). Catalog-only,
+  NO per-level upload. Browser-only bits (decode/playback) flagged.
+- **488 — Phase B (line-stick render mode).** Two playable characters Stick + Sketch (`feat.stick`, Sketch
+  adds `skirt`). Side-scroll: `_limbBar` draws thin round-capped lines when stick (all articulated poses
+  free) + `_drawStanding`/`_drawCrouch` stick branches reusing the EXACT joints (walk/run/jump/spin/lean
+  animate identically). Overhead: thinner limbs. Cosmetic only — **hitbox unchanged**. Names provisional.
+  This is the cornerstone asset for roadmap Phases D (exported template) + F (ghost guide).
+
+**Tester delta brief:** `docs/TESTER_BRIEF_TRANCHE2_FIXES_488.md` (re-checks + Phase A/B + the still-un-run
+sec 3 achievements-fire / sec 6 two-customs / Arena+Custom-Rules modal items). **Roadmap grew:**
+`FUTURE_ROADMAP.md` §14 = progression-gated creator features (achievements unlock creator power; the
+accessibility ladder IS the unlock tree; Creative-vs-Progression mode; aspirational locks). No server
+changes since 485. Ship = merge speedrunner-phase3 -> main once tester-clean.
+
+---
+
 ## CURRENT STATE (2026-08-12) — TRANCHE 2 COMPLETE (all 8 items); branch `speedrunner-phase3` @ build 485, PUSHED, NOT merged
 
 **`speedrunner-phase3` (off main@460). Builds 478–485. Suite green. Pushed to origin. NOT merged to main.**
