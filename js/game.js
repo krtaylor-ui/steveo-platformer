@@ -6564,6 +6564,10 @@ class Game {
     // Copy-selection overlay (sandbox)
     if (this.gameMode === 'sandbox') this._drawCopySelection(ctx);
 
+    // §Epic MB — Beat Grid overlay (sandbox only): faint vertical lines at each musical beat's
+    // world-x, so a creator can align hazards to the music. Downbeats (every 4th) are brighter.
+    if (this.gameMode === 'sandbox') this._drawBeatGridOverlay(ctx);
+
     // Place ghost / mining highlight
     const target = this.level.get(hoverRow, hoverCol);
     const item   = this.player.selectedItem;
@@ -19373,6 +19377,34 @@ class Game {
     else if (skin === 'pointer')  this._drawPointerDial(ctx, px, py, BLOCK_SIZE, angle);
     else if (skin === 'steering') this._drawSteering(ctx, px, py, BLOCK_SIZE, angle);
     else if (typeof skin === 'number') { try { drawBlock(ctx, skin, px, py, 0, {}); } catch (e) { /* ignore */ } }
+  }
+
+  // §Epic MB — draw the Beat Grid alignment overlay in the sandbox editor. Beat spacing in world-x is
+  // derived from the run's Base Speed (E1) under the Constant-Speed assumption (E2), which is where the
+  // grid is exact. When the level isn't constant-speed the lines are a guide, not a guarantee.
+  _drawBeatGridOverlay(ctx) {
+    const bg = this._worldAdvSettings && this._worldAdvSettings.beatGrid;
+    if (!bg || !bg.enabled || !bg.bpm || typeof BEAT_GRID === 'undefined') return;
+    const base = this._worldAdvSettings.srBaseSpeed || 1;
+    // px/sec ≈ base × default run px/frame × 60fps. The 3.2 base run rate matches the SR runner at 1.0×.
+    const pxPerSec = base * 3.2 * 60;
+    const beatPx = pxPerSec * (BEAT_GRID.beatMs(bg.bpm) / 1000);
+    if (!(beatPx > 4)) return;   // guard: absurd tempo/speed → skip (don't flood the canvas)
+    const startX = (this._srStartX != null) ? this._srStartX : 0;
+    const worldW = this.level.pixelWidth;
+    const count  = Math.min(2000, Math.ceil((worldW - startX) / beatPx) + 2);
+    const xs = BEAT_GRID.beatXs(bg.bpm, bg.offsetMs || 0, startX, pxPerSec, count);
+    ctx.save();
+    for (let i = 0; i < xs.length; i++) {
+      const sx = Math.round(xs[i] - this.camera.x);
+      if (sx < -2 || sx > ctx.canvas.width + 2) continue;
+      const down = (i % 4) === 0;
+      ctx.strokeStyle = down ? 'rgba(255,110,180,0.55)' : 'rgba(120,190,255,0.30)';
+      ctx.lineWidth = down ? 2 : 1;
+      ctx.beginPath(); ctx.moveTo(sx + 0.5, 0); ctx.lineTo(sx + 0.5, ctx.canvas.height); ctx.stroke();
+      if (down) { ctx.fillStyle = 'rgba(255,110,180,0.85)'; ctx.font = '10px sans-serif'; ctx.fillText('' + (i / 4 + 1), sx + 3, 12); }
+    }
+    ctx.restore();
   }
 
   // Placement / config entry: click a rail with the Anchor selected → bind a platform there; click an

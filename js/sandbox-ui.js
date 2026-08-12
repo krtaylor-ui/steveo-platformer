@@ -937,6 +937,53 @@ const SANDBOX = {
     };
   },
 
+  // ── §Epic MB — Beat Grid editor (tap-tempo / BPM) ──────────────
+  // Stores { enabled, bpm, offsetMs } on worldAdvSettings.beatGrid; the sandbox editor overlays
+  // beat lines (game._drawBeatGridOverlay). Tap-tempo uses BEAT_GRID.tapTempo (pure core).
+  editBeatGrid(g) {
+    g = g || window.game; if (!g) return;
+    const aws = g._worldAdvSettings || (g._worldAdvSettings = {});
+    const bg = Object.assign({ enabled: false, bpm: 120, offsetMs: 0 }, aws.beatGrid || {});
+    const old = document.getElementById('sb-beat-modal'); if (old && old.remove) old.remove();
+    const wrap = document.createElement('div'); wrap.id = 'sb-beat-modal';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:9500;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)';
+    const inp = 'background:#111826;color:#dfe7f5;border:1px solid #46557a;border-radius:6px;padding:6px';
+    wrap.innerHTML = `<div role="dialog" aria-modal="true" style="background:#1a2233;border:1px solid #46557a;border-radius:12px;padding:18px 20px;max-width:380px;width:92%;box-shadow:0 8px 30px rgba(0,0,0,.6);color:#dfe7f5">
+      <div style="font-weight:600;font-size:15px;margin-bottom:4px">🎵 Beat Grid</div>
+      <div style="color:#b6c2da;font:12px sans-serif;margin-bottom:14px">Set a tempo, then place hazards on the beat lines the editor draws. Most exact with Constant Speed on.</div>
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer"><input type="checkbox" id="sb-beat-enabled"${bg.enabled ? ' checked' : ''}> <span>Show beat lines in editor</span></label>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span style="width:70px;color:#b6c2da;font:13px sans-serif">BPM</span><input type="number" id="sb-beat-bpm" value="${bg.bpm}" min="20" max="400" style="${inp};width:80px"><button id="sb-beat-tap" style="${inp};background:#33499e;cursor:pointer;flex:1">Tap tempo</button></div>
+      <div id="sb-beat-tapinfo" style="color:#7f8db0;font:12px sans-serif;min-height:16px;margin-bottom:10px"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="width:70px;color:#b6c2da;font:13px sans-serif">Offset</span><input type="number" id="sb-beat-offset" value="${bg.offsetMs}" min="0" max="10000" step="10" style="${inp};width:80px"><span style="color:#7f8db0;font:12px sans-serif">ms (shift the first beat)</span></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+        <button id="sb-beat-cancel" style="${inp};background:#2b3548;cursor:pointer">Cancel</button>
+        <button id="sb-beat-save" style="${inp};background:#2f6f4f;cursor:pointer">Save</button>
+      </div></div>`;
+    document.body.appendChild(wrap);
+    let taps = [];
+    const bpmEl = wrap.querySelector('#sb-beat-bpm');
+    wrap.querySelector('#sb-beat-tap').onclick = () => {
+      taps.push(Date.now());
+      if (taps.length > 9) taps = taps.slice(-9);
+      const bpm = (typeof BEAT_GRID !== 'undefined') ? BEAT_GRID.tapTempo(taps) : 0;
+      if (bpm) { bpmEl.value = bpm; wrap.querySelector('#sb-beat-tapinfo').textContent = 'Tapped ' + taps.length + ' → ' + bpm + ' BPM'; }
+      else wrap.querySelector('#sb-beat-tapinfo').textContent = 'Keep tapping to the beat…';
+    };
+    const close = () => { if (wrap.remove) wrap.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    wrap.querySelector('#sb-beat-cancel').onclick = close;
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+    document.addEventListener('keydown', onKey);
+    wrap.querySelector('#sb-beat-save').onclick = () => {
+      aws.beatGrid = {
+        enabled: wrap.querySelector('#sb-beat-enabled').checked,
+        bpm: Math.max(20, Math.min(400, Math.round(+bpmEl.value) || 120)),
+        offsetMs: Math.max(0, Math.round(+wrap.querySelector('#sb-beat-offset').value) || 0),
+      };
+      close();
+    };
+  },
+
   // ── Import from file ───────────────────────────────────────────
   showImportFileModal() {
     this._clearImportError();

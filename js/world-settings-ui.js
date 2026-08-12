@@ -207,6 +207,9 @@ const WORLD_SETTINGS = {
         key: 'srPreset_' + p.id, tab: 'speedrun', group: 'Presets', modes: M.speedrun, type: 'button',
         rerender: true, label: p.label, btnLabel: 'Apply', hint: p.hint, act: (g) => this._applySrPreset(g, p),
       })),
+      // §Epic MB — Beat Grid: align hazards to music. Opens a tap-tempo / BPM editor; the editor then
+      // overlays beat lines on the canvas. Most exact under Constant Speed (below).
+      { key: 'beatGridBtn', tab: 'speedrun', group: 'Beat Grid', modes: M.speedrun, type: 'button', rerender: false, label: 'Beat Grid', btnLabel: 'Edit…', hint: 'set a tempo (tap or type BPM) and the editor overlays beat lines so you can place hazards on the beat — most exact with Constant Speed on', act: (g) => { if (window.SANDBOX && SANDBOX.editBeatGrid) SANDBOX.editBeatGrid(g); } },
       // §E2 Constant / Auto-speed — a true fixed auto-scroll: the runner is pinned at Max Speed the whole
       // run (no accelerate/coast). Recommended base for the Beat Grid (E-MB). Default off = the classic
       // race-car accelerate model. When ON, the Acceleration/Deceleration knobs below don't apply.
