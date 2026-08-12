@@ -293,6 +293,12 @@ class Game {
       if (_cc) { CHARACTERS.setCustom(_cc); this._customCharacter = _cc; }
       else { CHARACTERS.setCustom(null); this._customCharacter = null; if (window.CURRENT_CHARACTER_ID === 'custom') window.CURRENT_CHARACTER_ID = 'classic'; }
     }
+    // §Phase 3 — per-player characters (multiplayer): an optional array [{id, custom?}, …] indexed by
+    // player slot. Each entry with a custom mix registers under its own slot ('custom_pN') so several
+    // players can run DIFFERENT custom characters at once. Applied to each player in _applyPlayerCharacters().
+    this._launchPlayerCharacters = (options.playerCharacters)
+      || (options.templateData && options.templateData.playerCharacters)
+      || (options.worldData && options.worldData.playerCharacters) || null;
     this._editArena = this._arenaStarter || !!(options.templateData && options.templateData.gameModeDefault === 'ARN');
     // §LB — the launched world's DB id (when known), used to re-key Speed Runner leaderboards/ghosts to
     // worlds.id instead of the fragile author:worldName string (which collides + breaks on rename).
@@ -761,12 +767,14 @@ class Game {
     this.level           = new Level(data);
     if (this._isComboTrainer) this._comboGroundRow = data._comboTrainerGroundRow || (data.height - 4);
     this.player          = new Player(data.spawnX, data.spawnY);
+    this._applyPlayerCharacter(this.player, 0);   // §Phase 3
     this._p2SpawnX = data.spawnX + BLOCK_SIZE * 2;
     this._p2SpawnY = data.spawnY;
     if (this._worldAdvSettings.twoPlayerMode) {
       this.player2 = new Player(this._p2SpawnX, this._p2SpawnY);
       this.player2.godMode = (this.gameMode === 'sandbox');
       this.player2.selectedSlot = 1;
+      this._applyPlayerCharacter(this.player2, 1);   // §Phase 3 — P2's own custom character
     } else {
       this.player2 = null;
     }
@@ -922,6 +930,7 @@ class Game {
       p.maxHp = maxHp;
       p._ownerId = Game.ownerId(i);  // PvP owner tag ('p1'..'p4')
       p.charType = (this.arenaConfig.playerCharTypes || [])[i] || 'male';  // Steve/Alex (cosmetic)
+      this._applyPlayerCharacter(p, i);   // §Phase 3 — per-player custom character
       this._armArenaPlayer(p, this._arenaSpawns[spawnKeys[i]]);
       // Reserved team fields (Phase 3C — no logic yet; see [[phase3-arena-redesign]]).
       p.teamId = p.teamId ?? null; p.teamColor = p.teamColor ?? null;
@@ -19391,6 +19400,22 @@ class Game {
     ctx.fillStyle = '#5a6270'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();          // hub
     ctx.restore();
   }
+  // §Phase 3 — assign player index `i`'s custom character from _launchPlayerCharacters. A per-player
+  // custom mix registers under its own slot ('custom_pN') so several players can run DIFFERENT customs at
+  // once; player.js's _charId() prefers p._characterId over the world-wide global.
+  _applyPlayerCharacter(p, i) {
+    if (!p) return;
+    const pc = (this._launchPlayerCharacters || [])[i];
+    if (!pc) return;   // no per-player override → player keeps the world-wide character (global)
+    if ((pc.id === 'custom' || (pc.custom && !pc.id)) && pc.custom && typeof CHARACTERS !== 'undefined' && CHARACTERS.registerCustom) {
+      const slot = 'custom_p' + (i + 1);
+      CHARACTERS.registerCustom(slot, pc.custom);
+      p._characterId = slot;
+    } else if (pc.id) {
+      p._characterId = pc.id;
+    }
+  }
+
   // §Skins — draw a skin value (animated marker or block id) at a grid cell's screen position. Used by
   // the editor overlay so anchor/direction skins are visible while building (a static frame, angle 0).
   _drawSkinSprite(ctx, skin, col, row, angle = 0) {

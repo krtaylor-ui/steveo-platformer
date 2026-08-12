@@ -165,7 +165,15 @@
       return CUSTOM;
     },
     getCustom: function () { return CUSTOM; },
-    isCustom: function (id) { return id === 'custom'; }
+    // Phase 3 — register a custom mix under an ARBITRARY id so several players can each run a DIFFERENT
+    // custom character at once (the single 'custom' slot can only hold one). Per-player _characterId then
+    // points at its own slot (e.g. 'custom_p2'). Pass null to remove. Returns the built def.
+    registerCustom: function (id, def) {
+      if (!id) return null;
+      if (!def) { delete MAP[id]; return null; }
+      var built = buildCustom(def); MAP[id] = built; return built;
+    },
+    isCustom: function (id) { return id === 'custom' || (typeof id === 'string' && id.indexOf('custom_') === 0); }
   };
 
   if (typeof window !== 'undefined') window.CHARACTERS = CHARACTERS;
