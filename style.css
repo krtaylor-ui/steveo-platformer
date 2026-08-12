@@ -1909,6 +1909,15 @@ html[data-theme="retro"] .ws-adv { color: #ffd166 !important; }
 .community-creator-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin: 0 0 12px; border: 1px solid var(--border, #363a46); border-radius: 10px; font-size: .9rem; }
 .cc-avatar { width: 22px; height: 22px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
 .cc-download:disabled { opacity: .55; cursor: not-allowed; }
+/* §T1-2 — the generic .btn is white-on-translucent-white (for dark bars); inside the light community
+   card that was ~1:1 contrast (invisible). Give the card CTAs readable, solid colors in both themes. */
+.cc-actions .btn { border: 1px solid transparent; }
+.cc-actions .cc-download { background: var(--accent, #3a6ea5); color: #fff; }
+.cc-actions .cc-download:hover:not(:disabled) { filter: brightness(1.08); }
+.cc-actions .cc-fav { background: rgba(90,120,170,.16); color: #223; border-color: var(--border, #9fb0c8); }
+.cc-actions .cc-fav.faved { background: #e2b23c; color: #23180a; border-color: transparent; }
+:root[data-theme="dark"] .cc-actions .cc-fav,
+:root:not([data-theme="light"]) .cc-actions .cc-fav { color: #dfe6f2; border-color: var(--border, #363a46); }
 .community-picks { margin: 0 0 14px; }
 .community-picks:empty { display: none; }
 .picks-head { font-weight: 700; margin: 0 0 8px; opacity: .85; }

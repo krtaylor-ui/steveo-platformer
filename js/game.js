@@ -18057,6 +18057,9 @@ class Game {
     // don't collide (real saved worlds always have a name; the worlds.id re-key in the migrations doc is
     // the permanent fix). §E8.
     const _lvlId = `${data.playerName || ''}:${data.worldName || ''}`;
+    // §T1-3 — the DB world id can arrive via launch options (_launchWorldId) OR embedded in the loaded
+    // world data; take whichever is present.
+    if (!this._launchWorldId) this._launchWorldId = data.worldId || data.id || (data.world_data && data.world_data.worldId) || null;
     // §LB re-key — prefer the stable worlds.id when the level came from a saved/published world; fall back
     // to author:worldName (or the test-world sentinel). CLEAN CUT (documented): pre-re-key local best-times
     // keyed by author:worldName are superseded, not migrated — acceptable per the brief. player_id already

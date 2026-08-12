@@ -1680,7 +1680,9 @@ class MenuSystem {
     this._stop();
     window.game = new Game(
       'speedrunner',
-      { speedrunnerLoadKey: worldEntry.key, playerName: worldEntry.playerName },
+      // §T1-3 — pass the world's DB id so the Speed Runner leaderboard/ghost re-keys to worlds.id
+      // (the launcher previously dropped it, so _launchWorldId stayed null and it used the legacy key).
+      { speedrunnerLoadKey: worldEntry.key, playerName: worldEntry.playerName, worldId: worldEntry.id || worldEntry.worldId || null },
       (s) => this._returnFromGame(s || 'speedrunnerSelect')
     );
   }

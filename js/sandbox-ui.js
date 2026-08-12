@@ -411,7 +411,8 @@ const SANDBOX = {
   async publishWorld(worldId, isPublished = true) {
     try {
       const res = await AUTH.authedFetch(`/api/worlds/sandbox/${encodeURIComponent(worldId)}/publish`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isPublished }),
+        // §T1 seam-2 — send downloadable like the UI does, so the seam and the button behave identically.
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isPublished, downloadable: isPublished }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) return { error: body.error || `HTTP ${res.status}`, status: res.status };
