@@ -18195,6 +18195,26 @@ class Game {
     }
     sr._kKeyWas = kNow;
 
+    // §CK3 — Practice Mode: press T to toggle a personal-practice session (UNRANKED — attempts and
+    // best-% are not recorded), press C to drop a personal checkpoint you instantly respawn to. Lets a
+    // player drill a hard section without grinding the whole level or polluting the leaderboard.
+    const tNow = this.input.isDown('KeyT');
+    if (tNow && !sr._tKeyWas) {
+      sr.practice = !sr.practice;
+      if (!sr.practice) sr.practiceCP = null;
+      this._notify(sr.practice ? 'Practice Mode: ON (unranked) — press C to drop a checkpoint' : 'Practice Mode: OFF', '#ffcf5a', 150);
+    }
+    sr._tKeyWas = tNow;
+    if (sr.practice && !sr.dead) {
+      const cNow = this.input.isDown('KeyC');
+      if (cNow && !sr._cKeyWas) {
+        sr.practiceCP = { x: this.player.x, y: this.player.y };
+        this._notify('Practice checkpoint set', '#39c862', 110);
+        this._playSound('sounds/powerup.mp3', 0.35);
+      }
+      sr._cKeyWas = cNow;
+    }
+
     // Update sparkle particles
     sr.particles = sr.particles.filter(p => {
       p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.vx *= 0.96; p.life--;
@@ -18217,7 +18237,10 @@ class Game {
       // §CK1 — if a checkpoint was reached (and checkpoints aren't disabled), recover there without
       // restarting the run; otherwise a normal full restart.
       const useCp = this._sr.lastCheckpoint && this._worldAdvSettings.srCheckpoints !== false;
-      const respawn = () => (useCp ? this._srRespawnToCheckpoint() : this._srRespawn());
+      const respawn = () => {
+        if (sr.practice && sr.practiceCP) { this._srRespawnToPractice(); return; }   // §CK3
+        return useCp ? this._srRespawnToCheckpoint() : this._srRespawn();
+      };
       // §E9 Instant Retry — no countdown, no wait-for-press: drop back into the run as soon as the
       // death explosion has faded.
       if (this._worldAdvSettings.srInstantRetry) {
@@ -18273,7 +18296,7 @@ class Game {
         sr.maxX           = this.player.x;
         sr.ghostRec       = new SpeedRunnerGhost(sr.levelId);
         sr.ghostFrameIdx  = 0;
-        sr.attemptNum     = SpeedRunnerStats.bumpAttempt(sr.levelId);   // §E8 — count this attempt
+        if (!sr.practice) sr.attemptNum = SpeedRunnerStats.bumpAttempt(sr.levelId);   // §E8 count (§CK3 practice=unranked)
       }
       return;
     }
@@ -21509,6 +21532,17 @@ class Game {
     sr.boosts = { timeBased: 1.0, distBased: 1.0, blockBoost: 1.0, item: 1.0, itemExpiresMs: 0, itemStack: 0 };
     if (this.mobManager) { this.mobManager.mobs = []; this.mobManager.droppedItems = []; for (const sp of this.mobManager.spawnPoints) sp.timer = 0; }
   }
+  // §CK3 — respawn to the player's PERSONAL practice checkpoint (unranked drilling). Mirrors the
+  // checkpoint respawn but uses the manually-dropped point; the run stays flagged practice so it never
+  // records a best-% / attempt.
+  _srRespawnToPractice() {
+    const sr = this._sr, cp = sr.practiceCP; if (!cp) { this._srRespawn(); return; }
+    this.player.x = cp.x; this.player.y = cp.y; this.player.vx = 0; this.player.vy = 0;
+    this.player.hp = this.player.maxHp;
+    sr.vx = 0; sr.dead = false; sr.deathParts = null; sr.ghostVisible = false;
+    sr.boosts = { timeBased: 1.0, distBased: 1.0, blockBoost: 1.0, item: 1.0, itemExpiresMs: 0, itemStack: 0 };
+    if (this.mobManager) { this.mobManager.mobs = []; this.mobManager.droppedItems = []; for (const sp of this.mobManager.spawnPoints) sp.timer = 0; }
+  }
   _srCheckGoals() {
     const p = this.player;
     for (const g of this._sr.goals) {
@@ -21572,9 +21606,11 @@ class Game {
     this._sr.dead     = true;
     this._sr.deathMs  = Date.now();
     this._sr.ghostRec = null;
-    // §E8 — even a failed run banks its furthest-progress %.
-    this._sr.bestPct  = SpeedRunnerStats.recordPct(this._sr.levelId,
-      SpeedRunnerStats.progressPct(this._sr.maxX ?? this._sr.spawnX, this._sr.spawnX, this._sr.finishX ?? this.level.pixelWidth));
+    // §E8 — even a failed run banks its furthest-progress %. §CK3 — but a PRACTICE run is unranked.
+    if (!this._sr.practice) {
+      this._sr.bestPct  = SpeedRunnerStats.recordPct(this._sr.levelId,
+        SpeedRunnerStats.progressPct(this._sr.maxX ?? this._sr.spawnX, this._sr.spawnX, this._sr.finishX ?? this.level.pixelWidth));
+    }
     this._playSound('sounds/player-death.mp3');
     this._srAddParticles(this.player.cx, this.player.cy, '#FF4444', 20);
 
@@ -21613,7 +21649,7 @@ class Game {
     const elapsed      = Date.now() - this._sr.startMs;
     this._sr.won       = true;
     this._sr.finishMs  = elapsed;
-    this._sr.bestPct   = SpeedRunnerStats.recordPct(this._sr.levelId, 100);   // §E8 — a clear is 100%
+    if (!this._sr.practice) this._sr.bestPct = SpeedRunnerStats.recordPct(this._sr.levelId, 100);   // §E8 clear=100% (§CK3 practice=unranked)
     this._playSound('sounds/win.mp3');
 
     // Burst fireworks from player position
@@ -21759,7 +21795,7 @@ class Game {
       sr.lastX          = sr.spawnX;
       sr.maxX           = sr.spawnX;
       sr.ghostRec       = new SpeedRunnerGhost(sr.levelId);
-      sr.attemptNum     = SpeedRunnerStats.bumpAttempt(sr.levelId);   // §E8 — instant retry counts too
+      if (!sr.practice) sr.attemptNum = SpeedRunnerStats.bumpAttempt(sr.levelId);   // §E8 (§CK3 practice=unranked)
     }
 
     // Reset the level to its authored start state so every run is identical:
@@ -21878,6 +21914,18 @@ class Game {
   _drawSpeedRunnerHUD(ctx) {
     if (!this._sr) return;
     const sr = this._sr;
+
+    // §CK3 — persistent PRACTICE badge (top-center) so an unranked run is unmistakable.
+    if (sr.practice) {
+      ctx.save();
+      ctx.font = 'bold 12px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      const label = 'PRACTICE · UNRANKED' + (sr.practiceCP ? ' · C-checkpoint set' : '');
+      const w = ctx.measureText(label).width + 20;
+      ctx.fillStyle = 'rgba(120,80,10,0.82)'; ctx.fillRect(CANVAS_W / 2 - w / 2, 6, w, 20);
+      ctx.strokeStyle = '#ffcf5a'; ctx.lineWidth = 1; ctx.strokeRect(CANVAS_W / 2 - w / 2, 6, w, 20);
+      ctx.fillStyle = '#ffe28a'; ctx.fillText(label, CANVAS_W / 2, 9);
+      ctx.restore();
+    }
 
     // ── Pre-race countdown (race lights: 3·2·1·GO) ─────────────
     if (!sr.startMs && !sr.dead && !sr.won) {
