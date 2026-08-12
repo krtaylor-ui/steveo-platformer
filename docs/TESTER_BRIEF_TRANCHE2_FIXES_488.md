@@ -55,3 +55,19 @@ Where: character pickers (World Settings -> Character, or a world card's charact
   toast fire (creator UI + evaluator verified, but the live fire wasn't run).
 - Sec 6 multi-player customs: TWO players each with a DIFFERENT custom character on screen at once.
 - Arena / Custom Rules modals in the dark-modal pass (both T2-8 defects were in less-travelled corners).
+
+---
+
+## Build 489 follow-ups (from the 486-488 pass)
+
+- Phase B bar-swing head: the articulated poses (bar-swing, hang, ladder) stick-ified the limbs but drew
+  the HEAD as a skin/hair BOX (your 124 skin-tone pixels). Head is now a circle stroke in the stick colour
+  there too. RE-CHECK: render Stick in bar-swing/hang/ladder — head should be a circle, ~0 skin-tone px.
+  (Ledge-hang rendering blank for Classic too was a capture artifact, not a defect — please re-shoot.)
+- Phase A song list: the Song dropdown now lists the FULL catalog (11 tracks; boss tracks tagged
+  "(intense)"), not just the 3 background ones.
+- Name: "Sketch" -> "Stick (Skirt)" (id unchanged) since the only difference is the skirt.
+
+Still the priority for next pass (unchanged): (1) in-run music playback/mute/on-beat alignment, (2) the
+three un-run items — end-to-end achievement FIRE (most important; never observed live), two different
+customs on screen at once, Arena/Custom-Rules dark modals. Hold the merge until those close.
