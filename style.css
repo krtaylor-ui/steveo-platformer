@@ -1351,6 +1351,46 @@ html[data-theme="retro"] .ws-adv { color: #ffd166 !important; }
   overflow-y: auto;
 }
 
+/* ══ §Epic UI — Modal dark unification (UI_STYLE_GUIDE.md) ═══════════════════════════════════════════
+   The app is dark in BOTH themes, yet the shared .modal-content family is hardcoded white — so every
+   HTML modal (Create World, Copy, Import, Arena settings/pre-launch, Custom Rules, Theme, Test-World…)
+   flashes as a white card on the dark app in the default (modern) theme. This block moves that whole
+   family onto the guide's dark surface palette in ONE reviewable, independently-revertible place.
+   Scoped to :not([data-theme="retro"]) so ONLY modern is touched — retro already skins .modal-content
+   with its own !important rules, which keep winning. Scoped under .modal-content so no non-modal screen
+   is affected. Highest-risk visual change in the tranche → confirm on screen; revert THIS block to undo.
+   Colours are the guide's .ws-panel-derived tokens: surface #1b1e2a, text #e9ebf4, heading #fff,
+   muted #9aa0b8, control fill #242838, border #363a46. */
+html:not([data-theme="retro"]) .modal-content {
+  background: #1b1e2a;
+  color: #e9ebf4;
+  border: 1px solid #363a46;
+}
+html:not([data-theme="retro"]) .modal-content h3,
+html:not([data-theme="retro"]) .modal-content h2 { color: #fff; }
+html:not([data-theme="retro"]) .modal-content label,
+html:not([data-theme="retro"]) .modal-content .form-group label { color: #dfe3ef; }
+html:not([data-theme="retro"]) .modal-content .form-group small,
+html:not([data-theme="retro"]) .modal-content small { color: #9aa0b8; }
+html:not([data-theme="retro"]) .modal-content input,
+html:not([data-theme="retro"]) .modal-content select,
+html:not([data-theme="retro"]) .modal-content textarea {
+  background: #242838;
+  color: #e9ebf4;
+  border-color: #363a46;
+}
+html:not([data-theme="retro"]) .modal-content .btn-secondary { background: #2f3446; color: #e9ebf4; }
+html:not([data-theme="retro"]) .modal-content .btn-secondary:hover { background: #3a4152; }
+/* Import mode-mismatch warning: light-amber → dark-amber so it still reads as a caution on the dark shell. */
+html:not([data-theme="retro"]) .modal-content .warning-box { background: #3a3012; border-color: #7a5e1a; color: #f0d79a; }
+html:not([data-theme="retro"]) .modal-content .warning-box strong { color: #ffb877; }
+/* Custom-Rules builder rows live inside .modal-content.cr-modal and hardcode near-black text/fills. */
+html:not([data-theme="retro"]) .modal-content .cr-check,
+html:not([data-theme="retro"]) .modal-content .cr-score-row,
+html:not([data-theme="retro"]) .modal-content .cr-step-cond { color: #e9ebf4; }
+html:not([data-theme="retro"]) .modal-content .cr-step-cond { background: #242838; }
+html:not([data-theme="retro"]) .modal-content.cr-modal { color: #e9ebf4; }
+
 /* Arena leaderboard modal */
 #lb-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 #lb-tabs .lb-tab { font-size: 0.8rem; padding: 4px 8px; }
