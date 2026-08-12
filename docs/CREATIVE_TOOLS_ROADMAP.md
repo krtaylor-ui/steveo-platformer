@@ -29,6 +29,48 @@ feed the bigger pieces (Sprite Studio).
 
 ---
 
+## 0.5 The accessibility ladder (the organizing principle for creation)
+
+The renderer is confirmed to be **parametric pieces (rects/`_limbBar` bars at joint transforms) driven by
+an animation framework**, with feat accessories layered on (`js/player.js:1556` `_limbBar`, `:1573`
+`_drawStanding`). That means creation is a **spectrum from zero-skill to full-control**, and each rung is
+BOTH a complete stopping point and an on-ramp to the next. **Design goal: an absolute beginner who can't
+draw or animate still makes something they're proud of.**
+
+| Rung | Creator does | Draw skill | Anim skill | Reuses | Build |
+|---|---|---|---|---|---|
+| **0 · Pick** | choose 1 of 16 presets | none | none | — | ✅ exists |
+| **1 · Mix & recolor** | curated parts (ears/tail/hat) + 5 colours | none | none | Parts Mixer | ✅ exists |
+| **2 · Reshape (parametric)** | **sliders**: head size, limb length/width, build, height + swap part *shapes* (round/square head, pointy/floppy ears) | **none** | none | the parametric renderer | NEW |
+| **3 · Draw your own pieces** | paint each **part** (head/torso/arm/leg/tail) on a shaped template; engine **skins** them onto the skeleton and animates | medium | **none** | the animation skeleton | NEW — the hybrid |
+| **4 · Full frame sheet** | draw **every frame** yourself | high | high | Phase C render path | NEW |
+
+**Rung 3 is the key unlock:** it's *skeletal skinning* — swap the parametric shape at each joint for the
+creator's image drawn at the SAME transform, so every move (run/spin/wall-slide/brachiation) animates for
+free. A beginner draws a *head and an arm*, not 24 frames.
+
+**The rungs are a hybrid spectrum — they compose three ways:**
+- **Per-part source:** each slot is independently *parametric*, *hand-drawn*, or *from a preset*. Custom
+  head + parametric arms + preset tail is valid.
+- **Graceful degradation:** draw bitmap art for the common poses (idle/run/jump); the **skeleton falls
+  back** for rare moves you didn't draw (wall-slide, brachiation). Nobody is forced to draw the whole
+  moveset to get a complete, playable character.
+- **Proportions + skin:** slider the build (Rung 2), then paint a texture on it (Rung 3).
+
+**Priority read:** for the beginner goal, **Rungs 2 & 3 are the highest creativity-per-effort** and lean
+on the animation engine we already have; Rung 4 (full sheets) is the *least* accessible (needs animation
+skill), so it comes AFTER — it still earns its place for items/blocks and skilled creators, but it's not
+the on-ramp. This reorders the build (see Sequencing): the **skeleton-skinning "Part Studio" leads**, the
+frame-by-frame "Frame Studio" follows.
+
+**Beginner-accessibility principles (apply to every studio phase):** never a blank canvas (fork a preset);
+a **live animated preview** running the real walk/jump beside the editor (the motivation loop); mirror/
+symmetry draw (one arm → both); parametric-first (sliders before pixels); Randomize / "surprise me";
+progressive disclosure (advanced tools hidden until asked); shaped templates + the ghost guide for those
+who want to draw.
+
+---
+
 ## 1. Decisions already made (do not re-ask)
 
 - **Music v1 = pre-loaded catalog only.** A level PICKS a song from the existing `MUSIC_DISCS` catalog
@@ -119,6 +161,11 @@ hitbox. **Browser-only:** the actual look/animation (flag for the tester).
 **Judgment calls:** line thickness (scale with sprite size), joint radius, whether the skirt variant also
 tweaks the run cycle. Keep it readable at ~40px tall.
 
+**Seeds Rung 3:** the stick branch draws pieces at the skeleton's joint transforms — i.e. it PROVES the
+skinning path. Phase E1 (Part Studio) generalizes exactly this: swap the stick/parametric piece for a
+user-supplied image at the same transform. Build B with that in mind (keep the per-joint draw calls clean
+and enumerable).
+
 ---
 
 ## PHASE C — Bitmap sprite render path  (foundation for all bitmap art)
@@ -164,22 +211,66 @@ reference artifact so creators can start (the how-to guide already specs the for
 
 ---
 
-## PHASE E — The Sprite Studio (multi-purpose pixel/raster editor)
+## PHASE E1 — The Part Studio (Rungs 2–3: reshape + draw-your-own-pieces)  ★ the accessible core
 
-**Goal:** an in-app tool to draw characters, enemies, **items, and blocks**, output to the sheet format.
+**Goal:** the beginner-first studio — make a distinct, fully-animated character WITHOUT drawing frames.
+Two rungs in one tool:
+- **Rung 2 — Reshape (no drawing):** sliders for the parametric skeleton (head size, limb length/width,
+  body build, height) + shape swaps per part (round/square head, ear styles, tail styles). Pure numbers →
+  a distinct silhouette that animates through every move. This is the "can't draw at all" rung.
+- **Rung 3 — Draw pieces (skeletal skinning):** paint each **part** (head, torso, upper/lower arm,
+  upper/lower leg, tail, optional props) on a **shaped, labeled template** in a neutral pose. The engine
+  pins each piece to its joint and animates it — no frames, no timing knowledge. Generalizes Phase B's
+  per-joint draw.
 
-**Design:** a NEW self-contained editor (do **not** fork the overhead world editor — it's built around
-world blocks/camera/level tools). **Lift the world-builder's patterns as a guide:** colour palette +
-swatches, drag-to-paint pointer handling, and the undo/redo stack.
+**Enabling work (the skinning layer):** give each drawable part a slot `{ source: 'parametric'|'image',
+image?, pivot, anchorJoint }`. In the player draw, at each joint transform, if the slot is an image
+`drawImage` it (positioned/rotated/scaled by the SAME transform that drives the parametric shape today);
+else draw the parametric shape. Per-part source = the hybrid. Store on the character def; render path
+shared by both engines.
 
-**Tools:** pencil, eraser, fill (bucket), eyedropper, line, rectangle, ellipse/circle, spray/airbrush,
-mirror-draw (symmetry), colour palette (+ custom colours). **Canvas:** fixed pixel grid (e.g. 48×48,
-selectable 32/48/64), transparency, zoom, pixel grid overlay. **Frames:** per-frame tabs + onion-skin
-(previous frame faint). **Output:** the Phase-C sheet format; assignable to a character (via the Parts
-Mixer neighbourhood), an enemy, an item, or a block skin.
+**Design (UI):** live **animated preview** running the real walk/jump beside the part canvas (draw → see
+it run instantly); **mirror draw** (one arm → both); fork-a-preset (never blank); Randomize; the ghost
+template shows where each part sits. Lift the world-builder's palette/shape/undo patterns.
 
-**Acceptance:** draw a few frames → save → the sprite renders/animates in-game via Phase C. **Depends on:**
-C. **Defer:** advanced tools (layers, gradients, dithering brushes) to a v2.
+**Acceptance:** slider a body + paint a head/arm → the character runs/jumps/spins in-game with those parts,
+same hitbox. **Depends on:** B (proves the per-joint skinning). **Priority:** LEADS the studio work —
+highest creativity-per-effort for the beginner goal.
+
+---
+
+## PHASE E2 — The Frame Studio (Rung 4: full sheets + items + blocks)
+
+**Goal:** the full frame-by-frame pixel editor for skilled creators, and the ONLY path for **items and
+blocks** (static, single-frame — the simplest case) and **non-humanoid** sprites.
+
+**Design:** a NEW self-contained editor (do **not** fork the overhead world editor). **Lift** the
+world-builder's palette/shape/undo patterns. **Tools:** pencil, eraser, fill, eyedropper, line, rectangle,
+ellipse/circle, spray/airbrush, mirror-draw, colour palette (+ custom). **Canvas:** fixed pixel grid
+(32/48/64), transparency, zoom, grid overlay. **Frames:** per-frame tabs + onion-skin. **Output:** the
+Phase-C sheet format; assignable to a character, enemy, item, or block skin. Items/blocks skip the frame
+machinery (one cell).
+
+**Acceptance:** draw frames → save → renders/animates in-game via Phase C; a one-cell item/block skin
+renders on the block. **Depends on:** C. **Defer:** layers, gradients, dithering brushes → v2.
+
+---
+
+## PHASE E3 — Enemy model templates (reskinnable movement + style presets)
+
+**Goal:** offer a small library of **enemy MODELS** — each a controlled, system-generated movement + style
+(e.g. the **spider** gait, a hopper, a flyer, a walker) — that a creator **reskins** (Rung 1–3) without
+authoring the AI or the animation. Pick a model = pick how it moves + a base look; then recolor / reshape /
+repaint its parts.
+
+**Design:** treat an enemy model as `{ behavior: <existing mob AI id>, skeleton/anim: <preset>, skin:
+<parts or bitmap> }`. The movement + animation come from the existing mob roster (Skeleton, CaveSpider,
+etc. in `js/mobs.js`); the creator only supplies the SKIN via the same rungs as characters. Humanoid mobs
+use the skeleton/Part-Studio path; non-humanoid (spider) use their own preset anim + a bitmap/parts skin.
+
+**Acceptance:** pick "Spider" → reskin it → it patrols/attacks with spider movement but the creator's look.
+**Depends on:** E1/E2 (for the skin) + a small enemy-model picker. **Player value:** custom enemies without
+touching AI — huge for "make the game their own." Extends naturally to a shareable model library.
 
 ---
 
@@ -192,7 +283,7 @@ current animation frame, shown behind the raster. **Enable/disable toggle; NEVER
 low opacity beneath the user's pixels; a checkbox toggles it; it's excluded from the exported sheet.
 
 **Acceptance:** toggle on → faint stick pose appears behind the drawing for the current frame; toggle off →
-gone; saved sheet contains only the user's art. **Depends on:** D + E.
+gone; saved sheet contains only the user's art. **Depends on:** D + E2 (also aids E1 part templates).
 
 ---
 
@@ -204,19 +295,51 @@ size guard.
 
 ---
 
+## PHASE H — Movement Editor (custom emotes / dances / move-looks)  ☆ FAR FUTURE, not soon
+
+**Kevin's vision (logged so we don't lose it):** because the renderer animates by moving JOINT positions,
+a creator could author their OWN animations by posing the **stick-man reference** — a keyframe pose tool.
+The system tweens between poses and scales/renders the motion onto whatever skin the character wears.
+
+**Shape:** up to **~10 keyframe poses** on a timeline + a **speed control**; the engine **interpolates the
+joints between poses** (ease in/out). Example: pose1 stand → pose2 hands above head → pose3 bend over,
+hands on ground → pose4 forward roll → pose5 stand; play it as a loop or one-shot. This is classic keyframe
+skeletal animation, and it's **architecturally compatible today**: a custom animation is just an *alternate
+joint-pose provider* feeding the same draw path the procedural moves use.
+
+**Two honest tiers of ambition:**
+- **Emotes / dances / idle / victory poses** — pure VISUAL, no physics interaction. **Feasible** on top of
+  the skeleton with a pose+timeline editor. Great, low-risk fun. This is the realistic first version.
+- **New *gameplay* moves** — the animation is the easy part; the **mechanic/physics/collision** for a new
+  move needs real engine support, and per the fairness rule **a custom animation must NEVER change the
+  hitbox or physics**. So the editor supplies the LOOK; actual new mechanics are separate engine work.
+
+**Depends on:** the stick skeleton (Phase B) + the Part-Studio skinning (E1). **Status:** roadmap only —
+revisit after the studios land. Filed here so the "why the stick-man reference matters" thread isn't lost.
+
+---
+
 ## Deferred / later (explicitly NOT now)
 
 - **Per-level music UPLOAD + server storage + licensing** — Phase A is catalog-only on purpose.
 - **Jukebox filtering/tagging** for the growing catalog — nice, not urgent.
 - **Top-down (overhead) dedicated animation rows** for imported sheets — side rows first.
-- **Sprite Studio v2** — layers, gradients, palette import, community sprite sharing.
+- **Studio v2** — layers, gradients, palette import, community sprite/part/model sharing.
+- **Movement Editor (Phase H)** — far-future; emotes/dances feasible, new *mechanics* are separate.
 
 ## Sequencing (recommended)
 
 1. **Next bug-fix round (with the tester pass):** Phase A (music v1) + Phase B (stick mode + 2 sprites) —
    both are direct extensions of Tranche-2 features, so the tester validates them alongside the fixes.
-2. **Then:** Phase C (bitmap render path) → D (exported template) → E (Sprite Studio) → F (ghost guide) →
-   G (importer). C is the gate; D/E can overlap once C lands.
+2. **Then (studio core, beginner-first):** Phase C (bitmap render path) → **E1 (Part Studio, Rungs 2–3 —
+   LEADS)** → D (exported template) → F (ghost guide) → **E2 (Frame Studio, Rung 4 + items/blocks)** →
+   G (importer). C gates the bitmap path; E1's skinning layer builds on B and can start in parallel with C.
+3. **Then:** E3 (enemy model templates) once a skin path exists.
+4. **Far future:** H (Movement Editor).
+
+> **Reprioritized vs the first draft:** the beginner-accessible **Part Studio (E1, skeleton skinning)** now
+> LEADS the studio work — Rung 4 full-sheet drawing (E2) follows, since it needs animation skill and mainly
+> serves items/blocks + skilled creators.
 
 ## Guardrails (every phase)
 

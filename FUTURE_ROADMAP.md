@@ -1762,11 +1762,20 @@ ghost-draw underlay for the paint tool, from one asset.
   opt-in). → next bug-fix round.
 - **Phase C — Bitmap sprite render path** (foundation: draw an arbitrary frame-sheet as a sprite).
 - **Phase D — Engine-exported animation template sheet** (drive the stick figure through every move).
-- **Phase E — The Sprite Studio** (multi-purpose pixel editor: chars/enemies/items/blocks; lift
-  world-builder palette/shape/undo patterns; do NOT fork the overhead editor).
+- **Phase E1 — Part Studio (LEADS)** — the beginner-accessible core: **Rung 2 reshape (sliders, no
+  drawing)** + **Rung 3 draw-your-own-pieces (skeletal skinning — paint parts, engine animates)**.
+- **Phase E2 — Frame Studio** — Rung 4 full frame-by-frame sheets + the only path for items/blocks
+  (static) and non-humanoid sprites. Do NOT fork the overhead editor; lift its palette/shape/undo.
+- **Phase E3 — Enemy model templates** — reskinnable movement+style presets (spider gait, hopper, flyer)
+  that a creator recolors/reshapes/repaints without touching AI.
 - **Phase F — Ghost-draw animation guide** (faded stick underlay, enable/disable, never saved).
-- **Phase G — Sprite-sheet importer** (the earlier deferral; PNG upload → slice → render via C).
+- **Phase G — Sprite-sheet importer** (PNG upload → slice → render via C).
+- **Phase H — Movement Editor (FAR FUTURE)** — Kevin's vision: pose the stick-man reference into up to ~10
+  keyframes + speed; the engine tweens joints between poses. Emotes/dances = feasible visual layer; new
+  *gameplay mechanics* are separate engine work (animation must never change the hitbox).
 
+**The accessibility ladder (Rungs 0–4)** is the organizing principle: 0 Pick · 1 Mix&recolor (both exist) ·
+2 Reshape (parametric sliders) · 3 Draw pieces (skinning) · 4 Full sheet. Rungs compose (per-part source,
+graceful degradation to skeleton, proportions+skin). Beginner-first: Rungs 2–3 lead; Rung 4 follows.
 Deferred: per-level music upload + storage + licensing; jukebox filtering; overhead animation rows.
-Sequence: A+B with the next tester pass; then C → D/E → F → G. See the full brief for file anchors,
-acceptance checks, and open questions (stick naming, storage cap, Studio entry point).
+Sequence: A+B next tester pass; then C → **E1 (leads)** → D → F → E2 → G; then E3; far-future H.
