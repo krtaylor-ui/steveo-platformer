@@ -1745,3 +1745,28 @@ pieces are already in the repo:
   re-validate.
 - **P4 — Nether/End:** generate the portal sub-areas + wiring (the hardest part); reuse js/world.js as
   the reference implementation.
+
+---
+
+## §13. Creative Tools — Audio-Synced Levels & the Sprite Studio  (full spec: docs/CREATIVE_TOOLS_ROADMAP.md)
+
+Turns the Tranche-2 seeds (Beat Grid + custom characters) into a creative suite. **The lever:** the
+side-scroll engine already computes a full animated skeleton — build a **stick-figure render mode** once
+and get (a) playable stick characters, (b) an engine-EXPORTED animation template sheet, and (c) a
+ghost-draw underlay for the paint tool, from one asset.
+
+- **Phase A — Music v1 (catalog song per level + auto-BPM):** pick from `MUSIC_DISCS`, plays during the
+  run, BPM auto-detected (`js/bpm-detect.js`, pure) to prefill the Beat Grid. NO per-level upload yet.
+  → next bug-fix round.
+- **Phase B — Stick render mode + 2 playable stick sprites** (both engines, cosmetic/same-hitbox,
+  opt-in). → next bug-fix round.
+- **Phase C — Bitmap sprite render path** (foundation: draw an arbitrary frame-sheet as a sprite).
+- **Phase D — Engine-exported animation template sheet** (drive the stick figure through every move).
+- **Phase E — The Sprite Studio** (multi-purpose pixel editor: chars/enemies/items/blocks; lift
+  world-builder palette/shape/undo patterns; do NOT fork the overhead editor).
+- **Phase F — Ghost-draw animation guide** (faded stick underlay, enable/disable, never saved).
+- **Phase G — Sprite-sheet importer** (the earlier deferral; PNG upload → slice → render via C).
+
+Deferred: per-level music upload + storage + licensing; jukebox filtering; overhead animation rows.
+Sequence: A+B with the next tester pass; then C → D/E → F → G. See the full brief for file anchors,
+acceptance checks, and open questions (stick naming, storage cap, Studio entry point).
