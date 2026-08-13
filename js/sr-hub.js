@@ -88,7 +88,7 @@ const SR_HUB = {
     list.innerHTML = this._rows.map((w, i) => {
       const best = this._best(w.id);
       const thumb = w.thumbnail ? `<div class="srh-thumb"><img src="${esc(w.thumbnail)}" alt="" loading="lazy"></div>` : '<div class="srh-thumb srh-thumb-none">🏁</div>';
-      let actions = `<button class="btn btn-primary srh-play" data-id="${esc(w.id)}">▶ Race</button>`;
+      let actions = `<button class="srh-play" data-id="${esc(w.id)}">▶&nbsp;Race</button>`;
       if (tab === 'community') actions += `<button class="btn btn-secondary srh-remove" data-id="${esc(w.id)}" title="Remove from your list">Remove</button>`;
       if (tab === 'system' && this._isAdmin) {
         actions = `<button class="btn btn-icon srh-up" data-i="${i}" title="Move up">▲</button>`

@@ -2503,6 +2503,17 @@ html[data-theme="retro"] #copy-world-modal .copy-dest { color: #cfe8f2; border-c
   border: 1px solid color-mix(in srgb, var(--srh-active) 50%, #2a3650);   /* outline = the active neon */
   transition: box-shadow .15s; }
 .srh-row:hover { box-shadow: inset 0 0 22px -2px color-mix(in srgb, var(--srh-active) 60%, transparent); }   /* neon glow INSIDE the world, outline unchanged */
+/* Race = the primary action, in the active section's neon (fits the tablet language). */
+.srh-play { font: 700 12.5px/1 inherit; letter-spacing: .05em; color: #eaf6ff; cursor: pointer; white-space: nowrap;
+  padding: 9px 17px; border-radius: 9px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--srh-active) 26%, #0b111d), color-mix(in srgb, var(--srh-active) 13%, #0b111d));
+  border: 1px solid color-mix(in srgb, var(--srh-active) 75%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--srh-active) 55%, transparent);
+  box-shadow: 0 0 12px -4px color-mix(in srgb, var(--srh-active) 60%, transparent), inset 0 1px 0 rgba(255,255,255,.07);
+  transition: background .15s, box-shadow .15s, transform .1s; }
+.srh-play:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--srh-active) 48%, #0b111d), color-mix(in srgb, var(--srh-active) 28%, #0b111d));
+  box-shadow: 0 0 18px -2px var(--srh-active), inset 0 1px 0 rgba(255,255,255,.1); }
+.srh-play:active { transform: translateY(1px); }
 .srh-thumb { width: 64px; height: 42px; border-radius: 6px; overflow: hidden; flex: none;
   background: #12202c; display: flex; align-items: center; justify-content: center; }
 .srh-thumb img { width: 100%; height: 100%; object-fit: cover; }
