@@ -253,6 +253,23 @@ html[data-theme="retro"] {
   font-size: 0.9rem;
 }
 
+/* §Neon dashboard mode cards — Campaign full-width on top, the 4 modes below, each its own hue. */
+.mode-full { grid-column: 1 / -1; }
+.game-mode-card.mode-neon { --mc: #6ca8ff; background: linear-gradient(180deg, #131a29, #0e1422);
+  border: 1px solid color-mix(in srgb, var(--mc) 45%, #26324a); border-radius: 14px; padding: 22px 18px;
+  box-shadow: 0 3px 12px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04);
+  transition: transform .15s, box-shadow .15s, border-color .15s; position: relative; overflow: hidden; }
+.game-mode-card.mode-neon::after { content: ""; position: absolute; left: 0; top: 16%; bottom: 16%; width: 4px;
+  border-radius: 0 4px 4px 0; background: var(--mc); box-shadow: 0 0 14px 2px var(--mc); }
+.game-mode-card.mode-neon:hover { transform: translateY(-4px); border-color: color-mix(in srgb, var(--mc) 70%, #26324a);
+  box-shadow: 0 8px 24px rgba(0,0,0,.5), 0 0 22px -4px var(--mc), inset 0 1px 0 rgba(255,255,255,.06); }
+.game-mode-card.mode-neon h3 { color: #eaf2ff; text-shadow: 0 0 8px color-mix(in srgb, var(--mc) 45%, transparent); }
+.game-mode-card.mode-neon p { color: #9fb0c8; }
+.game-mode-card.mode-neon .mode-icon { filter: drop-shadow(0 0 8px color-mix(in srgb, var(--mc) 60%, transparent)); }
+.game-mode-card.mode-full.mode-neon { padding: 18px; }
+.m-campaign { --mc: #a06cff; } .m-normal { --mc: #57d06a; } .m-platformer { --mc: #4b86ee; }
+.m-speedrunner { --mc: #ff8a2a; } .m-arena { --mc: #ff4d5e; }
+
 /* Sandbox — full-width feature panel below the play-mode tiles */
 .sandbox-feature-card {
   display: flex;
@@ -547,7 +564,7 @@ html[data-theme="retro"] {
 }
 
 .game-selection-container {
-  max-width: 1000px;
+  max-width: none;   /* full screen width — no side bars; the 4-slot grid keeps its own 720px cap */
   margin: 0 auto;
   padding: 20px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -2440,3 +2457,112 @@ html[data-theme="retro"] #copy-world-modal .copy-dest { color: #cfe8f2; border-c
 /* Overhead Engine — Sandbox browser view toggle (Side-scroll / Overhead) */
 .view-toggle-btn { padding: 4px 12px; opacity: 0.6; }
 .view-toggle-btn.active { opacity: 1; background: #3a5a8c; border-color: #5573ad; color: #fff; }
+
+/* ════ §SR Level Hub — System / My Levels / Community (Neon side rail) ════
+   Neon accents are declared as tokens so a future app-wide "Neon skin" can re-point them. */
+/* #sr-hub = the "device" bezel (dark tablet on the blue backdrop), with side breathing room so
+   the blue shows around it. --srh-active is set by JS to the selected key's colour. */
+#sr-hub { --srh-sys:#ff8a2a; --srh-my:#4b86ee; --srh-comm:#1bc0a5; --srh-active: var(--srh-sys);
+  display: flex; gap: 16px; align-items: stretch; width: 85%; max-width: none; margin: 0 auto; min-height: 64vh;
+  background: linear-gradient(180deg, #131a29, #0e1422); border: 1px solid #26324a; border-radius: 20px;
+  padding: 16px; box-shadow: 0 24px 70px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.04); }
+/* the SCREEN — a dark navy inset (not pure black), tinted by the active key's neon. */
+.srh-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;
+  background: linear-gradient(180deg, #10182a, #0c1220); border: 1px solid #1e2b42; border-radius: 14px;
+  padding: 14px; overflow: hidden;
+  box-shadow: inset 0 2px 22px rgba(0,0,0,.45), inset 0 0 80px -22px rgba(255,255,255,.16); }  /* white LCD backlight */
+
+/* the rail: three EQUAL full-height thirds, now as SPACED raised keys */
+.srh-rail { width: 244px; flex: none; display: flex; flex-direction: column; gap: 12px; }
+.srh-tab { flex: 1; position: relative; border: 1px solid #1c2636; cursor: pointer; color: #fff; overflow: hidden;
+  padding: 0; border-radius: 13px; background: #0b0f18; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 8px; font-family: inherit; transition: filter .15s, transform .1s, box-shadow .15s;
+  box-shadow: 0 3px 10px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04); --a: #6ca8ff; }
+.srh-tab:active { transform: translateY(1px); }
+.srh-tab[data-tab="system"]    { --a: var(--srh-sys); }
+.srh-tab[data-tab="mine"]      { --a: var(--srh-my); }
+.srh-tab[data-tab="community"] { --a: var(--srh-comm); }
+/* scanline texture */
+.srh-tab::before { content: ""; position: absolute; inset: 0; z-index: 1; opacity: .5; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 1px, transparent 1px 3px); }
+/* glowing accent edge */
+.srh-tab::after { content: ""; position: absolute; left: 0; top: 15%; bottom: 15%; width: 4px; border-radius: 0 4px 4px 0;
+  background: var(--a); box-shadow: 0 0 14px 2px var(--a); z-index: 2; opacity: .9; }
+.srh-glyph { width: 42px; height: 42px; position: relative; z-index: 2; color: var(--a); filter: drop-shadow(0 0 6px var(--a)); }
+.srh-lbl { position: relative; z-index: 2; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  font-size: 14px; color: #eaf2ff; font-family: "Courier New", monospace; }
+.srh-tsub { position: relative; z-index: 2; font-size: 10.5px; opacity: .66; font-weight: 600; color: #cfe0f5; }
+.srh-tab:hover, .srh-tab:focus-visible, .srh-tab.gp-focus { filter: brightness(1.1); outline: none;
+  border-color: rgba(255,255,255,.45);
+  box-shadow: 0 3px 10px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.05),
+              0 0 0 1px rgba(255,255,255,.28), 0 0 18px -3px rgba(220,235,255,.4); }
+.srh-tab.active { background: radial-gradient(130% 92% at 0% 50%, color-mix(in srgb, var(--a) 34%, #0b0f18), #0b0f18);
+  border-color: color-mix(in srgb, var(--a) 60%, #1c2636);
+  box-shadow: 0 0 22px -3px var(--a), inset 0 0 0 1px color-mix(in srgb, var(--a) 40%, transparent); }
+.srh-tab.active .srh-glyph { filter: drop-shadow(0 0 11px var(--a)); }
+.srh-tab.active .srh-tsub { opacity: .85; }
+/* mobile / narrow: collapse the rail to a top row of tabs */
+@media (max-width: 720px) {
+  #sr-hub { flex-direction: column; min-height: 0; padding: 12px; }
+  .srh-rail { width: 100%; flex-direction: row; gap: 8px; }
+  .srh-tab { gap: 4px; padding: 10px 4px; }
+  .srh-tab::after { left: 15%; right: 15%; top: auto; bottom: 0; width: auto; height: 3px; border-radius: 4px 4px 0 0; }
+  .srh-glyph { width: 26px; height: 26px; }
+  .srh-tsub { display: none; }
+}
+.srh-toolbar { margin-bottom: 10px; min-height: 8px; display: flex; align-items: center; gap: 10px; }
+.srh-hint { color: #9aa6bd; font-size: 0.82rem; }
+.srh-hint.srh-admin { color: #e8ad55; }
+.srh-list { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; overflow-y: auto; }
+.srh-empty { color: #9aa6bd; text-align: center; padding: 26px 10px; font-size: 0.95rem; }
+.srh-row { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(0,0,0,.18));
+  border: 1px solid color-mix(in srgb, var(--srh-active) 50%, #2a3650);   /* outline = the active neon */
+  transition: box-shadow .15s; }
+.srh-row:hover { box-shadow: inset 0 0 22px -2px color-mix(in srgb, var(--srh-active) 60%, transparent); }   /* neon glow INSIDE the world, outline unchanged */
+/* Race = the primary action, in the active section's neon (fits the tablet language). */
+.srh-play { font: 700 12.5px/1 inherit; letter-spacing: .05em; color: #eaf6ff; cursor: pointer; white-space: nowrap;
+  padding: 9px 17px; border-radius: 9px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--srh-active) 26%, #0b111d), color-mix(in srgb, var(--srh-active) 13%, #0b111d));
+  border: 1px solid color-mix(in srgb, var(--srh-active) 75%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--srh-active) 55%, transparent);
+  box-shadow: 0 0 12px -4px color-mix(in srgb, var(--srh-active) 60%, transparent), inset 0 1px 0 rgba(255,255,255,.07);
+  transition: background .15s, box-shadow .15s, transform .1s; }
+.srh-play:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--srh-active) 48%, #0b111d), color-mix(in srgb, var(--srh-active) 28%, #0b111d));
+  box-shadow: 0 0 18px -2px var(--srh-active), inset 0 1px 0 rgba(255,255,255,.1); }
+.srh-play:active { transform: translateY(1px); }
+.srh-restart { font: 600 12px/1 inherit; color: #cdd8ea; cursor: pointer; white-space: nowrap; padding: 9px 13px; border-radius: 8px;
+  background: rgba(120,140,180,.10); border: 1px solid #3a4a5f; transition: filter .12s, border-color .15s; }
+.srh-restart:hover { filter: brightness(1.25); border-color: #536480; }
+/* §Arena — game-type top bar: 8 neon buttons, two rows of four, each its own hue. */
+#sr-hub.srh-arena { min-height: 78vh; }   /* taller tablet so the 8 game-type buttons + maps all breathe */
+.srh-gtbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: 100%; margin-bottom: 6px; }
+.srh-gt { font: 700 20px/1.18 "Courier New", monospace; letter-spacing: .01em; color: #cdd8ea;
+  cursor: pointer; padding: 12px 10px; border-radius: 9px; background: #0d1420; border: 1px solid #24324a;
+  position: relative; overflow: hidden; transition: filter .12s, box-shadow .15s; --gt: #6ca8ff;
+  min-height: 70px; display: flex; align-items: center; justify-content: center; text-align: center; white-space: normal; }
+.srh-gt:hover { filter: brightness(1.15); }
+.srh-gt.soon { opacity: .5; cursor: not-allowed; }
+.srh-gt.active { color: #eaf6ff; border-color: color-mix(in srgb, var(--gt) 65%, #24324a);
+  background: radial-gradient(120% 100% at 50% 0%, color-mix(in srgb, var(--gt) 30%, #0d1420), #0d1420);
+  box-shadow: 0 0 16px -4px var(--gt), inset 0 0 0 1px color-mix(in srgb, var(--gt) 35%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--gt) 55%, transparent); }
+.gt-MOB_HUNTER{--gt:#57d06a} .gt-COLLECT_EMERALDS{--gt:#1bc0a5} .gt-KING_OF_HILL{--gt:#ffcc33} .gt-SURVIVAL_WAVES{--gt:#ff8a2a}
+.gt-DEATHMATCH{--gt:#ff4d5e} .gt-CAPTURE_FLAG{--gt:#4b86ee} .gt-DEFEND_TOWER{--gt:#a06cff} .gt-CUSTOM{--gt:#22d3ee}
+@media (max-width: 720px) { .srh-gtbar { grid-template-columns: repeat(2, 1fr); } }
+.srh-thumb { width: 64px; height: 42px; border-radius: 6px; overflow: hidden; flex: none;
+  background: #12202c; display: flex; align-items: center; justify-content: center; }
+.srh-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.srh-thumb-none { font-size: 20px; }
+.srh-meta { flex: 1 1 auto; min-width: 0; }
+.srh-name { font-weight: 700; font-size: 0.98rem; color: #eef2f8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.srh-sub { color: #9fb0c8; font-size: 0.8rem; margin-top: 2px; }
+.srh-actions { display: flex; align-items: center; gap: 6px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+.btn-icon { padding: 4px 8px; background: rgba(120,140,180,.15); border: 1px solid #3a4a5f; color: #cdd6e6; border-radius: 6px; cursor: pointer; }
+.btn-icon:hover { filter: brightness(1.15); }
+/* Store "Add to my levels" button */
+.cc-actions .cc-add { background: #6d5ad0; color: #fff; }
+.cc-actions .cc-add.added { background: #2f7d4f; }
+.cc-actions .cc-add:hover:not(:disabled) { filter: brightness(1.12); }
+/* Sandbox "Live" toggle on world cards */
+.btn-live-on { background: #2f7d4f !important; color: #fff !important; border-color: transparent !important; }

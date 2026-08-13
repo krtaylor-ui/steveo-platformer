@@ -66,7 +66,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=b490">
+  <link rel="stylesheet" href="style.css?v=b512">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
@@ -301,6 +301,25 @@
             <p class="empty-text">Empty</p>
             <button class="btn btn-primary create-game-btn" data-slot="3">Create New Game</button>
           </div>
+        </div>
+      </div>
+
+      <!-- SR Level Hub — replaces the slots for Speed Runner (System / My Levels / Community) -->
+      <div id="sr-hub" style="display:none">
+        <!-- Neon side rail — three full-height thirds (collapses to top tabs on narrow screens) -->
+        <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+          <symbol id="srh-ic-flag" viewBox="0 0 24 24"><path fill="currentColor" d="M5 2a1 1 0 0 1 1 1v1h5l1 2h6v9h-7l-1-2H6v8H4V3a1 1 0 0 1 1-1Zm1 4v6h4.6l1 2H16V8h-3.4l-1-2H6Z"/></symbol>
+          <symbol id="srh-ic-wrench" viewBox="0 0 24 24"><path fill="currentColor" d="M14.7 6.3a4 4 0 0 0-4.9 4.9L3 18l3 3 6.8-6.8a4 4 0 0 0 4.9-4.9l-2.3 2.3-2.1-.6-.6-2.1 2-1.6ZM6 19l-1-1 6-6 1 1-6 6Z"/></symbol>
+          <symbol id="srh-ic-globe" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 0c-3 2-3 16 0 18m0-18c3 2 3 16 0 18M3.5 9h17M3.5 15h17"/></symbol>
+        </defs></svg>
+        <div class="srh-rail">
+          <button class="srh-tab active" data-tab="system"><svg class="srh-glyph"><use href="#srh-ic-flag"/></svg><span class="srh-lbl">System</span><span class="srh-tsub">Curated levels</span></button>
+          <button class="srh-tab" data-tab="mine"><svg class="srh-glyph"><use href="#srh-ic-wrench"/></svg><span class="srh-lbl">My Levels</span><span class="srh-tsub">Your Live worlds</span></button>
+          <button class="srh-tab" data-tab="community"><svg class="srh-glyph"><use href="#srh-ic-globe"/></svg><span class="srh-lbl">Community</span><span class="srh-tsub">Added</span></button>
+        </div>
+        <div class="srh-main">
+          <div class="srh-toolbar" id="srh-toolbar"></div>
+          <div class="srh-list" id="srh-list"><p class="srh-empty">Loading…</p></div>
         </div>
       </div>
 
@@ -601,34 +620,34 @@
           <h2>One Player Games</h2>
           <div class="game-modes-grid">
 
-            <div class="game-mode-card" id="normal-mode-btn">
+            <div class="game-mode-card mode-neon mode-full m-campaign" id="campaign-mode-btn">
+              <div class="mode-icon">🎬</div>
+              <h3>Campaign</h3>
+              <p>Sequenced levels with branching exits</p>
+            </div>
+
+            <div class="game-mode-card mode-neon m-normal" id="normal-mode-btn">
               <div class="mode-icon">🌍</div>
               <h3>Normal</h3>
               <p>Mining, crafting, and building</p>
             </div>
 
-            <div class="game-mode-card" id="platformer-mode-btn">
+            <div class="game-mode-card mode-neon m-platformer" id="platformer-mode-btn">
               <div class="mode-icon">🏃</div>
               <h3>Platformer</h3>
               <p>Classic level-based gameplay</p>
             </div>
 
-            <div class="game-mode-card" id="speedrunner-mode-btn">
+            <div class="game-mode-card mode-neon m-speedrunner" id="speedrunner-mode-btn">
               <div class="mode-icon">⚡</div>
               <h3>Speed Runner</h3>
               <p>Time trials and racing</p>
             </div>
 
-            <div class="game-mode-card" id="arena-mode-btn">
+            <div class="game-mode-card mode-neon m-arena" id="arena-mode-btn">
               <div class="mode-icon">⚔️</div>
               <h3>Arena</h3>
               <p>Fast-paced bow battles</p>
-            </div>
-
-            <div class="game-mode-card" id="campaign-mode-btn">
-              <div class="mode-icon">🎬</div>
-              <h3>Campaign</h3>
-              <p>Sequenced levels with branching exits</p>
             </div>
 
           </div>
@@ -1308,122 +1327,123 @@
     2P: <kbd>IJKL</kbd>+<kbd>U</kbd>
   </div>
 
-  <script src="js/theme.js?v=b490"></script>
-  <script src="js/auth.js?v=b490"></script>
-  <script src="js/app-mode.js?v=b490"></script>
-  <script src="js/dashboard.js?v=b490"></script>
-  <script src="js/game-selection.js?v=b490"></script>
-  <script src="js/ui-dialog.js?v=b490"></script>
-  <script src="js/constants.js?v=b490"></script>
-  <script src="js/platformer-defaults.js?v=b490"></script>
-  <script src="js/blocks.js?v=b490"></script>
-  <script src="js/controller-config.js?v=b490"></script>
-  <script src="js/player-looks.js?v=b490"></script>
-  <script src="js/characters.js?v=b490"></script>
-  <script src="js/user-characters.js?v=b490"></script>
-  <script src="js/character-builder.js?v=b490"></script>
-  <script src="js/controller-input.js?v=b490"></script>
-  <script src="js/keybindings.js?v=b490"></script>
-  <script src="js/input.js?v=b490"></script>
-  <script src="js/camera.js?v=b490"></script>
-  <script src="js/pathfinding.js?v=b490"></script>
-  <script src="js/mobs.js?v=b490"></script>
-  <script src="js/crafting.js?v=b490"></script>
-  <script src="js/player.js?v=b490"></script>
-  <script src="js/level.js?v=b490"></script>
-  <script src="js/redstone.js?v=b490"></script>
-  <script src="js/world.js?v=b490"></script>
-  <script src="js/palette-filter.js?v=b490"></script>
-  <script src="js/moderation.js?v=b490"></script>
-  <script src="js/level-validator.js?v=b490"></script>
-  <script src="js/sandbox.js?v=b490"></script>
-  <script src="js/save-migrations.js?v=b490"></script>
-  <script src="js/saves.js?v=b490"></script>
-  <script src="js/speedrunner-mode.js?v=b490"></script>
-  <script src="js/arena-maps.js?v=b490"></script>
+  <script src="js/theme.js?v=b512"></script>
+  <script src="js/auth.js?v=b512"></script>
+  <script src="js/app-mode.js?v=b512"></script>
+  <script src="js/dashboard.js?v=b512"></script>
+  <script src="js/game-selection.js?v=b512"></script>
+  <script src="js/ui-dialog.js?v=b512"></script>
+  <script src="js/constants.js?v=b512"></script>
+  <script src="js/platformer-defaults.js?v=b512"></script>
+  <script src="js/blocks.js?v=b512"></script>
+  <script src="js/controller-config.js?v=b512"></script>
+  <script src="js/player-looks.js?v=b512"></script>
+  <script src="js/characters.js?v=b512"></script>
+  <script src="js/user-characters.js?v=b512"></script>
+  <script src="js/character-builder.js?v=b512"></script>
+  <script src="js/controller-input.js?v=b512"></script>
+  <script src="js/keybindings.js?v=b512"></script>
+  <script src="js/input.js?v=b512"></script>
+  <script src="js/camera.js?v=b512"></script>
+  <script src="js/pathfinding.js?v=b512"></script>
+  <script src="js/mobs.js?v=b512"></script>
+  <script src="js/crafting.js?v=b512"></script>
+  <script src="js/player.js?v=b512"></script>
+  <script src="js/level.js?v=b512"></script>
+  <script src="js/redstone.js?v=b512"></script>
+  <script src="js/world.js?v=b512"></script>
+  <script src="js/palette-filter.js?v=b512"></script>
+  <script src="js/moderation.js?v=b512"></script>
+  <script src="js/level-validator.js?v=b512"></script>
+  <script src="js/sandbox.js?v=b512"></script>
+  <script src="js/save-migrations.js?v=b512"></script>
+  <script src="js/saves.js?v=b512"></script>
+  <script src="js/speedrunner-mode.js?v=b512"></script>
+  <script src="js/arena-maps.js?v=b512"></script>
   <!-- Phase 3A.2 arena systems — must load before game.js (it references them) -->
-  <script src="js/emerald-system.js?v=b490"></script>
-  <script src="js/powerup-system.js?v=b490"></script>
-  <script src="js/ctf-system.js?v=b490"></script>
-  <script src="js/tower-system.js?v=b490"></script>
-  <script src="js/arena-rules.js?v=b490"></script>
-  <script src="js/arena-modes.js?v=b490"></script>
-  <script src="js/bot-ai.js?v=b490"></script>
-  <script src="js/bot-telemetry.js?v=b490"></script>
+  <script src="js/emerald-system.js?v=b512"></script>
+  <script src="js/powerup-system.js?v=b512"></script>
+  <script src="js/ctf-system.js?v=b512"></script>
+  <script src="js/tower-system.js?v=b512"></script>
+  <script src="js/arena-rules.js?v=b512"></script>
+  <script src="js/arena-modes.js?v=b512"></script>
+  <script src="js/bot-ai.js?v=b512"></script>
+  <script src="js/bot-telemetry.js?v=b512"></script>
   <!-- Bot AI: after pathfinding/mobs/player/arena-rules (references them), before game.js -->
 
-  <script src="js/leaderboard-system.js?v=b490"></script>
-  <script src="js/pause-menu.js?v=b490"></script>
-  <script src="js/world-settings-ui.js?v=b490"></script>
-  <script src="js/controls-ui.js?v=b490"></script>
-  <script src="js/grapple.js?v=b490"></script>
-  <script src="js/travel-tube.js?v=b490"></script>
-  <script src="js/moving-platform.js?v=b490"></script>
-  <script src="js/speed-booster.js?v=b490"></script>
-  <script src="js/spike-orient.js?v=b490"></script>
-  <script src="js/wind-zone.js?v=b490"></script>
-  <script src="js/achievement-eval.js?v=b490"></script>
-  <script src="js/beat-grid.js?v=b490"></script>
-  <script src="js/bpm-detect.js?v=b490"></script>
-  <script src="js/combos.js?v=b490"></script>
-  <script src="js/combo-trainer.js?v=b490"></script>
-  <script src="js/game.js?v=b490"></script>
-  <script src="js/menu.js?v=b490"></script>
+  <script src="js/leaderboard-system.js?v=b512"></script>
+  <script src="js/pause-menu.js?v=b512"></script>
+  <script src="js/world-settings-ui.js?v=b512"></script>
+  <script src="js/controls-ui.js?v=b512"></script>
+  <script src="js/grapple.js?v=b512"></script>
+  <script src="js/travel-tube.js?v=b512"></script>
+  <script src="js/moving-platform.js?v=b512"></script>
+  <script src="js/speed-booster.js?v=b512"></script>
+  <script src="js/spike-orient.js?v=b512"></script>
+  <script src="js/wind-zone.js?v=b512"></script>
+  <script src="js/achievement-eval.js?v=b512"></script>
+  <script src="js/beat-grid.js?v=b512"></script>
+  <script src="js/bpm-detect.js?v=b512"></script>
+  <script src="js/combos.js?v=b512"></script>
+  <script src="js/combo-trainer.js?v=b512"></script>
+  <script src="js/game.js?v=b512"></script>
+  <script src="js/menu.js?v=b512"></script>
   <!-- Phase 16: Multiplayer (socket.io loaded from CDN; falls back gracefully if unavailable) -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js" crossorigin="anonymous"></script>
-  <script src="js/multiplayer.js?v=b490"></script>
+  <script src="js/multiplayer.js?v=b512"></script>
   <!-- Phase 16-A: Online lobby UI -->
-  <script src="js/online-ui.js?v=b490"></script>
+  <script src="js/online-ui.js?v=b512"></script>
   <!-- Phase 1D: Game play + auto-save -->
-  <script src="js/music.js?v=b490"></script>
-  <script src="js/game-timer.js?v=b490"></script>
-  <script src="js/game-state.js?v=b490"></script>
-  <script src="js/auto-save.js?v=b490"></script>
-  <script src="js/game-play.js?v=b490"></script>
+  <script src="js/music.js?v=b512"></script>
+  <script src="js/game-timer.js?v=b512"></script>
+  <script src="js/game-state.js?v=b512"></script>
+  <script src="js/auto-save.js?v=b512"></script>
+  <script src="js/game-play.js?v=b512"></script>
   <!-- Phase 1E: Sandbox world browser + editor -->
-  <script src="js/world-transfer.js?v=b490"></script>
-  <script src="js/local-worlds.js?v=b490"></script>
-  <script src="js/sandbox-ui.js?v=b490"></script>
+  <script src="js/world-transfer.js?v=b512"></script>
+  <script src="js/local-worlds.js?v=b512"></script>
+  <script src="js/sandbox-ui.js?v=b512"></script>
 
-  <script src="js/online-play.js?v=b490"></script>
-  <script src="js/community-ui.js?v=b490"></script>
-  <script src="js/arena-select.js?v=b490"></script>
+  <script src="js/online-play.js?v=b512"></script>
+  <script src="js/community-ui.js?v=b512"></script>
+  <script src="js/sr-hub.js?v=b512"></script>
+  <script src="js/arena-select.js?v=b512"></script>
   <!-- Phase 3A.3 arena UI (invoked on user action; order after the above) -->
-  <script src="js/arena-prelaunch.js?v=b490"></script>
-  <script src="js/custom-rules-ui.js?v=b490"></script>
-  <script src="js/test-world.js?v=b490"></script>
+  <script src="js/arena-prelaunch.js?v=b512"></script>
+  <script src="js/custom-rules-ui.js?v=b512"></script>
+  <script src="js/test-world.js?v=b512"></script>
   <!-- Campaign mode (MVP): model → api → tracker → play → builder → select -->
-  <script src="js/campaign-model.js?v=b490"></script>
-  <script src="js/campaign-api.js?v=b490"></script>
-  <script src="js/campaign-tracker.js?v=b490"></script>
-  <script src="js/campaign-play.js?v=b490"></script>
-  <script src="js/campaign-builder.js?v=b490"></script>
-  <script src="js/campaign-select.js?v=b490"></script>
+  <script src="js/campaign-model.js?v=b512"></script>
+  <script src="js/campaign-api.js?v=b512"></script>
+  <script src="js/campaign-tracker.js?v=b512"></script>
+  <script src="js/campaign-play.js?v=b512"></script>
+  <script src="js/campaign-builder.js?v=b512"></script>
+  <script src="js/campaign-select.js?v=b512"></script>
   <!-- Overhead Engine (MVP): pure substrate → runtime → launcher/editor -->
-  <script src="js/overhead/overhead-grid.js?v=b490"></script>
-  <script src="js/overhead/overhead-elevation.js?v=b490"></script>
-  <script src="js/overhead/overhead-buildings.js?v=b490"></script>
-  <script src="js/overhead/overhead-palette.js?v=b490"></script>
-  <script src="js/overhead/overhead-map.js?v=b490"></script>
-  <script src="js/overhead/overhead-movement.js?v=b490"></script>
-  <script src="js/overhead/overhead-controls.js?v=b490"></script>
-  <script src="js/overhead/overhead-combat.js?v=b490"></script>
-  <script src="js/overhead/overhead-weapons.js?v=b490"></script>
-  <script src="js/overhead/overhead-perf.js?v=b490"></script>
-  <script src="js/overhead/overhead-settings.js?v=b490"></script>
-  <script src="js/overhead/overhead-daynight.js?v=b490"></script>
-  <script src="js/overhead/overhead-redstone.js?v=b490"></script>
-  <script src="js/overhead/overhead-templates.js?v=b490"></script>
-  <script src="js/overhead/overhead-modes.js?v=b490"></script>
-  <script src="js/overhead/overhead-game.js?v=b490"></script>
-  <script src="js/overhead/overhead-launch.js?v=b490"></script>
-  <script src="js/overhead/overhead-editor.js?v=b490"></script>
-  <script src="js/overhead-play.js?v=b490"></script>
-  <script src="js/overhead/overhead-campaign-map.js?v=b490"></script>
+  <script src="js/overhead/overhead-grid.js?v=b512"></script>
+  <script src="js/overhead/overhead-elevation.js?v=b512"></script>
+  <script src="js/overhead/overhead-buildings.js?v=b512"></script>
+  <script src="js/overhead/overhead-palette.js?v=b512"></script>
+  <script src="js/overhead/overhead-map.js?v=b512"></script>
+  <script src="js/overhead/overhead-movement.js?v=b512"></script>
+  <script src="js/overhead/overhead-controls.js?v=b512"></script>
+  <script src="js/overhead/overhead-combat.js?v=b512"></script>
+  <script src="js/overhead/overhead-weapons.js?v=b512"></script>
+  <script src="js/overhead/overhead-perf.js?v=b512"></script>
+  <script src="js/overhead/overhead-settings.js?v=b512"></script>
+  <script src="js/overhead/overhead-daynight.js?v=b512"></script>
+  <script src="js/overhead/overhead-redstone.js?v=b512"></script>
+  <script src="js/overhead/overhead-templates.js?v=b512"></script>
+  <script src="js/overhead/overhead-modes.js?v=b512"></script>
+  <script src="js/overhead/overhead-game.js?v=b512"></script>
+  <script src="js/overhead/overhead-launch.js?v=b512"></script>
+  <script src="js/overhead/overhead-editor.js?v=b512"></script>
+  <script src="js/overhead-play.js?v=b512"></script>
+  <script src="js/overhead/overhead-campaign-map.js?v=b512"></script>
   <!-- Universal gamepad navigation for all HTML screens/modals -->
-  <script src="js/gamepad-nav.js?v=b490"></script>
+  <script src="js/gamepad-nav.js?v=b512"></script>
   <!-- Mobile touch controls (Speed Run / Platformer / Arena) -->
-  <script src="js/touch-controls.js?v=b490"></script>
+  <script src="js/touch-controls.js?v=b512"></script>
 
   <script>
     // ── Build-version badge ──────────────────────────────────────

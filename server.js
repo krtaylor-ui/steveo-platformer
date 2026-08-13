@@ -212,6 +212,10 @@ setupArenaLeaderboardRoutes(app);
 const setupSpeedrunRoutes = require('./server/speedrun-routes');
 setupSpeedrunRoutes(app);
 
+// SR Level Hub — System / My Levels / Community groups (needs server/sql/sr_level_hub.sql)
+const setupSrHubRoutes = require('./server/sr-hub-routes');
+setupSrHubRoutes(app);
+
 // Phase 2: online multiplayer — friends + game sessions
 const setupFriendsRoutes = require('./server/friends-routes');
 setupFriendsRoutes(app);

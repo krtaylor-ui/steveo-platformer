@@ -76,9 +76,12 @@ const PAUSE_MENU = {
       const isHost = !!(game._onlineGameId && window.multiplayerManager?.isCreator);
       const title = this.el('pause-confirm-title');
       const msg   = this.el('pause-confirm-msg');
+      const isCampaign = !!game._campaign;
       if (title) title.textContent = game._testMode ? 'Exit test — back to Sandbox?'
+                                   : isCampaign ? 'Leave Campaign?'
                                    : isHost ? 'Leave and End Session?' : 'Return to Main Menu?';
       if (msg)   msg.textContent   = game._testMode ? 'This was a playtest — nothing is saved or scored.'
+                                   : isCampaign ? 'Your progress is saved — you can resume from this spot.'
                                    : isHost ? 'You are the host. All players will be kicked.'
                                             : 'Any unsaved progress will be lost.';
     }

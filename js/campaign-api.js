@@ -20,6 +20,7 @@
     // Campaigns
     list()            { return AF('/api/campaigns').then(j); },
     published()       { return AF('/api/campaigns/published').then(j); },
+    browse()          { return AF('/api/campaigns/browse').then(j); },   // §29 — all published campaigns
     get(id)           { return AF('/api/campaigns/' + id).then(j); },
     create(name, definition) { return AF('/api/campaigns', jsonOpts('POST', { name, definition })).then(j); },
     save(id, name, definition) { return AF('/api/campaigns/' + id, jsonOpts('PUT', { name, definition })).then(j); },

@@ -1045,12 +1045,15 @@ is out of scope. Useful for both the existing side-view Sandbox and the future O
 
 ---
 
-## 28. Manual save / checkpoint system for Campaign mode  *(deferred from the Campaign MVP, 2026-07-28)*
+## 28. Explicit manual save-points for Campaign mode  *(partially shipped 2026-08-13; explicit save-points still deferred)*
 
-Instead of (or alongside) the MVP's real-time autosave, let players choose explicit save points / checkpoints
-for more deliberate control over where a Campaign run resumes. The MVP uses autosave-at-transition (Kevin is
-fine with that for now); revisit once Campaign is live and there's real player feedback on whether autosave
-feels sufficient.
+**Shipped (build 509):** resume-exact-spot **autosave** — a mid-level snapshot is banked every ~8s and on
+exit, so leaving mid-level resumes at the exact position/health/inventory (not just at the last transition).
+There is intentionally **no player-facing "manual save" button** — saving is automatic.
+
+**Still deferred:** letting players place *explicit* save points / checkpoints for more deliberate control
+over where a run resumes. Revisit once Campaign is live and there's real player feedback on whether the
+autosave feels sufficient.
 
 ---
 
@@ -1066,6 +1069,8 @@ restriction is a small server change (`ADMIN_EMAIL` gate + the single-published 
 ---
 
 ## 30. NPCs / Villagers  *(idea captured 2026-07-28)*
+
+> **DESIGN SPEC (2026-08-13):** full build-ready brief now at docs/NPC_DESIGN_SPEC.md (both engines, dialogue model, v1/v2/v3 tiers). Kevin flagged P1 + 'also need side scroll'.
 
 Surfaced during Overhead Engine design discussion (the universal Action button was explicitly
 designed to eventually support "talk to NPCs" alongside opening chests / triggering levers / entering
@@ -1812,3 +1817,33 @@ scope) + an unlock-check at each gated feature + the aspirational-lock UI.
 **Scope:** cross-cutting rework (every gated setting/tool needs an unlock check + UI) — a big future
 initiative, but it can PILOT incrementally (gate 2–3 marquee features first, not all at once). Ties to:
 Campaign mode (§12), the Creative Tools ladder (§13), and Epic D achievements.
+
+---
+
+## §15b. Skin System — player-selectable visual skins × orthogonal Retro FX  (agreed 2026-08-12; NOT built)
+
+**Kevin's idea:** more visual variety than today's single modern/retro switch — a set of **skins** players
+choose from, PLUS the ability to apply the **retro/CRT vibe on top of** any skin.
+
+**Key architecture — TWO orthogonal axes (don't conflate them like modern/retro does today):**
+1. **Skin** = the palette + treatment language (colours, accent, button/panel style, iconography). A token
+   set on the root, e.g. `data-skin="neon|pixel|modern|…"`. Drives everything through CSS custom props —
+   the dark-modal unification (build 485) already pushed most components onto tokens, which is the
+   foundation.
+2. **Retro FX** = an overlay effect (scanlines, CRT curve, chromatic aberration, pixel font), a SEPARATE
+   on/off flag that composites over ANY skin. Today's `retro` theme ≈ "Pixel skin + Retro FX on".
+
+   So: `data-skin` (palette) × `retroFx` (overlay) → e.g. Neon+FX = neon with scanlines; Neon-FX = clean neon.
+
+**First skins** (curated — each must look right on EVERY screen, not just one): **Modern** (today's clean
+dark), **Neon** (seeded by the SR-hub side rail @495 — its `--srh-*` accent tokens are the start), **Pixel/
+Blocks** (flat/blocky, on-brand). Retro FX = the orthogonal toggle. Later candidates: Terminal (green-on-
+black), Vaporwave (pink/cyan), Parchment (fantasy; could auto-apply in adventure worlds).
+
+**Decisions to lock before building:** (a) scope = **player preference** first (like the retro toggle),
+optional per-world creator override later; (b) how the current `retro` preset maps onto skin×FX.
+
+**Cost:** big cross-cutting effort (every component must read tokens, no hardcoded colours) but pilots
+incrementally — ship Neon end-to-end first, add Pixel later. **Great fit as a PROGRESSION UNLOCK** (§14):
+earn skins via achievements (cosmetic-only, aspirational). Generalizes `js/theme.js` (data-theme →
+data-skin + retroFx). Ties to §14 (gating) and the build-485 modal token work.

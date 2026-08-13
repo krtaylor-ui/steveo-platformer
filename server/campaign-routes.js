@@ -10,6 +10,7 @@
 // only ONE Campaign may be published system-wide at a time. Any account may create,
 // save (in any state), and delete their OWN campaigns as drafts.
 const { supabaseAdmin } = require('./supabase-client');
+const MODERATION = require('../js/moderation.js');   // §29 — published campaign names are player-visible
 
 // The single account permitted to publish a Campaign (confirmed with Kevin,
 // 2026-07-28). Everyone else can build + save drafts but not publish.
@@ -62,7 +63,7 @@ module.exports = function setupCampaignRoutes(app) {
       res.json({
         mine: (mine || []).map(shape),
         published: pub && pub.length ? shape(pub[0]) : null,
-        canPublish: isAdmin(req.user),
+        canPublish: true,   // §29 — any owner may publish their own campaign now
       });
     } catch (e) {
       res.status(500).json({ error: 'Failed to list campaigns', detail: e.message });
@@ -78,6 +79,23 @@ module.exports = function setupCampaignRoutes(app) {
       res.json({ campaign: data && data.length ? shape(data[0]) : null });
     } catch (e) {
       res.status(500).json({ error: 'Failed to load published campaign', detail: e.message });
+    }
+  });
+
+  // ── §29 Browse ALL published campaigns (the multi-campaign selection UI) ──
+  //    Lightweight rows only (no definition) so the list stays cheap.
+  app.get('/api/campaigns/browse', verifyToken, async (req, res) => {
+    try {
+      const { data, error } = await supabaseAdmin.from('campaigns')
+        .select('id, name, creator_name, creator_id, updated_at')
+        .eq('is_published', true).order('updated_at', { ascending: false });
+      if (error) throw error;
+      res.json({ campaigns: (data || []).map(r => ({
+        id: r.id, name: r.name, creatorName: r.creator_name, creatorId: r.creator_id,
+        updatedAt: r.updated_at, mine: r.creator_id === req.user.id,
+      })) });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to browse campaigns', detail: e.message });
     }
   });
 
@@ -99,6 +117,10 @@ module.exports = function setupCampaignRoutes(app) {
   app.post('/api/campaigns', verifyToken, async (req, res) => {
     try {
       const name = (req.body && req.body.name || 'Untitled Campaign').slice(0, 120);
+      // N-2: moderate the name at create too — PUT/publish already reject it, so without this the author
+      // types a rude name once and ends up with a frozen, uneditable draft instead of a clean error.
+      const m = MODERATION.check ? MODERATION.check(name, 'campaign name') : { ok: true };
+      if (!m.ok) return res.status(400).json({ error: m.reason });
       const definition = (req.body && req.body.definition) || {};
       definition.creatorId = req.user.id;
       const { data, error } = await supabaseAdmin.from('campaigns').insert({
@@ -121,7 +143,13 @@ module.exports = function setupCampaignRoutes(app) {
       if (row.creator_id !== req.user.id) return res.status(403).json({ error: 'Not your campaign' });
 
       const patch = { updated_at: new Date().toISOString() };
-      if (req.body && typeof req.body.name === 'string') patch.name = req.body.name.slice(0, 120);
+      if (req.body && typeof req.body.name === 'string') {
+        patch.name = req.body.name.slice(0, 120);
+        // C-2: moderate the player-visible name on EVERY save (structure validation stays unblocked for
+        // drafts, but the name is a safety surface). Closes the publish-clean-then-rename-to-a-slur bypass.
+        const m = MODERATION.check ? MODERATION.check(patch.name, 'campaign name') : { ok: true };
+        if (!m.ok) return res.status(400).json({ error: m.reason });
+      }
       if (req.body && req.body.definition && typeof req.body.definition === 'object') {
         const def = req.body.definition;
         def.creatorId = req.user.id;   // never let the client reassign ownership
@@ -136,19 +164,18 @@ module.exports = function setupCampaignRoutes(app) {
     }
   });
 
-  // ── Publish — ADMIN ONLY + single-published invariant (§6/§11) ───────────
+  // ── §29 Publish — the OWNER may publish their own campaign (admin may publish any);
+  //    multiple published campaigns are now allowed (the old single-published invariant is lifted).
   app.post('/api/campaigns/:id/publish', verifyToken, async (req, res) => {
     try {
-      if (!isAdmin(req.user))
-        return res.status(403).json({ error: 'Only the admin account may publish a campaign.' });
       const { data: row, error: gErr } = await supabaseAdmin.from('campaigns')
         .select('*').eq('id', req.params.id).single();
       if (gErr || !row) return res.status(404).json({ error: 'Campaign not found' });
-
-      // Enforce "only one published system-wide": unpublish every other first.
-      const { error: clrErr } = await supabaseAdmin.from('campaigns')
-        .update({ is_published: false }).eq('is_published', true).neq('id', req.params.id);
-      if (clrErr) throw clrErr;
+      if (row.creator_id !== req.user.id && !isAdmin(req.user))
+        return res.status(403).json({ error: 'Not your campaign' });
+      // Moderation on the player-visible name.
+      const m = MODERATION.check ? MODERATION.check(row.name || '', 'campaign name') : { ok: true };
+      if (!m.ok) return res.status(400).json({ error: m.reason });
 
       const { data, error } = await supabaseAdmin.from('campaigns')
         .update({ is_published: true, updated_at: new Date().toISOString() })

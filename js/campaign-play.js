@@ -50,7 +50,10 @@
       this._progress = progress || this._freshProgress(campaign);
       this._progress.completedWorlds = this._progress.completedWorlds || {};
       this._progress.discoveredSecrets = this._progress.discoveredSecrets || [];
-      if (this._progress.lives == null) this._progress.lives = campaign.startingLives != null ? campaign.startingLives : 3;
+      // Refill lives when unset OR depleted — re-entering a campaign after a Game Over persisted lives:0,
+      // and only-refill-when-null started the fresh run with 0 lives → instant death (§28 defect).
+      if (this._progress.lives == null || this._progress.lives <= 0)
+        this._progress.lives = campaign.startingLives != null ? campaign.startingLives : 3;
       this._carry = this._progress.runningInventory || null;
 
       let wid = this._progress.currentWorldId || campaign.startingWorldId;
@@ -63,8 +66,12 @@
       await this._bootWorld(wid, entry);
     },
 
+    // §28 — stop the periodic mid-level save loop.
+    _clearSnap() { if (this._snapTimer) { clearInterval(this._snapTimer); this._snapTimer = null; } },
+
     // ── Boot a single World as a Platformer Game ──────────────────────────────
     async _bootWorld(worldId, entryPointId) {
+      this._clearSnap();
       const c = this._campaign;
       const cw = M().getWorld(c, worldId);
       if (!cw) { this._endScreen('Error', 'World not found in this campaign.'); return; }
@@ -93,11 +100,27 @@
         campaignCarry: this._carry,
         campaignEntry: { spawnPointId: entryPointId },
       }, () => this._exitToSelect());
+
+      // §28 Manual save / resume-exact: if we banked a mid-level snapshot for THIS world, restore the
+      // exact spot (health/position/inventory) on top of the freshly-booted level, then consume it.
+      const p = this._progress, ms = p && p.midLevelSnapshot;
+      if (ms && ms.worldId === worldId && ms.snap && typeof GAME_STATE !== 'undefined' && GAME_STATE.deserialize) {
+        try { GAME_STATE.deserialize(window.game, ms.snap, { newGame: false }); } catch (e) {}
+      }
+      if (p) p.midLevelSnapshot = null;   // one-shot; a fresh exit re-snapshots below
+      // Periodically bank the exact in-level state so Esc → Main Menu (or closing the tab) resumes here.
+      this._snapTimer = setInterval(() => {
+        const g = window.game;
+        if (g && (g.state === 'playing' || g.state === 'paused') && this._progress && typeof GAME_STATE !== 'undefined' && GAME_STATE.serialize) {
+          try { this._progress.midLevelSnapshot = { worldId, snap: GAME_STATE.serialize(g) }; this._saveProgress(); } catch (e) {}
+        }
+      }, 8000);
     },
 
     // ── Win: record + route + advance ─────────────────────────────────────────
     onWin(game, exitColor) {
       const c = this._campaign, p = this._progress;
+      this._clearSnap(); p.midLevelSnapshot = null;   // §28 — level cleared: no stale mid-level resume
       const wid = p.currentWorldId;
       const snap = game.campaignSnapshot ? game.campaignSnapshot() : { score: 0, emeralds: 0 };
 
@@ -153,6 +176,7 @@
     onDeath(game) {
       const p = this._progress;
       if ((p.lives || 0) <= 0) {
+        this._clearSnap(); p.midLevelSnapshot = null;   // §28 — run over: clear resume point
         this._saveProgress();
         try { game.destroy(); } catch (e) {}
         this._endScreen('Game Over', 'You ran out of lives.', true);
@@ -185,8 +209,12 @@
     },
 
     _exitToSelect() {
+      this._clearSnap();   // §28 — the last periodic snapshot is already saved; Continue will resume there
       try { if (window.game && window.game.destroy) window.game.destroy(); } catch (e) {}
       window.game = null;
+      // C-5 — re-hide the game view (#canvas-wrap) so the destroyed level's last frame doesn't linger
+      // behind the select screen. _hideScreens only toggles the menu divs; the canvas is gated on body.pre-game.
+      try { document.body.classList.add('pre-game'); document.body.classList.remove('in-game'); } catch (e) {}
       this._campaign = null; this._progress = null; this._carry = null;
       if (typeof CAMPAIGN_SELECT !== 'undefined' && CAMPAIGN_SELECT.init) CAMPAIGN_SELECT.init();
       else { const d = document.getElementById('dashboard-screen'); if (d) d.style.display = 'block'; }
