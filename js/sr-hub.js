@@ -16,7 +16,7 @@ const SR_HUB = {
 
   init() {
     this._bind();
-    document.getElementById('sr-hub').style.display = 'block';
+    document.getElementById('sr-hub').style.display = 'flex';   // flex row: rail beside the list (not block/stacked)
     document.querySelector('.game-slots-container').style.display = 'none';
     this.loadTab(this._tab || 'system');
   },
