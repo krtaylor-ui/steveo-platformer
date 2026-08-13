@@ -45,7 +45,45 @@ function toRow(w) {
   };
 }
 
+// Attach `inProgress` (does the requester have a saved game for this world) to a set of rows.
+// Resilient — if world_progress.sql isn't applied yet, everything is simply "not in progress".
+async function attachProgress(userId, rows) {
+  const ids = rows.map(r => r.id);
+  if (!ids.length) return rows;
+  try {
+    const { data } = await supabaseAdmin.from('world_progress')
+      .select('world_id').eq('user_id', userId).in('world_id', ids).not('game_data', 'is', null);
+    const set = new Set((data || []).map(p => p.world_id));
+    rows.forEach(r => { r.inProgress = set.has(r.id); });
+  } catch (_) { /* table not present yet */ }
+  return rows;
+}
+
 function setupSrHubRoutes(app) {
+  // ── Per-(player, world) progress: load / save / clear (Normal & Platformer Continue/Restart) ──
+  app.get('/api/sr/world/:worldId/progress', verifyToken, async (req, res) => {
+    try {
+      const { data } = await supabaseAdmin.from('world_progress')
+        .select('game_data').eq('user_id', req.user.id).eq('world_id', req.params.worldId).maybeSingle();
+      res.json({ gameData: (data && data.game_data) || null });
+    } catch (e) { res.json({ gameData: null }); }
+  });
+  app.put('/api/sr/world/:worldId/progress', verifyToken, async (req, res) => {
+    try {
+      const { error } = await supabaseAdmin.from('world_progress').upsert({
+        user_id: req.user.id, world_id: req.params.worldId, game_data: req.body.gameData || null, updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id,world_id' });
+      if (error) throw error;
+      res.json({ saved: true });
+    } catch (e) { console.error('progress save:', e); res.status(500).json({ error: 'Failed to save progress' }); }
+  });
+  app.delete('/api/sr/world/:worldId/progress', verifyToken, async (req, res) => {
+    try {
+      await supabaseAdmin.from('world_progress').delete().eq('user_id', req.user.id).eq('world_id', req.params.worldId);
+      res.json({ cleared: true });
+    } catch (e) { res.status(500).json({ error: 'Failed to clear progress' }); }
+  });
+
   // ── Am I an admin? (lets the Sandbox card show the "Add to System" control) ──
   app.get('/api/sr/whoami', verifyToken, async (req, res) => {
     res.json({ isAdmin: isAdmin(req), email: req.user.email || null });
@@ -58,7 +96,8 @@ function setupSrHubRoutes(app) {
         .eq('is_system', true).eq('mode', modeOf(req.query.mode))
         .order('sort_order', { ascending: true }).order('published_at', { ascending: true, nullsFirst: true });
       if (error) throw error;
-      res.json({ worlds: (data || []).map(toRow), isAdmin: isAdmin(req) });
+      const rows = await attachProgress(req.user.id, (data || []).map(toRow));
+      res.json({ worlds: rows, isAdmin: isAdmin(req) });
     } catch (e) { console.error('sr/system:', e); res.status(500).json({ error: 'Failed to load system levels' }); }
   });
 
@@ -69,7 +108,8 @@ function setupSrHubRoutes(app) {
         .eq('creator_id', req.user.id).eq('mode', modeOf(req.query.mode)).eq('is_live', true)
         .order('updated_at', { ascending: false });
       if (error) throw error;
-      res.json({ worlds: (data || []).map(toRow), isAdmin: isAdmin(req) });
+      const rows = await attachProgress(req.user.id, (data || []).map(toRow));
+      res.json({ worlds: rows, isAdmin: isAdmin(req) });
     } catch (e) { console.error('sr/mine:', e); res.status(500).json({ error: 'Failed to load your levels' }); }
   });
 
@@ -85,7 +125,7 @@ function setupSrHubRoutes(app) {
       if (error) throw error;
       // preserve added order
       const byId = {}; (data || []).forEach(w => { byId[w.id] = w; });
-      const rows = ids.map(id => byId[id]).filter(Boolean).map(toRow);
+      const rows = await attachProgress(req.user.id, ids.map(id => byId[id]).filter(Boolean).map(toRow));
       res.json({ worlds: rows });
     } catch (e) { console.error('sr/added:', e); res.status(500).json({ error: 'Failed to load added levels' }); }
   });

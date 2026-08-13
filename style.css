@@ -2514,6 +2514,9 @@ html[data-theme="retro"] #copy-world-modal .copy-dest { color: #cfe8f2; border-c
 .srh-play:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--srh-active) 48%, #0b111d), color-mix(in srgb, var(--srh-active) 28%, #0b111d));
   box-shadow: 0 0 18px -2px var(--srh-active), inset 0 1px 0 rgba(255,255,255,.1); }
 .srh-play:active { transform: translateY(1px); }
+.srh-restart { font: 600 12px/1 inherit; color: #cdd8ea; cursor: pointer; white-space: nowrap; padding: 9px 13px; border-radius: 8px;
+  background: rgba(120,140,180,.10); border: 1px solid #3a4a5f; transition: filter .12s, border-color .15s; }
+.srh-restart:hover { filter: brightness(1.25); border-color: #536480; }
 .srh-thumb { width: 64px; height: 42px; border-radius: 6px; overflow: hidden; flex: none;
   background: #12202c; display: flex; align-items: center; justify-content: center; }
 .srh-thumb img { width: 100%; height: 100%; object-fit: cover; }

@@ -90,7 +90,10 @@ const SR_HUB = {
     list.innerHTML = this._rows.map((w, i) => {
       const best = this._best(w.id);
       const thumb = w.thumbnail ? `<div class="srh-thumb"><img src="${esc(w.thumbnail)}" alt="" loading="lazy"></div>` : '<div class="srh-thumb srh-thumb-none">🏁</div>';
-      let actions = `<button class="srh-play" data-id="${esc(w.id)}">▶&nbsp;Race</button>`;
+      const isNP = (this._mode === 'NORMAL' || this._mode === 'PLATFORMER');
+      const playLabel = !isNP ? '▶&nbsp;Race' : (w.inProgress ? 'Continue' : 'Play');
+      let actions = `<button class="srh-play" data-id="${esc(w.id)}">${playLabel}</button>`;
+      if (isNP && w.inProgress) actions += `<button class="srh-restart" data-id="${esc(w.id)}" title="Start this level over">Restart</button>`;
       if (tab === 'community') actions += `<button class="btn btn-secondary srh-remove" data-id="${esc(w.id)}" title="Remove from your list">Remove</button>`;
       if (tab === 'system' && this._isAdmin) {
         actions = `<button class="btn btn-icon srh-up" data-i="${i}" title="Move up">▲</button>`
@@ -109,6 +112,7 @@ const SR_HUB = {
     }).join('');
     // wire
     list.querySelectorAll('.srh-play').forEach(b => b.onclick = () => this.play(b.dataset.id));
+    list.querySelectorAll('.srh-restart').forEach(b => b.onclick = () => this._restart(b.dataset.id));
     list.querySelectorAll('.srh-remove').forEach(b => b.onclick = () => this._remove(b.dataset.id));
     list.querySelectorAll('.srh-up').forEach(b => b.onclick = () => this._reorder(+b.dataset.i, -1));
     list.querySelectorAll('.srh-down').forEach(b => b.onclick = () => this._reorder(+b.dataset.i, +1));
@@ -116,7 +120,13 @@ const SR_HUB = {
     list.querySelectorAll('.srh-tosys').forEach(b => b.onclick = () => this._setSystem(b.dataset.id, true));
   },
 
-  async play(worldId) {
+  async _restart(worldId) {
+    try { await AUTH.authedFetch(`/api/sr/world/${worldId}/progress`, { method: 'DELETE' }); } catch (e) {}
+    this.play(worldId, { restart: true });
+  },
+
+  async play(worldId, opts) {
+    opts = opts || {};
     if (!worldId) return;
     let d = null;
     try { const r = await AUTH.authedFetch(`/api/sr/world/${worldId}/play`); d = r.ok ? await r.json() : null; }
@@ -124,6 +134,12 @@ const SR_HUB = {
     if (!d || !d.worldData) { if (typeof DIALOG !== 'undefined') DIALOG.toast('Could not load that level', { type: 'error' }); return; }
     const wd = d.worldData; wd.id = d.id; wd.worldId = d.id; wd.worldName = d.worldName; wd.playerName = 'Player';
     const tab = this._tab;
+    const isNP = (this._mode === 'NORMAL' || this._mode === 'PLATFORMER');
+    // §Continue — Normal/Platformer resume a saved progress snapshot unless this is a Restart.
+    let saved = null;
+    if (isNP && !opts.restart) {
+      try { const pr = await AUTH.authedFetch(`/api/sr/world/${worldId}/progress`); const pj = pr.ok ? await pr.json() : null; saved = pj && pj.gameData; } catch (e) {}
+    }
     if (typeof window.menu !== 'undefined' && window.menu && window.menu._stop) window.menu._stop();
     document.getElementById('game-selection-screen').style.display = 'none';
     const hud = document.getElementById('play-hud'); if (hud) hud.style.display = 'flex';
@@ -132,7 +148,15 @@ const SR_HUB = {
     let exited = false;
     const back = () => {
       if (exited) return; exited = true;
-      try { if (window.game && window.game.destroy) window.game.destroy(); } catch (_) {}
+      const g = window.game;
+      // §Save-on-exit — Normal/Platformer bank progress (or clear it if the level was won).
+      if (isNP && g && typeof GAME_STATE !== 'undefined' && GAME_STATE.serialize) {
+        try {
+          if (g.state === 'won') { AUTH.authedFetch(`/api/sr/world/${worldId}/progress`, { method: 'DELETE' }).catch(() => {}); }
+          else { const gd = GAME_STATE.serialize(g); AUTH.authedFetch(`/api/sr/world/${worldId}/progress`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gameData: gd }) }).catch(() => {}); }
+        } catch (_) {}
+      }
+      try { if (g && g.destroy) g.destroy(); } catch (_) {}
       window.game = null;
       if (hud) hud.style.display = 'none';
       document.getElementById('game-selection-screen').style.display = 'block';
@@ -147,10 +171,14 @@ const SR_HUB = {
     // Launch the right engine for the hub's mode. SR uses its load-key path; Normal/Platformer run the
     // world as a fresh level (world:'adventure' lets their generation run before templateData overrides it).
     const gm = ({ SPEEDRUNNER: 'speedrunner', NORMAL: 'normal', PLATFORMER: 'platformer' })[this._mode] || 'speedrunner';
-    const opts = (gm === 'speedrunner')
+    const gopts = (gm === 'speedrunner')
       ? { speedrunnerLoadKey: wd, playerName: 'Player', worldId: d.id }
-      : { templateData: wd, world: 'adventure', newGame: true, worldId: d.id };
-    window.game = new Game(gm, opts, () => back());
+      : { templateData: wd, world: 'adventure', newGame: !saved, worldId: d.id };
+    window.game = new Game(gm, gopts, () => back());
+    // §Continue — apply the saved snapshot on top of the freshly-built world (like GAME_PLAY does).
+    if (isNP && saved && typeof GAME_STATE !== 'undefined' && GAME_STATE.deserialize) {
+      try { GAME_STATE.deserialize(window.game, saved, { newGame: false }); } catch (_) {}
+    }
   },
 
   async _remove(worldId) {
