@@ -2517,6 +2517,20 @@ html[data-theme="retro"] #copy-world-modal .copy-dest { color: #cfe8f2; border-c
 .srh-restart { font: 600 12px/1 inherit; color: #cdd8ea; cursor: pointer; white-space: nowrap; padding: 9px 13px; border-radius: 8px;
   background: rgba(120,140,180,.10); border: 1px solid #3a4a5f; transition: filter .12s, border-color .15s; }
 .srh-restart:hover { filter: brightness(1.25); border-color: #536480; }
+/* §Arena — game-type top bar: 8 neon buttons, two rows of four, each its own hue. */
+.srh-gtbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; width: 100%; margin-bottom: 4px; }
+.srh-gt { font: 700 11px/1.15 "Courier New", monospace; letter-spacing: .03em; text-transform: uppercase; color: #cdd8ea;
+  cursor: pointer; padding: 9px 6px; border-radius: 8px; background: #0d1420; border: 1px solid #24324a;
+  position: relative; overflow: hidden; transition: filter .12s, box-shadow .15s; --gt: #6ca8ff; }
+.srh-gt:hover { filter: brightness(1.15); }
+.srh-gt.soon { opacity: .5; cursor: not-allowed; }
+.srh-gt.active { color: #eaf6ff; border-color: color-mix(in srgb, var(--gt) 65%, #24324a);
+  background: radial-gradient(120% 100% at 50% 0%, color-mix(in srgb, var(--gt) 30%, #0d1420), #0d1420);
+  box-shadow: 0 0 16px -4px var(--gt), inset 0 0 0 1px color-mix(in srgb, var(--gt) 35%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--gt) 55%, transparent); }
+.gt-MOB_HUNTER{--gt:#57d06a} .gt-COLLECT_EMERALDS{--gt:#1bc0a5} .gt-KING_OF_HILL{--gt:#ffcc33} .gt-SURVIVAL_WAVES{--gt:#ff8a2a}
+.gt-DEATHMATCH{--gt:#ff4d5e} .gt-CAPTURE_FLAG{--gt:#4b86ee} .gt-DEFEND_TOWER{--gt:#a06cff} .gt-CUSTOM{--gt:#22d3ee}
+@media (max-width: 720px) { .srh-gtbar { grid-template-columns: repeat(2, 1fr); } }
 .srh-thumb { width: 64px; height: 42px; border-radius: 6px; overflow: hidden; flex: none;
   background: #12202c; display: flex; align-items: center; justify-content: center; }
 .srh-thumb img { width: 100%; height: 100%; object-fit: cover; }

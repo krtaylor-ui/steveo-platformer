@@ -209,11 +209,10 @@ const DASHBOARD = {
     }
     if (mode === 'SANDBOX') {
       SANDBOX.init();
-    } else if (mode === 'ARENA') {
-      ARENA_SELECT.init();
     } else if (mode === 'CAMPAIGN') {
       CAMPAIGN_SELECT.init();
     } else {
+      // Normal / Platformer / Speed Runner / Arena all use the Level Hub.
       GAME_SELECTION.init(mode);
     }
   },

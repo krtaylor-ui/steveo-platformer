@@ -14,7 +14,7 @@ const GAME_SELECTION = {
     this._setupStaticListeners();
     // §Level Hub — Normal / Platformer / Speed Runner all use the three-group hub (System / My Levels /
     // Community) instead of the 4 save-slots.
-    if (['NORMAL', 'PLATFORMER', 'SPEEDRUNNER'].includes(mode) && typeof SR_HUB !== 'undefined') { SR_HUB.init(mode); return; }
+    if (['NORMAL', 'PLATFORMER', 'SPEEDRUNNER', 'ARENA'].includes(mode) && typeof SR_HUB !== 'undefined') { SR_HUB.init(mode); return; }
     if (typeof SR_HUB !== 'undefined') SR_HUB.hide();
     await this._loadGames();
   },
@@ -29,7 +29,7 @@ const GAME_SELECTION = {
   // returning from a game (e.g. a Quick Play launch sets currentMode to the
   // played game's mode, so the heading must follow it — not the last mode viewed).
   _updateModeTitle() {
-    const labels = { NORMAL: 'Normal', PLATFORMER: 'Platformer', SPEEDRUNNER: 'Speed Runner', SANDBOX: 'Sandbox' };
+    const labels = { NORMAL: 'Normal', PLATFORMER: 'Platformer', SPEEDRUNNER: 'Speed Runner', ARENA: 'Arena', SANDBOX: 'Sandbox' };
     const el = document.getElementById('game-selection-mode-title');
     if (el) el.textContent = `${labels[this.currentMode] || this.currentMode} Mode`;
   },

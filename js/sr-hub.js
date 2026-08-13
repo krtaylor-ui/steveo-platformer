@@ -58,14 +58,63 @@ const SR_HUB = {
   },
 
   _renderToolbar(tab, bar) {
+    let html = '';
+    // §Arena — a persistent top bar of the 8 game types (2 rows of 4); the selection decides HOW a map plays.
+    if (this._mode === 'ARENA') html += this._arenaTopbarHtml();
     if (tab === 'community') {
-      bar.innerHTML = '<button class="btn btn-primary" id="srh-browse">➕ Browse community levels to add</button>';
-      bar.querySelector('#srh-browse').onclick = () => { if (typeof COMMUNITY !== 'undefined') COMMUNITY.init(this._mode || 'SPEEDRUNNER'); };
-    } else if (tab === 'mine') {
-      bar.innerHTML = '<span class="srh-hint">Only worlds you\'ve set <b>Live</b> in Sandbox appear here.</span>';
+      html += '<button class="btn btn-primary" id="srh-browse">➕ Browse community levels to add</button>';
+    } else if (tab === 'mine' && this._mode !== 'ARENA') {
+      html += '<span class="srh-hint">Only worlds you\'ve set <b>Live</b> in Sandbox appear here.</span>';
     } else if (tab === 'system' && this._isAdmin) {
-      bar.innerHTML = '<span class="srh-hint srh-admin">Admin: use ▲▼ to reorder; ✕ removes from System.</span>';
+      html += '<span class="srh-hint srh-admin">Admin: use ▲▼ to reorder; ✕ removes from System.</span>';
     }
+    bar.innerHTML = html;
+    const browse = bar.querySelector('#srh-browse');
+    if (browse) browse.onclick = () => { if (typeof COMMUNITY !== 'undefined') COMMUNITY.init(this._mode || 'SPEEDRUNNER'); };
+    bar.querySelectorAll('.srh-gt').forEach(b => b.onclick = () => { this._arenaMode = b.dataset.mode; this._renderToolbar(this._tab, bar); });
+  },
+
+  _arenaTopbarHtml() {
+    if (typeof ARENA_MODES === 'undefined') return '';
+    const keys = Object.keys(ARENA_MODES.DEFS);
+    if (!this._arenaMode || !keys.includes(this._arenaMode)) this._arenaMode = keys.includes('DEATHMATCH') ? 'DEATHMATCH' : keys[0];
+    const btns = keys.map(k => {
+      const d = ARENA_MODES.DEFS[k] || {};
+      const dis = d.comingSoon ? ' disabled' : '';
+      const cls = (k === this._arenaMode ? ' active' : '') + (d.comingSoon ? ' soon' : '');
+      return `<button class="srh-gt gt-${k}${cls}" data-mode="${k}"${dis} title="${String(d.desc || '').replace(/"/g, '')}">${String(d.label || k)}</button>`;
+    }).join('');
+    return `<div class="srh-gtbar">${btns}</div>`;
+  },
+
+  async _playArena(worldId) {
+    let d = null;
+    try { const r = await AUTH.authedFetch(`/api/sr/world/${worldId}/play`); d = r.ok ? await r.json() : null; } catch (e) {}
+    if (!d || !d.worldData) { if (typeof DIALOG !== 'undefined') DIALOG.toast('Could not load that map', { type: 'error' }); return; }
+    const wd = d.worldData; wd.id = d.id; wd.worldId = d.id; wd.worldName = d.worldName;
+    const mode = this._arenaMode, name = d.worldName;
+    const launch = (extra) => this._launchArena(wd, extra, d.id, name);
+    // Same dispatch as ARENA_SELECT: Custom → rules builder; other types → pre-launch settings; then launch.
+    if (mode === 'CUSTOM' && typeof CUSTOM_RULES_UI !== 'undefined' && CUSTOM_RULES_UI.show) {
+      CUSTOM_RULES_UI.show((cfg) => launch({ arenaGameMode: 'CUSTOM', arenaConfig: cfg }));
+    } else if (mode && typeof ARENA_PRELAUNCH !== 'undefined' && ARENA_PRELAUNCH.show) {
+      ARENA_PRELAUNCH.show(mode, (cfg) => launch({ arenaGameMode: mode, arenaConfig: cfg }));
+    } else {
+      launch(mode ? { arenaGameMode: mode } : {});
+    }
+  },
+
+  _launchArena(wd, extra, id, name) {
+    const tab = this._tab, mode = this._mode;
+    if (typeof window.menu !== 'undefined' && window.menu && window.menu._stop) window.menu._stop();
+    if (window.game && window.game.destroy) { try { window.game.destroy(); } catch (_) {} window.game = null; }
+    document.getElementById('game-selection-screen').style.display = 'none';
+    const options = Object.assign({ templateData: wd, worldId: id, worldName: name }, extra || {});
+    window.game = new Game('arena', options, () => {
+      window.game = null;
+      document.getElementById('game-selection-screen').style.display = 'block';
+      this.init(mode); this.loadTab(tab);
+    });
   },
 
   _best(worldId) {
@@ -91,7 +140,7 @@ const SR_HUB = {
       const best = this._best(w.id);
       const thumb = w.thumbnail ? `<div class="srh-thumb"><img src="${esc(w.thumbnail)}" alt="" loading="lazy"></div>` : '<div class="srh-thumb srh-thumb-none">🏁</div>';
       const isNP = (this._mode === 'NORMAL' || this._mode === 'PLATFORMER');
-      const playLabel = !isNP ? '▶&nbsp;Race' : (w.inProgress ? 'Continue' : 'Play');
+      const playLabel = (this._mode === 'ARENA') ? '⚔&nbsp;Battle' : (!isNP ? '▶&nbsp;Race' : (w.inProgress ? 'Continue' : 'Play'));
       let actions = `<button class="srh-play" data-id="${esc(w.id)}">${playLabel}</button>`;
       if (isNP && w.inProgress) actions += `<button class="srh-restart" data-id="${esc(w.id)}" title="Start this level over">Restart</button>`;
       if (tab === 'community') actions += `<button class="btn btn-secondary srh-remove" data-id="${esc(w.id)}" title="Remove from your list">Remove</button>`;
@@ -128,6 +177,7 @@ const SR_HUB = {
   async play(worldId, opts) {
     opts = opts || {};
     if (!worldId) return;
+    if (this._mode === 'ARENA') { this._playArena(worldId); return; }   // arena routes through its own launch
     let d = null;
     try { const r = await AUTH.authedFetch(`/api/sr/world/${worldId}/play`); d = r.ok ? await r.json() : null; }
     catch (e) {}
@@ -145,9 +195,10 @@ const SR_HUB = {
     const hud = document.getElementById('play-hud'); if (hud) hud.style.display = 'flex';
     if (window.game && window.game.destroy) { try { window.game.destroy(); } catch (_) {} window.game = null; }
 
-    let exited = false;
+    let exited = false, saveTimer = null;
     const back = () => {
       if (exited) return; exited = true;
+      if (saveTimer) { clearInterval(saveTimer); saveTimer = null; }
       const g = window.game;
       // §Save-on-exit — Normal/Platformer bank progress (or clear it if the level was won).
       if (isNP && g && typeof GAME_STATE !== 'undefined' && GAME_STATE.serialize) {
@@ -178,6 +229,15 @@ const SR_HUB = {
     // §Continue — apply the saved snapshot on top of the freshly-built world (like GAME_PLAY does).
     if (isNP && saved && typeof GAME_STATE !== 'undefined' && GAME_STATE.deserialize) {
       try { GAME_STATE.deserialize(window.game, saved, { newGame: false }); } catch (_) {}
+    }
+    // §Auto-save — Normal/Platformer bank progress every 10s while playing (mirrors the old slots).
+    if (isNP) {
+      saveTimer = setInterval(() => {
+        const g = window.game;
+        if (g && (g.state === 'playing' || g.state === 'paused') && typeof GAME_STATE !== 'undefined' && GAME_STATE.serialize) {
+          try { AUTH.authedFetch(`/api/sr/world/${worldId}/progress`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gameData: GAME_STATE.serialize(g) }) }).catch(() => {}); } catch (_) {}
+        }
+      }, 10000);
     }
   },
 

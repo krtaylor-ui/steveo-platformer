@@ -31,7 +31,7 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'krtaylor@gmail.com')
 const isAdmin = (req) => !!(req.user && req.user.email && ADMIN_EMAILS.includes(req.user.email.toLowerCase()));
 
 // The hub now serves NORMAL / PLATFORMER / SPEEDRUNNER. Validate the mode query (default SPEEDRUNNER).
-const HUB_MODES = ['NORMAL', 'PLATFORMER', 'SPEEDRUNNER'];
+const HUB_MODES = ['NORMAL', 'PLATFORMER', 'SPEEDRUNNER', 'ARENA'];
 const modeOf = (q) => { const m = String(q || '').toUpperCase(); return HUB_MODES.includes(m) ? m : 'SPEEDRUNNER'; };
 
 // Shared: the light row shape the hub renders (never ships full world_data — that's fetched on Play).
