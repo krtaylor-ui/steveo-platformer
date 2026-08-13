@@ -547,7 +547,7 @@ html[data-theme="retro"] {
 }
 
 .game-selection-container {
-  max-width: 1240px;   /* wider so the SR hub uses more screen; the 4-slot grid keeps its own 720px cap */
+  max-width: none;   /* full screen width — no side bars; the 4-slot grid keeps its own 720px cap */
   margin: 0 auto;
   padding: 20px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -2446,7 +2446,7 @@ html[data-theme="retro"] #copy-world-modal .copy-dest { color: #cfe8f2; border-c
 /* #sr-hub = the "device" bezel (dark tablet on the blue backdrop), with side breathing room so
    the blue shows around it. --srh-active is set by JS to the selected key's colour. */
 #sr-hub { --srh-sys:#ff8a2a; --srh-my:#4b86ee; --srh-comm:#1bc0a5; --srh-active: var(--srh-sys);
-  display: flex; gap: 16px; align-items: stretch; width: 100%; max-width: 1000px; margin: 0 auto; min-height: 64vh;
+  display: flex; gap: 16px; align-items: stretch; width: 85%; max-width: none; margin: 0 auto; min-height: 64vh;
   background: linear-gradient(180deg, #131a29, #0e1422); border: 1px solid #26324a; border-radius: 20px;
   padding: 16px; box-shadow: 0 24px 70px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.04); }
 /* the SCREEN — a dark navy inset (not pure black), tinted by the active key's neon. */
@@ -2502,8 +2502,7 @@ html[data-theme="retro"] #copy-world-modal .copy-dest { color: #cfe8f2; border-c
   background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(0,0,0,.18));
   border: 1px solid color-mix(in srgb, var(--srh-active) 50%, #2a3650);   /* outline = the active neon */
   transition: box-shadow .15s; }
-.srh-row:hover { box-shadow: 0 0 20px -3px color-mix(in srgb, var(--srh-active) 78%, transparent),
-  inset 0 0 14px -6px color-mix(in srgb, var(--srh-active) 60%, transparent); }   /* neon glow, outline unchanged */
+.srh-row:hover { box-shadow: inset 0 0 22px -2px color-mix(in srgb, var(--srh-active) 60%, transparent); }   /* neon glow INSIDE the world, outline unchanged */
 .srh-thumb { width: 64px; height: 42px; border-radius: 6px; overflow: hidden; flex: none;
   background: #12202c; display: flex; align-items: center; justify-content: center; }
 .srh-thumb img { width: 100%; height: 100%; object-fit: cover; }
