@@ -14,18 +14,21 @@
       const s = document.createElement('style');
       s.id = 'cs-style';
       s.textContent = `
-        #campaign-select-screen{padding:24px;max-width:900px;margin:0 auto;color:#e8eef7}
-        #campaign-select-screen h1{font-size:26px;margin:0 0 4px}
-        .cs-sub{color:#8ea3c4;margin-bottom:18px}
-        .cs-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
-        .cs-btn{background:#2b3548;border:1px solid #46557a;color:#dfe7f5;border-radius:8px;padding:9px 16px;cursor:pointer;font-size:14px}
-        .cs-btn:hover{background:#38455f}
-        .cs-btn.primary{background:#2e6f4e;border-color:#3f9a6c}
-        .cs-btn.build{background:#5a3f8f;border-color:#7d5cc0}
-        .cs-card{background:#141c2a;border:1px solid #2c3a54;border-radius:12px;padding:16px 18px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
-        .cs-card h3{margin:0 0 4px;font-size:18px}
-        .cs-meta{color:#8ea3c4;font-size:13px}
-        .cs-badge{font-size:11px;background:#2f6b4a;color:#dbffe8;border-radius:10px;padding:2px 9px;margin-left:8px}
+        #campaign-select-screen{--cc:#a06cff;padding:26px 22px 60px;max-width:1000px;margin:0 auto;color:#e9eef7}
+        #campaign-select-screen h1{font-size:28px;margin:0 0 4px;text-shadow:0 0 10px color-mix(in srgb,var(--cc) 45%,transparent)}
+        .cs-sub{color:#9fb0c8;margin-bottom:18px}
+        .cs-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+        .cs-sec{margin:22px 0 8px;color:#c7d2e6;font-size:13px;letter-spacing:.06em;text-transform:uppercase}
+        .cs-btn{background:#161d2a;border:1px solid #2c3a54;color:#dfe7f5;border-radius:9px;padding:10px 16px;cursor:pointer;font-size:14px;transition:filter .12s,box-shadow .15s}
+        .cs-btn:hover{filter:brightness(1.15)}
+        .cs-btn.build{background:linear-gradient(180deg,color-mix(in srgb,#a06cff 26%,#0e1422),color-mix(in srgb,#a06cff 12%,#0e1422));border-color:color-mix(in srgb,#a06cff 60%,#2c3a54);box-shadow:0 0 12px -4px #a06cff}
+        .cs-card{background:linear-gradient(180deg,#131a29,#0e1422);border:1px solid color-mix(in srgb,var(--cc) 40%,#2c3a54);border-radius:13px;padding:15px 18px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:inset 3px 0 0 -1px var(--cc);transition:box-shadow .15s}
+        .cs-card:hover{box-shadow:inset 3px 0 0 -1px var(--cc),0 0 18px -5px color-mix(in srgb,var(--cc) 70%,transparent)}
+        .cs-card h3{margin:0 0 4px;font-size:18px;color:#eaf2ff}
+        .cs-meta{color:#9fb0c8;font-size:13px}
+        .cs-badge{font-size:10px;font-weight:700;letter-spacing:.05em;background:color-mix(in srgb,var(--cc) 28%,#0e1422);color:#e6dcff;border:1px solid color-mix(in srgb,var(--cc) 55%,transparent);border-radius:10px;padding:2px 9px;margin-left:8px}
+        .cs-play{font:700 13px/1 inherit;letter-spacing:.04em;color:#eaf6ff;cursor:pointer;padding:10px 18px;border-radius:9px;background:linear-gradient(180deg,color-mix(in srgb,var(--cc) 28%,#0b111d),color-mix(in srgb,var(--cc) 14%,#0b111d));border:1px solid color-mix(in srgb,var(--cc) 75%,transparent);box-shadow:0 0 12px -4px var(--cc);text-shadow:0 0 8px color-mix(in srgb,var(--cc) 55%,transparent)}
+        .cs-play:hover{filter:brightness(1.15)}
         .cs-empty{color:#8494ac;font-style:italic;padding:16px 2px}
       `;
       document.head.appendChild(s);
@@ -47,8 +50,8 @@
       el.style.display = 'block';
       el.innerHTML = `<h1>🎬 Campaign</h1><div class="cs-sub">Loading…</div>`;
       try {
-        const r = await CAMPAIGN_API.list();
-        this._render(r);
+        const [r, b] = await Promise.all([CAMPAIGN_API.list(), CAMPAIGN_API.browse().catch(() => ({ campaigns: [] }))]);
+        this._render(r, b);
       } catch (e) {
         el.innerHTML = `<h1>🎬 Campaign</h1><div class="cs-sub">Could not load campaigns: ${esc(e.message)}</div>
           <div class="cs-bar"><button class="cs-btn" id="cs-back">← Back</button></div>`;
@@ -56,16 +59,16 @@
       }
     },
 
-    _render(r) {
+    _render(r, b) {
       const el = this._screen();
-      const pub = r.published;
+      const published = (b && b.campaigns) || [];   // §29 — ALL published campaigns
       const mine = r.mine || [];
-      const pubCard = pub
-        ? this._card(pub, true)
-        : `<div class="cs-empty">No Campaign is published yet.${r.canPublish ? ' Build one and press Publish.' : ''}</div>`;
       const drafts = mine.filter((c) => !c.published);
-      const draftCards = drafts.length
-        ? `<h3 style="margin:22px 0 8px;color:#c7d2e6">Your campaigns (playtest)</h3>` + drafts.map((c) => this._card(c, false)).join('')
+      const pubSection = published.length
+        ? published.map((c) => this._card(c, true, c.mine)).join('')
+        : `<div class="cs-empty">No campaigns published yet.${r.canPublish ? ' Build one and press Publish.' : ''}</div>`;
+      const draftSection = drafts.length
+        ? `<div class="cs-sec">Your campaigns (playtest before publishing)</div>` + drafts.map((c) => this._card(c, false, true)).join('')
         : '';
       el.innerHTML = `
         <h1>🎬 Campaign</h1>
@@ -74,20 +77,21 @@
           <button class="cs-btn" id="cs-back">← Back</button>
           <button class="cs-btn build" id="cs-build">🛠 Campaign Builder</button>
         </div>
-        <h3 style="margin:6px 0 8px;color:#c7d2e6">Now playing</h3>
-        ${pubCard}
-        ${draftCards}`;
+        <div class="cs-sec">Published campaigns</div>
+        ${pubSection}
+        ${draftSection}`;
       this._wireBack();
       const build = document.getElementById('cs-build');
       if (build) build.onclick = () => { if (typeof CAMPAIGN_BUILDER !== 'undefined') CAMPAIGN_BUILDER.open(); };
-      el.querySelectorAll('[data-play]').forEach((b) => b.onclick = () => this._play(b.dataset.play));
+      el.querySelectorAll('[data-play]').forEach((b2) => b2.onclick = () => this._play(b2.dataset.play));
     },
 
-    _card(c, published) {
+    _card(c, published, mine) {
+      const badge = published ? `<span class="cs-badge">${mine ? 'YOURS · LIVE' : 'LIVE'}</span>` : '<span class="cs-badge">DRAFT</span>';
       return `<div class="cs-card">
-          <div><h3>${esc(c.name)}${published ? '<span class="cs-badge">LIVE</span>' : ''}</h3>
+          <div><h3>${esc(c.name)}${badge}</h3>
           <div class="cs-meta">by ${esc(c.creatorName || 'you')}</div></div>
-          <button class="cs-btn primary" data-play="${c.id}">▶ Play</button>
+          <button class="cs-play" data-play="${c.id}">▶ Play</button>
         </div>`;
     },
 
