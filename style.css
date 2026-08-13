@@ -253,6 +253,23 @@ html[data-theme="retro"] {
   font-size: 0.9rem;
 }
 
+/* §Neon dashboard mode cards — Campaign full-width on top, the 4 modes below, each its own hue. */
+.mode-full { grid-column: 1 / -1; }
+.game-mode-card.mode-neon { --mc: #6ca8ff; background: linear-gradient(180deg, #131a29, #0e1422);
+  border: 1px solid color-mix(in srgb, var(--mc) 45%, #26324a); border-radius: 14px; padding: 22px 18px;
+  box-shadow: 0 3px 12px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04);
+  transition: transform .15s, box-shadow .15s, border-color .15s; position: relative; overflow: hidden; }
+.game-mode-card.mode-neon::after { content: ""; position: absolute; left: 0; top: 16%; bottom: 16%; width: 4px;
+  border-radius: 0 4px 4px 0; background: var(--mc); box-shadow: 0 0 14px 2px var(--mc); }
+.game-mode-card.mode-neon:hover { transform: translateY(-4px); border-color: color-mix(in srgb, var(--mc) 70%, #26324a);
+  box-shadow: 0 8px 24px rgba(0,0,0,.5), 0 0 22px -4px var(--mc), inset 0 1px 0 rgba(255,255,255,.06); }
+.game-mode-card.mode-neon h3 { color: #eaf2ff; text-shadow: 0 0 8px color-mix(in srgb, var(--mc) 45%, transparent); }
+.game-mode-card.mode-neon p { color: #9fb0c8; }
+.game-mode-card.mode-neon .mode-icon { filter: drop-shadow(0 0 8px color-mix(in srgb, var(--mc) 60%, transparent)); }
+.game-mode-card.mode-full.mode-neon { padding: 18px; }
+.m-campaign { --mc: #a06cff; } .m-normal { --mc: #57d06a; } .m-platformer { --mc: #4b86ee; }
+.m-speedrunner { --mc: #ff8a2a; } .m-arena { --mc: #ff4d5e; }
+
 /* Sandbox — full-width feature panel below the play-mode tiles */
 .sandbox-feature-card {
   display: flex;
@@ -2520,10 +2537,10 @@ html[data-theme="retro"] #copy-world-modal .copy-dest { color: #cfe8f2; border-c
 /* §Arena — game-type top bar: 8 neon buttons, two rows of four, each its own hue. */
 #sr-hub.srh-arena { min-height: 78vh; }   /* taller tablet so the 8 game-type buttons + maps all breathe */
 .srh-gtbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: 100%; margin-bottom: 6px; }
-.srh-gt { font: 700 13.5px/1.2 "Courier New", monospace; letter-spacing: .02em; text-transform: uppercase; color: #cdd8ea;
-  cursor: pointer; padding: 10px 8px; border-radius: 9px; background: #0d1420; border: 1px solid #24324a;
+.srh-gt { font: 700 20px/1.18 "Courier New", monospace; letter-spacing: .01em; color: #cdd8ea;
+  cursor: pointer; padding: 12px 10px; border-radius: 9px; background: #0d1420; border: 1px solid #24324a;
   position: relative; overflow: hidden; transition: filter .12s, box-shadow .15s; --gt: #6ca8ff;
-  min-height: 60px; display: flex; align-items: center; justify-content: center; text-align: center; white-space: normal; }
+  min-height: 70px; display: flex; align-items: center; justify-content: center; text-align: center; white-space: normal; }
 .srh-gt:hover { filter: brightness(1.15); }
 .srh-gt.soon { opacity: .5; cursor: not-allowed; }
 .srh-gt.active { color: #eaf6ff; border-color: color-mix(in srgb, var(--gt) 65%, #24324a);
