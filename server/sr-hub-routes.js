@@ -42,6 +42,11 @@ function toRow(w) {
 }
 
 function setupSrHubRoutes(app) {
+  // ── Am I an admin? (lets the Sandbox card show the "Add to System" control) ──
+  app.get('/api/sr/whoami', verifyToken, async (req, res) => {
+    res.json({ isAdmin: isAdmin(req), email: req.user.email || null });
+  });
+
   // ── System tab — admin-curated SR levels, in the admin's order (public to all signed-in players) ──
   app.get('/api/sr/system', verifyToken, async (req, res) => {
     try {
