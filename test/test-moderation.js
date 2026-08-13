@@ -14,7 +14,9 @@ console.log('1 — clean, ordinary text passes:');
     'circumstance', 'vacuum', 'succumb', 'cumulus', 'suspicious', 'auspicious', 'conspicuous', 'title',
     'titan', 'titanic', 'competition', 'prickly', 'grapefruit', 'scrapbook', 'therapy', 'classic',
     'basement', 'password', 'assemble', 'assassin', 'brass', 'compass', 'unisex', 'analysis',
-    'fire retardant', 'pussycat']) {
+    'fire retardant', 'pussycat',
+    // §N — surname/word boundary collisions on short roots
+    'cocktail', 'Hitchcock', 'Babcock', 'Sexton', 'Damnation']) {
     ok(M.isClean(s), `"${s}" is allowed`);
   }
   ok(M.check(null).ok && M.check('').ok, 'null/empty are allowed');

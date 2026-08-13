@@ -432,7 +432,7 @@
       }).join('');
       const badges = `${isStart ? '<span class="cb-badge start">START</span>' : ''}${isBoss ? '<span class="cb-badge boss">BOSS</span>' : ''}`;
       const noStars = !stars.length ? '<div class="cb-route unrouted">⚠ This world has no Goal Star placed — add one in the Sandbox editor.</div>' : '';
-      const rmWorld = `<button class="cb-plus" style="background:#5a2f2f;border-color:#8a4a4a;float:right" data-rmworld="${w.id}" title="Remove this ${WL} from the campaign">✕ Remove</button>`;
+      const rmWorld = `<button class="cb-btn warn" style="float:right;padding:3px 10px;font-size:12px" data-rmworld="${w.id}" title="Remove this ${WL} from the campaign">✕ Remove</button>`;
       return `<div class="cb-world"><h4>${this._esc(w.name)} ${badges}${rmWorld}</h4>${noStars}<div class="cb-stars">${starRows}</div></div>`;
     },
 

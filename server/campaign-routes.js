@@ -117,6 +117,10 @@ module.exports = function setupCampaignRoutes(app) {
   app.post('/api/campaigns', verifyToken, async (req, res) => {
     try {
       const name = (req.body && req.body.name || 'Untitled Campaign').slice(0, 120);
+      // N-2: moderate the name at create too — PUT/publish already reject it, so without this the author
+      // types a rude name once and ends up with a frozen, uneditable draft instead of a clean error.
+      const m = MODERATION.check ? MODERATION.check(name, 'campaign name') : { ok: true };
+      if (!m.ok) return res.status(400).json({ error: m.reason });
       const definition = (req.body && req.body.definition) || {};
       definition.creatorId = req.user.id;
       const { data, error } = await supabaseAdmin.from('campaigns').insert({

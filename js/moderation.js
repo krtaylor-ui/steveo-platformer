@@ -53,9 +53,12 @@ const ALLOW = new Set([
   // cock-
   'cockpit', 'cockpits', 'peacock', 'peacocks', 'cockatoo', 'cockatoos', 'cockatiel', 'cockatiels',
   'cockroach', 'cockroaches', 'shuttlecock', 'shuttlecocks', 'woodcock', 'woodcocks', 'hancock',
-  'gamecock', 'gamecocks', 'weathercock', 'stopcock', 'haycock',
+  'gamecock', 'gamecocks', 'weathercock', 'stopcock', 'haycock', 'cocktail', 'cocktails',
+  'hitchcock', 'babcock', 'shattercock',
   // dick-
   'dickens', 'dickory', 'dickinson',
+  // -sex(ton) / damn(ation)
+  'sexton', 'sextons', 'damnation',
   // -anus / anus
   'uranus',
   // cum- (start) — mid-word cum is already safe (document, vacuum, succumb, cucumber, accumulate…)
