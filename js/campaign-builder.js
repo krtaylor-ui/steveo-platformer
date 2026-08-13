@@ -160,6 +160,11 @@
         this._c.zoneOrder = this._c.zoneOrder || [];
         this._activeZone = this._c.zoneOrder[0] || (this._c.zones[0] && this._c.zones[0].id) || null;
         this._msg = null; this._render();
+        // Refresh Goal Stars from current world data so the ⚠ "no Goal Star" card + validation reflect
+        // edits made in the Sandbox after the world was added (they read the cached stars otherwise).
+        const failed = await this._resyncStars();
+        if (failed) this._flash(`Could not refresh ${failed} ${this._c.worldLabel || 'World'}(s).`, 'err');
+        this._render();
       } catch (e) { this._flash('Load failed: ' + e.message, 'err'); }
     },
 
@@ -186,25 +191,31 @@
 
     // Re-derive each world's Goal Stars from its CURRENT saved data. Stars are cached at add-time, so a
     // world edited later in the Sandbox (star added/moved/removed) would otherwise keep a stale snapshot.
+    // NB: _ingestWorld needs the SANDBOX world id (sandboxWorldUid), NOT the campaign-local id (w.id) —
+    // passing w.id threw "World not found" for every world and the stale snapshot silently survived.
     async _resyncStars() {
+      let failed = 0;
       for (const w of (this._c.worlds || [])) {
+        if (!w.sandboxWorldUid) continue;
         try {
-          const fresh = await this._ingestWorld(w.id, w.name);
+          const fresh = await this._ingestWorld(w.sandboxWorldUid, w.name);
           w.stars = fresh.stars;
           if (fresh.name) w.name = fresh.name;
-        } catch (e) { /* keep the cached value if the fetch fails */ }
+        } catch (e) { failed++; }   // surfaced by the caller, not swallowed
       }
+      return failed;
     },
 
     async _publish() {
       if (!this._c) return;
-      await this._resyncStars();
+      const failed = await this._resyncStars();
+      if (failed) { this._flash(`Could not refresh ${failed} ${this._c.worldLabel || 'World'}(s) — check they still exist, then try again.`, 'err'); this._render(); return; }
       const v = this._validate();
       if (!v.ok) { this._flash('Fix the issues below before publishing.', 'err'); this._render(); return; }
       await this._save(true);
       try {
         const r = await CAMPAIGN_API.publish(this._c.id);
-        this._c = r.campaign; this._flash('Published! This is now the live Campaign.', 'ok');
+        this._c = r.campaign; this._flash('Published! It\'s now live for everyone in the Campaign list.', 'ok');
       } catch (e) { this._flash('Publish failed: ' + e.message, 'err'); }
     },
     async _unpublish() {
@@ -257,13 +268,16 @@
       this._save(true);
     },
 
-    _removeWorld(worldId) {
+    async _removeWorld(worldId) {
       const w = M().getWorld(this._c, worldId);
       if (!w) return;
       const WL = this._c.worldLabel || 'World';
-      if (!confirm(`Remove "${w.name}" from this campaign? Routes pointing to it are cleared. The saved ${WL} itself is not deleted.`)) return;
+      const yes = await DIALOG.confirm(
+        `Remove "${w.name}" from this campaign? Routes pointing to it are cleared. The saved ${WL} itself is not deleted.`,
+        { title: 'Remove ' + WL, okText: 'Remove', danger: true });
+      if (!yes) return;
       M().removeWorld(this._c, worldId);
-      this._save(true);
+      await this._save(true);
       this._render();
     },
 

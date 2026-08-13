@@ -1045,12 +1045,15 @@ is out of scope. Useful for both the existing side-view Sandbox and the future O
 
 ---
 
-## 28. Manual save / checkpoint system for Campaign mode  *(deferred from the Campaign MVP, 2026-07-28)*
+## 28. Explicit manual save-points for Campaign mode  *(partially shipped 2026-08-13; explicit save-points still deferred)*
 
-Instead of (or alongside) the MVP's real-time autosave, let players choose explicit save points / checkpoints
-for more deliberate control over where a Campaign run resumes. The MVP uses autosave-at-transition (Kevin is
-fine with that for now); revisit once Campaign is live and there's real player feedback on whether autosave
-feels sufficient.
+**Shipped (build 509):** resume-exact-spot **autosave** — a mid-level snapshot is banked every ~8s and on
+exit, so leaving mid-level resumes at the exact position/health/inventory (not just at the last transition).
+There is intentionally **no player-facing "manual save" button** — saving is automatic.
+
+**Still deferred:** letting players place *explicit* save points / checkpoints for more deliberate control
+over where a run resumes. Revisit once Campaign is live and there's real player feedback on whether the
+autosave feels sufficient.
 
 ---
 

@@ -6809,7 +6809,9 @@ class Game {
     if (this._worldSettingsOpen)   this._drawWorldSettings(ctx);
     if (this._musicPlayerUI)       this._drawMusicPlayerUI(ctx);
     if (this.state === 'dead' && this.gameMode !== 'speedrunner') this._drawDead(ctx);
-    if (this.state === 'won'  && this.gameMode !== 'speedrunner') this._drawWin(ctx);
+    // C-9 — in a campaign the layer takes over a won level (routes to the next World / Zone / completion),
+    // so suppress the engine's standalone LEVEL COMPLETE screen; it would flash behind the campaign transition.
+    if (this.state === 'won'  && this.gameMode !== 'speedrunner' && !this._campaign) this._drawWin(ctx);
     if (this.isArena && this.arenaState.phase === 'countdown') this._drawArenaCountdown(ctx);
     if (this.isArena && this.arenaState.phase === 'ended')     this._drawArenaEnd(ctx);
     if (this._onlineGameId && this._onlineMenuOpen) this._drawOnlineMenu(ctx);

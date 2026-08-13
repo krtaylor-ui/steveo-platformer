@@ -212,6 +212,9 @@
       this._clearSnap();   // §28 — the last periodic snapshot is already saved; Continue will resume there
       try { if (window.game && window.game.destroy) window.game.destroy(); } catch (e) {}
       window.game = null;
+      // C-5 — re-hide the game view (#canvas-wrap) so the destroyed level's last frame doesn't linger
+      // behind the select screen. _hideScreens only toggles the menu divs; the canvas is gated on body.pre-game.
+      try { document.body.classList.add('pre-game'); document.body.classList.remove('in-game'); } catch (e) {}
       this._campaign = null; this._progress = null; this._carry = null;
       if (typeof CAMPAIGN_SELECT !== 'undefined' && CAMPAIGN_SELECT.init) CAMPAIGN_SELECT.init();
       else { const d = document.getElementById('dashboard-screen'); if (d) d.style.display = 'block'; }
