@@ -38,6 +38,9 @@ const SR_HUB = {
 
   async loadTab(tab) {
     this._tab = tab;
+    // §Neon — tint the screen + rows to the active key's colour (orange / blue / cyan).
+    const hub = document.getElementById('sr-hub');
+    if (hub) hub.style.setProperty('--srh-active', 'var(--srh-' + (tab === 'system' ? 'sys' : tab === 'mine' ? 'my' : 'comm') + ')');
     const list = document.getElementById('srh-list');
     const bar = document.getElementById('srh-toolbar');
     list.innerHTML = '<p class="srh-empty">Loading…</p>';
