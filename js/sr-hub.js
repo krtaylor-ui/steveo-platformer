@@ -18,11 +18,13 @@ const SR_HUB = {
     this._bind();
     document.getElementById('sr-hub').style.display = 'flex';   // flex row: rail beside the list (not block/stacked)
     document.querySelector('.game-slots-container').style.display = 'none';
+    document.querySelector('.game-selection-container')?.classList.add('srh-mode');   // full-bleed "device" backdrop
     this.loadTab(this._tab || 'system');
   },
   hide() {
     const h = document.getElementById('sr-hub'); if (h) h.style.display = 'none';
     const g = document.querySelector('.game-slots-container'); if (g) g.style.display = '';
+    document.querySelector('.game-selection-container')?.classList.remove('srh-mode');
   },
 
   _bind() {

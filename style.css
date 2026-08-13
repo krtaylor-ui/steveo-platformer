@@ -2443,17 +2443,28 @@ html[data-theme="retro"] #copy-world-modal .copy-dest { color: #cfe8f2; border-c
 
 /* ════ §SR Level Hub — System / My Levels / Community (Neon side rail) ════
    Neon accents are declared as tokens so a future app-wide "Neon skin" can re-point them. */
-#sr-hub { --srh-sys:#ff8a2a; --srh-my:#4b86ee; --srh-comm:#1bc0a5;
-  display: flex; gap: 18px; align-items: stretch; width: 100%; margin: 0 auto; min-height: 62vh; }
-.srh-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+/* Full-bleed dark backdrop while the SR hub is up (no purple side-bars); other modes unaffected. */
+.game-selection-container.srh-mode { max-width: none;
+  background: radial-gradient(1200px 620px at 50% -12%, #17253c 0%, #0a0e16 62%) fixed, #0a0e16; }
+.game-selection-container.srh-mode .game-selection-header h2 { color: #eaf2ff; }
 
-/* the rail: three EQUAL full-height thirds */
-.srh-rail { width: 212px; flex: none; display: flex; flex-direction: column; border-radius: 14px; overflow: hidden;
-  background: #0c111a; border: 1px solid #202a3a; }
-.srh-tab { flex: 1; position: relative; border: 0; cursor: pointer; color: #fff; overflow: hidden; padding: 0;
-  background: #0b0f18; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
-  font-family: inherit; transition: filter .15s; --a: #6ca8ff; }
-.srh-tab + .srh-tab { border-top: 1px solid rgba(0,0,0,.4); }
+/* #sr-hub = the "device" bezel holding the key rail + the screen. */
+#sr-hub { --srh-sys:#ff8a2a; --srh-my:#4b86ee; --srh-comm:#1bc0a5;
+  display: flex; gap: 16px; align-items: stretch; width: 100%; margin: 0 auto; min-height: 64vh;
+  background: linear-gradient(180deg, #0e1420, #0a0e16); border: 1px solid #1b2434; border-radius: 20px;
+  padding: 16px; box-shadow: 0 24px 70px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.03); }
+/* the SCREEN — a darker inset panel the world list sits on, like a tablet display. */
+.srh-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;
+  background: #06090f; border: 1px solid #141d2a; border-radius: 14px; padding: 14px; overflow: hidden;
+  box-shadow: inset 0 2px 26px rgba(0,0,0,.7), inset 0 0 0 1px rgba(0,0,0,.35); }
+
+/* the rail: three EQUAL full-height thirds, now as SPACED raised keys */
+.srh-rail { width: 244px; flex: none; display: flex; flex-direction: column; gap: 12px; }
+.srh-tab { flex: 1; position: relative; border: 1px solid #1c2636; cursor: pointer; color: #fff; overflow: hidden;
+  padding: 0; border-radius: 13px; background: #0b0f18; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 8px; font-family: inherit; transition: filter .15s, transform .1s, box-shadow .15s;
+  box-shadow: 0 3px 10px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04); --a: #6ca8ff; }
+.srh-tab:active { transform: translateY(1px); }
 .srh-tab[data-tab="system"]    { --a: var(--srh-sys); }
 .srh-tab[data-tab="mine"]      { --a: var(--srh-my); }
 .srh-tab[data-tab="community"] { --a: var(--srh-comm); }
@@ -2468,15 +2479,16 @@ html[data-theme="retro"] #copy-world-modal .copy-dest { color: #cfe8f2; border-c
   font-size: 14px; color: #eaf2ff; font-family: "Courier New", monospace; }
 .srh-tsub { position: relative; z-index: 2; font-size: 10.5px; opacity: .66; font-weight: 600; color: #cfe0f5; }
 .srh-tab:hover { filter: brightness(1.12); }
-.srh-tab.active { background: radial-gradient(130% 92% at 0% 50%, color-mix(in srgb, var(--a) 32%, #0b0f18), #0b0f18); }
+.srh-tab.active { background: radial-gradient(130% 92% at 0% 50%, color-mix(in srgb, var(--a) 34%, #0b0f18), #0b0f18);
+  border-color: color-mix(in srgb, var(--a) 60%, #1c2636);
+  box-shadow: 0 0 22px -3px var(--a), inset 0 0 0 1px color-mix(in srgb, var(--a) 40%, transparent); }
 .srh-tab.active .srh-glyph { filter: drop-shadow(0 0 11px var(--a)); }
 .srh-tab.active .srh-tsub { opacity: .85; }
 /* mobile / narrow: collapse the rail to a top row of tabs */
 @media (max-width: 720px) {
-  #sr-hub { flex-direction: column; min-height: 0; }
-  .srh-rail { width: 100%; flex-direction: row; }
+  #sr-hub { flex-direction: column; min-height: 0; padding: 12px; }
+  .srh-rail { width: 100%; flex-direction: row; gap: 8px; }
   .srh-tab { gap: 4px; padding: 10px 4px; }
-  .srh-tab + .srh-tab { border-top: 0; border-left: 1px solid rgba(0,0,0,.4); }
   .srh-tab::after { left: 15%; right: 15%; top: auto; bottom: 0; width: auto; height: 3px; border-radius: 4px 4px 0 0; }
   .srh-glyph { width: 26px; height: 26px; }
   .srh-tsub { display: none; }
