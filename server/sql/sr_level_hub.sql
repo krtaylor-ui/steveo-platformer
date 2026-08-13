@@ -32,7 +32,12 @@ CREATE INDEX IF NOT EXISTS idx_world_added_user ON world_added (user_id, added_a
 -- UPDATE worlds SET is_system = true
 --   WHERE creator_id = '<KRTAYLOR-USER-UUID>' AND mode = 'SPEEDRUNNER' AND is_published = true;
 
--- FIX (2026-08-13): arena worlds were stored with mode='NORMAL' because MODE_LONG lacked an ARN entry.
--- Re-tag them so they appear in the Arena hub (and stop appearing under Normal). New saves are correct now.
+-- FIX (2026-08-13): Arena support in the worlds.mode column.
+--  (a) The worlds_mode_check CHECK constraint didn't allow 'ARENA' (arena worlds were mis-saved as
+--      NORMAL before MODE_LONG got an ARN entry), so saving an arena world now fails until this widens it.
+--  (b) Re-tag existing arena worlds so they show in the Arena hub (and stop showing under Normal).
+-- ORDER MATTERS: widen the constraint FIRST, then re-tag. Safe: all existing rows are already in the set.
+ALTER TABLE worlds DROP CONSTRAINT IF EXISTS worlds_mode_check;
+ALTER TABLE worlds ADD  CONSTRAINT worlds_mode_check CHECK (mode IN ('NORMAL','PLATFORMER','SPEEDRUNNER','ARENA'));
 UPDATE worlds SET mode = 'ARENA'
   WHERE world_data->>'gameModeDefault' = 'ARN' AND mode IS DISTINCT FROM 'ARENA';
