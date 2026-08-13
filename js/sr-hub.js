@@ -14,7 +14,8 @@ const SR_HUB = {
   _isAdmin: false,
   _rows: [],
 
-  init() {
+  init(mode) {
+    this._mode = mode || this._mode || 'SPEEDRUNNER';   // NORMAL | PLATFORMER | SPEEDRUNNER
     this._bind();
     document.getElementById('sr-hub').style.display = 'flex';   // flex row: rail beside the list (not block/stacked)
     document.querySelector('.game-slots-container').style.display = 'none';
@@ -45,7 +46,8 @@ const SR_HUB = {
     const bar = document.getElementById('srh-toolbar');
     list.innerHTML = '<p class="srh-empty">Loading…</p>';
     bar.innerHTML = '';
-    const url = { system: '/api/sr/system', mine: '/api/sr/mine', community: '/api/sr/added' }[tab];
+    const base = { system: '/api/sr/system', mine: '/api/sr/mine', community: '/api/sr/added' }[tab];
+    const url = base + '?mode=' + encodeURIComponent(this._mode || 'SPEEDRUNNER');
     let data = {};
     try { const r = await AUTH.authedFetch(url); data = r.ok ? await r.json() : {}; }
     catch (e) { list.innerHTML = '<p class="srh-empty">Could not load levels.</p>'; return; }
@@ -58,7 +60,7 @@ const SR_HUB = {
   _renderToolbar(tab, bar) {
     if (tab === 'community') {
       bar.innerHTML = '<button class="btn btn-primary" id="srh-browse">➕ Browse community levels to add</button>';
-      bar.querySelector('#srh-browse').onclick = () => { if (typeof COMMUNITY !== 'undefined') COMMUNITY.init('SPEEDRUNNER'); };
+      bar.querySelector('#srh-browse').onclick = () => { if (typeof COMMUNITY !== 'undefined') COMMUNITY.init(this._mode || 'SPEEDRUNNER'); };
     } else if (tab === 'mine') {
       bar.innerHTML = '<span class="srh-hint">Only worlds you\'ve set <b>Live</b> in Sandbox appear here.</span>';
     } else if (tab === 'system' && this._isAdmin) {
@@ -140,9 +142,15 @@ const SR_HUB = {
     const pauseBtn = document.getElementById('play-hud-pause');
     if (pauseBtn) { pauseBtn.textContent = 'Pause'; pauseBtn.onclick = () => { const g = window.game; if (!g) return; const p = g.state === 'paused'; g.state = p ? 'playing' : 'paused'; pauseBtn.textContent = p ? 'Pause' : 'Resume'; }; }
     const restartBtn = document.getElementById('play-hud-restart');
-    if (restartBtn) { restartBtn.style.display = ''; restartBtn.onclick = () => { const g = window.game; if (!g) return; if (g.state === 'paused') { g.state = 'playing'; if (pauseBtn) pauseBtn.textContent = 'Pause'; } if (g._srRestartRun) g._srRestartRun(); }; }
+    if (restartBtn) { restartBtn.style.display = (this._mode === 'SPEEDRUNNER') ? '' : 'none'; restartBtn.onclick = () => { const g = window.game; if (!g) return; if (g.state === 'paused') { g.state = 'playing'; if (pauseBtn) pauseBtn.textContent = 'Pause'; } if (g._srRestartRun) g._srRestartRun(); }; }
 
-    window.game = new Game('speedrunner', { speedrunnerLoadKey: wd, playerName: 'Player', worldId: d.id }, () => back());
+    // Launch the right engine for the hub's mode. SR uses its load-key path; Normal/Platformer run the
+    // world as a fresh level (world:'adventure' lets their generation run before templateData overrides it).
+    const gm = ({ SPEEDRUNNER: 'speedrunner', NORMAL: 'normal', PLATFORMER: 'platformer' })[this._mode] || 'speedrunner';
+    const opts = (gm === 'speedrunner')
+      ? { speedrunnerLoadKey: wd, playerName: 'Player', worldId: d.id }
+      : { templateData: wd, world: 'adventure', newGame: true, worldId: d.id };
+    window.game = new Game(gm, opts, () => back());
   },
 
   async _remove(worldId) {

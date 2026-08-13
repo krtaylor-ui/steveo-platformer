@@ -30,6 +30,10 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'krtaylor@gmail.com')
   .toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
 const isAdmin = (req) => !!(req.user && req.user.email && ADMIN_EMAILS.includes(req.user.email.toLowerCase()));
 
+// The hub now serves NORMAL / PLATFORMER / SPEEDRUNNER. Validate the mode query (default SPEEDRUNNER).
+const HUB_MODES = ['NORMAL', 'PLATFORMER', 'SPEEDRUNNER'];
+const modeOf = (q) => { const m = String(q || '').toUpperCase(); return HUB_MODES.includes(m) ? m : 'SPEEDRUNNER'; };
+
 // Shared: the light row shape the hub renders (never ships full world_data — that's fetched on Play).
 const SELECT_COLS = 'id, world_name, creator_name, original_author, mode, description, thumbnail, play_count, is_system, sort_order, is_live, is_published, creator_id, updated_at, published_at';
 function toRow(w) {
@@ -51,7 +55,7 @@ function setupSrHubRoutes(app) {
   app.get('/api/sr/system', verifyToken, async (req, res) => {
     try {
       const { data, error } = await supabaseAdmin.from('worlds').select(SELECT_COLS)
-        .eq('is_system', true).eq('mode', 'SPEEDRUNNER')
+        .eq('is_system', true).eq('mode', modeOf(req.query.mode))
         .order('sort_order', { ascending: true }).order('published_at', { ascending: true, nullsFirst: true });
       if (error) throw error;
       res.json({ worlds: (data || []).map(toRow), isAdmin: isAdmin(req) });
@@ -62,7 +66,7 @@ function setupSrHubRoutes(app) {
   app.get('/api/sr/mine', verifyToken, async (req, res) => {
     try {
       const { data, error } = await supabaseAdmin.from('worlds').select(SELECT_COLS)
-        .eq('creator_id', req.user.id).eq('mode', 'SPEEDRUNNER').eq('is_live', true)
+        .eq('creator_id', req.user.id).eq('mode', modeOf(req.query.mode)).eq('is_live', true)
         .order('updated_at', { ascending: false });
       if (error) throw error;
       res.json({ worlds: (data || []).map(toRow), isAdmin: isAdmin(req) });
@@ -77,7 +81,7 @@ function setupSrHubRoutes(app) {
       if (e1) throw e1;
       const ids = (adds || []).map(a => a.world_id);
       if (!ids.length) return res.json({ worlds: [] });
-      const { data, error } = await supabaseAdmin.from('worlds').select(SELECT_COLS).in('id', ids);
+      const { data, error } = await supabaseAdmin.from('worlds').select(SELECT_COLS).in('id', ids).eq('mode', modeOf(req.query.mode));
       if (error) throw error;
       // preserve added order
       const byId = {}; (data || []).forEach(w => { byId[w.id] = w; });
