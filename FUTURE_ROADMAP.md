@@ -1812,3 +1812,33 @@ scope) + an unlock-check at each gated feature + the aspirational-lock UI.
 **Scope:** cross-cutting rework (every gated setting/tool needs an unlock check + UI) — a big future
 initiative, but it can PILOT incrementally (gate 2–3 marquee features first, not all at once). Ties to:
 Campaign mode (§12), the Creative Tools ladder (§13), and Epic D achievements.
+
+---
+
+## §15b. Skin System — player-selectable visual skins × orthogonal Retro FX  (agreed 2026-08-12; NOT built)
+
+**Kevin's idea:** more visual variety than today's single modern/retro switch — a set of **skins** players
+choose from, PLUS the ability to apply the **retro/CRT vibe on top of** any skin.
+
+**Key architecture — TWO orthogonal axes (don't conflate them like modern/retro does today):**
+1. **Skin** = the palette + treatment language (colours, accent, button/panel style, iconography). A token
+   set on the root, e.g. `data-skin="neon|pixel|modern|…"`. Drives everything through CSS custom props —
+   the dark-modal unification (build 485) already pushed most components onto tokens, which is the
+   foundation.
+2. **Retro FX** = an overlay effect (scanlines, CRT curve, chromatic aberration, pixel font), a SEPARATE
+   on/off flag that composites over ANY skin. Today's `retro` theme ≈ "Pixel skin + Retro FX on".
+
+   So: `data-skin` (palette) × `retroFx` (overlay) → e.g. Neon+FX = neon with scanlines; Neon-FX = clean neon.
+
+**First skins** (curated — each must look right on EVERY screen, not just one): **Modern** (today's clean
+dark), **Neon** (seeded by the SR-hub side rail @495 — its `--srh-*` accent tokens are the start), **Pixel/
+Blocks** (flat/blocky, on-brand). Retro FX = the orthogonal toggle. Later candidates: Terminal (green-on-
+black), Vaporwave (pink/cyan), Parchment (fantasy; could auto-apply in adventure worlds).
+
+**Decisions to lock before building:** (a) scope = **player preference** first (like the retro toggle),
+optional per-world creator override later; (b) how the current `retro` preset maps onto skin×FX.
+
+**Cost:** big cross-cutting effort (every component must read tokens, no hardcoded colours) but pilots
+incrementally — ship Neon end-to-end first, add Pixel later. **Great fit as a PROGRESSION UNLOCK** (§14):
+earn skins via achievements (cosmetic-only, aspirational). Generalizes `js/theme.js` (data-theme →
+data-skin + retroFx). Ties to §14 (gating) and the build-485 modal token work.
