@@ -20,6 +20,7 @@ const SR_HUB = {
     document.getElementById('sr-hub').style.display = 'flex';   // flex row: rail beside the list (not block/stacked)
     document.querySelector('.game-slots-container').style.display = 'none';
     document.querySelector('.game-selection-container')?.classList.add('srh-mode');   // full-bleed "device" backdrop
+    document.getElementById('sr-hub').classList.toggle('srh-arena', this._mode === 'ARENA');   // taller tablet for the 8-type top bar
     this.loadTab(this._tab || 'system');
   },
   hide() {

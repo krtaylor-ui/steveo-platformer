@@ -2518,10 +2518,12 @@ html[data-theme="retro"] #copy-world-modal .copy-dest { color: #cfe8f2; border-c
   background: rgba(120,140,180,.10); border: 1px solid #3a4a5f; transition: filter .12s, border-color .15s; }
 .srh-restart:hover { filter: brightness(1.25); border-color: #536480; }
 /* §Arena — game-type top bar: 8 neon buttons, two rows of four, each its own hue. */
-.srh-gtbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; width: 100%; margin-bottom: 4px; }
-.srh-gt { font: 700 11px/1.15 "Courier New", monospace; letter-spacing: .03em; text-transform: uppercase; color: #cdd8ea;
-  cursor: pointer; padding: 9px 6px; border-radius: 8px; background: #0d1420; border: 1px solid #24324a;
-  position: relative; overflow: hidden; transition: filter .12s, box-shadow .15s; --gt: #6ca8ff; }
+#sr-hub.srh-arena { min-height: 78vh; }   /* taller tablet so the 8 game-type buttons + maps all breathe */
+.srh-gtbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: 100%; margin-bottom: 6px; }
+.srh-gt { font: 700 13.5px/1.2 "Courier New", monospace; letter-spacing: .02em; text-transform: uppercase; color: #cdd8ea;
+  cursor: pointer; padding: 10px 8px; border-radius: 9px; background: #0d1420; border: 1px solid #24324a;
+  position: relative; overflow: hidden; transition: filter .12s, box-shadow .15s; --gt: #6ca8ff;
+  min-height: 60px; display: flex; align-items: center; justify-content: center; text-align: center; white-space: normal; }
 .srh-gt:hover { filter: brightness(1.15); }
 .srh-gt.soon { opacity: .5; cursor: not-allowed; }
 .srh-gt.active { color: #eaf6ff; border-color: color-mix(in srgb, var(--gt) 65%, #24324a);
