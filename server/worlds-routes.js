@@ -40,7 +40,7 @@ const ARENA_W = 25, ARENA_H = 15;
 // game mode. The legacy `mode` column (NORMAL/PLATFORMER/SPEEDRUNNER) is kept
 // in sync — derived from gameModeDefault — purely so the published-worlds
 // catalog (/api/worlds?mode=) keeps working. Players only ever set the short code.
-const MODE_LONG = { NRM: 'NORMAL', PLT: 'PLATFORMER', RUN: 'SPEEDRUNNER' };
+const MODE_LONG = { NRM: 'NORMAL', PLT: 'PLATFORMER', RUN: 'SPEEDRUNNER', ARN: 'ARENA' };
 const MODE_SHORT = { NORMAL: 'NRM', PLATFORMER: 'PLT', SPEEDRUNNER: 'RUN', SANDBOX: 'NRM' };
 // Sandbox list filter values (lowercase) → gameModeDefault code.
 const FILTER_TO_CODE = { normal: 'NRM', platformer: 'PLT', speedrunner: 'RUN', arena: 'ARN' };

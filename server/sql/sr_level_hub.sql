@@ -31,3 +31,8 @@ CREATE INDEX IF NOT EXISTS idx_world_added_user ON world_added (user_id, added_a
 --    Uncomment + set your creator_id (or run the admin "Mark as System" action from the app instead).
 -- UPDATE worlds SET is_system = true
 --   WHERE creator_id = '<KRTAYLOR-USER-UUID>' AND mode = 'SPEEDRUNNER' AND is_published = true;
+
+-- FIX (2026-08-13): arena worlds were stored with mode='NORMAL' because MODE_LONG lacked an ARN entry.
+-- Re-tag them so they appear in the Arena hub (and stop appearing under Normal). New saves are correct now.
+UPDATE worlds SET mode = 'ARENA'
+  WHERE world_data->>'gameModeDefault' = 'ARN' AND mode IS DISTINCT FROM 'ARENA';
