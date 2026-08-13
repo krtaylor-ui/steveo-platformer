@@ -15,7 +15,7 @@ Two ways:
 1. In-app: log in as krtaylor -> Speed Runner -> My Levels -> set a world Live (from Sandbox first)
    -> the row shows a "★ System" button -> click it to promote to the System list.
 2. SQL (bulk): uncomment the last UPDATE in sr_level_hub.sql with your creator_id.
-Admin identity = the ADMIN_EMAILS env (defaults to kevin.taylor@svx.ca). Non-admins never see
+Admin identity = the ADMIN_EMAILS env (defaults to krtaylor@gmail.com). Non-admins never see
 the ★/reorder/✕ controls.
 
 ## System tab

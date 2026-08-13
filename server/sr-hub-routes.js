@@ -26,7 +26,7 @@ const verifyToken = async (req, res, next) => {
 
 // Admin gate — the accounts allowed to curate the System list. Configurable via ADMIN_EMAILS
 // (comma-separated); defaults to Kevin's account.
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'kevin.taylor@svx.ca')
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'krtaylor@gmail.com')
   .toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
 const isAdmin = (req) => !!(req.user && req.user.email && ADMIN_EMAILS.includes(req.user.email.toLowerCase()));
 
