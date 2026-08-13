@@ -184,8 +184,21 @@
       return M().validateForPublish(this._c, map);
     },
 
+    // Re-derive each world's Goal Stars from its CURRENT saved data. Stars are cached at add-time, so a
+    // world edited later in the Sandbox (star added/moved/removed) would otherwise keep a stale snapshot.
+    async _resyncStars() {
+      for (const w of (this._c.worlds || [])) {
+        try {
+          const fresh = await this._ingestWorld(w.id, w.name);
+          w.stars = fresh.stars;
+          if (fresh.name) w.name = fresh.name;
+        } catch (e) { /* keep the cached value if the fetch fails */ }
+      }
+    },
+
     async _publish() {
       if (!this._c) return;
+      await this._resyncStars();
       const v = this._validate();
       if (!v.ok) { this._flash('Fix the issues below before publishing.', 'err'); this._render(); return; }
       await this._save(true);
@@ -242,6 +255,16 @@
       if (!w) return;
       w.goalStarRouting = (w.goalStarRouting || []).filter((r) => r.starIndex !== starIndex);
       this._save(true);
+    },
+
+    _removeWorld(worldId) {
+      const w = M().getWorld(this._c, worldId);
+      if (!w) return;
+      const WL = this._c.worldLabel || 'World';
+      if (!confirm(`Remove "${w.name}" from this campaign? Routes pointing to it are cleared. The saved ${WL} itself is not deleted.`)) return;
+      M().removeWorld(this._c, worldId);
+      this._save(true);
+      this._render();
     },
 
     // ── Rendering ─────────────────────────────────────────────────────────────
@@ -395,7 +418,8 @@
       }).join('');
       const badges = `${isStart ? '<span class="cb-badge start">START</span>' : ''}${isBoss ? '<span class="cb-badge boss">BOSS</span>' : ''}`;
       const noStars = !stars.length ? '<div class="cb-route unrouted">⚠ This world has no Goal Star placed — add one in the Sandbox editor.</div>' : '';
-      return `<div class="cb-world"><h4>${this._esc(w.name)} ${badges}</h4>${noStars}<div class="cb-stars">${starRows}</div></div>`;
+      const rmWorld = `<button class="cb-plus" style="background:#5a2f2f;border-color:#8a4a4a;float:right" data-rmworld="${w.id}" title="Remove this ${WL} from the campaign">✕ Remove</button>`;
+      return `<div class="cb-world"><h4>${this._esc(w.name)} ${badges}${rmWorld}</h4>${noStars}<div class="cb-stars">${starRows}</div></div>`;
     },
 
     _renderFlow() {
@@ -492,6 +516,7 @@
       document.querySelectorAll('[data-boss]').forEach((b) => b.onclick = () => this._flowBossTransition(b.dataset.boss));
       document.querySelectorAll('[data-branch]').forEach((b) => b.onclick = () => this._flowBranch(b.dataset.branch, parseInt(b.dataset.star, 10)));
       document.querySelectorAll('[data-rmroute]').forEach((b) => b.onclick = () => this._removeRoute(b.dataset.rmroute, parseInt(b.dataset.star, 10)));
+      document.querySelectorAll('[data-rmworld]').forEach((b) => b.onclick = () => this._removeWorld(b.dataset.rmworld));
 
       // Zone "add first world" (also serves the very first zone's starting world)
       on('cb-zone-firstworld', async () => {

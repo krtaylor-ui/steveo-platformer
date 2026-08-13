@@ -50,7 +50,10 @@
       this._progress = progress || this._freshProgress(campaign);
       this._progress.completedWorlds = this._progress.completedWorlds || {};
       this._progress.discoveredSecrets = this._progress.discoveredSecrets || [];
-      if (this._progress.lives == null) this._progress.lives = campaign.startingLives != null ? campaign.startingLives : 3;
+      // Refill lives when unset OR depleted — re-entering a campaign after a Game Over persisted lives:0,
+      // and only-refill-when-null started the fresh run with 0 lives → instant death (§28 defect).
+      if (this._progress.lives == null || this._progress.lives <= 0)
+        this._progress.lives = campaign.startingLives != null ? campaign.startingLives : 3;
       this._carry = this._progress.runningInventory || null;
 
       let wid = this._progress.currentWorldId || campaign.startingWorldId;

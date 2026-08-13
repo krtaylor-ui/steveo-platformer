@@ -261,6 +261,23 @@
     return (c.worlds || []).filter((w) => w.outOfSequence && w.zoneId === zoneId);
   }
 
+  // Remove a World from the campaign, cleaning up every reference so no route points at a ghost:
+  //   • drop it from c.worlds and its Zone's worldOrder
+  //   • strip any goalStarRouting in OTHER worlds whose destination was this World
+  //   • if it was the starting World, re-point start at the first remaining in-sequence World
+  function removeWorld(c, worldId) {
+    const w = getWorld(c, worldId);
+    if (!w) return c;
+    c.worlds = (c.worlds || []).filter((x) => x.id !== worldId);
+    for (const z of (c.zones || [])) z.worldOrder = (z.worldOrder || []).filter((id) => id !== worldId);
+    for (const x of c.worlds) x.goalStarRouting = (x.goalStarRouting || []).filter((r) => r.destinationWorldId !== worldId);
+    if (c.startingWorldId === worldId) {
+      const firstZone = (c.zoneOrder || [])[0] || (c.zones[0] && c.zones[0].id);
+      c.startingWorldId = (firstZone && firstWorldId(c, firstZone)) || (c.worlds[0] && c.worlds[0].id) || null;
+    }
+    return c;
+  }
+
   // Compact a numeric id sequence — the Builder generates ids as `w<n>` / `z<n>`.
   function nextId(prefix, existing) {
     let max = 0;
@@ -280,7 +297,7 @@
     defaultEntryPointId, routeFor,
     resolveExit, starIndexesFromWorldData,
     validateForPublish, resolveStarForValidation,
-    addWorldToZone, addBonusWorld, bonusWorldsInZone, nextId,
+    addWorldToZone, addBonusWorld, bonusWorldsInZone, removeWorld, nextId,
   };
 
   if (typeof window !== 'undefined') window.CAMPAIGN_MODEL = CAMPAIGN_MODEL;

@@ -6,7 +6,9 @@ const ok = (c, m) => { if (c) pass++; else { fail++; console.log('  FAIL:', m); 
 
 console.log('1 — clean, ordinary text passes:');
 {
-  for (const s of ['SteveWorld', 'Sky Castle', 'Speedy McRun', 'Level 42', 'assassin fortress', 'Scunthorpe', 'grasshopper']) {
+  for (const s of ['SteveWorld', 'Sky Castle', 'Speedy McRun', 'Level 42', 'assassin fortress', 'Scunthorpe', 'grasshopper',
+    // §C-1 allowlist — common kid words that contain a root must stay CLEAN
+    'Cucumber World', 'Uranus Base', 'Cockpit Racer', 'Peacock Palace', 'grape juice', 'my therapist']) {
     ok(M.isClean(s), `"${s}" is allowed`);
   }
   ok(M.check(null).ok && M.check('').ok, 'null/empty are allowed');
@@ -14,7 +16,9 @@ console.log('1 — clean, ordinary text passes:');
 
 console.log('2 — profanity is blocked, including leetspeak + padding:');
 {
-  for (const s of ['shit', 'sh1t', 'fuuuck', 'a$$hole world', 'b1tch', 'my p0rn level']) {
+  for (const s of ['shit', 'sh1t', 'fuuuck', 'a$$hole world', 'b1tch', 'my p0rn level',
+    // §C-1 — inflections + compounds + the ni66er leet gap must ALL be caught now
+    'shitty', 'Shitty Fucking Campaign', 'fucking', 'fucker', 'assholes', 'bitches', 'dickhead', 'bullshit', 'dumbfuck', 'ni66er']) {
     ok(!M.isClean(s), `"${s}" is blocked`);
   }
 }

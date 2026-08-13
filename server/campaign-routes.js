@@ -139,7 +139,13 @@ module.exports = function setupCampaignRoutes(app) {
       if (row.creator_id !== req.user.id) return res.status(403).json({ error: 'Not your campaign' });
 
       const patch = { updated_at: new Date().toISOString() };
-      if (req.body && typeof req.body.name === 'string') patch.name = req.body.name.slice(0, 120);
+      if (req.body && typeof req.body.name === 'string') {
+        patch.name = req.body.name.slice(0, 120);
+        // C-2: moderate the player-visible name on EVERY save (structure validation stays unblocked for
+        // drafts, but the name is a safety surface). Closes the publish-clean-then-rename-to-a-slur bypass.
+        const m = MODERATION.check ? MODERATION.check(patch.name, 'campaign name') : { ok: true };
+        if (!m.ok) return res.status(400).json({ error: m.reason });
+      }
       if (req.body && req.body.definition && typeof req.body.definition === 'object') {
         const def = req.body.definition;
         def.creatorId = req.user.id;   // never let the client reassign ownership

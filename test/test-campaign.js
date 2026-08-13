@@ -151,5 +151,27 @@ console.log('Save is never blocked — validation is a separate call:');
      'a fresh draft campaign is a valid object with no worlds');
 }
 
+console.log('removeWorld cleans up worldOrder, inbound routes, and starting-world:');
+{
+  const c = M.newCampaign('Remove Test', 'creator1');
+  const z = M.newZone('z1', 'Zone');
+  c.zones = [z]; c.zoneOrder = ['z1'];
+  M.addWorldToZone(c, 'z1', M.newCampaignWorld('w1', 'z1', 'u1', 'W1'));
+  M.addWorldToZone(c, 'z1', M.newCampaignWorld('w2', 'z1', 'u2', 'W2'));
+  const bonus = M.newCampaignWorld('wb', 'z1', 'ub', 'Bonus');
+  M.addBonusWorld(c, 'z1', bonus);
+  c.startingWorldId = 'w1';
+  // w1's Goal Star 2 routes into the bonus world.
+  M.getWorld(c, 'w1').goalStarRouting = [{ starIndex: 2, routeType: 'bonus', destinationWorldId: 'wb' }];
+
+  M.removeWorld(c, 'wb');
+  ok(!M.getWorld(c, 'wb'), 'bonus world is gone from c.worlds');
+  ok((M.getWorld(c, 'w1').goalStarRouting || []).length === 0, 'inbound route to it was stripped');
+
+  M.removeWorld(c, 'w1');
+  ok(!z.worldOrder.includes('w1'), 'removed world drops out of worldOrder');
+  ok(c.startingWorldId === 'w2', 'starting-world re-points to the next remaining world');
+}
+
 console.log(`\ncampaign model: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
