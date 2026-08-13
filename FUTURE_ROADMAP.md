@@ -1067,6 +1067,8 @@ restriction is a small server change (`ADMIN_EMAIL` gate + the single-published 
 
 ## 30. NPCs / Villagers  *(idea captured 2026-07-28)*
 
+> **DESIGN SPEC (2026-08-13):** full build-ready brief now at docs/NPC_DESIGN_SPEC.md (both engines, dialogue model, v1/v2/v3 tiers). Kevin flagged P1 + 'also need side scroll'.
+
 Surfaced during Overhead Engine design discussion (the universal Action button was explicitly
 designed to eventually support "talk to NPCs" alongside opening chests / triggering levers / entering
 buildings). Likely scope when this gets designed for real: a dialogue system, possibly trading/quests
