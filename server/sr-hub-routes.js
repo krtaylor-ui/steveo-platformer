@@ -37,13 +37,38 @@ const modeOf = (q) => { const m = String(q || '').toUpperCase(); return HUB_MODE
 // Shared: the light row shape the hub renders (never ships full world_data — that's fetched on Play).
 const SELECT_COLS = 'id, world_name, creator_name, original_author, mode, description, thumbnail, play_count, is_system, sort_order, is_live, is_published, creator_id, updated_at, published_at';
 function toRow(w) {
-  return {
+  const row = {
     id: w.id, name: w.world_name, author: w.original_author || w.creator_name,
     creatorId: w.creator_id, mode: w.mode, description: w.description || '',
     thumbnail: w.thumbnail || null, plays: w.play_count || 0,
     isSystem: !!w.is_system, sortOrder: w.sort_order || 0, isLive: !!w.is_live, isPublished: !!w.is_published,
   };
+  if (w.world_data) row.supportedModes = supportedArenaModes(w.world_data);   // arena only (world_data selected)
+  return row;
 }
+
+// Which arena game types a world supports (port of ARENA_SELECT._supportedModes). null = all.
+function supportedArenaModes(wd) {
+  const explicit = wd && wd.worldAdvSettings && wd.worldAdvSettings.arenaEnabledTypes;
+  if (Array.isArray(explicit) && explicit.length) return explicit.slice();
+  if (!wd) return null;
+  const objs = Array.isArray(wd.arenaObjects) ? wd.arenaObjects : [];
+  const bases = objs.filter(o => o && o.type === 'base').length;
+  const towers = objs.filter(o => o && o.type === 'tower').length;
+  const hasHill = !!(wd.placedHill && typeof wd.placedHill.col === 'number');
+  const hasEmeralds = Array.isArray(wd.emeralds) && wd.emeralds.length > 0;
+  const hasSpawns = (Array.isArray(wd.spawnEggs) && wd.spawnEggs.length > 0) || (Array.isArray(wd.spawnLines) && wd.spawnLines.length > 0);
+  const pSpawns = Array.isArray(wd.playerSpawns) ? wd.playerSpawns.length : 0;
+  const out = ['DEATHMATCH', 'CUSTOM'];
+  if (hasHill) out.push('KING_OF_HILL');
+  if (hasEmeralds) out.push('COLLECT_EMERALDS');
+  if (bases >= 2 || pSpawns >= 2) out.push('CAPTURE_FLAG');
+  if (towers >= 1) out.push('DEFEND_TOWER');
+  if (hasSpawns) out.push('MOB_HUNTER', 'SURVIVAL_WAVES');
+  return out;
+}
+// world_data is only pulled for arena (to compute supportedModes); other modes stay light.
+const colsFor = (mode) => SELECT_COLS + (mode === 'ARENA' ? ', world_data' : '');
 
 // Attach `inProgress` (does the requester have a saved game for this world) to a set of rows.
 // Resilient — if world_progress.sql isn't applied yet, everything is simply "not in progress".
@@ -92,7 +117,7 @@ function setupSrHubRoutes(app) {
   // ── System tab — admin-curated SR levels, in the admin's order (public to all signed-in players) ──
   app.get('/api/sr/system', verifyToken, async (req, res) => {
     try {
-      const { data, error } = await supabaseAdmin.from('worlds').select(SELECT_COLS)
+      const { data, error } = await supabaseAdmin.from('worlds').select(colsFor(modeOf(req.query.mode)))
         .eq('is_system', true).eq('mode', modeOf(req.query.mode))
         .order('sort_order', { ascending: true }).order('published_at', { ascending: true, nullsFirst: true });
       if (error) throw error;
@@ -104,7 +129,7 @@ function setupSrHubRoutes(app) {
   // ── My Levels tab — the requester's OWN Live SR worlds ──
   app.get('/api/sr/mine', verifyToken, async (req, res) => {
     try {
-      const { data, error } = await supabaseAdmin.from('worlds').select(SELECT_COLS)
+      const { data, error } = await supabaseAdmin.from('worlds').select(colsFor(modeOf(req.query.mode)))
         .eq('creator_id', req.user.id).eq('mode', modeOf(req.query.mode)).eq('is_live', true)
         .order('updated_at', { ascending: false });
       if (error) throw error;
@@ -121,7 +146,7 @@ function setupSrHubRoutes(app) {
       if (e1) throw e1;
       const ids = (adds || []).map(a => a.world_id);
       if (!ids.length) return res.json({ worlds: [] });
-      const { data, error } = await supabaseAdmin.from('worlds').select(SELECT_COLS).in('id', ids).eq('mode', modeOf(req.query.mode));
+      const { data, error } = await supabaseAdmin.from('worlds').select(colsFor(modeOf(req.query.mode))).in('id', ids).eq('mode', modeOf(req.query.mode));
       if (error) throw error;
       // preserve added order
       const byId = {}; (data || []).forEach(w => { byId[w.id] = w; });

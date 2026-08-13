@@ -72,7 +72,11 @@ const SR_HUB = {
     bar.innerHTML = html;
     const browse = bar.querySelector('#srh-browse');
     if (browse) browse.onclick = () => { if (typeof COMMUNITY !== 'undefined') COMMUNITY.init(this._mode || 'SPEEDRUNNER'); };
-    bar.querySelectorAll('.srh-gt').forEach(b => b.onclick = () => { this._arenaMode = b.dataset.mode; this._renderToolbar(this._tab, bar); });
+    bar.querySelectorAll('.srh-gt').forEach(b => b.onclick = () => {
+      this._arenaMode = b.dataset.mode;
+      this._renderToolbar(this._tab, bar);
+      const list = document.getElementById('srh-list'); if (list) this._renderRows(this._tab, list);   // re-filter the maps
+    });
   },
 
   _arenaTopbarHtml() {
@@ -129,15 +133,24 @@ const SR_HUB = {
   },
 
   _renderRows(tab, list) {
-    if (!this._rows.length) {
-      const msg = { system: 'No system levels published yet.',
-        mine: 'No Live levels yet — build a Speed Runner world in Sandbox and set it Live.',
-        community: 'Nothing added yet — tap “Browse community levels to add”.' }[tab];
+    // §Arena — show only maps that support the selected game type (CUSTOM / no declared set = any map).
+    let rows = this._rows;
+    if (this._mode === 'ARENA' && this._arenaMode && this._arenaMode !== 'CUSTOM') {
+      rows = this._rows.filter(w => !w.supportedModes || w.supportedModes.includes(this._arenaMode));
+    }
+    if (!rows.length) {
+      const gtLabel = (this._mode === 'ARENA' && typeof ARENA_MODES !== 'undefined' && ARENA_MODES.DEFS[this._arenaMode]) ? ARENA_MODES.DEFS[this._arenaMode].label : '';
+      const msg = (this._mode === 'ARENA' && this._rows.length)
+        ? `No maps in this tab support ${gtLabel}.`
+        : { system: 'No system levels published yet.',
+            mine: this._mode === 'ARENA' ? 'No Live arena maps yet — set one Live in Sandbox.' : 'No Live levels yet — build a world in Sandbox and set it Live.',
+            community: 'Nothing added yet — tap “Browse community levels to add”.' }[tab];
       list.innerHTML = `<p class="srh-empty">${msg}</p>`;
       return;
     }
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    list.innerHTML = this._rows.map((w, i) => {
+    list.innerHTML = rows.map((w) => {
+      const i = this._rows.indexOf(w);   // original index (numbering + reorder)
       const best = this._best(w.id);
       const thumb = w.thumbnail ? `<div class="srh-thumb"><img src="${esc(w.thumbnail)}" alt="" loading="lazy"></div>` : '<div class="srh-thumb srh-thumb-none">🏁</div>';
       const isNP = (this._mode === 'NORMAL' || this._mode === 'PLATFORMER');
